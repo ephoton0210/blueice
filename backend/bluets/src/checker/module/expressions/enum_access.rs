@@ -9,7 +9,7 @@ use super::*;
 
 impl ModuleChecker<'_> {
     /// The enum whose object type `value` is, if it is one.
-    fn enum_object_of(&self, value: &Type) -> Option<String> {
+    pub(in crate::checker::module) fn enum_object_of(&self, value: &Type) -> Option<String> {
         let Type::Named { name, .. } = value else {
             return None;
         };

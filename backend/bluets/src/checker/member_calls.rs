@@ -224,6 +224,68 @@ pub(super) fn member_call_ranges(
         .collect()
 }
 
+/// Every ordinary property read, including prefixes whose inferred type may
+/// otherwise become `unknown` before a later member is checked.
+pub(super) fn property_access_ranges(
+    tokens: &[Token],
+    is_generic: impl Fn(usize) -> bool,
+) -> Vec<Range<usize>> {
+    let starts = postfix_starts(tokens, &is_generic);
+    let mut ranges = Vec::new();
+    let mut index = 0;
+    while index < tokens.len() {
+        if tokens[index].kind == TokenKind::Identifier && is_generic(tokens[index].start) {
+            if let Some(close) = explicit_generic_call_close(tokens, index) {
+                index = close + 1;
+                continue;
+            }
+        }
+        let end = if tokens[index].is(".")
+            && tokens.get(index + 1).is_some_and(|member| {
+                matches!(member.kind, TokenKind::Identifier | TokenKind::Keyword)
+            }) {
+            if is_generic(tokens[index + 1].start) {
+                index += 1;
+                continue;
+            }
+            Some(index + 2)
+        } else if tokens[index].is("]") {
+            Some(index + 1)
+        } else {
+            None
+        };
+        if let Some(end) = end {
+            let next = tokens.get(end);
+            let call_or_write = next.is_some_and(|token| {
+                token.is("(")
+                    || super::scopes::targets::ASSIGNMENTS.contains(&token.text.as_str())
+                    || token.is("++")
+                    || token.is("--")
+            });
+            let prefix_write = end == tokens.len()
+                && tokens
+                    .first()
+                    .is_some_and(|token| matches!(token.text.as_str(), "++" | "--" | "delete"));
+            if !call_or_write && !prefix_write {
+                let mut start = starts[index];
+                if matches!(tokens[start].text.as_str(), "++" | "--") {
+                    start += 1;
+                }
+                if tokens[start].is("new")
+                    && !tokens[start..index].iter().any(|token| token.is("("))
+                {
+                    start += 1;
+                }
+                if start < end {
+                    ranges.push(start..end);
+                }
+            }
+        }
+        index += 1;
+    }
+    ranges
+}
+
 pub(super) fn member_call_parts(
     tokens: &[Token],
     is_generic: impl Fn(usize) -> bool,

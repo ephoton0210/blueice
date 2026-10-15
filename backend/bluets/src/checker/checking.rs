@@ -45,7 +45,7 @@ pub(crate) fn check_incremental(
     );
     project::forward_type_exports(project, &mut exports.types);
     exports.types = reexports::forward(&origins, &exports.types);
-    let (ambient, mut ambient_diagnostics) =
+    let (mut ambient, mut ambient_diagnostics) =
         ambient_declarations(project, &exports, policy.enforce_types, max_type_expansions);
     if policy.library_target.is_none() {
         for name in [
@@ -80,7 +80,7 @@ pub(crate) fn check_incremental(
                 project,
                 module,
                 &exports,
-                (!project.ambient_declaration_modules.contains(id)).then_some(&ambient),
+                Some(&ambient),
                 &empty_namespaces,
                 policy.clone(),
                 max_type_expansions,
@@ -95,6 +95,20 @@ pub(crate) fn check_incremental(
     ambient::seed_module_values(&mut exports, &ambient, static_values);
     exports.values = reexports::forward(&origins, &exports.values);
     reexports::forward_type_values(project, &mut exports.values);
+    ambient::resolve_value_queries(
+        project,
+        &exports,
+        &mut ambient,
+        &mut diagnostics,
+        &policy,
+        max_type_expansions,
+    );
+    let value_query_types = ambient
+        .private_types
+        .iter()
+        .filter(|(name, _)| name.contains("\0typeof "))
+        .map(|(name, definition)| (name.clone(), definition.value.clone()))
+        .collect::<BTreeMap<_, _>>();
     let mut checked_modules: BTreeMap<String, CheckedModule> = BTreeMap::new();
     // What each checked module exports as a namespace, for the modules that
     // import it; modules are checked after the modules they import.
@@ -119,7 +133,7 @@ pub(crate) fn check_incremental(
             project,
             module,
             &exports,
-            (!project.ambient_declaration_modules.contains(module_id)).then_some(&ambient),
+            Some(&ambient),
             &namespace_exports,
             policy.clone(),
             max_type_expansions,
@@ -159,6 +173,7 @@ pub(crate) fn check_incremental(
                 class_expression_surfaces,
                 namespace_exports: exported_namespaces,
                 value_exports,
+                value_query_types: value_query_types.clone(),
             },
         );
     }

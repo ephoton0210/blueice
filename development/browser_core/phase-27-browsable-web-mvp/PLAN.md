@@ -54,6 +54,13 @@ gates pass and the complete Test262 inventory matches M1l; see the
 [milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
 Uncaught errors/rejections and the remaining M1 policy work stay open.
 
+M1n's checked host-boundary correction is accepted. Missing member
+chains now fail before a checked page's earlier DOM writes can run; ambient
+callable queries retain their declarations and local shadows. The existing
+installed surface is unchanged. Complete compiler/bridge and related host/MCP
+acceptance, workspace build/Clippy/formatting and pinned Test262 gates pass. See the
+[live acceptance record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+
 ## Objective
 
 Let an ordinary script-driven page work end to end in the one `core`: HTML

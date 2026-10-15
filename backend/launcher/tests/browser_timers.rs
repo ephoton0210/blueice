@@ -40,6 +40,64 @@ fn request(stream: &mut UnixStream, id: u64, message: ClientMessage) -> ServerMe
 
 type FrameMessage = (Option<u64>, Option<u64>, ServerMessage);
 
+#[test]
+fn checked_host_member_chains_reject_before_any_page_mutation() {
+    for call in [
+        "window.console.missing.deep();",
+        "window['absent'].deep();",
+        "window['fetch']('https://example.test');",
+    ] {
+        let (fixture, url, gatekeeper) = fixture(format!(
+            "<p id=counter>untouched</p><script type='application/x-blueice-typescript'>document.getElementById('counter')!.textContent = 'escaped'; {call}</script>"
+        ));
+        let core = SpawnedCore::spawn_with_options(
+            240.0,
+            120.0,
+            &fixture.root.join("frames"),
+            CoreLaunchOptions::default()
+                .with_gatekeeper_socket(gatekeeper)
+                .supervise_out_of_process_bluejs_with_page_dom(),
+        )
+        .unwrap();
+        let mut stream = core.stream.try_clone().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .unwrap();
+        assert!(matches!(
+            request(&mut stream, 1, ClientMessage::Navigate { url }),
+            ServerMessage::Navigated { .. }
+        ));
+        let ServerMessage::BlueTsScriptReports(reports) =
+            request(&mut stream, 2, ClientMessage::GetBlueTsScriptReports)
+        else {
+            panic!("expected BlueTS reports");
+        };
+        assert!(
+            matches!(reports.as_slice(), [blueice_ipc::BlueTsScriptExecutionReport { outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Rejected { category }, .. }] if category == "BlueTS compilation rejected the page script"),
+            "{call}: {reports:?}"
+        );
+        let ServerMessage::Representation(snapshot) =
+            request(&mut stream, 3, ClientMessage::GetRepresentation)
+        else {
+            panic!("expected page representation");
+        };
+        assert!(
+            snapshot
+                .nodes
+                .iter()
+                .any(|node| node.name.as_deref() == Some("untouched")),
+            "{call}: {snapshot:?}"
+        );
+        assert!(
+            !snapshot
+                .nodes
+                .iter()
+                .any(|node| node.name.as_deref() == Some("escaped")),
+            "{call}: {snapshot:?}"
+        );
+    }
+}
+
 fn request_with_frames(
     stream: &mut UnixStream,
     id: u64,

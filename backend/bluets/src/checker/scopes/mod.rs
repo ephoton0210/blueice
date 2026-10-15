@@ -209,7 +209,9 @@ impl<'a> ScopeModel<'a> {
         model.scopes[0].types.extend(types.keys().cloned());
         if let Some(ambient) = ambient {
             for (name, value) in &ambient.values {
-                model.value(0, name, 0, false, false, value.clone());
+                if !values.contains_key(name) {
+                    model.value(0, name, 0, false, false, value.clone());
+                }
                 if let Some(kind) = ambient.binding_kinds.get(name) {
                     model.binding_kind(0, name, *kind);
                 }
@@ -572,5 +574,10 @@ impl<'a> ScopeModel<'a> {
             meaning: Meaning::Value,
             span,
         });
+    }
+
+    pub(super) fn has_local_value(&self, name: &str, offset: usize) -> bool {
+        self.resolve(self.scope_at(offset), name, Meaning::Value)
+            .is_some_and(|(scope, binding)| scope != 0 && binding.is_some())
     }
 }

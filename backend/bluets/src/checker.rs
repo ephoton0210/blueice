@@ -36,6 +36,7 @@ pub(crate) use scopes::emission::{lexical_emission, LexicalEmission};
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
 pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v4";
+pub(crate) const VALUE_BOUNDARIES_VERSION: &str = "value-boundaries-v1";
 mod type_operators;
 mod type_relations;
 use properties::{
@@ -88,6 +89,8 @@ pub struct CheckedModule {
     pub(crate) namespace_exports: BTreeMap<String, NamespaceExport>,
     /// Checked runtime bindings, retained for incremental importers.
     pub(crate) value_exports: BTreeMap<String, module::ExportedValue>,
+    /// Declaration-owned value queries needed when publishing inferred types.
+    pub(crate) value_query_types: BTreeMap<String, Type>,
 }
 
 #[derive(Debug, Clone)]
@@ -139,6 +142,24 @@ struct FunctionSignature {
     parameters: Vec<Parameter>,
     type_parameters: Vec<TypeParameter>,
     return_type: Type,
+}
+
+fn function_value_type(signatures: &[FunctionSignature]) -> Type {
+    let values = signatures
+        .iter()
+        .map(|signature| {
+            module::declared_function_type(
+                &signature.parameters,
+                signature.return_type.clone(),
+                &signature.type_parameters,
+            )
+        })
+        .collect::<Vec<_>>();
+    match values.len() {
+        0 => Type::Unknown,
+        1 => values.into_iter().next().unwrap(),
+        _ => Type::Intersection(values),
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -224,6 +245,7 @@ fn ambient_declarations(
         ..AmbientDeclarations::default()
     };
     let mut diagnostics = Vec::new();
+    ambient::seed_value_query_contexts(project, &mut ambient);
     ambient::collect_contexts(
         project,
         exports,
@@ -336,15 +358,11 @@ fn insert_ambient_function(
         ));
         return;
     }
+    let signatures = ambient.functions.entry(function.name.clone()).or_default();
+    signatures.push(signature);
     ambient
         .values
-        .entry(function.name.clone())
-        .or_insert_with(|| signature.return_type.clone());
-    ambient
-        .functions
-        .entry(function.name.clone())
-        .or_default()
-        .push(signature);
+        .insert(function.name.clone(), function_value_type(signatures));
 }
 
 mod module;

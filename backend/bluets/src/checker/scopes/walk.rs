@@ -10,6 +10,32 @@ use crate::parser::{BindingPattern, ClassDeclaration, TypeParameter, VariableDec
 impl ScopeModel<'_> {
     pub(super) fn declarations(&mut self, declarations: &[Declaration], scope: ScopeId) {
         let cyclic = cyclic_classes(declarations);
+        let mut signatures =
+            BTreeMap::<String, (Vec<FunctionSignature>, Option<FunctionSignature>)>::new();
+        for declaration in declarations {
+            if let Declaration::Function(function) = declaration {
+                let signature = FunctionSignature {
+                    parameters: function.parameters.clone(),
+                    type_parameters: function.type_parameters.clone(),
+                    return_type: function.return_type.clone().unwrap_or(Type::Unknown),
+                };
+                let set = signatures.entry(function.name.clone()).or_default();
+                if function.declared || function.overload {
+                    set.0.push(signature);
+                } else {
+                    set.1 = Some(signature);
+                }
+            }
+        }
+        let function_values = signatures
+            .into_iter()
+            .map(|(name, (mut overloads, implementation))| {
+                if overloads.is_empty() {
+                    overloads.extend(implementation);
+                }
+                (name, function_value_type(&overloads))
+            })
+            .collect::<BTreeMap<_, _>>();
         for declaration in declarations {
             let name = match declaration {
                 Declaration::Function(d) => Some(&d.name),
@@ -40,7 +66,7 @@ impl ScopeModel<'_> {
                         0,
                         false,
                         false,
-                        function_type(&function.parameters, &function.return_type),
+                        function_values[&function.name].clone(),
                     );
                     self.binding_kind(scope, &function.name, BindingKind::Function);
                     self.function(function, scope);
@@ -132,7 +158,13 @@ impl ScopeModel<'_> {
                                 })
                         }) {
                             if let Some(value) = self.scopes[scope].values.get_mut(&binding.local) {
-                                if !matches!(value.declared_type, Type::Function { .. }) {
+                                if !matches!(
+                                    value.declared_type,
+                                    Type::Function { .. }
+                                        | Type::GenericFunction { .. }
+                                        | Type::Intersection(_)
+                                        | Type::CallableRecord { .. }
+                                ) {
                                     value.declared_type = Type::Function {
                                         parameters: function.parameters.clone(),
                                         result: Box::new(value.declared_type.clone()),

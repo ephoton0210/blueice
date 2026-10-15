@@ -87,7 +87,13 @@ impl<'a> ModuleChecker<'a> {
                 index = member_end.saturating_add(1);
                 continue;
             }
-            let name = tokens[index].text.clone();
+            let name = if tokens[index].kind == TokenKind::String {
+                unescaped_property_name(&tokens[index].text)
+                    .unwrap_or(&tokens[index].text)
+                    .to_string()
+            } else {
+                tokens[index].text.clone()
+            };
             let (value, value_end) = if tokens.get(index + 1).is_some_and(|token| token.is(":")) {
                 let value_start = index + 2;
                 let Some(value_end) = record_member_end(tokens, value_start) else {

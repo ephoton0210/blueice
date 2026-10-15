@@ -267,7 +267,17 @@ impl<'a> ModuleChecker<'a> {
                 &mut HashSet::new(),
                 &mut budget,
             );
-            if let PropertyType::Found { value, .. } = found {
+            if let PropertyType::Found { mut value, .. } = found {
+                let mut visited = HashSet::new();
+                while let Some(expanded) = instantiate_named(
+                    &value,
+                    &self.types,
+                    &mut visited,
+                    &mut budget,
+                    "callable member",
+                ) {
+                    value = expanded;
+                }
                 match value {
                     Type::Function { result, .. } => return *result,
                     value @ Type::GenericFunction { .. } => {
@@ -546,14 +556,14 @@ impl<'a> ModuleChecker<'a> {
                             return value.clone();
                         }
                     }
-                    if let Some(signature) =
-                        self.functions.get(&first.text).and_then(|set| set.first())
-                    {
-                        return super::super::binding::declared_function_type(
-                            &signature.parameters,
-                            signature.return_type.clone(),
-                            &signature.type_parameters,
-                        );
+                    let shadowed = self.scopes.as_ref().map_or_else(
+                        || scope.get(&first.text) != self.values.get(&first.text),
+                        |scopes| scopes.has_local_value(&first.text, first.start),
+                    );
+                    if !shadowed {
+                        if let Some(signatures) = self.functions.get(&first.text) {
+                            return function_value_type(signatures);
+                        }
                     }
                 }
                 scope.get(&first.text).cloned().unwrap_or(Type::Unknown)

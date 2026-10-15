@@ -119,3 +119,29 @@ fn window_members_cover_every_installed_host_global() {
         }
     }
 }
+
+#[test]
+fn absent_intermediate_host_members_reject_every_following_chain() {
+    let ambient = PageHostDocumentTypingsV1::generate_dom_window()
+        .verified_dom_window_ambient_module(&page_host_dom_window_runtime_bindings_v13())
+        .unwrap();
+    let mut accepted = Vec::new();
+    for source in [
+        "window.console.log('missing');",
+        "window['console'].log('missing');",
+        "self.console?.log('missing');",
+        "window.document.missing.deep();",
+        "const value = window.console.deep.value;",
+        "function accept(value: unknown): void {} accept(window.console.deep);",
+        "window['fetch']('https://example.test');",
+        "const unavailable = window.document || window.console.deep.value;",
+    ] {
+        if accepts(ambient.clone(), source) {
+            accepted.push(source);
+        }
+    }
+    assert!(
+        accepted.is_empty(),
+        "absent host members accepted: {accepted:?}"
+    );
+}

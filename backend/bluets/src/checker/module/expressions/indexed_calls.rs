@@ -47,6 +47,7 @@ impl ModuleChecker<'_> {
             let Some((receiver, _)) = member_access_target(call.callee) else {
                 continue;
             };
+            self.check_direct_property_access(call.callee, scope, span);
             let value = self.infer_expression(call.callee, scope);
             let name = format!("#indexed@{}", call.callee[0].start);
             let mut local = scope.clone();

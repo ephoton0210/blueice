@@ -235,7 +235,7 @@ pub(in crate::checker::module) fn async_result(result: Type, wrap: bool) -> Type
 
 /// The function type of a nested declaration, retaining generic binders for
 /// contextual inference and instantiation at each call site.
-pub(in crate::checker::module) fn declared_function_type(
+pub(in crate::checker) fn declared_function_type(
     parameters: &[Parameter],
     result: Type,
     type_parameters: &[TypeParameter],

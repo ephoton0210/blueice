@@ -103,7 +103,7 @@ impl<'a> ModuleChecker<'a> {
             &mut HashSet::new(),
             &mut budget,
         );
-        let member_type = match member_type {
+        let mut member_type = match member_type {
             PropertyType::Found { value, .. } => value,
             PropertyType::Missing if self.hidden_member(&base, &call.member.text).is_some() => {
                 // Diagnosed, with its accessibility, by the restricted-member
@@ -152,6 +152,24 @@ impl<'a> ModuleChecker<'a> {
             }
             PropertyType::Indeterminate => return,
         };
+        let mut visited = HashSet::new();
+        while let Some(expanded) = instantiate_named(
+            &member_type,
+            &self.types,
+            &mut visited,
+            &mut budget,
+            "callable member",
+        ) {
+            member_type = expanded;
+        }
+        if budget.exhausted {
+            self.type_error(
+                span,
+                "callable member exceeds the type-expansion limit".into(),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
         if signatures::callable_signatures(&member_type, false).is_some_and(|signatures| {
             signatures
                 .iter()

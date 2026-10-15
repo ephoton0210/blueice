@@ -27,7 +27,8 @@ use modules::specialize_imported_class_type;
 mod namespaces;
 pub(in crate::checker::module) use functions::promise_value_type;
 pub(crate) use namespaces::{ExportedValue, NamespaceExport, NamespaceMembers};
-pub(in crate::checker::module) use nested_functions::{async_result, declared_function_type};
+pub(in crate::checker::module) use nested_functions::async_result;
+pub(in crate::checker) use nested_functions::declared_function_type;
 mod nested_functions;
 pub(in crate::checker) use classes::{
     class_definition_parameters, class_export, class_instance_type, class_with_interface_heritage,
@@ -914,7 +915,11 @@ impl<'a> ModuleChecker<'a> {
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_indexed_calls_in_expression(tokens, scope, span);
         self.check_class_index_accesses(tokens, scope);
-        self.check_direct_property_access(tokens, scope, span);
+        for range in member_calls::property_access_ranges(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            self.check_direct_property_access(&tokens[range], scope, span);
+        }
         self.check_member_assignment(tokens, scope, span);
         self.check_variable_assignment(tokens, scope, span);
         self.check_restricted_member_access(tokens, scope, span);

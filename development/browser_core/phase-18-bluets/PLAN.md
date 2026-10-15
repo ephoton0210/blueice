@@ -23,6 +23,19 @@ constructor, event and iterator tests verify execution. See the
 [M0a evidence record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
 Earlier subset summaries below retain their historical boundaries.
 
+**Checked host-boundary correction (2026-10-15):**
+M1n on the browser-integration branch retains ambient callable value queries
+across declaration modules and lexical shadowing, validates missing property
+prefixes/indexed calls, and carries resolved query types into inferred
+declarations. Compiler fingerprints include `value-boundaries-v1`; the owner
+declaration graph remains closed and File DOM v13/v14 artifacts stay immutable.
+Public compiler/profile and real Core/child refusal controls pass, along with
+all 164 compiler/bridge targets, related host/MCP acceptance, workspace
+build/Clippy/formatting and the full pinned Test262 comparison against M1m.
+Final evidence is recorded in the
+[M1n record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record)
+and [checker contract](../phase-13-bluejs-engine/HOST_TYPING_BOUNDARIES.md).
+
 The direct bridge lowers parenthesized `new Identifier(args)` expressions with normal or spread arguments. Member constructors and omitted parentheses remain excluded.
 
 The direct bridge lowers `delete` only for ordinary dot or bracket property references (without optional chaining). Identifier and non-reference operands remain outside the v1 subset.

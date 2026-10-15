@@ -13,27 +13,61 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let [receiver @ .., dot, property] = tokens else {
+        let tokens = if tokens
+            .first()
+            .is_some_and(|token| token.is("++") || token.is("--"))
+        {
+            &tokens[1..]
+        } else {
+            tokens
+        };
+        let Some(last) = tokens.last() else {
+            return;
+        };
+        if self
+            .module
+            .type_references
+            .iter()
+            .any(|reference| reference.span.start <= last.start && last.end <= reference.span.end)
+            || !member_calls::property_access_ranges(tokens, |start| {
+                self.module.generic_call_type_arguments.contains_key(&start)
+            })
+            .iter()
+            .any(|range| range.start == 0 && range.end == tokens.len())
+        {
+            return;
+        }
+        let Some((receiver, Some(property_name))) = member_access_target(tokens) else {
             return;
         };
         let Some(base) = receiver.first() else {
             return;
         };
-        if (receiver.len() == 1 && base.kind != TokenKind::Identifier && !base.is("this"))
-            || (receiver.len() > 1 && constructor_call_parts(receiver).is_none())
-            || !dot.is(".")
-            || !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword)
+        let mut value = self.infer_expression(receiver, scope);
+        if tokens.last().is_some_and(|token| token.is("]"))
+            && receiver.len() == 1
+            && self.enum_object_of(&value).is_some()
         {
+            // The enum index checker owns numeric reverse mappings and the
+            // TypeScript diagnostic for an unknown string key.
             return;
         }
-        let value = self.infer_expression(receiver, scope);
+        if value == Type::Never && receiver.len() == 1 {
+            if let Some(declared) = self
+                .scopes
+                .as_ref()
+                .and_then(|scopes| scopes.query_type(&base.text, base.start))
+            {
+                value = declared;
+            }
+        }
         if receiver.len() == 1 && self.flow_nullish_error(base, &value) {
             return;
         }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         match property_type(
             &value,
-            &property.text,
+            property_name,
             &self.types,
             &mut HashSet::new(),
             &mut budget,
@@ -41,9 +75,10 @@ impl<'a> ModuleChecker<'a> {
             PropertyType::Found { .. } | PropertyType::Indeterminate => {}
             // A private or protected member is diagnosed, with its accessibility,
             // by the restricted-member scan over the whole expression.
-            PropertyType::Missing if self.hidden_member(&value, &property.text).is_some() => {}
+            PropertyType::Missing if self.hidden_member(&value, property_name).is_some() => {}
             PropertyType::Missing => {
-                let direct_span = SourceSpan::new(&span.module, base.start, property.end);
+                let direct_span =
+                    SourceSpan::new(&span.module, base.start, tokens.last().unwrap().end);
                 let diagnostic_span = if self.is_bound_class_constructor_value(&base.text, scope)
                     || self.is_bound_class_instance_type(&value)
                     || self.is_bound_class_static_this(base, scope)
@@ -55,9 +90,14 @@ impl<'a> ModuleChecker<'a> {
                 self.missing_property_error(
                     diagnostic_span,
                     &value,
-                    &property.text,
+                    property_name,
                     (receiver.len() == 1).then_some(base.text.as_str()),
                 );
+                if tokens.last().is_some_and(|token| token.is("]")) {
+                    if let Some(key) = tokens.get(receiver.len() + 1) {
+                        self.point_last_typescript(std::slice::from_ref(key));
+                    }
+                }
             }
             PropertyType::Exhausted => self.type_error(
                 span,

@@ -48,6 +48,14 @@ child's File DOM installer and checked BlueTS preparation both select v13
 and verify the complete binding inventory. Private protocol v59 needs no new
 field or page-selected capability.
 
+M1m subsequently selects v14 with Console. M1n's accepted checker follow-up
+makes older profile declarations reject missing intermediate members,
+and ambient `typeof` fields preserve declaration-owned callable types without
+capturing consumer shadows. This does not rewrite v13/v14 declaration bytes or
+the existing member generator. Complete compiler/bridge, host/MCP, workspace
+build/Clippy/formatting and pinned Test262 gates pass. See [the checker contract](HOST_TYPING_BOUNDARIES.md)
+and the [live acceptance record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+
 `backend/launcher/tests/browser_timers.rs` observes every section C global
 through `typeof globalThis.<name>` in real JavaScript and checked BlueTS
 pages. It also pins the DOM/scheduling names and absence of `Window`,

@@ -45,6 +45,15 @@ All 102,926 pinned Test262 modes match M1l's accepted source/result inventory.
 See [the console contract](HOST_CONSOLE.md) and the
 [live milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
 
+**M1n checked host boundaries (2026-10-15):** Ambient value queries
+retain declaration ownership, full callable signatures and lexical shadows.
+Property prefixes and indexed calls now reject absent members before page
+effects. Inferred declarations retain resolved query types; compiler identity
+includes `value-boundaries-v1`. Public regressions and a real Core/child refusal
+fixture pass, as do all 164 compiler/bridge targets, related host/MCP checks,
+formatting, workspace/all-target Clippy/build and the full pinned Test262
+comparison against M1m. Installed v13/v14 artifacts keep their bytes. See [the checker contract](HOST_TYPING_BOUNDARIES.md).
+
 ## Ubuntu verification scope (2026-09-19)
 
 The only available host for this update is Ubuntu 24.04.3 LTS under WSL2 (`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), not Ubuntu 24.04.4. It successfully built all workspace targets and ran focused ECMA-402/BlueJS regressions; the exact commands and outcomes are recorded in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md). The unfiltered Test262 inventory was also rerun: 96,203 / 102,926 modes pass (93.468%), including 86,304 / 91,820 ECMA-262 Core modes (93.993%) and 6,364 / 6,714 ECMA-402 modes (94.787%). Coverage figures elsewhere remain separately dated because no fresh coverage run occurred in this update.

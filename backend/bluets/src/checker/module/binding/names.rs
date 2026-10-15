@@ -10,11 +10,35 @@ mod more_types;
 mod operators;
 
 impl ModuleChecker<'_> {
+    fn scope_values(&self) -> BTreeMap<String, Type> {
+        let mut values = self.values.clone();
+        for (name, signatures) in &self.functions {
+            if !matches!(values.get(name), Some(Type::Intersection(parts)) if parts.iter().any(|part| matches!(part, Type::Record(_))))
+            {
+                values.insert(name.clone(), function_value_type(signatures));
+            }
+        }
+        values
+    }
+
+    pub(in crate::checker) fn declaration_value_query_types(&self) -> BTreeMap<String, Type> {
+        scopes::ScopeModel::new(
+            self.project,
+            self.module,
+            &self.scope_values(),
+            &self.types,
+            self.ambient,
+            self.library_target,
+            self.max_type_expansions,
+        )
+        .query_types()
+    }
+
     pub(crate) fn check_names(&mut self) {
         let mut scopes = scopes::ScopeModel::new(
             self.project,
             self.module,
-            &self.values,
+            &self.scope_values(),
             &self.types,
             self.ambient,
             self.library_target,

@@ -65,7 +65,11 @@ pub(in crate::checker) fn collect_contexts(
                 }
             }
         }
-        ambient.contexts.insert(id.clone(), context);
+        ambient
+            .contexts
+            .entry(id.clone())
+            .or_default()
+            .extend(context);
     }
     for (id, module) in &project.modules {
         let mut definitions = project::local_type_definitions(module);

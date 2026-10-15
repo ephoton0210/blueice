@@ -6,7 +6,7 @@
 
 use super::*;
 
-pub(super) const ASSIGNMENTS: &[&str] = &[
+pub(in crate::checker) const ASSIGNMENTS: &[&str] = &[
     "=", "+=", "-=", "*=", "/=", "%=", "**=", "<<=", ">>=", ">>>=", "&=", "|=", "^=", "&&=", "||=",
     "??=",
 ];

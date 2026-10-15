@@ -27,6 +27,10 @@ for current evidence and remaining task-ordering/resource work. The tables
 below retain the original analysis baseline except for the dated milestone
 updates, including M1l's verified global inventory/aliases and M1m's v14
 console integration, with real MCP and complete pinned Test262 acceptance.
+M1n repairs declaration-owned callable queries and absent intermediate-member
+checking, including real Core/child refusal before DOM mutation. The installed
+surface is unchanged; all final gates pass. See the
+[checker contract](HOST_TYPING_BOUNDARIES.md).
 
 BlueJS is measured against ECMA-262/402 (Test262 99.995%). That says the
 *language* is nearly complete; it says nothing about whether the engine is a

@@ -18,6 +18,8 @@ pub(super) struct Context<'a> {
     return_types: BTreeMap<usize, String>,
     parameter_types: BTreeMap<usize, String>,
     private_aliases: BTreeMap<String, String>,
+    value_query_types: &'a BTreeMap<String, Type>,
+    rendering_queries: BTreeSet<String>,
 }
 
 impl<'a> Context<'a> {
@@ -48,6 +50,8 @@ impl<'a> Context<'a> {
             return_types: BTreeMap::new(),
             parameter_types: BTreeMap::new(),
             private_aliases: BTreeMap::new(),
+            value_query_types: &checked.value_query_types,
+            rendering_queries: BTreeSet::new(),
         };
         for (declaration, _) in super::runtime_declarations(&module.declarations) {
             let Declaration::Variable(variable) = declaration else {
@@ -403,6 +407,32 @@ impl<'a> Context<'a> {
         }
     }
 
+    fn public_value_query(&self, name: &str) -> Option<String> {
+        let (owner, query) = name.strip_prefix("\0ambient:")?.split_once('\0')?;
+        let (query, _) = query.strip_prefix("typeof ")?.rsplit_once('@')?;
+        let root = query.split('.').next()?;
+        let source = self.project.modules.get(owner)?;
+        if self.project.is_external_module(source) {
+            return None;
+        }
+        let shadowed = self
+            .module
+            .declarations
+            .iter()
+            .any(|declaration| match declaration {
+                Declaration::Variable(value) => value.name == root,
+                Declaration::Function(value) => value.name == root,
+                Declaration::Class(value) => value.name == root,
+                Declaration::Enum(value) => value.name == root,
+                Declaration::Namespace(value) => value.name == root,
+                Declaration::Import(value) => {
+                    value.bindings.iter().any(|binding| binding.local == root)
+                }
+                _ => false,
+            });
+        (!shadowed).then(|| query.to_string())
+    }
+
     fn function_initializer(&self, variable: &VariableDeclaration) -> Option<String> {
         let name = match variable.initializer.as_slice() {
             [name] if name.kind == crate::syntax::TokenKind::Identifier => name.text.clone(),
@@ -551,7 +581,17 @@ impl<'a> Context<'a> {
                 }
             }
             Type::Named { name, arguments } => {
-                let name = if name.starts_with("#typeparam@") {
+                let name = if let Some(value) = self.value_query_types.get(name).cloned() {
+                    if !self.rendering_queries.insert(name.clone()) {
+                        if let Some(query) = self.public_value_query(name) {
+                            return Ok(format!("typeof {query}"));
+                        }
+                        return Err(Diagnostic::error(DiagnosticCode::TypeMismatch, span.clone(), "TS4023: recursive private value query cannot be named in an exported declaration"));
+                    }
+                    let rendered = self.render(&value, indent, span);
+                    self.rendering_queries.remove(name);
+                    return rendered;
+                } else if name.starts_with("#typeparam@") {
                     crate::parser::source_type_name(name).to_string()
                 } else if let Some((bare, id)) = name.split_once('@') {
                     let (root, suffix) = bare

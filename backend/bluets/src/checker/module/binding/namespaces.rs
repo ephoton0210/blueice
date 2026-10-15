@@ -78,6 +78,7 @@ struct Published {
     functions: BTreeMap<String, Vec<FunctionSignature>>,
     class_constructors: BTreeMap<String, ClassConstructorBinding>,
     types: BTreeMap<String, TypeDefinition>,
+    enum_members: BTreeMap<String, Vec<crate::enum_eval::EvaluatedMember>>,
     members: NamespaceMembers,
     pub(in crate::checker) has_values: bool,
 }
@@ -442,6 +443,13 @@ impl ModuleChecker<'_> {
                 }
             }
         }
+        for (key, members) in &parent.enum_members {
+            if let Some(bare) = key.strip_prefix(&prefix) {
+                if visible.contains(&root(bare)) {
+                    self.enum_members.insert(bare.to_string(), members.clone());
+                }
+            }
+        }
     }
 
     /// The entries a checked or bound body exports, under qualified keys.
@@ -491,6 +499,9 @@ impl ModuleChecker<'_> {
                 published
                     .functions
                     .insert(key.clone(), qualify.signatures(signatures));
+            }
+            if let Some(members) = self.enum_members.get(name) {
+                published.enum_members.insert(key.clone(), members.clone());
             }
             if let Some(binding) = self.class_constructors.get(name) {
                 published.class_constructors.insert(
@@ -611,6 +622,12 @@ impl ModuleChecker<'_> {
                 self.class_constructors.insert(relative, binding.clone());
             }
             self.class_constructors.insert(key, binding);
+        }
+        for (key, members) in published.enum_members {
+            if let Some(relative) = relative(&key) {
+                self.enum_members.insert(relative, members.clone());
+            }
+            self.enum_members.insert(key, members);
         }
         for (key, definition) in published.types {
             if let Some(relative) = relative(&key).or_else(|| relative_object(&key)) {

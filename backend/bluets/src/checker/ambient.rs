@@ -8,6 +8,8 @@ use super::*;
 
 mod contexts;
 pub(super) use contexts::collect_contexts;
+mod value_queries;
+pub(super) use value_queries::{resolve_value_queries, seed_value_query_contexts};
 mod modules;
 pub(super) use modules::{seed_module_types, seed_module_values};
 mod augmentations;
@@ -62,7 +64,29 @@ pub(super) fn insert_body(
             _ => None,
         })
         .collect::<Vec<_>>();
-    for (declaration, definition) in declarations.iter().zip(definitions) {
+    let functions = declarations
+        .iter()
+        .map(|declaration| {
+            let Declaration::Function(function) = declaration else {
+                return None;
+            };
+            let mut result = function.clone();
+            for parameter in &mut result.parameters {
+                parameter.annotation = parameter
+                    .annotation
+                    .as_ref()
+                    .map(|value| contextual(value, &function.span, &function.type_parameters));
+            }
+            result.return_type = function
+                .return_type
+                .as_ref()
+                .map(|value| contextual(value, &function.span, &function.type_parameters));
+            Some(result)
+        })
+        .collect::<Vec<_>>();
+    for ((declaration, definition), contextual_function) in
+        declarations.iter().zip(definitions).zip(functions)
+    {
         match declaration {
             Declaration::Namespace(namespace) if namespace_is_type_only(&namespace.body) => {
                 ambient.type_namespaces.push(namespace.clone());
@@ -106,7 +130,11 @@ pub(super) fn insert_body(
                 }
             }
             Declaration::Function(function) if function.declared || function.overload => {
-                insert_ambient_function(ambient, diagnostics, function);
+                insert_ambient_function(
+                    ambient,
+                    diagnostics,
+                    &contextual_function.expect("function declarations have contextual signatures"),
+                );
                 ambient
                     .binding_kinds
                     .insert(function.name.clone(), scopes::BindingKind::Function);

@@ -35,15 +35,19 @@ and BlueTS lines. The baseline descriptions below remain the original gap
 inventory; the dated milestone records identify what has actually been
 implemented and verified on `feature/bluejs-browser-integration-gaps`.
 
-**Latest milestone — M1m console integration (2026-10-15).**
-The VM console, bounded diagnostic storage/accounting, v14 host typings,
-private v60 drain, Core validation and MCP tool are implemented in the
-owner-selected File DOM profile. Public VM/profile and Core/MCP boundaries,
-real MCP acceptance, 3,488 related Rust cases, the workspace/all-target build,
-Clippy and formatting pass. All 102,926 pinned Test262 modes match M1l's accepted inventory and
-results: 102,921 pass, one stale corpus and four exclusions, with no new
-failure or timeout. See the
-[M1m milestone record](#m1m--page-console-and-mcp-diagnostics-2026-10-15).
+**Latest milestone — M1n checked host-member boundaries (2026-10-15).**
+Section H's ambient value-query and missing intermediate-member defects are
+fixed. Declaration-owned `typeof` queries preserve callable overloads/generics
+and lexical shadowing; absent dot/indexed member chains fail before page
+effects. Inferred declarations publish valid callable types. File DOM v13/v14
+artifacts and runtime inventories are unchanged. All 164 compiler/bridge test
+targets and six related host targets pass, plus focused real MCP acceptance
+(2,767 Rust cases passed; 225 existing ignored). Formatting, workspace/all-target
+Clippy and build pass. All 102,926 pinned Test262 modes match M1m's accepted
+source/result inventory: 102,921 pass, one stale corpus, four exclusions,
+no new failure or timeout. See the
+[M1n milestone record](#m1n--checked-ambient-value-queries-and-member-chains-2026-10-15)
+and [checker contract](HOST_TYPING_BOUNDARIES.md).
 
 ## A. Event loop and scheduling (P0)
 
@@ -336,14 +340,14 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
       `window.console` in the exact File DOM v14 artifact; its public typing
       test and real mixed-language MCP acceptance pass, as do the final
       milestone gates. M1b already supplies typed scheduling functions.
-- [ ] **Ambient value queries and missing intermediate members.** M1l
-      probes found that host-interface fields using `typeof setTimeout` do
-      not retain the ambient function signature, and checked
-      `window.console.log('missing')` can pass against v13 despite absent `console`.
-      Acceptance must reject that chained access and preserve ambient value
-      queries across declaration modules and local shadowing. The v13 Window
-      member generator uses existing declaration text; these compiler gaps
-      are not claimed fixed by installing aliases or v14's console binding.
+- [x] **Ambient value queries and missing intermediate members (M1n).**
+      Declaration-owned `typeof` queries retain complete ambient function
+      signatures across declaration modules and respect lexical shadowing.
+      Missing intermediate dot/indexed members fail checked use, including
+      `window.console.log('missing')` against v13. Inferred declarations retain
+      valid callable types. Public compiler/profile regressions and real
+      Core/child refusal-before-mutation acceptance pass, with complete final
+      gates recorded below; installed v13/v14 artifacts remain unchanged.
 - [ ] **Uncaught errors and rejections** cannot be mapped back to BlueTS
       original positions until the host reports them (section B); today
       only debugger pauses use the safe-point map (*verify* for thrown
@@ -432,6 +436,88 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1n — Checked ambient value queries and member chains (2026-10-15)
+
+- [x] Reproduce both gaps through public compiler/page-profile interfaces.
+- [x] Preserve ambient `typeof` signatures across declaration modules.
+- [x] Respect lexical shadowing and declared callable overloads.
+- [x] Reject absent intermediate members in checked member/call chains.
+- [x] Pass the relevant compiler, bridge and real page regressions.
+- [x] Pass final formatting checks.
+- [x] Pass workspace/all-target Clippy with `-D warnings`.
+- [x] Pass the final workspace/all-target build.
+- [x] Compare the complete pinned Test262 inventory after the Rust gates.
+- [x] Finalize evidence and the detailed English milestone commit.
+
+This completes section H's existing compiler defect. No new host global or
+profile version is added; installed v13/v14 declarations retain their bytes
+while the checker enforces their actual surface.
+See [the checker contract](HOST_TYPING_BOUNDARIES.md).
+
+**Implemented behavior:** ambient function values preserve every overload and
+generic relationship. Declaration-owned queries use module/offset identities
+and the ordinary lexical model, so consumer shadows cannot change their
+meaning. Resolved query types survive inferred declaration publication;
+nameable public recursion remains valid and unresolved/private unnameable
+queries fail closed. The existing closed declaration graph is unchanged.
+
+Each postfix property prefix and indexed callee is checked before an absent
+receiver can become `unknown`. Compatibility fixes preserve operator
+precedence, type assertions, prefix updates, quoted keys, flow-only `never`,
+specialized enum diagnostics and merged namespace/enum members. Compiler
+fingerprints include `value-boundaries-v1`. File DOM v13/v14 declarations,
+runtime inventories and private IPC are unchanged.
+
+**Red baseline:** five ambient-query groups failed and the public v13 profile
+accepted four absent intermediate-member chains; its four existing controls
+passed (`/private/tmp/blueice-ambient-boundaries-red.log`). Final public cases
+cover declaration ordering/identity, overloads/generics, lexical shadows,
+qualified/missing queries, expansion limits, inferred `.d.ts` publication and
+closed-graph controls. The page-profile matrix covers dot/indexed/nested and
+short-circuit chains. A real Core/child fixture rejects three source variants
+before an earlier DOM write can run. That fixture's attempted extra red run was
+already green; it is positive acceptance, not the original failing baseline.
+
+**Final Rust acceptance (macOS, 2026-10-15):**
+
+- All 164 Cargo-enumerated compiler/bridge test targets: 1,248 passed,
+  zero failed, 224 existing ignored, 723.136s. The executor ran every test
+  executable from the successful final Cargo no-run build, using each package's
+  working directory. Source/executable hashes remained unchanged.
+- Six complete Core/launcher/IPC/MCP targets, including real timer and FileReader
+  pages: 1,518 passed, zero failed and one existing ignored case.
+- Separate official MCP client → Core → child console acceptance: one passed,
+  nine filtered; this is additional focused acceptance, not another complete
+  target. Total: 2,767 passed, 225 existing ignored, 170 complete targets plus
+  that focused MCP case.
+- Final `cargo fmt --all -- --check`,
+  `cargo clippy --workspace --all-targets -- -D warnings` and
+  `cargo build --workspace --all-targets` passed.
+
+Audit: `target/host-typing-final-rust-20261015/{manifest,summary}.json` and
+per-target logs; `target/host-typing-host-rust-validation-20261015.json`;
+`/private/tmp/blueice-ambient-{final-targets,host-regressions,mcp-final}.log`.
+The earlier exploratory all-target run had six failing cases in four targets
+and a SIGKILL in `names`; the final stable-build run passes all affected targets
+and matrices. Recorded TypeScript 5.9.3 verdicts were checked, not a fresh
+reference compiler run. No fresh coverage, complete workspace test suite or
+other-platform execution is claimed.
+
+**Final Test262 acceptance:** the complete pinned inventory matches M1m:
+102,921 pass / 102,926 modes, one stale corpus, four exclusions and no new
+failure or timeout (426.973s). Per-mode source hashes, metadata, expected and
+actual result kinds/phases and dispositions match; elapsed time and diagnostic
+message text are excluded from comparison. The runner's exit 1 reflects the
+accepted stale/excluded baseline, not a new failure. Frozen adapter/worker
+hashes are unchanged from M1m.
+
+- Raw run: `target/test262-host-typing-full-20261015/` (`summary.json`,
+  `results.jsonl`, `baseline-comparison.json`).
+- Frozen binaries: `target/test262-host-typing-bins-20261015/sha256.json`.
+- Committed unmodified runner summary:
+  [`test262-browser-host-typing-macos-summary.json`](test262-browser-host-typing-macos-summary.json).
+- Raw log: `/private/tmp/blueice-host-typing-test262.log`.
 
 ### M1m — Page console and MCP diagnostics (2026-10-15)
 
