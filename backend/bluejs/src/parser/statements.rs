@@ -526,6 +526,8 @@ impl Parser {
             )));
         }
         self.no_in = true;
+        let head_start = self.token_start();
+        let head_assignment_base = self.diagnostic_assignments.as_ref().map_or(0, Vec::len);
         // Array and object heads are cover grammar. If their matching
         // delimiter is followed immediately by an iteration separator, parse
         // the assignment-pattern production directly so defaults, rest
@@ -543,6 +545,7 @@ impl Parser {
             Some(self.parse_expression()?)
         };
         self.no_in = false;
+        let head_end = self.positions[self.pos];
 
         if self.eat_keyword(Keyword::In) {
             if is_await {
@@ -551,7 +554,17 @@ impl Parser {
             let left = match pattern {
                 Some(pattern) => ForHead::Assignment(pattern),
                 None => {
-                    expr_to_for_head(expr.expect("an expression for head")).map_err(known_syntax)?
+                    let left = expr_to_for_head(expr.expect("an expression for head"))
+                        .map_err(known_syntax)?;
+                    if let ForHead::Assignment(pattern) = &left {
+                        self.capture_assignment_pattern(
+                            pattern,
+                            head_assignment_base,
+                            head_start,
+                            head_end,
+                        )?;
+                    }
+                    left
                 }
             };
             let right = self.parse_expression()?;
@@ -564,7 +577,17 @@ impl Parser {
             let left = match pattern {
                 Some(pattern) => ForHead::Assignment(pattern),
                 None => {
-                    expr_to_for_head(expr.expect("an expression for head")).map_err(known_syntax)?
+                    let left = expr_to_for_head(expr.expect("an expression for head"))
+                        .map_err(known_syntax)?;
+                    if let ForHead::Assignment(pattern) = &left {
+                        self.capture_assignment_pattern(
+                            pattern,
+                            head_assignment_base,
+                            head_start,
+                            head_end,
+                        )?;
+                    }
+                    left
                 }
             };
             let right = self.parse_assignment()?;

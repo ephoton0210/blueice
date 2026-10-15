@@ -16,6 +16,7 @@ type Span = Option<(usize, usize)>;
 pub(super) type CapturedStatement = CapturedNode<Stmt>;
 pub(super) type CapturedExpression = CapturedNode<Expr>;
 pub(super) type CapturedPattern = CapturedNode<Pattern>;
+pub(super) type CapturedAssignmentPattern = CapturedNode<AssignmentPattern>;
 
 pub(super) trait CapturedSyntax: Clone {
     fn visit(&self, visit: &mut dyn FnMut(&Self));
@@ -58,6 +59,22 @@ impl CapturedSyntax for Pattern {
     }
     fn same_source(&self, other: &Self) -> bool {
         ast_ids::same_pattern_source(self, other)
+    }
+    fn clone_bytes(&self) -> Option<usize> {
+        self.diagnostic_clone_payload_bytes()
+    }
+}
+
+impl CapturedSyntax for AssignmentPattern {
+    fn visit(&self, visit: &mut dyn FnMut(&Self)) {
+        ast_ids::visit_assignment_pattern_nodes(self, &mut |node, _| {
+            if let DiagnosticNode::AssignmentPattern(node) = node {
+                visit(node)
+            }
+        });
+    }
+    fn same_source(&self, other: &Self) -> bool {
+        ast_ids::same_assignment_pattern_source(self, other)
     }
     fn clone_bytes(&self) -> Option<usize> {
         self.diagnostic_clone_payload_bytes()
@@ -222,12 +239,15 @@ pub(super) fn finish_nodes(
     body: &[Stmt],
     expressions: Vec<CapturedExpression>,
     patterns: Vec<CapturedPattern>,
+    assignments: Vec<CapturedAssignmentPattern>,
     spans: &mut Vec<Span>,
 ) {
     let mut expressions = Subtrees::new(expressions);
     let mut patterns = Subtrees::new(patterns);
+    let mut assignments = Subtrees::new(assignments);
     let mut expression_spans = Vec::new().into_iter();
     let mut pattern_spans = Vec::new().into_iter();
+    let mut assignment_spans = Vec::new().into_iter();
     ast_ids::visit_program_nodes(body, &mut |node, ordinal| {
         spans.resize(spans.len().max(ordinal + 1), None);
         match node {
@@ -248,6 +268,16 @@ pub(super) fn finish_nodes(
                         .unwrap_or_else(|| vec![None; statement_count(node)])
                         .into_iter();
                     pattern_spans.next().unwrap_or(None)
+                });
+                spans[ordinal] = span;
+            }
+            DiagnosticNode::AssignmentPattern(node) => {
+                let span = assignment_spans.next().unwrap_or_else(|| {
+                    assignment_spans = assignments
+                        .take(node)
+                        .unwrap_or_else(|| vec![None; statement_count(node)])
+                        .into_iter();
+                    assignment_spans.next().unwrap_or(None)
                 });
                 spans[ordinal] = span;
             }

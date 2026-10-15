@@ -163,8 +163,8 @@ pub fn parse_with_diagnostic_spans(
 }
 
 /// Diagnostic statement/expression spans retain the public executable-AST
-/// prefix. Pattern spans follow that prefix in pattern preorder, and carry
-/// no debugger safe-point authority.
+/// prefix, followed by binding-pattern spans and then assignment-pattern spans
+/// in their respective preorders. Pattern slots carry no debugger authority.
 pub fn parse_with_diagnostic_node_spans(
     source: &str,
 ) -> Result<(Program, Vec<Option<ParsedDiagnosticSpan>>), ParseError> {
@@ -230,6 +230,7 @@ fn parse_encoded_script_diagnostics(
     parser.diagnostic_statements = capture_diagnostics.then(Vec::new);
     parser.diagnostic_expressions = capture_nodes.then(Vec::new);
     parser.diagnostic_patterns = capture_nodes.then(Vec::new);
+    parser.diagnostic_assignments = capture_nodes.then(Vec::new);
     parser.select_edition(edition)?;
     let mut body = Vec::new();
     let mut spans = Vec::new();
@@ -267,6 +268,7 @@ fn parse_encoded_script_diagnostics(
                 &program.body,
                 parser.diagnostic_expressions.take().unwrap(),
                 parser.diagnostic_patterns.take().unwrap(),
+                parser.diagnostic_assignments.take().unwrap(),
                 &mut diagnostic_spans,
             );
         }
@@ -578,6 +580,7 @@ struct Parser {
     diagnostic_statements: Option<Vec<diagnostic_spans::CapturedStatement>>,
     diagnostic_expressions: Option<Vec<diagnostic_spans::CapturedExpression>>,
     diagnostic_patterns: Option<Vec<diagnostic_spans::CapturedPattern>>,
+    diagnostic_assignments: Option<Vec<diagnostic_spans::CapturedAssignmentPattern>>,
     diagnostic_capture_bytes: usize,
     /// Set while parsing a `for`-loop head's init clause, so the
     /// relational-expression tier refuses to consume a bare `in` as a
@@ -650,6 +653,7 @@ impl Parser {
             diagnostic_statements: None,
             diagnostic_expressions: None,
             diagnostic_patterns: None,
+            diagnostic_assignments: None,
             diagnostic_capture_bytes: 0,
             no_in: false,
             generator_depth: 0,
@@ -1091,6 +1095,8 @@ impl Parser {
             parser.diagnostic_expressions =
                 self.diagnostic_expressions.as_ref().map(|_| Vec::new());
             parser.diagnostic_patterns = self.diagnostic_patterns.as_ref().map(|_| Vec::new());
+            parser.diagnostic_assignments =
+                self.diagnostic_assignments.as_ref().map(|_| Vec::new());
             parser.diagnostic_capture_bytes = self.diagnostic_capture_bytes;
         }
         parser.edition = self.edition;
@@ -1125,6 +1131,7 @@ impl Parser {
             merge!(diagnostic_statements);
             merge!(diagnostic_expressions);
             merge!(diagnostic_patterns);
+            merge!(diagnostic_assignments);
         }
         Ok(expr)
     }

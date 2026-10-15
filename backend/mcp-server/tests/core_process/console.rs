@@ -20,6 +20,7 @@ enum PageMode {
     Console,
     Errors,
     Rejections,
+    References,
 }
 impl Pages {
     fn start() -> Self {
@@ -64,6 +65,15 @@ impl Pages {
                         Promise.reject('silenced'); Promise.reject('early').catch(function(){});
                         document.getElementById('pending').addEventListener('click',function(){pending.catch(function(){console.log('caught');});console.log('native-peer');});
                         </script><script type='application/x-blueice-typescript'>function rejectTyped(value: string): void {throw value;} new Blob(['typed-rejection']).text().then(rejectTyped);</script>"
+                        } else if matches!(mode, PageMode::References) {
+                            "<p>reference positions</p><script>
+                        queueMicrotask(function(){(
+                          null.field
+                        )?.();});
+                        setTimeout(function(){var value;[
+                          [value]
+                        ]=[null];},80);
+                        </script>"
                         } else if matches!(mode, PageMode::Errors) {
                             "<button id=pending>error button</button><script>
                         onerror=function(message,filename,line,column,error){return error==='silenced';};
@@ -97,6 +107,78 @@ impl Pages {
             worker: Some(worker),
         }
     }
+}
+
+#[tokio::test]
+async fn real_mcp_keeps_queued_reference_and_nested_assignment_sources() {
+    let pages = Pages::start_with_mode(PageMode::References);
+    let mut launcher = LauncherManagedCore::spawn_with_profile(None, true);
+    let server = BlueIceMcpServer::connect_with_core_and_compiler_sockets(
+        &launcher.rendezvous_socket,
+        &launcher.compiler_socket,
+    )
+    .unwrap();
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let server_task = tokio::spawn(async move {
+        server
+            .serve(server_transport)
+            .await
+            .unwrap()
+            .waiting()
+            .await
+            .unwrap();
+    });
+    let client = CompilerMcpClient.serve(client_transport).await.unwrap();
+    let navigation = client
+        .call_tool(
+            CallToolRequestParams::new("navigate").with_arguments(
+                serde_json::json!({"url":pages.url})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(navigation.is_error, Some(false));
+    let mut records = Vec::new();
+    for _ in 0..100 {
+        let result = client
+            .call_tool(CallToolRequestParams::new("get_console_messages"))
+            .await
+            .unwrap();
+        let batch: blueice_ipc::console::ConsoleMessages =
+            serde_json::from_value(page_json(&result)).unwrap();
+        assert_eq!(batch.dropped_records, 0);
+        records.extend(batch.records);
+        if records.len() >= 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(records.len(), 2, "{records:?}");
+    let records = records
+        .iter()
+        .map(|record| {
+            assert_eq!(record.level, "error");
+            assert_eq!(record.method, "error");
+            assert!(record.message.starts_with("Uncaught "));
+            serde_json::to_value(record).unwrap()
+        })
+        .collect::<Vec<_>>();
+    let filename = records[0]["source"]["filename"].as_str().unwrap();
+    assert!(
+        filename.starts_with("blueice://page/tab-1/document-")
+            && filename.ends_with("/inline-0.js")
+    );
+    for (record, line) in records.iter().zip([3, 6]) {
+        assert_eq!(record["source"]["filename"], filename, "{record}");
+        assert_eq!(record["source"]["line"], line, "{record}");
+        assert_eq!(record["source"]["column"], 27, "{record}");
+    }
+    client.cancel().await.unwrap();
+    server_task.await.unwrap();
+    launcher.shutdown();
 }
 
 #[tokio::test]

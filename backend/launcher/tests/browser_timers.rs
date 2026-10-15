@@ -253,6 +253,12 @@ fn uncaught_page_errors_keep_the_throwing_script_source_coordinates() {
         ("destructuring parameter", "function fail(\n  {value}\n){}fail(null);", "2:3"),
         ("named arrow", "var fail=()=> (\n  missing);fail();", "2:3"),
         ("template placeholder", "var value=`${ /* } */\n  missing}`;", "2:3"),
+        ("optional callee reference", "(\n null.field\n)?.();", "2:2"),
+        ("prefix reference", "++\n missing;", "2:2"),
+        ("nested assignment array", "var value;[\n [value]\n]=[null];", "2:2"),
+        ("assignment shorthand", "'use strict';({\n missing\n}={missing:1});", "2:2"),
+        ("prepared rest target", "var object=null;[...\n object.field\n]=[];", "2:2"),
+        ("for-of target", "'use strict';for(\n missing\n of [1]){}", "2:2"),
         ("class constructor", "class C {constructor(){\n  missing;}}new C();", "2:3"),
         ("class getter", "class C {get value(){\n  return missing;}}new C().value;", "2:10"),
         ("class field", "class C {value=\n  missing;}new C();", "2:3"),
@@ -821,6 +827,8 @@ fn counter_frames(source: &str, check_every_representation: bool) {
         }
         let mut previous_generation = 0;
         let mut previous_pixels = Vec::new();
+        let mut frame_generations = Vec::new();
+        let mut representations = Vec::new();
         for count in 1..=3 {
             let (tab, request_id, frame) = frames
                 .pop_front()
@@ -839,6 +847,7 @@ fn counter_frames(source: &str, check_every_representation: bool) {
                 "scheduled frames arrive without a frontend request"
             );
             assert!(generation > previous_generation);
+            frame_generations.push(generation);
             let pixels = std::fs::read(shm_path).unwrap();
             assert!(!pixels.is_empty());
             assert_ne!(
@@ -854,17 +863,32 @@ fn counter_frames(source: &str, check_every_representation: bool) {
                 ) else {
                     panic!("expected Representation");
                 };
-                assert_eq!(snapshot.generation, generation);
-                assert!(
-                    snapshot
-                        .nodes
-                        .iter()
-                        .any(|node| node.name.as_deref() == Some(&format!("tick:{count}"))),
-                    "{snapshot:?}"
-                );
+                // The next timer may publish while this request is in flight.
+                // Match a live snapshot to its frame after all frames arrive.
+                assert!(snapshot.generation >= generation, "{snapshot:?}");
+                let snapshot_count = snapshot
+                    .nodes
+                    .iter()
+                    .find_map(|node| {
+                        node.name
+                            .as_deref()?
+                            .strip_prefix("tick:")?
+                            .parse::<u64>()
+                            .ok()
+                    })
+                    .expect("the Representation must include the counter");
+                assert!((count..=3).contains(&snapshot_count), "{snapshot:?}");
+                representations.push((snapshot_count, snapshot.generation));
             }
             previous_generation = generation;
             previous_pixels = pixels;
+        }
+        for (count, generation) in representations {
+            assert_eq!(
+                frame_generations[(count - 1) as usize],
+                generation,
+                "the Representation must match the frame for tick:{count}"
+            );
         }
         stream
             .set_read_timeout(Some(Duration::from_millis(650)))

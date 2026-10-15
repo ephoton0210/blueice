@@ -32,6 +32,7 @@ pub(crate) struct DiagnosticAstNodeIds {
     pub(crate) statements: std::collections::HashMap<usize, usize>,
     pub(crate) expressions: std::collections::HashMap<usize, usize>,
     pub(crate) patterns: std::collections::HashMap<usize, usize>,
+    assignments: std::collections::HashMap<usize, usize>,
     parent: Option<std::rc::Rc<Self>>,
     pub(crate) node_count: usize,
 }
@@ -41,6 +42,7 @@ pub(crate) enum DiagnosticNode<'a> {
     Statement(&'a Stmt),
     Expression(&'a Expr),
     Pattern(&'a Pattern),
+    AssignmentPattern(&'a AssignmentPattern),
 }
 
 impl DiagnosticNode<'_> {
@@ -49,6 +51,7 @@ impl DiagnosticNode<'_> {
             Self::Statement(node) => (0, node as *const Stmt as usize),
             Self::Expression(node) => (1, node as *const Expr as usize),
             Self::Pattern(node) => (2, node as *const Pattern as usize),
+            Self::AssignmentPattern(node) => (3, node as *const AssignmentPattern as usize),
         }
     }
 }
@@ -64,6 +67,10 @@ impl DiagnosticAstNodeIds {
                 (&mut self.expressions, node as *const Expr as usize)
             }
             DiagnosticNode::Pattern(node) => (&mut self.patterns, node as *const Pattern as usize),
+            DiagnosticNode::AssignmentPattern(node) => (
+                &mut self.assignments,
+                node as *const AssignmentPattern as usize,
+            ),
         }
     }
 
@@ -71,7 +78,8 @@ impl DiagnosticAstNodeIds {
         let value = match kind {
             0 => self.statements.get(&key),
             1 => self.expressions.get(&key),
-            _ => self.patterns.get(&key),
+            2 => self.patterns.get(&key),
+            _ => self.assignments.get(&key),
         };
         value.copied().or_else(|| {
             self.parent
@@ -88,11 +96,15 @@ impl DiagnosticAstNodeIds {
     pub(crate) fn pattern_ordinal(&self, node: &Pattern) -> Option<usize> {
         self.lookup(2, node as *const Pattern as usize)
     }
+    pub(crate) fn assignment_pattern_ordinal(&self, node: &AssignmentPattern) -> Option<usize> {
+        self.lookup(3, node as *const AssignmentPattern as usize)
+    }
     pub(crate) fn overlay(parent: std::rc::Rc<Self>) -> Self {
         Self {
             statements: Default::default(),
             expressions: Default::default(),
             patterns: Default::default(),
+            assignments: Default::default(),
             node_count: parent.node_count,
             parent: Some(parent),
         }
@@ -109,7 +121,8 @@ impl DiagnosticAstNodeIds {
                 match kind {
                     0 => &mut self.statements,
                     1 => &mut self.expressions,
-                    _ => &mut self.patterns,
+                    2 => &mut self.patterns,
+                    _ => &mut self.assignments,
                 }
                 .insert(new, ordinal);
             }
@@ -150,6 +163,7 @@ pub(crate) fn collect_diagnostic_ast_node_ids(body: &[Stmt]) -> DiagnosticAstNod
         statements: Default::default(),
         expressions: Default::default(),
         patterns: Default::default(),
+        assignments: Default::default(),
         parent: None,
         node_count: 0,
     };
@@ -170,10 +184,11 @@ pub(crate) fn visit_program_nodes(
     count.statements(body, true);
     let mut visitor = AstNodeVisitor::new(false);
     visitor.pattern_base = count.node_count;
+    visitor.assignment_pattern_base = count.node_count + count.pattern_count;
     visitor.node_hook = Some(visit);
     visitor.push(BlueJsAstNodeKind::Script, false);
     visitor.statements(body, true);
-    visitor.node_count + visitor.pattern_count
+    visitor.node_count + visitor.pattern_count + visitor.assignment_pattern_count
 }
 
 pub(crate) fn visit_expression_nodes(
@@ -192,6 +207,15 @@ pub(crate) fn visit_pattern_nodes(
     let mut visitor = AstNodeVisitor::new(false);
     visitor.node_hook = Some(visit);
     visitor.pattern(pattern);
+}
+
+pub(crate) fn visit_assignment_pattern_nodes(
+    pattern: &AssignmentPattern,
+    visit: &mut dyn FnMut(DiagnosticNode<'_>, usize),
+) {
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.node_hook = Some(visit);
+    visitor.assignment_pattern(pattern);
 }
 
 pub(crate) fn visit_parameter_nodes(
@@ -269,6 +293,32 @@ pub(crate) fn same_pattern_source(left: &Pattern, right: &Pattern) -> bool {
     matches && index == sources.len()
 }
 
+pub(crate) fn same_assignment_pattern_source(
+    left: &AssignmentPattern,
+    right: &AssignmentPattern,
+) -> bool {
+    if left != right {
+        return false;
+    }
+    let mut sources = Vec::new();
+    let mut collect = |source: &SourceText| sources.push(source.clone());
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.source_hook = Some(&mut collect);
+    visitor.assignment_pattern(left);
+    let mut index = 0;
+    let mut matches = true;
+    let mut compare = |source: &SourceText| {
+        matches &= sources
+            .get(index)
+            .is_some_and(|left| left.same_source_range(source));
+        index += 1;
+    };
+    let mut visitor = AstNodeVisitor::new(false);
+    visitor.source_hook = Some(&mut compare);
+    visitor.assignment_pattern(right);
+    matches && index == sources.len()
+}
+
 pub(crate) fn same_statement_source(left: &Stmt, right: &Stmt) -> bool {
     if left != right {
         return false;
@@ -300,6 +350,8 @@ struct AstNodeVisitor<'a> {
     node_count: usize,
     pattern_base: usize,
     pattern_count: usize,
+    assignment_pattern_base: usize,
+    assignment_pattern_count: usize,
     record_nodes: bool,
     statement_hook: Option<StatementHook<'a>>,
     node_hook: Option<DiagnosticNodeHook<'a>>,
@@ -313,6 +365,8 @@ impl AstNodeVisitor<'_> {
             node_count: 0,
             pattern_base: 0,
             pattern_count: 0,
+            assignment_pattern_base: 0,
+            assignment_pattern_count: 0,
             record_nodes,
             statement_hook: None,
             node_hook: None,
@@ -712,6 +766,13 @@ impl AstNodeVisitor<'_> {
     }
 
     fn assignment_pattern(&mut self, pattern: &AssignmentPattern) {
+        if let Some(hook) = &mut self.node_hook {
+            hook(
+                DiagnosticNode::AssignmentPattern(pattern),
+                self.assignment_pattern_base + self.assignment_pattern_count,
+            );
+        }
+        self.assignment_pattern_count += 1;
         match pattern {
             AssignmentPattern::Target(expression) => self.expression(expression),
             AssignmentPattern::Array(elements) => {

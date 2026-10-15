@@ -165,6 +165,36 @@ impl Parser {
     }
 
     pub(super) fn parse_assignment_pattern(&mut self) -> Result<AssignmentPattern, ParseError> {
+        let Some(base) = self.diagnostic_assignments.as_ref().map(Vec::len) else {
+            return self.parse_assignment_pattern_inner();
+        };
+        let start = self.token_start();
+        let pattern = self.parse_assignment_pattern_inner()?;
+        self.capture_assignment_pattern(&pattern, base, start, self.positions[self.pos])?;
+        Ok(pattern)
+    }
+
+    pub(super) fn capture_assignment_pattern(
+        &mut self,
+        pattern: &AssignmentPattern,
+        base: usize,
+        start: usize,
+        end: usize,
+    ) -> Result<(), ParseError> {
+        if let Some(captures) = self.diagnostic_assignments.as_mut() {
+            let children = captures.split_off(base);
+            let record = diagnostic_spans::CapturedAssignmentPattern::new(
+                pattern,
+                (start, end),
+                children,
+                &mut self.diagnostic_capture_bytes,
+            )?;
+            captures.push(record);
+        }
+        Ok(())
+    }
+
+    fn parse_assignment_pattern_inner(&mut self) -> Result<AssignmentPattern, ParseError> {
         match self.peek() {
             Token::Punct(Punct::LBracket | Punct::LBrace)
                 if !self.cover_assignment_target_has_lhs_suffix() =>
@@ -293,6 +323,9 @@ impl Parser {
                     ));
                 }
             } else {
+                let diagnostic_start = self.token_start();
+                let expression_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+                let assignment_base = self.diagnostic_assignments.as_ref().map_or(0, Vec::len);
                 let shorthand_is_identifier_reference =
                     self.assignment_property_is_identifier_reference();
                 let key = self.parse_property_key()?;
@@ -313,15 +346,21 @@ impl Parser {
                             ));
                         }
                     };
+                    let target = Expr::Identifier(name.clone());
+                    self.capture_expression(&target, expression_base, diagnostic_start)?;
+                    let value = AssignmentPattern::Target(Box::new(target));
+                    self.capture_assignment_pattern(
+                        &value,
+                        assignment_base,
+                        diagnostic_start,
+                        self.positions[self.pos],
+                    )?;
                     let default = if self.eat_punct(Punct::Assign) {
                         Some(self.parse_assignment_allowing_in()?)
                     } else {
                         None
                     };
-                    (
-                        AssignmentPattern::Target(Box::new(Expr::Identifier(name.clone()))),
-                        default,
-                    )
+                    (value, default)
                 };
                 properties.push(AssignmentPatternProp::KeyValue {
                     key,

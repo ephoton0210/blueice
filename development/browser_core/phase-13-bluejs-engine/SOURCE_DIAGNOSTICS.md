@@ -54,7 +54,8 @@ handler arguments, recursion and original-value behavior.
 ## Expression and binding-pattern provenance
 
 `parse_with_diagnostic_node_spans` retains the public statement/expression AST
-prefix and appends binding-pattern slots in a source-only namespace. The
+prefix and appends binding-pattern slots followed by assignment-pattern slots
+in source-only namespaces. The
 legacy statement-span API and debugger inventory keep their original shape.
 Compiler instruction owners select expression and binding-pattern locations;
 temporary overlays preserve proven original ordinals through named and unnamed
@@ -139,6 +140,50 @@ is replayed after a test-only change moves the major-GC assertion before
 closure invocation; the other production and test inputs stay unchanged.
 Broader source-producer,
 precision, integrated and final conformance requirements remain open.
+
+### References and assignment patterns
+
+Assignment patterns append a separate source-only inventory after the unchanged
+public AST prefix and existing binding-pattern slots. Their parser capture
+records nested arrays/objects, targets, shorthand identifiers and expression
+`for-in/of` heads from lexical ranges. Template subparsers rebase the same
+forest; compiler clone overlays include these nodes. Legacy statement tables
+and public debugger ordinals keep their shape and authority.
+
+Reference lookup and write instructions select their actual target owner,
+including prefix updates, parenthesized calls/tags, optional-chain recursion,
+logical stores and prepared destructuring targets. Evaluation of a prepared
+member, acquisition of an iterator/property value and the eventual target
+store retain their respective owners without changing their instruction order.
+The shared capture ledger charges assignment snapshots before cloning and
+retains the existing 8 MiB limit. A 3,000-target pattern is admitted; a valid
+40,000-target pattern is refused without becoming a syntax error.
+
+Twenty-seven of thirty initial public source scenarios fail before the fix.
+The expanded thirty-seven-scenario selection and unknown getter/Proxy controls
+pass within all forty-two diagnostic groups. Public compatibility checks verify
+the source-only suffix, legacy cardinality, ordinary syntax, code-unit counts
+and instruction bytes. The old matched Core/child reports a queued optional
+callee at 2:51 instead of 3:27 through official MCP; the final host acceptance
+also verifies a queued nested-assignment location at 6:27 and six additional
+real-page contexts. The final selection passes 1,571 BlueJS cases over forty-one
+targets, including 1,205 library cases and forty-two diagnostic groups. Host
+acceptance adds 491 passes and one existing ignored; four official MCP console
+passes bring the disjoint total to 2,066 over forty-five targets. Formatting and
+focused library/integration Clippy pass. All artifacts are compiled before
+fixing runtime/test hashes for acceptance; those hashes remain unchanged.
+
+An initial parallel browser run exposes an existing race between an older
+frame event and a newer `GetRepresentation` reply. The helper retains all three
+distinct unsolicited frames/pixels and matches each returned counter snapshot
+to its observed frame generation, including the exact final count. Only that
+test input changes; the complete seventeen-case rerun and its Clippy pass.
+The original failure and isolated pass remain in the evidence but are excluded
+from the final disjoint total. Eleven final Rust input hashes, old/new runtime
+hashes, test hashes and receipts are retained in
+`target/reference-origins-source-20261015.json` and
+`target/reference-origins-validation-20261015.json`. Remaining precision,
+source-producer, integrated and final conformance requirements stay open.
 
 ## Saved completions and cleanup
 

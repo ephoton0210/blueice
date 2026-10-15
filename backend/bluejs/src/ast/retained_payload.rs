@@ -115,7 +115,7 @@ macro_rules! diagnostic_clone_payload {
         }
     })*};
 }
-diagnostic_clone_payload!(Stmt, Expr, Pattern);
+diagnostic_clone_payload!(Stmt, Expr, Pattern, AssignmentPattern);
 
 impl Program {
     pub fn owned_heap_payload_bytes(&self) -> Option<usize> {

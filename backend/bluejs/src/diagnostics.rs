@@ -87,7 +87,8 @@ pub struct DiagnosticSourceRange {
 pub struct DiagnosticInstructionOwner {
     pub bytecode_offset: u32,
     /// Diagnostic inventory index: the public statement/expression AST prefix
-    /// followed by pattern slots. Pattern slots grant no debugger authority.
+    /// followed by binding- and assignment-pattern slots. Pattern slots grant
+    /// no debugger authority.
     pub ast_node_ordinal: Option<u32>,
 }
 

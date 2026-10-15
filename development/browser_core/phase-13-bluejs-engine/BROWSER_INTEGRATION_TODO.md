@@ -59,14 +59,13 @@ statement, expression and parameter locations through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest class-lowering
-follow-up preserves tested constructor/accessor, field and static-block
-origins, including nested arrows/classes and decorator member evaluation.
-Thirty-two source scenarios, three unknown-source controls and four
-cross-script major-GC scenarios pass. Its final selection passes 2,121 tests
-across thirty-seven targets (one existing ignored), including six additional
-real-page contexts and precise queued getter/field origins through official
-MCP. Formatting, focused six-library and changed integration-target Clippy
+Core and MCP, preserving unavailable locations. The latest reference and
+assignment-pattern follow-up passes thirty-seven source scenarios, preserves
+unknown getter/Proxy origins, and appends a bounded source-only namespace
+without changing debugger ordinals. Its final selection passes 2,066 tests
+across forty-five targets (one existing ignored), including six additional
+real-page contexts and queued callee/nested-pattern positions at 3:27 and 6:27
+through official MCP. Formatting, focused six-library and changed integration-target Clippy
 pass. Three of the ten final acceptance
 gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Remaining
@@ -490,7 +489,8 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: class-lowering follow-up verified; 3/10 final
+**Progress updated 2026-10-15: reference/assignment-pattern follow-up verified;
+3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -586,6 +586,21 @@ the full source-position requirement.
       Clippy. Six additional real-page source contexts pass; official MCP
       reports queued getter/field throws at 5:78 and 6:74. Fixed final runtime
       hashes remain identical before and after the cross-process replay.
+- [x] Capture assignment-pattern provenance in a source-only suffix after
+      the existing debugger AST and binding-pattern inventory. Preserve
+      shorthand/for-head ranges, template rebasing and compiler clone aliases;
+      legacy statement spans, syntax, code-unit counts and bytes stay intact.
+- [x] Pass thirty-seven reference/assignment source scenarios, two explicitly
+      unknown getter/Proxy controls and all forty-two diagnostic groups.
+      Accept 3,000-target patterns and bound 40,000-target snapshot work without
+      treating valid JavaScript as a syntax error.
+- [x] Pass 1,571 current-source BlueJS cases across forty-one complete targets,
+      including 1,205 library cases and all forty-two diagnostic groups.
+- [x] Pass the final reference follow-up: 2,066 cases across forty-five
+      disjoint targets, one existing ignored, six additional real-page contexts
+      and all four official MCP console cases. Queued callee/nested-pattern
+      locations are 3:27 and 6:27. Runtime/test hashes remain fixed throughout
+      acceptance; formatting and focused library/integration Clippy pass.
 
 #### Remaining implementation and verification
 
@@ -945,6 +960,43 @@ hashes, runtime/test hashes and per-target receipts are retained in
 major GC in a separate successful script before invoking each retained class
 closure; its complete thirty-eight-group replay passes and replaces the
 earlier diagnostic receipt. Remaining source producers,
+precision/queued/integrated acceptance and final workspace/Test262 gates stay
+open; M1q remains at 3/10 final acceptance gates.
+
+The reference/assignment-pattern follow-up reproduces twenty-seven incorrect
+locations in thirty public source scenarios. The first fix passes twenty-nine;
+scoping optional callees resolves the last one. The expanded thirty-seven-case
+selection also exposes a logical `const` store, whose target owner is now
+preserved. Assignment-pattern slots follow the unchanged public AST and binding
+slots, including shorthand/for-head ranges, templates and compiler clones.
+Prepared reference evaluation, value acquisition and the eventual store keep
+their own owners without changing instruction order. Ordinary syntax, code-unit
+counts and bytes remain unchanged; unknown getter/Proxy failures stay unknown.
+A 3,000-target pattern is admitted and a valid 40,000-target pattern is refused
+within the shared 8 MiB snapshot budget.
+
+Old matched Core/child binaries reproduce a queued optional callee at 2:51
+instead of 3:27 (`/private/tmp/blueice-reference-origins-mcp-red.log`); their
+hashes are unchanged before and after reproduction. The final selection passes
+1,571 BlueJS cases over forty-one targets, including 1,205 library cases and all
+forty-two diagnostic groups. Bridge/Launcher/real pages add 491 passes and one
+existing ignored; all four official MCP console cases pass, including queued
+callee/nested-pattern positions 3:27 and 6:27. The disjoint total is 2,066 cases
+across forty-five targets. Build all test artifacts first, then fix runtime/test
+hashes before acceptance; they remain unchanged after execution. Formatting,
+focused six-library Clippy and changed integration-target Clippy pass.
+
+The initial parallel browser selection finds an existing latest-snapshot race:
+`GetRepresentation` has advanced to generation 4 after frame 3 was received;
+the isolated timer test passes. The test helper now matches each returned
+counter/Representation to its corresponding observed frame after all three
+arrive, retaining distinct unsolicited frames/pixels and the exact final count.
+Only that test input changes. Its complete seventeen-case rerun and focused
+Clippy pass; the other production/test inputs remain unchanged. Initial failed
+and isolated receipts are retained without counting them toward the final total.
+Eleven Rust input hashes, old/new runtime hashes, test hashes and receipts are in
+`target/reference-origins-source-20261015.json` and
+`target/reference-origins-validation-20261015.json`. Remaining source producers,
 precision/queued/integrated acceptance and final workspace/Test262 gates stay
 open; M1q remains at 3/10 final acceptance gates.
 

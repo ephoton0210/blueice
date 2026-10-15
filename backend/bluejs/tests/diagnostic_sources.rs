@@ -1564,6 +1564,222 @@ fn lowered_class_closures_keep_sources_across_scripts_and_major_collection() {
 }
 
 #[test]
+fn reference_dispatch_and_assignment_patterns_use_their_own_source() {
+    let mut failures = Vec::new();
+    for (name, source, expected) in [
+        ("parenthesized call", "(\n null.field\n)();", "2:2"),
+        (
+            "parenthesized optional call",
+            "(\n null.field\n)?.();",
+            "2:2",
+        ),
+        ("parenthesized tag", "(\n null.field\n)`value`;", "2:2"),
+        ("prefix reference", "++\n missing;", "2:2"),
+        ("prefix with reference", "with({}){++\n missing;}", "2:2"),
+        ("delete member", "delete (\n null.field\n);", "2:2"),
+        (
+            "optional reference",
+            "var value=(\n missing?.field);",
+            "2:2",
+        ),
+        ("optional key", "({})?.[\n missing];", "2:2"),
+        ("nested array", "var value;[\n [value]\n]=[null];", "2:2"),
+        (
+            "nested object",
+            "var value;({key:\n {value}\n}={key:null});",
+            "2:2",
+        ),
+        (
+            "array identifier",
+            "'use strict';[\n missing\n]=[1];",
+            "2:2",
+        ),
+        (
+            "object shorthand",
+            "'use strict';({\n missing\n}={missing:1});",
+            "2:2",
+        ),
+        (
+            "object identifier",
+            "'use strict';({key:\n missing\n}={key:1});",
+            "2:2",
+        ),
+        (
+            "for-of reference",
+            "'use strict';for(\n missing\n of [1]){}",
+            "2:2",
+        ),
+        (
+            "for-of nested pattern",
+            "var value;for([\n [value]\n] of [[null]]){}",
+            "2:2",
+        ),
+        (
+            "prepared array member",
+            "var object=null;[\n object.field\n]=[1];",
+            "2:2",
+        ),
+        (
+            "prepared array rest member",
+            "var object=null;[...\n object.field\n]=[];",
+            "2:2",
+        ),
+        (
+            "prepared object member",
+            "var object=null;({key:\n object.field\n}={key:1});",
+            "2:2",
+        ),
+        ("array default", "var value;[\n value=missing\n]=[];", "2:8"),
+        ("nested default", "var value;[\n [value]=null\n]=[];", "2:2"),
+        (
+            "shorthand default",
+            "'use strict';({\n missing=1\n}={});",
+            "2:2",
+        ),
+        (
+            "constructor pattern",
+            "class C{constructor(){var v;[\n [v]\n]=[null];}}new C();",
+            "2:2",
+        ),
+        (
+            "arrow pattern",
+            "var fail=()=>{var v;[\n [v]\n]=[null];};fail();",
+            "2:2",
+        ),
+        (
+            "field arrow pattern",
+            "class C{value=()=>{var v;[\n [v]\n]=[null];};}new C().value();",
+            "2:2",
+        ),
+        (
+            "template pattern",
+            "var value;`${(()=>{[\n [value]\n]=[null];})()}`;",
+            "2:2",
+        ),
+        (
+            "nested object identifier",
+            "'use strict';({key:[\n missing\n]}={key:[1]});",
+            "2:2",
+        ),
+        (
+            "parenthesized target",
+            "'use strict';[\n (missing)\n]=[1];",
+            "2:3",
+        ),
+        ("compound reference", "(\n missing\n)+=1;", "2:2"),
+        (
+            "strict assignment reference",
+            "'use strict';(\n missing\n)=1;",
+            "2:2",
+        ),
+        ("logical assignment reference", "(\n missing\n)||=1;", "2:2"),
+        (
+            "logical const store",
+            "const value=0;(\n value\n)||=1;",
+            "2:2",
+        ),
+        ("const store", "const value=0;(\n value\n)=1;", "2:2"),
+        (
+            "const array rest",
+            "const value=0;[...\n value\n]=[1];",
+            "2:2",
+        ),
+        (
+            "object rest identifier",
+            "'use strict';({...\n missing\n}={});",
+            "2:2",
+        ),
+        (
+            "escaped shorthand",
+            "'use strict';({\n \\u006Dissing\n}={missing:1});",
+            "2:2",
+        ),
+        (
+            "for-in reference",
+            "'use strict';for(\n missing\n in {value:1}){}",
+            "2:2",
+        ),
+        (
+            "for-head repeated target",
+            "var value;for(value of []){}\n[\n [value]\n]=[null];",
+            "3:2",
+        ),
+    ] {
+        let mut vm = page();
+        assert!(
+            vm.execute_script(&mapped_expression_code(source)).is_err(),
+            "{name}"
+        );
+        let found = observed(&mut vm);
+        let expected = Value::String(format!("memory:///position.js:{expected}").into());
+        if found != expected {
+            failures.push((name, found, expected));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn assignment_pattern_source_slots_follow_binding_slots_without_debugger_authority() {
+    let source = "let bound;[\n [bound]\n]=[null];";
+    let (program, spans) = blueice_bluejs::parse_with_diagnostic_node_spans(source).unwrap();
+    let (legacy, statements) = blueice_bluejs::parse_with_diagnostic_spans(source).unwrap();
+    assert_eq!(program, legacy);
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install_for_diagnostics(identity("original"), &BlueJsProgramV1::Script(program))
+        .unwrap();
+    let compiled = registry.get(handle).unwrap();
+    assert_eq!(statements.len(), compiled.ast_nodes().len());
+    assert_eq!(spans.len(), statements.len() + 4);
+    assert_eq!(
+        spans.len(),
+        compiled.bytecode().diagnostic_source_node_count()
+    );
+    let starts = spans[statements.len()..]
+        .iter()
+        .map(|span| span.unwrap().start_byte)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        starts,
+        vec![
+            source.find("bound;").unwrap(),
+            source.find("[\n").unwrap(),
+            source.find("[bound]").unwrap(),
+            source.find("bound]").unwrap()
+        ]
+    );
+    for (index, span) in statements.iter().enumerate() {
+        if span.is_some() {
+            assert_eq!(span, &spans[index]);
+        }
+    }
+}
+
+#[test]
+fn assignment_pattern_capture_shares_the_bounded_snapshot_budget() {
+    let wide = format!("let value;[{}]=[];", vec!["value"; 3_000].join(","));
+    assert!(blueice_bluejs::parse_with_diagnostic_node_spans(&wide).is_ok());
+    let excessive = format!("let value;[{}]=[];", vec!["value"; 40_000].join(","));
+    assert!(parse(&excessive).is_ok());
+    let error = blueice_bluejs::parse_with_diagnostic_node_spans(&excessive).unwrap_err();
+    assert_eq!(error.message, "diagnostic source capture limit exceeded");
+    assert!(!error.known_syntax);
+}
+
+#[test]
+fn reference_dispatch_preserves_explicitly_unknown_getter_and_proxy_failures() {
+    for source in [
+        "var object=Object.defineProperty({},'field',{get:Function(\"throw 'unknown';\")});(\n object.field\n)?.();",
+        "var target=new Proxy({},{set:Function(\"throw 'unknown';\")});[\n target.value\n]=[1];",
+    ] {
+        let mut vm=page();
+        assert!(vm.execute_script(&mapped_expression_code(source)).is_err());
+        assert_eq!(observed(&mut vm),Value::String(":0:0".into()),"{source}");
+    }
+}
+
+#[test]
 fn diagnostic_patterns_extend_only_the_source_inventory_and_preserve_ordinary_code() {
     let source = "function fail(\n  {value}=missing\n){return value;}";
     let (program, spans) = blueice_bluejs::parse_with_diagnostic_node_spans(source).unwrap();
