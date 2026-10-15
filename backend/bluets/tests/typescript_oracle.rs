@@ -16,6 +16,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+#[path = "oracle_support/windows_paths.rs"]
+mod windows_paths;
 
 const PINNED_TYPESCRIPT_VERSION: &str = "5.9.3";
 static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -5288,11 +5290,8 @@ fn typescript_diagnostic_lines(output: &Output) -> Vec<usize> {
         String::from_utf8_lossy(&output.stderr)
     );
     text.lines()
-        .filter_map(|line| {
-            let (prefix, _) = line.split_once("): error TS")?;
-            let (_, location) = prefix.rsplit_once('(')?;
-            location.split_once(',')?.0.parse().ok()
-        })
+        .filter_map(windows_paths::diagnostic_location)
+        .map(|(_, line)| line)
         .collect()
 }
 
@@ -5316,7 +5315,7 @@ fn assert_source_map(source_map: &str, producer: &str) {
 
 fn pinned_bluetsc_oracle() -> PathBuf {
     env::var_os("BLUEICE_BLUETSC_ORACLE")
-        .map(PathBuf::from)
+        .map(|program| windows_paths::compiler_program(&program, cfg!(windows)))
         .expect("set BLUEICE_BLUETSC_ORACLE to the TypeScript 5.9.3 tsc executable")
 }
 

@@ -10955,3 +10955,27 @@ suite pass. With this prerequisite explicit, the complete K.0 two-crate
 test gate exits 0, including every ordinary and ignored oracle. Cargo
 incremental compilation and dev/test debug symbols were disabled to bound
 regenerated artifacts.
+
+### K.13.1.1 Windows oracle path and command handling (2026-10-16)
+
+The main pinned TypeScript oracle selects the `.cmd` shim for an
+extensionless `tsc` program on Windows while leaving explicit executable
+names and non-Windows paths unchanged. Its diagnostic-location parser
+normalizes drive, UNC and verbatim (`\\?\`) file paths while parsing the
+source line and validating the column; malformed or fileless diagnostics do
+not invent a location. The path handling lives in a small test-support module
+than extending the already large oracle fixture file.
+
+Five unignored unit tests cover command selection and all three Windows
+path families on every OS. They pass on this macOS host and the pb60g Linux
+host. The exact support module also compiles and passes all six tests on
+the pb60g Windows VM, including a Windows-only test that launches a real
+temporary `.cmd` shim from a directory with spaces and removes it. The
+82 pinned TypeScript oracle tests pass on macOS; together with the five
+path tests, the complete `typescript_oracle` executable passes 87/87.
+`cargo fmt --all -- --check`, warnings-denied two-crate all-target Clippy,
+and the complete K.0 two-crate suite including ignored oracles all exit 0.
+The refusal inventory script was rerun and section 4 remains identical.
+This is path/launch evidence, not a claim that the full TypeScript oracle
+matrix has run on Windows; symlink skip/report policy and hosted Windows
+legs remain K.13.1.2 and K.13.1.3.

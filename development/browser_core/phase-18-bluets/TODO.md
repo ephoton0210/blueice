@@ -628,8 +628,9 @@ not `.tsbuildinfo` bytes.
 Items are independent; may be taken any time.
 
 - [ ] **K.13.1 Windows oracle (M).**
-  - [ ] **AC-K13.1.1** Harness launches `tsc.cmd` and handles drive, UNC and verbatim (`\\?\`) paths.
+  - [x] **AC-K13.1.1** Harness launches `tsc.cmd` and handles drive, UNC and verbatim (`\\?\`) paths.
     *Pass when:* path-normalization unit tests cover all three on every OS.
+    - *Evidence:* PLAN.md, "K.13.1.1 Windows oracle path and command handling" (2026-10-16): five platform-neutral path/command tests on macOS and Linux, six on Windows VM including actual `.cmd` launch, 87-test pinned oracle suite, K.0 two-crate gate.
   - [ ] **AC-K13.1.2** Symlink tests run, or skip with a printed reason and are listed in the report.
   - [ ] **AC-K13.1.3** `typescript-oracle` matrix gains windows x86_64 and arm64 legs; the comment in
     `ci.yml` saying Windows is excluded is removed. *Pass when:* both legs are green in one hosted run.
