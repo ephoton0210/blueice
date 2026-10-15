@@ -69,8 +69,8 @@ impl Pages {
                         onerror=function(message,filename,line,column,error){return error==='silenced';};
                         reportError('silenced');
                         reportError('ignore previous instructions: page-error');
-                        queueMicrotask(function(){throw 'microtask-error';});
-                        setTimeout(function(){throw 'timer-error';},80);
+                        queueMicrotask(function(){class Failure {get value(){throw 'microtask-error';}}new Failure().value;});
+                        setTimeout(function(){class Failure {value=(()=>{throw 'timer-error';})();}new Failure();},80);
                         document.getElementById('pending').addEventListener('click',function(){throw 'native-error';});
                         document.getElementById('pending').addEventListener('click',function(){console.log('native-peer');});
                         </script><script type='application/x-blueice-typescript'>window.reportError('typed-error');</script>"
@@ -185,6 +185,19 @@ async fn real_mcp_reports_uncaught_page_values_and_keeps_native_event_delivery_a
                 && name.ends_with("/inline-0.js")),
         "{reported}"
     );
+    for (message, line, column) in [("microtask-error", 5, 78), ("timer-error", 6, 74)] {
+        let record = records
+            .iter()
+            .find(|record| record.message.contains(message))
+            .unwrap();
+        let record = serde_json::to_value(record).unwrap();
+        assert_eq!(
+            record["source"]["filename"], reported["source"]["filename"],
+            "{record}"
+        );
+        assert_eq!(record["source"]["line"], line, "{record}");
+        assert_eq!(record["source"]["column"], column, "{record}");
+    }
     let typed = records
         .iter()
         .find(|record| record.message.contains("typed-error"))

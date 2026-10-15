@@ -91,8 +91,54 @@ The subsequent requested cleanup removes old compiled executables and caches;
 source hashes, executable hashes, receipts and logs remain available. Changed
 integration-target Clippy and a complete diagnostic-target replay also pass
 after an equivalent test-configuration initialization fix.
-Method/class/decorator lowering and other generated-code provenance still
-require their remaining implementation and acceptance.
+Remaining expression dispatch, decorator application and other generated-code
+provenance still require their implementation and acceptance.
+
+### Class and decorator lowering
+
+Constructor and accessor naming clones retain the original parameter/body
+owners through temporary inventory overlays. Static-block copies retain their
+statement subtrees; static and instance field lowering aliases only the copied
+initializer expression, including nested functions, arrows and classes. The
+generated receiver, stored key, private-brand operations, default constructors
+and auto-accessor functions acquire no invented source owner. The shared
+overlay helper restores the parent inventory on success and compilation error,
+before any temporary clone address can be reused. No AST address survives in
+compiled bytecode or becomes a JavaScript root.
+
+The dedicated decorator grammar captures identifiers and intermediate member
+references as well as the final expression. Receiver-preserving decorator
+evaluation installs the corresponding expression owner, including the inner
+member of a parenthesized decorator, without changing receiver semantics.
+Decorator application failures in generated operations remain a separate
+precision requirement.
+
+The first eighteen public `ErrorEvent` scenarios reproduce fifteen missing or
+coarse locations before production changes; all eighteen pass after the fix.
+The expanded matrix covers thirty-two source scenarios and three unknown-source
+controls for generated accessor/field operations and dynamic `eval`. The
+shared public-boundary helper also compares ordinary syntax, code-unit counts
+and instruction bytes against diagnostic compilation. Real-page, queued MCP
+and cross-script major-GC acceptance are recorded in the milestone evidence.
+
+Four later-script cases verify actual major collection before invoking retained
+constructors, getters and field/static-block closures. The final selection
+passes 1,627 BlueJS cases across thirty-three targets, including 1,205 library
+cases and all thirty-eight diagnostic groups. Bridge, Launcher and real pages
+add 491 passes and one existing ignored; three official MCP console passes
+bring the disjoint total to 2,121 across thirty-seven targets. Six additional
+real-page source contexts pass, and MCP preserves queued getter/field throws
+at line/column 5:78 and 6:74. Formatting and focused library/integration-target
+Clippy pass. After Cargo's test build relinks the child host, both cross-process
+targets are replayed without rebuilding; all twenty cases pass with identical
+final runtime hashes before and after. Eight Rust input hashes, initial/final
+runtime hashes, test hashes and receipts are in
+`target/class-origins-source-20261015.json` and
+`target/class-origins-validation-20261015.json`. The complete diagnostic target
+is replayed after a test-only change moves the major-GC assertion before
+closure invocation; the other production and test inputs stay unchanged.
+Broader source-producer,
+precision, integrated and final conformance requirements remain open.
 
 ## Saved completions and cleanup
 

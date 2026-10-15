@@ -1272,72 +1272,89 @@ fn root_map(
     .map_err(BlueJsPageRuntimeError::DiagnosticSourceMap)
 }
 
+fn mapped_expression_code(source: &str) -> blueice_bluejs::Bytecode {
+    let (program, spans) = blueice_bluejs::parse_with_diagnostic_node_spans(source).unwrap();
+    assert_eq!(
+        program,
+        parse(source).unwrap(),
+        "diagnostic capture preserves syntax"
+    );
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install_for_diagnostics(identity("original"), &BlueJsProgramV1::Script(program))
+        .unwrap();
+    fn collect(
+        code: &blueice_bluejs::Bytecode,
+        unit: &mut u32,
+        source: &str,
+        spans: &[Option<blueice_bluejs::ParsedStatementSpan>],
+        rows: &mut Vec<DiagnosticSourceRange>,
+    ) {
+        let ordinal = *unit;
+        *unit += 1;
+        let owners = code.diagnostic_instruction_owners();
+        for (index, owner) in owners.iter().enumerate() {
+            let Some(span) = owner
+                .ast_node_ordinal
+                .and_then(|id| spans.get(id as usize))
+                .copied()
+                .flatten()
+            else {
+                continue;
+            };
+            let (line, column) = source_positions(source, &[span.start_byte])[0].unwrap();
+            rows.push(DiagnosticSourceRange {
+                code_unit_ordinal: ordinal,
+                start: owner.bytecode_offset,
+                end: owners
+                    .get(index + 1)
+                    .map_or(code.bytes().len() as u32, |next| next.bytecode_offset),
+                location: DiagnosticSourceLocation {
+                    filename: "memory:///position.js".into(),
+                    line,
+                    column,
+                },
+            });
+        }
+        for child in code.child_code_units() {
+            collect(child, unit, source, spans, rows);
+        }
+    }
+    fn same_code(ordinary: &blueice_bluejs::Bytecode, diagnostic: &blueice_bluejs::Bytecode) {
+        assert_eq!(ordinary.bytes(), diagnostic.bytes());
+        assert_eq!(
+            ordinary.child_code_units().count(),
+            diagnostic.child_code_units().count()
+        );
+        for (ordinary, diagnostic) in ordinary
+            .child_code_units()
+            .zip(diagnostic.child_code_units())
+        {
+            same_code(ordinary, diagnostic);
+        }
+    }
+    let diagnostic = registry.get(handle).unwrap().bytecode();
+    assert_eq!(diagnostic.diagnostic_source_node_count(), spans.len());
+    same_code(&compile(&parse(source).unwrap()).unwrap(), diagnostic);
+    let mut rows = Vec::new();
+    collect(
+        registry.get(handle).unwrap().bytecode(),
+        &mut 0,
+        source,
+        &spans,
+        &mut rows,
+    );
+    registry
+        .bind_diagnostic_sources(
+            handle,
+            DiagnosticSourceMap::new(identity("original"), rows).unwrap(),
+        )
+        .unwrap();
+    registry.get(handle).unwrap().bytecode().clone()
+}
+
 #[test]
 fn expression_and_parameter_failures_use_their_own_original_source() {
-    fn mapped(source: &str) -> blueice_bluejs::Bytecode {
-        let (program, spans) = blueice_bluejs::parse_with_diagnostic_node_spans(source).unwrap();
-        assert_eq!(
-            program,
-            parse(source).unwrap(),
-            "diagnostic capture preserves syntax"
-        );
-        let mut registry = BlueJsProgramRegistry::default();
-        let handle = registry
-            .install_for_diagnostics(identity("original"), &BlueJsProgramV1::Script(program))
-            .unwrap();
-        fn collect(
-            code: &blueice_bluejs::Bytecode,
-            unit: &mut u32,
-            source: &str,
-            spans: &[Option<blueice_bluejs::ParsedStatementSpan>],
-            rows: &mut Vec<DiagnosticSourceRange>,
-        ) {
-            let ordinal = *unit;
-            *unit += 1;
-            let owners = code.diagnostic_instruction_owners();
-            for (index, owner) in owners.iter().enumerate() {
-                let Some(span) = owner
-                    .ast_node_ordinal
-                    .and_then(|id| spans.get(id as usize))
-                    .copied()
-                    .flatten()
-                else {
-                    continue;
-                };
-                let (line, column) = source_positions(source, &[span.start_byte])[0].unwrap();
-                rows.push(DiagnosticSourceRange {
-                    code_unit_ordinal: ordinal,
-                    start: owner.bytecode_offset,
-                    end: owners
-                        .get(index + 1)
-                        .map_or(code.bytes().len() as u32, |next| next.bytecode_offset),
-                    location: DiagnosticSourceLocation {
-                        filename: "memory:///position.js".into(),
-                        line,
-                        column,
-                    },
-                });
-            }
-            for child in code.child_code_units() {
-                collect(child, unit, source, spans, rows);
-            }
-        }
-        let mut rows = Vec::new();
-        collect(
-            registry.get(handle).unwrap().bytecode(),
-            &mut 0,
-            source,
-            &spans,
-            &mut rows,
-        );
-        registry
-            .bind_diagnostic_sources(
-                handle,
-                DiagnosticSourceMap::new(identity("original"), rows).unwrap(),
-            )
-            .unwrap();
-        registry.get(handle).unwrap().bytecode().clone()
-    }
     let mut failures = Vec::new();
     for (name, source, expected) in [
         (
@@ -1429,7 +1446,10 @@ fn expression_and_parameter_failures_use_their_own_original_source() {
         ),
     ] {
         let mut vm = page();
-        assert!(vm.execute_script(&mapped(source)).is_err(), "{name}");
+        assert!(
+            vm.execute_script(&mapped_expression_code(source)).is_err(),
+            "{name}"
+        );
         let found = observed(&mut vm);
         let expected = Value::String(format!("memory:///position.js:{expected}").into());
         if found != expected {
@@ -1437,6 +1457,110 @@ fn expression_and_parameter_failures_use_their_own_original_source() {
         }
     }
     assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn class_lowering_and_decorators_keep_their_original_source() {
+    let mut failures = Vec::new();
+    for (name, source, expected) in [
+        ("constructor body", "class C {\n constructor() {\n  missing;\n }\n}\nnew C();", "3:3"),
+        ("constructor default", "class C {\n constructor(value =\n  missing) {}\n}\nnew C();", "3:3"),
+        ("constructor pattern", "class C {\n constructor(\n  {value}\n ) {}\n}\nnew C(null);", "3:3"),
+        ("class getter", "class C {\n get value() {\n  return missing;\n }\n}\nnew C().value;", "3:10"),
+        ("class setter pattern", "class C {\n set value(\n  {item}\n ) {}\n}\nnew C().value=null;", "3:3"),
+        ("instance field", "class C {\n value =\n  missing;\n}\nnew C();", "3:3"),
+        ("static field", "class C {\n static value =\n  missing;\n}", "3:3"),
+        ("private field", "class C {\n #value =\n  missing;\n}\nnew C();", "3:3"),
+        ("auto accessor field", "class C {\n accessor value =\n  missing;\n}\nnew C();", "3:3"),
+        ("static block", "class C {\n static {\n  missing;\n }\n}", "3:3"),
+        ("field arrow", "class C {value=()=>missing;other=()=>\n  absent;}\nnew C().other();", "2:3"),
+        ("field nested class", "class C {value=class {\n get value(){return missing;}\n};}\nnew (new C().value)().value;", "2:21"),
+        ("ordinary method", "class C {\n method(){return missing;}\n}\nnew C().method();", "2:18"),
+        ("object getter", "var object={\n get value(){return missing;}\n};object.value;", "2:21"),
+        ("class decorator reference", "@missing\nclass C {}", "1:2"),
+        ("class decorator member", "var decorators=null;\n@decorators.decorate\nclass C {}", "2:2"),
+        ("element decorator member", "var decorators=null;\nclass C {\n @decorators.decorate method(){}\n}", "3:3"),
+        ("decorator returned initializer", "function dec(){return function(){\n return missing;\n};}\nclass C {@dec value=1;}new C();", "2:9"),
+        ("static getter", "class C {\n static get value() {\n  return missing;\n }\n}\nC.value;", "3:10"),
+        ("private getter", "class C {\n get #value() {\n  return missing;\n }\n read(){return this.#value;}\n}\nnew C().read();", "3:10"),
+        ("static private field", "class C {\n static #value=\n  missing;\n}", "3:3"),
+        ("static auto accessor", "class C {\n static accessor value=\n  missing;\n}", "3:3"),
+        ("decorated field", "function dec(){}\nclass C {@dec value=\n  missing;}new C();", "3:3"),
+        ("decorated static field", "function dec(){}\nclass C {@dec static value=\n  missing;}", "3:3"),
+        ("computed field", "class C {[1]=\n  missing;}new C();", "2:3"),
+        ("field function default", "class C {value=function(arg=\n  missing){};}new C().value();", "2:3"),
+        ("static block arrow", "class C {\n static {this.run=()=>\n  missing;}\n}\nC.run();", "3:3"),
+        ("decorator intermediate", "var decorators={nested:null};\n@decorators.nested.decorate\nclass C {}", "2:2"),
+        ("decorator callee", "var decorators=null;\n@decorators.decorate()\nclass C {}", "2:2"),
+        ("decorator argument", "function dec(){}\n@dec(\n  missing)\nclass C {}", "3:3"),
+        ("parenthesized decorator member", "var decorators=null;\n@(decorators.decorate)\nclass C {}", "2:3"),
+        ("CRLF constructor", "var face='😀';\r\nclass C {constructor(){\r\n  missing;}}\r\nnew C();", "3:3"),
+    ] {
+        let mut vm = page();
+        assert!(vm.execute_script(&mapped_expression_code(source)).is_err(), "{name}");
+        let found = observed(&mut vm);
+        let expected = Value::String(format!("memory:///position.js:{expected}").into());
+        if found != expected { failures.push((name, found, expected)); }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn generated_class_operations_and_dynamic_code_do_not_borrow_source_locations() {
+    for source in [
+        "class C {accessor value=1;}Object.getOwnPropertyDescriptor(C.prototype,'value').get.call({});",
+        "class Base {constructor(){return Object.preventExtensions({});}}class C extends Base {value;}new C();",
+        "class C {constructor(){eval(\"throw 'dynamic';\");}}new C();",
+    ] {
+        let mut vm = page();
+        assert!(vm.execute_script(&mapped_expression_code(source)).is_err(), "{source}");
+        assert_eq!(observed(&mut vm), Value::String(":0:0".into()), "{source}");
+    }
+}
+
+#[test]
+fn lowered_class_closures_keep_sources_across_scripts_and_major_collection() {
+    for (setup, invoke, position) in [
+        (
+            "var saved=class {constructor(){\n  missing;}};",
+            "new saved();",
+            "2:3",
+        ),
+        (
+            "var saved=new class {get value(){\n  return missing;}};",
+            "saved.value;",
+            "2:10",
+        ),
+        (
+            "var saved=new class {value=()=>\n  missing;}().value;",
+            "saved();",
+            "2:3",
+        ),
+        (
+            "var saved;class C {static {saved=()=>\n  missing;}}",
+            "saved();",
+            "2:3",
+        ),
+    ] {
+        let mut config = blueice_bluejs::VmConfig::default();
+        config.heap.nursery_capacity = 1;
+        config.heap.major_threshold_bytes = 1;
+        let mut vm = page_with_vm(Vm::new(config).unwrap());
+        vm.execute_script(&mapped_expression_code(setup)).unwrap();
+        let before = vm.heap().stats().major_collections;
+        let collect = "try{throw 'ambient';}catch{}for(var i=0;i<3000;i++){var garbage={i:i};}";
+        vm.execute_script(&compile(&parse(collect).unwrap()).unwrap())
+            .unwrap();
+        assert!(vm.heap().stats().major_collections > before);
+        assert!(vm
+            .execute_script(&compile(&parse(invoke).unwrap()).unwrap())
+            .is_err());
+        assert_eq!(
+            observed(&mut vm),
+            Value::String(format!("memory:///position.js:{position}").into()),
+            "{setup}"
+        );
+    }
 }
 
 #[test]

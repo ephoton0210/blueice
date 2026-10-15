@@ -97,6 +97,14 @@ impl Compiler {
     }
 
     pub(super) fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
+        self.with_expression_owner(expr, |compiler| compiler.expression_with_owner(expr))
+    }
+
+    pub(super) fn with_expression_owner<T>(
+        &mut self,
+        expr: &Expr,
+        compile: impl FnOnce(&mut Self) -> Result<T, CompileError>,
+    ) -> Result<T, CompileError> {
         let previous = self.diagnostic_owner;
         self.diagnostic_owner = self
             .diagnostic_ast_ids
@@ -104,7 +112,7 @@ impl Compiler {
             .and_then(|ids| ids.expression_ordinal(expr))
             .map(|ordinal| self.metadata_index(ordinal))
             .transpose()?;
-        let result = self.expression_with_owner(expr);
+        let result = compile(self);
         self.diagnostic_owner = previous;
         result
     }

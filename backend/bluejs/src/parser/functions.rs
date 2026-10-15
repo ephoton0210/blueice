@@ -592,6 +592,10 @@ impl Parser {
     /// (`(expression)`, the escape hatch for anything else). The result is the
     /// expression whose value is the decorator function.
     fn parse_decorator(&mut self) -> Result<Expr, ParseError> {
+        self.diagnostic_expression(Self::parse_decorator_inner)
+    }
+
+    fn parse_decorator_inner(&mut self) -> Result<Expr, ParseError> {
         if self.eat_punct(Punct::LParen) {
             let expression = self.with_in_allowed(Self::parse_expression)?;
             self.expect_punct(Punct::RParen).map_err(|mut error| {
@@ -600,6 +604,8 @@ impl Parser {
             })?;
             return Ok(Expr::Parenthesized(Box::new(expression)));
         }
+        let diagnostic_base = self.diagnostic_expressions.as_ref().map_or(0, Vec::len);
+        let diagnostic_start = self.token_start();
         let name = match self.peek().clone() {
             Token::Identifier(name) if self.identifier_reference_name_is_valid(&name) => name,
             // `let` is an IdentifierReference in sloppy code only.
@@ -615,6 +621,7 @@ impl Parser {
         }
         self.advance();
         let mut expression = Expr::Identifier(name);
+        self.capture_expression(&expression, diagnostic_base, diagnostic_start)?;
         while self.eat_punct(Punct::Dot) {
             let property = self.expect_member_name()?;
             expression = Expr::Member {
@@ -622,6 +629,7 @@ impl Parser {
                 property: Box::new(Expr::Identifier(property)),
                 computed: false,
             };
+            self.capture_expression(&expression, diagnostic_base, diagnostic_start)?;
         }
         if self.check_punct(Punct::LParen) {
             expression = Expr::Call {

@@ -5,7 +5,41 @@
 use super::*;
 use crate::bytecode::decoration as deco;
 
+/// Only the initializer is copied from source. The receiver, stored key and
+/// field-definition wrappers were generated and retain no original owner.
+fn lowered_field_initializer(field: &Stmt) -> &Expr {
+    match field {
+        Stmt::ClassDecoratedField { field, .. } => lowered_field_initializer(field),
+        Stmt::ClassField(statement) => {
+            let Stmt::Expr(Expr::Assign { value, .. }) = &**statement else {
+                unreachable!("a lowered class field contains an assignment")
+            };
+            value
+        }
+        _ => unreachable!("a class field initializer has a field wrapper"),
+    }
+}
+
 impl Compiler {
+    /// The aliases describe only live compiler clones. Restore the parent
+    /// inventory before these temporary AST addresses can be reused.
+    fn with_diagnostic_aliases<T>(
+        &mut self,
+        alias: impl FnOnce(&mut crate::program_debug::ast_ids::DiagnosticAstNodeIds),
+        compile: impl FnOnce(&mut Self) -> Result<T, CompileError>,
+    ) -> Result<T, CompileError> {
+        let previous = self.diagnostic_ast_ids.clone();
+        if let Some(ids) = &previous {
+            let mut aliases =
+                crate::program_debug::ast_ids::DiagnosticAstNodeIds::overlay(ids.clone());
+            alias(&mut aliases);
+            self.diagnostic_ast_ids = Some(std::rc::Rc::new(aliases));
+        }
+        let result = compile(self);
+        self.diagnostic_ast_ids = previous;
+        result
+    }
+
     pub(super) fn arrow_function(
         &mut self,
         params: &[Param],
@@ -27,25 +61,21 @@ impl Compiler {
             is_async,
             source_text: source_text.clone(),
         };
-        let previous = self.diagnostic_ast_ids.clone();
-        if let Some(ids) = &previous {
-            let mut aliases =
-                crate::program_debug::ast_ids::DiagnosticAstNodeIds::overlay(ids.clone());
-            aliases.alias_parameters(params, &function.params);
-            match original_body {
-                ArrowBody::Expr(expression) => {
-                    let Stmt::Return(Some(cloned)) = &function.body[0] else {
-                        unreachable!("expression arrow lowers to one return")
-                    };
-                    aliases.alias_expression(expression, cloned);
+        self.with_diagnostic_aliases(
+            |aliases| {
+                aliases.alias_parameters(params, &function.params);
+                match original_body {
+                    ArrowBody::Expr(expression) => {
+                        let Stmt::Return(Some(cloned)) = &function.body[0] else {
+                            unreachable!("expression arrow lowers to one return")
+                        };
+                        aliases.alias_expression(expression, cloned);
+                    }
+                    ArrowBody::Block(body) => aliases.alias_statements(body, &function.body),
                 }
-                ArrowBody::Block(body) => aliases.alias_statements(body, &function.body),
-            }
-            self.diagnostic_ast_ids = Some(std::rc::Rc::new(aliases));
-        }
-        let result = self.function_named(&function, true, inferred_name, false);
-        self.diagnostic_ast_ids = previous;
-        result
+            },
+            |compiler| compiler.function_named(&function, true, inferred_name, false),
+        )
     }
 
     pub(super) fn function(
@@ -292,30 +322,39 @@ impl Compiler {
                 is_static: false,
                 ..
             } if class_property_name(key).is_some_and(|name| name == "constructor") => {
-                Some(function.clone())
+                Some(function)
             }
             _ => None,
         });
         let default_constructor = constructor.is_none();
-        let mut constructor = constructor.unwrap_or_default();
-        constructor.name = class.name.clone();
+        let mut lowered_constructor = constructor.cloned().unwrap_or_default();
+        lowered_constructor.name = class.name.clone();
         // The constructor function object is the class: its source text is the
         // whole ClassDeclaration or ClassExpression, not the `constructor`
         // method (which a class without one does not even have).
-        constructor.source_text = class.source_text.clone();
-        self.function_named_with(
-            &constructor,
-            false,
-            inferred_name,
-            false,
-            FunctionCompileOptions {
-                constructible: true,
-                force_strict: true,
-                class_constructor: true,
-                derived_constructor: class.extends.is_some(),
-                default_derived_constructor: class.extends.is_some() && default_constructor,
-                class_method: false,
-                class_field_initializer: false,
+        lowered_constructor.source_text = class.source_text.clone();
+        self.with_diagnostic_aliases(
+            |aliases| {
+                if let Some(original) = constructor {
+                    aliases.alias_function(original, &lowered_constructor);
+                }
+            },
+            |compiler| {
+                compiler.function_named_with(
+                    &lowered_constructor,
+                    false,
+                    inferred_name,
+                    false,
+                    FunctionCompileOptions {
+                        constructible: true,
+                        force_strict: true,
+                        class_constructor: true,
+                        derived_constructor: class.extends.is_some(),
+                        default_derived_constructor: class.extends.is_some() && default_constructor,
+                        class_method: false,
+                        class_field_initializer: false,
+                    },
+                )
             },
         )?;
         self.emit(Opcode::SetClassHome, 0)?;
@@ -491,14 +530,14 @@ impl Compiler {
                             },
                             None => field,
                         };
-                        self.class_element_function(vec![field], binding_name, true)?;
+                        self.class_element_function(vec![field], binding_name, element)?;
                     }
                 }
                 ClassElement::StaticBlock(body) => {
                     let binding_name = static_element_bindings
                         .get(&index)
                         .expect("static block has a function binding");
-                    self.class_element_function(body.clone(), binding_name, false)?;
+                    self.class_element_function(body.clone(), binding_name, element)?;
                 }
             }
         }
@@ -570,6 +609,7 @@ impl Compiler {
         // initializers of decorated methods, then every instance field in
         // order.
         let mut instance_fields = Vec::new();
+        let mut field_origins = Vec::new();
         let instance_private_method = class.elements.iter().find_map(|element| match element {
             ClassElement::Method {
                 key,
@@ -624,6 +664,11 @@ impl Compiler {
                     };
                     class_field_definition(key, computed_binding, initializer.as_ref())
                 };
+                if self.diagnostic_ast_ids.is_some() {
+                    if let Some(initializer) = initializer {
+                        field_origins.push((initializer, instance_fields.len()));
+                    }
+                }
                 instance_fields.push(match decorations.get(&index) {
                     Some(decoration) => Stmt::ClassDecoratedField {
                         field: Box::new(field),
@@ -638,12 +683,24 @@ impl Compiler {
                 body: instance_fields,
                 ..Function::default()
             };
-            self.function_named_with(
-                &initializer,
-                false,
-                None,
-                false,
-                FunctionCompileOptions::class_field_initializer(),
+            self.with_diagnostic_aliases(
+                |aliases| {
+                    for (original, index) in field_origins {
+                        aliases.alias_expression(
+                            original,
+                            lowered_field_initializer(&initializer.body[index]),
+                        );
+                    }
+                },
+                |compiler| {
+                    compiler.function_named_with(
+                        &initializer,
+                        false,
+                        None,
+                        false,
+                        FunctionCompileOptions::class_field_initializer(),
+                    )
+                },
             )?;
             self.emit(Opcode::SetClassFields, 0)?;
         }
@@ -748,6 +805,12 @@ impl Compiler {
     /// name, a call's result or any other parenthesized expression, with
     /// `undefined`.
     fn decorator_and_receiver(&mut self, decorator: &Expr) -> Result<(), CompileError> {
+        self.with_expression_owner(decorator, |compiler| {
+            compiler.decorator_and_receiver_inner(decorator)
+        })
+    }
+
+    fn decorator_and_receiver_inner(&mut self, decorator: &Expr) -> Result<(), CompileError> {
         match decorator {
             Expr::Member { .. } if !is_super_member(decorator) => {
                 if let Some((object, name)) = private_member_parts(decorator) {
@@ -764,7 +827,9 @@ impl Compiler {
                     Expr::Member { .. } | Expr::OptionalMember { .. }
                 ) && !is_super_member(inner) =>
             {
-                self.parenthesized_optional_member_method(inner)?;
+                self.with_expression_owner(inner, |compiler| {
+                    compiler.parenthesized_optional_member_method(inner)
+                })?;
             }
             other => {
                 self.expression(other)?;
@@ -915,16 +980,22 @@ impl Compiler {
                 self.initialize_class_binding(binding_name)?;
             }
         }
+        let original = function;
         let mut function = function.clone();
         if let Some(name) = literal_property_key_name(key) {
             function.name = Some(format!("{} {name}", if getter { "get" } else { "set" }));
         }
-        self.function_named_with(
-            &function,
-            false,
-            None,
-            false,
-            FunctionCompileOptions::class_method(),
+        self.with_diagnostic_aliases(
+            |aliases| aliases.alias_function(original, &function),
+            |compiler| {
+                compiler.function_named_with(
+                    &function,
+                    false,
+                    None,
+                    false,
+                    FunctionCompileOptions::class_method(),
+                )
+            },
         )?;
         if matches!(key, PropertyKey::Computed(_)) {
             self.emit(Opcode::SetFunctionName, if getter { 1 } else { 2 })?;
@@ -957,21 +1028,34 @@ impl Compiler {
         &mut self,
         body: Vec<Stmt>,
         binding_name: &str,
-        field: bool,
+        original: &ClassElement,
     ) -> Result<(), CompileError> {
         let function = Function {
             body,
             ..Function::default()
         };
-        self.function_named_with(
-            &function,
-            false,
-            None,
-            false,
-            if field {
-                FunctionCompileOptions::class_field_initializer()
-            } else {
-                FunctionCompileOptions::class_method()
+        self.with_diagnostic_aliases(
+            |aliases| match original {
+                ClassElement::StaticBlock(body) => aliases.alias_statements(body, &function.body),
+                ClassElement::Field {
+                    initializer: Some(initializer),
+                    ..
+                } => aliases
+                    .alias_expression(initializer, lowered_field_initializer(&function.body[0])),
+                _ => {}
+            },
+            |compiler| {
+                compiler.function_named_with(
+                    &function,
+                    false,
+                    None,
+                    false,
+                    if matches!(original, ClassElement::Field { .. }) {
+                        FunctionCompileOptions::class_field_initializer()
+                    } else {
+                        FunctionCompileOptions::class_method()
+                    },
+                )
             },
         )?;
         let slot = self

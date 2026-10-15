@@ -253,6 +253,12 @@ fn uncaught_page_errors_keep_the_throwing_script_source_coordinates() {
         ("destructuring parameter", "function fail(\n  {value}\n){}fail(null);", "2:3"),
         ("named arrow", "var fail=()=> (\n  missing);fail();", "2:3"),
         ("template placeholder", "var value=`${ /* } */\n  missing}`;", "2:3"),
+        ("class constructor", "class C {constructor(){\n  missing;}}new C();", "2:3"),
+        ("class getter", "class C {get value(){\n  return missing;}}new C().value;", "2:10"),
+        ("class field", "class C {value=\n  missing;}new C();", "2:3"),
+        ("class static block", "class C {static {\n  missing;}}", "2:3"),
+        ("decorator member", "var decorators=null;\n@decorators.decorate\nclass C {}", "2:2"),
+        ("decorated field", "function dec(){}\nclass C {@dec value=\n  missing;}new C();", "3:3"),
     ] {
         let location = observed_error_source_location(source);
         if !location.starts_with("location:blueice://page/tab-1/document-")

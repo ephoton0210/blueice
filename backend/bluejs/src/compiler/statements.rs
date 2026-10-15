@@ -1690,16 +1690,9 @@ impl Compiler {
         expression: &Expr,
         inferred_name: Option<&str>,
     ) -> Result<(), CompileError> {
-        let previous = self.diagnostic_owner;
-        self.diagnostic_owner = self
-            .diagnostic_ast_ids
-            .as_ref()
-            .and_then(|ids| ids.expression_ordinal(expression))
-            .map(|ordinal| self.metadata_index(ordinal))
-            .transpose()?;
-        let result = self.expression_with_name_inner(expression, inferred_name);
-        self.diagnostic_owner = previous;
-        result
+        self.with_expression_owner(expression, |compiler| {
+            compiler.expression_with_name_inner(expression, inferred_name)
+        })
     }
 
     fn expression_with_name_inner(

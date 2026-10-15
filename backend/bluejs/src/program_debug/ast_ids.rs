@@ -123,6 +123,10 @@ impl DiagnosticAstNodeIds {
         };
         self.alias_nodes(collect(original), collect(cloned));
     }
+    pub(crate) fn alias_function(&mut self, original: &Function, cloned: &Function) {
+        self.alias_parameters(&original.params, &cloned.params);
+        self.alias_statements(&original.body, &cloned.body);
+    }
     pub(crate) fn alias_expression(&mut self, original: &Expr, cloned: &Expr) {
         let collect = |expression: &Expr| {
             let mut nodes = Vec::new();

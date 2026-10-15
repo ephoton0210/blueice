@@ -59,13 +59,15 @@ statement, expression and parameter locations through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest expression and
-parameter follow-up passes twenty-three source scenarios, preserves debugger
-ordinals with source-only pattern slots, and bounds temporary capture work.
-Its final selection passes 2,105 tests across forty-two targets (one existing
-ignored), including real Core/child and official MCP acceptance at the precise
-inline call position, line 5, column 36. Formatting and
-focused six-library Clippy pass. Three of the ten final acceptance
+Core and MCP, preserving unavailable locations. The latest class-lowering
+follow-up preserves tested constructor/accessor, field and static-block
+origins, including nested arrows/classes and decorator member evaluation.
+Thirty-two source scenarios, three unknown-source controls and four
+cross-script major-GC scenarios pass. Its final selection passes 2,121 tests
+across thirty-seven targets (one existing ignored), including six additional
+real-page contexts and precise queued getter/field origins through official
+MCP. Formatting, focused six-library and changed integration-target Clippy
+pass. Three of the ten final acceptance
 gates are complete; the detailed implementation
 checklist below records the smaller completed steps. Remaining
 expression/parameter/generated provenance, direct/emitted BlueTS,
@@ -488,7 +490,7 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: expression/parameter follow-up verified; 3/10 final
+**Progress updated 2026-10-15: class-lowering follow-up verified; 3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -571,11 +573,24 @@ the full source-position requirement.
       from the main and `cov-round47` worktree targets, reducing their combined
       allocated size by 40.55 GiB. Preserve source edits, test reports, all
       thirty-two top-level validation manifests and the running MCP executable.
+- [x] Preserve tested constructor/accessor clones, static-block copies and
+      field initializer subtrees through scoped diagnostic overlays. All
+      thirty-two class/decorator source scenarios and three unknown-source
+      controls pass; ordinary syntax, code-unit counts and bytes stay identical.
+- [x] Retain lowered class closure locations across later scripts and actual
+      major GC in four scenarios. Pass 1,627 BlueJS cases over thirty-three
+      complete targets, including 1,205 library cases and all thirty-eight
+      diagnostic groups.
+- [x] Pass the final class follow-up: 2,121 passed across thirty-seven disjoint
+      targets, one existing ignored, formatting and focused library/integration
+      Clippy. Six additional real-page source contexts pass; official MCP
+      reports queued getter/field throws at 5:78 and 6:74. Fixed final runtime
+      hashes remain identical before and after the cross-process replay.
 
 #### Remaining implementation and verification
 
-- [ ] Complete remaining precise expression/parameter and compiler-generated
-      provenance, including method/class/decorator lowering.
+- [ ] Complete remaining expression-dispatch, decorator-application and
+      compiler-generated provenance.
 - [ ] Attach certified original locations for direct/emitted BlueTS, modules
       and debugger-driven execution.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
@@ -903,6 +918,35 @@ Its removal inventory and result are recorded in
 `/private/tmp/blueice-compiled-cleanup-plan-20261015.json` and
 `/private/tmp/blueice-compiled-cleanup-result-20261015.json`. This cleanup does
 not rerun compilation or change any final acceptance gate.
+
+The class-lowering follow-up reproduces fifteen missing or coarse locations in
+eighteen public `ErrorEvent` scenarios before production changes
+(`/private/tmp/blueice-class-origins-red.log`). Scoped overlays preserve cloned
+constructor/accessor parameters and bodies, static-block statements and only
+the original initializer subtree of a lowered field. Decorator grammar and
+receiver-preserving compilation capture identifier/member owners. The expanded
+thirty-two source cases, three generated/dynamic unknown controls and four
+cross-script major-GC cases pass; ordinary syntax, code-unit counts and bytes
+remain identical. No temporary AST address survives compilation.
+
+The final selection passes 1,627 BlueJS cases across thirty-three targets,
+including 1,205 library cases and all thirty-eight diagnostic groups. Bridge,
+Launcher and real pages add 491 passes and one existing ignored; all three
+official MCP console cases pass, including queued getter/field throws at
+line/column 5:78 and 6:74. The disjoint total is 2,121 across thirty-seven
+targets. Formatting and focused six-library/integration-target Clippy pass.
+Cargo's test build relinks the child host, so an initial post-build hash guard
+fails; both cross-process targets are replayed without rebuilding, verifying
+identical final runtime hashes before and after all twenty acceptance cases.
+Their replay receipts replace the initial ones in the total. Eight Rust input
+hashes, runtime/test hashes and per-target receipts are retained in
+`target/class-origins-source-20261015.json` and
+`target/class-origins-validation-20261015.json`. A test-only change asserts
+major GC in a separate successful script before invoking each retained class
+closure; its complete thirty-eight-group replay passes and replaces the
+earlier diagnostic receipt. Remaining source producers,
+precision/queued/integrated acceptance and final workspace/Test262 gates stay
+open; M1q remains at 3/10 final acceptance gates.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 
