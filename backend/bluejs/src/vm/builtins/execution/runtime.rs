@@ -844,6 +844,7 @@ impl Vm {
             self.stack.push(value.clone());
         }
         let origin = self.take_pending_throw_origin();
+        let _origin_charge = self.charge_diagnostic_payload(origin.payload_bytes());
         let _ = self.iterator_close_direct(iterator);
         self.restore_pending_throw_origin(origin);
         self.stack.truncate(base);

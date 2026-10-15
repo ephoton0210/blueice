@@ -61,6 +61,7 @@ impl Vm {
             active_diagnostic_frame: None,
             pending_diagnostic_origin: None,
             uncaught_diagnostic_origin: None,
+            active_diagnostic_bytes: Rc::default(),
             promise_origin_override: None,
             promise_thunk_origins: HashMap::new(),
             throw_epoch: 0,

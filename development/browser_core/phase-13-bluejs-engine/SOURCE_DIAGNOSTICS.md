@@ -744,6 +744,46 @@ Evidence is `target/computed-key-origins-source-20261016.json` and
 emitted-profile, integrated lifecycle/resource and workspace/all-target/
 Test262 acceptance stay open. M1q remains at 3/10 final gates.
 
+### Retained and active native source payloads
+
+The document-native ledger now includes pending/uncaught VM filenames, owned
+native diagnostic frames and paused debugger handler origins. Shared immutable
+bytecode maps keep their existing installed-code charge. Temporary Rust-owned
+snapshots use a scoped byte charge; moving an origin into active catch/finally
+state, calling an iterator/disposer, nesting an interpreter or invoking error
+reporting no longer removes that filename from the ledger. The charge owns a
+scalar counter, with no JavaScript value or source text, and releases itself
+on every normal or abrupt exit. Console handoff and restored native frames
+transfer ownership without counting a copy twice.
+
+Admission runs when a fresh throw captures source, before error-reporting/
+decorator callbacks and at the existing scheduling boundaries. Refusals remain
+uncatchable document aborts; cleanup cannot run an extra callback after the
+account fails. A new document starts with a fresh account.
+
+Public regressions reproduce an idle VM's missing 4,095-byte filename charge,
+three near-cap callback bypasses (error-report snapshots, active catch and
+iterator cleanup), and five debugger gaps across classic/module, nested and
+intermediate frames. Long-name cases now refuse before callback side effects;
+short-name controls and navigation succeed. Paused source differences equal
+one, two or three filename copies and disappear after resume. All fifty-two
+diagnostic and thirteen scheduling-limit groups pass.
+
+The final follow-up passes 2,193 cases across fifty-five disjoint targets, zero
+failures and sixteen existing ignored: seventeen BlueJS targets (1,560), all
+thirty-five bridge targets (295), launcher (314), real pages (nineteen) and
+official MCP console (five). Existing direct/emitted and unknown-origin
+controls retain their sources through actual Core/child/MCP execution.
+Formatting, seven-library Clippy, bridge/launcher test Clippy and changed
+integration-target Clippy pass with warnings denied. Fifteen Rust and six
+Cargo input hashes remain fixed throughout validation; three runtime and
+fifty-five test executable hashes are recorded and remain unchanged through
+final bridge/host acceptance. Evidence is
+`target/diagnostic-retention-origins-source-20261016.json` and
+`target/diagnostic-retention-origins-validation-20261016.json`. Remaining
+precision, emitted-profile and integrated lifecycle/resource acceptance, and
+full workspace/all-target/Test262 gates stay open. M1q remains at 3/10.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger
@@ -965,8 +1005,9 @@ remaining precision, emission-profile and integrated lifecycle acceptance.
 The complete queued-origin matrix, including remaining delegate/protocol
 cases and integrated finalizer/disposal acceptance beyond the verified cases,
 remains part of M1q.
-Other copies held by asynchronous diagnostic state must join document-native
-accounting. Navigation, stale generations, GC, source-map refusals and resource
+Retained Promise/module origins and the verified VM/active/debugger copies are
+charged. Any additional asynchronous diagnostic copies must follow the same
+document-native accounting. Navigation, stale generations, GC, source-map refusals and resource
 containment need integrated
 coverage. Broader host-buffer/network/UI/default-on policy remains separate.
 

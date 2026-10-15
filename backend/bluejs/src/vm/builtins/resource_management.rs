@@ -147,6 +147,7 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         let mut completion = prior;
         let mut origin = self.take_pending_throw_origin();
+        let mut origin_charge = self.charge_diagnostic_payload(origin.payload_bytes());
         while let Some(resource) = resources.pop() {
             let epoch = self.throw_epoch;
             if let Err(new_error) = self.dispose_one(&resource) {
@@ -154,6 +155,8 @@ impl Vm {
                     return Err(new_error);
                 }
                 origin = self.caught_rejection_origin(epoch);
+                origin_charge.set_bytes(origin.payload_bytes());
+                self.synchronize_scheduling_usage()?;
                 self.root_error(&new_error);
                 completion = Some(match completion {
                     Some(prior_error) if prior_error.is_catchable() => {

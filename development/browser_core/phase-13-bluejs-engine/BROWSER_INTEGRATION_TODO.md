@@ -59,12 +59,13 @@ statement, expression and parameter locations through real Core/child
 `ErrorEvent` delivery. Saved finalizers, ignored iterator-close failures and
 cross-script generator resumption preserve the escaping throw's origin. The
 private v61 console drain now carries bounded optional source records through
-Core and MCP, preserving unavailable locations. The latest computed-key
-follow-up fixes twenty-eight wrong VM positions and two direct BlueTS gaps
-after erased-field key prefixes. Callback sources and explicit unknowns remain
-distinct. Eighteen deferred JavaScript/direct/emitted contexts, five added real
-page contexts and two queued MCP key positions pass. Its final scoped selection
-passes 2,070 tests across fifty-two disjoint targets (sixteen existing ignored).
+Core and MCP, preserving unavailable locations. The latest native-payload
+follow-up charges retained VM filenames, active Rust-owned snapshots and paused
+debugger handlers. It reproduces an uncounted 4,095-byte filename difference,
+three byte-cap callback bypasses and five debugger states; exact charges,
+release on resume and fresh navigation now pass. Its final scoped selection
+passes 2,193 tests across fifty-five disjoint targets (sixteen existing ignored),
+including real page and official MCP source reporting.
 Formatting and related library/test Clippy pass. Three of the
 ten final acceptance
 gates are complete; the detailed implementation
@@ -489,8 +490,8 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-16: binding/default-export and computed-key source
-follow-ups verified; 3/10 final acceptance gates complete.** Completed
+**Progress updated 2026-10-16: native diagnostic-payload accounting follow-up
+verified; 3/10 final acceptance gates complete.** Completed
 implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
 the full source-position requirement.
@@ -816,6 +817,26 @@ the full source-position requirement.
       seven-library Clippy, bridge/launcher test Clippy and changed integration
       Clippy pass. Record seven Rust, six Cargo, three runtime and fifty-two
       test executable hashes with immutable validation inputs.
+- [x] Reproduce and charge the VM's retained uncaught source filename until the
+      next script clears it: the public long/short-name comparison changes from
+      zero to the exact 4,095-byte difference. Count copied pending/uncaught
+      locations, native decorator scopes and temporarily displaced Rust-owned
+      provenance alongside the document's existing scheduling payload.
+- [x] Reproduce three byte-cap bypasses in ErrorEvent snapshots, active catch
+      handlers and iterator cleanup. Scope charges follow active handler/source
+      ownership and release on every exit; admission refuses callback side
+      effects after exhaustion, while short-name controls and navigation pass.
+- [x] Reproduce five debugger source-accounting gaps: classic/module roots,
+      nested classic/module calls and one intermediate caller. Paused filename
+      copies are charged exactly once and released by resume. All fifty-two
+      diagnostic and thirteen scheduling-limit groups pass.
+- [x] Pass the native-payload follow-up: 2,193 cases across fifty-five disjoint
+      targets, zero failures and sixteen existing ignored. Seventeen BlueJS
+      targets pass 1,560 cases, all thirty-five bridge targets pass 295, launcher
+      passes 314, real pages nineteen and MCP console five. Formatting,
+      seven-library Clippy, bridge/launcher test Clippy and changed integration
+      Clippy pass. Fifteen Rust and six Cargo inputs remain fixed throughout
+      validation; record three runtime and fifty-five test executable hashes.
 
 #### Remaining implementation and verification
 
@@ -1603,6 +1624,45 @@ source/failed receipt is retained separately. Evidence is
 generated precision, emitted-profile and integrated lifecycle/resource
 acceptance, and full workspace/all-target/Test262 gates stay open; M1q remains
 at 3/10 final acceptance gates.
+
+The native diagnostic-payload follow-up (2026-10-16) reproduces a missing
+4,095-byte long/short filename difference after a public VM throw
+(`/private/tmp/blueice-diagnostic-retention-red-20261016.log`). Pending/uncaught
+VM fields, owned native frames and paused debugger handlers now join the
+document's existing scheduling ledger. Shared immutable maps retain their
+installed-code charge. Scoped scalar counter leases keep source copies charged
+while Rust owns them during callbacks, catch/finally execution, iterator/
+disposer cleanup, nested interpreters and exception reporting; each lease
+releases on every exit without rooting JavaScript or retaining source text.
+
+Counting persistent fields alone still lets three near-cap fixtures run an
+observable callback before refusing the work: ErrorEvent snapshots, active
+catch and iterator cleanup
+(`/private/tmp/blueice-diagnostic-retention-cap-red-20261016.log`; the partial
+source snapshot is retained separately). The complete scope charges refuse
+all three long-name cases before callback side effects. Short-name controls
+pass, the uncatchable failure stays latched, and navigation admits fresh work.
+Five paused debugger states separately reproduce zero bytes instead of one,
+two or three filename copies: classic/module roots, nested classic/module
+calls and an intermediate caller
+(`/private/tmp/blueice-diagnostic-retention-debugger-red-20261016.log`). Their
+charges now match exact ownership and disappear after resume. All fifty-two
+diagnostic and thirteen scheduling-limit groups pass.
+
+Final acceptance passes 2,193 cases across fifty-five disjoint targets, zero
+failures and sixteen existing ignored: 1,560 BlueJS across seventeen targets,
+295 bridge across all thirty-five, 314 launcher, nineteen real-page and five
+official MCP console cases. The selection covers module/Promise, disposal/GC
+and debugger boundaries plus existing direct/emitted source and unknown-origin
+controls through real Core/child/MCP. Formatting, seven-library Clippy,
+bridge/launcher test Clippy and changed integration-target Clippy pass with
+warnings denied. Fifteen Rust and six Cargo inputs remain fixed throughout
+validation; three runtime and fifty-five test executable hashes are recorded
+and unchanged through final bridge/host acceptance. Evidence is
+`target/diagnostic-retention-origins-source-20261016.json` and
+`target/diagnostic-retention-origins-validation-20261016.json`. Remaining source
+precision, emitted-profile and integrated lifecycle/resource acceptance, and
+full workspace/all-target/Test262 gates stay open; M1q remains at 3/10.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

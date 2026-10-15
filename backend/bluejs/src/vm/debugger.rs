@@ -27,6 +27,28 @@ pub struct VmDebuggerThrowSite {
 }
 
 impl Vm {
+    pub(super) fn debugger_diagnostic_payload_bytes(&self) -> usize {
+        [
+            self.debugger_continuation
+                .as_ref()
+                .map(|frame| frame.handlers.as_slice()),
+            self.debugger_module_continuation
+                .as_ref()
+                .map(|frame| frame.handlers.as_slice()),
+            self.debugger_nested_continuation
+                .as_ref()
+                .map(|frame| frame.handlers.as_slice()),
+            self.debugger_nested_intermediate_continuation
+                .as_ref()
+                .map(|frame| frame.handlers.as_slice()),
+        ]
+        .into_iter()
+        .flatten()
+        .fold(0usize, |bytes, handlers| {
+            bytes.saturating_add(Self::diagnostic_handler_bytes(handlers))
+        })
+    }
+
     /// Available only after an outer execution finished with an uncaught
     /// language exception. A new execution, catch, or success clears it.
     pub fn debugger_uncaught_throw_site(&self) -> Option<VmDebuggerThrowSite> {

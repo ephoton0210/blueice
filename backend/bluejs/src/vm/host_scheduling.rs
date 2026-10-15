@@ -500,6 +500,20 @@ impl Vm {
         };
         usage.payload_bytes = usage
             .payload_bytes
+            .saturating_add(Self::diagnostic_origin_bytes(
+                &self.pending_diagnostic_origin,
+            ))
+            .saturating_add(Self::diagnostic_origin_bytes(
+                &self.uncaught_diagnostic_origin,
+            ))
+            .saturating_add(self.active_diagnostic_bytes.get())
+            .saturating_add(self.debugger_diagnostic_payload_bytes())
+            .saturating_add(self.active_diagnostic_frame.as_ref().map_or(
+                0,
+                crate::diagnostics::ActiveDiagnosticFrame::owned_payload_bytes,
+            ));
+        usage.payload_bytes = usage
+            .payload_bytes
             .saturating_add(slots(&self.module_error_origins));
         for origin in &self.module_error_origins {
             usage.payload_bytes = usage

@@ -384,6 +384,16 @@ pub(crate) enum ActiveDiagnosticFrame {
 }
 
 impl ActiveDiagnosticFrame {
+    pub(crate) fn owned_payload_bytes(&self) -> usize {
+        match self {
+            // Shared immutable maps are charged with installed bytecode.
+            Self::Bytecode { .. } => 0,
+            Self::Native(source) => source
+                .as_ref()
+                .map_or(0, |source| source.filename.capacity()),
+        }
+    }
+
     pub(crate) fn new(code: &Bytecode, offset: usize) -> Option<Self> {
         let map = code.diagnostic_source_map.as_ref()?;
         if map.generation != code.debugger_program_generation {

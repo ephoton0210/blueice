@@ -1021,17 +1021,26 @@ impl Vm {
         self.async_frame_roots
             .extend(self.promise_job_references(&job));
         let ambient_frame = self.active_diagnostic_frame.take();
+        let mut ambient_frame_charge =
+            self.charge_diagnostic_payload(ambient_frame.as_ref().map_or(
+                0,
+                crate::diagnostics::ActiveDiagnosticFrame::owned_payload_bytes,
+            ));
         let ambient_origin = self.take_pending_throw_origin();
         let ambient_bytes = ambient_origin.payload_bytes();
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(ambient_bytes);
         let origin = job.rejection_origin().cloned().unwrap_or_default();
         let epoch = self.throw_epoch;
         let result = self.with_rejection_origin(Some(origin), |vm| vm.execute_promise_job(job));
-        let failure_origin = self.caught_rejection_origin(epoch);
+        let failure_origin = result
+            .as_ref()
+            .is_err_and(|error| error.is_catchable())
+            .then(|| self.caught_rejection_origin(epoch));
         self.active_diagnostic_frame = ambient_frame;
+        ambient_frame_charge.set_bytes(0);
         self.restore_pending_throw_origin(ambient_origin);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(ambient_bytes);
-        if result.as_ref().is_err_and(|error| error.is_catchable()) {
+        if let Some(failure_origin) = failure_origin {
             self.publish_rejection_origin(failure_origin);
         }
         self.stack.truncate(root_base);

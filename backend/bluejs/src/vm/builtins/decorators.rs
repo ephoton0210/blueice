@@ -307,13 +307,20 @@ impl Vm {
         let frame =
             crate::diagnostics::ActiveDiagnosticFrame::Native(self.decorator_source(list, index));
         let previous = self.active_diagnostic_frame.replace(frame);
+        let _previous_charge = self.charge_diagnostic_payload(previous.as_ref().map_or(
+            0,
+            crate::diagnostics::ActiveDiagnosticFrame::owned_payload_bytes,
+        ));
         let epoch = self.throw_epoch;
-        let result = callback(self);
+        let result = self
+            .synchronize_scheduling_usage()
+            .and_then(|()| callback(self));
         if matches!(&result, Err(error) if error.is_catchable()) && self.throw_epoch == epoch {
             self.pending_diagnostic_origin = self.current_diagnostic_source_location();
             self.pending_throw_site = None;
             self.throw_epoch = self.throw_epoch.wrapping_add(1);
         }
+        let result = self.synchronize_scheduling_usage().and(result);
         self.active_diagnostic_frame = previous;
         result
     }

@@ -1132,6 +1132,136 @@ fn a_suspended_finalizer_restores_its_throw_after_another_script_and_collection(
 }
 
 #[test]
+fn idle_vm_diagnostic_origins_are_charged_until_the_next_script() {
+    fn usage(filename: &str) -> (usize, usize) {
+        let mut vm = page();
+        assert!(vm
+            .execute_script(&mapped_throw_code("throw 'original';", filename))
+            .is_err());
+        let retained = vm.host_scheduling_usage().unwrap().payload_bytes;
+        vm.execute_script(&compile(&parse("0;").unwrap()).unwrap())
+            .unwrap();
+        let released = vm.host_scheduling_usage().unwrap().payload_bytes;
+        (retained, released)
+    }
+    let short = "memory:///a.js";
+    let long = format!("memory:///{}.js", "x".repeat(4096));
+    let (short_retained, short_released) = usage(short);
+    let (long_retained, long_released) = usage(&long);
+    assert_eq!(long_retained - short_retained, long.len() - short.len());
+    assert_eq!(long_released, short_released);
+}
+
+#[test]
+fn paused_debugger_handlers_keep_exact_native_origin_charges() {
+    fn usage(filename: &str, kind: usize) -> (usize, usize) {
+        let nested = matches!(kind, 1 | 2 | 4);
+        let module = kind >= 3;
+        let source = match kind {
+            0 | 3 => "try{throw 'original';}catch(error){0;}",
+            1 | 4 => "function leaf(){try{throw 'inner';}catch(error){0;}}try{throw 'outer';}catch(error){leaf();}",
+            2 => "function middle(){try{throw 'middle';}catch(error){leaf();}}function leaf(){try{throw 'inner';}catch(error){0;}}try{throw 'outer';}catch(error){middle();}",
+            _ => unreachable!(),
+        };
+        let code = if module {
+            mapped_module(source, filename)
+        } else {
+            mapped_throw_code(source, filename)
+        };
+        let unit = if kind == 2 { 2 } else { 1 };
+        let target = if nested {
+            code.child_code_units().nth(unit - 1).unwrap()
+        } else {
+            &code
+        };
+        let pc = target
+            .instructions()
+            .filter(|instruction| instruction.opcode == Opcode::PopHandler)
+            .last()
+            .unwrap()
+            .offset as u32;
+        let mut vm = page();
+        let modules = std::collections::HashMap::from([("main.js".into(), code.clone())]);
+        let serial = if nested {
+            let state = if module {
+                vm.execute_module_graph_until_nested_debugger_pause(
+                    "main.js",
+                    &modules,
+                    unit as u32,
+                    pc,
+                )
+                .unwrap()
+            } else {
+                vm.execute_script_until_nested_debugger_pause(&code, unit as u32, pc)
+                    .unwrap()
+            };
+            let blueice_bluejs::VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = state
+            else {
+                panic!("the child must pause");
+            };
+            Some(frame_serial)
+        } else {
+            if module {
+                let entry = code
+                    .root_statement_offsets()
+                    .iter()
+                    .flatten()
+                    .next()
+                    .copied()
+                    .unwrap();
+                let mut state = vm
+                    .execute_module_graph_until_debugger_pause("main.js", &modules, entry)
+                    .unwrap();
+                for _ in 0..200 {
+                    if state
+                        == (blueice_bluejs::VmDebuggerExecutionState::Paused {
+                            bytecode_offset: pc,
+                        })
+                    {
+                        break;
+                    }
+                    state = vm.step_debugger_module_root_instruction().unwrap();
+                }
+                assert_eq!(
+                    state,
+                    blueice_bluejs::VmDebuggerExecutionState::Paused {
+                        bytecode_offset: pc
+                    }
+                );
+            } else {
+                vm.execute_script_until_debugger_pause(&code, pc).unwrap();
+            }
+            None
+        };
+        let retained = vm.host_scheduling_usage().unwrap().payload_bytes;
+        if let Some(serial) = serial {
+            vm.resume_debugger_nested_execution(serial).unwrap();
+        }
+        if module {
+            vm.resume_debugger_module_execution().unwrap();
+        } else {
+            vm.resume_debugger_execution().unwrap();
+        }
+        let released = vm.host_scheduling_usage().unwrap().payload_bytes;
+        (retained, released)
+    }
+    let short = "memory:///a.js";
+    let long = format!("memory:///{}.js", "x".repeat(4096));
+    let mut failures = Vec::new();
+    for (kind, copies) in [(0, 1), (1, 2), (2, 3), (3, 1), (4, 2)] {
+        let (short_retained, short_released) = usage(short, kind);
+        let (long_retained, long_released) = usage(&long, kind);
+        let actual = long_retained - short_retained;
+        let expected = (long.len() - short.len()) * copies;
+        if actual != expected {
+            failures.push((kind, actual, expected));
+        }
+        assert_eq!(long_released, short_released, "kind={kind}");
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
 fn suspended_finalizer_source_copies_join_generator_and_await_byte_budgets() {
     fn retained_bytes(source: &str, filename: &str) -> (usize, usize) {
         let mut vm = page();

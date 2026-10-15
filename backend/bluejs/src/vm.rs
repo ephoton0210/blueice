@@ -26,6 +26,7 @@ mod builtins;
 mod classification;
 mod completion;
 mod debugger;
+mod diagnostic_accounting;
 mod errors;
 mod execution;
 mod for_in;
@@ -929,6 +930,8 @@ pub struct Vm {
     active_diagnostic_frame: Option<crate::diagnostics::ActiveDiagnosticFrame>,
     pending_diagnostic_origin: Option<crate::diagnostics::DiagnosticSourceLocation>,
     uncaught_diagnostic_origin: Option<crate::diagnostics::DiagnosticSourceLocation>,
+    /// Copied locations temporarily owned by active Rust execution frames.
+    active_diagnostic_bytes: Rc<std::cell::Cell<usize>>,
     /// Native Promise algorithms forward an origin; entering JavaScript masks it.
     promise_origin_override: Option<ThrowOrigin>,
     /// Weak metadata owned by native finally-thunk state, never a heap root.
@@ -1785,6 +1788,7 @@ impl Vm {
         // leave a caught throw masquerading as a later native failure. Move
         // the caller's provenance aside without copying its filename.
         let ambient_origin = self.take_pending_throw_origin();
+        let _ambient_origin_charge = self.charge_diagnostic_payload(ambient_origin.payload_bytes());
         let result = self
             .dispatch_call(callee, receiver, args, construct)
             .and_then(|value| {

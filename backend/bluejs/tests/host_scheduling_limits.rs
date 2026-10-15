@@ -60,6 +60,76 @@ fn all_page_job_producers_have_a_pending_work_bound_before_the_checkpoint() {
 }
 
 #[test]
+fn diagnostic_snapshots_and_active_cleanup_cannot_bypass_the_document_byte_cap() {
+    use blueice_bluejs::diagnostics::{
+        DiagnosticSourceLocation, DiagnosticSourceMap, DiagnosticSourceRange,
+    };
+    use blueice_bluejs::{HostValue, Opcode, MAX_HOST_SCHEDULING_BYTES};
+    use std::{cell::RefCell, rc::Rc};
+
+    fn prepared(padding: usize) -> (BlueJsPageRuntime, Rc<RefCell<Vec<f64>>>) {
+        let mut runtime = page();
+        let observations = Rc::new(RefCell::new(Vec::new()));
+        let seen = observations.clone();
+        runtime
+            .configure_realm_bindings(1, move |host| {
+                host.install_web_file_api()?;
+                host.install_window_aliases()?;
+                host.install_host_console()?;
+                host.install_host_error_reporting()?;
+                host.install_global_function("probe", 1, move |args: &[HostValue]| {
+                    if let Some(HostValue::Number(value)) = args.first() {
+                        seen.borrow_mut().push(*value);
+                    }
+                    Ok(HostValue::Undefined)
+                })
+            })
+            .unwrap();
+        execute(&mut runtime, &format!("onerror=function(){{probe(1);return true;}};function noop(){{}}var payload='x'.repeat({padding});for(var i=0;i<16;i++){{setTimeout(noop,1000000,payload);}}")).unwrap();
+        (runtime, observations)
+    }
+
+    let short = "memory:///a.js";
+    let long = format!("memory:///{}.js", "x".repeat(4096));
+    let (mut calibration, _) = prepared(1);
+    let baseline = calibration.host_scheduling_usage(1).unwrap().payload_bytes;
+    let room = 2 * long.len() + 512;
+    let padding = 1 + (MAX_HOST_SCHEDULING_BYTES - baseline - room) / 32;
+    let mut failures = Vec::new();
+    for (name, source, expected_probes) in [
+        ("error event snapshots", "throw 'saved';", &[1.0][..]),
+        ("active catch", "try{throw 'saved';}catch(error){setTimeout(noop,1000000,'y'.repeat(2000));probe(2);}", &[2.0][..]),
+        ("iterator cleanup", "var iterator={[Symbol.iterator](){return this;},next(){return {value:0,done:false};},return(){setTimeout(noop,1000000,'y'.repeat(2000));probe(2);return {};}};for(var value of iterator){throw 'saved';}", &[2.0,1.0][..]),
+    ] {
+        for filename in [short, long.as_str()] {
+            let (mut runtime, observations) = prepared(padding);
+            let remaining = MAX_HOST_SCHEDULING_BYTES-runtime.host_scheduling_usage(1).unwrap().payload_bytes;
+            assert!((room..room+32).contains(&remaining), "calibrated remaining bytes: {remaining}");
+            let identity = BlueJsSourceIdentity::new(filename, "original").unwrap();
+            let handle = runtime.install_program_with_diagnostics(1, &BlueJsPageOrigin::new("https://queue.test").unwrap(), identity, &BlueJsProgramV1::Script(parse(source).unwrap()), |registry, handle| {
+                let compiled=registry.get(handle).unwrap();
+                let instruction=compiled.bytecode().instructions().find(|instruction| instruction.opcode==Opcode::Throw).unwrap();
+                DiagnosticSourceMap::new(compiled.source().clone(), vec![DiagnosticSourceRange {code_unit_ordinal:0,start:instruction.offset as u32,end:(instruction.offset+instruction.opcode.width()) as u32,location:DiagnosticSourceLocation {filename:filename.into(),line:1,column:1}}]).map_err(BlueJsPageRuntimeError::DiagnosticSourceMap)
+            }).unwrap();
+            let result = runtime.execute_program(1, handle);
+            if filename == short {
+                assert!(!matches!(result, Err(BlueJsPageRuntimeError::Runtime(blueice_bluejs::RuntimeError::SchedulingLimit))), "{name}: {result:?}");
+                assert_eq!(observations.borrow().as_slice(), expected_probes, "{name}");
+            } else {
+                if !matches!(result, Err(BlueJsPageRuntimeError::Runtime(blueice_bluejs::RuntimeError::SchedulingLimit))) || !observations.borrow().is_empty() {
+                    failures.push((name, format!("{result:?}"), observations.borrow().clone()));
+                    continue;
+                }
+                assert!(runtime.run_microtask_checkpoint(1).is_err());
+                runtime.navigate(1, BlueJsPageOrigin::new("https://queue.test").unwrap()).unwrap();
+                assert_eq!(execute(&mut runtime, "42;").unwrap(), Value::Number(42.0));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
 fn timer_and_reaction_owned_strings_cannot_escape_the_page_scheduling_byte_budget() {
     for source in [
         "function noop() {} var payload = 'x'.repeat(400000); for (var i = 0; i < 16; i += 1) { setTimeout(noop, 1000, payload); }",

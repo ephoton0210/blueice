@@ -222,7 +222,11 @@ impl Vm {
         if self.host_error_reporting.is_none() || !host_timers::is_page_exception(error) {
             return Ok(());
         }
+        let mut origin_charge =
+            self.charge_diagnostic_payload(Self::diagnostic_origin_bytes(&origin));
+        self.synchronize_scheduling_usage()?;
         let value = self.error_value(error.clone())?;
+        origin_charge.set_bytes(0);
         self.report_host_error_value(value, origin)
     }
 
@@ -242,8 +246,14 @@ impl Vm {
         let uncaught_site = self.uncaught_throw_site;
         let pending_origin = self.pending_diagnostic_origin.clone();
         let uncaught_origin = self.uncaught_diagnostic_origin.clone();
+        let saved_bytes = Self::diagnostic_origin_bytes(&pending_origin)
+            .saturating_add(Self::diagnostic_origin_bytes(&uncaught_origin));
+        let mut origin_charge = self.charge_diagnostic_payload(
+            saved_bytes.saturating_add(Self::diagnostic_origin_bytes(&origin)),
+        );
         self.stack.push(value.clone());
         let result = (|| {
+            self.synchronize_scheduling_usage()?;
             let mut message = Output::new();
             self.console_preview(&value, &mut message)?;
             let mut unhandled = true;
@@ -273,6 +283,9 @@ impl Vm {
                 let mut output = Output::message("Uncaught ");
                 output.push(&message.text);
                 output.truncated |= message.truncated;
+                // The console record takes ownership of this copy. Saved VM
+                // state stays charged until the report finishes unwinding.
+                origin_charge.set_bytes(saved_bytes);
                 self.console_emit_with_source(ConsoleFunction::Error, "error", output, origin)?;
             }
             Ok(())
@@ -282,6 +295,7 @@ impl Vm {
         self.uncaught_throw_site = uncaught_site;
         self.pending_diagnostic_origin = pending_origin;
         self.uncaught_diagnostic_origin = uncaught_origin;
+        origin_charge.set_bytes(0);
         result
     }
 }

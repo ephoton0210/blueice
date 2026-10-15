@@ -1087,6 +1087,7 @@ impl Vm {
 
     pub(super) fn close_iterators_to(&mut self, iterators: &mut Vec<Value>, depth: usize) {
         let origin = self.take_pending_throw_origin();
+        let _origin_charge = self.charge_diagnostic_payload(origin.payload_bytes());
         let _ = self.close_iterators_to_first_error(iterators, depth);
         self.restore_pending_throw_origin(origin);
     }
@@ -1095,6 +1096,7 @@ impl Vm {
     /// its source position and throw epoch. Cleanup may also catch new errors.
     pub(super) fn iterator_close_preserving_throw(&mut self, record: &Value) {
         let origin = self.take_pending_throw_origin();
+        let _origin_charge = self.charge_diagnostic_payload(origin.payload_bytes());
         let _ = self.iterator_close(record);
         self.restore_pending_throw_origin(origin);
     }
@@ -1115,8 +1117,10 @@ impl Vm {
         let base = self.stack.len();
         self.stack.extend(active.iter().cloned());
         let origin = self.take_pending_throw_origin();
+        let _origin_charge = self.charge_diagnostic_payload(origin.payload_bytes());
         let mut first_error = None;
         let mut first_origin = None;
+        let mut first_origin_charge = self.charge_diagnostic_payload(0);
         for record in active.into_iter().rev() {
             let result = self.iterator_close(&record);
             if let Err(error) = result {
@@ -1125,7 +1129,9 @@ impl Vm {
                         self.stack.push(value.clone());
                     }
                     first_error = Some(error);
-                    first_origin = Some(self.take_pending_throw_origin());
+                    let origin = self.take_pending_throw_origin();
+                    first_origin_charge.set_bytes(origin.payload_bytes());
+                    first_origin = Some(origin);
                 }
             }
         }
@@ -1206,6 +1212,8 @@ impl Vm {
         iterators: &mut Vec<Value>,
         completion: Completion,
     ) -> Result<CompletionAction, RuntimeError> {
+        let mut handler_charge =
+            self.charge_diagnostic_payload(Self::diagnostic_handler_bytes(handlers));
         if let Completion::Halt(value) = completion {
             return Ok(CompletionAction::Return(value));
         }
@@ -1230,6 +1238,7 @@ impl Vm {
                         origin.epoch = self.throw_epoch.wrapping_add(1);
                         self.restore_pending_throw_origin(origin);
                     }
+                    handler_charge.set_bytes(0);
                     self.resolve_completion(code, handlers, iterators, completion)
                 }
                 None => Ok(CompletionAction::Continue),
@@ -1241,6 +1250,7 @@ impl Vm {
         self.pending_completions.push(completion.clone());
         let mut completion = completion;
         loop {
+            handler_charge.set_bytes(Self::diagnostic_handler_bytes(handlers));
             let Some(frame) = handlers.last() else {
                 return Ok(match completion {
                     Completion::Throw(error) => CompletionAction::Throw(error),
@@ -1312,6 +1322,11 @@ impl Vm {
                 self.unwind_scopes(code, scope_depth);
                 let original_origin = matches!(completion, Completion::Throw(_))
                     .then(|| self.take_pending_throw_origin());
+                let _original_origin_charge = self.charge_diagnostic_payload(
+                    original_origin
+                        .as_ref()
+                        .map_or(0, ThrowOrigin::payload_bytes),
+                );
                 if let Some(error) = self.close_iterators_to_first_error(iterators, iterator_depth)
                 {
                     // IteratorClose preserves a pre-existing throw, but a
