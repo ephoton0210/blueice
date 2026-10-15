@@ -239,14 +239,19 @@ fn lex_range(
             closing_brace = Some(index);
             break;
         }
-        if byte.is_ascii_whitespace() {
-            index += 1;
+        let character = source[index..].chars().next().expect("index is in source");
+        if byte.is_ascii_whitespace() || matches!(character, '\u{2028}' | '\u{2029}') {
+            index += character.len_utf8();
             continue;
         }
         if source[index..].starts_with("//") {
             index += 2;
-            while index < bytes.len() && bytes[index] != b'\n' && bytes[index] != b'\r' {
-                index += 1;
+            while index < bytes.len() {
+                let character = source[index..].chars().next().expect("index is in source");
+                if matches!(character, '\r' | '\n' | '\u{2028}' | '\u{2029}') {
+                    break;
+                }
+                index += character.len_utf8();
             }
             continue;
         }
@@ -269,12 +274,8 @@ fn lex_range(
         }
 
         let start = index;
-        if is_ident_start(source[index..].chars().next().expect("index is in source")) {
-            index += source[index..]
-                .chars()
-                .next()
-                .expect("index is in source")
-                .len_utf8();
+        if is_ident_start(character) {
+            index += character.len_utf8();
             while index < bytes.len()
                 && is_ident_continue(source[index..].chars().next().expect("index is in source"))
             {
@@ -521,6 +522,25 @@ fn longest_punctuation(source: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unicode_line_separators_are_trivia_and_end_line_comments() {
+        for newline in ["\r", "\r\n", "\u{2028}", "\u{2029}"] {
+            let source = format!("const before=1;// 😀 comment{newline}function after(): void {{{newline} throw 'source';{newline}}}after();");
+            let tokens = lex("memory:///newlines.ts", &source).unwrap();
+            assert!(
+                tokens.iter().any(|token| token.is("function")),
+                "{newline:?}: {tokens:?}"
+            );
+            assert_eq!(tokens.iter().filter(|token| token.is("after")).count(), 2);
+            assert!(!tokens
+                .iter()
+                .any(|token| matches!(token.text.as_str(), "\u{2028}" | "\u{2029}")));
+            for token in tokens.iter().filter(|token| token.kind != TokenKind::Eof) {
+                assert_eq!(&source[token.start..token.end], token.text);
+            }
+        }
+    }
 
     #[test]
     fn lexes_comments_and_multibyte_source_without_losing_spans() {

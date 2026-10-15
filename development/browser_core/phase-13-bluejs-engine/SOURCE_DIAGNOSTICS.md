@@ -185,6 +185,71 @@ hashes, test hashes and receipts are retained in
 `target/reference-origins-validation-20261015.json`. Remaining precision,
 source-producer, integrated and final conformance requirements stay open.
 
+## Emitted BlueTS, modules and debugger execution
+
+The emitted source producer binds the compiler artifact to the authorized
+original module ID, original content hash and exact `sourcesContent`. The
+generated JavaScript keeps its own compiled source identity; diagnostic
+filenames come from the verified original source. A source-map URL or an
+unbound debugger map cannot supply this association. Copied original identity
+strings participate in the existing 16 MiB retained-map budget.
+
+`parse_module_with_diagnostic_node_spans` captures executable export items,
+nested statements, expressions and patterns using the same bounded inventory
+as scripts. Declarative import/export headers add no debugger nodes. Diagnostic
+compilation preserves the ordinary AST inventory, instruction bytes and child
+code units. Static module request rewriting does not change these source slots.
+
+The owner converts parser byte boundaries to the emitter's zero-based CR/LF
+and UTF-16 coordinates, then performs one exact batch lookup. The decoder
+validates the complete mapping stream, bounds input bytes, segments and query
+count, and preserves query order and duplicates. Only an exact mapping segment
+supplies provenance; intervening positions and explicit unmapped segments stay
+unknown. The decoder and owner scanner both match the emitter's lone-CR and
+CRLF rules. Original coordinates convert through exact UTF-8 boundaries to
+one-based ECMAScript CR/LF/LS/PS and UTF-16 positions; an interior surrogate
+position cannot create a location.
+
+Normal and debugger-controlled emitted classic/module programs use this
+builder. JavaScript module installation and deferred classic execution use the
+original JavaScript builder. All paths install immutable diagnostic maps in
+the code admission transaction. A substituted original, malformed complete
+stream or combined code/map budget failure discards the candidate; graph
+attachment also discards previously admitted modules before publishing any
+debugger identities. Normal emitted execution releases the temporary compiler
+map after installation; debugger execution retains its bounded artifact for
+the existing generated-source controls.
+
+The expanded matrix also fixes BlueTS LS/PS trivia and line-comment termination:
+the lexer advances comments on complete UTF-8 characters and preserves token
+byte spans. A standalone regression first fails because a Unicode line break
+leaves the following function inside the comment. The final BlueTS selection
+passes 276 cases, including the six public source-map lookup groups; ten
+existing oracle cases require pinned TypeScript 5.9.3 and remain ignored.
+
+The current-source selection passes 1,450 BlueJS cases across twenty-one targets,
+including all forty-three diagnostic groups and eight module-shape fixtures.
+Bridge, launcher and real pages add 496 passes; five official MCP console cases
+bring the disjoint total to 2,227 across thirty target selections. One existing
+launcher ignore and the ten oracle ignores are retained. Six new real-page
+contexts verify original emitted classic/module and JavaScript-module positions.
+MCP verifies emitted classic/module/async throws at original `.ts` line/column
+2:2 alongside an explicitly unavailable dynamic `Function` origin.
+
+Formatting, focused seven-library/integration Clippy and launcher test Clippy
+pass. The real TLA fixture declares an explicit export under the existing
+checked TypeScript module policy; its bounded observer keeps exact coordinate
+assertions. All host tests replay after the fixture correction, with runtime
+and test hashes fixed before and after execution. Unchanged BlueJS/BlueTS
+inputs retain their passing receipts. Sixteen Rust inputs, two Cargo inputs,
+executable hashes and per-target receipts are recorded in
+`target/emitted-origins-source-20261015.json` and
+`target/emitted-origins-validation-20261015.json`.
+
+Direct BlueTS still requires its own precise original-source producer. Full
+producer/lifecycle/resource acceptance and nonstandard emission-profile
+precision remain open; M1q stays at 3/10 final gates.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger
@@ -398,8 +463,10 @@ hashes and per-target receipts are recorded in
 
 ## Required remaining work
 
-Precise expression/parameter/other generated-code provenance, direct and emitted
-BlueTS and page-module/debugger source producers still need their full acceptance.
+Remaining expression dispatch, decorator application and other generated-code
+provenance still need completion. Direct BlueTS requires a precise source
+producer; emitted BlueTS and page-module/debugger producers require their
+remaining precision, emission-profile and integrated lifecycle acceptance.
 The complete queued-origin matrix, including remaining delegate/protocol
 cases and integrated finalizer/disposal acceptance beyond the verified cases,
 remains part of M1q.

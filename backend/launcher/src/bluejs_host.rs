@@ -290,6 +290,12 @@ struct BoundEmittedMap {
     /// Parser-certified outer/inner ES5 spread-helper call tokens. The
     /// compiled safe points are still checked against the live generation.
     nested_spread_helper: Option<CertifiedNestedSpreadHelper>,
+    original: Option<EmittedOriginalSource>,
+}
+
+struct EmittedOriginalSource {
+    canonical_module_id: String,
+    source_hash: String,
 }
 
 struct CertifiedNestedSpreadHelper {
@@ -343,6 +349,7 @@ impl BoundEmittedMap {
             identifier_spans,
             non_evaluating_top_level_statements,
             nested_spread_helper: None,
+            original: None,
         };
         if bound
             .non_evaluating_top_level_statements
@@ -391,6 +398,28 @@ impl BoundEmittedMap {
         Ok(bound)
     }
 
+    fn with_original(mut self, source: &PageHostSource) -> Result<Self, &'static str> {
+        if self.map.sources.as_slice() != [source.canonical_module_id.as_str()]
+            || self.map.sources_content.as_slice() != [source.source.as_str()]
+            || !self.map.source_root.is_empty()
+            || source.source_hash != page_host::source_hash(&source.source)
+            || source_identity(source).is_err()
+        {
+            return Err("BlueTS emitted map does not match its authorized original source");
+        }
+        self.original = Some(EmittedOriginalSource {
+            canonical_module_id: source.canonical_module_id.clone(),
+            source_hash: source.source_hash.clone(),
+        });
+        if self
+            .retained_bytes()
+            .is_none_or(|bytes| bytes > Self::MAX_RETAINED_BYTES)
+        {
+            return Err("BlueTS emitted source map exceeds retention budget");
+        }
+        Ok(self)
+    }
+
     fn retained_bytes(&self) -> Option<usize> {
         let mut bytes = std::mem::size_of::<Self>()
             .checked_add(std::mem::size_of::<PageHostDebuggerProgram>())?
@@ -422,6 +451,11 @@ impl BoundEmittedMap {
         }
         if let Some(helper) = &self.nested_spread_helper {
             bytes = bytes.checked_add(helper.name.capacity())?;
+        }
+        if let Some(original) = &self.original {
+            bytes = bytes
+                .checked_add(original.canonical_module_id.capacity())?
+                .checked_add(original.source_hash.capacity())?;
         }
         for table in [
             &self.map.sources,

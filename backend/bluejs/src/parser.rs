@@ -54,7 +54,10 @@ mod statements;
 mod tests;
 
 pub use editions::SyntaxEdition;
-pub use module::{parse_module, parse_module_with_debug_spans, parse_module_with_edition};
+pub use module::{
+    parse_module, parse_module_with_debug_spans, parse_module_with_diagnostic_node_spans,
+    parse_module_with_edition,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
@@ -252,27 +255,7 @@ fn parse_encoded_script_diagnostics(
         .map_err(|error| parser.syntax_error(error.to_string()))?;
     parser.validate_edition()?;
     editions::validate_body(&program.body, edition)?;
-    let mut diagnostic_spans = Vec::new();
-    if let Some(records) = parser.diagnostic_statements.take() {
-        let mut statements = diagnostic_spans::finish(&program.body, records).into_iter();
-        let count = crate::program_debug::ast_ids::visit_program_statement_nodes(
-            &program.body,
-            &mut |_, ordinal| {
-                diagnostic_spans.resize(ordinal + 1, None);
-                diagnostic_spans[ordinal] = statements.next().unwrap_or(None);
-            },
-        );
-        diagnostic_spans.resize(count, None);
-        if capture_nodes {
-            diagnostic_spans::finish_nodes(
-                &program.body,
-                parser.diagnostic_expressions.take().unwrap(),
-                parser.diagnostic_patterns.take().unwrap(),
-                parser.diagnostic_assignments.take().unwrap(),
-                &mut diagnostic_spans,
-            );
-        }
-    }
+    let diagnostic_spans = parser.finish_diagnostic_spans(&program.body, capture_nodes);
     Ok((
         program,
         spans,

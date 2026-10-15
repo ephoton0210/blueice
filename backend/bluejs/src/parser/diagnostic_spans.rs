@@ -287,6 +287,54 @@ pub(super) fn finish_nodes(
 }
 
 impl Parser {
+    pub(super) fn capture_statement_span(
+        &mut self,
+        statement: &Stmt,
+        base: usize,
+        start: usize,
+    ) -> Result<(), ParseError> {
+        if let Some(captures) = self.diagnostic_statements.as_mut() {
+            let children = captures.split_off(base);
+            let record = CapturedStatement::new(
+                statement,
+                (start, self.positions[self.pos]),
+                children,
+                &mut self.diagnostic_capture_bytes,
+            )?;
+            captures.push(record);
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish_diagnostic_spans(
+        &mut self,
+        body: &[Stmt],
+        capture_nodes: bool,
+    ) -> Vec<Span> {
+        let mut diagnostic_spans = Vec::new();
+        if let Some(records) = self.diagnostic_statements.take() {
+            let mut statements = finish(body, records).into_iter();
+            let count = crate::program_debug::ast_ids::visit_program_statement_nodes(
+                body,
+                &mut |_, ordinal| {
+                    diagnostic_spans.resize(ordinal + 1, None);
+                    diagnostic_spans[ordinal] = statements.next().unwrap_or(None);
+                },
+            );
+            diagnostic_spans.resize(count, None);
+            if capture_nodes {
+                finish_nodes(
+                    body,
+                    self.diagnostic_expressions.take().unwrap(),
+                    self.diagnostic_patterns.take().unwrap(),
+                    self.diagnostic_assignments.take().unwrap(),
+                    &mut diagnostic_spans,
+                );
+            }
+        }
+        diagnostic_spans
+    }
+
     pub(super) fn diagnostic_expression<F>(&mut self, parse: F) -> Result<Expr, ParseError>
     where
         F: FnOnce(&mut Self) -> Result<Expr, ParseError>,

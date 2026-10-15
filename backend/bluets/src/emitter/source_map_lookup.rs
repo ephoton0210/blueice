@@ -61,6 +61,69 @@ impl SourceMap {
         max_segments: usize,
         max_input_bytes: usize,
     ) -> Result<Option<SourceMapOriginalPosition>, SourceMapLookupError> {
+        let mut selected = None;
+        self.visit_original_positions(
+            javascript,
+            &[(generated_line, generated_column_utf16)],
+            max_segments,
+            max_input_bytes,
+            |line, column, original| {
+                if line == generated_line && column <= generated_column_utf16 {
+                    selected = original;
+                }
+            },
+        )?;
+        Ok(selected)
+    }
+
+    /// Resolves only positions that exactly equal a generated mapping segment.
+    /// Results preserve query order and duplicates. Positions between segments
+    /// and explicitly unmapped segments remain unavailable. The complete map
+    /// is validated once before any result is returned. `max_segments` also
+    /// bounds the query count and temporary result storage; input-byte limits
+    /// have the same meaning as in `original_position_at`.
+    pub fn original_positions_at_exact(
+        &self,
+        javascript: &str,
+        queries: &[(usize, usize)],
+        max_segments: usize,
+        max_input_bytes: usize,
+    ) -> Result<Vec<Option<SourceMapOriginalPosition>>, SourceMapLookupError> {
+        if queries.len() > max_segments {
+            return Err(SourceMapLookupError::SegmentLimit);
+        }
+        let mut selected = None;
+        self.visit_original_positions(
+            javascript,
+            queries,
+            max_segments,
+            max_input_bytes,
+            |line, column, original| {
+                let selected = selected.get_or_insert_with(|| {
+                    queries
+                        .iter()
+                        .map(|query| (*query, None))
+                        .collect::<std::collections::BTreeMap<_, _>>()
+                });
+                if let Some(slot) = selected.get_mut(&(line, column)) {
+                    *slot = original;
+                }
+            },
+        )?;
+        Ok(selected.map_or_else(
+            || vec![None; queries.len()],
+            |selected| queries.iter().map(|query| selected[query]).collect(),
+        ))
+    }
+
+    fn visit_original_positions(
+        &self,
+        javascript: &str,
+        queries: &[(usize, usize)],
+        max_segments: usize,
+        max_input_bytes: usize,
+        mut visit: impl FnMut(usize, usize, Option<SourceMapOriginalPosition>),
+    ) -> Result<(), SourceMapLookupError> {
         let mut input_bytes = javascript.len();
         for table_len in [
             self.sources.len(),
@@ -92,14 +155,12 @@ impl SourceMap {
                 return Err(SourceMapLookupError::InputLimit);
             }
         }
-        let generated_widths = javascript
-            .split('\n')
-            .map(|line| line.encode_utf16().count())
-            .collect::<Vec<_>>();
-        if generated_widths
-            .get(generated_line)
-            .is_none_or(|width| generated_column_utf16 > *width)
-        {
+        let generated_widths = emitted_line_widths(javascript);
+        if queries.iter().any(|(line, column)| {
+            generated_widths
+                .get(*line)
+                .is_none_or(|width| *column > *width)
+        }) {
             return Err(SourceMapLookupError::QueryOutOfBounds);
         }
         if self.sources.len() != self.sources_content.len() {
@@ -108,18 +169,12 @@ impl SourceMap {
         let original_widths = self
             .sources_content
             .iter()
-            .map(|source| {
-                source
-                    .split('\n')
-                    .map(|line| line.encode_utf16().count())
-                    .collect::<Vec<_>>()
-            })
+            .map(|source| emitted_line_widths(source))
             .collect::<Vec<_>>();
         let mut source_index = 0i64;
         let mut source_line = 0i64;
         let mut source_column = 0i64;
         let mut name_index = 0i64;
-        let mut selected = None;
         let mut segment_count = 0usize;
         for (line, encoded_line) in self.mappings.split(';').enumerate() {
             let Some(&width) = generated_widths.get(line) else {
@@ -195,13 +250,25 @@ impl SourceMap {
                         name_index: name,
                     })
                 };
-                if line == generated_line && column as usize <= generated_column_utf16 {
-                    selected = original;
-                }
+                visit(line, column as usize, original);
             }
         }
-        Ok(selected)
+        Ok(())
     }
+}
+
+/// Match the emitter's CR/LF coordinates, including CRLF's single break at LF.
+fn emitted_line_widths(text: &str) -> Vec<usize> {
+    let mut widths = vec![0];
+    let mut characters = text.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character == '\n' || (character == '\r' && characters.peek() != Some(&'\n')) {
+            widths.push(0);
+        } else {
+            *widths.last_mut().unwrap() += character.len_utf16();
+        }
+    }
+    widths
 }
 
 fn decode_segment(encoded: &str) -> Result<Vec<i64>, SourceMapLookupError> {

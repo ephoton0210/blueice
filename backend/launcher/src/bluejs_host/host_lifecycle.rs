@@ -733,7 +733,6 @@ impl BlueJsChildHost {
                 document.tab_id,
                 document.document_generation,
                 &origin,
-                document.emitted_bluets_profile,
                 prepared,
             );
         }
@@ -798,28 +797,16 @@ impl BlueJsChildHost {
                 }
                 PreparedScript::BlueTsEmittedClassic {
                     ordinal,
-                    source,
                     program,
-                    source_map,
-                    top_level_spans,
-                    identifier_spans,
+                    bound,
                 } => {
-                    let outcome = match BoundEmittedMap::new(
-                        source.clone(),
-                        source_map,
-                        document.emitted_bluets_profile,
-                        top_level_spans,
-                        identifier_spans,
-                    ) {
-                        Ok(_) => execute_unmapped_classic(
-                            &mut self.runtime,
-                            document.tab_id,
-                            &origin,
-                            source,
-                            program,
-                        ),
-                        Err(category) => rejected(category),
-                    };
+                    let outcome = execute_emitted_classic(
+                        &mut self.runtime,
+                        document.tab_id,
+                        &origin,
+                        &bound,
+                        program,
+                    );
                     (
                         ordinal,
                         PageHostScriptLanguage::BlueTsEmitted,
@@ -834,17 +821,14 @@ impl BlueJsChildHost {
                     programs,
                     emitted_maps,
                 } => {
-                    let outcome = if emitted_maps.keys().eq(programs.keys()) {
-                        execute_module_graph(
-                            &mut self.runtime,
-                            document.tab_id,
-                            &origin,
-                            graph,
-                            programs,
-                        )
-                    } else {
-                        rejected("BlueTS emitted module graph has incomplete maps")
-                    };
+                    let outcome = execute_emitted_module_graph(
+                        &mut self.runtime,
+                        document.tab_id,
+                        &origin,
+                        graph,
+                        programs,
+                        emitted_maps,
+                    );
                     (
                         ordinal,
                         PageHostScriptLanguage::BlueTsEmitted,
@@ -1066,7 +1050,6 @@ impl BlueJsChildHost {
         tab_id: u64,
         document_generation: u64,
         origin: &BlueJsPageOrigin,
-        emitted_profile: PageHostBlueTsEmissionProfile,
         prepared: Vec<PreparedScript>,
     ) -> PageHostReply {
         let mut reports = Vec::new();
@@ -1092,7 +1075,7 @@ impl BlueJsChildHost {
                     source,
                     program,
                 } => {
-                    let source = match source_identity(&source) {
+                    let identity = match source_identity(&source) {
                         Ok(source) => source,
                         Err(category) => {
                             reports.push(script_report(
@@ -1106,10 +1089,17 @@ impl BlueJsChildHost {
                             continue;
                         }
                     };
-                    let handle = match self
-                        .runtime
-                        .install_program(tab_id, origin, source, &program)
-                    {
+                    let handle = match self.runtime.install_program_with_diagnostics(
+                        tab_id,
+                        origin,
+                        identity,
+                        &program,
+                        |registry, handle| {
+                            super::source_diagnostics::javascript_diagnostic_source_map(
+                                registry, handle, &source,
+                            )
+                        },
+                    ) {
                         Ok(handle) => handle,
                         Err(error) => {
                             reports.push(script_report(
@@ -1151,32 +1141,9 @@ impl BlueJsChildHost {
                 }
                 PreparedScript::BlueTsEmittedClassic {
                     ordinal,
-                    source,
                     program,
-                    source_map,
-                    top_level_spans,
-                    identifier_spans,
+                    bound,
                 } => {
-                    let bound = match BoundEmittedMap::new(
-                        source.clone(),
-                        source_map,
-                        emitted_profile,
-                        top_level_spans,
-                        identifier_spans,
-                    ) {
-                        Ok(bound) => bound,
-                        Err(category) => {
-                            reports.push(script_report(
-                                tab_id,
-                                document_generation,
-                                ordinal,
-                                PageHostScriptLanguage::BlueTsEmitted,
-                                PageHostScriptKind::Classic,
-                                rejected(category),
-                            ));
-                            continue;
-                        }
-                    };
                     let Some(document) = self.documents.get(&tab_id) else {
                         return self.fail_debugger_execution_document(tab_id);
                     };
@@ -1199,7 +1166,7 @@ impl BlueJsChildHost {
                         ));
                         continue;
                     }
-                    let source_identity = match source_identity(&source) {
+                    let source_identity = match source_identity(&bound.generated) {
                         Ok(identity) => identity,
                         Err(category) => {
                             reports.push(script_report(
@@ -1213,11 +1180,16 @@ impl BlueJsChildHost {
                             continue;
                         }
                     };
-                    let handle = match self.runtime.install_program(
+                    let handle = match self.runtime.install_program_with_diagnostics(
                         tab_id,
                         origin,
                         source_identity,
                         &program,
+                        |registry, handle| {
+                            super::source_diagnostics::emitted_diagnostic_source_map(
+                                registry, handle, &bound,
+                            )
+                        },
                     ) {
                         Ok(handle) => handle,
                         Err(error) => {
@@ -1239,7 +1211,7 @@ impl BlueJsChildHost {
                     let Some(document) = self.documents.get_mut(&tab_id) else {
                         return self.fail_debugger_execution_document(tab_id);
                     };
-                    document.emitted_maps.insert(program, bound);
+                    document.emitted_maps.insert(program, *bound);
                     document
                         .debugger_execution_states
                         .insert(program, ChildDebuggerExecutionStatus::Pending);

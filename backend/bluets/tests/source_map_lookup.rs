@@ -10,11 +10,17 @@ use blueice_bluets::{
 };
 
 fn position(text: &str, offset: usize) -> (usize, usize) {
-    let prefix = &text[..offset];
-    (
-        prefix.bytes().filter(|byte| *byte == b'\n').count(),
-        prefix.rsplit('\n').next().unwrap().encode_utf16().count(),
-    )
+    let (mut line, mut column) = (0, 0);
+    let mut characters = text[..offset].chars().peekable();
+    while let Some(character) = characters.next() {
+        if character == '\n' || (character == '\r' && characters.peek() != Some(&'\n')) {
+            line += 1;
+            column = 0;
+        } else {
+            column += character.len_utf16();
+        }
+    }
+    (line, column)
 }
 
 fn lookup(
@@ -57,7 +63,26 @@ fn public_lookup_retains_relocated_decorator_and_hides_generated_helper_frames()
             name_index: None,
         })
     );
+    let exact = map
+        .original_positions_at_exact(
+            javascript,
+            &[position(javascript, relocated)],
+            100_000,
+            16_000_000,
+        )
+        .unwrap();
+    assert_eq!(exact, vec![lookup(map, javascript, relocated)]);
     for generated in ["var __bluetsEsDecorate", "let _instanceExtraInitializers"] {
+        assert_eq!(
+            map.original_positions_at_exact(
+                javascript,
+                &[position(javascript, javascript.find(generated).unwrap())],
+                100_000,
+                16_000_000
+            )
+            .unwrap(),
+            vec![None]
+        );
         assert_eq!(
             lookup(map, javascript, javascript.find(generated).unwrap()),
             None,
@@ -296,4 +321,108 @@ fn public_lookup_keeps_non_decorator_helpers_and_system_scaffolding_unmapped() {
             name_index: None,
         })
     );
+}
+
+#[test]
+fn exact_batch_lookup_keeps_order_duplicates_and_unmapped_gaps() {
+    let map = blueice_bluets::SourceMap {
+        file: "sample.js".into(),
+        sources: vec!["memory:///sample.ts".into()],
+        sources_content: vec!["one two;".into()],
+        inline_sources: true,
+        source_root: String::new(),
+        names: Vec::new(),
+        mappings: "AAAA,GAAI".into(),
+    };
+    let javascript = "ab cd;";
+    let zero = Some(SourceMapOriginalPosition {
+        source_index: 0,
+        line: 0,
+        column_utf16: 0,
+        name_index: None,
+    });
+    let four = Some(SourceMapOriginalPosition {
+        source_index: 0,
+        line: 0,
+        column_utf16: 4,
+        name_index: None,
+    });
+    let queries = [(0, 3), (0, 1), (0, 0), (0, 4), (0, 3)];
+    assert_eq!(
+        map.original_positions_at_exact(javascript, &queries, 100, 10_000)
+            .unwrap(),
+        vec![four, None, zero, None, four]
+    );
+    assert_eq!(
+        map.original_position_at(javascript, 0, 1, 100, 10_000)
+            .unwrap(),
+        zero
+    );
+    assert_eq!(
+        map.original_positions_at_exact(javascript, &queries, 4, 10_000),
+        Err(SourceMapLookupError::SegmentLimit)
+    );
+    assert_eq!(
+        map.original_positions_at_exact(javascript, &queries, 100, 1),
+        Err(SourceMapLookupError::InputLimit)
+    );
+    assert_eq!(
+        map.original_positions_at_exact(javascript, &[(0, 7)], 100, 10_000),
+        Err(SourceMapLookupError::QueryOutOfBounds)
+    );
+    let mut malformed = map.clone();
+    malformed.mappings.push_str(",!");
+    assert_eq!(
+        malformed.original_positions_at_exact(javascript, &[(0, 0)], 100, 10_000),
+        Err(SourceMapLookupError::MalformedMap)
+    );
+    assert_eq!(
+        malformed.original_positions_at_exact(javascript, &[], 100, 10_000),
+        Err(SourceMapLookupError::MalformedMap)
+    );
+    let mut unmapped = map;
+    unmapped.mappings = "AAAA,G".into();
+    assert_eq!(
+        unmapped
+            .original_positions_at_exact(javascript, &[(0, 3), (0, 0)], 100, 10_000)
+            .unwrap(),
+        vec![None, zero]
+    );
+}
+
+#[test]
+fn exact_lookup_accepts_the_emitters_original_cr_and_unicode_separator_coordinates() {
+    let module = "memory:///newline.ts";
+    for newline in ["\r", "\r\n", "\u{2028}", "\u{2029}"] {
+        let source = format!("const face: string='😀';{newline}throw 'original';");
+        let result = compile(
+            module,
+            &MapLoader::from([ModuleSource::new(module, &source)]),
+            CompilerOptions {
+                source_map: true,
+                inline_sources: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!result.has_errors(), "{:?}", result.diagnostics);
+        let output = result.output.unwrap();
+        let artifact = &output.artifacts[module];
+        let generated = position(
+            &artifact.javascript,
+            artifact.javascript.find("throw").unwrap(),
+        );
+        let expected = position(&source, source.find("throw").unwrap());
+        let positions = artifact
+            .source_map
+            .as_ref()
+            .unwrap()
+            .original_positions_at_exact(&artifact.javascript, &[generated], 100_000, 16_000_000)
+            .unwrap();
+        let position = positions[0].expect("exact original throw token");
+        assert_eq!(
+            (position.line, position.column_utf16),
+            expected,
+            "{source:?}"
+        );
+    }
 }

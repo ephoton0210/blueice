@@ -50,14 +50,58 @@ pub fn parse_module_with_edition(
         .map(|(module, _, _)| module)
 }
 
+/// Parses a Module with the same source-only diagnostic inventory as a Script.
+/// Import/export headers do not create debugger nodes. Executable export items
+/// retain their own parsed statement/expression/pattern provenance.
+pub fn parse_module_with_diagnostic_node_spans(
+    source: &str,
+) -> Result<(Module, Vec<Option<ParsedDiagnosticSpan>>), ParseError> {
+    let escaped = crate::source_encoding::escape(source);
+    let (module, _, _, spans) =
+        parse_encoded_module_diagnostics(&escaped, SyntaxEdition::EsNext, false, true)?;
+    let bytes = crate::source_encoding::escaped_character_source_bytes(source);
+    Ok((
+        module,
+        spans
+            .into_iter()
+            .map(|span| {
+                span.map(|(start, end)| ParsedDiagnosticSpan {
+                    start_byte: bytes[start],
+                    end_byte: bytes[end],
+                })
+            })
+            .collect(),
+    ))
+}
+
 type EncodedModuleWithDebugSpans = (Module, Vec<(usize, usize)>, Vec<(usize, usize, String)>);
+type EncodedModuleWithDiagnostics = (
+    Module,
+    Vec<(usize, usize)>,
+    Vec<(usize, usize, String)>,
+    Vec<Option<(usize, usize)>>,
+);
 
 fn parse_encoded_module(
     source: &str,
     edition: SyntaxEdition,
     capture_spans: bool,
 ) -> Result<EncodedModuleWithDebugSpans, ParseError> {
+    parse_encoded_module_diagnostics(source, edition, capture_spans, false)
+        .map(|(module, spans, identifiers, _)| (module, spans, identifiers))
+}
+
+fn parse_encoded_module_diagnostics(
+    source: &str,
+    edition: SyntaxEdition,
+    capture_spans: bool,
+    capture_nodes: bool,
+) -> Result<EncodedModuleWithDiagnostics, ParseError> {
     let mut parser = Parser::new_module(source);
+    parser.diagnostic_statements = capture_nodes.then(Vec::new);
+    parser.diagnostic_expressions = capture_nodes.then(Vec::new);
+    parser.diagnostic_patterns = capture_nodes.then(Vec::new);
+    parser.diagnostic_assignments = capture_nodes.then(Vec::new);
     parser.capture_debug_identifiers = capture_spans;
     parser.select_edition(edition)?;
     parser.module_await = true;
@@ -70,6 +114,7 @@ fn parse_encoded_module(
     let mut spans = Vec::new();
     while !parser.at_eof() {
         let start = parser.token_start();
+        let diagnostic_base = parser.diagnostic_statements.as_ref().map_or(0, Vec::len);
         let body_len = body.len();
         if parser.check_identifier("import")
             && !parser.check_punct_at(1, Punct::LParen)
@@ -106,6 +151,9 @@ fn parse_encoded_module(
                 if capture_spans {
                     spans.push((start, parser.positions[parser.pos]));
                 }
+                if capture_nodes {
+                    parser.capture_statement_span(body.last().unwrap(), diagnostic_base, start)?;
+                }
                 continue;
             }
             if let Some((request, module_type)) =
@@ -119,6 +167,9 @@ fn parse_encoded_module(
             }
         } else {
             body.push(parser.parse_statement()?);
+        }
+        if capture_nodes && body.len() > body_len {
+            parser.capture_statement_span(body.last().unwrap(), diagnostic_base, start)?;
         }
         if capture_spans && body.len() > body_len {
             debug_assert_eq!(body.len(), body_len + 1);
@@ -164,6 +215,7 @@ fn parse_encoded_module(
     }) {
         edition.require(SyntaxEdition::EsNext, "import phases")?;
     }
+    let diagnostic_spans = parser.finish_diagnostic_spans(&body, capture_nodes);
     Ok((
         Module {
             body,
@@ -173,6 +225,7 @@ fn parse_encoded_module(
         },
         spans,
         parser.debug_identifier_spans,
+        diagnostic_spans,
     ))
 }
 

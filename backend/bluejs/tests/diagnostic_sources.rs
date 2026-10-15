@@ -1780,6 +1780,86 @@ fn reference_dispatch_preserves_explicitly_unknown_getter_and_proxy_failures() {
 }
 
 #[test]
+fn module_diagnostic_inventory_preserves_exports_and_nested_original_spans() {
+    for source in [
+        "export default function(){\n throw 'default';\n}",
+        "import {value} from './dep.js';export const fail=()=>{\n throw value;\n};",
+        "export function first(){throw 1;}export function second(){\n throw 1;\n}",
+        "var value;export function fail(){[\n [value]\n]=[null];}",
+        "export default class {method(){\n throw 'class';\n}}",
+        "function dec(value){return value;}@dec export class C {method(){\n throw 'decorated';\n}}",
+        "export default (()=>{\n throw 'arrow';\n})();",
+        "export const face='😀';\r\nawait 0;function fail(){\r\n throw 'await';\r\n}fail();",
+    ] {
+        let (module, spans) =
+            blueice_bluejs::parse_module_with_diagnostic_node_spans(source).unwrap();
+        assert_eq!(module, blueice_bluejs::parse_module(source).unwrap());
+        let mut registry = BlueJsProgramRegistry::default();
+        let program = BlueJsProgramV1::Module(module);
+        let ordinary = registry.install(identity("ordinary"), &program).unwrap();
+        let handle = registry
+            .install_for_diagnostics(identity("original"), &program)
+            .unwrap();
+        let code = registry.get(handle).unwrap().bytecode();
+        assert_eq!(code.diagnostic_source_node_count(), spans.len());
+        let plain = registry.get(ordinary).unwrap();
+        let shape = |compiled: &blueice_bluejs::BlueJsCompiledProgram| {
+            compiled
+                .ast_nodes()
+                .iter()
+                .map(|node| {
+                    (
+                        node.id().ordinal(),
+                        node.kind(),
+                        node.is_top_level_statement(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shape(plain), shape(registry.get(handle).unwrap()));
+        fn same_code(left: &blueice_bluejs::Bytecode, right: &blueice_bluejs::Bytecode) {
+            assert_eq!(left.bytes(), right.bytes());
+            let left = left.child_code_units().collect::<Vec<_>>();
+            let right = right.child_code_units().collect::<Vec<_>>();
+            assert_eq!(left.len(), right.len());
+            for (left, right) in left.into_iter().zip(right) {
+                same_code(left, right);
+            }
+        }
+        same_code(plain.bytecode(), code);
+        fn throws(
+            code: &blueice_bluejs::Bytecode,
+            spans: &[Option<blueice_bluejs::ParsedDiagnosticSpan>],
+            found: &mut Vec<usize>,
+        ) {
+            for instruction in code.instructions().filter(|i| i.opcode == Opcode::Throw) {
+                let owner = code
+                    .diagnostic_instruction_owners()
+                    .iter()
+                    .rev()
+                    .find(|owner| owner.bytecode_offset <= instruction.offset as u32)
+                    .unwrap();
+                found.push(
+                    spans[owner.ast_node_ordinal.unwrap() as usize]
+                        .unwrap()
+                        .start_byte,
+                );
+            }
+            for child in code.child_code_units() {
+                throws(child, spans, found);
+            }
+        }
+        let mut found = Vec::new();
+        throws(code, &spans, &mut found);
+        let expected = source
+            .match_indices("throw")
+            .map(|(offset, _)| offset)
+            .collect::<Vec<_>>();
+        assert_eq!(found, expected, "{source}");
+    }
+}
+
+#[test]
 fn diagnostic_patterns_extend_only_the_source_inventory_and_preserve_ordinary_code() {
     let source = "function fail(\n  {value}=missing\n){return value;}";
     let (program, spans) = blueice_bluejs::parse_with_diagnostic_node_spans(source).unwrap();

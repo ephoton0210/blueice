@@ -21,6 +21,7 @@ enum PageMode {
     Errors,
     Rejections,
     References,
+    Emitted,
 }
 impl Pages {
     fn start() -> Self {
@@ -65,6 +66,8 @@ impl Pages {
                         Promise.reject('silenced'); Promise.reject('early').catch(function(){});
                         document.getElementById('pending').addEventListener('click',function(){pending.catch(function(){console.log('caught');});console.log('native-peer');});
                         </script><script type='application/x-blueice-typescript'>function rejectTyped(value: string): void {throw value;} new Blob(['typed-rejection']).text().then(rejectTyped);</script>"
+                        } else if matches!(mode, PageMode::Emitted) {
+                            "<p>original emitted sources</p><script type='application/x-blueice-typescript'>function fail(): void {\n throw 'emitted-classic';\n}fail();</script><script type='application/x-blueice-typescript-module'>export function fail(): void {\n throw 'emitted-module';\n}fail();</script><script>Function(\"throw 'dynamic-unknown'\")();</script><script type='application/x-blueice-typescript'>async function later(): Promise<void> {await 0;\n throw 'emitted-async';\n}later();</script>"
                         } else if matches!(mode, PageMode::References) {
                             "<p>reference positions</p><script>
                         queueMicrotask(function(){(
@@ -107,6 +110,88 @@ impl Pages {
             worker: Some(worker),
         }
     }
+}
+
+#[tokio::test]
+async fn real_mcp_preserves_original_emitted_bluets_sources_and_unknown_dynamic_code() {
+    let pages = Pages::start_with_mode(PageMode::Emitted);
+    let mut launcher = LauncherManagedCore::spawn_with_source_profile(None, true, true);
+    let server = BlueIceMcpServer::connect_with_core_and_compiler_sockets(
+        &launcher.rendezvous_socket,
+        &launcher.compiler_socket,
+    )
+    .unwrap();
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let server_task = tokio::spawn(async move {
+        server
+            .serve(server_transport)
+            .await
+            .unwrap()
+            .waiting()
+            .await
+            .unwrap();
+    });
+    let client = CompilerMcpClient.serve(client_transport).await.unwrap();
+    let navigation = client
+        .call_tool(
+            CallToolRequestParams::new("navigate").with_arguments(
+                serde_json::json!({"url":pages.url})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(navigation.is_error, Some(false));
+    let mut records = Vec::new();
+    for _ in 0..100 {
+        let result = client
+            .call_tool(CallToolRequestParams::new("get_console_messages"))
+            .await
+            .unwrap();
+        let batch: blueice_ipc::console::ConsoleMessages =
+            serde_json::from_value(page_json(&result)).unwrap();
+        assert_eq!(batch.dropped_records, 0);
+        records.extend(batch.records);
+        if records.len() >= 4 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(records.len(), 4, "{records:?}");
+    for (message, ordinal) in [
+        ("emitted-classic", Some(0)),
+        ("emitted-module", Some(1)),
+        ("dynamic-unknown", None),
+        ("emitted-async", Some(3)),
+    ] {
+        let record = records
+            .iter()
+            .find(|record| record.message.ends_with(message))
+            .unwrap_or_else(|| panic!("missing {message}: {records:?}"));
+        assert_eq!(record.method, "error");
+        assert_eq!(record.level, "error");
+        if let Some(ordinal) = ordinal {
+            let source = record
+                .source
+                .as_ref()
+                .expect("compiler-owned original source");
+            assert!(
+                source
+                    .filename
+                    .starts_with("blueice://page/tab-1/document-")
+                    && source.filename.ends_with(&format!("/inline-{ordinal}.ts")),
+                "{record:?}"
+            );
+            assert_eq!((source.line, source.column), (2, 2), "{record:?}");
+        } else {
+            assert!(record.source.is_none(), "{record:?}");
+        }
+    }
+    client.cancel().await.unwrap();
+    server_task.await.unwrap();
+    launcher.shutdown();
 }
 
 #[tokio::test]

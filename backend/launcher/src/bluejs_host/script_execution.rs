@@ -28,11 +28,8 @@ pub(super) enum PreparedScript {
     },
     BlueTsEmittedClassic {
         ordinal: u32,
-        source: PageHostSource,
         program: BlueJsProgramV1,
-        source_map: SourceMap,
-        top_level_spans: Vec<ParsedStatementSpan>,
-        identifier_spans: Vec<blueice_bluejs::ParsedIdentifierSpan>,
+        bound: Box<BoundEmittedMap>,
     },
     BlueTsEmittedModule {
         ordinal: u32,
@@ -105,18 +102,11 @@ pub(super) fn prepare_script(
                 emitted_profile,
                 emitted_classic_page_console_ambient,
             )
-            .map(
-                |(source, program, source_map, top_level_spans, identifier_spans)| {
-                    PreparedScript::BlueTsEmittedClassic {
-                        ordinal,
-                        source,
-                        program,
-                        source_map,
-                        top_level_spans,
-                        identifier_spans,
-                    }
-                },
-            )
+            .map(|(program, bound)| PreparedScript::BlueTsEmittedClassic {
+                ordinal,
+                program,
+                bound,
+            })
         }
         (PageHostScriptLanguage::BlueTsEmitted, PageHostScriptKind::Module) => {
             prepare_bluets_emitted_module_graph(
@@ -151,13 +141,7 @@ pub(super) fn prepare_script(
     })
 }
 
-type PreparedEmittedClassic = (
-    PageHostSource,
-    BlueJsProgramV1,
-    SourceMap,
-    Vec<ParsedStatementSpan>,
-    Vec<blueice_bluejs::ParsedIdentifierSpan>,
-);
+type PreparedEmittedClassic = (BlueJsProgramV1, Box<BoundEmittedMap>);
 
 type PreparedEmittedModule = (
     PageHostModuleGraph,
@@ -278,13 +262,21 @@ pub(super) fn prepare_bluets_emitted_classic(
     program
         .compile()
         .map_err(|error| PreparedScriptFailure::plain(compile_category(error)))?;
-    Ok((
+    let original = graph
+        .modules
+        .iter()
+        .find(|source| source.canonical_module_id == graph.entry)
+        .expect("validated entry exists");
+    let bound = BoundEmittedMap::new(
         generated,
-        program,
         source_map,
+        emitted_profile,
         top_level_spans,
         identifier_spans,
-    ))
+    )
+    .and_then(|bound| bound.with_original(original))
+    .map_err(PreparedScriptFailure::plain)?;
+    Ok((program, Box::new(bound)))
 }
 
 /// Compiles every module in the caller-authorized graph to JavaScript and
@@ -321,7 +313,7 @@ pub(super) fn prepare_bluets_emitted_module_graph(
     let mut total_source_bytes = 0_usize;
     let mut total_map_bytes = 0_usize;
     for source in graph.modules {
-        let module_id = source.canonical_module_id;
+        let module_id = source.canonical_module_id.clone();
         let artifact = output
             .artifacts
             .get(&module_id)
@@ -370,6 +362,7 @@ pub(super) fn prepare_bluets_emitted_module_graph(
             identifier_spans,
             non_evaluating,
         )
+        .and_then(|bound| bound.with_original(&source))
         .map_err(PreparedScriptFailure::plain)?;
         total_map_bytes = total_map_bytes
             .checked_add(bound.retained_bytes().ok_or_else(|| {
@@ -440,7 +433,19 @@ pub(super) fn attach_emitted_module_graph(
                 return Err(category);
             }
         };
-        match runtime.install_program(tab_id, origin, identity, program) {
+        match runtime.install_program_with_diagnostics(
+            tab_id,
+            origin,
+            identity,
+            program,
+            |registry, handle| {
+                super::source_diagnostics::emitted_diagnostic_source_map(
+                    registry,
+                    handle,
+                    &emitted_maps[module_id],
+                )
+            },
+        ) {
             Ok(handle) => {
                 installed.push(handle);
                 modules.insert(module_id.clone(), handle);
@@ -794,18 +799,26 @@ pub(super) fn execute_classic(
     }
 }
 
-pub(super) fn execute_unmapped_classic(
+pub(super) fn execute_emitted_classic(
     runtime: &mut BlueJsPageRuntime,
     tab_id: u64,
     origin: &BlueJsPageOrigin,
-    source: PageHostSource,
+    bound: &BoundEmittedMap,
     program: BlueJsProgramV1,
 ) -> PageHostScriptOutcome {
-    let source = match source_identity(&source) {
+    let source = match source_identity(&bound.generated) {
         Ok(source) => source,
         Err(category) => return rejected(category),
     };
-    let handle = match runtime.install_program(tab_id, origin, source, &program) {
+    let handle = match runtime.install_program_with_diagnostics(
+        tab_id,
+        origin,
+        source,
+        &program,
+        |registry, handle| {
+            super::source_diagnostics::emitted_diagnostic_source_map(registry, handle, bound)
+        },
+    ) {
         Ok(handle) => handle,
         Err(error) => return rejected(page_runtime_category(error)),
     };
@@ -838,7 +851,17 @@ pub(super) fn execute_module_graph(
                 return rejected(category);
             }
         };
-        match runtime.install_program(tab_id, origin, identity, program) {
+        match runtime.install_program_with_diagnostics(
+            tab_id,
+            origin,
+            identity,
+            program,
+            |registry, handle| {
+                super::source_diagnostics::javascript_diagnostic_source_map(
+                    registry, handle, source,
+                )
+            },
+        ) {
             Ok(handle) => installed.push(handle),
             Err(error) => {
                 discard_programs(runtime, tab_id, &installed);
@@ -852,6 +875,31 @@ pub(super) fn execute_module_graph(
         .and_then(|index| installed.get(index).copied())
         .expect("prepared graph has an installed entry module");
     match runtime.execute_module_graph(tab_id, entry, installed) {
+        Ok(_) => PageHostScriptOutcome::Executed,
+        Err(error) => rejected(page_runtime_category(error)),
+    }
+}
+
+pub(super) fn execute_emitted_module_graph(
+    runtime: &mut BlueJsPageRuntime,
+    tab_id: u64,
+    origin: &BlueJsPageOrigin,
+    graph: PageHostModuleGraph,
+    programs: BTreeMap<String, BlueJsProgramV1>,
+    emitted_maps: BTreeMap<String, BoundEmittedMap>,
+) -> PageHostScriptOutcome {
+    let attachment = match attach_emitted_module_graph(
+        runtime,
+        tab_id,
+        origin,
+        &graph,
+        &programs,
+        &emitted_maps,
+    ) {
+        Ok(attachment) => attachment,
+        Err(category) => return rejected(category),
+    };
+    match runtime.execute_module_graph(tab_id, attachment.entry, attachment.modules.into_values()) {
         Ok(_) => PageHostScriptOutcome::Executed,
         Err(error) => rejected(page_runtime_category(error)),
     }

@@ -138,23 +138,30 @@ fn reported_page_errors_reach_window_onerror_through_the_real_child() {
 }
 
 fn observed_error_source_location(script: &str) -> String {
+    observed_script_error_source_location(script, "", false)
+}
+
+fn observed_script_error_source_location(script: &str, script_type: &str, emitted: bool) -> String {
     let (fixture, url, gatekeeper) = fixture(format!(
         "<p id=counter>waiting</p><script>
         window.onerror=function(message,filename,line,column,error){{
             document.getElementById('counter').textContent='location:'+filename+':'+line+':'+column;
             return true;
         }};
-        </script><script>{script}</script>"
+        </script><script type='{script_type}'>{script}</script>"
     ));
-    let core = SpawnedCore::spawn_with_options(
-        240.0,
-        120.0,
-        &fixture.root.join("frames"),
-        CoreLaunchOptions::default()
-            .with_gatekeeper_socket(gatekeeper)
-            .supervise_out_of_process_bluejs_with_page_dom(),
-    )
-    .unwrap();
+    let options = CoreLaunchOptions::default()
+        .with_gatekeeper_socket(gatekeeper)
+        .supervise_out_of_process_bluejs_with_page_dom();
+    let options = if emitted {
+        options
+            .supervise_out_of_process_bluejs_with_emitted_blue_ts_classic()
+            .supervise_out_of_process_bluejs_with_emitted_blue_ts_module()
+    } else {
+        options
+    };
+    let core = SpawnedCore::spawn_with_options(240.0, 120.0, &fixture.root.join("frames"), options)
+        .unwrap();
     let mut stream = core.stream.try_clone().unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(20)))
@@ -163,18 +170,78 @@ fn observed_error_source_location(script: &str) -> String {
         request(&mut stream, 1, ClientMessage::Navigate { url }),
         ServerMessage::Navigated { .. }
     ));
-    let ServerMessage::Representation(snapshot) =
-        request(&mut stream, 2, ClientMessage::GetRepresentation)
-    else {
-        panic!("expected page representation");
-    };
-    snapshot
-        .nodes
-        .iter()
-        .filter_map(|node| node.name.as_deref())
-        .find(|name| name.starts_with("location:"))
-        .expect("the global error handler must publish the observed coordinates")
-        .to_owned()
+    for request_id in 2..102 {
+        let ServerMessage::Representation(snapshot) =
+            request(&mut stream, request_id, ClientMessage::GetRepresentation)
+        else {
+            panic!("expected page representation");
+        };
+        if let Some(location) = snapshot
+            .nodes
+            .iter()
+            .filter_map(|node| node.name.as_deref())
+            .find(|name| name.starts_with("location:"))
+        {
+            return location.to_owned();
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    panic!("the global error handler must publish coordinates: type={script_type:?}, source={script:?}");
+}
+
+#[test]
+fn real_pages_report_original_emitted_bluets_and_javascript_module_positions() {
+    for (script_type, source, coordinates, extension, emitted) in [
+        (
+            "application/x-blueice-typescript",
+            "function fail(): void {\n throw 'typed';\n}fail();",
+            "2:2",
+            "ts",
+            true,
+        ),
+        (
+            "application/x-blueice-typescript",
+            "class C {get value(): number {\n throw 'typed';\n}}new C().value;",
+            "2:2",
+            "ts",
+            true,
+        ),
+        (
+            "application/x-blueice-typescript",
+            "const face: string='😀';\r\nfunction fail(): void {\r\n throw 'typed';\r\n}fail();",
+            "3:2",
+            "ts",
+            true,
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            "export function fail(): void {\n throw 'typed-module';\n}fail();",
+            "2:2",
+            "ts",
+            true,
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            "await 0;\nexport function fail(): void {\n throw 'awaited-module';\n}fail();",
+            "3:2",
+            "ts",
+            true,
+        ),
+        (
+            "module",
+            "export function fail(){\n throw 'js-module';\n}fail();",
+            "2:2",
+            "js",
+            false,
+        ),
+    ] {
+        let location = observed_script_error_source_location(source, script_type, emitted);
+        assert!(
+            location.starts_with("location:blueice://page/tab-1/document-")
+                && location.ends_with(&format!("/inline-1.{extension}:{coordinates}")),
+            "{script_type}: {location}"
+        );
+    }
 }
 
 #[test]

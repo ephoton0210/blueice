@@ -489,7 +489,7 @@ the generated typings in the same change.
 
 ### M1q — Original diagnostic source positions (in progress)
 
-**Progress updated 2026-10-15: reference/assignment-pattern follow-up verified;
+**Progress updated 2026-10-15: emitted/module/debugger source follow-up verified;
 3/10 final
 acceptance gates complete.** Completed implementation steps and test evidence
 are recorded separately below so partial progress is visible without closing
@@ -601,13 +601,36 @@ the full source-position requirement.
       and all four official MCP console cases. Queued callee/nested-pattern
       locations are 3:27 and 6:27. Runtime/test hashes remain fixed throughout
       acceptance; formatting and focused library/integration Clippy pass.
+- [x] Capture executable module/export diagnostic slots with the same bounded
+      parser inventory as scripts. Eight public fixtures retain ordinary AST
+      ordinals, instruction bytes and child code units; all forty-three
+      diagnostic groups pass.
+- [x] Bind emitted artifacts to authorized original IDs, hashes and exact
+      source content. Batch exact mapping lookups validate the complete stream
+      once and keep generated gaps unknown; preserve CR/CRLF and UTF-16 origins
+      while publishing ECMAScript CR/LF/LS/PS coordinates.
+- [x] Install original locations through normal and debugger-controlled
+      emitted classic/module execution, JavaScript modules and deferred
+      JavaScript classics. Verify dependency throws before/after `await`,
+      unknown dynamic-code controls and atomic graph rollback for five source
+      substitutions/malformed-map controls plus a code/map byte-budget refusal.
+- [x] Fix BlueTS LS/PS lexical trivia and line-comment termination after a
+      failing regression. Verify original byte spans through multibyte comments
+      and CR, CRLF, LS and PS source cases.
+- [x] Pass 2,227 cases across thirty disjoint target selections: 1,450 BlueJS,
+      276 BlueTS, 167 bridge, 311 launcher, eighteen real-page and five official
+      MCP console cases. Eleven existing cases remain ignored, including ten
+      requiring the pinned TypeScript oracle. Six new real-page source contexts
+      and MCP's emitted classic/module/async plus dynamic-unknown controls pass.
+      Runtime/test hashes remain fixed during acceptance; formatting, seven
+      library, changed-target and launcher test Clippy pass.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
       compiler-generated provenance.
-- [ ] Attach certified original locations for direct/emitted BlueTS, modules
-      and debugger-driven execution.
+- [ ] Complete direct BlueTS original locations and remaining emitted-profile,
+      module and debugger precision/lifecycle acceptance.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
       disposal acceptance beyond the verified module and disposal cases.
 - [ ] Complete retained-origin accounting and the integrated
@@ -999,6 +1022,58 @@ Eleven Rust input hashes, old/new runtime hashes, test hashes and receipts are i
 `target/reference-origins-validation-20261015.json`. Remaining source producers,
 precision/queued/integrated acceptance and final workspace/Test262 gates stay
 open; M1q remains at 3/10 final acceptance gates.
+
+Build-artifact cleanup (2026-10-15, 21:58 Asia/Taipei) removes 8,971 compiled
+files and Cargo cache entries, reducing the main `target` footprint by
+6.06 GiB. The active MCP executable, test reports, coverage profiles and
+worktree contents are retained. All fourteen modified source files and
+forty-one top-level JSON reports keep their original SHA-256 hashes; all
+130,680 retained files keep their recorded identities, sizes and modification
+times. The inventory and verification receipt are
+`/private/tmp/blueice-compiled-cleanup-request-20261015-215740-plan.json` and
+`/private/tmp/blueice-compiled-cleanup-request-20261015-215740-result.json`.
+No compilation or tests ran during cleanup. The emitted-source follow-up below
+records the subsequent validation; M1q stays at 3/10 final gates.
+
+The emitted/module/debugger follow-up first reproduces an uncaught emitted
+function without a source record
+(`/private/tmp/blueice-emitted-origins-red.log`). Compiler artifacts now retain
+an authorized original ID/hash certificate; script/module diagnostic spans
+select exact generated mapping segments in one bounded, fully validated pass.
+Unmapped helper/token gaps stay unavailable. Original byte boundaries convert
+the emitter's CR/LF/UTF-16 coordinates to ECMAScript CR/LF/LS/PS coordinates.
+Both normal execution and debugger scheduling install the map atomically with
+code, and graph failures discard earlier admitted modules and byte charges.
+Eight module fixtures preserve ordinary AST/code shape; five source/map
+substitution controls and a low-byte-budget graph refusal pass.
+
+The expanded source matrix exposes LS/PS being tokenized as punctuation and
+line comments swallowing subsequent declarations. The standalone lexer
+regression fails before the fix
+(`/private/tmp/blueice-emitted-origins-unicode-lexer-red.log`); character-boundary
+trivia/comment scanning fixes both cases, including multibyte comments. CR,
+CRLF, LS, PS and astral-column debugger cases pass. The real TLA fixture
+explicitly exports its function, as required by the existing checked TypeScript
+module policy; asynchronous observation is bounded and retains exact location
+assertions. Its complete eighteen-case page replay passes.
+
+The final disjoint selection passes 1,450 BlueJS cases across twenty-one targets
+and 276 BlueTS cases across five targets. Bridge/launcher/real pages add 496
+passes; all five official MCP console cases pass. The total is 2,227 passes
+across thirty target selections, zero final failures and eleven existing
+ignored (ten need pinned TypeScript 5.9.3). MCP verifies original `.ts` line 2,
+column 2 for emitted classic, module and asynchronous throws while dynamic
+`Function` code remains unavailable. Formatting, seven-library Clippy,
+changed integration-target Clippy and launcher test Clippy pass. An equivalent
+Clippy boolean correction affects only launcher; the final test-only fixture
+correction is followed by complete host replay and browser Clippy. Unchanged
+BlueJS/BlueTS input hashes justify retaining their earlier passing receipts.
+Sixteen Rust inputs, two Cargo inputs, runtime/test hashes and superseded/final
+receipts are retained in `target/emitted-origins-source-20261015.json` and
+`target/emitted-origins-validation-20261015.json`. Runtime/test hashes remain
+identical before and after the final host replay. Direct BlueTS, remaining
+precision/emission-profile and integrated lifecycle/resource acceptance, full
+workspace/all-target and pinned Test262 gates remain open; M1q stays at 3/10.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

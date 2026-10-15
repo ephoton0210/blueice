@@ -4,6 +4,223 @@
 
 use super::*;
 
+fn debugger_source_messages(script: PageHostScript) -> blueice_ipc::console::ConsoleMessages {
+    let mut host = BlueJsChildHost::default();
+    let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+        document: debugger_document(1, vec![script]),
+    });
+    assert!(
+        matches!(reply, PageHostReply::Synchronized { ref reports, .. } if reports.is_empty()),
+        "{reply:?}"
+    );
+    host.runtime
+        .configure_realm_bindings(7, |bindings| {
+            bindings.install_web_file_api()?;
+            bindings.install_window_aliases()?;
+            bindings.install_host_console()?;
+            bindings.install_host_error_reporting()?;
+            bindings.install_host_rejection_tracking()
+        })
+        .unwrap();
+    let reply = host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+        tab_id: 7,
+        document_generation: 1,
+    });
+    assert!(
+        matches!(reply, PageHostReply::DebuggerExecutionAdvanced { .. }),
+        "{reply:?}"
+    );
+    host.runtime.run_task_turn(7, 0, 64).unwrap();
+    let PageHostReply::ConsoleMessages { messages, .. } =
+        host.handle_request(PageHostRequest::DrainConsole {
+            tab_id: 7,
+            document_generation: 1,
+        })
+    else {
+        panic!("console drain must succeed")
+    };
+    messages
+}
+
+#[test]
+fn emitted_bluets_diagnostics_use_original_source_after_debugger_execution() {
+    for (source, line, column) in [
+        ("function fail(): void {\n throw 'emitted-source';\n}\nfail();", 2, 2),
+        ("class C {get value(): number {\n throw 'emitted-source';\n}}new C().value;", 2, 2),
+        ("const face: string='😀';\r\nfunction fail(): void {\r\n throw 'emitted-source';\r\n}fail();", 3, 2),
+        ("async function fail(): Promise<void> {await 0;\n throw 'emitted-source';\n}fail();", 2, 2),
+        ("const face: string='😀'; function fail(): void {throw 'emitted-source';}fail();", 1, 49),
+    ] {
+        let messages = debugger_source_messages(blue_ts_emitted_classic(0, source));
+        assert_eq!(messages.records.len(), 1, "{source}: {messages:?}");
+        let record = serde_json::to_value(&messages.records[0]).unwrap();
+        assert_eq!(record["source"], serde_json::json!({"filename":"blueice://page/inline-0.ts","line":line,"column":column}), "{source}: {record}");
+    }
+    for newline in ["\r", "\r\n", "\u{2028}", "\u{2029}"] {
+        let source=format!("const face: string='😀';{newline}function fail(): void {{{newline} throw 'emitted-source';{newline}}}fail();");
+        let messages = debugger_source_messages(blue_ts_emitted_classic(0, &source));
+        assert_eq!(messages.records.len(), 1, "{source}: {messages:?}");
+        let location = messages.records[0]
+            .source
+            .as_ref()
+            .expect("original newline coordinates");
+        assert_eq!(
+            (location.line, location.column),
+            (3, 2),
+            "{source}: {messages:?}"
+        );
+    }
+}
+
+#[test]
+fn javascript_and_emitted_module_dependencies_keep_original_debugger_diagnostics() {
+    for language in [
+        PageHostScriptLanguage::JavaScript,
+        PageHostScriptLanguage::BlueTsEmitted,
+    ] {
+        for awaited in [false, true] {
+            let entry = "blueice://page/entry.ts";
+            let dependency = "blueice://page/dependency.ts";
+            let source = if awaited {
+                "export const face='😀';\r\nawait 0;\r\nfunction fail(){\r\n throw 'dependency-source';\r\n}fail();"
+            } else {
+                "export const face='😀';\r\nfunction fail(){\r\n throw 'dependency-source';\r\n}fail();"
+            };
+            let mut source_graph = graph(
+                entry,
+                vec![
+                    PageHostSource::new(entry, "import './dependency.ts';"),
+                    PageHostSource::new(dependency, source),
+                ],
+            );
+            source_graph.resolutions.push(PageHostStaticResolution {
+                from_module: entry.into(),
+                specifier: "./dependency.ts".into(),
+                canonical_target: dependency.into(),
+            });
+            let messages = debugger_source_messages(PageHostScript {
+                ordinal: 0,
+                language,
+                kind: PageHostScriptKind::Module,
+                graph: source_graph,
+            });
+            assert_eq!(
+                messages.records.len(),
+                1,
+                "{language:?}, await={awaited}: {messages:?}"
+            );
+            for record in messages.records {
+                let location = record
+                    .source
+                    .expect("dependency and parent failures preserve the throwing module");
+                assert_eq!(
+                    (location.filename.as_str(), location.line, location.column),
+                    (dependency, if awaited { 4 } else { 3 }, 2)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn javascript_debugger_classic_keeps_its_own_source_and_dynamic_origins_unknown() {
+    for (source, expected) in [
+        ("function fail(){\n throw 'source';\n}fail();", Some((2, 2))),
+        ("Function(\"throw 'dynamic'\")();", None),
+        ("eval(\"throw 'dynamic'\");", None),
+    ] {
+        let messages = debugger_source_messages(classic(0, source));
+        assert_eq!(messages.records.len(), 1, "{source}: {messages:?}");
+        let location = messages.records[0].source.as_ref();
+        assert_eq!(
+            location.map(|s| (s.line, s.column)),
+            expected,
+            "{source}: {messages:?}"
+        );
+        if let Some(location) = location {
+            assert_eq!(location.filename, "blueice://page/inline-0.js");
+        }
+    }
+}
+
+#[test]
+fn emitted_diagnostic_admission_rolls_back_substituted_originals_and_byte_limits() {
+    for corruption in [
+        "source-name",
+        "source-text",
+        "certificate",
+        "unbound",
+        "stream",
+        "budget",
+    ] {
+        let entry = "blueice://page/z.ts";
+        let dependency = "blueice://page/a.ts";
+        let mut original = graph(
+            entry,
+            vec![
+                PageHostSource::new(
+                    entry,
+                    "import {value} from './a.ts';export const answer: number=value+1;",
+                ),
+                PageHostSource::new(dependency, "export const value: number=41;"),
+            ],
+        );
+        original.resolutions.push(PageHostStaticResolution {
+            from_module: entry.into(),
+            specifier: "./a.ts".into(),
+            canonical_target: dependency.into(),
+        });
+        let (generated, programs, mut maps) =
+            prepare_bluets_emitted_module_graph(original, PageDomProfile::Snapshot, false).unwrap();
+        let mut config = BlueJsPageRuntimeConfig::default();
+        let bound = maps.get_mut(entry).unwrap();
+        match corruption {
+            "source-name" => bound.map.sources[0].push('x'),
+            "source-text" => bound.map.sources_content[0].push(' '),
+            "certificate" => bound.original.as_mut().unwrap().source_hash.push('x'),
+            "unbound" => bound.original = None,
+            "stream" => bound.map.mappings.push_str(";!"),
+            "budget" => {
+                config.max_bytecode_bytes_per_realm = programs
+                    .values()
+                    .map(|program| program.compile().unwrap().bytes().len())
+                    .sum()
+            }
+            _ => unreachable!(),
+        }
+        let mut host = BlueJsChildHost::with_runtime_config(config).unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![])
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        let origin = host.documents[&7].origin.clone();
+        let before = host.runtime.realm_stats(7).unwrap().bytecode_bytes;
+        assert!(
+            attach_emitted_module_graph(
+                &mut host.runtime,
+                7,
+                &origin,
+                &generated,
+                &programs,
+                &maps
+            )
+            .is_err(),
+            "{corruption}"
+        );
+        assert!(
+            host.runtime.program_handles(7).unwrap().is_empty(),
+            "{corruption}"
+        );
+        assert_eq!(
+            host.runtime.realm_stats(7).unwrap().bytecode_bytes,
+            before,
+            "{corruption}"
+        );
+    }
+}
+
 #[test]
 fn emitted_map_admission_rejects_an_invalid_complete_stream() {
     let generated = PageHostSource::new("blueice://page/generated.js", "const value = 1;");

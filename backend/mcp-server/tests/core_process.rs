@@ -209,6 +209,14 @@ impl LauncherManagedCore {
     }
 
     fn spawn_with_profile(catalog: Option<CompilerCatalogBootstrap>, console: bool) -> Self {
+        Self::spawn_with_source_profile(catalog, console, false)
+    }
+
+    fn spawn_with_source_profile(
+        catalog: Option<CompilerCatalogBootstrap>,
+        console: bool,
+        emitted: bool,
+    ) -> Self {
         let rendezvous_socket = unique_socket_path("launcher-rendezvous");
         let control_socket = unique_socket_path("launcher-control");
         let compiler_socket = unique_socket_path("launcher-compiler");
@@ -232,6 +240,13 @@ impl LauncherManagedCore {
         };
         let options = if console {
             options.supervise_out_of_process_bluejs_with_page_dom()
+        } else {
+            options
+        };
+        let options = if emitted {
+            options
+                .supervise_out_of_process_bluejs_with_emitted_blue_ts_classic()
+                .supervise_out_of_process_bluejs_with_emitted_blue_ts_module()
         } else {
             options
         };
