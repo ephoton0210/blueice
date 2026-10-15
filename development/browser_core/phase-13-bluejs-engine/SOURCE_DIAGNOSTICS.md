@@ -273,11 +273,11 @@ parameter-property prologues stay unmapped while original body statements
 keep their own positions. A separate fix adds the missing top-level lowering
 record for a default-export identifier snapshot; its ordinary code is unchanged.
 
-This is an initial producer, not complete direct-source precision. Deeper
-expression/pattern nodes, namespace/enum/JSX lowering and assignment-field class
-paths still need their own evidence; their gaps stay unavailable. Full
-producer/lifecycle/resource and nonstandard emission-profile acceptance remain
-open; M1q stays at 3/10 final gates.
+The initial producer left deeper expression/pattern nodes, namespace/enum/JSX
+lowering and assignment-field class paths without their own evidence. The
+expression follow-up below addresses part of that gap. Full producer/lifecycle/
+resource and nonstandard emission-profile acceptance remain open; M1q stays
+at 3/10 final gates.
 
 The initial direct selection passes 1,205 BlueJS library cases, forty-four
 diagnostic groups and all 173 bridge cases. Launcher, real pages and official
@@ -297,6 +297,54 @@ unavailable-source assertion with exact coordinates; all five MCP console
 cases and MCP Clippy replay successfully. Other runtime/test hashes remain
 fixed. Successful BlueJS harnesses from the coupled invocation retain their
 own receipts; its failed direct-call fixture is excluded from the final count.
+
+### Direct expression token evidence
+
+An optional collector now accompanies the existing direct-expression parser.
+It records each constructed expression's original token bounds and ordered
+executable children. Grammar tiers returning an unchanged expression share
+their existing record; intermediate binary/member nodes retain separate
+records before the next operator consumes them. Constructor callees are
+recorded before arguments, so `new C(C)` keeps the two identifiers distinct.
+Object shorthand values and computed keys have their own records, while
+noncomputed property names remain data rather than identifier evaluations.
+
+The source producer replays the checked original token slice through that
+same parser, including type-assertion/type-argument erasure. It binds the
+result only when the entire expression equals the final lowered AST. Token
+order and child paths determine the join; repeated structural matches never
+select a different occurrence. This replay does not parse emitted JavaScript
+or replace executable code. The existing artifact digest and source identity
+still bind installation to its immutable final AST.
+
+Capture allocations are conservatively charged before growth against an
+8 MiB limit. Inconsistent evidence or capture refusal stops artifact creation.
+Template, class-expression and JSX atoms certify only their own root until
+their independent lowering paths produce child evidence. The public template
+failure regression confirms that an unmapped descendant does not borrow its
+parent's location. Namespace/enum rewrites that do not exactly match a replay
+retain only their earlier independently proven bindings.
+
+Twenty-two public failures verify operands, arguments, member chains, computed
+keys, arrays, object values, conditional/logical branches, assignment/update
+references, default parameters and erased assertions. Eighteen parser shapes
+verify duplicate child ordering and unchanged AST/instruction/constant output;
+a wide expression refuses oversized metadata. All 177 bridge cases pass,
+including dependency expressions before/after await. Remaining patterns,
+opaque descendants, namespace/enum/JSX/assignment-field lowering and the full
+integrated acceptance gates remain open.
+
+Four additional real-page contexts and three additional deferred debugger
+contexts preserve operand, argument and computed-key coordinates. Official
+MCP also verifies three queued direct errors at original 2:2, 3:2 and 4:2,
+alongside the existing JavaScript reference/assignment failures. The final
+disjoint selection passes 1,762 cases across six targets with zero failures
+and one existing ignored. Formatting, seven-library, changed integration and
+bridge/launcher test Clippy pass. Eleven Rust inputs, three Cargo inputs and
+runtime/test hashes remain fixed; receipts are retained in
+`target/direct-expression-source-20261016.json` and
+`target/direct-expression-validation-20261016.json`. M1q stays at 3/10 final
+acceptance gates.
 
 ## Saved completions and cleanup
 

@@ -82,6 +82,7 @@ impl DirectDiagnosticOrigins {
             define_fields,
             nodes: Vec::with_capacity(count),
             erased: intervals,
+            error: None,
         };
         for (statement, origin) in body.iter().zip(provenance) {
             if origin.source.module != module.id {
@@ -90,6 +91,9 @@ impl DirectDiagnosticOrigins {
             if let Some(original) = declarations.get(&(origin.source.start, origin.source.end)) {
                 evidence.declaration(original, statement);
             }
+        }
+        if let Some(error) = evidence.error {
+            return Err(error);
         }
         evidence
             .nodes
@@ -207,6 +211,7 @@ struct Evidence<'a> {
     define_fields: bool,
     nodes: Vec<(u8, usize, usize)>,
     erased: Vec<(usize, usize)>,
+    error: Option<BridgeError>,
 }
 
 impl Evidence<'_> {
@@ -367,6 +372,28 @@ impl Evidence<'_> {
     }
 
     fn expression(&mut self, expression: &bluejs::Expr, tokens: &[Token]) {
+        if self.error.is_some() {
+            return;
+        }
+        match ExpressionLowerer::for_module(self.module, tokens).parse_with_origins() {
+            Ok((replayed, origins)) if &replayed == expression => {
+                let result = origins.bind(expression, &mut |node, offset| {
+                    self.bind(
+                        DiagnosticSourceNode::Expression(node),
+                        &SourceSpan::new(&self.module.id, offset, offset),
+                    );
+                });
+                self.error = result.err();
+                return;
+            }
+            Err(error @ BridgeError::ProvenanceAttachment(_)) => {
+                self.error = Some(error);
+                return;
+            }
+            // Enum/namespace rewriting and generated expression helpers need
+            // separate evidence. Never join a merely similar expression.
+            _ => {}
+        }
         let Some(first) = tokens.iter().find(|token| {
             let index = self
                 .erased

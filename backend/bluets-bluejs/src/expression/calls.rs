@@ -23,8 +23,10 @@ impl<'a> ExpressionLowerer<'a> {
                 "only identifier constructors are in the v1 direct bridge subset",
             ));
         }
+        let scope = self.origin_scope();
         let mut callee = bluejs::Expr::Identifier(callee.text.clone());
         self.index += 1;
+        self.capture_origin(scope, &callee, false)?;
         // A namespace member, `new N.C()`.
         while self
             .tokens
@@ -42,6 +44,7 @@ impl<'a> ExpressionLowerer<'a> {
                 computed: false,
             };
             self.index += 2;
+            self.capture_origin(scope, &callee, false)?;
         }
         let Some(opening) = self.tokens.get(self.index) else {
             return Err(unsupported(
@@ -110,6 +113,7 @@ impl<'a> ExpressionLowerer<'a> {
         &mut self,
         mut expression: bluejs::Expr,
     ) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.prefix_origin_scope();
         loop {
             let Some(token) = self.tokens.get(self.index) else {
                 return Ok(expression);
@@ -149,6 +153,7 @@ impl<'a> ExpressionLowerer<'a> {
                     property: Box::new(bluejs::Expr::Identifier(name)),
                     computed: false,
                 };
+                self.capture_origin(scope, &expression, false)?;
                 continue;
             }
             if token.text == "." {
@@ -170,6 +175,7 @@ impl<'a> ExpressionLowerer<'a> {
                     property: Box::new(bluejs::Expr::Identifier(name)),
                     computed: false,
                 };
+                self.capture_origin(scope, &expression, false)?;
                 continue;
             }
             if token.text == "[" {
@@ -194,6 +200,7 @@ impl<'a> ExpressionLowerer<'a> {
                     property: Box::new(property),
                     computed: true,
                 };
+                self.capture_origin(scope, &expression, false)?;
                 continue;
             }
             if token.text != "(" {
@@ -244,6 +251,7 @@ impl<'a> ExpressionLowerer<'a> {
                 callee: Box::new(expression),
                 args,
             };
+            self.capture_origin(scope, &expression, false)?;
         }
     }
 }

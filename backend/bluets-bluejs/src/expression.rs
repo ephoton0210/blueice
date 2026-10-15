@@ -7,6 +7,7 @@
 use super::*;
 
 mod calls;
+mod origins;
 mod writes;
 
 pub(super) struct ExpressionLowerer<'a> {
@@ -14,6 +15,7 @@ pub(super) struct ExpressionLowerer<'a> {
     pub(super) module_ast: Option<&'a Module>,
     pub(super) tokens: &'a [Token],
     pub(super) index: usize,
+    origins: Option<origins::OriginCapture>,
 }
 
 impl<'a> ExpressionLowerer<'a> {
@@ -23,6 +25,7 @@ impl<'a> ExpressionLowerer<'a> {
             module_ast: None,
             tokens,
             index: 0,
+            origins: None,
         }
     }
 
@@ -32,10 +35,15 @@ impl<'a> ExpressionLowerer<'a> {
             module_ast: Some(module),
             tokens,
             index: 0,
+            origins: None,
         }
     }
 
-    pub(super) fn parse(mut self) -> Result<bluejs::Expr, BridgeError> {
+    pub(super) fn parse(self) -> Result<bluejs::Expr, BridgeError> {
+        self.parse_impl().map(|(expression, _)| expression)
+    }
+
+    fn parse_impl(mut self) -> Result<(bluejs::Expr, Option<origins::OriginCapture>), BridgeError> {
         if let Some(module) = self.module_ast {
             let spans = module
                 .erased_assertion_spans()
@@ -53,7 +61,9 @@ impl<'a> ExpressionLowerer<'a> {
                     .filter(|token| !erased(token))
                     .cloned()
                     .collect::<Vec<_>>();
-                return ExpressionLowerer::for_module(module, &tokens).parse();
+                let mut parser = ExpressionLowerer::for_module(module, &tokens);
+                parser.origins = self.origins;
+                return parser.parse_impl();
             }
         }
         let expression = self.parse_sequence()?;
@@ -63,10 +73,17 @@ impl<'a> ExpressionLowerer<'a> {
                 format!("unsupported expression token `{}`", token.text),
             ));
         }
-        Ok(expression)
+        Ok((expression, self.origins))
     }
 
     pub(super) fn parse_sequence(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_sequence_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_sequence_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
         let first = self.parse_assignment()?;
         if self
             .tokens
@@ -88,6 +105,13 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     pub(super) fn parse_conditional(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_conditional_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_conditional_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
         let test = self.parse_nullish()?;
         if self
             .tokens
@@ -119,6 +143,14 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     pub(super) fn parse_nullish(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_nullish_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_nullish_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
         let (mut expression, logical) = self.parse_logical_or()?;
         while self
             .tokens
@@ -149,11 +181,20 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(right),
             };
+            self.capture_origin(scope, &expression, false)?;
         }
         Ok(expression)
     }
 
     pub(super) fn parse_logical_or(&mut self) -> Result<(bluejs::Expr, bool), BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_logical_or_inner()?;
+        self.capture_origin(scope, &result.0, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_logical_or_inner(&mut self) -> Result<(bluejs::Expr, bool), BridgeError> {
+        let scope = self.origin_scope();
         let (mut expression, mut logical) = self.parse_logical_and()?;
         while self
             .tokens
@@ -166,12 +207,21 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_logical_and()?.0),
             };
+            self.capture_origin(scope, &expression, false)?;
             logical = true;
         }
         Ok((expression, logical))
     }
 
     pub(super) fn parse_logical_and(&mut self) -> Result<(bluejs::Expr, bool), BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_logical_and_inner()?;
+        self.capture_origin(scope, &result.0, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_logical_and_inner(&mut self) -> Result<(bluejs::Expr, bool), BridgeError> {
+        let scope = self.origin_scope();
         let mut expression = self.parse_bitwise_or()?;
         let mut logical = false;
         while self
@@ -185,12 +235,21 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_bitwise_or()?),
             };
+            self.capture_origin(scope, &expression, false)?;
             logical = true;
         }
         Ok((expression, logical))
     }
 
     pub(super) fn parse_equality(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_equality_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_equality_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
         let mut expression = self.parse_relational()?;
         while let Some(token) = self.tokens.get(self.index) {
             let op = match token.text.as_str() {
@@ -206,11 +265,20 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_relational()?),
             };
+            self.capture_origin(scope, &expression, false)?;
         }
         Ok(expression)
     }
 
     pub(super) fn parse_bitwise_or(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_bitwise_or_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_bitwise_or_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
         let mut expression = self.parse_bitwise_xor()?;
         while self
             .tokens
@@ -223,11 +291,20 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_bitwise_xor()?),
             };
+            self.capture_origin(scope, &expression, false)?;
         }
         Ok(expression)
     }
 
     pub(super) fn parse_bitwise_xor(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_bitwise_xor_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_bitwise_xor_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
         let mut expression = self.parse_bitwise_and()?;
         while self
             .tokens
@@ -240,11 +317,20 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_bitwise_and()?),
             };
+            self.capture_origin(scope, &expression, false)?;
         }
         Ok(expression)
     }
 
     pub(super) fn parse_bitwise_and(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_bitwise_and_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_bitwise_and_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
         let mut expression = self.parse_equality()?;
         while self
             .tokens
@@ -257,11 +343,20 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_equality()?),
             };
+            self.capture_origin(scope, &expression, false)?;
         }
         Ok(expression)
     }
 
     pub(super) fn parse_relational(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_relational_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_relational_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
         // `#name in object` is a distinct relational form: a private name
         // cannot otherwise begin an expression. BlueJS keeps the name without
         // its `#`.
@@ -284,6 +379,7 @@ impl<'a> ExpressionLowerer<'a> {
         } else {
             self.parse_shift()?
         };
+        self.capture_origin(scope, &expression, false)?;
         while let Some(token) = self.tokens.get(self.index) {
             if self.shift_operator_at(self.index).is_some() {
                 break;
@@ -303,11 +399,20 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_shift()?),
             };
+            self.capture_origin(scope, &expression, false)?;
         }
         Ok(expression)
     }
 
     pub(super) fn parse_shift(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_shift_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_shift_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
         let mut expression = self.parse_additive()?;
         while let Some((op, width)) = self.shift_operator_at(self.index) {
             self.index += width;
@@ -316,11 +421,20 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_additive()?),
             };
+            self.capture_origin(scope, &expression, false)?;
         }
         Ok(expression)
     }
 
     pub(super) fn parse_additive(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_additive_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_additive_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
         let mut expression = self.parse_multiplicative()?;
         while let Some(token) = self.tokens.get(self.index) {
             let op = match token.text.as_str() {
@@ -334,11 +448,20 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_multiplicative()?),
             };
+            self.capture_origin(scope, &expression, false)?;
         }
         Ok(expression)
     }
 
     pub(super) fn parse_multiplicative(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_multiplicative_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_multiplicative_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
         let mut expression = self.parse_exponentiation()?;
         while let Some(token) = self.tokens.get(self.index) {
             let op = match token.text.as_str() {
@@ -353,11 +476,19 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_exponentiation()?),
             };
+            self.capture_origin(scope, &expression, false)?;
         }
         Ok(expression)
     }
 
     pub(super) fn parse_exponentiation(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_exponentiation_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_exponentiation_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
         let unary_base = self.starts_unary_expression();
         let expression = if unary_base {
             self.parse_unary()?
@@ -400,6 +531,13 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     pub(super) fn parse_unary(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_unary_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_unary_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
         // `await operand`: valid in an async function and at a module's top level,
         // which BlueTS has already established before the bridge sees the token.
         if self
@@ -446,11 +584,33 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     pub(super) fn parse_primary(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_primary_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_primary_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
         let expression = self.parse_atom()?;
         self.parse_suffixes(expression)
     }
 
     pub(super) fn parse_atom(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let opaque_atom = self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| matches!(token.kind, TokenKind::Template | TokenKind::JsxElement));
+        let result = self.parse_atom_inner()?;
+        self.capture_origin(
+            scope,
+            &result,
+            opaque_atom || matches!(result, bluejs::Expr::Class(_)),
+        )?;
+        Ok(result)
+    }
+
+    pub(super) fn parse_atom_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
         let Some(token) = self.tokens.get(self.index) else {
             return Err(unsupported(
                 SourceSpan::new(self.module, 0, 0),
@@ -672,7 +832,13 @@ impl<'a> ExpressionLowerer<'a> {
                     self.index += 1;
                     (self.parse_assignment()?, false)
                 } else if matches!(colon.text.as_str(), "," | "}") && shorthand_name.is_some() {
-                    (bluejs::Expr::Identifier(shorthand_name.unwrap()), true)
+                    let value = bluejs::Expr::Identifier(shorthand_name.unwrap());
+                    let scope = self.origins.as_ref().map(|capture| origins::OriginScope {
+                        base: capture.roots.len(),
+                        start: token.start,
+                    });
+                    self.capture_origin(scope, &value, false)?;
+                    (value, true)
                 } else {
                     return Err(unsupported(
                         self.token_span(colon),

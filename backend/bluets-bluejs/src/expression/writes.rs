@@ -8,6 +8,13 @@ use super::*;
 
 impl<'a> ExpressionLowerer<'a> {
     pub(crate) fn parse_assignment(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_assignment_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(crate) fn parse_assignment_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
         // `yield`, `yield* iterable` and `yield value` bind looser than assignment.
         if self
             .tokens
@@ -81,6 +88,13 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     pub(crate) fn parse_update(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let scope = self.origin_scope();
+        let result = self.parse_update_inner()?;
+        self.capture_origin(scope, &result, false)?;
+        Ok(result)
+    }
+
+    pub(crate) fn parse_update_inner(&mut self) -> Result<bluejs::Expr, BridgeError> {
         if let Some(op) = self.update_operator_at(self.index) {
             let span = self
                 .tokens

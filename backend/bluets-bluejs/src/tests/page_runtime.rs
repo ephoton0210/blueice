@@ -132,6 +132,173 @@ fn diagnostic_runtime() -> bluejs::BlueJsPageRuntime {
 }
 
 #[test]
+fn direct_expression_failures_use_their_own_original_token_positions() {
+    let mut failures = Vec::new();
+    for (name, source, line, column) in [
+        (
+            "binary operand",
+            "const absent: any=null;const value: any=1 + (\n absent.field);",
+            2,
+            2,
+        ),
+        (
+            "call argument",
+            "function read(value: any): void {}const absent: any=null;read(\n absent.field);",
+            2,
+            2,
+        ),
+        (
+            "computed key",
+            "const key: any=null;const container: any={};container[\n key.field];",
+            2,
+            2,
+        ),
+        (
+            "prefix reference",
+            "const absent: any=null;++\n absent.field;",
+            2,
+            2,
+        ),
+        (
+            "assignment reference",
+            "const absent: any=null;\n absent.field=1;",
+            2,
+            2,
+        ),
+        (
+            "constructor application",
+            "const C: any=0;\nnew\n C();",
+            2,
+            1,
+        ),
+        (
+            "constructor with repeated identifier",
+            "const C: any=0;\nnew\n C(C);",
+            2,
+            1,
+        ),
+        (
+            "array element",
+            "const absent: any=null;const values: any=[\n absent.field];",
+            2,
+            2,
+        ),
+        (
+            "object value",
+            "const absent: any=null;const value: any={field:\n absent.field};",
+            2,
+            2,
+        ),
+        (
+            "conditional branch",
+            "const absent: any=null;const value: any=true ?\n absent.field : 1;",
+            2,
+            2,
+        ),
+        (
+            "logical operand",
+            "const absent: any=null;const value: any=1 &&\n absent.field;",
+            2,
+            2,
+        ),
+        (
+            "erased assertion",
+            "const absent: any=null;const value: any=1 + (\n (absent as any).field);",
+            2,
+            2,
+        ),
+        (
+            "member intermediates",
+            "const absent: any=null;const value: any=0 +(\n absent.field.deep);",
+            2,
+            2,
+        ),
+        (
+            "object computed key",
+            "const absent: any=null;const value: any={[\n absent.field]:1};",
+            2,
+            2,
+        ),
+        (
+            "later operand in repeated binary tier",
+            "const absent: any=null;const value: any=1 + 2 + (\n absent.field);",
+            2,
+            2,
+        ),
+        (
+            "earlier operand in repeated binary tier",
+            "const absent: any=null;const value: any=1 + (\n absent.field) + 2;",
+            2,
+            2,
+        ),
+        (
+            "nullish operand",
+            "const absent: any=null;const value: any=null ?? (\n absent.field);",
+            2,
+            2,
+        ),
+        (
+            "nested unary operand",
+            "const absent: any=null;const value: any=!!\n absent.field;",
+            2,
+            2,
+        ),
+        (
+            "postfix reference",
+            "const absent: any=null;const value: any=0 + (\n absent.field++);",
+            2,
+            2,
+        ),
+        (
+            "assignment value",
+            "const absent: any=null;let value: any=0;value=\n absent.field;",
+            2,
+            2,
+        ),
+        (
+            "default parameter",
+            "const absent: any=null;function read(value: any=\n absent.field): void {}read();",
+            2,
+            2,
+        ),
+        (
+            "postfix assertion",
+            "const absent: any=null;const value: any=1 + (\n absent!.field);",
+            2,
+            2,
+        ),
+    ] {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+        .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+        let mut runtime = diagnostic_runtime();
+        let attachment = artifact
+            .attach_in_page_realm(&mut runtime, 7, &origin())
+            .unwrap();
+        assert!(
+            runtime.execute_program(7, attachment.handle).is_err(),
+            "{name}"
+        );
+        let messages = runtime.drain_console(7).unwrap();
+        assert_eq!(messages.records.len(), 1, "{name}: {messages:?}");
+        let actual = messages.records[0]
+            .source
+            .as_ref()
+            .map(|source| (source.filename.as_str(), source.line, source.column));
+        if actual != Some((ENTRY, line, column)) {
+            failures.push((
+                name,
+                actual.map(|(file, line, column)| (file.to_owned(), line, column)),
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
 fn direct_source_coordinates_preserve_original_unicode_and_line_terminators() {
     for newline in ["\r", "\r\n", "\u{2028}", "\u{2029}"] {
         let source=format!("const face: string='😀';{newline}function fail(): void {{{newline} throw 'direct';{newline}}}fail();");
@@ -159,8 +326,13 @@ fn direct_source_coordinates_preserve_original_unicode_and_line_terminators() {
 
 #[test]
 fn direct_module_dependency_failures_keep_original_origins_before_and_after_await() {
-    for awaited in [false, true] {
-        let source=format!("export const marker: number=0;\n{}function fail(): void {{\n throw 'dependency';\n}}fail();",if awaited {"await 0;\n"}else{""});
+    for (awaited, deep) in [(false, false), (true, false), (false, true), (true, true)] {
+        let prefix = if awaited { "await 0;\n" } else { "" };
+        let source = if deep {
+            format!("export const absent: any=null;\n{prefix}export const value: any=0 + (\n absent.field);")
+        } else {
+            format!("export const marker: number=0;\n{prefix}function fail(): void {{\n throw 'dependency';\n}}fail();")
+        };
         let graph = compile_direct_module_graph(
             GRAPH_ENTRY,
             &MapLoader::from([
@@ -201,6 +373,27 @@ fn direct_mapped_callers_cannot_supply_dynamic_function_body_origins() {
             )],
             ..CompilerOptions::default()
         },
+    )
+    .unwrap();
+    let mut runtime = diagnostic_runtime();
+    let attachment = artifact
+        .attach_in_page_realm(&mut runtime, 7, &origin())
+        .unwrap();
+    assert!(runtime.execute_program(7, attachment.handle).is_err());
+    let messages = runtime.drain_console(7).unwrap();
+    assert_eq!(messages.records.len(), 1, "{messages:?}");
+    assert!(messages.records[0].source.is_none(), "{messages:?}");
+}
+
+#[test]
+fn opaque_direct_template_children_keep_unavailable_origins() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const absent: any=null;const value: any=`value:${absent.field}`;",
+        )]),
+        CompilerOptions::default(),
     )
     .unwrap();
     let mut runtime = diagnostic_runtime();

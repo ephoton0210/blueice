@@ -642,14 +642,33 @@ the full source-position requirement.
       verifies direct `reportError`/console at 1:1 and a Blob callback throw at
       1:44. Formatting, seven-library, changed-target and bridge/launcher test
       Clippy pass; runtime/test hashes remain fixed during final acceptance.
+- [x] Capture direct-expression token origins in the existing parser and join
+      them to the final AST only after exact expression equality. Preserve
+      separate child order for repeated identifiers, constructor arguments,
+      intermediate members, left-associative operators and erased assertions.
+      Bound temporary capture bytes; opaque class/template/JSX descendants
+      keep independent unavailable origins.
+- [x] Verify twenty-two public expression failures and eighteen parser shapes,
+      including default parameters, assignment/update references, object keys,
+      array values and repeated operands. Ordinary ASTs, executable bytes and
+      constants match; oversized capture is refused. Awaited/non-awaited
+      dependencies retain their own expression sources; all 177 bridge cases
+      pass, including the explicit opaque-template unknown control.
+- [x] Pass the direct-expression follow-up: 1,762 cases across six disjoint
+      targets, zero failures and one existing ignored. Four more real-page
+      contexts, three more deferred debugger contexts and three queued direct
+      MCP errors preserve original `.ts` operand/argument/key positions.
+      Formatting and related library/integration/test Clippy pass; eleven Rust
+      inputs, three Cargo inputs and runtime/test hashes remain fixed.
 
 #### Remaining implementation and verification
 
 - [ ] Complete remaining expression-dispatch, decorator-application and
       compiler-generated provenance.
-- [ ] Complete deeper direct BlueTS expression/pattern and namespace/enum/JSX/
-      assignment-field lowering evidence, plus remaining emitted-profile,
-      module and debugger precision/lifecycle acceptance.
+- [ ] Complete remaining direct BlueTS expression/pattern and namespace/enum/
+      JSX/assignment-field lowering evidence, including opaque template/class
+      descendants, plus remaining emitted-profile, module and debugger
+      precision/lifecycle acceptance.
 - [ ] Complete the queued-origin/protocol matrix and integrated finalizer/
       disposal acceptance beyond the verified module and disposal cases.
 - [ ] Complete retained-origin accounting and the integrated
@@ -1134,6 +1153,42 @@ This is initial direct source binding. Deeper direct expressions/patterns,
 namespace/enum/JSX and assignment-field lowering, other remaining precision,
 integrated lifecycle/resource acceptance, full workspace/all-target and pinned
 Test262 gates remain open; M1q stays at 3/10 final acceptance gates.
+
+The direct-expression follow-up (2026-10-16) reproduces missing operand,
+argument, computed-key and nested-reference positions in the public page
+runtime (`/private/tmp/blueice-direct-expression-red.log`). An optional collector
+in the existing direct parser now records ordered token evidence as expressions
+are constructed. Precedence tiers reuse unchanged records; intermediate
+binary/member nodes, constructor callees and shorthand values keep their own.
+Checked token replay must equal the final expression before binding any child;
+type erasure preserves original byte offsets. Temporary allocations have a
+conservative 8 MiB charge, and inconsistent/oversized evidence refuses artifact
+creation. Opaque template/class-expression/JSX descendants retain unavailable
+origins instead of borrowing their parent's location.
+
+Twenty-two public failure scenarios and eighteen parser shapes pass, preserving
+ordinary ASTs, instruction bytes and constants. The wide-capture resource control
+and an opaque-template unknown control pass. Awaited and non-awaited dependency
+expressions use the dependency's original filename and coordinates. All 177
+bridge cases and 312 launcher cases pass (one existing launcher test ignored).
+Four additional real-page contexts cover operands, arguments, computed object
+keys and awaited module expressions; three additional deferred debugger contexts
+and three queued MCP direct errors preserve their own `.ts` sources.
+
+The final selection passes 1,205 BlueJS library cases, forty-four diagnostic
+groups, 177 bridge cases, 312 launcher cases, nineteen real-page cases and five
+official MCP console cases: 1,762 passes across six disjoint targets, zero
+failures and one existing ignored. Formatting, seven-library Clippy, changed
+integration-target Clippy and bridge/launcher test Clippy pass with warnings
+denied. Eleven Rust inputs, three Cargo inputs and runtime/test hashes stay
+fixed throughout final acceptance. Per-target receipts and identities are in
+`target/direct-expression-source-20261016.json` and
+`target/direct-expression-validation-20261016.json`.
+
+Remaining expression/pattern, opaque descendant, namespace/enum/JSX and
+assignment-field provenance, integrated lifecycle/resource acceptance, full
+workspace/all-target and pinned Test262 gates remain open. M1q remains at 3/10
+final acceptance gates.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 

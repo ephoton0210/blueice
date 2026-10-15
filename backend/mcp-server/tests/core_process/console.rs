@@ -76,7 +76,7 @@ impl Pages {
                         setTimeout(function(){var value;[
                           [value]
                         ]=[null];},80);
-                        </script>"
+                        </script><script type='application/x-blueice-typescript'>const absent: any=null;function directOperand(): void {const value: any=1 + (\n absent.field);}function read(value: any): void {}function directArgument(): void {read(\n absent.field);}function directKey(): void {const value: any={[\n absent.field]:1};}queueMicrotask(directOperand);queueMicrotask(directArgument);queueMicrotask(directKey);</script>"
                         } else if matches!(mode, PageMode::Errors) {
                             "<button id=pending>error button</button><script>
                         onerror=function(message,filename,line,column,error){return error==='silenced';};
@@ -236,12 +236,12 @@ async fn real_mcp_keeps_queued_reference_and_nested_assignment_sources() {
             serde_json::from_value(page_json(&result)).unwrap();
         assert_eq!(batch.dropped_records, 0);
         records.extend(batch.records);
-        if records.len() >= 2 {
+        if records.len() >= 5 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    assert_eq!(records.len(), 2, "{records:?}");
+    assert_eq!(records.len(), 5, "{records:?}");
     let records = records
         .iter()
         .map(|record| {
@@ -251,15 +251,33 @@ async fn real_mcp_keeps_queued_reference_and_nested_assignment_sources() {
             serde_json::to_value(record).unwrap()
         })
         .collect::<Vec<_>>();
-    let filename = records[0]["source"]["filename"].as_str().unwrap();
-    assert!(
-        filename.starts_with("blueice://page/tab-1/document-")
-            && filename.ends_with("/inline-0.js")
-    );
-    for (record, line) in records.iter().zip([3, 6]) {
-        assert_eq!(record["source"]["filename"], filename, "{record}");
-        assert_eq!(record["source"]["line"], line, "{record}");
-        assert_eq!(record["source"]["column"], 27, "{record}");
+    for (extension, expected) in [
+        ("0.js", &[(3, 27), (6, 27)][..]),
+        ("1.ts", &[(2, 2), (3, 2), (4, 2)][..]),
+    ] {
+        let matching = records
+            .iter()
+            .filter(|record| {
+                record["source"]["filename"]
+                    .as_str()
+                    .is_some_and(|filename| {
+                        filename.starts_with("blueice://page/tab-1/document-")
+                            && filename.ends_with(&format!("/inline-{extension}"))
+                    })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(matching.len(), expected.len(), "{records:?}");
+        let mut actual = matching
+            .iter()
+            .map(|record| {
+                (
+                    record["source"]["line"].as_u64().unwrap(),
+                    record["source"]["column"].as_u64().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        actual.sort_unstable();
+        assert_eq!(actual, expected, "{records:?}");
     }
     client.cancel().await.unwrap();
     server_task.await.unwrap();

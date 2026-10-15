@@ -52,6 +52,9 @@ fn direct_bluets_diagnostics_survive_deferred_debugger_execution() {
         "function fail(): void {\n throw 'direct';\n}fail();",
         "class C {get value(): number {\n throw 'direct';\n}}new C().value;",
         "async function fail(): Promise<void> {await 0;\n throw 'direct';\n}fail();",
+        "const absent: any=null;const value: any=1 + (\n absent.field);",
+        "function read(value: any): void {}const absent: any=null;read(\n absent.field);",
+        "const absent: any=null;const value: any={[\n absent.field]:1};",
     ] {
         let messages = debugger_source_batch(vec![classic(0, ";"), blue_ts_classic(1, source)]);
         assert_eq!(messages.records.len(), 1, "{source}: {messages:?}");
