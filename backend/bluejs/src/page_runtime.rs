@@ -302,6 +302,10 @@ impl BlueJsHostBindingRegistrar<'_> {
         self.vm.install_host_console()
     }
 
+    pub fn install_host_error_reporting(&mut self) -> Result<(), RuntimeError> {
+        self.vm.install_host_error_reporting()
+    }
+
     /// Installs the same functions with a host-owned monotonic millisecond
     /// clock. Scheduling samples it after argument conversion and interval
     /// callbacks, so long-running scripts do not schedule against an old tick.

@@ -85,6 +85,9 @@ impl Vm {
                     if let Err(RuntimeError::Thrown(value)) = &called {
                         self.async_frame_roots.extend(value.object_id());
                     }
+                    if let Err(error) = &called {
+                        self.report_host_exception(error)?;
+                    }
                     // The callback has left the execution stack. Each call
                     // cleans up microtasks before the next cleared cell.
                     // Its separate job budget must not refill this task's fuel.

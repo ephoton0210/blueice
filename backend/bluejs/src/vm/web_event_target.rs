@@ -326,14 +326,33 @@ impl Vm {
                                 callback,
                             )
                         };
-                        self.call_native(function, receiver, vec![Value::Object(event)], false)
+                        let global_error = listener.handler
+                            && name == "error"
+                            && self.host_error_reporting.is_some()
+                            && self.global("globalThis")?.object_id() == Some(target)
+                            && self.heap.drag_event(event)?.interface == 6;
+                        let arguments = if global_error {
+                            let state = self.heap.drag_event(event)?;
+                            ["message", "filename", "lineno", "colno", "error"]
+                                .iter()
+                                .map(|name| state.get(name))
+                                .collect()
+                        } else {
+                            vec![Value::Object(event)]
+                        };
+                        self.call_native(function, receiver, arguments, false)
                     })();
                     let called = self.cleanup_host_event_callback(called);
                     self.stack.truncate(callback_base);
+                    let global_error = listener.handler
+                        && name == "error"
+                        && self.host_error_reporting.is_some()
+                        && self.global("globalThis")?.object_id() == Some(target)
+                        && self.heap.drag_event(event)?.interface == 6;
                     if listener.handler
                         && called
                             .as_ref()
-                            .is_ok_and(|value| *value == Value::Bool(false))
+                            .is_ok_and(|value| *value == Value::Bool(global_error))
                     {
                         let mut state = self.heap.drag_event(event)?.clone();
                         if state.cancelable && !state.passive {

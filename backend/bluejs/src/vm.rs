@@ -37,6 +37,7 @@ pub use host_console::{
     MAX_HOST_CONSOLE_LABELS, MAX_HOST_CONSOLE_LABEL_BYTES, MAX_HOST_CONSOLE_MESSAGE_BYTES,
     MAX_HOST_CONSOLE_RECORDS,
 };
+mod host_errors;
 mod host_event_checkpoints;
 mod host_finalization;
 mod host_objects;
@@ -414,6 +415,9 @@ struct LinkedModule {
     /// been released. Static parents and later dynamic imports observe this
     /// stored evaluation error instead of attempting to execute it again.
     error: Option<Value>,
+    /// A page-owned module entry reports its terminal rejection once;
+    /// dynamic imports keep their Promise rejection semantics instead.
+    host_error_pending: bool,
 }
 
 /// The realm keeps Source Text Module Records after an entry evaluation.
@@ -1035,6 +1039,8 @@ pub struct Vm {
     host_functions: Vec<Box<dyn HostFunction>>,
     host_promises: host_promises::HostPromiseState,
     host_console: Option<host_console::ConsoleState>,
+    /// None until the page owner enables errors; true while firing `error`.
+    host_error_reporting: Option<bool>,
     /// Opaque host-object factories and their collector-rooted, realm-private
     /// identity tables. Neither a JavaScript value nor a raw host key enters
     /// a Rust callback through the primitive-only HostValue ABI.

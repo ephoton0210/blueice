@@ -221,6 +221,13 @@ pub(crate) enum EventNative {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostErrorNative {
+    Report,
+    Handler(bool),
+    Event(TargetNative),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DragNative {
     DataTransfer,
     DragEvent,
@@ -371,6 +378,7 @@ pub(crate) enum NativeFunction {
     WindowAliasGet,
     WindowAliasSet(&'static str),
     Console(crate::vm::ConsoleFunction),
+    HostError(HostErrorNative),
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

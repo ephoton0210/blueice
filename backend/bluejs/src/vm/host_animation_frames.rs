@@ -189,7 +189,10 @@ impl Vm {
                 .expect("invoked callback owns its frame root");
             match result {
                 Ok(_) => {}
-                Err(error) if is_page_exception(&error) => run.uncaught_errors += 1,
+                Err(error) if is_page_exception(&error) => {
+                    self.report_host_exception(&error)?;
+                    run.uncaught_errors += 1;
+                }
                 Err(error) => return Err(error),
             }
             run.uncaught_errors += self.run_host_microtask_checkpoint()?;

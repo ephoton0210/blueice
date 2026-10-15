@@ -41,6 +41,49 @@ fn request(stream: &mut UnixStream, id: u64, message: ClientMessage) -> ServerMe
 type FrameMessage = (Option<u64>, Option<u64>, ServerMessage);
 
 #[test]
+fn reported_page_errors_reach_window_onerror_through_the_real_child() {
+    let (fixture, url, gatekeeper) = fixture(
+        "<p id=counter>unreported</p><script>
+        window.onerror = function(message, filename, line, column, error) {
+            document.getElementById('counter').textContent = 'reported:' + error.message;
+            return true;
+        };
+        reportError(new Error('probe'));
+        </script>"
+            .to_string(),
+    );
+    let core = SpawnedCore::spawn_with_options(
+        240.0,
+        120.0,
+        &fixture.root.join("frames"),
+        CoreLaunchOptions::default()
+            .with_gatekeeper_socket(gatekeeper)
+            .supervise_out_of_process_bluejs_with_page_dom(),
+    )
+    .unwrap();
+    let mut stream = core.stream.try_clone().unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    assert!(matches!(
+        request(&mut stream, 1, ClientMessage::Navigate { url }),
+        ServerMessage::Navigated { .. }
+    ));
+    let ServerMessage::Representation(snapshot) =
+        request(&mut stream, 2, ClientMessage::GetRepresentation)
+    else {
+        panic!("expected page representation");
+    };
+    assert!(
+        snapshot
+            .nodes
+            .iter()
+            .any(|node| node.name.as_deref() == Some("reported:probe")),
+        "{snapshot:?}"
+    );
+}
+
+#[test]
 fn checked_host_member_chains_reject_before_any_page_mutation() {
     for call in [
         "window.console.missing.deep();",
@@ -387,7 +430,12 @@ fn javascript_and_bluets_pin_the_browser_integration_global_inventory() {
         ("TransformStream", "undefined"),
         ("CompressionStream", "undefined"),
         ("crypto", "undefined"),
-        ("reportError", "undefined"),
+        ("reportError", "function"),
+        ("ErrorEvent", "function"),
+        ("onerror", "object"),
+        ("addEventListener", "function"),
+        ("removeEventListener", "function"),
+        ("dispatchEvent", "function"),
         ("document", "object"),
         ("setTimeout", "function"),
         ("setInterval", "function"),

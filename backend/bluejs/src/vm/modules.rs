@@ -400,6 +400,7 @@ impl Vm {
                             suspended: false,
                             completion: None,
                             error: None,
+                            host_error_pending: false,
                             deferred_namespace: None,
                         },
                     )
@@ -643,6 +644,11 @@ impl Vm {
             // even when the only edge to it is a deferred one.
             Self::check_requested_modules_loaded(entry, modules)?;
             evaluation_started = true;
+            if !is_dynamic_import && self.host_error_reporting.is_some() {
+                if let Some(record) = linked.get_mut(entry) {
+                    record.host_error_pending = true;
+                }
+            }
             let (value, namespace) = if phase == ImportPhase::Defer {
                 // A deferred import evaluates nothing of `entry` itself; only
                 // the asynchronous part of its dependency graph runs now.
@@ -779,6 +785,7 @@ impl Vm {
             None
         };
         self.pending_throw_site = None;
+        self.report_pending_host_module_errors()?;
         result
     }
 

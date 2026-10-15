@@ -450,6 +450,7 @@ impl Vm {
         if self.call_depth != 0 || self.top_level_module || self.active_module_name.is_some() {
             return Ok(());
         }
+        self.report_pending_host_module_errors()?;
         self.kept_weak_objects.clear();
         if self.host_scheduling.is_some()
             && self.own_scheduling_usage().payload_bytes >= MAX_HOST_SCHEDULING_BYTES / 4

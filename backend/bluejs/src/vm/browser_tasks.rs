@@ -297,6 +297,14 @@ impl Vm {
                 Err(error) => (Err(error), Some(root), None, false),
             },
         };
+        // Report before releasing task roots or synchronizing accounting,
+        // either of which can collect an object-valued abrupt completion.
+        let result = match &result {
+            Err(error) if report_page_exception && host_timers::is_page_exception(error) => {
+                self.report_host_exception(error).and(result)
+            }
+            _ => result,
+        };
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(active_bytes);
         if let Some(mut next) = next {
             match self.next_host_task_serial() {

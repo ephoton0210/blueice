@@ -35,19 +35,20 @@ and BlueTS lines. The baseline descriptions below remain the original gap
 inventory; the dated milestone records identify what has actually been
 implemented and verified on `feature/bluejs-browser-integration-gaps`.
 
-**Latest milestone — M1n checked host-member boundaries (2026-10-15).**
-Section H's ambient value-query and missing intermediate-member defects are
-fixed. Declaration-owned `typeof` queries preserve callable overloads/generics
-and lexical shadowing; absent dot/indexed member chains fail before page
-effects. Inferred declarations publish valid callable types. File DOM v13/v14
-artifacts and runtime inventories are unchanged. All 164 compiler/bridge test
-targets and six related host targets pass, plus focused real MCP acceptance
-(2,767 Rust cases passed; 225 existing ignored). Formatting, workspace/all-target
-Clippy and build pass. All 102,926 pinned Test262 modes match M1m's accepted
+**Latest milestone — M1o uncaught page exceptions (2026-10-15).**
+The owner-selected File DOM v15 profile adds `ErrorEvent`, global EventTarget
+methods, `onerror` and `reportError`, with matching checked typings. Shared
+script/task/callback reporting preserves original values, cancellation,
+recursive-event suppression, one-time module/TLA delivery, GC ownership and
+resource containment. Uncanceled copied errors reach the bounded Core/MCP
+console. All 24 related Rust targets plus fresh official MCP acceptance pass
+(3,102 cases; one existing ignored), along with formatting and workspace/
+all-target Clippy/build. All 102,926 pinned Test262 modes match M1n's accepted
 source/result inventory: 102,921 pass, one stale corpus, four exclusions,
-no new failure or timeout. See the
-[M1n milestone record](#m1n--checked-ambient-value-queries-and-member-chains-2026-10-15)
-and [checker contract](HOST_TYPING_BOUNDARIES.md).
+no new failure or timeout. Original source positions and general rejection
+tracking remain open. See the
+[M1o milestone record](#m1o--uncaught-page-exceptions-and-global-error-events-2026-10-15)
+and [error-reporting contract](HOST_ERROR_REPORTING.md).
 
 ## A. Event loop and scheduling (P0)
 
@@ -189,8 +190,12 @@ ownership for queued/running jobs, module work and host waits.
       delivery, so unregister still works before cleanup. One cell per task
       preserves the turn's callback bound and schedules remaining cells in
       later tasks; microtasks finish before the next cleanup callback.
-- [ ] Error reporting for uncaught exceptions in tasks (`window.onerror`
-      shape), without aborting `core`'s session loop
+- [x] **M1o: uncaught page exceptions.** File DOM v15 delivers cancelable
+      global `ErrorEvent`s and legacy five-argument `window.onerror` calls;
+      uncanceled errors reach the bounded Core/MCP console. Script, task,
+      microtask, native callback and eventual page-module failures report
+      without stopping peer callbacks or Core's session loop. Resource
+      failures retain exact-document containment. See the milestone record.
 - [x] **M1f: long-lived timer GC behavior.** Public page-runtime fixtures
       complete 4,000 Promise polls under a 1 MiB managed heap and 64 large
       native-string polls under the existing scheduling cap. These verify
@@ -229,7 +234,10 @@ exists). Several exist on the product line, marked below.
       both; needed by `fetch` request and response bodies)
 - [ ] `crypto.getRandomValues` / `randomUUID`; entropy and clock injectable
       so tests are deterministic
-- [ ] `reportError` and the global error-event shape (with B)
+- [x] **M1o: `reportError` and the global error-event shape.** The owner
+      installs six matching v15 bindings; original values, trusted/synthetic
+      event behavior, cancellation, recursion and navigation are covered.
+      Older profiles remain immutable and reject these names. See B.
 - [x] **M1l: global-inventory test.** Real Core/child JavaScript and checked
       BlueTS pages execute `typeof globalThis.<name>` for every section C
       name, pinning the installed set and remaining absences independently
@@ -348,10 +356,12 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
       valid callable types. Public compiler/profile regressions and real
       Core/child refusal-before-mutation acceptance pass, with complete final
       gates recorded below; installed v13/v14 artifacts remain unchanged.
-- [ ] **Uncaught errors and rejections** cannot be mapped back to BlueTS
-      original positions until the host reports them (section B); today
-      only debugger pauses use the safe-point map (*verify* for thrown
-      exceptions and `Error.stack`).
+- [ ] **Original positions for uncaught errors and rejections.** M1o
+      provides global exception events and copied Core/MCP diagnostics, but
+      generated errors use empty/zero source metadata at this boundary.
+      Mapping them back to BlueTS original positions remains open; only
+      debugger pauses currently use the safe-point map. General rejection
+      tracking also remains open in B.
 
 ### BlueJS capabilities BlueTS should use or still needs
 
@@ -436,6 +446,72 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1o — Uncaught page exceptions and global error events (2026-10-15)
+
+- [x] Reproduce missing reporting through the real Core/child public boundary.
+- [x] Install owner-selected `ErrorEvent`, global EventTarget methods,
+      `onerror` and `reportError`, with a new immutable typing profile.
+- [x] Report script/task/microtask/native-callback exceptions exactly once.
+- [x] Verify cancellation, recursive reporting, GC ownership and resource limits.
+- [x] Verify bounded Core/MCP diagnostics and continued page/session work.
+- [x] Pass the complete related Rust regression selection.
+- [x] Pass final formatting checks.
+- [x] Pass workspace/all-target Clippy with `-D warnings`.
+- [x] Pass the final workspace/all-target production build.
+- [x] Compare the complete pinned Test262 source/result inventory against M1n.
+- [x] Finalize evidence, documentation and a detailed English commit.
+
+The owner-selected File DOM v15 surface and shared reporter are implemented;
+see [the error-reporting contract](HOST_ERROR_REPORTING.md). The prior v14
+artifact and private v60 console transport remain unchanged. Original source
+positions and general rejection tracking retain their separate open items.
+
+**Verified red baseline:** the real Core/child `reportError(new Error('probe'))`
+fixture left its page showing `unreported`, instead of invoking `window.onerror`.
+`/private/tmp/blueice-page-errors-red.log`: one failed, thirteen filtered.
+The rebuilt fixture now passes.
+
+**Completed macOS acceptance:**
+
+- All 24 selected targets (six libraries and eighteen public integration
+  targets): 3,101 passed, one existing ignored, zero failed. This includes
+  1,200 BlueJS library cases; twelve public `host_errors` cases; profile
+  compatibility/refusal controls; all fourteen real timer/page fixtures;
+  forced GC, cleanup/navigation, asynchronous drag, module/TLA and caught
+  dynamic-import controls; and Core/launcher/IPC/MCP regressions.
+- The official MCP client → Core → child acceptance passed (one passed, ten
+  filtered; final replay 4.65s). It covers JavaScript/BlueTS reports, canceled
+  output, microtask/timer errors, untrusted framing, a throwing native click
+  listener followed by a successful peer, and navigation replacement. The
+  final-binary replay also passes; total acceptance is 3,102 passed and one
+  existing ignored across 24 complete targets plus that focused MCP case.
+- Final `cargo fmt --all -- --check` passed.
+- `cargo clippy --workspace --all-targets -- -D warnings` passed in 14m 11s.
+- `cargo build --workspace --all-targets` passed in 17m 11s.
+
+The initial broad Rust build found a test-only `LinkedModule` fixture missing
+its new one-time flag. Its initializer was corrected; the complete rerun
+above passed. Logs: `/private/tmp/blueice-page-errors-{focused,host-followup,mcp,regressions,regressions-2,fmt-final,clippy}.log`.
+Audit: `target/page-errors-rust-validation-20261015.json`, with the final Rust
+source manifest `target/page-errors-source-final-20261015.json`; hashes remain
+unchanged. No fresh coverage, complete workspace test suite or other-platform
+execution is claimed.
+
+**Final Test262 acceptance:** all 102,926 pinned modes match M1n's accepted
+source/result inventory: 102,921 pass, one stale corpus, four exclusions,
+no new failure or timeout (395.019s). Per-mode source hashes, metadata,
+expectations, actual kind/phase and dispositions match; elapsed time and
+nondeterministic diagnostic text are excluded from comparison. The runner's
+exit 1 reflects the accepted stale/excluded baseline. Frozen production
+adapter/worker hashes match the runner summary and remain unchanged.
+
+- Raw run: `target/test262-page-errors-full-20261015/` (`summary.json`,
+  `results.jsonl`, `baseline-comparison.json`).
+- Frozen binaries: `target/test262-page-errors-bins-20261015/sha256.json`.
+- Committed unmodified runner summary:
+  [`test262-browser-error-reporting-macos-summary.json`](test262-browser-error-reporting-macos-summary.json).
+- Final logs: `/private/tmp/blueice-page-errors-{workspace-build,mcp-final,test262}.log`.
 
 ### M1n — Checked ambient value queries and member chains (2026-10-15)
 

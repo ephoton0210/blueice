@@ -7,7 +7,7 @@
 
 use super::*;
 use std::collections::{BTreeMap, VecDeque};
-mod formatting;
+pub(super) mod formatting;
 use formatting::Output;
 
 pub const MAX_HOST_CONSOLE_RECORDS: usize = 256;
@@ -218,7 +218,7 @@ impl Vm {
         Ok(result)
     }
 
-    fn console_emit(
+    pub(super) fn console_emit(
         &mut self,
         function: ConsoleFunction,
         level: &'static str,

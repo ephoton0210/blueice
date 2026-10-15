@@ -52,7 +52,8 @@ Core to MCP `get_console_messages`. Real mixed-language MCP acceptance passes,
 including task/native-click output and navigation isolation. Rust/build/Clippy
 gates pass and the complete Test262 inventory matches M1l; see the
 [milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
-Uncaught errors/rejections and the remaining M1 policy work stay open.
+The M1o follow-up below addresses uncaught exceptions; rejection tracking and
+the remaining M1 policy work stay open.
 
 M1n's checked host-boundary correction is accepted. Missing member
 chains now fail before a checked page's earlier DOM writes can run; ambient
@@ -60,6 +61,15 @@ callable queries retain their declarations and local shadows. The existing
 installed surface is unchanged. Complete compiler/bridge and related host/MCP
 acceptance, workspace build/Clippy/formatting and pinned Test262 gates pass. See the
 [live acceptance record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+
+M1o's exception-reporting follow-up is accepted. File DOM v15
+dispatches cancelable error events and sends uncanceled bounded diagnostics
+through the existing Core/MCP console channel. Real pages and the official
+MCP client verify continuation after task/native-listener throws. Related
+Rust, format, workspace Clippy/build and complete pinned Test262 gates pass.
+Final evidence is recorded in the
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+General rejection tracking and broader host-buffer policy keep M1 open.
 
 ## Objective
 

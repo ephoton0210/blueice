@@ -323,7 +323,10 @@ impl Vm {
         self.host_timer_nesting = previous_nesting;
         match outcome {
             Ok(_) => {}
-            Err(error) if is_page_exception(&error) => run.uncaught_errors += 1,
+            Err(error) if is_page_exception(&error) => {
+                self.report_host_exception(&error)?;
+                run.uncaught_errors += 1;
+            }
             Err(error) => return Err(error),
         }
         run.uncaught_errors += self.run_host_microtask_checkpoint()?;
@@ -367,11 +370,13 @@ impl Vm {
                 }
                 Err(error) if is_page_exception(&error) => {
                     *remaining_jobs -= 1;
+                    self.report_host_exception(&error)?;
                     uncaught += 1;
                 }
                 Err(error) => return Err(error),
             }
             self.enqueue_finalization_cleanup_jobs()?;
+            self.report_pending_host_module_errors()?;
         }
         if self.promise_jobs.is_empty() {
             self.finish_host_checkpoint()?;

@@ -219,6 +219,9 @@ impl Vm {
         };
         self.pending_throw_site = None;
         self.synchronize_scheduling_usage()?;
+        if let Err(error) = &result {
+            self.report_host_exception(error)?;
+        }
         result
     }
 

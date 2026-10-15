@@ -18,6 +18,7 @@ mod abort;
 mod animation_frames;
 mod console;
 mod custom_events;
+mod errors;
 mod file_reader;
 mod iteration;
 mod node_events;
@@ -108,6 +109,9 @@ pub const PAGE_HOST_DOM_WINDOW_PROFILE_V13: &str = "core-script-dom-window-v13";
 pub const PAGE_HOST_DOM_CONSOLE_PROFILE_V14: &str = "core-script-dom-console-v14";
 pub const PAGE_HOST_DOM_CONSOLE_DECLARATION_MODULE_ID_V14: &str =
     "blueice:///profiles/core-script-dom-console-v14/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_ERRORS_PROFILE_V15: &str = "core-script-dom-errors-v15";
+pub const PAGE_HOST_DOM_ERRORS_DECLARATION_MODULE_ID_V15: &str =
+    "blueice:///profiles/core-script-dom-errors-v15/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_WINDOW_DECLARATION_MODULE_ID_V13: &str =
     "blueice:///profiles/core-script-dom-window-v13/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_TEE_DECLARATION_MODULE_ID_V9: &str =
@@ -623,6 +627,13 @@ pub fn page_host_dom_console_runtime_bindings_v14() -> [PageHostRuntimeBindingV1
     })
 }
 
+pub fn page_host_dom_errors_runtime_bindings_v15() -> [PageHostRuntimeBindingV1; 58] {
+    errors::bindings().map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
 /// A runtime callback identity supplied by a host that wants to compile
 /// BlueTS against the fixed profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -774,6 +785,17 @@ impl PageHostDocumentTypingsV1 {
             .collect::<Vec<_>>();
         let members = window_aliases::member_declaration(&globals);
         Self::generate_from_with_tail(PAGE_HOST_DOM_CONSOLE_PROFILE_V14, &bindings, &members)
+    }
+
+    pub fn generate_dom_errors() -> Self {
+        let bindings = errors::bindings();
+        let globals = bindings[..47]
+            .iter()
+            .chain(&bindings[51..])
+            .copied()
+            .collect::<Vec<_>>();
+        let members = window_aliases::member_declaration(&globals);
+        Self::generate_from_with_tail(PAGE_HOST_DOM_ERRORS_PROFILE_V15, &bindings, &members)
     }
 
     fn generate_from(profile: &'static str, bindings: &[PageHostDocumentBindingV1]) -> Self {
@@ -1035,6 +1057,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_console(),
             PAGE_HOST_DOM_CONSOLE_DECLARATION_MODULE_ID_V14,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_errors_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_errors(),
+            PAGE_HOST_DOM_ERRORS_DECLARATION_MODULE_ID_V15,
             installed_bindings,
         )
     }

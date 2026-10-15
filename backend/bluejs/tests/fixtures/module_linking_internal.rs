@@ -419,6 +419,7 @@ fn record(evaluating: bool, suspended: bool) -> LinkedModule {
         suspended,
         completion: None,
         error: None,
+        host_error_pending: false,
     }
 }
 

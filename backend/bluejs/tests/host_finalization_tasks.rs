@@ -112,6 +112,40 @@ fn a_throwing_cleanup_callback_checkpoints_and_preserves_other_cells() {
 }
 
 #[test]
+fn cleanup_exceptions_report_once_and_navigation_discards_global_handlers() {
+    let mut page = Page::new();
+    page.runtime
+        .configure_realm_bindings(1, |host| {
+            host.install_web_file_api()?;
+            host.install_host_console()?;
+            host.install_host_error_reporting()
+        })
+        .unwrap();
+    page.execute("onerror=function(message,filename,line,column,error){record('error:'+error);return true;}; var registry=new FinalizationRegistry(function(){record('cleanup');queueMicrotask(function(){record('micro');});throw 'cleanup-error';});registry.register({},0);");
+    page.checkpoint();
+    page.runtime.flush_drag_tasks(1).unwrap();
+    page.expect(&["cleanup", "error:cleanup-error", "micro"]);
+    page.runtime.flush_drag_tasks(1).unwrap();
+    page.expect(&["cleanup", "error:cleanup-error", "micro"]);
+    assert!(page.runtime.drain_console(1).unwrap().records.is_empty());
+    page.runtime
+        .navigate(1, BlueJsPageOrigin::new("https://cleanup.test").unwrap())
+        .unwrap();
+    page.runtime
+        .configure_realm_bindings(1, |host| {
+            host.install_web_file_api()?;
+            host.install_host_console()?;
+            host.install_host_error_reporting()
+        })
+        .unwrap();
+    page.execute("if(onerror !== null) throw 'stale handler'; reportError('fresh');");
+    let messages = page.runtime.drain_console(1).unwrap().records;
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].message.contains("fresh"));
+    page.expect(&["cleanup", "error:cleanup-error", "micro"]);
+}
+
+#[test]
 fn document_browser_turns_drive_shadow_realm_cleanup_tasks() {
     let mut page = Page::new();
     page.execute("var shadow=new ShadowRealm();var read=shadow.evaluate('globalThis.cleaned=0;globalThis.registry=new FinalizationRegistry(()=>cleaned++);registry.register({},0);()=>cleaned;');record(String(read()));");

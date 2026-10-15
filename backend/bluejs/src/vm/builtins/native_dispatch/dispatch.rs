@@ -200,6 +200,9 @@ impl Vm {
             }
             NativeFunction::WindowAliasGet => self.window_alias_call(&receiver, None, construct),
             NativeFunction::Console(function) => self.console_call(function, &args, construct),
+            NativeFunction::HostError(function) => {
+                self.host_error_call(function, &receiver, &args, construct)
+            }
             NativeFunction::WindowAliasSet(name) => {
                 self.window_alias_call(&receiver, Some((name, first.clone())), construct)
             }

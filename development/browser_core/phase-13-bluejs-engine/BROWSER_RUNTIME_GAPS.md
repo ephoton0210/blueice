@@ -30,7 +30,11 @@ console integration, with real MCP and complete pinned Test262 acceptance.
 M1n repairs declaration-owned callable queries and absent intermediate-member
 checking, including real Core/child refusal before DOM mutation. The installed
 surface is unchanged; all final gates pass. See the
-[checker contract](HOST_TYPING_BOUNDARIES.md).
+[checker contract](HOST_TYPING_BOUNDARIES.md). M1o adds owner-selected v15
+global error events and uncaught-exception diagnostics with complete related
+Rust/Core/MCP, build/Clippy/formatting and pinned Test262 acceptance; general
+rejection tracking and original source positions remain open. See
+[the reporting contract](HOST_ERROR_REPORTING.md).
 
 BlueJS is measured against ECMA-262/402 (Test262 99.995%). That says the
 *language* is nearly complete; it says nothing about whether the engine is a
@@ -101,7 +105,7 @@ Real MCP, related Rust and full pinned Test262 acceptance pass; see the
 | Group | Names | Layer |
 |---|---|---|
 | Global aliases | `window`, `self`, `top`, `parent` present from File DOM v13 (M1l), inherited by v14 | Host; top-level realm identity and document lifetime |
-| Diagnostics | M1m implements bounded `console` in File DOM v14 with accepted Core/MCP output. `reportError` and global error/rejection reporting remain absent. | Engine mechanism, document-owned host sink; see `HOST_CONSOLE.md` |
+| Diagnostics | M1m implements bounded `console` in File DOM v14 with accepted Core/MCP output. M1o adds `reportError`, global error events and uncaught-exception diagnostics in v15. General rejection tracking remains absent. | Engine mechanism, document-owned host sink; see `HOST_CONSOLE.md` |
 | Encoding | `TextEncoder`, `TextDecoder`, `atob`, `btoa` | Engine |
 | Cloning/identity | `structuredClone`, `crypto.getRandomValues`/`randomUUID`, `performance.now`/`timeOrigin` | Engine (clock and entropy must be injectable for tests) |
 | URL | `URL` present (`vm/web_url.rs`); `URLSearchParams` absent | Engine |

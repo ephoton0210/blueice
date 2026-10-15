@@ -119,6 +119,7 @@ impl Vm {
             host_functions: Vec::new(),
             host_promises: super::host_promises::HostPromiseState::default(),
             host_console: None,
+            host_error_reporting: None,
             host_object_factories: Vec::new(),
             host_object_methods: Vec::new(),
             host_object_pair_methods: Vec::new(),

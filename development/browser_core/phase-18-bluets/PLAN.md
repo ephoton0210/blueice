@@ -36,6 +36,16 @@ Final evidence is recorded in the
 [M1n record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record)
 and [checker contract](../phase-13-bluejs-engine/HOST_TYPING_BOUNDARIES.md).
 
+**Typed page errors (M1o, 2026-10-15):** The owner selects the new
+File DOM v15 artifact with `ErrorEvent`, `reportError`, `onerror` and global
+EventTarget methods. Older declarations retain their bytes and reject these
+names. Public checked profile controls, real mixed-language Core/MCP acceptance,
+all 24 related Rust targets, formatting and workspace Clippy/build pass. The
+complete pinned Test262 inventory matches M1n; evidence is recorded in the
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+Original error source mapping and rejection tracking stay open; see the
+[error contract](../phase-13-bluejs-engine/HOST_ERROR_REPORTING.md).
+
 The direct bridge lowers parenthesized `new Identifier(args)` expressions with normal or spread arguments. Member constructors and omitted parentheses remain excluded.
 
 The direct bridge lowers `delete` only for ordinary dot or bracket property references (without optional chaining). Identifier and non-reference operands remain outside the v1 subset.

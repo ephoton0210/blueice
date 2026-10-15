@@ -4,7 +4,7 @@
 
 use super::*;
 
-pub(super) struct Output {
+pub(in crate::vm) struct Output {
     pub text: String,
     pub truncated: bool,
     limit: usize,
@@ -60,7 +60,7 @@ impl Output {
 }
 
 impl Vm {
-    pub(super) fn console_preview(
+    pub(in crate::vm) fn console_preview(
         &mut self,
         value: &Value,
         output: &mut Output,

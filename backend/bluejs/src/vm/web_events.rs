@@ -9,13 +9,14 @@ use super::*;
 use crate::heap::DragEventState;
 use crate::native::EventNative;
 
-const EVENT_NAMES: [&str; 6] = [
+const EVENT_NAMES: [&str; 7] = [
     "Event",
     "UIEvent",
     "MouseEvent",
     "DragEvent",
     "ProgressEvent",
     "CustomEvent",
+    "ErrorEvent",
 ];
 const MODIFIERS: [(&str, &str); 14] = [
     ("Alt", "altKey"),
@@ -45,6 +46,10 @@ impl Vm {
             &["detail"],
             &[("initCustomEvent", 1, EventNative::InitCustomEvent)],
         )
+    }
+
+    pub(super) fn install_web_error_events(&mut self) -> Result<(), RuntimeError> {
+        self.install_web_event_subtype(6, &["message", "filename", "lineno", "colno", "error"], &[])
     }
 
     fn install_web_event_subtype(
@@ -487,6 +492,36 @@ impl Vm {
                 };
                 self.stack.push(detail.clone());
                 state.set("detail", detail);
+            }
+            if rank == 6 {
+                // Inherited EventInit is converted first, then ErrorEventInit
+                // members in Web IDL dictionary order.
+                let colno = self.event_init_value(&options, "colno")?;
+                let colno = self.event_integer(&colno, 32, false)?;
+                state.set("colno", Value::Number(colno));
+                let error = self.event_init_value(&options, "error")?;
+                self.stack.push(error.clone());
+                state.set("error", error);
+                let filename = self.event_init_value(&options, "filename")?;
+                let filename = if filename == Value::Undefined {
+                    "".into()
+                } else {
+                    self.coerce_string(&filename)?
+                };
+                state.set(
+                    "filename",
+                    Value::String(String::from_utf16_lossy(filename.as_code_units()).into()),
+                );
+                let lineno = self.event_init_value(&options, "lineno")?;
+                let lineno = self.event_integer(&lineno, 32, false)?;
+                state.set("lineno", Value::Number(lineno));
+                let message = self.event_init_value(&options, "message")?;
+                let message = if message == Value::Undefined {
+                    "".into()
+                } else {
+                    self.coerce_string(&message)?
+                };
+                state.set("message", Value::String(message));
             }
             let default = self.globals[&format!("%Web{}%", EVENT_NAMES[rank as usize])];
             let prototype = self.constructor_prototype_for(default, None)?;

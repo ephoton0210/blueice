@@ -44,6 +44,25 @@ impl WebTargetData {
 }
 
 impl Heap {
+    /// Give the existing realm global collector-owned listeners without
+    /// replacing its identity, own properties or prototype storage.
+    pub(crate) fn initialize_global_event_target(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Ordinary) {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
+        let state = Box::<WebTargetData>::default();
+        let bytes = state.bytes();
+        self.ensure_room(bytes, &[object])?;
+        let entry = self.objects.get_mut(&object).expect("protected global");
+        entry.kind = ObjectKind::WebEventTarget(state);
+        entry.bytes += bytes;
+        self.managed_bytes += bytes;
+        Ok(())
+    }
+
     pub(crate) fn alloc_web_event_target(
         &mut self,
         prototype: ObjectId,

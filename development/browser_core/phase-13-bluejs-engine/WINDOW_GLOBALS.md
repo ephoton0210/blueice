@@ -56,6 +56,13 @@ the existing member generator. Complete compiler/bridge, host/MCP, workspace
 build/Clippy/formatting and pinned Test262 gates pass. See [the checker contract](HOST_TYPING_BOUNDARIES.md)
 and the [live acceptance record](BROWSER_INTEGRATION_TODO.md#milestone-record).
 
+M1o advances the active owner-selected profile to v15 with `ErrorEvent`,
+`reportError`, `onerror` and global EventTarget methods. Its independent real
+JavaScript/BlueTS inventory observes all six names. Older profile artifacts
+remain immutable. Public VM/profile, real Core/MCP, related Rust, workspace
+build/Clippy/formatting and full pinned Test262 gates pass; see the
+[error-reporting contract](HOST_ERROR_REPORTING.md).
+
 `backend/launcher/tests/browser_timers.rs` observes every section C global
 through `typeof globalThis.<name>` in real JavaScript and checked BlueTS
 pages. It also pins the DOM/scheduling names and absence of `Window`,

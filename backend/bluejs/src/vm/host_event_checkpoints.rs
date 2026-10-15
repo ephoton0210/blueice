@@ -14,6 +14,7 @@ impl Vm {
     pub(super) fn starts_host_event_turn(&self) -> bool {
         self.bounded_host_microtask_checkpoints
             && self.call_depth == 0
+            && self.host_error_reporting != Some(true)
             && self.host_event_microtask_jobs.is_none()
     }
 
@@ -42,7 +43,11 @@ impl Vm {
         &mut self,
         result: Result<Value, RuntimeError>,
     ) -> Result<Value, RuntimeError> {
+        if let Err(error) = &result {
+            self.report_host_exception(error)?;
+        }
         if self.call_depth != 0
+            || self.host_error_reporting == Some(true)
             || self.host_event_microtask_jobs.is_none()
             || result
                 .as_ref()
