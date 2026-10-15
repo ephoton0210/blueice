@@ -1,0 +1,49 @@
+{
+  "cases": [
+    {
+      "name": "projorder-chain",
+      "projects": {
+        ".": ["./middle"],
+        "middle": ["../leaf"],
+        "leaf": []
+      }
+    },
+    {
+      "name": "projorder-diamond",
+      "projects": {
+        ".": ["./left", "./right"],
+        "left": ["../shared"],
+        "right": ["../shared"],
+        "shared": []
+      }
+    },
+    {
+      "name": "projorder-independent-leaves",
+      "projects": {
+        ".": ["./gamma", "./alpha", "./beta"],
+        "alpha": [],
+        "beta": [],
+        "gamma": []
+      }
+    },
+    {
+      "name": "projorder-reversed-diamond",
+      "projects": {
+        ".": ["./right", "./left"],
+        "left": ["../shared"],
+        "right": ["../shared"],
+        "shared": []
+      }
+    },
+    {
+      "name": "projorder-branch-and-independent",
+      "projects": {
+        ".": ["./branch", "./zeta"],
+        "branch": ["../middle"],
+        "middle": ["../leaf"],
+        "leaf": [],
+        "zeta": []
+      }
+    }
+  ]
+}

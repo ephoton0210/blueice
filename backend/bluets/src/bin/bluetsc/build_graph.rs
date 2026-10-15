@@ -301,9 +301,11 @@ fn resolve_source_import(file: &Path, specifier: &str) -> Option<PathBuf> {
 pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     let mut projects = Vec::new();
     let mut pretty = false;
+    let mut verbose = false;
     let mut arguments = arguments.into_iter().skip(1).peekable();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
+            "--verbose" => verbose = true,
             "--pretty" => {
                 pretty = arguments.peek().is_none_or(|next| next != "false");
                 if arguments
@@ -357,7 +359,16 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
         }
         return ExitCode::FAILURE;
     }
-    for project in graph.order {
+    if verbose {
+        println!("Projects in this build:");
+        for project in &graph.order {
+            println!("    * {}", graph.display_path(project));
+        }
+    }
+    for project in &graph.order {
+        if verbose {
+            println!("Building project: {}", graph.display_path(project));
+        }
         let result = native_cli::run_build_project(vec![
             "--project".into(),
             project.to_string_lossy().into_owned(),

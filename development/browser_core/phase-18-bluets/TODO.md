@@ -585,8 +585,9 @@ not `.tsbuildinfo` bytes.
     violations (missing `declaration`, file not covered by `include`) and cyclic references produce
     TS-coded diagnostics. *Pass when:* >= 8 reject fixtures match `tsc` primary code/position.
     - *Evidence:* PLAN.md, "K.12.1.1 Reference graph" (2026-10-15): 8/8 pinned rejects, 1 accepted emitting chain, K.0 two-crate gate.
-  - [ ] **AC-K12.1.2 Build order.** `--build` orders a diamond graph, a chain and independent leaves
+  - [x] **AC-K12.1.2 Build order.** `--build` orders a diamond graph, a chain and independent leaves
     identically to `tsc`. *Pass when:* >= 5 graphs, the ordered project list equals `tsc --build --verbose`.
+    - *Evidence:* PLAN.md, "K.12.1.2 Build order" (2026-10-15): 5/5 pinned ordered lists and actual build events, emit/run plus declarations, K.0 two-crate gate.
   - [ ] **AC-K12.1.3 Up-to-date decisions.** No-op rebuild skips every project; touching one source
     rebuilds exactly it and its dependents; touching only a comment/whitespace in a dependency's
     declaration output behaves as `tsc` does. *Pass when:* rebuilt-set equality on >= 6 scenarios.

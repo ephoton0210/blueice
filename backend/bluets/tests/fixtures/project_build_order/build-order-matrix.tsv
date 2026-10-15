@@ -1,0 +1,5 @@
+projorder-chain	leaf/tsconfig.json;middle/tsconfig.json;tsconfig.json
+projorder-diamond	shared/tsconfig.json;left/tsconfig.json;right/tsconfig.json;tsconfig.json
+projorder-independent-leaves	gamma/tsconfig.json;alpha/tsconfig.json;beta/tsconfig.json;tsconfig.json
+projorder-reversed-diamond	shared/tsconfig.json;right/tsconfig.json;left/tsconfig.json;tsconfig.json
+projorder-branch-and-independent	leaf/tsconfig.json;middle/tsconfig.json;branch/tsconfig.json;zeta/tsconfig.json;tsconfig.json

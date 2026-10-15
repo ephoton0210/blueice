@@ -10625,3 +10625,34 @@ incomplete attempt is counted as a passing gate. The final run uses
 `BLUEICE_BLUETSC_ORACLE=<TypeScript 5.9.3 tsc>`,
 `BLUEICE_ACORN_ORACLE=<Acorn 8.15.0 acorn>`, and
 `cargo test -q -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --include-ignored`.
+
+### K.12.1.2 Build order (2026-10-15)
+
+The pinned TypeScript 5.9.3 `--build --verbose` fixture records five distinct
+root-confined reference graphs: a chain, a diamond, three independent leaves
+in nonalphabetical reference order, a reversed diamond, and a branch plus an
+independent leaf. The committed matrix records the ordered project list for
+each graph. A public-CLI replay first failed all five because BlueTSC rejected
+`--verbose`; it now compares both the listed projects and the actual
+per-project compilation events with the frozen TypeScript lists. All five
+match, including shared-dependency deduplication and reference-order ties.
+
+The build graph already performed a dependency-first traversal; this leaf
+exposes that ordering through the `--verbose` option and emits a build event
+immediately before each native project compilation. The separate pinned
+oracle builds every graph with both compilers, executes every emitted export
+under Node, and compares every generated `main.d.ts`. The focused target
+passes all four tests, including both ignored TypeScript oracles. The changed
+production source is 383 lines, below the K.0 review threshold. Root
+confinement and the single-root limit are unchanged. The concise verbose
+output is not an exact copy of TypeScript's timestamps or status prose;
+up-to-date decisions, referenced declaration consumption and failure
+continuation remain K.12.1.3–K.12.1.5, not claims of this leaf.
+
+Workspace rustfmt and warnings-denied all-target Clippy for both BlueTS
+crates pass. The complete K.0 two-crate `--include-ignored` test gate exits 0
+with pinned TypeScript 5.9.3, Acorn 8.15.0, and Node 24.21.0; this includes
+the five-graph recorder, public CLI replay, emitted execution and declaration
+oracle, the 82-test TypeScript oracle, and the BlueJS library's 163 tests.
+The generated refusal inventory remains unchanged after rerunning
+`tools/inventory_refusals.py`; G-M2 is narrowed to the still-open build gaps.
