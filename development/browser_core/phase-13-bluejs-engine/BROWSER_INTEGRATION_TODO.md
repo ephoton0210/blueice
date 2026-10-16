@@ -56,6 +56,18 @@ remains separate from the accepted replay.
 Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
+**In progress — M1y asynchronous module dependency ownership (2026-10-16).**
+Static asynchronous evaluation previously kept forward dependency sets and
+reverse parent vectors outside the native ledger. Both directions now account
+for table/slot/name capacity, admit new edge batches before publication and
+release obsolete links, including parents of still-running siblings. Scoped
+charges cover traversal/frontier storage and collected dependency names across
+later JavaScript callbacks; deferred frontiers no longer linger in a realm
+result cache. Sixteen small-graph regression groups and the selected controls
+pass: 193 cases, formatting and offline workspace/all-target Clippy. This is an
+implementation checkpoint; integrated acceptance remains open and M1u remains
+the latest accepted milestone.
+
 **In progress — M1x scheduling capacity admission (2026-10-16).**
 Five tiny-container regressions reproduce admission errors in timer, frame,
 Promise-job and Promise-reaction storage. A fixed four-slot forecast permits
@@ -410,6 +422,18 @@ work and exposes its retained payload ledger.
       remain open before `fetch`.
 - [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
       host-held bytes, so a runaway page degrades only itself
+- [ ] **M1y: asynchronous module dependency ownership.** Charge both directions
+      of waiting graph edges, including actual table/set/vector slots and name
+      buffers. Admit a parent's complete batch before publishing either
+      direction or marking it suspended; duplicate edges add no charge. Release
+      obsolete sibling links on rejection and preserve source/BFS ordering.
+      Cover Rust-held traversal/frontier storage across JavaScript callbacks
+      and return it on every exit. See the implementation record below.
+- [ ] **Active execution control capacity.** Active and displaced operand,
+      binding, scope, eval and completion containers must enter the document
+      budget alongside primitive payloads. Admission/release tests must follow
+      real call/eval/generator/async ownership transfers, avoid charging maps
+      forwarded into the callee twice, and preserve suspension/debugger state.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -417,9 +441,9 @@ work and exposes its retained payload ledger.
       entries and a scalar shared-owner model. The implementation checkpoint
       below now includes browser-task/cleanup/rejection producers, FileReader
       requeue/cancellation, timeout clock ordering and joint Promise/await-table
-      admission; import-waiter publication and reclamation are in progress.
-      Integrated acceptance
-      and the wider native control/service-buffer gate remain open.
+      admission and import-waiter publication/reclamation. Those implementation
+      checkpoints pass their bounded selections; integrated acceptance and the
+      wider native control/service-buffer gate remain open.
 - [ ] **M1w: document callback-timer counts.** Root and attached child realms
       must share 1,024 pending callback registrations, expose aggregate counts,
       refund delivery/cancellation/document destruction and refuse before
@@ -818,6 +842,73 @@ the generated typings in the same change.
 
 ## Milestone record
 
+### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
+
+Acceptance: account for both dependency maps' table capacity, keys, dependency
+set slots/names and reverse vector slots/names. Register one parent's unique
+new edges as a batch before either direction or its suspended state is
+published. A refused batch preserves prior edges and capacities; valid existing
+slots charge only newly owned data. Completion releases empty storage; rejection
+removes obsolete reverse edges from siblings that remain live. Keep source/BFS
+order and normal import/defer/await behavior.
+
+Rust-held traversal vectors/queues, collected pending dependencies, remaining
+evaluation-list storage and deferred frontiers remain charged while dependency/
+parent JavaScript executes and release on all exits. The deferred
+frontier belongs to its graph call/result rather than a lingering realm cache.
+Tests use tiny graphs, deterministic native observations and scalar shared-owner
+budgets; no physical resource-exhaustion probe is needed. Active execution
+control containers, full module-cache/service buffers and final integrated
+acceptance remain separate open work.
+
+- [x] Reproduce the small public/native-boundary accounting, publication,
+      cleanup and callback-ownership failures.
+- [x] Account for all retained dependency table/set/vector/name storage.
+- [x] Admit complete edge batches before publication, moving old owners without
+      cloning and preserving duplicate/source ordering.
+- [x] Charge traversal/frontier owners across callbacks and drop them on every
+      path; remove the lingering deferred-frontier result cache.
+- [x] Remove obsolete sibling links and shrink released dependency storage.
+- [x] Pass bounded regression/control checks, formatting and offline workspace
+      Clippy; record the source/artifact audit with the checkpoint commit.
+- [ ] Complete integrated/full-source acceptance under the owner's security
+      constraints. M1u remains the latest accepted milestone.
+
+Eleven bounded groups fail on the parent and pass after the first implementation.
+They cover real suspended module records, scalar shared-budget refusal,
+forward/reverse table and buffer growth, exact spare-slot storage, stale sibling
+links, completion release and native observations inside parent/dependency
+callbacks. Red log:
+`/private/tmp/blueice-module-dependency-ownership-red-20261016.log`.
+Initial green log:
+`/private/tmp/blueice-module-dependency-ownership-unit-green-20261016.log`.
+The expanded sixteen groups also cover duplicate batches, source/BFS order,
+parent errors with ready siblings, deterministic resource-abort lease release
+and pending-name/evaluation-list storage across a later dependency callback.
+The collector group independently failed before its scoped charge was added:
+`/private/tmp/blueice-module-dependency-collector-red-20261016.log`.
+Final group log:
+`/private/tmp/blueice-module-dependency-ownership-final-unit-20261016.log`.
+
+Checkpoint validation: **193 passed, zero failed, zero ignored**. The sixteen
+new groups, twelve import-waiter groups and 75 existing unit controls pass.
+Eight public selections pass 90 cases: `async_from_sync_delegation` (two),
+`async_generator_ticks` (fourteen), `async_yield_star_delegate_close` (seven),
+`dynamic_import` (ten), `host_async_tasks` (18), `import_defer` (seventeen),
+`promise_capabilities` (ten) and `promise_gc_lifecycle` (twelve). Six other
+host-async pressure/limit cases remain filtered under the owner's security
+constraint. Tests use finite small graphs and scalar budget observations;
+no corresponding large buffer is allocated. Formatting, `git diff --check`
+and offline workspace/all-target Clippy with warnings denied pass.
+
+Control logs use `/private/tmp/blueice-module-dependency-ownership-` with
+`{waiter,promise,slot,browser,handoff,call,timer,await-refusal,continuation,cleanup,source,public}-controls-20261016.log`.
+Formatting/Clippy logs use that prefix with `{fmt,clippy}-20261016.log`.
+Receipt: `target/module-dependency-ownership-source-20261016.json`.
+Active execution control containers, full module caches/service buffers,
+allocator/transient staging accounting and integrated acceptance remain open.
+No fresh full Test262, real Core/MCP replay or coverage result is claimed.
+
 ### M1x — Scheduling capacity admission (implementation checkpoint, 2026-10-16)
 
 Acceptance: calculate the requested slot-capacity delta before admission;
@@ -1006,7 +1097,8 @@ are not a measure of waiting ownership, so refusal compares retained targets,
 names, namespaces and capacities directly.
 Expanded log:
 `/private/tmp/blueice-import-waiter-capacity-expanded-green-20261016.log`.
-Current-source bounded validation: **177 passed, zero failed, zero ignored**.
+Import-waiter checkpoint (`1be3b59e5`) bounded validation:
+**177 passed, zero failed, zero ignored**.
 The twelve new groups and 75 existing unit controls pass: seventeen Promise
 table groups, eight initial slot groups, twenty browser groups, twelve handoff
 groups, four call-entry controls, seven timer-count groups, two await-restoration

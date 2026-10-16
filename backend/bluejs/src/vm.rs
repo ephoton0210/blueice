@@ -56,6 +56,7 @@ mod host_scheduling;
 mod host_task_turns;
 mod host_timers;
 mod import_waiters;
+mod module_dependencies;
 use agent_registry::AgentSymbolRegistry;
 use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::{
@@ -1047,9 +1048,6 @@ pub struct Vm {
     /// graph, which owns every root of its modules.
     nested_module_roots: Vec<RootId>,
     deferred_import_waiters: Vec<DeferredImportWaiter>,
-    /// The asynchronous dependency frontier the last `import.defer()` graph
-    /// load evaluated (see `gather_async_dependencies`).
-    last_deferred_dependencies: Vec<String>,
     module_continuations: HashMap<u64, ModuleContinuation>,
     next_module_continuation: u64,
     async_continuations: HashMap<u64, AsyncContinuation>,

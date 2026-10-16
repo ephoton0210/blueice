@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_module_dependency_ownership_contracts() {
+    blueice_bluejs::Vm::verify_module_dependency_ownership_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_import_waiter_capacity_contracts() {
     blueice_bluejs::Vm::verify_import_waiter_capacity_contracts();
 }

@@ -99,9 +99,18 @@ impl<K: Eq + std::hash::Hash, V> SchedulingMapCapacity<K, V> {
         values: &HashMap<K, V>,
         scope: Option<&SchedulingScope>,
     ) -> Result<Self, RuntimeError> {
-        let replacement = if values.len() == values.capacity() {
+        Self::for_additional(values, 1, scope)
+    }
+
+    pub(super) fn for_additional(
+        values: &HashMap<K, V>,
+        additional: usize,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<Self, RuntimeError> {
+        let required = values.len().saturating_add(additional);
+        let replacement = if required > values.capacity() {
             let mut table = HashMap::new();
-            if table.try_reserve(values.len().saturating_add(1)).is_err() {
+            if table.try_reserve(required).is_err() {
                 return Err(scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail));
             }
             Some(table)
@@ -956,6 +965,9 @@ impl Vm {
                 usage.payload_bytes = usage.payload_bytes.saturating_add(name.capacity());
             }
         }
+        usage.payload_bytes = usage
+            .payload_bytes
+            .saturating_add(self.module_dependency_bytes());
         usage
     }
     pub(super) fn admit_scheduling_work(

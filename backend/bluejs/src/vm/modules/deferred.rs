@@ -62,20 +62,26 @@ impl Vm {
         entry: &str,
     ) -> Result<DynamicImportResult, RuntimeError> {
         let modules = self.module_registry.clone();
-        self.execute_module_graph_inner(entry, &modules, false, true, ImportPhase::Defer)?;
+        let mut frontier = Vec::new();
+        self.execute_module_graph_with_frontier(
+            entry,
+            &modules,
+            false,
+            true,
+            ImportPhase::Defer,
+            &mut frontier,
+        )?;
         let namespace = self
             .last_module_namespace
             .expect("successful deferred graph execution publishes its namespace before returning");
-        let running: Vec<String> = self
-            .last_deferred_dependencies
-            .iter()
+        let running: Vec<String> = frontier
+            .into_iter()
             .filter(|dependency| {
                 self.linked_record(dependency)
                     // Evaluation remains active while suspended, and both
                     // flags are cleared together when a dependency settles.
                     .is_some_and(|record| record.evaluating)
             })
-            .cloned()
             .collect();
         if running.is_empty() {
             return Ok(DynamicImportResult::Fulfilled(Value::Object(namespace)));

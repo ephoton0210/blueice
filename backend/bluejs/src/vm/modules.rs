@@ -8,6 +8,10 @@ mod synthetic;
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_dependency_ownership.rs"]
+mod dependency_ownership_tests;
+
 /// How code that is not a generator -- a module body, an async function body
 /// -- finishes a run: it returns, or it awaits. It never yields, and no
 /// running code suspends at a generator's entry.
@@ -250,6 +254,25 @@ impl Vm {
         is_dynamic_import: bool,
         phase: ImportPhase,
     ) -> Result<Value, RuntimeError> {
+        self.execute_module_graph_with_frontier(
+            entry,
+            modules,
+            drain_jobs,
+            is_dynamic_import,
+            phase,
+            &mut Vec::new(),
+        )
+    }
+
+    pub(super) fn execute_module_graph_with_frontier(
+        &mut self,
+        entry: &str,
+        modules: &HashMap<String, Bytecode>,
+        drain_jobs: bool,
+        is_dynamic_import: bool,
+        phase: ImportPhase,
+        frontier: &mut Vec<String>,
+    ) -> Result<Value, RuntimeError> {
         self.module_execution_depth += 1;
         let result = self.execute_module_graph_inner_scoped(
             entry,
@@ -257,6 +280,7 @@ impl Vm {
             drain_jobs,
             is_dynamic_import,
             phase,
+            frontier,
         );
         self.module_execution_depth -= 1;
         result
@@ -269,6 +293,7 @@ impl Vm {
         drain_jobs: bool,
         is_dynamic_import: bool,
         phase: ImportPhase,
+        frontier: &mut Vec<String>,
     ) -> Result<Value, RuntimeError> {
         // An import that starts while module code is running (a dynamic
         // `import()` in a Promise job the entry's `await` lets run) joins the
@@ -678,10 +703,25 @@ impl Vm {
                 let dependencies =
                     Self::gather_async_dependencies(entry, modules, &linked, &mut HashSet::new())
                         .expect("every request of the graph was resolved when it was loaded");
+                // This vector remains Rust-owned across dependency JavaScript.
+                // Cache hits run no code; their immediate result handoff stays
+                // within the existing transient native-operation policy.
+                let executes = dependencies.iter().any(|name| {
+                    linked.get(name).is_some_and(|record| {
+                        !record.evaluated && !record.evaluating && record.error.is_none()
+                    })
+                });
+                let frontier_payload = self.charge_execution_payload(if executes {
+                    module_dependencies::string_vector_bytes(&dependencies)
+                } else {
+                    0
+                });
+                self.synchronize_scheduling_usage()?;
                 for dependency in &dependencies {
                     self.evaluate_module_record(dependency, modules, &mut linked)?;
                 }
-                self.last_deferred_dependencies = dependencies;
+                drop(frontier_payload);
+                *frontier = dependencies;
                 let namespace =
                     self.module_namespace(entry, true, modules, &mut linked, &mut roots)?;
                 (Value::Undefined, namespace)
@@ -1701,21 +1741,53 @@ impl Vm {
         modules: &HashMap<String, Bytecode>,
         linked: &mut HashMap<String, LinkedModule>,
     ) -> Result<(), RuntimeError> {
+        let result = self.settle_module_parents_owned(completed, modules, linked);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn settle_module_parents_owned(
+        &mut self,
+        completed: String,
+        modules: &HashMap<String, Bytecode>,
+        linked: &mut HashMap<String, LinkedModule>,
+    ) -> Result<(), RuntimeError> {
         let mut completed = std::collections::VecDeque::from([completed]);
         while let Some(child) = completed.pop_front() {
+            let mut work_payload = self.charge_execution_payload(
+                module_dependencies::string_queue_bytes(&completed)
+                    .saturating_add(child.capacity()),
+            );
             let parents = self.module_async_parents.remove(&child).unwrap_or_default();
-            for parent in parents {
+            let capacity = parents.capacity();
+            let mut parents = parents.into_iter();
+            let mut parents_payload = self.charge_execution_payload(
+                module_dependencies::string_iterator_bytes(capacity, parents.as_slice()),
+            );
+            self.reclaim_module_dependency_storage();
+            self.synchronize_scheduling_usage()?;
+            while let Some(parent) = parents.next() {
+                let parent_payload = self.charge_execution_payload(parent.capacity());
+                drop(parents_payload);
+                parents_payload = self.charge_execution_payload(
+                    module_dependencies::string_iterator_bytes(capacity, parents.as_slice()),
+                );
+                self.synchronize_scheduling_usage()?;
                 let ready = self
                     .module_pending_dependencies
                     .get_mut(&parent)
                     .is_some_and(|dependencies| {
                         dependencies.remove(&child);
+                        if dependencies.len().saturating_mul(4) < dependencies.capacity() {
+                            dependencies.shrink_to_fit();
+                        }
                         dependencies.is_empty()
                     });
                 if !ready {
                     continue;
                 }
-                self.module_pending_dependencies.remove(&parent);
+                self.remove_module_dependency_parent(&parent);
+                self.synchronize_scheduling_usage()?;
                 let record = linked
                     .get_mut(&parent)
                     .expect("async parent remains linked");
@@ -1734,16 +1806,28 @@ impl Vm {
                     // not a second exception from this dependency's Promise
                     // job. Settle its waiters/ancestors and continue the ready
                     // siblings. Resource aborts still escape unchanged.
+                    drop(parent_payload);
                     self.reject_module_and_parents(parent, retained, linked)?;
                     continue;
                 }
                 if linked.get(&parent).is_some_and(|record| record.evaluated) {
                     self.settle_dynamic_import_waiters(&parent, linked)?;
                     completed.push_back(parent);
+                    drop(parent_payload);
+                    drop(work_payload);
+                    work_payload = self.charge_execution_payload(
+                        module_dependencies::string_queue_bytes(&completed)
+                            .saturating_add(child.capacity()),
+                    );
+                    self.synchronize_scheduling_usage()?;
                 }
             }
+            drop(parents);
+            drop(parents_payload);
         }
-        Ok(())
+        drop(completed);
+        self.reclaim_module_dependency_storage();
+        self.synchronize_scheduling_usage()
     }
 
     /// Propagate an async module evaluation error through its static parents.
@@ -1755,15 +1839,45 @@ impl Vm {
         error: ModuleEvaluationError,
         linked: &mut HashMap<String, LinkedModule>,
     ) -> Result<(), RuntimeError> {
+        let result = self.reject_module_and_parents_owned(module, error, linked);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn reject_module_and_parents_owned(
+        &mut self,
+        module: String,
+        error: ModuleEvaluationError,
+        linked: &mut HashMap<String, LinkedModule>,
+    ) -> Result<(), RuntimeError> {
         let mut rejected = std::collections::VecDeque::from([module]);
         while let Some(module) = rejected.pop_front() {
+            let mut work_payload = self.charge_execution_payload(
+                module_dependencies::string_queue_bytes(&rejected)
+                    .saturating_add(module.capacity()),
+            );
+            self.remove_module_dependency_parent(&module);
+            self.synchronize_scheduling_usage()?;
             self.reject_dynamic_import_waiters(&module, error.clone())?;
-            for parent in self
+            let parents = self
                 .module_async_parents
                 .remove(&module)
-                .unwrap_or_default()
-            {
-                self.module_pending_dependencies.remove(&parent);
+                .unwrap_or_default();
+            let capacity = parents.capacity();
+            let mut parents = parents.into_iter();
+            let mut parents_payload = self.charge_execution_payload(
+                module_dependencies::string_iterator_bytes(capacity, parents.as_slice()),
+            );
+            self.reclaim_module_dependency_storage();
+            self.synchronize_scheduling_usage()?;
+            while let Some(parent) = parents.next() {
+                let parent_payload = self.charge_execution_payload(parent.capacity());
+                drop(parents_payload);
+                parents_payload = self.charge_execution_payload(
+                    module_dependencies::string_iterator_bytes(capacity, parents.as_slice()),
+                );
+                self.remove_module_dependency_parent(&parent);
+                self.synchronize_scheduling_usage()?;
                 let record = linked
                     .get_mut(&parent)
                     .expect("async parent remains linked");
@@ -1777,9 +1891,20 @@ impl Vm {
                 record.error = Some(error.clone());
                 self.keep_module_value_alive(&error.value);
                 rejected.push_back(parent);
+                drop(parent_payload);
+                drop(work_payload);
+                work_payload = self.charge_execution_payload(
+                    module_dependencies::string_queue_bytes(&rejected)
+                        .saturating_add(module.capacity()),
+                );
+                self.synchronize_scheduling_usage()?;
             }
+            drop(parents);
+            drop(parents_payload);
         }
-        Ok(())
+        drop(rejected);
+        self.reclaim_module_dependency_storage();
+        self.synchronize_scheduling_usage()
     }
 
     /// Resolves every waiting `import()` with its namespace, observing an
@@ -2472,7 +2597,31 @@ impl Vm {
                 } else {
                     vec![target]
                 };
-                for target in evaluation_list {
+                let capacity = evaluation_list.capacity();
+                let mut evaluation_list = evaluation_list.into_iter();
+                while let Some(target) = evaluation_list.next() {
+                    let executes = linked.get(&target).is_some_and(|record| {
+                        !record.evaluated && !record.evaluating && record.error.is_none()
+                    });
+                    // Earlier pending names and later evaluation-list entries
+                    // stay Rust-owned while this dependency can execute JS.
+                    let _pending_payload = self.charge_execution_payload(if executes {
+                        module_dependencies::string_vector_bytes(&pending_dependencies)
+                    } else {
+                        0
+                    });
+                    let _evaluation_payload = self.charge_execution_payload(if executes {
+                        module_dependencies::string_iterator_bytes(
+                            capacity,
+                            evaluation_list.as_slice(),
+                        )
+                        .saturating_add(target.capacity())
+                    } else {
+                        0
+                    });
+                    if executes {
+                        self.synchronize_scheduling_usage()?;
+                    }
                     self.evaluate_module_record(&target, modules, linked)?;
                     if linked.get(&target).is_some_and(|record| record.suspended) {
                         // `target` is part of the graph, whose requests all
@@ -2485,18 +2634,7 @@ impl Vm {
                 }
             }
             if !pending_dependencies.is_empty() {
-                let dependencies = self
-                    .module_pending_dependencies
-                    .entry(name.to_string())
-                    .or_default();
-                for dependency in pending_dependencies {
-                    if dependencies.insert(dependency.clone()) {
-                        self.module_async_parents
-                            .entry(dependency)
-                            .or_default()
-                            .push(name.to_string());
-                    }
-                }
+                self.register_async_module_dependencies(name, pending_dependencies)?;
                 linked
                     .get_mut(name)
                     .expect("checked module record exists")

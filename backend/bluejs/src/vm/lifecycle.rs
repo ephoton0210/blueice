@@ -102,7 +102,6 @@ impl Vm {
             evaluating_linked: None,
             nested_module_roots: Vec::new(),
             deferred_import_waiters: Vec::new(),
-            last_deferred_dependencies: Vec::new(),
             module_continuations: HashMap::new(),
             next_module_continuation: 0,
             async_continuations: HashMap::new(),

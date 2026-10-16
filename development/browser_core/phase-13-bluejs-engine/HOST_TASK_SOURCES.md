@@ -126,6 +126,24 @@ drops obsolete dependency names and shrinks mostly empty sets. Pending targets
 remain GC roots through the existing module-work edges, then become collectible
 when delivery has finished and no other owner retains them.
 
+Static asynchronous module evaluation owns a forward dependency set for each
+waiting parent and an ordered reverse-parent vector for each dependency.
+Their table/set/vector capacities and retained UTF-8 names share the document
+native-byte budget. A parent's unique edge batch is admitted before either
+direction or the parent's suspended state is published. Existing names move
+without cloning; duplicate edges add no allocation or ordering change.
+
+Completion returns obsolete names and unused capacity. Rejection removes the
+parent from every remaining dependency, including siblings that keep running.
+Breadth-first/source order is preserved. Rust-owned queues, remaining parent
+iterators and current names retain scoped charges while callbacks can execute;
+all exits reconcile their released ownership. Deferred graph evaluation hands
+its frontier back to its caller without a realm cache and charges it across
+dependency JavaScript. Collected pending dependency names and the remaining
+evaluation-list buffer also retain scoped charges while a later dependency
+executes. Wholly native staging, full module caches and active execution control
+containers remain in the broader native-accounting work.
+
 ### Native-payload collection pressure
 
 Large Promise results and suspended-frame strings enter the native scheduling
