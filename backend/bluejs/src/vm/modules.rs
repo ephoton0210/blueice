@@ -1580,83 +1580,19 @@ impl Vm {
         self.reconcile_scheduling_ownership();
     }
 
-    /// Heap edges held only by a displaced interpreter frame.  Keeping this
-    /// independent from the module machinery lets ordinary async functions
-    /// share the same GC contract and prevents continuation state from being
-    /// accidentally treated as Rust-only data.
-    pub(super) fn suspended_execution_references(
-        execution: &SuspendedModuleExecution,
-    ) -> Vec<ObjectId> {
-        let mut references = Vec::new();
-        let mut add_value = |value: &Value| {
-            if let Some(id) = value.object_id() {
-                references.push(id);
+    pub(super) fn run_next_job_while_module_suspended(&mut self) -> Result<bool, RuntimeError> {
+        self.check_scheduling_failure()?;
+        if self.promise_jobs.is_empty() {
+            return Ok(false);
+        }
+        let execution = self.suspend_module_execution();
+        let roots = match self.root_suspended_module_execution(&execution) {
+            Ok(roots) => roots,
+            Err(error) => {
+                self.restore_module_execution(execution);
+                return Err(error);
             }
         };
-        for value in execution
-            .stack
-            .iter()
-            .chain(execution.bindings.iter().flatten())
-            .chain(std::iter::once(&execution.completion))
-            .chain(execution.with_objects.iter())
-            .chain(std::iter::once(&execution.this))
-            .chain(execution.arguments.iter())
-            .chain(std::iter::once(&execution.callee))
-            .chain(std::iter::once(&execution.new_target))
-            .chain(execution.completion_saves.iter().map(|(value, _)| value))
-            .chain(
-                execution
-                    .disposables
-                    .iter()
-                    .flat_map(DisposableResource::values),
-            )
-        {
-            add_value(value);
-        }
-        // A completion waits across an await only while a finalizer runs, and
-        // that is a return, a throw or a jump: a tail call is never compiled
-        // inside a try statement, and yields, resumptions and halts are
-        // handled where they arise.
-        for completion in &execution.pending_completions {
-            if let Completion::Return(value) | Completion::Throw(RuntimeError::Thrown(value)) =
-                completion
-            {
-                add_value(value);
-            }
-        }
-        references.extend(execution.cells.values().copied());
-        for binding in execution.dynamic_eval_bindings.values().chain(
-            execution
-                .dynamic_eval_outer_bindings
-                .iter()
-                .flat_map(|bindings| bindings.values()),
-        ) {
-            references.push(binding.cell);
-            references.extend(binding.shadowed_cells.iter().copied());
-        }
-        references.extend(execution.home_object);
-        references
-    }
-
-    pub(super) fn root_suspended_module_execution(
-        &mut self,
-        execution: &SuspendedModuleExecution,
-    ) -> Vec<RootId> {
-        self.root_suspended_execution(execution)
-    }
-
-    /// Roots every heap edge of a displaced frame until the roots are handed
-    /// back to [`Self::release_root`].
-    fn root_suspended_execution(&mut self, execution: &SuspendedModuleExecution) -> Vec<RootId> {
-        Self::suspended_execution_references(execution)
-            .into_iter()
-            .map(|id| self.root_new_object(id))
-            .collect()
-    }
-
-    pub(super) fn run_next_job_while_module_suspended(&mut self) -> Result<bool, RuntimeError> {
-        let execution = self.suspend_module_execution();
-        let roots = self.root_suspended_execution(&execution);
         // Promise jobs run in a fresh ECMAScript execution context.  In
         // particular, a dynamic-import job can enter a module whose
         // top-level `await` must not inherit the suspended caller's function

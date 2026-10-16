@@ -44,6 +44,7 @@ mod module_context;
 mod module_continuation_storage;
 mod module_graph_storage;
 use module_graph_storage::ModuleRecords;
+mod displaced_roots;
 mod module_referrers;
 mod module_registry;
 mod module_root_storage;

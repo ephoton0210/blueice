@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_displaced_root_ownership_contracts() {
+    blueice_bluejs::Vm::verify_displaced_root_ownership_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_module_root_ownership_contracts() {
     blueice_bluejs::Vm::verify_module_root_ownership_contracts();
 }

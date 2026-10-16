@@ -485,9 +485,25 @@ Cached object completions acquire persistent roots before publication in normal,
 debugger and await paths. A later script collection therefore preserves the
 cached value; failed await rooting publishes no completion. Error roots follow
 the same publication order. Linking, namespace and ImportMeta registration
-failures propagate their runtime identities. Temporary displaced-frame root
-scratch, native payloads of retained values, shared programs and other wider
-native/cache/integrated ownership remain open work.
+failures propagate their runtime identities.
+
+Displaced execution references borrow saved frame fields through an iterator,
+including pending completions and completion-save values. Scoped-root consumers
+need no intermediate object vector. Temporary persistent registrations use
+admitted ModuleRoots segments; transactional append unregisters only its suffix
+on refusal and preserves an existing prefix and its capacity ownership.
+
+Queued jobs remain queued until frame rooting succeeds. Empty checkpoints perform
+no frame displacement or registration. Rooting errors restore the caller before
+returning, including deferred namespace observers. Reentrant ShadowRealm entry
+stages frame, parameter environment and kept weak-target roots before taking the
+remaining owners. Failure restores execution and lexical bindings; success keeps
+objects alive through nested GC and releases temporary roots after restoration.
+Fatal host failures propagate through both public evaluate paths; catchable
+JavaScript exceptions retain their opaque TypeError translation.
+
+General trace-vector growth admission, native payloads of retained values, shared
+programs and other wider native/cache/integrated ownership remain open work.
 
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native

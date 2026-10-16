@@ -14,16 +14,7 @@ pub(super) fn number_or_zero(value: &Value) -> f64 {
 }
 
 impl Vm {
-    /// Roots an object this module has just allocated while it goes on to
-    /// build the rest of an intrinsic; released again by [`Self::release_root`].
-    pub(in super::super) fn root_new_object(&mut self, object: ObjectId) -> crate::heap::RootId {
-        self.heap
-            .root(object)
-            .expect("a freshly allocated object can be rooted")
-    }
-
-    /// Releases a root registered by [`Self::root_new_object`] (or by another
-    /// caller that registered exactly one root for it).
+    /// Releases one persistent root registered by `Heap::root`.
     pub(in super::super) fn release_root(&mut self, root: crate::heap::RootId) {
         self.heap
             .unroot(root)

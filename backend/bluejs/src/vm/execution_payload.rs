@@ -123,7 +123,7 @@ pub(super) fn outer_binding_bytes(values: &Vec<HashMap<String, DynamicEvalBindin
         })
 }
 
-fn pending_references<'a>(
+pub(super) fn pending_references<'a>(
     pending: &'a [Completion],
     saves: &'a [(Value, bool)],
 ) -> impl Iterator<Item = ObjectId> + 'a {

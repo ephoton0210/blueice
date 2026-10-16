@@ -26,6 +26,10 @@ use super::*;
 #[path = "../../tests/fixtures/shadow_realm_boundaries.rs"]
 mod boundary_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/shadow_displaced_roots.rs"]
+mod displaced_root_tests;
+
 impl Vm {
     fn collect_before_shadow_realm_entry(&mut self) -> Result<(), RuntimeError> {
         if self.heap.document_heap_budget().is_some() {
@@ -139,12 +143,12 @@ impl Vm {
 
     /// `ShadowRealm.prototype.evaluate` (`PerformShadowRealmEval`). Runs
     /// `source_text` as a classic Script in this instance's own realm and
-    /// returns `GetWrappedValue(callerRealm, result)`. Any abrupt
+    /// returns `GetWrappedValue(callerRealm, result)`. Any catchable abrupt
     /// completion -- a parse failure, a thrown value, or an unsettled
     /// promise job's own rejection -- becomes an opaque, message-less
     /// `TypeError` in the *caller's* realm (`CreateTypeErrorCopy`): the
     /// proposal deliberately does not leak another realm's error identity
-    /// or message across the boundary.
+    /// or message across the boundary. Fatal host aborts retain their identity.
     pub(super) fn shadow_realm_evaluate(
         &mut self,
         this: Value,
@@ -188,6 +192,7 @@ impl Vm {
                 drop(child_guard);
                 match outcome {
                     Ok(value) => self.shadow_wrap_into(&mut child, value),
+                    Err(error) if !error.is_catchable() => Err(error),
                     Err(_) => Err(RuntimeError::TypeError(String::new())),
                 }
             }
@@ -211,6 +216,7 @@ impl Vm {
                 let outcome = Self::run_evaluate(self, record_vm, &code, true);
                 match outcome {
                     Ok(value) => self.shadow_wrap_into(record_vm, value),
+                    Err(error) if !error.is_catchable() => Err(error),
                     Err(_) => Err(RuntimeError::TypeError(String::new())),
                 }
             }
@@ -243,21 +249,36 @@ impl Vm {
         // function's bindings, operand stack, or dynamic eval environments.
         let lexical_bindings = child.suspend_lexical_global_bindings()?;
         let execution = child.suspend_module_execution();
-        let mut roots = child.root_suspended_module_execution(&execution);
+        let mut roots = match child.root_suspended_module_execution(&execution) {
+            Ok(roots) => roots,
+            Err(error) => {
+                child.restore_module_execution(execution);
+                lexical_bindings.restore(child);
+                return Err(error);
+            }
+        };
+        // Stage roots for fields outside the common frame before taking any
+        // of them. Registration/admission failure must leave all owners intact.
+        let extra_roots = Self::append_registered_frame_roots(
+            &mut roots,
+            &mut child.heap,
+            child.host_scheduling.as_ref(),
+            child
+                .parameter_eval_env
+                .into_iter()
+                .chain(child.kept_weak_objects.iter().copied()),
+        );
+        if let Err(error) = extra_roots {
+            child.release_module_roots_from(&mut roots, 0);
+            child.restore_module_execution(execution);
+            lexical_bindings.restore(child);
+            return Err(error);
+        }
         let call_depth = std::mem::replace(&mut child.call_depth, 0);
         let parameter_eval_env = child.parameter_eval_env.take();
-        if let Some(env) = parameter_eval_env {
-            roots.push(child.root_new_object(env));
-        }
-        // Script cleanup clears these even when an ancestor call is still
-        // active. Keep weak targets alive for the complete outer job.
+        // Script cleanup clears these even when an ancestor call is active.
         let call_stack = std::mem::take(&mut child.call_stack);
         let kept_weak_objects = std::mem::take(&mut child.kept_weak_objects);
-        roots.extend(
-            kept_weak_objects
-                .iter()
-                .map(|id| child.root_new_object(*id)),
-        );
         let inherited_with_depth = std::mem::replace(&mut child.inherited_with_depth, 0);
         // GetShadowRealmContext ( shadowRealmRecord, strictEval ): "Let
         // lexEnv be NewDeclarativeEnvironment(shadowRealmRecord.[[GlobalEnv]])."

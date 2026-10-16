@@ -286,7 +286,13 @@ impl Vm {
         // keep rooted) everything the observing code has on the interpreter,
         // exactly as a Promise job that enters a module does.
         let execution = self.suspend_module_execution();
-        let roots = self.root_suspended_module_execution(&execution);
+        let roots = match self.root_suspended_module_execution(&execution) {
+            Ok(roots) => roots,
+            Err(error) => {
+                self.restore_module_execution(execution);
+                return Err(error);
+            }
+        };
         let call_depth = std::mem::replace(&mut self.call_depth, 0);
         let result = self
             .with_module_records(|vm, linked| vm.evaluate_module_record(module, &modules, linked))

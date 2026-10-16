@@ -57,7 +57,18 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Module root storage is the current follow-up (2026-10-17).
+Displaced execution rooting is the current follow-up (2026-10-17).
+Four initial refusal/restoration cases and a separate public ShadowRealm
+fatal-error case failed before the fix. All fourteen new finite lifecycle cases
+now pass. Saved-edge enumeration borrows the frame; temporary registered roots
+own admitted segments and roll back only their new suffix. Queued jobs, deferred
+namespaces and reentrant realms restore displaced owners before returning errors.
+All 780 fixed selected cases pass across 38 executables and 68 selections,
+together with formatting and offline workspace/all-target Clippy. General
+trace-vector growth admission, retained native values, shared programs and wider
+gates remain open; M1u stays the latest accepted milestone.
+
+The module root storage checkpoint (2026-10-17) precedes this follow-up.
 Four tiny native-admission, registration-error and cached-completion cases
 initially failed and now pass. Module roots use admitted segments/reservations
 that splice without allocation during cleanup. Synchronous object completions
@@ -2642,6 +2653,76 @@ Evidence: `/private/tmp/blueice-module-roots-controls-20261017.py`,
 `/private/tmp/blueice-module-roots-audit-20261017.py`, and logs matching
 `/private/tmp/blueice-module-roots-{red,first,completion-red,roots,fmt,clippy}-20261017.log`.
 `target/module-roots-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. This is an M1z implementation checkpoint;
+wider native/integrated acceptance remains open.
+
+#### Displaced execution rooting follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: registered roots for Rust-held frames use admitted storage and
+release partial work on refusal. Queued-job, deferred-namespace and reentrant
+realm entry restore every displaced owner before returning a rooting error.
+Reference enumeration borrows saved fields without a scratch object vector;
+empty checkpoints require no rooting work. Callback execution preserves GC edges.
+Fatal host errors retain their identity across the public ShadowRealm boundary.
+
+- [x] Reproduce partial rooting, native admission, empty checkpoints and
+      reentrant restoration failures with tiny offline cases. All four initial
+      cases failed; a separate public evaluate case reproduced fatal-error
+      masking as a catchable TypeError.
+- [x] Implement borrowed reference enumeration, admitted registered roots and
+      transactional frame/realm setup; fourteen new cases pass across success,
+      refusal and collection lifecycles.
+- [x] Run fixed offline regressions/static checks, update evidence and commit
+      with a detailed English message. Trace-vector growth admission, retained
+      value payloads, shared programs and wider native/integrated gates stay open.
+
+Saved-edge enumeration now chains borrowed frame fields directly instead of
+building an intermediate ObjectId vector. The shared pending-completion iterator
+covers completion-save values and every value-carrying completion kind; bindings,
+call metadata, disposables, linked cells, dynamic binding chains and home objects
+remain visible. Scoped-root consumers use the same iterator without collecting a
+scratch vector.
+
+Temporary persistent registrations reuse admitted ModuleRoots segments. Each
+append records its prefix length; refusal unregisters only its suffix and frees
+emptied segments. Existing prefix registrations and capacity ownership survive.
+This replaces the unadmitted RootId vector and removes the unused infallible
+fresh-object rooting helper. Root-registration exhaustion is a runtime error.
+
+Queued-job entry checks terminal scheduling state, then returns immediately for
+an empty queue. For real jobs, rooting completes before a job is removed or fuel
+and call depth change. Synchronous deferred namespace entry also restores its
+observer frame on rooting failure. Success restores the original execution before
+unregistering roots; GC inside nested JavaScript preserves saved objects and
+subsequent collection reclaims them after their frame owners are cleared.
+
+Reentrant ShadowRealm evaluation stages common frame, parameter environment and
+kept weak-target roots before taking other caller fields. Failure restores both
+execution and lexical global bindings and releases every temporary registration.
+Both public evaluate paths propagate noncatchable host aborts while ordinary
+JavaScript exceptions retain the opaque TypeError membrane.
+
+Fourteen finite cases cover exact native root ownership, saved-edge GC, partial
+append rollback, queued-job refusal/retention, empty/scalar no-capacity paths,
+deferred observer failure/success, common/parameter/weak-target reentrant failures,
+successful reentrant GC and public fatal-error propagation. Ordinary-library
+coverage entry points call the same cases; no new coverage result is claimed.
+
+Validation: **780 passed, zero failed/ignored**, across 38 executables and 68
+fixed selections: fourteen new cases and all 766 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled. The same seven pressure cases remain
+excluded and JSON resource sweeps are not selected. No network/service replay,
+fresh full Test262, real Core/MCP replay, coverage result or integrated acceptance
+is claimed. General trace-vector growth admission, retained value payloads,
+shared programs and wider native/integrated gates remain open.
+
+Evidence: `/private/tmp/blueice-displaced-roots-controls-20261017.py`,
+`/private/tmp/blueice-displaced-roots-commit-20261017.txt`,
+`/private/tmp/blueice-displaced-roots-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-displaced-roots-{red,boundary-red,focused,displaced,fmt,clippy}-20261017.log`.
+`target/displaced-roots-source-20261017.json` records source/log/executable hashes
 and staged/committed blob checks. This is an M1z implementation checkpoint;
 wider native/integrated acceptance remains open.
 
