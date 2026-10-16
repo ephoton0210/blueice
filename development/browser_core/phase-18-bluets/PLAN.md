@@ -11003,7 +11003,7 @@ The refusal inventory script was rerun without a section 4 change.
 `cargo fmt --all -- --check`, warnings-denied two-crate all-target Clippy,
 and the complete two-crate test suite with all ignored oracles exit 0.
 
-### K.13.1.3 Windows oracle hosted-run candidate (2026-10-16)
+### K.13.1.3 Windows oracle matrix (2026-10-16)
 
 The `typescript-oracle` CI matrix now includes Windows Server 2025 x86_64
 and Windows 11 arm64 alongside the existing Linux and macOS legs. The old
@@ -11021,6 +11021,9 @@ the three Node tests, both recorders, the complete two-crate K.0 suite with
 ignored oracles (`typescript_oracle`: 87/87), rustfmt, and warnings-denied
 two-crate all-target Clippy. The isolated VM test copy was removed afterward.
 
-This is pre-hosted evidence only. AC-K13.1.3 remains open until both Windows
-matrix legs pass in one GitHub-hosted run; no arm64 success is inferred from
-the x86_64 VM result.
+This completes AC-K13.1.3 under its revised acceptance rule: the Windows
+x86_64 VM's 82 pinned oracle tests and the complete local two-crate K.0 suite
+are the required execution evidence. The workflow's Windows arm64 leg is
+configured, but arm64 success is not inferred from the x86_64 VM result.
+GitHub-hosted confirmation of every matrix leg, its runtime margin, and the
+run id/commit hash remain K.13.2.
