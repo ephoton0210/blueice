@@ -339,6 +339,31 @@ their original host-abort types; configured string limits retain their ordinary
 RangeError behavior. This failure contract does not account for transient
 conversion or compiled-cache storage; those ownership gates remain open.
 
+Synthetic exports now retain one immutable derived-value owner across Bytecode
+snapshots. Its document charge includes the owned header and actual primitive
+buffer capacity; clones add references without copying or recharging that
+storage. Object exports still require graph GC roots and are filtered before a
+ShadowRealm inherits compiled records. The child rebuilds those realm-local
+objects. Final owner drop refunds the charge, including terminal cleanup.
+
+Bounded activation, host loader installation, borrowed graph inputs and binding
+installation attach preloaded exports once. Another document cannot adopt an
+existing owner; refusal latches the new document and a void host setter retains
+its previous registry/referrer. Raw source snapshots remain borrowed during
+conversion rather than making another UTF-8 copy. Text conversion admits minimum
+UTF-16 storage before fallible reservation and checks actual capacity before
+filling it. JSON separately reserves its derived value and a scoped UTF-16 input;
+inner JSON coercion/UTF-8/parser/source-map storage remains open work.
+
+Bytes copies own scoped capacity until the heap adopts their immutable buffer.
+The temporary buffer root's operand slot is admitted before prototype or buffer
+allocation. Binding installation similarly admits its independent primitive
+copy. These leases release inside the heap operation immediately before managed
+adoption, and unwind on earlier refusal or heap failure. Managed strings/buffers
+then carry their heap charge; the original export keeps its separate shared
+native owner. Compiled table/key/code storage and other parser/continuation/
+cache/service buffers remain separate gates.
+
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
 accounting counts its capacity once as realm storage, independently of active

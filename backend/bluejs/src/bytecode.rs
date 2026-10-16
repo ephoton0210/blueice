@@ -690,9 +690,10 @@ pub struct Bytecode {
     /// object handles are never stored in its constant pool" above -- a
     /// synthetic module's Bytecode is synthesized fresh per-`Vm` by
     /// `vm/modules.rs::ensure_synthetic_module` from host-supplied resource
-    /// data, never shared across independent VMs, so a live heap value tied
-    /// to this realm is safe to carry here (never in `constants`).
-    pub(crate) synthetic_default_export: Option<Value>,
+    /// data. Immutable derived storage shares one document owner across
+    /// Bytecode snapshots; object values remain realm-local and are filtered
+    /// before a ShadowRealm inherits the compiled registry.
+    pub(crate) synthetic_default_export: Option<crate::vm::SyntheticModuleValue>,
 }
 
 impl Bytecode {

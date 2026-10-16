@@ -267,6 +267,12 @@ impl Vm {
         referrer: impl Into<String>,
         modules: HashMap<String, Bytecode>,
     ) {
+        self.reconcile_scheduling_ownership();
+        if let Some(scope) = &self.host_scheduling {
+            if Self::attach_synthetic_values(&modules, scope).is_err() {
+                return;
+            }
+        }
         self.module_registry = modules;
         self.active_module_name = Some(referrer.into());
     }

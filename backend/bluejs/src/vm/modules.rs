@@ -295,6 +295,9 @@ impl Vm {
         phase: ImportPhase,
         frontier: &mut Vec<String>,
     ) -> Result<Value, RuntimeError> {
+        if let Some(scope) = &self.host_scheduling {
+            Self::attach_synthetic_values(modules, scope)?;
+        }
         // An import that starts while module code is running (a dynamic
         // `import()` in a Promise job the entry's `await` lets run) joins the
         // graph that code belongs to instead of linking a second copy of it.
@@ -499,7 +502,7 @@ impl Vm {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
-                    if let Some(value) = code.synthetic_default_export.clone() {
+                    if let Some(value) = code.synthetic_default_export.as_ref() {
                         let record = linked
                             .get_mut(name)
                             .expect("linked record was allocated for every module");
@@ -507,7 +510,7 @@ impl Vm {
                             .cells
                             .get(&0)
                             .expect("synthetic module's default slot has a cell");
-                        self.with_roots(|heap| heap.set(cell, "value", value))?;
+                        self.install_synthetic_export(cell, value)?;
                         record.evaluated = true;
                     }
                 }
@@ -1128,10 +1131,10 @@ impl Vm {
         if modules.contains_key(target) {
             return Ok(());
         }
-        let Some(source) = self.dynamic_module_sources.get(target).cloned() else {
+        let Some(source) = self.dynamic_module_sources.get(target) else {
             return Ok(());
         };
-        let program = crate::parse_module(&source)
+        let program = crate::parse_module(source)
             .map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let code = crate::compile_module_with_limit(&program, u32::MAX)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;

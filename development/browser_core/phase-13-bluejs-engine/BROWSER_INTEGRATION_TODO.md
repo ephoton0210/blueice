@@ -2047,6 +2047,8 @@ attach existing data once and cleanup must remain possible after failure.
       groups and offline workspace/all-target Clippy.
 - [x] Pass the fixed bounded regression/static checks and record the source/
       artifact audit with the checkpoint commit.
+- [x] Complete shared derived synthetic values and outer conversion/binding
+      handoffs in the synthetic export ownership follow-up below.
 - [ ] Complete compiled-registry/code, transient parse/compile/conversion,
       continuation/cache/service storage and integrated acceptance. M1u remains
       the latest accepted milestone.
@@ -2129,6 +2131,70 @@ in `controls-run-20261017.log` and the fixed offline runner is
 hashes and staged/committed blob checks. No fresh full Test262, real Core/MCP
 replay, coverage or integrated acceptance is claimed. Transient conversion,
 compiled registries/caches and the wider native/integrated gates stay open.
+
+#### Synthetic export ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: synthetic exports share immutable derived values across Bytecode
+snapshots, with one document charge following their final owner. Admit outer
+text/JSON-input/bytes conversion and binding-copy buffers, attach preloaded
+values on bounded activation and reject adoption into a different document
+without replacing existing data.
+Realm-local object exports retain their existing GC roots and rebuild policy.
+
+- [x] Reproduce finite retained-charge, full-budget conversion and snapshot-copy
+      failures with short text modules.
+- [x] Implement shared export ownership and bounded conversion/handoff leases;
+      validate activation, refusal, realm sharing, GC and final-drop cleanup.
+- [x] Run the fixed offline regression/static checks, update evidence and commit
+      with a detailed English message.
+- [ ] Complete compiled tables/keys/code, inner JSON coercion/parser/source-map
+      storage, other continuation/cache/service buffers and integrated
+      acceptance. M1u remains the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-synthetic-value-red-20261017.log`
+(zero passed, three failed): a retained UTF-16 export adds no native bytes,
+full-budget synthesis succeeds, and cloned Bytecode owns a different export
+buffer. Initial fixed log: `development-20261017.log` under the same prefix
+(three passed). Fifteen expanded groups pass in `expanded-20261017.log`.
+
+One immutable derived-value owner charges its header and actual primitive
+capacity once. Bytecode snapshots and attached realms share its buffers; final
+drop refunds the charge even after terminal failure. Activation, host setters,
+borrowed graphs and binding installation attach existing owners once. A foreign
+document cannot adopt them or replace the host's previous registry/referrer.
+Object exports retain realm-local GC roots and are filtered before inheritance.
+
+Text conversion uses admitted fallible UTF-16 storage. JSON reserves its derived
+output independently of its scoped UTF-16 input. Bytes copies and independent
+binding copies retain their leases until release inside managed heap adoption;
+the temporary bytes-buffer operand root is admitted before prototype/buffer
+allocation. Raw JSON/text/bytes snapshots are borrowed, and dynamic JavaScript
+compilation no longer clones its raw UTF-8 input. Inner parser/conversion and
+compiled storage remain open rather than being covered by these outer leases.
+
+Exact-budget/one-byte controls cover Unicode/empty text, scoped inputs and
+binding copies. Refused root storage produces no managed bytes allocation;
+refused heap adoption refunds its copy. Preloaded activation, cross-document
+rejection, root refusal and malformed JSON release temporary owners. A real
+ShadowRealm shares the text buffer, omits the parent's object export, and
+releases its final derived owner when discarded. One real JSON/text/bytes import
+batch finishes within at most 32 job turns and retains values through major GC.
+Inputs are tiny local modules and scalar peer budgets with no represented
+large-buffer allocation or physical resource-exhaustion workload.
+
+Final bounded validation: **667 passed, zero failed, zero ignored** across 35
+test executables and 54 fixed selections. The fifteen new groups join the prior
+652 selected ownership/semantic/GC/debugger cases. The same seven pressure/
+large-allocation cases remain filtered. Formatting, `git diff --check` and
+offline workspace/all-target Clippy with warnings denied pass.
+
+Logs use `/private/tmp/blueice-synthetic-value-`; selection names are listed in
+`controls-run-20261017.log` and the fixed offline runner is
+`controls-20261017.py`. Final new-group and static logs are
+`{values,fmt,clippy}-20261017.log`. Receipt:
+`target/synthetic-value-source-20261017.json` records source/log/executable
+hashes and staged/committed blob checks. No network/service replay, fresh full
+Test262, real Core/MCP replay, coverage or integrated acceptance is claimed.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

@@ -198,6 +198,7 @@ impl Vm {
         self.json_module_sources.attach(scope)?;
         self.text_module_sources.attach(scope)?;
         self.bytes_module_sources.attach(scope)?;
-        self.module_source_registry.attach(scope)
+        self.module_source_registry.attach(scope)?;
+        Self::attach_synthetic_values(&self.module_registry, scope)
     }
 }

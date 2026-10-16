@@ -125,7 +125,12 @@ fn synthetic_module_boundary_objects_live_until_their_synthesis_roots_are_releas
         let key = module_type.module_key("value");
         vm.ensure_synthetic_module(&key, synthetic_type, &mut modules, &mut roots)
             .unwrap();
-        let value = modules[&key].synthetic_default_export.clone().unwrap();
+        let value = modules[&key]
+            .synthetic_default_export
+            .as_ref()
+            .unwrap()
+            .value()
+            .clone();
         let object = value.object_id().unwrap();
         assert_eq!(roots.len(), 1);
         collect(&mut vm);
@@ -168,7 +173,13 @@ fn synthetic_module_boundary_primitives_need_no_object_root_registration() {
             let key = module_type.module_key("value");
             vm.ensure_synthetic_module(&key, synthetic_type, &mut modules, &mut roots)
                 .unwrap();
-            assert_eq!(modules[&key].synthetic_default_export, Some(expected));
+            assert_eq!(
+                modules[&key]
+                    .synthetic_default_export
+                    .as_ref()
+                    .map(|value| value.value()),
+                Some(&expected)
+            );
         }
         assert!(roots.is_empty());
     }
@@ -182,12 +193,23 @@ fn synthetic_module_boundary_existing_records_remain_idempotent_after_root_refus
     let key = ModuleType::Json.module_key("value");
     vm.ensure_synthetic_module(&key, SyntheticModuleType::Json, &mut modules, &mut roots)
         .unwrap();
-    let original = modules[&key].synthetic_default_export.clone();
+    let original = modules[&key]
+        .synthetic_default_export
+        .as_ref()
+        .unwrap()
+        .value()
+        .clone();
     let root = roots[0];
     vm.heap.allow_root_registrations(0);
     vm.ensure_synthetic_module(&key, SyntheticModuleType::Json, &mut modules, &mut roots)
         .unwrap();
-    assert_eq!(modules[&key].synthetic_default_export, original);
+    assert_eq!(
+        modules[&key]
+            .synthetic_default_export
+            .as_ref()
+            .map(|value| value.value()),
+        Some(&original)
+    );
     assert_eq!(roots, vec![root]);
     vm.heap.unroot(root).unwrap();
 }

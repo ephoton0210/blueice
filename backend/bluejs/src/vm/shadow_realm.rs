@@ -368,7 +368,10 @@ impl Vm {
                     // carries a value living in the *caller's* heap; the child
                     // rebuilds its own from the host sources copied below.
                     child.module_registry.retain(|_, code| {
-                        !matches!(code.synthetic_default_export, Some(Value::Object(_)))
+                        !code
+                            .synthetic_default_export
+                            .as_ref()
+                            .is_some_and(|value| matches!(value.value(), Value::Object(_)))
                     });
                     child.dynamic_module_sources = self.dynamic_module_sources.clone();
                     child.json_module_sources = self.json_module_sources.clone();

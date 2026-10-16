@@ -20,7 +20,7 @@ impl Vm {
     /// a length-fixed `Uint8Array` viewing the whole immutable buffer.
     pub(in super::super) fn create_bytes_module_value(
         &mut self,
-        bytes: Vec<u8>,
+        bytes: module_values::ModuleBytesCopy,
     ) -> Result<Value, RuntimeError> {
         if bytes.len() > self.heap.max_array_buffer_byte_length() {
             return Err(RuntimeError::RangeError(
@@ -28,10 +28,12 @@ impl Vm {
             ));
         }
         let length = bytes.len();
+        self.prepare_module_buffer_root()?;
         let buffer_prototype = self.buffer_prototype("ArrayBuffer")?;
         let view_prototype = self.buffer_prototype("Uint8Array")?;
-        let buffer = self
-            .with_roots(|heap| heap.alloc_immutable_array_buffer(bytes, Some(buffer_prototype)))?;
+        let buffer = self.with_roots(|heap| {
+            heap.alloc_immutable_array_buffer(bytes.into_managed(), Some(buffer_prototype))
+        })?;
         // The buffer is only in this Rust local until the view holds it; the
         // operand stack keeps it alive across the view's allocation.
         let base = self.stack.len();

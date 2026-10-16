@@ -13,6 +13,10 @@ use super::*;
 #[path = "../../../tests/fixtures/synthetic_module_boundary.rs"]
 mod boundary_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/synthetic_value_ownership.rs"]
+mod ownership_tests;
+
 /// A module whose record is synthesized from host data rather than parsed as
 /// JavaScript. Keeping this separate from `ModuleType` makes the source-text
 /// case impossible inside `ensure_synthetic_module`.
@@ -68,48 +72,68 @@ impl Vm {
         modules: &mut HashMap<String, Bytecode>,
         roots: &mut Vec<RootId>,
     ) -> Result<(), RuntimeError> {
-        if modules.contains_key(key) {
+        if let Some(code) = modules.get(key) {
+            if let (Some(value), Some(scope)) =
+                (&code.synthetic_default_export, &self.host_scheduling)
+            {
+                value.attach(scope)?;
+            }
             return Ok(());
         }
         let (path, _) = ModuleType::split_module_key(key);
         let value = match module_type {
             SyntheticModuleType::Json => {
-                let Some(source) = self.json_module_sources.get(path).cloned() else {
+                let sources = self.json_module_sources.clone();
+                let Some(source) = sources.get(path) else {
                     return Err(RuntimeError::TypeError(format!(
                         "host did not provide a JSON module source for {path}"
                     )));
                 };
-                self.json_parse(&Value::String(source.into()), None)
-                    .map_err(|error| {
-                        if matches!(error, RuntimeError::SyntaxError(_)) {
-                            RuntimeError::ModuleResolution(format!(
-                                "invalid JSON module {path}: {error}"
-                            ))
-                        } else {
-                            // Preserve each resource failure's identity at
-                            // the module loading boundary.
-                            error
-                        }
-                    })?
+                let output =
+                    self.prepare_synthetic_value(source.encode_utf16().count().saturating_mul(2))?;
+                let input = module_values::ModuleValueCopy::from_utf8(
+                    source,
+                    self.host_scheduling.as_ref(),
+                )?;
+                let value = self.json_parse(input.value(), None).map_err(|error| {
+                    if matches!(error, RuntimeError::SyntaxError(_)) {
+                        RuntimeError::ModuleResolution(format!(
+                            "invalid JSON module {path}: {error}"
+                        ))
+                    } else {
+                        // Preserve each resource failure's identity at
+                        // the module loading boundary.
+                        error
+                    }
+                })?;
+                drop(input);
+                output.finish(value)?
             }
             SyntheticModuleType::Text => {
-                let Some(source) = self.text_module_sources.get(path).cloned() else {
+                let sources = self.text_module_sources.clone();
+                let Some(source) = sources.get(path) else {
                     return Err(RuntimeError::TypeError(format!(
                         "host did not provide a text module source for {path}"
                     )));
                 };
-                Value::String(source.into())
+                self.prepare_synthetic_value(source.encode_utf16().count().saturating_mul(2))?
+                    .text(source)?
             }
             SyntheticModuleType::Bytes => {
-                let Some(bytes) = self.bytes_module_sources.get(path).cloned() else {
+                let sources = self.bytes_module_sources.clone();
+                let Some(bytes) = sources.get(path) else {
                     return Err(RuntimeError::TypeError(format!(
                         "host did not provide a bytes module source for {path}"
                     )));
                 };
-                self.create_bytes_module_value(bytes)?
+                let output = self.prepare_synthetic_value(0)?;
+                let bytes =
+                    module_values::ModuleBytesCopy::copy(bytes, self.host_scheduling.as_ref())?;
+                let value = self.create_bytes_module_value(bytes)?;
+                output.finish(value)?
             }
         };
-        if let Value::Object(id) = value {
+        if let Some(id) = value.value().object_id() {
             // A JSON parse or bytes-module allocation just returned this
             // object; neither caller nor this branch allocates before rooting.
             roots.push(self.heap.root(id)?);

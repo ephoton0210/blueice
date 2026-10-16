@@ -623,11 +623,9 @@ fn owned_code_bytes(code: &Bytecode) -> usize {
                 .saturating_add(module_request.capacity()),
         });
     }
-    bytes.saturating_add(
-        code.synthetic_default_export
-            .as_ref()
-            .map_or(0, value_payload_bytes),
-    )
+    // Synthetic exports retain a separate shared document owner; cloning
+    // the code unit does not copy or adopt their primitive buffers.
+    bytes
 }
 
 impl Vm {
