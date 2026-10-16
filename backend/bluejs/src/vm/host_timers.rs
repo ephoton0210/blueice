@@ -260,17 +260,16 @@ impl Vm {
                 snapshot
                     .capacity()
                     .saturating_mul(std::mem::size_of::<RootId>()),
-            )
-            .saturating_add(arguments.iter().fold(0usize, |total, value| {
-                total.saturating_add(super::host_scheduling::value_payload_bytes(value))
-            }));
+            );
+        let arguments_payload =
+            self.charge_execution_payload(host_scheduling::values_bytes(&arguments));
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
         if self.host_timers.is_empty() {
             self.host_timers.shrink_to_fit();
         }
-        let outcome = self
-            .synchronize_scheduling_usage()
-            .and_then(|()| self.run_timer_task(callback, arguments, nesting, run));
+        let outcome = self.synchronize_scheduling_usage().and_then(|()| {
+            self.run_timer_task(callback, arguments, nesting, run, arguments_payload)
+        });
         self.release_timer_roots(snapshot);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(active_bytes);
         self.synchronize_scheduling_usage()?;
@@ -323,11 +322,15 @@ impl Vm {
         arguments: Vec<Value>,
         nesting: u32,
         run: &mut BlueJsTimerRun,
+        arguments_payload: execution_payload::ExecutionPayloadCharge,
     ) -> Result<(), RuntimeError> {
         self.remaining_instructions = self.config.instruction_budget;
         run.tasks_run += 1;
         let this = self.global("globalThis")?;
         let previous_nesting = std::mem::replace(&mut self.host_timer_nesting, nesting);
+        // Dispatch takes ownership of these buffers. The task keeps only its
+        // roots/control storage, not another copy through the checkpoint.
+        drop(arguments_payload);
         let outcome = self.call_native(Value::Object(callback), this, arguments, false);
         // Checkpoint jobs run after the timer task's running callback; they
         // are not timer tasks for HTML's nesting calculation.

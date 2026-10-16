@@ -190,6 +190,14 @@ lease; forwarding the same buffers transfers ownership rather than charging a
 second copy. A trapped call releases the incoming lease once its argument array
 owns those values and the trap invocation takes over.
 
+Task callbacks use the same transfer rule. Timer arguments, drag text and
+finalization holdings carry an input lease until call dispatch takes ownership.
+The task's roots and control storage remain accounted separately. A live
+interval registration still owns its retained argument copy; one-shot inputs
+and cleared interval copies do not remain charged through the callback's
+Promise checkpoint. Cleanup consumes ignored returns and reported page
+exceptions before checkpoint jobs run.
+
 GC protection retains object edges without cloning primitive buffers. Normal
 calls move primitive operands to their argument owner; exact debugger calls
 preserve the operand snapshots needed for continuation. Native parameter copies

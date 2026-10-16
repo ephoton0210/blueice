@@ -288,7 +288,10 @@ fn interval_argument_copies_and_running_oneshot_arguments_remain_in_the_budget()
         "setTimeout(rearm, 1, payload);",
     ] {
         let mut runtime = page();
-        execute(&mut runtime, &format!("function noop() {{}} function rearm(value) {{ setTimeout(noop, 100000, value); }} var payload = 'x'.repeat(400000); {first} for (var i = 0; i < 8; i += 1) {{ setTimeout(noop, 100000, payload); }}")).unwrap();
+        // The interval keeps its registration while the invocation owns
+        // arguments and a named parameter: three actual copies, with no
+        // phantom task-payload charge after ownership transfers to the VM.
+        execute(&mut runtime, &format!("function noop(value) {{}} function rearm(value) {{ setTimeout(noop, 100000, value); }} var payload = 'x'.repeat(400000); {first} for (var i = 0; i < 8; i += 1) {{ setTimeout(noop, 100000, payload); }}")).unwrap();
         assert!(
             matches!(
                 runtime.run_due_timers(1, 1),

@@ -70,23 +70,24 @@ impl Vm {
                 self.async_frame_roots.extend(callback.object_id());
                 self.async_frame_roots.extend(holdings.object_id());
                 let bytes = host_scheduling::value_payload_bytes(&holdings);
-                self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(bytes);
+                let holdings_payload = self.charge_execution_payload(bytes);
                 let called = (|| {
                     self.charge_step()?;
                     self.synchronize_scheduling_usage()?;
-                    let called =
-                        self.call_native(callback, Value::Undefined, vec![holdings], false);
-                    if called
-                        .as_ref()
-                        .is_err_and(|error| !host_timers::is_page_exception(error))
-                    {
-                        return called.map(|_| ());
-                    }
-                    if let Err(RuntimeError::Thrown(value)) = &called {
-                        self.async_frame_roots.extend(value.object_id());
-                    }
-                    if let Err(error) = &called {
-                        self.report_host_exception(error)?;
+                    drop(holdings_payload);
+                    // Cleanup ignores a normal return. Drop it before the
+                    // checkpoint rather than retaining an unused buffer.
+                    let called = self
+                        .call_native(callback, Value::Undefined, vec![holdings], false)
+                        .map(|_| ());
+                    if let Err(error) = called {
+                        if !host_timers::is_page_exception(&error) {
+                            return Err(error);
+                        }
+                        if let RuntimeError::Thrown(value) = &error {
+                            self.async_frame_roots.extend(value.object_id());
+                        }
+                        self.report_host_exception(&error)?;
                     }
                     // The callback has left the execution stack. Each call
                     // cleans up microtasks before the next cleared cell.
@@ -95,10 +96,9 @@ impl Vm {
                     let checkpoint = self.run_host_microtask_checkpoint();
                     self.remaining_instructions = fuel;
                     checkpoint?;
-                    called.map(|_| ())
+                    Ok(())
                 })();
                 self.async_frame_roots.truncate(root_base);
-                self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(bytes);
                 self.synchronize_scheduling_usage()?;
                 called?;
             }

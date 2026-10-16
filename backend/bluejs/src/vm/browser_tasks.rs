@@ -229,15 +229,18 @@ impl Vm {
             .remove(index)
             .expect("a runnable task was selected");
         let active_bytes = match &task {
-            BrowserTask::DragString { text, .. } => {
-                text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
-            }
             BrowserTask::HostPromise { completion, .. } => completion.payload_bytes(),
             BrowserTask::PromiseRejections { entries, .. } => {
                 entries.capacity() * std::mem::size_of::<host_rejections::PendingRejection>()
             }
             _ => 0,
         };
+        let moved_payload = self.charge_execution_payload(match &task {
+            BrowserTask::DragString { text, .. } => {
+                text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+            }
+            _ => 0,
+        });
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
         self.synchronize_scheduling_usage()?;
         self.remaining_instructions = self.config.instruction_budget;
@@ -283,6 +286,9 @@ impl Vm {
                 root,
                 ..
             } => {
+                // The callback receives the text by move; dispatch takes
+                // the next lease instead of adding a second payload owner.
+                drop(moved_payload);
                 let result = self
                     .call_native(
                         Value::Object(callback),

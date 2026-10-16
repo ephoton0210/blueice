@@ -105,9 +105,14 @@ Subsequent static review and bounded unit tests close three call-entry gaps:
 constructor arguments retain their lease during prototype getters and field
 initializers; Proxy forwarding transfers one charge instead of multiplying it;
 tail-position direct eval retains its source argument. Four new unit groups
-and 82 related cases across eight public targets pass on this source without
-opening ports or running resource-exhaustion probes. This is an implementation
-checkpoint, not final M1v acceptance; see the record below.
+and 82 related cases across eight public targets pass at the `6be49f4e2`
+call-entry checkpoint without opening ports or running resource-exhaustion
+probes. A further task-handoff correction removes duplicate timer, drag and
+finalization input charges and releases consumed inputs before Promise
+checkpoint jobs. Current bounded validation passes seven unit groups and
+67 public timer/task/cleanup cases; fifteen public pressure/limit cases remain
+filtered out. These are implementation checkpoints, not final M1v acceptance;
+see the record below.
 Additional red evidence: `target/active-frame-refund-red-source-20261016.json`
 and `target/active-async-burst-red-source-20261016.json`.
 Pause evidence: `target/active-frame-pause-red-source-20261016.json`.
@@ -761,7 +766,17 @@ the generated typings in the same change.
       charging moved buffers again; preserve the incoming charge during trap
       getters, including a throwing getter.
 - [x] Pass four bounded call-entry unit groups and 82 related public cases
-      across eight complete targets, zero failures or ignored cases.
+      across eight complete targets at `6be49f4e2`, zero failures or ignored
+      cases.
+- [x] Transfer timer, drag-string and finalization input charges to callback
+      frames without retaining a duplicate through the Promise checkpoint.
+      Preserve actual interval registration and named-parameter copies;
+      consume ignored cleanup outcomes before checkpoint jobs run.
+- [x] Pass the current bounded task-handoff selection: three new unit groups,
+      four call-entry controls and 67 public timer/task/cleanup cases. Fifteen
+      public pressure/limit cases are explicitly filtered out.
+- [ ] Finish queued Promise-job and host-completion ownership review before
+      closing active native execution accounting.
 - [ ] Finish the final M1v regression selection with stable source/artifacts
       under the owner's security constraints.
 - [ ] Compare a fresh complete pinned Test262 inventory with the accepted
@@ -775,8 +790,9 @@ strict caller's existing completion remains charged. The corrected tests also
 cover normal/throwing prototype and field callbacks, trap getters, trapped
 forwarding, ordinary/async/generator parameter entry and final lease release.
 
-Current-source validation is deliberately bounded: `cargo test --offline -p
-blueice-bluejs --lib argument_charges` passes all four groups; the eight public
+Call-entry checkpoint (`6be49f4e2`) validation is deliberately bounded:
+`cargo test --offline -p blueice-bluejs --lib argument_charges` passes all four
+groups; the eight public
 targets are `async_from_sync_delegation`, `class_fields_define`,
 `class_fields_evaluation`, `eval_var_environment_capture`,
 `function_environments`, `generator_function_constructors`,
@@ -787,6 +803,31 @@ Logs: `/private/tmp/blueice-call-entry-final-unit-20261016.log` and
 `/private/tmp/blueice-active-frame-call-entry-clippy-20261016.log`.
 The bounded source/test receipt is
 `target/active-frame-call-entry-unit-source-20261016.json`.
+
+Task-handoff follow-up tests use tiny inputs. Before the correction, a timer
+or finalization callback double-charges a 14-byte input as 28 bytes and keeps
+14 stale bytes through the following Promise job. Drag delivery likewise
+double-charges its allocated UTF-16 buffer. Input leases now end at dispatch;
+interval registrations keep their actual retained copy until cancellation.
+Seven timer variants cover one-shot/interval delivery, self-cancellation,
+throws and real named-parameter copies. Drag and normal/throwing cleanup
+callbacks also verify their following Promise checkpoint.
+
+Current-source bounded validation passes **74 cases, zero failures and zero
+ignored**: `--lib payload_handoff` (three), `--lib argument_charges` (four),
+`host_timers` (30), `host_task_turns` (27) and `host_finalization_tasks` (ten).
+The three public targets filter out fifteen pressure/limit cases, so this is
+not a complete target replay. The near-cap interval fixture now names its
+callback parameter to require an actual additional VM-owned copy; that
+resource-exhaustion fixture is updated statically and has not been rerun.
+Formatting and offline workspace/all-target Clippy with warnings denied pass
+on this follow-up source.
+Logs: `/private/tmp/blueice-task-payload-handoff-final-unit-20261016.log`,
+`/private/tmp/blueice-task-payload-handoff-call-controls-20261016.log` and
+`/private/tmp/blueice-task-payload-handoff-public-controls-20261016.log`.
+Clippy: `/private/tmp/blueice-task-payload-handoff-clippy-20261016.log`.
+The bounded receipt is
+`target/task-payload-handoff-source-20261016.json`.
 
 The interrupted 298/405-target replay predates the call-entry follow-up and
 does not validate this final source. It remains partial evidence, not a final

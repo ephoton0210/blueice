@@ -8,6 +8,10 @@
 use super::*;
 use std::cell::RefCell;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/task_payload_handoff.rs"]
+mod task_payload_handoff;
+
 pub const MAX_PENDING_HOST_MICROTASKS: usize = 1024;
 pub const MAX_PENDING_HOST_REACTIONS: usize = 1024;
 pub const MAX_PENDING_BROWSER_TASKS: usize = 64;
