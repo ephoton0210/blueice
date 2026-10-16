@@ -664,7 +664,7 @@ impl Vm {
         }
         if self.eval_var_deleted(slot) {
             return if recreate {
-                self.recreate_eval_var(slot, value)
+                self.recreate_eval_var(slot, name, value)
             } else {
                 self.assign_unbound_name(name, value, code.strict)
             };
@@ -707,8 +707,12 @@ impl Vm {
     /// Creates again an eval `var` binding that its own initializer deleted.
     /// Only the declaring eval code can do this: its own slot tells whether
     /// the variable environment is the global one or a function's.
-    fn recreate_eval_var(&mut self, slot: usize, value: Value) -> Result<(), RuntimeError> {
-        let name = self.binding_metadata[slot].name.clone();
+    fn recreate_eval_var(
+        &mut self,
+        slot: usize,
+        name: &str,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
         let cell = *self.cells.get(&slot).expect(
             "assign_binding_slot just verified this retained cell has a deleted eval value",
         );
@@ -720,7 +724,7 @@ impl Vm {
             let defined = self.with_roots(|heap| {
                 heap.define_own_property(
                     global,
-                    name.as_str(),
+                    name,
                     PropertyDescriptor::data(value.clone(), true, true, true),
                 )
             })?;
@@ -733,7 +737,7 @@ impl Vm {
                 return Err(error);
             }
             self.global_bindings.insert(
-                name,
+                name.to_owned(),
                 GlobalBinding {
                     cell,
                     mutable: true,
@@ -747,21 +751,7 @@ impl Vm {
             // of existing function eval vars and fresh declarations are both
             // recorded by prepare_dynamic_eval_bindings before interpretation.
             debug_assert!(self.eval_dynamic_slots.contains_key(&slot));
-            self.with_roots(|heap| heap.set(cell, "value", value))?;
-            if let Some(env) = self.parameter_eval_env {
-                self.stack.push(Value::Object(cell));
-                let recorded =
-                    self.with_roots(|heap| heap.set(env, name.as_str(), Value::Object(cell)));
-                self.stack.pop();
-                recorded?;
-            }
-            self.dynamic_eval_bindings.insert(
-                name,
-                DynamicEvalBinding {
-                    cell,
-                    shadowed_cells: Vec::new(),
-                },
-            );
+            return self.recreate_function_eval_var(slot, name, cell, value);
         }
         Ok(())
     }
@@ -1663,66 +1653,7 @@ impl Vm {
         &mut self,
         code: &Bytecode,
     ) -> Result<(), RuntimeError> {
-        // Reused captures can also be local eval vars. Their declaration
-        // initializer must recreate a binding it deletes, in this same
-        // VariableEnvironment rather than on the realm's global object.
-        for (slot, _) in code.captures.iter().enumerate() {
-            let name = &code.bindings[slot].name;
-            if self
-                .dynamic_eval_bindings
-                .get(name)
-                .is_some_and(|binding| self.cells.get(&slot) == Some(&binding.cell))
-            {
-                self.eval_dynamic_slots.insert(slot, name.clone());
-            }
-        }
-        for &slot in &code.dynamic_eval_slots {
-            let binding = &code.bindings[slot as usize];
-            // A function with a parameter/variable environment object resolves
-            // eval vars through that environment. Aliasing its outer cells
-            // would redirect references resolved before the declaration and
-            // captures of unrelated callees. Only the object-free path needs
-            // static-cell aliases for subsequent name resolution.
-            let shadowed_cells: Vec<_> = code
-                .captures
-                .iter()
-                .enumerate()
-                .filter_map(|(captured_slot, _)| {
-                    (self.parameter_eval_env.is_none()
-                        && code.bindings[captured_slot].name == binding.name)
-                        .then(|| self.cells.get(&captured_slot).copied())
-                        .flatten()
-                })
-                .collect();
-            // compile_eval filters every existing VariableEnvironment name,
-            // including dynamic_eval_bindings, out of dynamic_eval_slots.
-            // Capturing the resulting code cannot execute JavaScript, so each
-            // slot still denotes a fresh declaration when it reaches here.
-            let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-            if let Some(env) = self.parameter_eval_env {
-                // Closures made in this function's parameter list or
-                // body reach the variable through the environment.
-                self.stack.push(Value::Object(cell));
-                let recorded = self
-                    .with_roots(|heap| heap.set(env, binding.name.as_str(), Value::Object(cell)));
-                self.stack.pop();
-                recorded?;
-            }
-            self.dynamic_eval_bindings.insert(
-                binding.name.clone(),
-                DynamicEvalBinding {
-                    cell,
-                    shadowed_cells,
-                },
-            );
-            if let Err(error) = self.with_roots(|heap| heap.set(cell, "value", Value::Undefined)) {
-                self.dynamic_eval_bindings.remove(&binding.name);
-                return Err(error);
-            }
-            self.eval_dynamic_slots
-                .insert(slot as usize, binding.name.clone());
-        }
-        Ok(())
+        self.publish_function_eval_declarations(code)
     }
 
     /// EvalDeclarationInstantiation's global-variable branch. The eval

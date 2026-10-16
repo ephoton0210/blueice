@@ -694,6 +694,30 @@ impl Heap {
         Ok(())
     }
 
+    /// Undo publication into the private eval environment after a failed
+    /// batch. Both old/new values are cell IDs, so replacement changes no
+    /// managed bytes and must also work after a document budget is latched.
+    pub(crate) fn restore_eval_environment_cell(
+        &mut self,
+        env: ObjectId,
+        name: &str,
+        previous: Option<ObjectId>,
+    ) {
+        if let Some(cell) = previous {
+            self.write_barrier(env, Some(cell));
+            let object = self.objects.get_mut(&env).expect("rooted eval environment");
+            let value = object
+                .properties
+                .get_mut(&name.into())
+                .expect("published eval cell");
+            debug_assert!(matches!(value, Value::Object(_)));
+            *value = Value::Object(cell);
+        } else {
+            self.delete(env, name)
+                .expect("ordinary eval environment deletion cannot allocate");
+        }
+    }
+
     /// Deleting a missing property succeeds, as it does for JS ordinary
     /// objects. Array length and boxed String indices/length cannot be
     /// deleted; deleting an array index does not change length.

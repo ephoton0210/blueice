@@ -134,6 +134,11 @@ impl<K: Eq + std::hash::Hash, V> SchedulingMapCapacity<K, V> {
             *values = table;
         }
     }
+
+    /// A detached replacement coexists with the live table until commit.
+    pub(super) fn staging_bytes(&self) -> usize {
+        self.replacement.as_ref().map_or(0, map_slots)
+    }
 }
 
 /// Await publishes a continuation and its only resumption owner together.

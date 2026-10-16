@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_dynamic_binding_admission_contracts() {
+    blueice_bluejs::Vm::verify_dynamic_binding_admission_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_environment_admission_contracts() {
     blueice_bluejs::Vm::verify_environment_admission_contracts();
 }

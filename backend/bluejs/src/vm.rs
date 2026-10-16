@@ -62,6 +62,7 @@ pub use host_promises::{
     HostTaskSource,
 };
 mod disposal_ownership;
+mod dynamic_bindings;
 mod host_registration;
 mod host_scheduling;
 mod host_task_turns;

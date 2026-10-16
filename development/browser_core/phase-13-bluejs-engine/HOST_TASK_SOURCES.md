@@ -195,8 +195,24 @@ Generator resume prepares copied scope-slot lists before taking its saved
 state. The outer vector and each nested buffer retain a native charge until
 transfer into active fields. A common resume exit reconciles released staging,
 including refusal after binding metadata was prepared, so peer realms see the
-released contribution. Dynamic binding publication, other module-association
+released contribution. Global-binding publication, other module-association
 copies and per-iteration cell staging remain in the broader transient gate.
+
+Function-eval declaration batches prepare their dynamic-binding and slot-alias
+tables, copied names, shadowed-cell lists and temporary root slots before cell
+allocation or environment writes. Replacement tables coexist with live tables
+and retain a lease for their full reported capacity until commit. Existing
+table slots require no replacement; already recorded capture aliases require
+no new name copy. Deleted-variable recreation uses the same admission path
+before restoring the retained cell's value.
+
+All cells are initialized before publishing environment properties. A failed
+heap write rolls back published environment edges and keeps a recreated cell
+deleted, leaving both native maps untouched. Rollback of an existing ordinary
+environment edge can restore its old cell even after a document heap failure
+is latched. Staged names/tables and Rust-held primitive values retain native
+ownership through heap collection and release on every exit; new/replaced
+object edges remain rooted until publication or rollback completes.
 
 Call, eval and generator entry prepare capture-cell tables before constructor
 entry effects. Minimum slot admission precedes reserve; reported capacity is
@@ -218,7 +234,7 @@ state, closes the abandoned frame and reconciles the shared contribution.
 The heap operation releases the lease immediately after adoption/refusal,
 before VM collection bookkeeping can admit native cleanup work. Terminal
 Done/Running cleanup remains allowed after resource abort. Stack/completion
-conversion preallocation, dynamic binding publication and other association
+conversion preallocation, global-binding publication and other association
 copies remain separate open work.
 
 Iterator and handler vectors carry scoped native charges through execution,

@@ -57,7 +57,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Dynamic environment entry/recovery admission is the current follow-up. Two
+The function-eval publication checkpoint jointly prepares names, shadowed-cell
+lists and declaration/alias tables before heap effects. Two tiny regressions
+reproduce new declarations and deleted-variable recreation succeeding without
+native admission; both now pass. Eleven expanded groups and the full 496-case
+bounded selection pass, together with formatting and offline workspace/all-target
+Clippy. The source/artifact audit is recorded below. Global-binding publication,
+other association copies, conversion preallocation and integrated acceptance
+remain open; this does not close the wider M1z gate.
+
+The dynamic environment entry/recovery checkpoint addresses two
 finite groups reproduce a constructor getter and async result capability
 published before environment-storage refusal. Both now pass with joint stack/
 recovery preparation before entry effects and context replacement. Necessary
@@ -1466,6 +1475,58 @@ Dynamic binding publication, other association copies, stack/completion
 conversions, other container/transient/module-cache/service storage and
 integrated acceptance remain open. No fresh full Test262, real Core/MCP replay
 or coverage result is claimed; M1u remains the latest accepted milestone.
+
+#### Function-eval binding publication follow-up (implementation checkpoint)
+
+Acceptance: prepare fresh function-eval declarations, reused capture aliases
+and deleted-variable recreation before changing cells, environment properties
+or native maps. Include copied names, shadowed-cell buffers, both tables' actual
+replacement capacity and temporary root slots. Preserve spare slots and no-op
+aliases. Keep staged storage charged and object edges rooted across collection;
+heap refusal must roll back environment publication and leave a recreated cell
+deleted. Reconcile temporary ownership on all exits without clearing failure.
+
+- [x] Reproduce two finite native refusals incorrectly succeeding before
+      admission; both initial regressions pass after implementation.
+- [x] Jointly prepare native declaration/alias records before cell creation or
+      recreation, then publish the tables after all heap operations succeed.
+- [x] Roll back partial environment publication and recreated values, including
+      restoring a prior ordinary environment cell after a latched heap failure.
+- [x] Pass eleven expanded exact-budget, spare-capacity, capture-alias, GC,
+      heap-rollback, recreation and peer-refund groups.
+- [x] Pass the related bounded selection, formatting and offline workspace/
+      all-target Clippy; record the source/artifact audit with the checkpoint.
+- [ ] Complete global-binding publication, other association copies,
+      stack/completion conversion preallocation, wider native storage and
+      integrated acceptance. M1u remains the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-dynamic-binding-red-20261016.log`
+(zero passed, two failed). A two-variable eval batch and a deleted-variable
+initializer both return success despite a full scalar scheduling account.
+The eleven expanded groups pass in
+`/private/tmp/blueice-dynamic-binding-expanded-20261016.log`.
+
+Fixtures use tiny ordinary cells, short names/values and scalar peer budgets
+without allocating represented large buffers. Nursery one/sixteen and major
+collection preserve original/shadowed cells, new cells, parameter-environment
+edges and an object-valued recreated binding. Heap rollback uses only two
+ordinary cells and one short environment property of admitted headroom.
+
+Final bounded validation: **496 passed, zero failed, zero ignored** across 27
+test executables. The eleven new groups and the prior 485 ownership/semantic/
+GC/debugger cases pass. The seven prior pressure/large-allocation exclusions
+remain filtered; deep-recursion tail suites and network/service replays are
+not run. Formatting, `git diff --check` and offline workspace/all-target Clippy
+with warnings denied pass.
+
+Logs use `/private/tmp/blueice-dynamic-binding-` with selection names from
+`controls-20261016.log`; the runner is `controls-20261016.py`. The final new-group
+log is `bindings-20261016.log`; `fmt-20261016.log` and `clippy-20261016.log` record
+the static checks. Receipt: `target/dynamic-binding-source-20261016.json`.
+Global-binding publication, other association copies, stack/completion
+conversions, wider native storage and integrated acceptance remain open.
+No fresh full Test262, real Core/MCP replay or coverage result is claimed;
+M1u remains the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
