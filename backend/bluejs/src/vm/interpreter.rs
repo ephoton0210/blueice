@@ -1558,45 +1558,7 @@ impl Vm {
                         let deleted = self.delete_eval_var(operand)?;
                         self.stack.push(Value::Bool(deleted));
                     }
-                    Opcode::EnterScope => {
-                        for slot in &code.scopes[operand] {
-                            if let Some(name) = self.eval_dynamic_slots.get(&(*slot as usize)) {
-                                let cell = self
-                                    .dynamic_eval_bindings
-                                    .get(name)
-                                    .expect("prepared dynamic eval binding survives execution")
-                                    .cell;
-                                self.cells.insert(*slot as usize, cell);
-                                continue;
-                            }
-                            if let Some(name) = self.script_global_slots.get(&(*slot as usize)) {
-                                let cell = self
-                                    .global_bindings
-                                    .get(name)
-                                    .expect("prepared global binding survives script execution")
-                                    .cell;
-                                self.cells.insert(*slot as usize, cell);
-                                continue;
-                            }
-                            if code.module
-                                && operand == 0
-                                && self.cells.contains_key(&(*slot as usize))
-                            {
-                                // ModuleDeclarationInstantiation seeded this
-                                // slot (or linked it to an exporter cell).
-                                continue;
-                            }
-                            self.cells.remove(&(*slot as usize));
-                            self.bindings[*slot as usize] =
-                                if !code.bindings[*slot as usize].lexical {
-                                    Some(Value::Undefined)
-                                } else {
-                                    None
-                                };
-                        }
-                        self.active_scopes.push(operand as u32);
-                        self.active_scope_slots.push(code.scopes[operand].clone());
-                    }
+                    Opcode::EnterScope => self.enter_scope(code, operand as u32)?,
                     Opcode::CloneScope => self.clone_scope(code, operand as u32)?,
                     Opcode::LeaveScope => self.leave_scope(code, operand as u32),
                     Opcode::Pop => {

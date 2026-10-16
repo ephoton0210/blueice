@@ -420,6 +420,18 @@ impl Vm {
         async_target: Option<ObjectId>,
         abrupt: Option<Completion>,
     ) -> Result<Value, RuntimeError> {
+        let result = self.generator_resume_inner(receiver, value, async_target, abrupt);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn generator_resume_inner(
+        &mut self,
+        receiver: &Value,
+        value: Option<Value>,
+        async_target: Option<ObjectId>,
+        abrupt: Option<Completion>,
+    ) -> Result<Value, RuntimeError> {
         let Value::Object(generator) = receiver else {
             return Err(RuntimeError::TypeError(
                 "Generator next requires a generator".into(),
@@ -445,6 +457,7 @@ impl Vm {
             .as_mut()
             .map(PreparedFrameBindings::take_parts)
             .unwrap_or_default();
+        let mut prepared_scopes = self.prepare_generator_scope_slots(*generator)?;
         let state = self.heap.take_generator_state(*generator)?;
         let (
             code,
@@ -689,13 +702,8 @@ impl Vm {
         let completion_empty =
             std::mem::replace(&mut self.completion_empty, frame_completion_empty);
         let active_scopes = std::mem::replace(&mut self.active_scopes, frame_scopes);
-        let active_scope_slots = std::mem::replace(
-            &mut self.active_scope_slots,
-            self.active_scopes
-                .iter()
-                .map(|scope| code.scopes[*scope as usize].clone())
-                .collect(),
-        );
+        let active_scope_slots =
+            std::mem::replace(&mut self.active_scope_slots, prepared_scopes.take());
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, frame_home);
         let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
@@ -732,6 +740,7 @@ impl Vm {
         let completion_saves =
             std::mem::replace(&mut self.completion_saves, frame_completion_saves);
         drop(prepared);
+        drop(prepared_scopes);
         let mut iterators = self.iterator_records(frame_iterators);
         let mut handlers = self.handler_records(frame_handlers);
         let outcome = if let Some(completion) = abrupt {

@@ -31,6 +31,7 @@ mod errors;
 mod execution;
 mod execution_payload;
 mod frame_bindings;
+mod scope_storage;
 use frame_bindings::{FrameBindingKind, PreparedFrameBindings};
 mod for_in;
 mod functions;

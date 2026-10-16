@@ -181,6 +181,24 @@ impl Heap {
         )
     }
 
+    pub(crate) fn generator_scope_layout(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<(&Bytecode, &[u32])>, HeapError> {
+        let ObjectKind::Generator { state, .. } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok(match &**state {
+            GeneratorState::Start { code, .. } => Some((code, &[])),
+            GeneratorState::Suspended {
+                code,
+                active_scopes,
+                ..
+            } => Some((code, active_scopes)),
+            GeneratorState::Running | GeneratorState::Done => None,
+        })
+    }
+
     pub(crate) fn generator_execution_code(
         &self,
         object: ObjectId,

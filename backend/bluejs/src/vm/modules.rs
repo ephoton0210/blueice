@@ -2681,9 +2681,7 @@ impl Vm {
             // frame with zero ambient fuel, which must not exhaust this
             // independent module before its first instruction.
             self.remaining_instructions = self.config.instruction_budget;
-            self.active_scopes.push(0);
-            self.active_scope_slots
-                .push(code.scopes.first().cloned().unwrap_or_default());
+            self.enter_scope(code, 0)?;
             let mut iterators = self.iterator_records(Vec::new());
             let previous_module = self.active_module_name.replace(name.to_string());
             // Park the graph's records where user code can reach them: a

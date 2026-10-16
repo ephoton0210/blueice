@@ -175,6 +175,20 @@ state; module entry admits before taking input cells or clearing the context.
 Other container growth, map/scope restoration and non-JavaScript staging remain
 part of the wider preallocation gate.
 
+Scope entry jointly admits both scope-record vectors, the copied slot list and
+cell-alias table growth before changing bindings. It checks minimum table
+growth before preparing a replacement and then admits its reported capacity.
+Entries removed by the same scope free slots for new aliases; available record
+slots add only the copied slot-list allocation. Eval aliases keep priority over
+script globals, and module outer cells stay owned by the linked graph.
+
+Generator resume prepares copied scope-slot lists before taking its saved
+state. The outer vector and each nested buffer retain a native charge until
+transfer into active fields. A common resume exit reconciles released staging,
+including refusal after binding metadata was prepared, so peer realms see the
+released contribution. Other captured/dynamic-map restoration and per-iteration
+cell staging remain in the broader preallocation/transient gate.
+
 Iterator and handler vectors carry scoped native charges through execution,
 cleanup, async/module continuations and debugger pauses. New records plan and
 admit capacity before reserve and publication, including actual-capacity
