@@ -496,7 +496,7 @@ fn namespaces_reject_missing_records_sources_and_export_cells() {
     let modules = HashMap::from([("t/main.mjs".to_string(), code)]);
     let mut vm = Vm::default();
     let mut linked = HashMap::new();
-    let mut roots = Vec::new();
+    let mut roots = ModuleRoots::default();
     assert!(matches!(
         vm.module_namespace("t/main.mjs", false, &modules, &mut linked, &mut roots),
         Err(RuntimeError::ModuleResolution(_))
@@ -556,7 +556,7 @@ fn failed_namespace_allocations_roll_back_nested_cycles_and_allow_retry() {
                 ("t/main.mjs".to_string(), record(false, false)),
                 ("t/child.mjs".to_string(), record(false, false)),
             ]);
-            let mut roots = Vec::new();
+            let mut roots = ModuleRoots::default();
             let limit = vm.heap.allow_only(extra);
             match vm.module_namespace("t/main.mjs", deferred, &modules, &mut linked, &mut roots) {
                 Ok(_) => completed = true,
@@ -631,7 +631,7 @@ fn namespace_root_exhaustion_rolls_back_new_placeholders_and_preserves_existing_
                 .keys()
                 .map(|name| (name.clone(), record(false, false)))
                 .collect();
-            let mut roots = Vec::new();
+            let mut roots = ModuleRoots::default();
             let retained = vm
                 .module_namespace("t/retained.mjs", false, &modules, &mut linked, &mut roots)
                 .unwrap();
@@ -701,7 +701,7 @@ fn source_export_namespaces_roll_back_when_the_host_source_is_missing_or_cannot_
     for exhausted in [false, true] {
         let mut vm = Vm::default();
         let mut linked = HashMap::from([("t/main.mjs".to_string(), record(false, false))]);
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         if exhausted {
             vm.set_module_source_loader_context(vec!["t/blob.wasm".into()]);
             vm.heap.allow_root_registrations(2);
@@ -735,7 +735,7 @@ fn source_export_namespaces_preserve_source_identity_at_each_allocation_and_root
         let mut vm = Vm::default();
         vm.set_module_source_loader_context(vec!["t/blob.wasm".into()]);
         let mut linked = HashMap::from([("t/main.mjs".to_string(), record(false, false))]);
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         vm.heap.allow_root_registrations(remaining);
         let result = vm.module_namespace("t/main.mjs", false, &modules, &mut linked, &mut roots);
         if remaining < 4 {
@@ -771,7 +771,7 @@ fn source_export_namespaces_preserve_source_identity_at_each_allocation_and_root
         let mut vm = Vm::default();
         vm.set_module_source_loader_context(vec!["t/blob.wasm".into()]);
         let mut linked = HashMap::from([("t/main.mjs".to_string(), record(false, false))]);
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         let limit = vm.heap.allow_only(extra);
         match vm.module_namespace("t/main.mjs", false, &modules, &mut linked, &mut roots) {
             Ok(_) => completed = true,
@@ -834,7 +834,7 @@ fn export_resolution_reports_missing_default_and_missing_host_dependencies() {
         } else {
             let mut vm = Vm::default();
             let mut linked = HashMap::from([("t/main.mjs".to_string(), record(false, false))]);
-            let mut roots = Vec::new();
+            let mut roots = ModuleRoots::default();
             assert!(matches!(
                 vm.module_namespace("t/main.mjs", false, &modules, &mut linked, &mut roots),
                 Err(RuntimeError::ModuleResolution(_))

@@ -16,8 +16,11 @@ fn bounded_vm() -> Vm {
 
 fn synthesize(vm: &mut Vm) -> Result<HashMap<String, Bytecode>, RuntimeError> {
     let mut modules = HashMap::new();
-    let code =
-        vm.create_synthetic_module_code("value\0text", SyntheticModuleType::Text, &mut Vec::new())?;
+    let code = vm.create_synthetic_module_code(
+        "value\0text",
+        SyntheticModuleType::Text,
+        &mut ModuleRoots::default(),
+    )?;
     modules.insert("value\0text".into(), code);
     Ok(modules)
 }
@@ -296,7 +299,7 @@ fn synthetic_value_ownership_bytes_transfer_to_the_heap_and_refuse_missing_root_
 fn synthesize_json(
     vm: &mut Vm,
     source: &str,
-    roots: &mut Vec<RootId>,
+    roots: &mut ModuleRoots,
 ) -> Result<HashMap<String, Bytecode>, RuntimeError> {
     vm.set_json_module_sources(HashMap::from([("json".into(), source.into())]));
     vm.remaining_instructions = 100;
@@ -310,7 +313,7 @@ fn synthesize_json(
 fn synthetic_value_ownership_json_retains_only_the_derived_owner_and_refunds_refused_roots() {
     for source in ["42", "\"a😀z\"", "{\"answer\":42}", "{"] {
         let mut vm = bounded_vm();
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         let result = synthesize_json(&mut vm, source, &mut roots);
         let before = vm.own_scheduling_usage().payload_bytes
             + vm.text_module_sources.retained_bytes()
@@ -330,9 +333,15 @@ fn synthetic_value_ownership_json_retains_only_the_derived_owner_and_refunds_ref
                 SyntheticModuleValue::header_bytes()
                     + crate::vm::host_scheduling::value_payload_bytes(value.value())
             );
-            assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before + bytes);
+            assert_eq!(
+                vm.host_scheduling_snapshot().payload_bytes,
+                before + bytes + roots.retained_bytes()
+            );
             drop(modules);
-            assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
+            assert_eq!(
+                vm.host_scheduling_snapshot().payload_bytes,
+                before + roots.retained_bytes()
+            );
         }
         for root in roots {
             vm.heap.unroot(root).unwrap();
@@ -344,7 +353,7 @@ fn synthetic_value_ownership_json_retains_only_the_derived_owner_and_refunds_ref
     let before = vm.host_scheduling_snapshot().payload_bytes;
     vm.heap.allow_root_registrations(0);
     assert!(matches!(
-        synthesize_json(&mut vm, "{}", &mut Vec::new()),
+        synthesize_json(&mut vm, "{}", &mut ModuleRoots::default()),
         Err(RuntimeError::Heap(HeapError::IdExhausted))
     ));
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
@@ -361,8 +370,12 @@ fn synthetic_value_ownership_json_ast_and_returned_value_coexistence_is_admitted
     let before = vm.host_scheduling_snapshot().payload_bytes;
     let managed = vm.heap.stats().managed_bytes;
     assert_eq!(
-        vm.create_synthetic_module_code("json\0json", SyntheticModuleType::Json, &mut Vec::new())
-            .map(|_| ()),
+        vm.create_synthetic_module_code(
+            "json\0json",
+            SyntheticModuleType::Json,
+            &mut ModuleRoots::default()
+        )
+        .map(|_| ()),
         Err(RuntimeError::SchedulingLimit)
     );
     assert_eq!(vm.heap.stats().managed_bytes, managed);
@@ -383,7 +396,7 @@ fn synthetic_value_ownership_shadow_import_shares_primitives_filters_objects_and
     let mut vm = bounded_vm();
     let mut modules = synthesize(&mut vm).unwrap();
     let pointer = export_pointer(&modules);
-    let mut roots = Vec::new();
+    let mut roots = ModuleRoots::default();
     modules.extend(synthesize_json(&mut vm, "{}", &mut roots).unwrap());
     modules.insert(
         "entry.mjs".into(),

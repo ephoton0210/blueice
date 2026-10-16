@@ -57,7 +57,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Module record-table ownership is the current follow-up (2026-10-17).
+Module root storage is the current follow-up (2026-10-17).
+Four tiny native-admission, registration-error and cached-completion cases
+initially failed and now pass. Module roots use admitted segments/reservations
+that splice without allocation during cleanup. Synchronous object completions
+now retain a persistent root before their cached value is published, surviving
+later script collection. All fourteen finite lifecycle groups and all 766 fixed
+selected cases pass, along with formatting and offline workspace/all-target
+Clippy. Retained native value payloads, shared programs and wider gates remain
+open; M1u stays the latest accepted milestone.
+
+The module record-table checkpoint (2026-10-17) precedes this follow-up.
 Three tiny retained/Rust-held/admission cases initially failed and now pass.
 Record tables now own their admitted slots and canonical key buffers; growth
 reserves a detached replacement while old storage coexists. Name selection
@@ -2558,6 +2568,80 @@ Evidence: `/private/tmp/blueice-module-graph-controls-20261017.py`,
 `/private/tmp/blueice-module-graph-audit-20261017.py`, and logs matching
 `/private/tmp/blueice-module-graph-{red,first,graphs,fmt,clippy}-20261017.log`.
 `target/module-graph-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. This is an M1z implementation checkpoint;
+wider native/integrated acceptance remains open.
+
+#### Module root storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: linking/namespace/synthetic root storage admits native capacity
+before managed construction; existing completion/error values acquire admitted
+roots before cache publication. Segments retain ownership while stored or
+Rust-held and merge during terminal cleanup without allocation. Rollback releases
+only new roots/storage. Registration failures preserve runtime error identity;
+cached module completion objects remain alive across later GC.
+
+- [x] Reproduce root-slot undercounting, late admission, registration failure
+      and cached completion lifetime cases with finite offline probes. All four
+      initial cases failed, then passed after admitted storage and persistent
+      cached-completion roots replaced the missing owners.
+- [x] Implement admitted root segments/reservations, allocation-free merging,
+      rollback, late activation and completion/error ownership.
+- [x] Run fixed offline regression/static checks, update evidence and commit
+      with a detailed English message. Retained value payloads, shared programs
+      and other native/integrated gates remain open.
+
+Implementation: graph, nested-load and temporary namespace/synthetic root lists
+own native segment headers and actual root-slot capacity. A root reservation
+admits that storage before managed construction/registration and commits without
+allocation. Refusal or registration failure drops only its staged segment;
+rollback pops the new suffix and frees emptied segments. Existing slots require
+no extra capacity reservation. JSON primitive modules reserve no fictitious
+object root; JSON object/array and bytes modules reserve before construction.
+
+Stored/parked/Rust-held lists retain their owners. Cleanup splices already-owned
+segments without allocation or admission, including after terminal failure;
+iteration and destruction are iterative. Cached document identity avoids
+rescanning attached segments during ordinary appends. Bounded activation
+attaches preloaded segments once; foreign attachment and mutation without the
+owning scope fail. The fixture checkpoints copy RootIds rather than cloning
+storage ownership.
+
+Linking and namespace roots now propagate registration failures instead of
+using the infallible fresh-object helper. Persistent normal/debugger/await
+completion roots precede cache publication. This fixes the reproduced object
+completion collected by a later script. A separate failing await-registration
+case reproduced completion publication before rooting; it now roots first and
+leaves the completion cache empty on failure. Error-value publication follows
+the same ordering. ImportMeta root registration is fallible as well.
+
+Fourteen finite groups cover native retention, exact slot budgeting/refusal,
+spare slots at full scalar quota, terminal merge with stable root addresses,
+suffix rollback across segments, staged-registration failure, late activation,
+primitive JSON, synthetic managed-allocation preemption, normal/debugger/await
+completion GC and failed-await cache publication. Ordinary-library coverage
+entry points expose the same fixture cases; no new coverage result is claimed.
+
+Earlier aggregate-ledger assertions now include graph and Rust-held root segment
+owners. The JSON exact-budget case includes the coexisting root reservation;
+debugger registration thresholds include the new persistent record root. Existing
+identity, prefix, cleanup and failure-boundary checks remain in place. The first
+inherited baseline results are preserved in `*-baseline-red-20261017.log` files.
+
+Validation: **766 passed, zero failed/ignored**, across 38 executables and 67
+fixed selections: fourteen new groups and all 752 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled. The same seven pressure cases remain
+excluded and JSON resource sweeps are not selected. No network/service replay,
+fresh full Test262, real Core/MCP replay, coverage result or integrated acceptance
+is claimed. Displaced-frame root scratch, retained value payloads, shared
+programs and wider native/integrated gates remain open.
+
+Evidence: `/private/tmp/blueice-module-roots-controls-20261017.py`,
+`/private/tmp/blueice-module-roots-commit-20261017.txt`,
+`/private/tmp/blueice-module-roots-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-module-roots-{red,first,completion-red,roots,fmt,clippy}-20261017.log`.
+`target/module-roots-source-20261017.json` records source/log/executable hashes
 and staged/committed blob checks. This is an M1z implementation checkpoint;
 wider native/integrated acceptance remains open.
 

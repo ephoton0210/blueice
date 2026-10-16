@@ -47,7 +47,8 @@ fn module_graph_ownership_retained_records_and_names_have_a_native_owner() {
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes
             - vm.own_scheduling_usage().payload_bytes
-            - vm.module_registry.retained_bytes(),
+            - vm.module_registry.retained_bytes()
+            - vm.module_root_storage_bytes(),
         bytes
     );
 }
@@ -62,7 +63,7 @@ fn module_graph_ownership_rust_held_table_retains_and_then_refunds_its_owner() {
         vm.host_scheduling_snapshot().payload_bytes
             - vm.own_scheduling_usage().payload_bytes
             - vm.module_registry.retained_bytes(),
-        bytes
+        bytes + graph.roots.retained_bytes()
     );
     for root in &graph.roots {
         vm.heap.unroot(*root).unwrap();
@@ -266,7 +267,10 @@ fn module_graph_ownership_late_activation_attaches_metadata_once() {
     let before = vm.host_scheduling_snapshot().payload_bytes;
     assert_eq!(
         before,
-        vm.own_scheduling_usage().payload_bytes + vm.module_registry.retained_bytes() + bytes
+        vm.own_scheduling_usage().payload_bytes
+            + vm.module_registry.retained_bytes()
+            + bytes
+            + vm.module_root_storage_bytes()
     );
     vm.use_bounded_host_microtask_checkpoints().unwrap();
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
@@ -301,7 +305,7 @@ fn module_graph_ownership_linking_rollback_refunds_new_names_and_preserves_old_r
     let mut vm = bounded_vm();
     load(&mut vm);
     let bytes = vm.module_record_storage_bytes();
-    let roots = vm.module_graph.as_ref().unwrap().roots.clone();
+    let roots = vm.module_graph.as_ref().unwrap().roots.snapshot();
     let snapshot = ModuleRegistry::new(
         HashMap::from([
             ("entry".into(), module("export let answer=42;")),
@@ -318,7 +322,7 @@ fn module_graph_ownership_linking_rollback_refunds_new_names_and_preserves_old_r
         Err(RuntimeError::ModuleResolution(_))
     ));
     assert_eq!(vm.module_record_storage_bytes(), bytes);
-    assert_eq!(vm.module_graph.as_ref().unwrap().roots, roots);
+    assert_eq!(vm.module_graph.as_ref().unwrap().roots.snapshot(), roots);
     assert!(vm.linked_record("bad").is_none());
     let observer = Vm {
         host_scheduling: Some(vm.host_scheduling.as_ref().unwrap().child()),
@@ -330,6 +334,7 @@ fn module_graph_ownership_linking_rollback_refunds_new_names_and_preserves_old_r
             + vm.module_registry.retained_bytes()
             + snapshot.retained_bytes()
             + bytes
+            + vm.module_root_storage_bytes()
     );
 }
 

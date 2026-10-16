@@ -442,7 +442,7 @@ fn an_import_that_joins_a_running_graph_leaves_its_roots_with_that_graph() {
     vm.store_module_graph(
         ModuleGraphState {
             linked,
-            roots: Vec::new(),
+            roots: ModuleRoots::default(),
         },
         false,
     );

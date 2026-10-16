@@ -468,6 +468,27 @@ Link rollback removes new names and keeps actual retained capacity charged.
 Graph root-list merging, native payloads of retained record values, shared
 programs and other compiler/native/integrated storage remain open work.
 
+Module graph, nested-load and temporary namespace/synthetic root lists retain
+admitted segment headers and reported root-slot capacity. Reservations precede
+managed construction and root registration, then commit without allocation.
+Failed registration drops only staged storage; rollback releases new roots and
+emptied segments while preserving the old prefix. Primitive JSON needs no
+object-root reservation; object/array JSON and bytes reserve before conversion.
+
+Cleanup splices already-owned segments without allocation or new admission,
+including after terminal failure. Iteration/destruction use loops. Cached owner
+identity avoids repeated scans of attached segments; bounded activation attaches
+host-neutral lists once and rejects a foreign document. Root snapshots used by
+fixtures copy handles without duplicating storage ownership.
+
+Cached object completions acquire persistent roots before publication in normal,
+debugger and await paths. A later script collection therefore preserves the
+cached value; failed await rooting publishes no completion. Error roots follow
+the same publication order. Linking, namespace and ImportMeta registration
+failures propagate their runtime identities. Temporary displaced-frame root
+scratch, native payloads of retained values, shared programs and other wider
+native/cache/integrated ownership remain open work.
+
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
 accounting counts its capacity once as realm storage, independently of active

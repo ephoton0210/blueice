@@ -354,7 +354,9 @@ fn module_context_ownership_shadow_transfer_counts_the_name_once_and_preserves_i
             + child.own_scheduling_usage().payload_bytes
             + vm.module_registry.retained_bytes()
             + vm.module_record_storage_bytes()
+            + vm.module_root_storage_bytes()
             + child.module_record_storage_bytes()
+            + child.module_root_storage_bytes()
     );
 }
 

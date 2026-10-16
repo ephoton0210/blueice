@@ -321,9 +321,9 @@ impl Vm {
             None => match self.evaluating_linked.take() {
                 Some(linked) => {
                     nested_in_evaluation = true;
-                    (linked, Vec::new(), false)
+                    (linked, ModuleRoots::default(), false)
                 }
-                None => (ModuleRecords::default(), Vec::new(), true),
+                None => (ModuleRecords::default(), ModuleRoots::default(), true),
             },
         };
         // `ensure_synthetic_module`/`ensure_dynamic_module_compiled` (below) can
@@ -367,9 +367,7 @@ impl Vm {
                 Ok(())
             })();
             if let Err(error) = prepared {
-                for root in roots.drain(roots_checkpoint..) {
-                    self.release_root(root);
-                }
+                self.release_module_roots_from(&mut roots, roots_checkpoint);
                 // A module that cannot even be compiled or synthesized fails
                 // only this request; an existing graph stays usable.
                 if fresh_graph {
@@ -401,9 +399,7 @@ impl Vm {
         let new_names = match self.prepare_module_names(modules, &linked) {
             Ok(names) => names,
             Err(error) => {
-                for root in roots.drain(roots_checkpoint..) {
-                    self.release_root(root);
-                }
+                self.release_module_roots_from(&mut roots, roots_checkpoint);
                 if fresh_graph {
                     for root in roots {
                         self.release_root(root);
@@ -525,8 +521,9 @@ impl Vm {
                         if imported_slots.contains(&slot) {
                             continue;
                         }
+                        let root_slot = roots.prepare_slot(self.host_scheduling.as_ref())?;
                         let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                        roots.push(self.root_new_object(cell));
+                        root_slot.root_into(&mut roots, &mut self.heap, cell)?;
                         if !code.bindings[slot].lexical {
                             self.with_roots(|heap| heap.set(cell, "value", Value::Undefined))?;
                         }
@@ -681,8 +678,10 @@ impl Vm {
                                     &mut linked,
                                     &mut roots,
                                 )?;
+                                let root_slot =
+                                    roots.prepare_slot(self.host_scheduling.as_ref())?;
                                 let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                                roots.push(self.root_new_object(cell));
+                                root_slot.root_into(&mut roots, &mut self.heap, cell)?;
                                 self.with_roots(|heap| {
                                     heap.set(cell, "value", Value::Object(namespace))
                                 })?;
@@ -693,8 +692,10 @@ impl Vm {
                                 let source = self
                                     .module_source_object(&module, modules)
                                     .expect("a source-phase record was made while it was loaded");
+                                let root_slot =
+                                    roots.prepare_slot(self.host_scheduling.as_ref())?;
                                 let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                                roots.push(self.root_new_object(cell));
+                                root_slot.root_into(&mut roots, &mut self.heap, cell)?;
                                 self.with_roots(|heap| {
                                     heap.set(cell, "value", Value::Object(source))
                                 })?;
@@ -783,9 +784,9 @@ impl Vm {
                 (value, namespace)
             };
             self.last_module_namespace = Some(namespace);
-            self.last_module_namespace_root = Some(self.root_new_object(namespace));
+            self.last_module_namespace_root = Some(self.heap.root(namespace)?);
             if let Value::Object(id) = value {
-                self.result_root = Some(self.root_new_object(id));
+                self.result_root = Some(self.heap.root(id)?);
             }
             Ok(value)
         })();
@@ -795,7 +796,10 @@ impl Vm {
         // does for scripts.  In particular, Test262 needs to inspect an
         // Error's `name` after a module evaluation rejects.
         if let Err(RuntimeError::Thrown(Value::Object(id))) = &result {
-            self.result_root = Some(self.root_new_object(*id));
+            match self.heap.root(*id) {
+                Ok(root) => self.result_root = Some(root),
+                Err(error) => result = Err(error.into()),
+            }
         }
 
         if result.is_err() && evaluation_started {
@@ -821,9 +825,7 @@ impl Vm {
                 for &name in new_names.iter() {
                     linked.remove(name);
                 }
-                for root in roots.split_off(roots_checkpoint) {
-                    self.release_root(root);
-                }
+                self.release_module_roots_from(&mut roots, roots_checkpoint);
                 self.store_module_graph(ModuleGraphState { linked, roots }, nested_in_evaluation);
             }
         } else {
@@ -910,11 +912,15 @@ impl Vm {
     /// evaluation error): the records are not heap objects, so the collector
     /// would otherwise reclaim what a later run of the same graph replays.
     /// The root belongs to the graph, which takes it over once it is stored.
-    fn keep_module_value_alive(&mut self, value: &Value) {
+    fn keep_module_value_alive(&mut self, value: &Value) -> Result<(), RuntimeError> {
         if let Value::Object(id) = value {
-            let root = self.root_new_object(*id);
-            self.nested_module_roots.push(root);
+            self.nested_module_roots.root_object(
+                &mut self.heap,
+                self.host_scheduling.as_ref(),
+                *id,
+            )?;
         }
+        Ok(())
     }
 
     /// A major collection with everything the VM holds as a root. It reclaims
@@ -1071,10 +1077,13 @@ impl Vm {
             record.suspended = false;
             record.evaluating = false;
             match &result {
-                Ok(value) => {
-                    record.evaluated = true;
-                    record.completion = Some(value.clone());
-                }
+                Ok(value) => match self.keep_module_value_alive(value) {
+                    Ok(()) => {
+                        record.evaluated = true;
+                        record.completion = Some(value.clone());
+                    }
+                    Err(error) => result = Err(error),
+                },
                 Err(error) => {
                     if error.is_catchable() {
                         match self.error_value(error.clone()) {
@@ -1084,7 +1093,12 @@ impl Vm {
                                     debugger_site: self.pending_throw_site,
                                     epoch: self.throw_epoch,
                                 };
-                                match self.retain_module_error(value.clone(), origin) {
+                                match self.retain_module_error(value.clone(), origin).and_then(
+                                    |error| {
+                                        self.keep_module_value_alive(&value)?;
+                                        Ok(error)
+                                    },
+                                ) {
                                     Ok(error) => {
                                         record.evaluated = true;
                                         record.error = Some(error);
@@ -1118,15 +1132,16 @@ impl Vm {
             }
         }
         let error_root = match &result {
-            Err(RuntimeError::Thrown(Value::Object(id))) => Some(self.heap.root(*id)),
+            Err(RuntimeError::Thrown(Value::Object(id))) => Some(graph.roots.root_object(
+                &mut self.heap,
+                self.host_scheduling.as_ref(),
+                *id,
+            )),
             _ => None,
         };
-        if let Some(Ok(root)) = &error_root {
-            graph.roots.push(*root);
-        }
         self.store_module_graph(graph, false);
         if let Some(Err(error)) = error_root {
-            result = Err(error.into());
+            result = Err(error);
         }
         if awaiting && result.is_ok() && !self.promise_jobs.is_empty() {
             self.remaining_instructions = self.config.instruction_budget;
@@ -1266,7 +1281,7 @@ impl Vm {
             return Ok(Value::Object(*meta));
         }
         let meta = self.with_roots(|heap| heap.alloc_object(None))?;
-        let root = self.root_new_object(meta);
+        let root = self.heap.root(meta)?;
         self.module_import_meta.insert(module.clone(), meta);
         self.module_import_meta_roots.insert(module, root);
         Ok(Value::Object(meta))
@@ -1425,7 +1440,7 @@ impl Vm {
                         // or namespace import. Its namespace is then created
                         // here, with permanent cache ownership and temporary
                         // construction roots released after publication.
-                        let mut roots = Vec::new();
+                        let mut roots = ModuleRoots::default();
                         let result =
                             vm.module_namespace(&entry, false, &modules, linked, &mut roots);
                         for root in roots {
@@ -1481,9 +1496,11 @@ impl Vm {
     ) {
         if nested_in_evaluation {
             self.evaluating_linked = Some(state.linked);
-            self.nested_module_roots.append(&mut state.roots);
+            self.nested_module_roots.merge(state.roots);
         } else {
-            state.roots.append(&mut self.nested_module_roots);
+            state
+                .roots
+                .merge(std::mem::take(&mut self.nested_module_roots));
             self.module_graph = Some(state);
         }
     }
@@ -1738,6 +1755,7 @@ impl Vm {
         // or continuation registration refuses this turn.
         let result = (|| match outcome {
             Ok(StraightLineExit::Return(value)) => {
+                self.keep_module_value_alive(&value)?;
                 {
                     let record = graph
                         .linked
@@ -1750,7 +1768,6 @@ impl Vm {
                     record.evaluated = true;
                     record.completion = Some(value.clone());
                 }
-                self.keep_module_value_alive(&value);
                 let modules = self.module_registry.clone();
                 self.settle_dynamic_import_waiters(&module, &mut graph.linked)?;
                 self.settle_module_parents(module.clone(), &modules, &mut graph.linked)?;
@@ -1790,6 +1807,7 @@ impl Vm {
                 let origin = self.caught_rejection_origin(resume_epoch);
                 let value = self.error_value(error)?;
                 let error = self.retain_module_error(value, origin)?;
+                self.keep_module_value_alive(&error.value)?;
                 let record = graph
                     .linked
                     .get_mut(&module)
@@ -1801,7 +1819,6 @@ impl Vm {
                 record.evaluated = true;
                 record.completion = None;
                 record.error = Some(error.clone());
-                self.keep_module_value_alive(&error.value);
                 self.reject_module_and_parents(module.clone(), error, &mut graph.linked)?;
                 Ok(Value::Undefined)
             }
@@ -1811,13 +1828,14 @@ impl Vm {
             .get(&module)
             .and_then(|record| record.error.as_ref())
             .and_then(|error| error.value.object_id())
-            .map(|id| self.heap.root(id));
-        if let Some(Ok(root)) = &error_root {
-            graph.roots.push(*root);
-        }
+            .map(|id| {
+                graph
+                    .roots
+                    .root_object(&mut self.heap, self.host_scheduling.as_ref(), id)
+            });
         self.module_graph = Some(graph);
         if let Some(Err(error)) = error_root {
-            return Err(error.into());
+            return Err(error);
         }
         result.map(|_| ())
     }
@@ -1979,8 +1997,8 @@ impl Vm {
                 record.suspended = false;
                 record.evaluated = true;
                 record.completion = None;
+                self.keep_module_value_alive(&error.value)?;
                 record.error = Some(error.clone());
-                self.keep_module_value_alive(&error.value);
                 rejected.push_back(parent);
                 drop(parent_payload);
                 drop(work_payload);
@@ -2011,7 +2029,7 @@ impl Vm {
         // construction refuses memory or root registration.
         let namespace = if self.module_import_waiters.contains_key(module) {
             let modules = self.module_registry.clone();
-            let mut roots = Vec::new();
+            let mut roots = ModuleRoots::default();
             let result = self.module_namespace(module, false, &modules, linked, &mut roots);
             for root in roots {
                 self.release_root(root);
@@ -2823,6 +2841,7 @@ impl Vm {
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = cells;
                     record.refresh_cells_charge();
+                    self.keep_module_value_alive(&value)?;
                     record.completion = Some(value.clone());
                     Ok(value)
                 }
@@ -2936,10 +2955,10 @@ impl Vm {
                 let retained = self.retain_module_error(value.clone(), origin)?;
                 let record = linked.get_mut(name).expect("checked module record exists");
                 record.evaluating = false;
+                self.keep_module_value_alive(&value)?;
                 record.evaluated = true;
                 record.completion = None;
                 record.error = Some(retained);
-                self.keep_module_value_alive(&value);
                 Err(RuntimeError::Thrown(value))
             }
             result => result,

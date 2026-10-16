@@ -1101,7 +1101,8 @@ fn resumed_module_root_exhaustion_restores_terminal_state_and_retains_replayable
         });
         let offset = module_entry_offset(&program);
         let modules = HashMap::from([(entry.to_string(), program)]);
-        let required = if throws { 2 } else { 4 };
+        // Cached module values now retain a persistent record root as well.
+        let required = if throws { 3 } else { 5 };
         for remaining in 0..=required {
             let mut vm = Vm::default();
             vm.execute_script(&code("globalThis.retained = {answer:42};"))

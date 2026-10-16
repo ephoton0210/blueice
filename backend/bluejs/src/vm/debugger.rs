@@ -1082,12 +1082,23 @@ impl Vm {
         };
         let mut error_root = None;
         let mut result = match result {
-            Ok(RuntimeError::Thrown(Value::Object(id))) => match self.heap.root(id) {
-                Ok(root) => {
-                    error_root = Some(root);
+            Ok(RuntimeError::Thrown(Value::Object(id))) => match self
+                .module_graph
+                .as_ref()
+                .expect("paused graph exists")
+                .roots
+                .prepare_slot(self.host_scheduling.as_ref())
+                .and_then(|slot| {
+                    self.heap
+                        .root(id)
+                        .map(|root| (slot, root))
+                        .map_err(RuntimeError::from)
+                }) {
+                Ok(reserved) => {
+                    error_root = Some(reserved);
                     Ok(RuntimeError::Thrown(Value::Object(id)))
                 }
-                Err(error) => Err(RuntimeError::from(error)),
+                Err(error) => Err(error),
             },
             other => other,
         };
@@ -1101,7 +1112,7 @@ impl Vm {
                 match self.retain_module_error(value.clone(), origin) {
                     Ok(error) => Some(error),
                     Err(error) => {
-                        if let Some(root) = error_root.take() {
+                        if let Some((_slot, root)) = error_root.take() {
                             self.release_root(root);
                         }
                         result = Err(error);
@@ -1115,8 +1126,8 @@ impl Vm {
             .module_graph
             .as_mut()
             .expect("a nested module failure retains its linked graph");
-        if let Some(root) = error_root {
-            graph.roots.push(root);
+        if let Some((slot, root)) = error_root {
+            slot.commit(&mut graph.roots, root);
         }
         let record = graph
             .linked

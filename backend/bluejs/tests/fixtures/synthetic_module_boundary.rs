@@ -26,7 +26,7 @@ fn synthetic_module_boundary_root_refusal_returns_the_heap_error_without_publica
     ] {
         let mut vm = vm_with_sources();
         let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         vm.heap.allow_root_registrations(0);
         assert_eq!(
             vm.ensure_synthetic_module(
@@ -46,7 +46,7 @@ fn synthetic_module_boundary_json_instruction_refusal_is_not_a_resolution_error(
     let mut vm = vm_with_sources();
     vm.remaining_instructions = 0;
     let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
-    let mut roots = Vec::new();
+    let mut roots = ModuleRoots::default();
     assert_eq!(
         vm.ensure_synthetic_module(
             &ModuleType::Json.module_key("value"),
@@ -65,7 +65,7 @@ fn synthetic_module_boundary_json_string_refusal_is_not_a_resolution_error() {
     vm.config.max_string_bytes = 2;
     vm.set_json_module_sources(HashMap::from([("value".into(), "\"ab\"".into())]));
     let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
-    let mut roots = Vec::new();
+    let mut roots = ModuleRoots::default();
     assert_eq!(
         vm.ensure_synthetic_module(
             &ModuleType::Json.module_key("value"),
@@ -91,7 +91,11 @@ fn synthetic_module_boundary_refusal_preserves_existing_modules_roots_and_stack(
     let mut vm = vm_with_sources();
     let caller = vm.heap.alloc_object(None).unwrap();
     let caller_root = vm.heap.root(caller).unwrap();
-    let mut roots = vec![caller_root];
+    let mut roots = ModuleRoots::default();
+    roots
+        .prepare_slot(vm.host_scheduling.as_ref())
+        .unwrap()
+        .commit(&mut roots, caller_root);
     let mut modules = ModuleRegistryDraft::new(
         ModuleRegistry::new(
             HashMap::from([("retained".into(), Bytecode::empty())]),
@@ -110,7 +114,7 @@ fn synthetic_module_boundary_refusal_preserves_existing_modules_roots_and_stack(
         ),
         Err(RuntimeError::Heap(HeapError::IdExhausted))
     );
-    assert_eq!(roots, vec![caller_root]);
+    assert_eq!(roots.snapshot(), vec![caller_root]);
     assert_eq!(modules.len(), 1);
     assert!(modules.contains_key("retained"));
     assert_eq!(vm.stack, vec![Value::Number(7.0)]);
@@ -127,7 +131,7 @@ fn synthetic_module_boundary_objects_live_until_their_synthesis_roots_are_releas
     ] {
         let mut vm = vm_with_sources();
         let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         let key = module_type.module_key("value");
         vm.ensure_synthetic_module(&key, synthetic_type, &mut modules, &mut roots)
             .unwrap();
@@ -167,7 +171,7 @@ fn synthetic_module_boundary_primitives_need_no_object_root_registration() {
         vm.set_text_module_sources(HashMap::from([("value".into(), "text".into())]));
         vm.heap.allow_root_registrations(0);
         let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         for (module_type, synthetic_type, expected) in [
             (ModuleType::Json, SyntheticModuleType::Json, expected),
             (
@@ -195,7 +199,7 @@ fn synthetic_module_boundary_primitives_need_no_object_root_registration() {
 fn synthetic_module_boundary_existing_records_remain_idempotent_after_root_refusal() {
     let mut vm = vm_with_sources();
     let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
-    let mut roots = Vec::new();
+    let mut roots = ModuleRoots::default();
     let key = ModuleType::Json.module_key("value");
     vm.ensure_synthetic_module(&key, SyntheticModuleType::Json, &mut modules, &mut roots)
         .unwrap();
@@ -205,7 +209,7 @@ fn synthetic_module_boundary_existing_records_remain_idempotent_after_root_refus
         .unwrap()
         .value()
         .clone();
-    let root = roots[0];
+    let root = *roots.iter().next().unwrap();
     vm.heap.allow_root_registrations(0);
     vm.ensure_synthetic_module(&key, SyntheticModuleType::Json, &mut modules, &mut roots)
         .unwrap();
@@ -216,7 +220,7 @@ fn synthetic_module_boundary_existing_records_remain_idempotent_after_root_refus
             .map(|value| value.value()),
         Some(&original)
     );
-    assert_eq!(roots, vec![root]);
+    assert_eq!(roots.snapshot(), vec![root]);
     vm.heap.unroot(root).unwrap();
 }
 
@@ -225,7 +229,7 @@ fn synthetic_module_boundary_malformed_and_missing_sources_keep_resolution_seman
     let mut vm = vm_with_sources();
     vm.set_json_module_sources(HashMap::from([("value".into(), "{".into())]));
     let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
-    let mut roots = Vec::new();
+    let mut roots = ModuleRoots::default();
     assert_eq!(
         vm.ensure_synthetic_module(
             &ModuleType::Json.module_key("value"),
@@ -296,7 +300,7 @@ fn synthetic_module_boundary_existing_graph_keeps_its_roots_after_refused_import
     let modules = HashMap::from([("main".into(), module("export const answer=42;"))]);
     vm.execute_module_graph("main", &modules).unwrap();
     let graph = vm.module_graph.as_ref().unwrap();
-    let original_roots = graph.roots.clone();
+    let original_roots = graph.roots.snapshot();
     let original_cells = graph.linked["main"].cells.clone();
     vm.heap.allow_root_registrations(0);
     assert_eq!(
@@ -310,7 +314,7 @@ fn synthetic_module_boundary_existing_graph_keeps_its_roots_after_refused_import
         Err(RuntimeError::Heap(HeapError::IdExhausted))
     );
     let graph = vm.module_graph.as_ref().unwrap();
-    assert_eq!(graph.roots, original_roots);
+    assert_eq!(graph.roots.snapshot(), original_roots);
     assert_eq!(graph.linked.len(), 1);
     assert_eq!(graph.linked["main"].cells, original_cells);
     collect(&mut vm);
@@ -333,6 +337,69 @@ fn synthetic_module_boundary_graph_instruction_refusal_precedes_module_evaluatio
     );
     assert!(vm.module_graph.is_none() && vm.module_registry.is_empty());
     assert_eq!(vm.lookup_global_name("ran").unwrap(), None);
+}
+
+#[cfg_attr(test, test)]
+fn module_root_ownership_primitive_json_needs_no_root_reservation() {
+    let mut vm = Vm::default();
+    vm.use_bounded_host_microtask_checkpoints().unwrap();
+    vm.set_json_module_sources(HashMap::from([("value".into(), "1".into())]));
+    let before = vm.host_scheduling_snapshot().payload_bytes;
+    let probe = vm.prepare_synthetic_value(0).unwrap();
+    let header = vm.host_scheduling_snapshot().payload_bytes - before;
+    drop(probe);
+    let used = vm.host_scheduling_usage().unwrap().payload_bytes;
+    let _peer = vm
+        .host_scheduling
+        .as_ref()
+        .unwrap()
+        .shared_charge(MAX_HOST_SCHEDULING_BYTES - used - header)
+        .unwrap();
+    let mut roots = ModuleRoots::default();
+    let code = vm
+        .create_synthetic_module_code("value\0json", SyntheticModuleType::Json, &mut roots)
+        .unwrap();
+    assert_eq!(
+        code.synthetic_default_export.as_ref().unwrap().value(),
+        &Value::Number(1.0)
+    );
+    assert!(roots.is_empty());
+    assert_eq!(roots.retained_bytes(), 0);
+}
+
+#[cfg_attr(test, test)]
+fn module_root_ownership_synthetic_object_refusal_precedes_managed_construction() {
+    let mut vm = Vm::default();
+    vm.use_bounded_host_microtask_checkpoints().unwrap();
+    vm.set_json_module_sources(HashMap::from([("value".into(), "{}".into())]));
+    let before = vm.host_scheduling_snapshot().payload_bytes;
+    let probe = ModuleRoots::default();
+    let slot = probe.prepare_slot(vm.host_scheduling.as_ref()).unwrap();
+    let bytes = vm.host_scheduling_snapshot().payload_bytes - before;
+    drop(slot);
+    let used = vm.host_scheduling_usage().unwrap().payload_bytes;
+    let _peer = vm
+        .host_scheduling
+        .as_ref()
+        .unwrap()
+        .shared_charge(MAX_HOST_SCHEDULING_BYTES - used - bytes + 1)
+        .unwrap();
+    vm.heap.allow_only(0);
+    let mut roots = ModuleRoots::default();
+    assert!(matches!(
+        vm.create_synthetic_module_code("value\0json", SyntheticModuleType::Json, &mut roots),
+        Err(RuntimeError::SchedulingLimit)
+    ));
+    assert!(roots.is_empty());
+}
+
+impl crate::Vm {
+    /// Runs finite root-admission controls at the synthetic-module boundary.
+    #[doc(hidden)]
+    pub fn verify_module_root_synthetic_contracts() {
+        module_root_ownership_primitive_json_needs_no_root_reservation();
+        module_root_ownership_synthetic_object_refusal_precedes_managed_construction();
+    }
 }
 
 impl crate::Vm {

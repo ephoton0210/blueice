@@ -202,10 +202,12 @@ impl Vm {
         self.module_registry.attach(scope)?;
         if let Some(graph) = &self.module_graph {
             graph.linked.attach(scope)?;
+            graph.roots.attach(scope)?;
         }
         if let Some(linked) = &self.evaluating_linked {
             linked.attach(scope)?;
         }
+        self.nested_module_roots.attach(scope)?;
         for frame in self.module_continuations.values() {
             frame.code.attach(scope)?;
         }

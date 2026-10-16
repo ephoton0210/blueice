@@ -341,7 +341,7 @@ fn module_registry_ownership_refused_preparation_releases_its_new_synthetic_root
     let mut vm = loaded_graph();
     vm.stack.reserve(16);
     vm.set_json_module_sources(HashMap::from([("json".into(), "{}".into())]));
-    let roots = vm.module_graph.as_ref().unwrap().roots.clone();
+    let roots = vm.module_graph.as_ref().unwrap().roots.snapshot();
     let pointer = vm.module_registry["kept"].code.as_ptr();
     let _peer = leave_room(&mut vm, SyntheticModuleValue::header_bytes());
     let before = vm.host_scheduling_snapshot().payload_bytes;
@@ -357,7 +357,7 @@ fn module_registry_ownership_refused_preparation_releases_its_new_synthetic_root
         ),
         Err(RuntimeError::SchedulingLimit)
     );
-    assert_eq!(vm.module_graph.as_ref().unwrap().roots, roots);
+    assert_eq!(vm.module_graph.as_ref().unwrap().roots.snapshot(), roots);
     assert_eq!(vm.module_registry["kept"].code.as_ptr(), pointer);
     assert!(!vm.module_registry.contains_key("json\0json"));
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
@@ -385,7 +385,7 @@ fn module_registry_ownership_linking_failure_restores_the_previous_cache_and_roo
     vm.set_module_loader_context("kept", data);
     let snapshot = vm.module_registry.clone();
     let pointer = snapshot["main"].code.as_ptr();
-    let roots = vm.module_graph.as_ref().unwrap().roots.clone();
+    let roots = vm.module_graph.as_ref().unwrap().roots.snapshot();
     let managed = vm.heap.stats().managed_bytes;
     assert!(matches!(
         vm.execute_module_registry_inner("main", &snapshot, false, false, ImportPhase::Evaluation),
@@ -393,7 +393,7 @@ fn module_registry_ownership_linking_failure_restores_the_previous_cache_and_roo
     ));
     assert_eq!(vm.module_registry["main"].code.as_ptr(), pointer);
     assert!(!vm.module_registry.contains_key("json\0json"));
-    assert_eq!(vm.module_graph.as_ref().unwrap().roots, roots);
+    assert_eq!(vm.module_graph.as_ref().unwrap().roots.snapshot(), roots);
     assert_eq!(vm.module_graph.as_ref().unwrap().linked.len(), 1);
     vm.with_roots(|heap| {
         heap.collect_major();

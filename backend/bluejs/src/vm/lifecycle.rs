@@ -100,7 +100,7 @@ impl Vm {
             module_deferred_namespace_roots: HashMap::new(),
             module_graph: None,
             evaluating_linked: None,
-            nested_module_roots: Vec::new(),
+            nested_module_roots: super::ModuleRoots::default(),
             deferred_import_waiters: Vec::new(),
             module_continuations: HashMap::new(),
             next_module_continuation: 0,

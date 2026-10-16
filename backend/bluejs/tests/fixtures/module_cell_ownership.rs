@@ -274,7 +274,7 @@ fn module_cell_ownership_link_failure_releases_only_new_table_owners() {
     let mut vm = bounded_vm();
     install(&mut vm, "export let answer=42;").unwrap();
     let bytes = retained_cells(&vm);
-    let roots = vm.module_graph.as_ref().unwrap().roots.clone();
+    let roots = vm.module_graph.as_ref().unwrap().roots.snapshot();
     let snapshot = ModuleRegistry::new(
         HashMap::from([
             ("entry".into(), module("export let answer=42;")),
@@ -291,7 +291,7 @@ fn module_cell_ownership_link_failure_releases_only_new_table_owners() {
         Err(RuntimeError::ModuleResolution(_))
     ));
     assert_eq!(vm.linked_module_cell_bytes.get(), bytes);
-    assert_eq!(vm.module_graph.as_ref().unwrap().roots, roots);
+    assert_eq!(vm.module_graph.as_ref().unwrap().roots.snapshot(), roots);
     assert!(vm.linked_record("bad").is_none());
     let observer = Vm {
         host_scheduling: Some(vm.host_scheduling.as_ref().unwrap().child()),
@@ -303,6 +303,7 @@ fn module_cell_ownership_link_failure_releases_only_new_table_owners() {
             + vm.module_registry.retained_bytes()
             + snapshot.retained_bytes()
             + vm.module_record_storage_bytes()
+            + vm.module_root_storage_bytes()
     );
 }
 

@@ -171,7 +171,7 @@ impl Vm {
         deferred: bool,
         modules: &HashMap<String, Bytecode>,
         linked: &mut HashMap<String, LinkedModule>,
-        roots: &mut Vec<RootId>,
+        roots: &mut ModuleRoots,
     ) -> Result<ObjectId, RuntimeError> {
         let cache = if deferred {
             &self.module_deferred_namespace_cache
@@ -211,9 +211,10 @@ impl Vm {
             // exports. A module may re-export its own namespace, directly or
             // through a cycle; waiting until after recursive resolution would
             // recurse indefinitely and overflow the host stack.
+            let root_slot = roots.prepare_slot(self.host_scheduling.as_ref())?;
             let namespace =
                 self.with_roots(|heap| heap.alloc_module_namespace(Vec::new(), deferred))?;
-            roots.push(self.heap.root(namespace)?);
+            root_slot.root_into(roots, &mut self.heap, namespace)?;
             // Register both owners before exposing the placeholder. A cache
             // root failure must not leave a linked record outside the
             // transaction's rollback cache.
@@ -270,15 +271,17 @@ impl Vm {
                             linked,
                             roots,
                         )?);
+                        let root_slot = roots.prepare_slot(self.host_scheduling.as_ref())?;
                         let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                        roots.push(self.heap.root(cell)?);
+                        root_slot.root_into(roots, &mut self.heap, cell)?;
                         self.with_roots(|heap| heap.set(cell, "value", value))?;
                         cell
                     }
                     ExportResolution::Source { module } => {
                         let value = Value::Object(self.module_source_object(&module, modules)?);
+                        let root_slot = roots.prepare_slot(self.host_scheduling.as_ref())?;
                         let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                        roots.push(self.heap.root(cell)?);
+                        root_slot.root_into(roots, &mut self.heap, cell)?;
                         self.with_roots(|heap| heap.set(cell, "value", value))?;
                         cell
                     }
@@ -332,11 +335,7 @@ impl Vm {
                     }
                 }
             }
-            for root in roots.drain(roots_checkpoint..) {
-                self.heap
-                    .unroot(root)
-                    .expect("namespace transaction owns its temporary root");
-            }
+            self.release_module_roots_from(roots, roots_checkpoint);
         }
         outcome
     }

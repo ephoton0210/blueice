@@ -74,7 +74,7 @@ impl Vm {
         key: &str,
         module_type: SyntheticModuleType,
         modules: &mut ModuleRegistryDraft,
-        roots: &mut Vec<RootId>,
+        roots: &mut ModuleRoots,
     ) -> Result<(), RuntimeError> {
         if let Some(code) = modules.get(key) {
             if let (Some(value), Some(scope)) =
@@ -94,9 +94,10 @@ impl Vm {
         &mut self,
         key: &str,
         module_type: SyntheticModuleType,
-        roots: &mut Vec<RootId>,
+        roots: &mut ModuleRoots,
     ) -> Result<Bytecode, RuntimeError> {
         let (path, _) = ModuleType::split_module_key(key);
+        let mut root_slot = None;
         let value = match module_type {
             SyntheticModuleType::Json => {
                 let sources = self.json_module_sources.clone();
@@ -105,6 +106,12 @@ impl Vm {
                         "host did not provide a JSON module source for {path}"
                     )));
                 };
+                let first = source
+                    .bytes()
+                    .find(|byte| !matches!(byte, b' ' | b'\n' | b'\r' | b'\t'));
+                if matches!(first, Some(b'{' | b'[')) {
+                    root_slot = Some(roots.prepare_slot(self.host_scheduling.as_ref())?);
+                }
                 let output = self.prepare_synthetic_value(0)?;
                 let value = self.json_module_value(source).map_err(|error| {
                     if matches!(error, RuntimeError::SyntaxError(_)) {
@@ -136,6 +143,7 @@ impl Vm {
                         "host did not provide a bytes module source for {path}"
                     )));
                 };
+                root_slot = Some(roots.prepare_slot(self.host_scheduling.as_ref())?);
                 let output = self.prepare_synthetic_value(0)?;
                 let bytes =
                     module_values::ModuleBytesCopy::copy(bytes, self.host_scheduling.as_ref())?;
@@ -146,7 +154,9 @@ impl Vm {
         if let Some(id) = value.value().object_id() {
             // A JSON parse or bytes-module allocation just returned this
             // object; neither caller nor this branch allocates before rooting.
-            roots.push(self.heap.root(id)?);
+            root_slot
+                .expect("object module values reserve a root slot")
+                .root_into(roots, &mut self.heap, id)?;
         }
         let mut code = Bytecode::empty();
         code.module = true;
@@ -184,7 +194,7 @@ impl Vm {
     pub(super) fn register_static_synthetic_modules(
         &mut self,
         modules: &mut ModuleRegistryDraft,
-        roots: &mut Vec<RootId>,
+        roots: &mut ModuleRoots,
     ) -> Result<(), RuntimeError> {
         let mut targets = Vec::new();
         // `modules` is host-supplied, so its HashMap iteration order must not
@@ -262,7 +272,7 @@ mod tests {
         key: &str,
     ) -> (Result<(), RuntimeError>, HashMap<String, Bytecode>, usize) {
         let mut modules = HashMap::new();
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         // The module loader gives the synthesis a budget before calling it.
         vm.remaining_instructions = vm.config.instruction_budget;
         let (_, module_type) = ModuleType::split_module_key(key);
@@ -323,7 +333,7 @@ mod tests {
         let registry =
             ModuleRegistry::new(HashMap::from([(key.clone(), Bytecode::empty())]), None).unwrap();
         let mut modules = ModuleRegistryDraft::new(registry);
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         assert_eq!(
             vm.ensure_synthetic_module(&key, SyntheticModuleType::Text, &mut modules, &mut roots),
             Ok(())

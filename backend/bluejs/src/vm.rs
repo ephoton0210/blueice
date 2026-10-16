@@ -46,6 +46,8 @@ mod module_graph_storage;
 use module_graph_storage::ModuleRecords;
 mod module_referrers;
 mod module_registry;
+mod module_root_storage;
+use module_root_storage::ModuleRoots;
 mod module_sources;
 use module_registry::{ModuleCode, ModuleRegistry, ModuleRegistryDraft};
 mod module_values;
@@ -462,7 +464,7 @@ struct ModuleEvaluationError {
 /// of cells for the same canonical module name.
 struct ModuleGraphState {
     linked: ModuleRecords,
-    roots: Vec<RootId>,
+    roots: ModuleRoots,
 }
 
 /// The resumable portion of a top-level module evaluation. `execution`
@@ -1032,7 +1034,7 @@ pub struct Vm {
     /// that graph's own root list, which the outer evaluation holds, so it
     /// parks them here; `store_module_graph` hands them to the installed
     /// graph, which owns every root of its modules.
-    nested_module_roots: Vec<RootId>,
+    nested_module_roots: ModuleRoots,
     deferred_import_waiters: Vec<DeferredImportWaiter>,
     module_continuations: HashMap<u64, ModuleContinuation>,
     next_module_continuation: u64,

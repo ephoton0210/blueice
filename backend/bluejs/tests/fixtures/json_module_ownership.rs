@@ -27,7 +27,7 @@ fn leave_room(vm: &mut Vm, room: usize) -> SharedSchedulingCharge {
 
 fn synthesize(
     vm: &mut Vm,
-    roots: &mut Vec<RootId>,
+    roots: &mut ModuleRoots,
 ) -> Result<HashMap<String, Bytecode>, RuntimeError> {
     let mut modules = HashMap::new();
     let code = vm.create_synthetic_module_code("json\0json", SyntheticModuleType::Json, roots)?;
@@ -39,8 +39,8 @@ fn synthesize(
 fn json_module_ownership_number_needs_only_the_export_owner() {
     let mut vm = bounded_vm("42");
     let _peer = leave_room(&mut vm, SyntheticModuleValue::header_bytes());
-    let modules =
-        synthesize(&mut vm, &mut Vec::new()).expect("a number has no native parse buffer");
+    let modules = synthesize(&mut vm, &mut ModuleRoots::default())
+        .expect("a number has no native parse buffer");
     assert_eq!(
         modules["json\0json"]
             .synthetic_default_export
@@ -55,8 +55,8 @@ fn json_module_ownership_number_needs_only_the_export_owner() {
 fn json_module_ownership_string_adopts_its_copy_without_another_payload_reservation() {
     let mut vm = bounded_vm("\"a\"");
     let _peer = leave_room(&mut vm, SyntheticModuleValue::header_bytes() + 4);
-    let modules =
-        synthesize(&mut vm, &mut Vec::new()).expect("AST and returned string each own two bytes");
+    let modules = synthesize(&mut vm, &mut ModuleRoots::default())
+        .expect("AST and returned string each own two bytes");
     assert_eq!(
         modules["json\0json"]
             .synthetic_default_export
@@ -75,7 +75,7 @@ fn json_module_ownership_container_storage_refuses_before_managed_allocation() {
         let _peer = leave_room(&mut vm, room);
         let before = vm.heap.stats();
         assert!(matches!(
-            synthesize(&mut vm, &mut Vec::new()),
+            synthesize(&mut vm, &mut ModuleRoots::default()),
             Err(RuntimeError::SchedulingLimit)
         ));
         assert_eq!(vm.heap.stats().managed_bytes, before.managed_bytes);
@@ -107,7 +107,7 @@ fn json_module_ownership_values_preserve_grammar_order_unicode_and_numeric_seman
         ("[0,1,2,3,4,5,6,7,8,9,10]", "[0,1,2,3,4,5,6,7,8,9,10]"),
     ] {
         let mut vm = bounded_vm(source);
-        let mut roots = Vec::new();
+        let mut roots = ModuleRoots::default();
         let modules = synthesize(&mut vm, &mut roots).unwrap();
         assert_eq!(
             vm.json_stringify(&[value(&modules).clone()]),
@@ -139,7 +139,7 @@ fn json_module_ownership_complete_syntax_validation_precedes_all_managed_constru
         let managed = vm.heap.stats().managed_bytes;
         assert!(
             matches!(
-                synthesize(&mut vm, &mut Vec::new()),
+                synthesize(&mut vm, &mut ModuleRoots::default()),
                 Err(RuntimeError::ModuleResolution(_))
             ),
             "{source}"
@@ -162,7 +162,7 @@ fn json_module_ownership_string_peak_exact_budget_and_one_byte_refusal() {
             let bytes = SyntheticModuleValue::header_bytes() + units * 4;
             let _peer = leave_room(&mut vm, bytes - usize::from(!accepts));
             let before = vm.host_scheduling_snapshot().payload_bytes;
-            let result = synthesize(&mut vm, &mut Vec::new());
+            let result = synthesize(&mut vm, &mut ModuleRoots::default());
             if accepts {
                 let modules = result.unwrap();
                 assert_eq!(
@@ -186,16 +186,23 @@ fn json_module_ownership_root_storage_is_admitted_before_heap_effects_and_preser
         vm.stack.push(Value::Number(7.0));
         let growth = std::mem::size_of::<Value>();
         let header = SyntheticModuleValue::header_bytes();
-        let _peer = leave_room(&mut vm, header + growth - usize::from(!accepts));
+        let mut roots = ModuleRoots::default();
+        let before_probe = vm.host_scheduling_snapshot().payload_bytes;
+        let reservation = roots.prepare_slot(vm.host_scheduling.as_ref()).unwrap();
+        let root_bytes = vm.host_scheduling_snapshot().payload_bytes - before_probe;
+        drop(reservation);
+        let _peer = leave_room(
+            &mut vm,
+            header + growth + root_bytes - usize::from(!accepts),
+        );
         let before = vm.host_scheduling_snapshot().payload_bytes;
         let managed = vm.heap.stats().managed_bytes;
-        let mut roots = Vec::new();
         let result = synthesize(&mut vm, &mut roots);
         if accepts {
             let modules = result.unwrap();
             assert_eq!(
                 vm.host_scheduling_snapshot().payload_bytes,
-                before + header + growth
+                before + header + growth + roots.retained_bytes()
             );
             drop(modules);
         } else {
@@ -205,7 +212,7 @@ fn json_module_ownership_root_storage_is_admitted_before_heap_effects_and_preser
         assert_eq!(vm.stack, vec![Value::Number(7.0)]);
         assert_eq!(
             vm.host_scheduling_snapshot().payload_bytes,
-            before + if accepts { growth } else { 0 }
+            before + if accepts { growth } else { 0 } + roots.retained_bytes()
         );
         for root in roots {
             vm.heap.unroot(root).unwrap();
@@ -233,7 +240,7 @@ fn json_module_ownership_resource_refusals_refund_ast_and_preserve_original_erro
             vm.heap.allow_root_registrations(0);
         }
         let before = vm.host_scheduling_usage().unwrap().payload_bytes;
-        let result = synthesize(&mut vm, &mut Vec::new());
+        let result = synthesize(&mut vm, &mut ModuleRoots::default());
         assert!(matches!(
             (kind, result),
             (0, Err(RuntimeError::InstructionLimit))
@@ -263,7 +270,7 @@ fn json_module_ownership_nested_objects_remain_rooted_with_a_one_object_nursery(
         "json".into(),
         "{\"parent\":[{\"value\":\"a\"},{\"value\":\"b\"}]}".into(),
     )]));
-    let mut roots = Vec::new();
+    let mut roots = ModuleRoots::default();
     let modules = synthesize(&mut vm, &mut roots).unwrap();
     vm.with_roots(|heap| {
         heap.collect_major();
