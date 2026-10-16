@@ -11028,7 +11028,7 @@ configured, but arm64 success is not inferred from the x86_64 VM result.
 GitHub-hosted confirmation of every matrix leg, its runtime margin, and the
 run id/commit hash remain K.13.2.
 
-### K.13.2 Windows preflight before hosted confirmation (2026-10-16)
+### K.13.2 Hosted CI confirmation (2026-10-16)
 
 The first hosted four-leg run (`38841650342`, commit `1378938df`) passed the
 macOS and Ubuntu `typescript-oracle` legs but failed both Windows legs. Its
@@ -11084,4 +11084,29 @@ Windows checkout repair under the existing K.13.1.3 acceptance rule.
 The complete macOS K.0 two-crate suite passed, including every ignored
 oracle, as did rustfmt and warnings-denied all-target Clippy. The generated
 refusal inventory still matches the recorded 213 sites without a change.
-K.13.2 remains unchecked pending the corrected four-leg hosted run.
+The repaired checkout was then pushed for the four-leg hosted confirmation.
+
+The corrected confirmation is
+[CI run 38877729768](https://github.com/ephoton0210/blueice/actions/runs/38877729768)
+at `d4b13ff5e4b54360096e6affb4e703c22a62a740`. Completed-job durations include
+setup and post-job steps.
+
+| Oracle leg | Result | Elapsed time |
+| --- | --- | ---: |
+| `macos-15` | success | 58m 28s |
+| `ubuntu-24.04` | success | 59m 09s |
+| `windows-2025` | success | 98m 04s |
+| `windows-11-arm` | success | 93m 29s |
+
+The completed macOS and Ubuntu logs each contain 100 suite targets with
+244 selected ignored Rust tests and zero failures. Program/configuration
+case counts are accounted separately under K.14. Windows x86_64 and arm64
+each pass 243 selected ignored Rust tests across 99 targets and print all
+25 named Windows exclusions. The Unix-only pinned test in
+`project_reference_owner_gate` accounts for the one-target/test difference.
+
+All four oracle jobs succeeded on the recorded commit. The slowest leg is
+Windows x86_64 at 5,884 seconds (98m 04s), within the 180-minute acceptance
+limit. Its explicit 240-minute timeout retains 8,516 seconds (141m 56s), or
+59.14%, exceeding the required 25% unused margin. This completes K.13.2;
+final-source workspace/platform/coverage confirmation remains K.14.3.

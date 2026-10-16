@@ -640,11 +640,14 @@ Items are independent; may be taken any time.
     - *Evidence:* PLAN.md, "K.13.1.3 Windows oracle matrix" (2026-10-16): Windows x86_64 VM 82/82,
       macOS complete K.0 suite including 87/87 `typescript_oracle`, three Node command tests,
       diagnostic recorders, rustfmt and warnings-denied two-crate Clippy.
-- [ ] **K.13.2 Hosted CI confirmation (S).**
-  - [ ] **AC-K13.2.1** Full extended `typescript-oracle` job passes on GitHub for every matrix leg.
-  - [ ] **AC-K13.2.2** Runtime of the slowest leg is recorded and stays at or below 180 minutes,
+- [x] **K.13.2 Hosted CI confirmation (S).**
+  - [x] **AC-K13.2.1** Full extended `typescript-oracle` job passes on GitHub for every matrix leg.
+  - [x] **AC-K13.2.2** Runtime of the slowest leg is recorded and stays at or below 180 minutes,
     leaving at least 25% of the explicit 240-minute job timeout unused.
-  - [ ] **AC-K13.2.3** Run id and commit hash are written to PLAN.md.
+  - [x] **AC-K13.2.3** Run id and commit hash are written to PLAN.md.
+    - *Evidence:* PLAN.md, "K.13.2 Hosted CI confirmation" (2026-10-16): run `38877729768`
+      at `d4b13ff5e4b54360096e6affb4e703c22a62a740`, all four oracle legs passed;
+      slowest 98m 04s, with 59.14% of the 240-minute timeout unused.
 - [x] **K.13.3 Launcher start-up flake (M).**
   - [x] **AC-K13.3.1** Harness captures the launcher's stderr and prints it on early exit or start-up timeout.
   - [x] **AC-K13.3.2** Not reproduced: 200 runs, 33 in parallel, 0 failures (2026-10-16). The only failure
