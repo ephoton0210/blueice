@@ -1568,6 +1568,7 @@ impl Vm {
         global_var_environment: bool,
     ) -> Result<Value, RuntimeError> {
         let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
+        let mut prepared_maps = self.prepare_frame_maps(captures.len(), 0, 0)?;
         let _caller_payload = self.charge_execution_payload(self.bindings.iter().flatten().fold(
             host_scheduling::value_payload_bytes(&self.completion),
             |bytes, value| bytes.saturating_add(host_scheduling::value_payload_bytes(value)),
@@ -1614,7 +1615,9 @@ impl Vm {
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
         drop(prepared);
-        let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
+        prepared_maps.adopt_captures(captures);
+        let cells = std::mem::replace(&mut self.cells, prepared_maps.take_cells());
+        drop(prepared_maps);
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
         let completion = std::mem::replace(&mut self.completion, Value::Undefined);

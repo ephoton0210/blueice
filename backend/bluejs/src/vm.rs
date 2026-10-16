@@ -31,6 +31,8 @@ mod errors;
 mod execution;
 mod execution_payload;
 mod frame_bindings;
+mod frame_maps;
+use frame_maps::PreparedFrameMaps;
 mod scope_storage;
 use frame_bindings::{FrameBindingKind, PreparedFrameBindings};
 mod for_in;

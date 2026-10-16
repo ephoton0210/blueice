@@ -195,6 +195,7 @@ impl Vm {
         closure_with_objects: Vec<Value>,
         entry_payload: execution_payload::CallEntryCharge,
         mut prepared: PreparedFrameBindings,
+        mut prepared_maps: PreparedFrameMaps,
     ) -> Result<GeneratorState, RuntimeError> {
         let _caller_payload = self.charge_execution_payload(
             self.caller_execution_payload_bytes()
@@ -252,6 +253,7 @@ impl Vm {
             .extend(pending_roots.into_iter().map(Value::Object));
         let frame_base = self.stack.len();
 
+        prepared_maps.adopt_captures(captures);
         let (mut frame_bindings, frame_metadata, frame_lexicals) = prepared.take_parts();
         if let Some(slot) = code.self_slot {
             frame_bindings[slot as usize] = Some(callee.clone());
@@ -260,7 +262,7 @@ impl Vm {
         let dispose_marks = std::mem::take(&mut self.dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
-        let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
+        let cells = std::mem::replace(&mut self.cells, prepared_maps.take_cells());
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
         let dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
         let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
@@ -291,6 +293,7 @@ impl Vm {
         let pending_completions = std::mem::take(&mut self.pending_completions);
         let completion_saves = std::mem::take(&mut self.completion_saves);
         drop(prepared);
+        drop(prepared_maps);
         let mut entry_error = None;
         if code.parameter_eval_scope {
             match self.new_parameter_eval_env() {
@@ -458,6 +461,7 @@ impl Vm {
             .map(PreparedFrameBindings::take_parts)
             .unwrap_or_default();
         let mut prepared_scopes = self.prepare_generator_scope_slots(*generator)?;
+        let mut prepared_maps = self.prepare_generator_frame_maps(*generator)?;
         let state = self.heap.take_generator_state(*generator)?;
         let (
             code,
@@ -515,6 +519,7 @@ impl Vm {
                 home,
                 with_objects,
             } => {
+                prepared_maps.adopt_captures(captures);
                 let mut bindings = initial_bindings;
                 let variable_scope = code.variable_scope;
                 let variable_scope_lexicals = frame_lexicals;
@@ -527,7 +532,7 @@ impl Vm {
                     None,
                     Vec::new(),
                     bindings,
-                    captures.into_iter().enumerate().collect(),
+                    prepared_maps.take_cells(),
                     receiver,
                     args,
                     Value::Undefined,
@@ -571,6 +576,8 @@ impl Vm {
                 callee,
                 with_objects,
             } => {
+                prepared_maps.adopt_cells(cells);
+                prepared_maps.adopt_dynamic(dynamic_bindings);
                 let variable_scope = code.variable_scope;
                 let variable_scope_lexicals = frame_lexicals;
                 (
@@ -579,7 +586,7 @@ impl Vm {
                     value,
                     stack,
                     bindings,
-                    cells.into_iter().collect(),
+                    prepared_maps.take_cells(),
                     this,
                     args,
                     completion,
@@ -593,18 +600,7 @@ impl Vm {
                     callee,
                     variable_scope,
                     variable_scope_lexicals,
-                    dynamic_bindings
-                        .into_iter()
-                        .map(|(name, cell, shadowed_cells)| {
-                            (
-                                name,
-                                DynamicEvalBinding {
-                                    cell,
-                                    shadowed_cells,
-                                },
-                            )
-                        })
-                        .collect(),
+                    prepared_maps.take_dynamic(),
                     with_objects,
                     disposables,
                     dispose_marks,
@@ -741,6 +737,7 @@ impl Vm {
             std::mem::replace(&mut self.completion_saves, frame_completion_saves);
         drop(prepared);
         drop(prepared_scopes);
+        drop(prepared_maps);
         let mut iterators = self.iterator_records(frame_iterators);
         let mut handlers = self.handler_records(frame_handlers);
         let outcome = if let Some(completion) = abrupt {

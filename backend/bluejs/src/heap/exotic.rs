@@ -181,6 +181,35 @@ impl Heap {
         )
     }
 
+    pub(crate) fn generator_map_layout(
+        &self,
+        object: ObjectId,
+    ) -> Result<(usize, usize, usize), HeapError> {
+        let ObjectKind::Generator { state, .. } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok(match &**state {
+            GeneratorState::Start { captures, .. } => (captures.len(), 0, 0),
+            GeneratorState::Suspended {
+                cells,
+                dynamic_bindings,
+                ..
+            } => {
+                let payload = dynamic_bindings
+                    .iter()
+                    .fold(0usize, |bytes, (name, _, shadowed)| {
+                        bytes.saturating_add(name.capacity()).saturating_add(
+                            shadowed
+                                .capacity()
+                                .saturating_mul(std::mem::size_of::<ObjectId>()),
+                        )
+                    });
+                (cells.len(), dynamic_bindings.len(), payload)
+            }
+            GeneratorState::Running | GeneratorState::Done => (0, 0, 0),
+        })
+    }
+
     pub(crate) fn generator_scope_layout(
         &self,
         object: ObjectId,

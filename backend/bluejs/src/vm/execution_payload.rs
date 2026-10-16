@@ -28,6 +28,10 @@ mod frame_binding_tests;
 #[path = "../../tests/fixtures/scope_admission.rs"]
 mod scope_admission_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/frame_map_admission.rs"]
+mod frame_map_tests;
+
 /// These transfers displace different owners. Ordinary calls forward dynamic
 /// eval environments into the callee; generator entry saves them in Rust.
 pub(super) enum ControlTransfer {

@@ -189,6 +189,21 @@ including refusal after binding metadata was prepared, so peer realms see the
 released contribution. Other captured/dynamic-map restoration and per-iteration
 cell staging remain in the broader preallocation/transient gate.
 
+Call, eval and generator entry prepare capture-cell tables before constructor
+entry effects. Minimum slot admission
+precedes reserve; reported table capacity is checked before the staged owner
+escapes. Prepared tables retain a native charge during callbacks and detached
+handoffs, and adopted captures fill their already reserved slots by move.
+
+Generator resume inspects table counts and incoming dynamic name/shadowed-cell
+capacities while the state is still managed. It admits that complete incoming
+storage after binding/scope staging and before taking saved state. Names and
+nested buffers move into the prepared dynamic table, preserving their spare
+capacity; the owner charges their adopted storage until active fields take it.
+Simple generator creation still defers table reconstruction to first resume.
+Outgoing map-to-vector suspension, dynamic environment backup/publication and
+other transient staging remain separate open work.
+
 Iterator and handler vectors carry scoped native charges through execution,
 cleanup, async/module continuations and debugger pauses. New records plan and
 admit capacity before reserve and publication, including actual-capacity

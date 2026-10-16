@@ -57,6 +57,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+Captured/dynamic frame-map admission is the current follow-up. Capture tables
+previously allocated after constructor prototype callbacks, and generator map
+reconstruction followed saved-state extraction. Two finite 48-capture groups
+reproduce both effects and now pass with scoped, admitted table preparation.
+Call, eval and generator entry share the path; generator resume admits incoming
+dynamic name/shadowed-buffer ownership before taking state. Expanded controls
+pass all ten groups; the full bounded selection passes 467 cases, formatting
+and offline workspace/all-target Clippy. This implementation checkpoint is
+recorded below; other transient storage and integrated acceptance remain open.
+
 Scope-entry admission is the current follow-up. Two regressions reproduce
 bindings cleared and alias cells published before the following safepoint
 refuses scope storage. Joint scope-vector/list/cell-table admission now precedes
@@ -490,10 +500,10 @@ work and exposes its retained payload ledger.
       budget alongside primitive payloads. Admission/release tests must follow
       real call/eval/generator/async ownership transfers, avoid charging maps
       forwarded into the callee twice, and preserve suspension/debugger state.
-      VM-field, interpreter-record, disposal, call-entry, frame-binding and
-      scope-entry/restoration checkpoints below pass their bounded selections.
-      Other container growth, captured/dynamic-map restoration, wider transient
-      staging and integrated acceptance remain open.
+      VM-field, interpreter-record, disposal, call-entry, frame-binding,
+      scope-entry/restoration and frame-map checkpoints below pass their bounded
+      selections. Other container growth, outgoing suspension, dynamic
+      environment staging and integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -1256,6 +1266,68 @@ Other container growth, captured/dynamic-map restoration, per-iteration cell
 staging, wider transient/module-cache/service storage and integrated acceptance
 remain open. No fresh full Test262, real Core/MCP replay or coverage result is
 claimed; M1u remains the latest accepted milestone.
+
+#### Frame-map admission follow-up (implementation checkpoint)
+
+Acceptance: capture-cell table reconstruction forecasts minimum storage before
+reserve and admits reported capacity before publication or constructor
+prototype/field/default effects. Ordinary,
+async, generator parameter/start/resume and eval entry share the path. Restored
+dynamic tables include actual table slots, moved name capacities and nested
+shadowed-cell buffers in admission before saved-state extraction. Prepared
+tables carry scoped native ownership through callbacks and detached-part
+transfer, then move entries without reallocation or primitive buffer copies.
+Refusal preserves saved state and reconciles staged ownership for peer realms.
+
+- [x] Reproduce constructor prototype getter effects and a lost generator
+      Start state after captured-table refusal; both initial groups now pass.
+- [x] Prepare/admit actual table capacity before call/eval context mutation;
+      preserve simple-generator deferred creation.
+- [x] Forecast generator table/name/shadowed storage before taking saved
+      state; adopt entries and buffers by move into scoped native owners.
+- [x] Pass expanded exact-capacity, buffer-transfer, saved-state/peer and GC
+      controls plus the related finite semantic/debugger selection, formatting,
+      Clippy; record the source/artifact audit with the checkpoint commit.
+- [ ] Complete other container growth and table-planning scratch, outgoing
+      map-to-vector suspension,
+      dynamic environment backups/publication and per-iteration staging,
+      wider module-cache/service storage and integrated acceptance. M1u
+      remains the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-frame-map-red-20261016.log`
+(zero passed, two failed). A constructor prototype getter executes before its
+capture table is refused; a generator's refused first resume changes its Start
+state to Done. Both scripts capture only 48 numeric bindings; abstract peer
+budgets allocate no corresponding large buffer. Initial fixed log:
+`/private/tmp/blueice-frame-map-green-20261016.log`.
+
+Ten expanded groups pass. They verify allocated table capacity during native
+callbacks and detached-part lifetime, exact/one-byte admission for capture and
+dynamic tables, adoption without another reserve, and pointer-preserving moves
+of a 64-byte name allocation and a nine-slot shadowed-cell buffer. A suspended
+generator refuses one byte below its complete table/adopted-buffer requirement
+without changing saved state or managed bytes; a peer realm observes the exact
+staging refund. Tiny-nursery (one and sixteen) and explicit major collection
+preserve the restored dynamic cell and its returned value. Capture refusal
+precedes default initializers and Promise capability publication for all four
+ordinary/generator/async/async-generator entry kinds.
+
+Final bounded validation: **467 passed, zero failed, zero ignored** across 27
+test executables. The ten new groups and the previous 457 finite ownership,
+semantic, GC and debugger controls pass. Scalar peer budgets allocate no
+represented large buffer. The seven previous pressure/large-allocation cases
+remain filtered; deep-recursion tail suites and network/service replays are
+not run.
+
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass. Logs use `/private/tmp/blueice-frame-map-` with
+`{maps,scopes,scope-functions,scope-loops,frames,module-entry,entry,heap-restoration,entry-semantics,bound-semantics,tail-semantics,resources,heap-resources,records,closure-exits,module-exits,generator-exits,generator-close,iterator-close,record-semantics,capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
+Receipt: `target/frame-map-source-20261016.json`.
+Other container growth/table-planning scratch, outgoing map-to-vector
+suspension, dynamic environment backups/publication, per-iteration staging,
+wider module-cache/service storage and integrated acceptance remain open.
+No fresh full Test262, real Core/MCP replay or coverage result is claimed;
+M1u remains the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

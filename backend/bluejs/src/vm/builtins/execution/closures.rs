@@ -190,6 +190,11 @@ impl Vm {
         } else {
             None
         };
+        let mut prepared_maps = if prepared.is_some() {
+            Some(self.prepare_frame_maps(captures.len(), 0, 0)?)
+        } else {
+            None
+        };
         // Async generator requests own their own Promise capabilities. Do not
         // allocate an ordinary async-function capability before entering the
         // generator branch, where it would be unreachable and leak state.
@@ -291,6 +296,9 @@ impl Vm {
                 prepared
                     .take()
                     .expect("parameter entry prepared its bindings"),
+                prepared_maps
+                    .take()
+                    .expect("parameter entry prepared its cell table"),
             );
             self.stack.truncate(base);
             let state = state?;
@@ -372,6 +380,10 @@ impl Vm {
         let mut prepared = prepared
             .take()
             .expect("ordinary entry prepared its bindings");
+        let mut prepared_maps = prepared_maps
+            .take()
+            .expect("ordinary entry prepared its cell table");
+        prepared_maps.adopt_captures(captures);
         let (mut frame_bindings, frame_metadata, frame_lexicals) = prepared.take_parts();
         if let Some(slot) = code.self_slot {
             frame_bindings[slot as usize] = Some(callee.clone());
@@ -380,7 +392,7 @@ impl Vm {
         let dispose_marks = std::mem::take(&mut self.dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
-        let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
+        let cells = std::mem::replace(&mut self.cells, prepared_maps.take_cells());
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
         let mut dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
         dynamic_eval_outer_bindings.push(dynamic_eval_bindings);
@@ -416,6 +428,7 @@ impl Vm {
             std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
         let parameter_eval_env = self.parameter_eval_env.take();
         drop(prepared);
+        drop(prepared_maps);
         let mut entry_error = None;
         if code.parameter_eval_scope {
             // Roots: `with_objects` is a root, and so is the callee frame's
