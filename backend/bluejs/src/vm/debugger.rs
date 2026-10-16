@@ -76,8 +76,8 @@ pub enum VmDebuggerExecutionState {
 pub(super) struct DebuggerContinuation {
     code: Bytecode,
     pc: usize,
-    iterators: Vec<Value>,
-    handlers: Vec<HandlerFrame>,
+    iterators: IteratorRecords,
+    handlers: HandlerRecords,
 }
 
 pub(super) struct ModuleDebuggerPauseRequest {
@@ -90,8 +90,8 @@ pub(super) struct ModuleDebuggerContinuation {
     pub(super) code: Bytecode,
     pub(super) pc: usize,
     pub(super) execution: SuspendedModuleExecution,
-    pub(super) iterators: Vec<Value>,
-    pub(super) handlers: Vec<HandlerFrame>,
+    pub(super) iterators: IteratorRecords,
+    pub(super) handlers: HandlerRecords,
     pub(super) previous_module: Option<String>,
 }
 
@@ -109,16 +109,16 @@ pub(super) struct NestedDebuggerContinuation {
     pub(super) code: Bytecode,
     pub(super) pc: usize,
     pub(super) execution: SuspendedModuleExecution,
-    pub(super) iterators: Vec<Value>,
-    pub(super) handlers: Vec<HandlerFrame>,
+    pub(super) iterators: IteratorRecords,
+    pub(super) handlers: HandlerRecords,
 }
 
 pub(super) struct IntermediateDebuggerContinuation {
     pub(super) code: Bytecode,
     pub(super) pc: usize,
     pub(super) execution: SuspendedModuleExecution,
-    pub(super) iterators: Vec<Value>,
-    pub(super) handlers: Vec<HandlerFrame>,
+    pub(super) iterators: IteratorRecords,
+    pub(super) handlers: HandlerRecords,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -271,8 +271,8 @@ pub(super) enum DebuggerInterpreterExit {
     Completed(Result<Value, RuntimeError>),
     Suspended {
         pc: usize,
-        iterators: Vec<Value>,
-        handlers: Vec<HandlerFrame>,
+        iterators: IteratorRecords,
+        handlers: HandlerRecords,
     },
 }
 
@@ -1283,7 +1283,7 @@ impl Vm {
     ) -> DebuggerRunOutcome {
         let pending_base = self.pending_completions.len();
         let save_base = self.completion_saves.len();
-        let mut iterators = Vec::new();
+        let mut iterators = self.iterator_records(Vec::new());
         match DebuggerInterpreterExit::classify(
             self.interpret(code, &mut iterators, 0, None, suspension_point, None),
             DebuggerFrameKind::Root,
@@ -1314,7 +1314,7 @@ impl Vm {
     pub(super) fn finish_debugger_interpret_result(
         &mut self,
         result: Result<Value, RuntimeError>,
-        iterators: &mut Vec<Value>,
+        iterators: &mut IteratorRecords,
         pending_base: usize,
         save_base: usize,
     ) -> Result<Value, RuntimeError> {

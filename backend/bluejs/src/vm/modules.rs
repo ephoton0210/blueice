@@ -20,7 +20,7 @@ enum StraightLineExit {
     Await {
         promise: ObjectId,
         pc: usize,
-        handlers: Vec<HandlerFrame>,
+        handlers: HandlerRecords,
     },
 }
 
@@ -30,8 +30,8 @@ enum StraightLineExit {
 enum ModuleRun {
     Paused {
         pc: usize,
-        iterators: Vec<Value>,
-        handlers: Vec<HandlerFrame>,
+        iterators: IteratorRecords,
+        handlers: HandlerRecords,
     },
     Completed(Result<StraightLineExit, RuntimeError>),
 }
@@ -88,13 +88,13 @@ enum AsyncGeneratorExit {
     Yield {
         value: Value,
         pc: usize,
-        iterators: Vec<Value>,
-        handlers: Vec<HandlerFrame>,
+        iterators: IteratorRecords,
+        handlers: HandlerRecords,
     },
     Await {
         promise: ObjectId,
         pc: usize,
-        handlers: Vec<HandlerFrame>,
+        handlers: HandlerRecords,
     },
 }
 
@@ -186,9 +186,9 @@ impl Vm {
     fn interpret_rejected_await(
         &mut self,
         code: &Bytecode,
-        iterators: &mut Vec<Value>,
+        iterators: &mut IteratorRecords,
         pc: usize,
-        mut handlers: Vec<HandlerFrame>,
+        mut handlers: HandlerRecords,
         value: Value,
         tail_call_message: &'static str,
     ) -> Result<InterpreterExit, RuntimeError> {
@@ -227,9 +227,9 @@ impl Vm {
     fn interpret_after_throw(
         &mut self,
         code: &Bytecode,
-        iterators: &mut Vec<Value>,
+        iterators: &mut IteratorRecords,
         pc: usize,
-        handlers: Vec<HandlerFrame>,
+        handlers: HandlerRecords,
         action: Result<CompletionAction, RuntimeError>,
         tail_call_message: &'static str,
     ) -> Result<InterpreterExit, RuntimeError> {
@@ -2241,7 +2241,7 @@ impl Vm {
                         self.stack.push(value.clone());
                     }
                     self.stack.extend(iterators.iter().cloned());
-                    for record in iterators.into_iter().rev() {
+                    while let Some(record) = iterators.pop() {
                         self.iterator_close_preserving_throw(&record);
                     }
                     self.stack.truncate(base);
@@ -2270,8 +2270,8 @@ impl Vm {
         code: Rc<Bytecode>,
         pc: usize,
         execution: SuspendedModuleExecution,
-        mut iterators: Vec<Value>,
-        handlers: Vec<HandlerFrame>,
+        mut iterators: IteratorRecords,
+        handlers: HandlerRecords,
         call_depth: usize,
         value: Value,
         fulfilled: bool,
@@ -2351,8 +2351,8 @@ impl Vm {
                         completion: std::mem::replace(&mut self.completion, Value::Undefined),
                         completion_empty: std::mem::replace(&mut self.completion_empty, true),
                         active_scopes: std::mem::take(&mut self.active_scopes),
-                        iterators,
-                        handlers,
+                        iterators: iterators.into_vec(),
+                        handlers: handlers.into_vec(),
                         pending_completions: std::mem::take(&mut self.pending_completions)
                             .into_iter()
                             .map(|completion| {
@@ -2414,7 +2414,7 @@ impl Vm {
                         self.stack.push(value.clone());
                     }
                     self.stack.extend(iterators.iter().cloned());
-                    for record in iterators.into_iter().rev() {
+                    while let Some(record) = iterators.pop() {
                         self.iterator_close_preserving_throw(&record);
                     }
                     self.stack.truncate(base);
@@ -2477,7 +2477,7 @@ impl Vm {
             .module_evaluate_entry
             .expect("a module has an evaluation entry") as usize;
         self.enter_module_record(code, std::mem::take(cells));
-        let mut iterators = Vec::new();
+        let mut iterators = self.iterator_records(Vec::new());
         // The declaration prefix instantiates the module's hoisted functions;
         // each records the module it is created in (its [[ScriptOrModule]]),
         // which `import.meta` and `import()` inside it resolve against no
@@ -2662,7 +2662,7 @@ impl Vm {
             self.active_scopes.push(0);
             self.active_scope_slots
                 .push(code.scopes.first().cloned().unwrap_or_default());
-            let mut iterators = Vec::new();
+            let mut iterators = self.iterator_records(Vec::new());
             let previous_module = self.active_module_name.replace(name.to_string());
             // Park the graph's records where user code can reach them: a
             // deferred namespace observed by this module (or a module it

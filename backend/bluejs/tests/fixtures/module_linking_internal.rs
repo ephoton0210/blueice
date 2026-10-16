@@ -12,16 +12,16 @@ fn yield_exit() -> InterpreterExit {
     InterpreterExit::Yield {
         value: Value::Undefined,
         pc: 3,
-        iterators: Vec::new(),
-        handlers: Vec::new(),
+        iterators: Vec::new().into(),
+        handlers: Vec::new().into(),
     }
 }
 
 fn suspend_exit(pc: usize) -> InterpreterExit {
     InterpreterExit::Suspend {
         pc,
-        iterators: Vec::new(),
-        handlers: Vec::new(),
+        iterators: Vec::new().into(),
+        handlers: Vec::new().into(),
     }
 }
 
@@ -29,7 +29,7 @@ fn await_exit() -> InterpreterExit {
     InterpreterExit::Await {
         promise: promise(),
         pc: 5,
-        handlers: Vec::new(),
+        handlers: Vec::new().into(),
     }
 }
 
@@ -156,8 +156,8 @@ fn module_turns_separate_a_debugger_pause_from_return_await_and_failure() {
     let promise = vm.new_promise().unwrap();
     match ModuleRun::classify(Ok(InterpreterExit::Suspend {
         pc: 7,
-        iterators: Vec::new(),
-        handlers: Vec::new(),
+        iterators: Vec::new().into(),
+        handlers: Vec::new().into(),
     })) {
         ModuleRun::Paused {
             pc,
@@ -178,7 +178,7 @@ fn module_turns_separate_a_debugger_pause_from_return_await_and_failure() {
     match ModuleRun::classify(Ok(InterpreterExit::Await {
         promise,
         pc: 9,
-        handlers: Vec::new(),
+        handlers: Vec::new().into(),
     })) {
         ModuleRun::Completed(Ok(StraightLineExit::Await {
             promise: actual,
@@ -339,9 +339,9 @@ fn a_frame_carries_on_as_its_thrown_value_was_resolved() {
     let mut resume = |action: Result<CompletionAction, RuntimeError>| {
         straight_line(vm.interpret_after_throw(
             &Bytecode::empty(),
-            &mut Vec::new(),
+            &mut Default::default(),
             4,
-            Vec::new(),
+            Default::default(),
             action,
             "no tails",
         ))

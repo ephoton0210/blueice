@@ -1019,8 +1019,8 @@ fn paused_continuation_iterator_edges_are_roots_at_gc_safepoints() {
     vm.debugger_continuation = Some(DebuggerContinuation {
         code: Bytecode::empty(),
         pc: 0,
-        iterators: vec![Value::Object(iterator_record)],
-        handlers: Vec::new(),
+        iterators: vec![Value::Object(iterator_record)].into(),
+        handlers: Vec::new().into(),
     });
 
     vm.with_roots(|heap| {

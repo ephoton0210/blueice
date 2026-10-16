@@ -12,6 +12,10 @@ use std::cell::Cell;
 #[path = "../../tests/fixtures/execution_control_capacity.rs"]
 mod control_capacity_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/interpreter_record_ownership.rs"]
+mod interpreter_record_tests;
+
 /// These transfers displace different owners. Ordinary calls forward dynamic
 /// eval environments into the callee; generator entry saves them in Rust.
 pub(super) enum ControlTransfer {
@@ -87,7 +91,11 @@ impl ExecutionPayloadCharge {
         self.bytes
     }
 
-    fn resize(&mut self, bytes: usize) {
+    pub(super) fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub(super) fn resize(&mut self, bytes: usize) {
         self.counter.set(self.counter.get() - self.bytes + bytes);
         self.bytes = bytes;
     }
@@ -160,6 +168,7 @@ impl Vm {
         self.pending_completions = Vec::new();
         self.completion_saves = Vec::new();
         self.call_stack = Vec::new();
+        self.async_frame_roots = Vec::new();
         self.cells = HashMap::new();
         self.dynamic_eval_bindings = HashMap::new();
         self.dynamic_eval_outer_bindings = Vec::new();
@@ -314,6 +323,7 @@ impl Vm {
         self.current_execution_payload_bytes()
             .saturating_add(self.current_execution_control_bytes())
             .saturating_add(host_scheduling::slots(&self.call_stack))
+            .saturating_add(host_scheduling::slots(&self.async_frame_roots))
             .saturating_add(self.displaced_execution_control_bytes.get())
             .saturating_add(self.displaced_execution_bytes.get())
             .saturating_add(self.pending_tail_call.as_ref().map_or(0, |call| {

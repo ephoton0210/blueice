@@ -1739,8 +1739,8 @@ fn synchronous_debugger_exit_validation_preserves_return_pause_and_error_contrac
             completed(Ok(InterpreterExit::Yield {
                 value: Value::Undefined,
                 pc: 0,
-                iterators: Vec::new(),
-                handlers: Vec::new()
+                iterators: Vec::new().into(),
+                handlers: Vec::new().into()
             })),
             Err(yield_error)
         );
@@ -1759,7 +1759,7 @@ fn synchronous_debugger_exit_validation_preserves_return_pause_and_error_contrac
             completed(Ok(InterpreterExit::Await {
                 promise,
                 pc: 7,
-                handlers: Vec::new()
+                handlers: Vec::new().into()
             })),
             Err(await_error)
         );
@@ -1767,8 +1767,8 @@ fn synchronous_debugger_exit_validation_preserves_return_pause_and_error_contrac
             DebuggerInterpreterExit::classify(
                 Ok(InterpreterExit::Suspend {
                     pc: 9,
-                    iterators: Vec::new(),
-                    handlers: Vec::new()
+                    iterators: Vec::new().into(),
+                    handlers: Vec::new().into()
                 }),
                 frame
             ),

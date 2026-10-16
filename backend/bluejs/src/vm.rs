@@ -56,6 +56,7 @@ mod host_scheduling;
 mod host_task_turns;
 mod host_timers;
 mod import_waiters;
+mod interpreter_records;
 mod module_dependencies;
 use agent_registry::AgentSymbolRegistry;
 use host_registration::{host_function_index, host_registration_index};
@@ -66,6 +67,7 @@ pub use host_scheduling::{
     HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_BROWSER_TASKS,
     MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS, MAX_PENDING_HOST_TIMERS,
 };
+use interpreter_records::{HandlerRecords, IteratorRecords};
 mod agent_registry;
 mod interpreter;
 mod intl;
@@ -457,8 +459,8 @@ struct ModuleContinuation {
     code: Bytecode,
     pc: usize,
     execution: SuspendedModuleExecution,
-    iterators: Vec<Value>,
-    handlers: Vec<HandlerFrame>,
+    iterators: IteratorRecords,
+    handlers: HandlerRecords,
 }
 
 /// The resumable portion of an ordinary async-function invocation.  This is
@@ -473,8 +475,8 @@ struct AsyncContinuation {
     code: Rc<Bytecode>,
     pc: usize,
     execution: SuspendedModuleExecution,
-    iterators: Vec<Value>,
-    handlers: Vec<HandlerFrame>,
+    iterators: IteratorRecords,
+    handlers: HandlerRecords,
     call_depth: usize,
 }
 

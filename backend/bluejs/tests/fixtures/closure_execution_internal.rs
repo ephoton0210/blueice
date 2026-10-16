@@ -29,7 +29,7 @@ fn an_async_function_body_can_only_return_await_or_fail() {
         message(AsyncBody::classify(Ok(InterpreterExit::Await {
             promise,
             pc: 7,
-            handlers: Vec::new(),
+            handlers: Vec::new().into(),
         }))),
         "awaiting at 7 with 0 handlers"
     );
@@ -43,16 +43,16 @@ fn an_async_function_body_can_only_return_await_or_fail() {
         message(AsyncBody::classify(Ok(InterpreterExit::Yield {
             value: Value::Undefined,
             pc: 0,
-            iterators: Vec::new(),
-            handlers: Vec::new(),
+            iterators: Vec::new().into(),
+            handlers: Vec::new().into(),
         }))),
         "yield requires an async generator function"
     );
     assert_eq!(
         message(AsyncBody::classify(Ok(InterpreterExit::Suspend {
             pc: 0,
-            iterators: Vec::new(),
-            handlers: Vec::new(),
+            iterators: Vec::new().into(),
+            handlers: Vec::new().into(),
         }))),
         "an ordinary async function has no entry suspend"
     );

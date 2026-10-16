@@ -1079,7 +1079,7 @@ impl Vm {
         self.with_objects.truncate(depth);
     }
 
-    pub(super) fn close_iterators_to(&mut self, iterators: &mut Vec<Value>, depth: usize) {
+    pub(super) fn close_iterators_to(&mut self, iterators: &mut IteratorRecords, depth: usize) {
         let origin = self.take_pending_throw_origin();
         let _origin_charge = self.charge_diagnostic_payload(origin.payload_bytes());
         let _ = self.close_iterators_to_first_error(iterators, depth);
@@ -1099,23 +1099,23 @@ impl Vm {
     /// still giving every outer record its own cleanup opportunity.
     fn close_iterators_to_first_error(
         &mut self,
-        iterators: &mut Vec<Value>,
+        iterators: &mut IteratorRecords,
         depth: usize,
     ) -> Option<RuntimeError> {
         // A compiler-emitted `break` can close its target for-of iterator
         // before a surrounding handler starts finalizer cleanup.
-        let active = iterators.split_off(depth.min(iterators.len()));
         // Scope teardown can release all of these records before cleanup.
         // A callback on the inner iterator can collect before the outer one
         // is visited, so retain the entire pending set until cleanup ends.
         let base = self.stack.len();
-        self.stack.extend(active.iter().cloned());
+        self.stack.extend(iterators.iter().skip(depth).cloned());
         let origin = self.take_pending_throw_origin();
         let _origin_charge = self.charge_diagnostic_payload(origin.payload_bytes());
         let mut first_error = None;
         let mut first_origin = None;
         let mut first_origin_charge = self.charge_diagnostic_payload(0);
-        for record in active.into_iter().rev() {
+        while iterators.len() > depth {
+            let record = iterators.pop().expect("pending iterator depth was checked");
             let result = self.iterator_close(&record);
             if let Err(error) = result {
                 if first_error.is_none() {
@@ -1142,7 +1142,7 @@ impl Vm {
     /// over every close failure.
     pub(super) fn close_iterators_for_return(
         &mut self,
-        iterators: &mut Vec<Value>,
+        iterators: &mut IteratorRecords,
         depth: usize,
     ) -> Result<(), RuntimeError> {
         self.close_iterators_to_first_error(iterators, depth)
@@ -1202,8 +1202,8 @@ impl Vm {
     pub(super) fn resolve_completion(
         &mut self,
         code: &Bytecode,
-        handlers: &mut Vec<HandlerFrame>,
-        iterators: &mut Vec<Value>,
+        handlers: &mut HandlerRecords,
+        iterators: &mut IteratorRecords,
         completion: Completion,
     ) -> Result<CompletionAction, RuntimeError> {
         let mut handler_charge =
@@ -1542,7 +1542,7 @@ impl Vm {
     pub(super) fn run(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
         let pending_base = self.pending_completions.len();
         let save_base = self.completion_saves.len();
-        let mut iterators = Vec::new();
+        let mut iterators = self.iterator_records(Vec::new());
         let result = self
             .interpret(code, &mut iterators, 0, None, None, None)
             .and_then(root_interpreter_exit);
@@ -1551,7 +1551,7 @@ impl Vm {
                 self.stack.push(value.clone());
             }
             self.stack.extend(iterators.iter().cloned());
-            for record in iterators.into_iter().rev() {
+            while let Some(record) = iterators.pop() {
                 // IteratorClose preserves an existing throw even when return
                 // throws too. Resource exhaustion retains the original limit.
                 self.iterator_close_preserving_throw(&record);

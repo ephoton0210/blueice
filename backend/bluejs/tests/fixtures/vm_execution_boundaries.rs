@@ -254,8 +254,8 @@ fn synchronous_root_exit_protocol_preserves_value_and_rejects_suspension() {
         root_interpreter_exit(InterpreterExit::Yield {
             value: Value::Undefined,
             pc: 0,
-            iterators: Vec::new(),
-            handlers: Vec::new()
+            iterators: Vec::new().into(),
+            handlers: Vec::new().into()
         }),
         Err(RuntimeError::TypeError(
             "yield requires a generator function".into()
@@ -264,8 +264,8 @@ fn synchronous_root_exit_protocol_preserves_value_and_rejects_suspension() {
     assert!(
         std::panic::catch_unwind(|| root_interpreter_exit(InterpreterExit::Suspend {
             pc: 0,
-            iterators: Vec::new(),
-            handlers: Vec::new()
+            iterators: Vec::new().into(),
+            handlers: Vec::new().into()
         }))
         .is_err()
     );
@@ -275,7 +275,7 @@ fn synchronous_root_exit_protocol_preserves_value_and_rejects_suspension() {
         std::panic::catch_unwind(|| root_interpreter_exit(InterpreterExit::Await {
             promise,
             pc: 0,
-            handlers: Vec::new()
+            handlers: Vec::new().into()
         }))
         .is_err()
     );
@@ -1561,12 +1561,12 @@ fn iterator_cleanup_keeps_pending_records_and_the_first_throw_alive_across_colle
                 .execute_script(&compile(&parse(&source).unwrap()).unwrap())
                 .unwrap();
             let values = vm.array_like_values(&sources).unwrap();
-            let mut records = Vec::new();
+            let mut records = vm.iterator_records(Vec::new());
             let mut roots = Vec::new();
             for value in values {
                 let record = vm.get_iterator(&value).unwrap();
                 roots.push(vm.heap.root(record.object_id().unwrap()).unwrap());
-                records.push(record);
+                records.try_push(&mut vm, record).unwrap();
             }
             vm.execute_script(&compile(&parse("0").unwrap()).unwrap())
                 .unwrap();
@@ -3455,7 +3455,7 @@ fn compiled_eval_with_references_use_real_dynamic_environments() {
         vm.prepare_root_execution(&parent, false).unwrap();
         vm.prepare_global_declarations(&parent).unwrap();
         vm.execute_eval(&eval_code, Vec::new(), false).unwrap();
-        let mut iterators = Vec::new();
+        let mut iterators = vm.iterator_records(Vec::new());
         let InterpreterExit::Suspend {
             pc,
             mut iterators,

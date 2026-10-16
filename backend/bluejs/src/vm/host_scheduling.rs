@@ -507,18 +507,16 @@ fn suspended_bytes(frame: &SuspendedModuleExecution) -> usize {
 impl AsyncContinuation {
     pub(super) fn scheduling_payload_bytes(&self) -> usize {
         suspended_bytes(&self.execution)
-            .saturating_add(slots(&self.iterators))
-            .saturating_add(values_bytes(&self.iterators))
-            .saturating_add(slots(&self.handlers))
+            .saturating_add(self.iterators.unleased_bytes())
+            .saturating_add(self.handlers.unleased_bytes())
             .saturating_add(handler_origins_bytes(&self.handlers))
     }
 }
 impl ModuleContinuation {
     pub(super) fn scheduling_payload_bytes(&self) -> usize {
         suspended_bytes(&self.execution)
-            .saturating_add(slots(&self.iterators))
-            .saturating_add(values_bytes(&self.iterators))
-            .saturating_add(slots(&self.handlers))
+            .saturating_add(self.iterators.unleased_bytes())
+            .saturating_add(self.handlers.unleased_bytes())
             .saturating_add(handler_origins_bytes(&self.handlers))
             .saturating_add(self.module.capacity())
             .saturating_add(owned_code_bytes(&self.code))

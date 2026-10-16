@@ -163,9 +163,24 @@ parent; restore returns ownership
 to the active context. Generator resume consumes its saved operand vector
 instead of keeping an unused cloned copy across the body. Completed bounded
 root scripts return their frame containers; persistent template identity and
-module association remain charged to the realm. Interpreter-local iteration/
-handler storage, call-entry staging and admission before every possible active
-container allocation remain open in the broader control-storage work.
+module association remain charged to the realm.
+
+Iterator and handler vectors carry scoped native charges through execution,
+cleanup, async/module continuations and debugger pauses. New records plan and
+admit capacity before reserve and publication, including actual-capacity
+readmission; available slots add only the new record's owned payload. Retained
+continuation records add storage outside those charges, preserving one owner.
+Diagnostic throw origins keep their separate existing accounting path.
+
+IteratorClose roots the remaining set and pops records in reverse order from
+the original charged allocation. It avoids creating an uncharged split buffer
+across callbacks. Managed generator suspension takes the raw vectors without
+intervening JavaScript; resumption returns them to native record ownership.
+Interpreter exits reconcile the document contribution after local owners drop,
+including errors, so peer realms see the released storage. The iterator GC-root
+vector's reported capacity is also charged and completed root scripts release
+it. Disposal/resource temporaries, call-entry staging and admission before other
+active-container allocations remain open in the broader control-storage work.
 
 ### Native-payload collection pressure
 

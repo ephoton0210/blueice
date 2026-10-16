@@ -525,7 +525,7 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
     ];
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
-        vm.interpret(&method_code, &mut Vec::new(), 0, None, None, None),
+        vm.interpret(&method_code, &mut Default::default(), 0, None, None, None),
         Ok(InterpreterExit::Return(Value::Undefined))
     ));
     vm.stack = vec![
@@ -535,7 +535,7 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
     ];
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
-        vm.interpret(&method_code, &mut Vec::new(), 0, None, None, None),
+        vm.interpret(&method_code, &mut Default::default(), 0, None, None, None),
         Ok(InterpreterExit::Return(Value::Undefined))
     ));
 
@@ -543,13 +543,13 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
     vm.stack = vec![Value::Object(target), Value::Object(function)];
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
+        vm.interpret(&code, &mut Default::default(), 0, None, None, None),
         Ok(InterpreterExit::Return(Value::Undefined))
     ));
     vm.stack = vec![Value::Object(target), Value::Undefined];
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
+        vm.interpret(&code, &mut Default::default(), 0, None, None, None),
         Err(RuntimeError::TypeError(_))
     ));
 }
@@ -645,8 +645,8 @@ fn compiler_owned_bytecode_invariants_fail_loudly() {
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.resolve_completion(
             &no_handler,
-            &mut Vec::new(),
-            &mut Vec::new(),
+            &mut Default::default(),
+            &mut Default::default(),
             Completion::Yield(Value::Undefined)
         )))
         .is_err()

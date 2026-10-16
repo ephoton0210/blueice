@@ -13,18 +13,18 @@ fn interpreter_exit(kind: u8, promise: ObjectId) -> InterpreterExit {
         1 => InterpreterExit::Yield {
             value: Value::Number(42.0),
             pc: 7,
-            iterators: Vec::new(),
-            handlers: Vec::new(),
+            iterators: Vec::new().into(),
+            handlers: Vec::new().into(),
         },
         2 => InterpreterExit::Suspend {
             pc: 7,
-            iterators: Vec::new(),
-            handlers: Vec::new(),
+            iterators: Vec::new().into(),
+            handlers: Vec::new().into(),
         },
         _ => InterpreterExit::Await {
             promise,
             pc: 7,
-            handlers: Vec::new(),
+            handlers: Vec::new().into(),
         },
     }
 }

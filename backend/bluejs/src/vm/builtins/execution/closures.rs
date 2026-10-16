@@ -10,7 +10,7 @@ enum AsyncBody {
     Awaiting {
         promise: ObjectId,
         pc: usize,
-        handlers: Vec<HandlerFrame>,
+        handlers: HandlerRecords,
     },
     Failed(RuntimeError),
 }
@@ -446,7 +446,7 @@ impl Vm {
         let result = if let Some(error) = entry_error {
             Err(error)
         } else if async_function {
-            let mut iterators = Vec::new();
+            let mut iterators = self.iterator_records(Vec::new());
             match AsyncBody::classify(self.interpret(&code, &mut iterators, 0, None, None, None)) {
                 AsyncBody::Returned(value) => Ok(value),
                 AsyncBody::Awaiting {
@@ -480,7 +480,7 @@ impl Vm {
                         self.stack.push(value.clone());
                     }
                     self.stack.extend(iterators.iter().cloned());
-                    for record in iterators.into_iter().rev() {
+                    while let Some(record) = iterators.pop() {
                         self.iterator_close_preserving_throw(&record);
                     }
                     self.stack.truncate(base);
@@ -493,7 +493,7 @@ impl Vm {
                 .expect("nested invocation reserved its serial before installing the frame");
             let pending_base = self.pending_completions.len();
             let save_base = self.completion_saves.len();
-            let mut iterators = Vec::new();
+            let mut iterators = self.iterator_records(Vec::new());
             let result = match DebuggerInterpreterExit::classify(
                 self.interpret(
                     &code,
@@ -535,7 +535,7 @@ impl Vm {
                     self.stack.push(value.clone());
                 }
                 self.stack.extend(iterators.iter().cloned());
-                for record in iterators.into_iter().rev() {
+                while let Some(record) = iterators.pop() {
                     self.iterator_close_preserving_throw(&record);
                 }
                 self.stack.truncate(base);
@@ -548,7 +548,7 @@ impl Vm {
         } else if intermediate_debugger_frame {
             let pending_base = self.pending_completions.len();
             let save_base = self.completion_saves.len();
-            let mut iterators = Vec::new();
+            let mut iterators = self.iterator_records(Vec::new());
             let previous = std::mem::replace(&mut self.debugger_nested_intermediate_active, true);
             let exit = self.interpret(&code, &mut iterators, 0, None, None, None);
             self.debugger_nested_intermediate_active = previous;
@@ -584,7 +584,7 @@ impl Vm {
                     self.stack.push(value.clone());
                 }
                 self.stack.extend(iterators.iter().cloned());
-                for record in iterators.into_iter().rev() {
+                while let Some(record) = iterators.pop() {
                     self.iterator_close_preserving_throw(&record);
                 }
                 self.stack.truncate(base);

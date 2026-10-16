@@ -57,6 +57,14 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The interpreter-record follow-up now carries allocation charges with active,
+Rust-held and suspended owners and admits record growth before reserve and
+publication. Fourteen finite groups cover callbacks, exact spare slots,
+IteratorClose, async/generator handoffs, debugger pause/resume, VM destruction
+and cross-realm ledger release. All 387 selected cases pass; broader disposal/
+resource temporaries, entry staging, other preallocation and integrated gates
+below remain open.
+
 The active native ledger now includes VM operand, binding, scope, eval and
 completion containers alongside primitive payloads. Scoped charges follow
 displaced caller allocations across callbacks; ordinary calls forward eval
@@ -64,8 +72,8 @@ maps without unnecessary recovery copies. Suspension/debugger edits update
 both saved charges, and finished root scripts return their frame storage.
 Eleven new groups, 58 debugger cases, 38 public semantic cases and the prior
 193 ownership controls pass: 300 cases, formatting and offline workspace/
-all-target Clippy. This is an implementation checkpoint. Interpreter-local
-buffers, entry staging, preallocation admission and integrated acceptance
+all-target Clippy. This is an implementation checkpoint. Disposal/resource
+temporaries, entry staging, other preallocation and integrated acceptance
 remain open; M1u remains the latest accepted milestone.
 
 **In progress — M1y asynchronous module dependency ownership (2026-10-16).**
@@ -446,8 +454,9 @@ work and exposes its retained payload ledger.
       budget alongside primitive payloads. Admission/release tests must follow
       real call/eval/generator/async ownership transfers, avoid charging maps
       forwarded into the callee twice, and preserve suspension/debugger state.
-      The VM-field checkpoint below passes 300 selected cases; interpreter-local
-      buffers, entry staging, preallocation and integrated acceptance remain open.
+      The VM-field and interpreter-record checkpoints below pass their bounded
+      selections. Disposal/resource temporaries, entry staging, other
+      preallocation and integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -877,10 +886,11 @@ finished execution storage without changing persistent JavaScript state.
       constraints. Broader module-cache/service and transient accounting remain
       open; M1u remains the latest accepted milestone.
 
-The active-field implementation does not close interpreter-local iterator/
-handler buffers, all call-entry staging, or admission before every possible
-active-container allocation. Keep those architecture gates open alongside the
-integrated gate; safepoint accounting alone is not a preallocation guarantee.
+The initial active-field implementation did not close interpreter-local
+iterator/handler buffers. The follow-up below addresses those record owners.
+Disposal/resource temporaries, all call-entry staging and admission before every
+other active-container allocation remain open alongside the integrated gate;
+safepoint accounting alone is not a preallocation guarantee.
 
 The initial five regression groups fail before implementation and pass with
 active/displaced control charges. They check eighteen independent containers,
@@ -907,7 +917,8 @@ count boundary and 32 for the byte boundary so that successor queue growth is
 larger than the finite callback's own frame; it still verifies refusal only
 after the callback's tasks have been published and the reader root is released.
 
-Final checkpoint validation: **300 passed, zero failed, zero ignored** across
+VM-field checkpoint (`fe8703359`) validation:
+**300 passed, zero failed, zero ignored** across
 sixteen test executables. Eleven new groups cover the native capacity and
 ownership contracts; 58 existing debugger cases preserve script/module pause,
 step, resume, catch/finally and object-root behavior. Seven public semantic
@@ -926,6 +937,58 @@ warnings denied pass. Logs use `/private/tmp/blueice-execution-control-` with
 `{capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
 Receipt: `target/execution-control-source-20261016.json`.
 No fresh full Test262, real Core/MCP replay or coverage result is claimed.
+
+#### Interpreter record ownership follow-up (implementation checkpoint)
+
+Acceptance: native iterator/handler allocation charges follow their actual
+owner through active execution, nested callbacks, IteratorClose, async/module
+await, generator managed storage and debugger pause/resume. Capacity and native
+iterator payloads are charged once; diagnostic origin ownership stays on its
+existing path. Admit new records before reserve/publication, preserve available
+slots, release storage on completion/error, and retain valid GC roots and close
+ordering across every transfer.
+
+- [x] Reproduce five missing-ownership/admission groups with finite scripts and
+      a scalar shared-budget owner; no represented large buffer is allocated.
+- [x] Carry charges with iterator/handler containers across all interpreter
+      exits, continuation owners and cleanup paths; admit record growth first.
+- [x] Validate refusal, spare capacity, nested callbacks, collection, cleanup
+      ordering, async/generator and debugger ownership and release.
+- [x] Pass bounded controls, formatting and offline workspace/all-target
+      Clippy; record the source/artifact audit with the checkpoint commit.
+
+Initial red log: `/private/tmp/blueice-interpreter-records-red-20261016.log`
+(zero passed, five failed). Broader entry staging, other active-container
+preallocation, full module-cache/service and integrated gates remain open.
+
+The expanded shared-ledger control independently reproduces a stale contribution
+after direct interpreter return: a peer realm observes 976 bytes while the
+owner's current snapshot recomputes 464 bytes. The missing 512-byte release is
+the exited handler allocation. Every interpreter exit now reconciles ownership
+after restoring the outer diagnostic context and dropping its temporary charge.
+Evidence: `/private/tmp/blueice-interpreter-records-reconcile-red-20261016.log`.
+
+Final bounded validation: **387 passed, zero failed, zero ignored** across 21
+test executables. Fourteen new groups pass. Six additional unit controls pass:
+two closure exits, one module exit, one generator exit, one real async-generator
+close and one nested iterator close/first-error/GC group. Five additional public
+targets pass 67 cases: `generator_delegation` (eleven), `resource_management`
+(35), `resource_management_gc` (thirteen), `for_of_return_iterator_close` (five)
+and `async_iterator_dispose` (three). The previous 300-case VM-field selection
+also passes on this source. Six other host-async pressure/limit cases remain
+filtered under the owner's security constraint. New scripts use fixed small
+records and bounded job steps; scalar owners allocate no represented large
+buffer. No physical resource-exhaustion or network-listener probe is run.
+
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass. Logs use
+`/private/tmp/blueice-interpreter-records-` with
+`{records,closure-exits,module-exits,generator-exits,generator-close,iterator-close,record-semantics,capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
+Receipt: `target/interpreter-records-source-20261016.json`.
+Disposal/resource temporaries, call-entry staging, other active-container
+preallocation, full module-cache/service storage and integrated acceptance
+remain open. No fresh full Test262, real Core/MCP replay or coverage result is
+claimed; M1u remains the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

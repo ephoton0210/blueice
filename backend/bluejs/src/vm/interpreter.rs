@@ -30,12 +30,13 @@ impl Vm {
     pub(super) fn interpret(
         &mut self,
         code: &Bytecode,
-        iterators: &mut Vec<Value>,
+        iterators: &mut IteratorRecords,
         start_pc: usize,
         resume_value: Option<Value>,
         suspend_at: Option<InterpreterSuspensionPoint>,
-        restored_handlers: Option<(Vec<HandlerFrame>, usize)>,
+        restored_handlers: Option<(HandlerRecords, usize)>,
     ) -> Result<InterpreterExit, RuntimeError> {
+        iterators.bind(self);
         let iterator_root_base = self.async_frame_roots.len();
         let previous_diagnostic_frame = self.active_diagnostic_frame.take();
         let _previous_diagnostic_charge =
@@ -63,6 +64,8 @@ impl Vm {
         // frame's records. A suspended frame's caller owns them afterwards.
         self.async_frame_roots.truncate(iterator_root_base);
         self.active_diagnostic_frame = previous_diagnostic_frame;
+        drop(_previous_diagnostic_charge);
+        self.reconcile_scheduling_ownership();
         result
     }
 
@@ -70,11 +73,11 @@ impl Vm {
     fn interpret_frame(
         &mut self,
         code: &Bytecode,
-        iterators: &mut Vec<Value>,
+        iterators: &mut IteratorRecords,
         start_pc: usize,
         resume_value: Option<Value>,
         suspend_at: Option<InterpreterSuspensionPoint>,
-        restored_handlers: Option<(Vec<HandlerFrame>, usize)>,
+        restored_handlers: Option<(HandlerRecords, usize)>,
         iterator_root_base: usize,
     ) -> Result<InterpreterExit, RuntimeError> {
         let stack_base = self.stack.len();
@@ -85,7 +88,8 @@ impl Vm {
         }
         let mut pc = start_pc;
         let (mut handlers, handler_stack_base) =
-            restored_handlers.unwrap_or_else(|| (Vec::new(), stack_base));
+            restored_handlers.unwrap_or_else(|| (self.handler_records(Vec::new()), stack_base));
+        handlers.bind(self);
         let mut handler_charge =
             self.charge_diagnostic_payload(Self::diagnostic_handler_bytes(&handlers));
         // Suspended frames store stack offsets relative to their saved stack,
@@ -624,7 +628,7 @@ impl Vm {
                         let iterator = self.get_iterator(&value)?;
                         self.pop();
                         self.stack.push(iterator.clone());
-                        iterators.push(iterator);
+                        iterators.try_push(self, iterator)?;
                     }
                     Opcode::IteratorNext => {
                         // The synchronous yield* compiler is the only
@@ -668,7 +672,7 @@ impl Vm {
                             self.stack.push(value);
                             pc = operand;
                         } else {
-                            iterators.push(Value::Object(record_id));
+                            iterators.try_push(self, Value::Object(record_id))?;
                             // The record stays beneath the yielded result.
                         }
                     }
@@ -677,14 +681,14 @@ impl Vm {
                         let iterator = self.get_async_iterator(&value)?;
                         self.pop();
                         self.stack.push(iterator.clone());
-                        iterators.push(iterator);
+                        iterators.try_push(self, iterator)?;
                     }
                     Opcode::ForInKeys => {
                         let source = self.stack.last().expect("for-in has a source").clone();
                         let record = self.for_in_iterator(&source)?;
                         self.pop();
                         self.stack.push(record.clone());
-                        iterators.push(record);
+                        iterators.try_push(self, record)?;
                     }
                     Opcode::IteratorStep => {
                         let record = self.stack.last().unwrap().clone();
@@ -692,7 +696,7 @@ impl Vm {
                         let result = self.iterator_step(&record, true)?;
                         self.pop();
                         if let Some(value) = result {
-                            iterators.push(record);
+                            iterators.try_push(self, record)?;
                             self.stack.push(value);
                         } else {
                             pc = operand;
@@ -719,7 +723,7 @@ impl Vm {
                         let value = self.async_iterator_step(&record, &result)?;
                         self.stack.truncate(base);
                         if let Some(value) = value {
-                            iterators.push(record);
+                            iterators.try_push(self, record)?;
                             self.stack.push(value);
                         } else {
                             pc = operand;
@@ -752,7 +756,7 @@ impl Vm {
                             self.stack.push(value);
                             pc = operand;
                         } else {
-                            iterators.push(Value::Object(record_id));
+                            iterators.try_push(self, Value::Object(record_id))?;
                             self.stack.push(Value::Object(record_id));
                             self.stack.push(value);
                         }
@@ -764,7 +768,7 @@ impl Vm {
                         let result = self.iterator_step(&record, true)?;
                         self.stack.remove(base);
                         if let Some(value) = result {
-                            iterators.push(record);
+                            iterators.try_push(self, record)?;
                             self.stack.push(value);
                         } else {
                             pc = operand;
@@ -774,7 +778,7 @@ impl Vm {
                         let record = self.stack.last().unwrap().clone();
                         iterators.retain(|active| active != &record);
                         if self.iterator_step(&record, false)?.is_some() {
-                            iterators.push(record);
+                            iterators.try_push(self, record)?;
                         }
                     }
                     Opcode::IteratorClose => {
@@ -861,7 +865,7 @@ impl Vm {
                         let record = self.stack.last().unwrap().clone();
                         let base = self.stack.len() - 1;
                         iterators.retain(|candidate| candidate != &record);
-                        iterators.push(record.clone());
+                        iterators.try_push(self, record.clone())?;
                         // Keep accumulated values in a rooted managed array while
                         // subsequent next/done/value callbacks can trigger GC.
                         let array = self.array_from(Vec::new())?;
@@ -878,7 +882,7 @@ impl Vm {
                         let base = self.stack.len() - 3;
                         let record = self.stack[base].clone();
                         iterators.retain(|active| active != &record);
-                        iterators.push(record.clone());
+                        iterators.try_push(self, record.clone())?;
                         let array = self.array_from(Vec::new())?;
                         self.stack.push(array.clone());
                         while let Some(value) = self.iterator_step(&record, true)? {
@@ -1886,16 +1890,19 @@ impl Vm {
                     }
                     Opcode::PushHandler => {
                         debug_assert!(operand < code.handlers.len());
-                        handlers.push(HandlerFrame {
-                            metadata: operand,
-                            stack_depth: self.stack.len(),
-                            scope_depth: self.active_scopes.len(),
-                            iterator_depth: iterators.len(),
-                            with_depth: self.with_objects.len(),
-                            state: HandlerState::Try,
-                            pending: None,
-                            pending_origin: Default::default(),
-                        });
+                        handlers.try_push(
+                            self,
+                            HandlerFrame {
+                                metadata: operand,
+                                stack_depth: self.stack.len(),
+                                scope_depth: self.active_scopes.len(),
+                                iterator_depth: iterators.len(),
+                                with_depth: self.with_objects.len(),
+                                state: HandlerState::Try,
+                                pending: None,
+                                pending_origin: Default::default(),
+                            },
+                        )?;
                     }
                     Opcode::PopHandler => {
                         handlers
@@ -1984,7 +1991,7 @@ impl Vm {
                         self.stack.push(value);
                     }
                     Opcode::UpdateDisposalCompletion => {
-                        self.update_disposal_completion(&mut handlers, operand)?;
+                        self.update_disposal_completion(handlers.as_mut_slice(), operand)?;
                         handler_charge.set_bytes(Self::diagnostic_handler_bytes(&handlers));
                     }
                     Opcode::AbruptJump => {

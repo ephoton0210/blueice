@@ -115,7 +115,7 @@ impl GeneratorAbruptAction {
 }
 
 /// Generator instantiation has one suspension boundary, before its body.
-fn generator_entry_exit(exit: InterpreterExit) -> (usize, Vec<Value>, Vec<HandlerFrame>) {
+fn generator_entry_exit(exit: InterpreterExit) -> (usize, IteratorRecords, HandlerRecords) {
     match exit {
         InterpreterExit::Suspend {
             pc,
@@ -137,13 +137,13 @@ enum GeneratorRunExit {
     Yield {
         value: Value,
         pc: usize,
-        iterators: Vec<Value>,
-        handlers: Vec<HandlerFrame>,
+        iterators: IteratorRecords,
+        handlers: HandlerRecords,
     },
     Await {
         promise: ObjectId,
         pc: usize,
-        handlers: Vec<HandlerFrame>,
+        handlers: HandlerRecords,
     },
 }
 
@@ -302,7 +302,7 @@ impl Vm {
             }
         }
 
-        let mut iterators = Vec::new();
+        let mut iterators = self.iterator_records(Vec::new());
         let outcome = if let Some(error) = entry_error {
             Err(error)
         } else {
@@ -334,7 +334,7 @@ impl Vm {
                     completion: std::mem::replace(&mut self.completion, Value::Undefined),
                     completion_empty: std::mem::replace(&mut self.completion_empty, true),
                     active_scopes: std::mem::take(&mut self.active_scopes),
-                    iterators,
+                    iterators: iterators.into_vec(),
                     handlers: Vec::new(),
                     pending_completions: Vec::new(),
                     completion_saves: Vec::new(),
@@ -710,8 +710,8 @@ impl Vm {
         );
         let completion_saves =
             std::mem::replace(&mut self.completion_saves, frame_completion_saves);
-        let mut iterators = frame_iterators;
-        let mut handlers = frame_handlers;
+        let mut iterators = self.iterator_records(frame_iterators);
+        let mut handlers = self.handler_records(frame_handlers);
         let outcome = if let Some(completion) = abrupt {
             // `GeneratorState` keeps handler offsets relative to its saved
             // operand stack. `resolve_completion` runs before `interpret`,
@@ -801,8 +801,8 @@ impl Vm {
                     completion: std::mem::replace(&mut self.completion, Value::Undefined),
                     completion_empty: std::mem::replace(&mut self.completion_empty, true),
                     active_scopes: std::mem::take(&mut self.active_scopes),
-                    iterators,
-                    handlers,
+                    iterators: iterators.into_vec(),
+                    handlers: handlers.into_vec(),
                     pending_completions: std::mem::take(&mut self.pending_completions)
                         .into_iter()
                         .map(|completion| {
@@ -2305,12 +2305,13 @@ impl Vm {
         generator: ObjectId,
     ) -> Result<(), RuntimeError> {
         let state = self.heap.take_generator_state(generator)?;
-        let mut iterators = match state {
+        let iterators = match state {
             GeneratorState::Suspended { iterators, .. } => iterators,
             GeneratorState::Start { .. } | GeneratorState::Running | GeneratorState::Done => {
                 Vec::new()
             }
         };
+        let mut iterators = self.iterator_records(iterators);
         self.heap
             .set_generator_state(generator, GeneratorState::Done)
             .expect("closing a verified generator only decreases its accounted state bytes");

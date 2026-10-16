@@ -7,7 +7,7 @@
 use crate::heap::{GeneratorHandlerFrame, GeneratorHandlerState, GeneratorPendingCompletion};
 use crate::Value;
 
-use super::{RuntimeError, Vm};
+use super::{HandlerRecords, IteratorRecords, RuntimeError, Vm};
 
 impl Vm {
     pub(super) fn take_pending_throw_origin(&mut self) -> crate::diagnostics::ThrowOrigin {
@@ -119,13 +119,13 @@ pub(super) enum InterpreterExit {
     Yield {
         value: Value,
         pc: usize,
-        iterators: Vec<Value>,
-        handlers: Vec<HandlerFrame>,
+        iterators: IteratorRecords,
+        handlers: HandlerRecords,
     },
     Suspend {
         pc: usize,
-        iterators: Vec<Value>,
-        handlers: Vec<HandlerFrame>,
+        iterators: IteratorRecords,
+        handlers: HandlerRecords,
     },
     /// An async execution context reaches an Await expression. Its execution
     /// context is moved into a continuation before the next Promise job turn
@@ -133,7 +133,7 @@ pub(super) enum InterpreterExit {
     Await {
         promise: crate::ObjectId,
         pc: usize,
-        handlers: Vec<HandlerFrame>,
+        handlers: HandlerRecords,
     },
 }
 
