@@ -11110,3 +11110,61 @@ Windows x86_64 at 5,884 seconds (98m 04s), within the 180-minute acceptance
 limit. Its explicit 240-minute timeout retains 8,516 seconds (141m 56s), or
 59.14%, exceeding the required 25% unused margin. This completes K.13.2;
 final-source workspace/platform/coverage confirmation remains K.14.3.
+
+### K.13.4 Per-file coverage evidence (2026-10-16)
+
+A fresh complete ordinary-test coverage run of both BlueTS crates, using
+Rust 1.95.0, cargo-llvm-cov 0.9.1 and the matching LLVM 22.1.2 tools, reports
+the following separate production-file line measurements. No coverage
+exclusion or diagnostic allowance was added. JSX unit tests live in
+`bluets-bluejs/tests/fixtures/jsx_context.rs`, outside the measured production
+file; its 195-line denominator contains no inline test bodies.
+
+| File | Covered / executable lines | Line coverage |
+| --- | ---: | ---: |
+| `backend/bluets/src/emitter/decorators.rs` | 745 / 821 | 90.74% |
+| `backend/bluets/src/emitter/legacy_decorators.rs` | 460 / 492 | 93.50% |
+| `backend/bluets/src/emitter/jsx.rs` | 533 / 571 | 93.35% |
+| `backend/bluets/src/package_resolution.rs` | 756 / 831 | 90.97% |
+| `backend/bluets-bluejs/src/jsx_direct.rs` | 182 / 195 | 93.33% |
+
+The dedicated test-review pass added observable checks for an uninitialized
+decorated field's `void 0` initializer call, index-declaration fallback for
+boolean/integer/float `types` fields, entity-decoded JSX attributes and quoted
+property names, classic/automatic runtime pragma priority, multiline child
+whitespace, and separate nested attribute/child expression groups. Public
+compilation also proves that an inner JSX factory executes correctly and
+restores the caller's previous mode/factory/fragment context. Internal
+synthetic-token integrity tests assert precise missing/truncated-group errors
+at the original element span; the public parser cannot produce those corrupt
+internal groups. The checks assert emitted output, resolved paths, runtime
+values, diagnostics or source spans rather than merely invoking a branch.
+
+The complete ordinary and ignored K.0 suites pass on macOS. A final
+`cargo test --workspace --quiet` also exits 0 with the added tests in place.
+The final exact test files were copied to the isolated Windows x86_64 VM and
+verified by SHA-256. Rust 1.95 MSVC passes the JSX context tests (3/3), public JSX suite
+including its pinned TypeScript/Node oracle (10/10), decorators (17/17), and
+Windows-applicable package-resolution tests (3/3).
+
+The [coverage setup instructions](../testing/TEST_PLAN.md#coverage-policy)
+select rustup's Rust and explicitly set both `LLVM_COV` and `LLVM_PROFDATA`,
+avoiding accidental Homebrew tool selection. Their library-only smoke
+command was verified in a clean checkout of
+`9ad77ea3f0923f7e6c4e7670e08dc4c66b5458b1`: 252/252 tests pass and Git status
+is empty before and after the run. This is setup evidence; the five numbers
+above come from the complete final-test worktree, not the smoke subset.
+
+For the full two-crate measurement, first build `bluejs-regexp-worker` and
+export `BLUEJS_REGEXP_WORKER` as described under K.12.2.5. With the documented
+LLVM environment selected, run:
+
+```sh
+CARGO_INCREMENTAL=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  rustup run 1.95.0 cargo llvm-cov -p blueice-bluets -p blueice-bluets-bluejs \
+  --locked --json --summary-only --output-path target/bluets-per-file-coverage.json
+```
+
+The five per-file records each meet the 90% floor. The behavior review,
+Windows acceptance, complete local gates and clean-checkout tool verification
+complete K.13.4 after the K.13.2 hosted confirmation.

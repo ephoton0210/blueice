@@ -285,3 +285,7 @@ impl ExpressionLowerer<'_> {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/fixtures/jsx_context.rs"]
+mod tests;

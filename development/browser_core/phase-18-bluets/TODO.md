@@ -18,9 +18,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current status (2026-10-15):** Sections A–J and K.1–K.11 are complete within their measured subsets
-(last hosted confirmation: run 38644556735 at `f7ba9641c`, 29/29 jobs; workspace lines 94.56%, BlueJS 99.23%).
-**Open work, in order:** K.12 → K.13 (independent) → K.14.
+**Current status (2026-10-16):** Sections A–J and K.1–K.13 are complete within their measured subsets
+(last full-workflow confirmation: run 38644556735 at `f7ba9641c`, 29/29 jobs; workspace lines 94.56%, BlueJS 99.23%).
+K.13.2's four-platform oracle confirmation is run `38877729768` at `d4b13ff5e`.
+**Open work, in order:** K.14.
 Dated evidence journals live in `PLAN_HISTORY.md`; this file keeps only checklists, acceptance criteria and
 one-line evidence pointers.
 
@@ -657,14 +658,17 @@ Items are independent; may be taken any time.
     with its stderr rather than silenced.
   - [x] **AC-K13.3.4** `launcher_relates_nested_parent_roots_but_not_child_local_slots`: 200 consecutive
     runs under 33-way parallel load, all passed.
-- [ ] **K.13.4 Per-file coverage (M).**
-  - [ ] **AC-K13.4.1** Each of `emitter/decorators.rs`, `emitter/legacy_decorators.rs`, `emitter/jsx.rs`,
+- [x] **K.13.4 Per-file coverage (M).**
+  - [x] **AC-K13.4.1** Each of `emitter/decorators.rs`, `emitter/legacy_decorators.rs`, `emitter/jsx.rs`,
     `package_resolution.rs`, `bluets-bluejs/src/jsx_direct.rs` >= 90% line coverage (five separate
     measured numbers).
-  - [ ] **AC-K13.4.2** Added tests assert behavior (diagnostics/output), not just execute lines; reviewed
+  - [x] **AC-K13.4.2** Added tests assert behavior (diagnostics/output), not just execute lines; reviewed
     in the test-review pass of the Definition of Done.
-  - [ ] **AC-K13.4.3** `llvm-tools` setup (`LLVM_COV`/`LLVM_PROFDATA`) documented and verified on a clean
+  - [x] **AC-K13.4.3** `llvm-tools` setup (`LLVM_COV`/`LLVM_PROFDATA`) documented and verified on a clean
     checkout.
+    - *Evidence:* PLAN.md, "K.13.4 Per-file coverage evidence" (2026-10-16): five separate
+      production-file measurements above 90%, behavior test-review pass, clean-checkout LLVM
+      setup (252/252 smoke tests), Windows changed-test suites (33/33), complete K.0 and workspace tests.
 
 ### K.14 Re-measure and decide — M11
 

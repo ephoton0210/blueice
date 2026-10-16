@@ -145,6 +145,26 @@ cargo llvm-cov --workspace \
   --summary-only
 ```
 
+When Homebrew's Rust and a rustup toolchain coexist on macOS, select the same
+toolchain for instrumentation and both LLVM executables. Phase 18 K.13.4
+verified the following setup on a clean checkout with Rust 1.95.0,
+`cargo-llvm-cov` 0.9.1 and its matching LLVM 22.1.2 tools. The final command is
+a small library-only setup check; it does not replace the workspace gate above
+or the five separate per-file measurements required by K.13.4.
+
+```sh
+export PATH="$HOME/.cargo/bin:$PATH"
+rustup component add llvm-tools --toolchain 1.95.0
+# If missing: cargo install cargo-llvm-cov --version 0.9.1 --locked
+coverage_sysroot=$(rustup run 1.95.0 rustc --print sysroot)
+coverage_host=$(rustup run 1.95.0 rustc -vV | sed -n 's/^host: //p')
+export LLVM_COV="$coverage_sysroot/lib/rustlib/$coverage_host/bin/llvm-cov"
+export LLVM_PROFDATA="$coverage_sysroot/lib/rustlib/$coverage_host/bin/llvm-profdata"
+CARGO_INCREMENTAL=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  rustup run 1.95.0 cargo llvm-cov -p blueice-bluets --lib --locked \
+  --json --summary-only --output-path target/llvm-cov-smoke.json
+```
+
 ## CI — the automation + human-visible interface
 
 `.github/workflows/ci.yml` runs on every push and pull request to `main`:

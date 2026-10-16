@@ -246,3 +246,94 @@ fn direct_jsx_refuses_a_malformed_element_and_a_react_native_mode() {
         "{native}"
     );
 }
+
+#[test]
+fn direct_jsx_decodes_string_attributes_and_preserves_quoted_property_names() {
+    let program = "/** @jsx h */\n\
+        declare namespace JSX { interface Element {} interface IntrinsicElements { div: any } }\n\
+        function h(_tag: any, props: any): any { return props[\"data-id\"] + \"/\" + props.title; }\n\
+        const result: any = <div data-id=\"a &amp; b\" title='c &lt; d' />;\n\
+        result;\n";
+    let artifact = compile_direct_script(
+        "memory:///direct.tsx",
+        &MapLoader::from([ModuleSource::new("memory:///direct.tsx", program)]),
+        options(),
+    )
+    .unwrap();
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::String("a & b/c < d".into())
+    );
+}
+
+#[test]
+fn runtime_pragmas_choose_classic_execution_or_refuse_automatic_imports() {
+    let classic = format!(
+        "/** @jsxRuntime classic */\n/** @jsx h */\n{NAMESPACE}\
+         function h(_tag: any, props: any): any {{ return props.enabled; }}\n\
+         const result: any = <div enabled />;\nresult;\n"
+    );
+    let artifact = compile_direct_script(
+        "memory:///direct.tsx",
+        &MapLoader::from([ModuleSource::new("memory:///direct.tsx", &classic)]),
+        CompilerOptions {
+            jsx: Some(JsxMode::ReactJsx),
+            ..CompilerOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Bool(true)
+    );
+
+    let automatic = format!(
+        "/** @jsxRuntime automatic */\n{NAMESPACE}\
+         const result: any = <div />;\nresult;\n"
+    );
+    let error = compile_direct_script(
+        "memory:///direct.tsx",
+        &MapLoader::from([ModuleSource::new("memory:///direct.tsx", &automatic)]),
+        options(),
+    )
+    .err()
+    .expect("an automatic runtime import needs module linking");
+    assert!(format!("{error:?}").contains("automatic JSX runtime"));
+}
+
+#[test]
+fn multiline_whitespace_around_a_child_is_not_an_extra_jsx_child() {
+    let program = source("const result: any = <div>\n  \n  <span />\n</div>;\nresult;");
+    let artifact = compile_direct_script(
+        "memory:///direct.tsx",
+        &MapLoader::from([ModuleSource::new("memory:///direct.tsx", &program)]),
+        options(),
+    )
+    .unwrap();
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Number(2.0)
+    );
+}
+
+#[test]
+fn nested_delimiters_keep_jsx_attribute_and_child_expression_groups_separate() {
+    let program = format!(
+        "/** @jsx h */\n{NAMESPACE}\
+         function h(_tag: any, props: any, ...children: any[]): any {{\n\
+             return props.config.n + children[0] + children[1];\n\
+         }}\n\
+         const result: any = <div config={{{{ n: (2 + 3) }}}}>{{[7, 8][1]}}{{(4 + 2)}}</div>;\n\
+         result;\n"
+    );
+    let artifact = compile_direct_script(
+        "memory:///direct.tsx",
+        &MapLoader::from([ModuleSource::new("memory:///direct.tsx", &program)]),
+        options(),
+    )
+    .unwrap();
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Number(19.0)
+    );
+}

@@ -170,6 +170,36 @@ fn path_shaped_specifiers_and_traversals_are_never_looked_up() {
     }
 }
 
+#[test]
+fn non_string_types_fields_fall_back_to_the_index_declaration() {
+    let tree = Tree::new("non-string-types");
+    let from = tree.at("app/src");
+    fs::create_dir_all(&from).unwrap();
+    for (package, value) in [
+        ("boolean", "true"),
+        ("unsigned", "1"),
+        ("signed", "-1"),
+        ("float", "1.5"),
+    ] {
+        tree.write(
+            &format!("app/node_modules/{package}/package.json"),
+            &format!(r#"{{"types":{value}}}"#),
+        );
+        tree.write(&format!("app/node_modules/{package}/index.d.ts"), "");
+    }
+    let resolver = tree.resolver(&["app"]);
+    for package in ["boolean", "unsigned", "signed", "float"] {
+        let found = resolver
+            .resolve(&from, package, ImportMode::Import)
+            .unwrap();
+        assert_eq!(
+            found.path,
+            tree.at(&format!("app/node_modules/{package}/index.d.ts")),
+            "{package}"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn a_cached_resolution_is_discarded_when_what_it_depended_on_changes() {

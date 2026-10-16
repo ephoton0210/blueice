@@ -58,6 +58,19 @@ fn a_decorated_class_becomes_the_iife_with_helpers_and_static_blocks() {
 }
 
 #[test]
+fn a_decorated_field_without_an_initializer_runs_its_initializer_on_undefined() {
+    let javascript = build(
+        &format!("{DECL}class C {{ @d field: number | undefined; }}\n"),
+        es2022(),
+    )
+    .unwrap();
+    assert!(
+        javascript.contains("field = __bluetsRunInitializers(this, _field_initializers, void 0)"),
+        "{javascript}"
+    );
+}
+
+#[test]
 fn only_decorated_classes_and_auto_accessors_are_rewritten() {
     let javascript = build(
         &format!("{DECL}class Plain {{ f: number = 1; }}\n"),
