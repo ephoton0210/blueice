@@ -62,8 +62,7 @@ impl Vm {
             _ => None,
         };
         let root_base = self.async_frame_roots.len();
-        self.async_frame_roots
-            .extend(value.and_then(Value::object_id));
+        self.extend_async_frame_roots(value.and_then(Value::object_id).into_iter())?;
         let bytes = value.map_or(0, host_scheduling::value_payload_bytes);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(bytes);
         let checkpoint = self
@@ -87,8 +86,13 @@ impl Vm {
         // Restoring the frame also preserves the dispatch's instruction fuel.
         let execution = self.suspend_module_execution();
         let root_base = self.async_frame_roots.len();
-        self.async_frame_roots
-            .extend(Self::suspended_execution_references(&execution));
+        if let Err(error) =
+            self.extend_async_frame_roots(Self::suspended_execution_references(&execution))
+        {
+            self.restore_module_execution(execution);
+            self.host_event_microtask_jobs = Some(jobs);
+            return Err(error);
+        }
         let result = self.run_host_microtask_checkpoint_with_budget(&mut jobs);
         if let Some(root) = self.result_root.take() {
             self.release_root(root);

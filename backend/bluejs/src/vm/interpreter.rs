@@ -108,8 +108,7 @@ impl Vm {
             // The Rust iterator vector is therefore an active GC owner too.
             // Nested interpreters append their roots after this frame's set.
             self.async_frame_roots.truncate(iterator_root_base);
-            self.async_frame_roots
-                .extend(iterators.iter().filter_map(Value::object_id));
+            self.extend_async_frame_roots(iterators.iter().filter_map(Value::object_id))?;
             if matches!(suspend_at, Some(InterpreterSuspensionPoint::Offset(target)) if target == pc)
                 || (executed_root_instruction
                     && suspend_at == Some(InterpreterSuspensionPoint::AfterRootInstruction))

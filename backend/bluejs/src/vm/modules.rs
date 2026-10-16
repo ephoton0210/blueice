@@ -1625,8 +1625,12 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         let ambient = self.suspend_module_execution();
         let root_base = self.async_frame_roots.len();
-        self.async_frame_roots
-            .extend(Self::suspended_execution_references(&ambient));
+        if let Err(error) =
+            self.extend_async_frame_roots(Self::suspended_execution_references(&ambient))
+        {
+            self.restore_module_execution(ambient);
+            return Err(error);
+        }
         self.module_execution_depth += 1;
         let result = self.resume_module_await_scoped(continuation, value, fulfilled);
         self.module_execution_depth -= 1;
@@ -2189,6 +2193,17 @@ impl Vm {
         value: Value,
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
+        // Reserve while the stored continuation still owns its frame. A
+        // refusal must not consume its only resumption owner.
+        let state = self
+            .async_continuations
+            .get(&continuation)
+            .expect("an await reaction names a stored continuation");
+        let additional = usize::from(state.generator.is_some())
+            + 1
+            + Self::suspended_execution_references(&state.execution).count()
+            + state.iterators.iter().filter_map(Value::object_id).count();
+        self.prepare_async_frame_root_slots(additional)?;
         // A reaction names the continuation of the await it was made for, and
         // fires once.
         let continuation = self
@@ -2207,6 +2222,7 @@ impl Vm {
         } = continuation;
         let resume_epoch = self.throw_epoch;
         let root_base = self.async_frame_roots.len();
+        // All of these slots were admitted before removing the continuation.
         self.async_frame_roots.extend(generator);
         self.async_frame_roots.push(target);
         self.async_frame_roots
@@ -2221,8 +2237,12 @@ impl Vm {
                 );
             }
             let ambient = self.suspend_module_execution();
-            self.async_frame_roots
-                .extend(Self::suspended_execution_references(&ambient));
+            if let Err(error) =
+                self.extend_async_frame_roots(Self::suspended_execution_references(&ambient))
+            {
+                self.restore_module_execution(ambient);
+                return Err(error);
+            }
             let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
             self.restore_module_execution(execution);
             let outcome = if fulfilled {
@@ -2317,12 +2337,16 @@ impl Vm {
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
         let mut ambient = Some(self.suspend_module_execution());
-        self.async_frame_roots
-            .extend(Self::suspended_execution_references(
-                ambient
-                    .as_ref()
-                    .expect("the async job's displaced frame is present"),
-            ));
+        if let Err(error) = self.extend_async_frame_roots(Self::suspended_execution_references(
+            ambient
+                .as_ref()
+                .expect("the async job's displaced frame is present"),
+        )) {
+            self.restore_module_execution(
+                ambient.take().expect("the ambient frame is still staged"),
+            );
+            return Err(error);
+        }
         let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
         self.restore_module_execution(execution);
         let resume_epoch = self.throw_epoch;
@@ -2410,7 +2434,7 @@ impl Vm {
                         callee: std::mem::replace(&mut self.callee, Value::Undefined),
                         with_objects: std::mem::take(&mut self.with_objects),
                     };
-                    self.async_frame_roots.extend(value.object_id());
+                    self.extend_async_frame_roots(value.object_id().into_iter())?;
                     storage.into_generator(self, state).store(self, generator)?;
                     let ambient = ambient
                         .take()

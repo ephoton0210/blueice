@@ -126,7 +126,7 @@ pub(super) fn outer_binding_bytes(values: &Vec<HashMap<String, DynamicEvalBindin
 pub(super) fn pending_references<'a>(
     pending: &'a [Completion],
     saves: &'a [(Value, bool)],
-) -> impl Iterator<Item = ObjectId> + 'a {
+) -> impl Iterator<Item = ObjectId> + Clone + 'a {
     pending
         .iter()
         .flat_map(|completion| match completion {

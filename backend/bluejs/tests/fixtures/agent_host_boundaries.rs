@@ -17,6 +17,51 @@ fn host_vm() -> Vm {
 }
 
 #[cfg_attr(test, test)]
+fn async_root_storage_terminal_host_batch_releases_every_pin_without_settling_waits() {
+    let mut vm = host_vm();
+    let callback = vm
+        .execute_script(&script("(()=>0)"))
+        .unwrap()
+        .object_id()
+        .unwrap();
+    let callback_root = vm.heap.root(callback).unwrap();
+    let promise = vm.new_promise().unwrap();
+    let promise_root = vm.heap.root(promise).unwrap();
+    vm.test262_async_waits.register_pending();
+    vm.test262_async_waits.push(AsyncHostEvent::Timer {
+        callback,
+        root: callback_root,
+    });
+    vm.test262_async_waits.register_pending();
+    vm.test262_async_waits.push(AsyncHostEvent::Wait {
+        promise,
+        root: promise_root,
+        result: crate::heap::SharedWaitResult::TimedOut,
+    });
+    // No work is run to exhaust a resource: the finite callback starts with
+    // zero interpreter fuel and must abort before its body executes.
+    vm.remaining_instructions = 0;
+    assert_eq!(
+        vm.process_test262_async_wait_events(),
+        Err(RuntimeError::InstructionLimit)
+    );
+    assert!(matches!(
+        vm.promises[&promise].status,
+        PromiseStatus::Pending
+    ));
+    assert!(vm.heap.unroot(callback_root).is_err());
+    assert!(vm.heap.unroot(promise_root).is_err());
+    assert!(!vm.test262_async_waits.has_pending());
+    assert!(vm.async_frame_roots.is_empty());
+}
+
+impl Vm {
+    pub(in super::super) fn verify_async_root_host_batch_contracts() {
+        async_root_storage_terminal_host_batch_releases_every_pin_without_settling_waits();
+    }
+}
+
+#[cfg_attr(test, test)]
 fn host_shutdown_collects_failures_reported_by_a_joining_worker() {
     let host = Arc::new(Test262AgentHost::new());
     let worker_host = Arc::clone(&host);

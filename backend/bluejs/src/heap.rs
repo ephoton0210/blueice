@@ -387,7 +387,7 @@ pub(crate) struct DisposableResource {
 }
 
 impl DisposableResource {
-    pub(crate) fn values(&self) -> impl Iterator<Item = &Value> {
+    pub(crate) fn values(&self) -> impl Iterator<Item = &Value> + Clone {
         std::iter::once(&self.receiver)
             .chain(self.argument.iter())
             .chain(self.method.iter())

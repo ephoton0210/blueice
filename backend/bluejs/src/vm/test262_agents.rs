@@ -566,6 +566,18 @@ impl Vm {
         let root_base = self.async_frame_roots.len();
         let mut first_error = None;
         for event in events {
+            // A fatal admission error stops callbacks, but every host event's
+            // persistent registration still needs releasing during cleanup.
+            if first_error
+                .as_ref()
+                .is_some_and(|error: &RuntimeError| !error.is_catchable())
+            {
+                let root = match event {
+                    AsyncHostEvent::Wait { root, .. } | AsyncHostEvent::Timer { root, .. } => root,
+                };
+                self.release_root(root);
+                continue;
+            }
             match event {
                 AsyncHostEvent::Wait {
                     promise,
@@ -593,7 +605,12 @@ impl Vm {
                     if let Err(error) = result {
                         if first_error.is_none() {
                             if let RuntimeError::Thrown(value) = &error {
-                                self.async_frame_roots.extend(value.object_id());
+                                if let Err(error) =
+                                    self.extend_async_frame_roots(value.object_id().into_iter())
+                                {
+                                    first_error = Some(error);
+                                    continue;
+                                }
                             }
                             first_error = Some(error);
                         }

@@ -77,6 +77,11 @@ fn fixture(mode: Mode, registered: usize, rejected: bool) -> Vm {
         assert_eq!(vm.run_next_promise_job(), Ok(true));
     }
     assert_eq!(vm.promise_jobs.len(), 2);
+    // This fixture exercises waiter admission after job entry. Prepare its
+    // separate root storage before filling the scalar budget, so an earlier
+    // root-capacity refusal does not hide the waiter boundary under test.
+    let references = vm.promise_job_references(vm.promise_jobs.front().unwrap());
+    vm.prepare_async_frame_root_slots(references.len()).unwrap();
     vm
 }
 

@@ -989,6 +989,11 @@ impl Vm {
     /// advance the queue one observable turn at a time.
     pub(in super::super) fn run_next_promise_job(&mut self) -> Result<bool, RuntimeError> {
         self.check_scheduling_failure()?;
+        let active_root_base = self.async_frame_roots.len();
+        if let Some(job) = self.promise_jobs.front() {
+            let references = self.promise_job_references(job);
+            self.extend_async_frame_roots(references.iter().copied())?;
+        }
         let Some(job) = self.promise_jobs.pop_front() else {
             return Ok(false);
         };
@@ -997,6 +1002,7 @@ impl Vm {
         }
         let job_payload = self.charge_execution_payload(job.scheduling_payload_bytes());
         if let Err(error) = self.synchronize_scheduling_usage() {
+            self.async_frame_roots.truncate(active_root_base);
             drop(job);
             drop(job_payload);
             self.reconcile_scheduling_ownership();
@@ -1013,9 +1019,7 @@ impl Vm {
         let root_base = self.stack.len();
         // A dynamic import can reset the ordinary stack during module
         // evaluation. Keep active job ownership in the separate frame roots.
-        let active_root_base = self.async_frame_roots.len();
-        self.async_frame_roots
-            .extend(self.promise_job_references(&job));
+        // Its execution roots were prepared while the queue still owned it.
         let ambient_frame = self.active_diagnostic_frame.take();
         let mut ambient_frame_charge =
             self.charge_diagnostic_payload(ambient_frame.as_ref().map_or(

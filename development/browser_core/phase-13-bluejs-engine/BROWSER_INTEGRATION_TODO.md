@@ -57,7 +57,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Displaced execution rooting is the current follow-up (2026-10-17).
+Temporary execution root capacity is the current follow-up (2026-10-17).
+Four tiny native-pressure/callback/job/iterator cases failed before admission
+was moved ahead of vector growth and job removal; all four now pass. Seventeen
+finite ownership/restoration/GC cases pass. Every temporary execution-root
+append now uses admitted capacity; detached replacement budgets simultaneous
+old/new storage. All 797 fixed selected cases pass across 38 executables and
+69 selections, together with formatting and offline workspace/all-target Clippy.
+Other GC scratch vectors, retained native values, shared programs and wider gates
+remain open; M1u stays the latest accepted milestone.
+
+The displaced execution rooting checkpoint (2026-10-17) precedes this follow-up.
 Four initial refusal/restoration cases and a separate public ShadowRealm
 fatal-error case failed before the fix. All fourteen new finite lifecycle cases
 now pass. Saved-edge enumeration borrows the frame; temporary registered roots
@@ -2724,6 +2734,83 @@ Evidence: `/private/tmp/blueice-displaced-roots-controls-20261017.py`,
 `/private/tmp/blueice-displaced-roots-{red,boundary-red,focused,displaced,fmt,clippy}-20261017.log`.
 `target/displaced-roots-source-20261017.json` records source/log/executable hashes
 and staged/committed blob checks. This is an M1z implementation checkpoint;
+wider native/integrated acceptance remains open.
+
+#### Temporary execution root capacity follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: every append to the temporary execution-root vector admits native
+capacity before reserve or publication. Detached growth budgets old and new
+allocations while they coexist; refusal preserves existing contents and capacity.
+Promise jobs keep their queued owner and original fuel if preparation fails.
+Module/async/event entry restores any displaced frame on admission failure;
+nested GC sees the same roots. Cleanup can truncate after terminal failure.
+
+- [x] Reproduce pre-admission growth in native-pressure GC, callback completion,
+      queued Promise jobs and active iterator roots with tiny offline cases.
+      All four initial cases failed and now pass.
+- [x] Route temporary execution-root growth through admitted preparation and
+      verify frame restoration, queue retention, capacity ownership and GC.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Other GC scratch vectors, retained native
+      values, shared programs and wider native/integrated gates remain open.
+
+Root-slot preparation admits the full detached replacement while the old vector
+remains owned. Reported capacity receives a temporary execution-control lease
+and a second budget check before moving any prior roots. Refusal leaves their
+contents, pointer and capacity intact. Commit moves handles, drops old storage
+and publishes the new retained capacity once. Existing slots and empty appends
+need no new allocation, including at a full scalar quota; terminal failure still
+prevents new entry. No heap operation or JavaScript runs during preparation.
+Borrowed iterators can be cloned for counting without copying their objects.
+
+Promise jobs stage root capacity while the job is still in the queue, before
+removal or fuel reset. Async continuations reserve their saved roots before
+removing their stored frame. Module/ordinary-async/generator ambient-frame and
+native event checkpoint preparation restores the displaced caller if admission
+fails; event turn budgets are restored too. Native-pressure GC refuses missing
+root capacity before collecting. Iterator roots, callback completions,
+finalization holdings, yielded values and Test262 completion errors use the same
+preparation path. A fatal host completion stops later delivery but drains pins
+from the already-returned host batch without running callbacks or settling waits.
+
+Retained vector capacity stays in the existing realm execution-control ledger
+once, including after logical truncation; normal finished-execution cleanup
+returns it. Cleanup and ownership reconciliation remain available after terminal
+failure. Host-neutral VMs retain the same GC behavior without persistent root
+registrations or a document scheduling limit.
+
+Seventeen finite cases cover initial/replacement refusal, prefix stability, exact
+retained capacity, spare/empty paths at full scalar quota, frame restoration and stored
+continuation preservation, reaction/finalization GC, host-neutral roots and
+terminal refunds. The manually populated terminal host batch contains two events
+and starts a finite callback with zero fuel; it starts no timer or worker.
+Ordinary-library coverage entry points call the same cases; no new coverage
+result is claimed. General execution-roots/Promise-edge/debugger/realm traversal
+scratch buffers remain separate open ownership work.
+
+The first inherited waiter-control run had one failure: its first import job
+now correctly remained queued when earlier root preparation was refused. The
+fixture prepares active-job root capacity before filling its scalar budget so it
+still reaches waiter publication refusal; its existing shape, prefix, capacity
+and job-consumption assertions are unchanged. The original result is preserved
+in `/private/tmp/blueice-async-root-storage-waiter-controls-baseline-red-20261017.log`.
+
+Validation: **797 passed, zero failed/ignored**, across 38 executables and 69
+fixed selections: seventeen new cases and all 780 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled. The same seven pressure cases remain
+excluded and JSON resource sweeps are not selected. No network/service replay,
+fresh full Test262, real Core/MCP replay, coverage result or integrated acceptance
+is claimed. Other GC scratch vectors, retained native values, shared programs
+and wider native/integrated gates remain open.
+
+Evidence: `/private/tmp/blueice-async-root-storage-controls-20261017.py`,
+`/private/tmp/blueice-async-root-storage-commit-20261017.txt`,
+`/private/tmp/blueice-async-root-storage-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-async-root-storage-{red,first,focused,async-roots,fmt,clippy}-20261017.log`.
+`target/async-root-storage-source-20261017.json` records source/log/executable
+hashes and staged/committed blob checks. This is an M1z implementation checkpoint;
 wider native/integrated acceptance remains open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)

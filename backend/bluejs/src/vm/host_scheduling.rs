@@ -755,7 +755,7 @@ impl Vm {
             return Ok(());
         }
         let root_base = self.async_frame_roots.len();
-        self.async_frame_roots.extend(value.object_id());
+        self.extend_async_frame_roots(value.object_id().into_iter())?;
         let collected = self.collect_realm_garbage();
         self.async_frame_roots.truncate(root_base);
         collected?;

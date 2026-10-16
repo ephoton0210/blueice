@@ -70,8 +70,9 @@ impl Vm {
                 .take_finalization_registry_cleanup_cell(task.registry)?
             {
                 let root_base = self.async_frame_roots.len();
-                self.async_frame_roots.extend(callback.object_id());
-                self.async_frame_roots.extend(holdings.object_id());
+                self.extend_async_frame_roots(
+                    callback.object_id().into_iter().chain(holdings.object_id()),
+                )?;
                 let bytes = host_scheduling::value_payload_bytes(&holdings);
                 let holdings_payload = self.charge_execution_payload(bytes);
                 let called = (|| {
@@ -88,7 +89,7 @@ impl Vm {
                             return Err(error);
                         }
                         if let RuntimeError::Thrown(value) = &error {
-                            self.async_frame_roots.extend(value.object_id());
+                            self.extend_async_frame_roots(value.object_id().into_iter())?;
                         }
                         self.report_host_exception(&error)?;
                     }

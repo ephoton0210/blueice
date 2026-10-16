@@ -11,7 +11,7 @@ impl Vm {
     /// object vector and can be shared by registered and scoped-root callers.
     pub(super) fn suspended_execution_references(
         execution: &SuspendedModuleExecution,
-    ) -> impl Iterator<Item = ObjectId> + '_ {
+    ) -> impl Iterator<Item = ObjectId> + Clone + '_ {
         execution
             .stack
             .iter()

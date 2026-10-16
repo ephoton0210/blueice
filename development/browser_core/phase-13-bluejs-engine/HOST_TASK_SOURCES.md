@@ -502,8 +502,24 @@ objects alive through nested GC and releases temporary roots after restoration.
 Fatal host failures propagate through both public evaluate paths; catchable
 JavaScript exceptions retain their opaque TypeError translation.
 
-General trace-vector growth admission, native payloads of retained values, shared
-programs and other wider native/cache/integrated ownership remain open work.
+Temporary execution-root vectors admit full detached replacement capacity while
+the old allocation remains charged. Reported capacity is leased and checked before
+moving roots; refusal preserves contents and capacity. Commit moves existing
+handles and publishes the retained allocation once in realm execution ownership.
+Spare slots and empty appends require no new reservation. No heap operation or
+JavaScript runs while preparing storage.
+
+Promise jobs prepare roots before queue removal or fuel reset; async continuations
+reserve saved roots before consuming their stored frame. Module/async/generator
+and event entry restores displaced callers on refusal. Native-pressure collection,
+iterator roots, callback completions, finalization holdings and yielded values use
+the same preparation path. Fatal Test262 host completions stop later delivery but
+release every pin in the returned host batch. Truncation retains charged capacity;
+finished-execution cleanup returns it, including after terminal failure.
+
+Other GC scratch vectors (execution roots, Promise edges, debugger and realm
+traversal), native payloads of retained values, shared programs and other wider
+native/cache/integrated ownership remain open work.
 
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
