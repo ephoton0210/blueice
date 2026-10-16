@@ -11056,3 +11056,32 @@ warnings-denied all-target Clippy, rustfmt and the Node oracle-support tests.
 This is preflight evidence only: K.13.2 remains unchecked until the corrected
 commit passes all four hosted `typescript-oracle` legs, the slowest leg stays
 within 180 minutes, and that run's id and commit hash are recorded here.
+
+The second hosted run (`38859222656`, commit
+`9ad77ea3f0923f7e6c4e7670e08dc4c66b5458b1`) passed every build/test/lint
+platform and the macOS and Ubuntu oracle legs. Both Windows oracle legs
+failed only the complete `diagnostics_matrix` recorder; the dependent CI gate
+failed with them (28 of 31 jobs succeeded). The coverage job passed at 94.51%
+workspace lines (218,725 lines, 12,008 missed) and 99.23% independent BlueJS
+lines (82,528 lines, 633 missed). The diagnostic recorder's source spans are
+raw UTF-16 offsets, so normalizing the recorded JSON's line endings does not
+normalize the compiler's input coordinates. The LF VM snapshot matched the
+checked-in reference byte for byte. Converting 4,065 unpinned fixture files
+to CRLF in that isolated Windows VM reproduced the hosted error after all
+3,182 programs: 1,323 cases differed, containing exactly 2,959 changed `start`
+fields and no other differences. For example, the first TS2322 stayed on
+line 5 but moved from offset 271 to 275.
+
+The full `typescript_oracle` and `strictness` fixture trees now have
+`text eol=lf` attributes. A Git checkout control with `core.autocrlf=true`
+and the old attributes produced five CRLF endings in the example source;
+the new attributes preserved all 4,943 tracked input files byte for byte.
+The isolated VM inputs were restored and byte-checked against their saved
+originals. The complete `diagnostics_matrix` suite then passed 4/4, including
+the pinned 3,182-program recorder, in 1,136.51 seconds. All 82 ignored
+`typescript_oracle` tests passed again in 500.29 seconds. This validates the
+Windows checkout repair under the existing K.13.1.3 acceptance rule.
+The complete macOS K.0 two-crate suite passed, including every ignored
+oracle, as did rustfmt and warnings-denied all-target Clippy. The generated
+refusal inventory still matches the recorded 213 sites without a change.
+K.13.2 remains unchecked pending the corrected four-leg hosted run.
