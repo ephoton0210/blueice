@@ -57,13 +57,22 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The outgoing suspension checkpoint (2026-10-17) jointly admits stack/completion
+targets before allocation or frame mutation and retains scoped ownership until
+adoption. Fourteen finite groups pass, including a real debugger refusal that
+previously left a nested continuation behind. Terminal root cleanup now drops
+those frames and releases their result roots. All 582 selected cases, formatting
+and offline workspace/all-target Clippy pass; the source/artifact audit is
+recorded below. Parameter-entry root growth and wider native/integrated gates
+remain open; M1u remains the latest accepted milestone.
+
 The generator resume checkpoint (2026-10-17) prepares stack/completion/module
 storage and incoming native ownership while saved state stays in the heap.
 Both initial state-consumption regressions and ten expanded controls pass.
 Extracted buffers remain charged through adoption; pending roots use a borrowed
 iterator. All 568 selected cases, formatting and offline workspace/all-target
-Clippy pass; the source/artifact audit is recorded below. Outgoing snapshot/
-parameter-entry preallocation and wider native/integrated gates remain open;
+Clippy pass; the source/artifact audit is recorded below. Parameter-entry root
+growth and wider native/integrated gates remain open;
 M1u remains the latest accepted milestone.
 
 The realm-global record checkpoint counts persistent table/key capacity and
@@ -1629,8 +1638,9 @@ second allocation, and preserve module-referrer semantics and terminal failure.
 - [x] Pass ten expanded capacity/refusal/ownership/GC controls and related
       completion/finally semantics, formatting and Clippy; record the source/
       artifact audit with the checkpoint commit.
-- [ ] Complete outgoing stack/completion snapshot preallocation,
-      generator parameter-entry root growth, other association copies,
+- [x] Complete outgoing stack/completion snapshot preallocation in the
+      outgoing suspension checkpoint below (2026-10-17).
+- [ ] Complete generator parameter-entry root growth, other association copies,
       wider native storage and integrated acceptance.
       M1u remains the latest accepted milestone.
 
@@ -1666,10 +1676,71 @@ selection names listed in `controls-20261016.log`; the runner is
 `{fmt,clippy}-20261016.log`. These artifacts started on October 16 and are
 retained under their original names for the October 17 checkpoint.
 Receipt: `target/generator-resume-source-20261016.json`.
-Outgoing snapshot preallocation, generator parameter-entry root growth, other
-association copies, wider native storage and integrated acceptance remain open.
+Generator parameter-entry root growth, other association copies, wider native
+storage and integrated acceptance remain open; outgoing snapshots are recorded
+in the follow-up below.
 No fresh full Test262, real Core/MCP replay or coverage result is claimed;
 M1u remains the latest accepted milestone.
+
+#### Outgoing suspension storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: jointly admit stack suffix and generator-completion conversion
+buffers before allocation or frame mutation. Check actual capacities before
+capture and retain native ownership, including detached value payloads, until
+the enclosing generator state or suspended execution adopts them. Move whole
+stacks without copying. Refusal must restore caller ownership and preserve
+iterator cleanup without publishing an unusable continuation.
+
+- [x] Reproduce two finite native-boundary failures: preparation succeeds at a
+      full budget and detached buffers report zero rather than 104 native bytes.
+- [x] Stage generator entry/yield, async yield/await and nested debugger stack
+      captures; convert completion values into admitted storage without another
+      allocation and count error-message capacity across heap adoption.
+- [x] Return the caller prefix immediately to the active VM and retain the
+      detached suffix/completion lease through the enclosing owner's adoption.
+- [x] Reproduce a public debugger refusal retaining a nested continuation;
+      discard the terminal root's saved descendants and release result roots.
+- [x] Pass fourteen expanded finite capacity/ownership/refusal/GC groups.
+- [x] Pass the bounded regression/static checks and record the source/artifact
+      audit with the checkpoint commit.
+- [ ] Complete parameter-entry root growth, other association copies, wider
+      native storage and integrated acceptance. M1u remains the latest accepted
+      milestone.
+
+Initial native-boundary red log:
+`/private/tmp/blueice-suspension-storage-red-20261017.log` (zero passed, two
+failed). These probes exercise the extracted storage boundary before admission
+was implemented; they do not claim a historical public end-to-end failure.
+The separate public debugger red log is
+`/private/tmp/blueice-suspension-storage-debugger-refusal-20261017.log`
+(zero passed, one failed): the API returns SchedulingLimit but still retains a
+nested frame when the parent's stack capture is refused.
+
+The fourteen expanded groups cover joint exact-budget/one-byte admission,
+empty suffix/completion storage, whole-stack pointer/capacity preservation,
+detached native charges and peer refunds, full error capacity through native/
+managed handoff, caller-prefix ownership and major-GC object liveness/release.
+Valid generator/async/debugger entry points cover refusal cleanup, unpublished
+continuations, frame serial behavior and latched failure. A separate terminal
+cleanup check proves a saved result root no longer pins its object. Fixtures
+use tiny frames, short values, 32 numeric operands and scalar peer-budget owners
+without allocating any represented large buffer.
+
+Final bounded validation: **582 passed, zero failed, zero ignored** across 35
+test executables. The fourteen new groups join the previous 568 selected
+ownership/semantic/GC/debugger cases. The seven prior pressure/large-allocation
+exclusions remain filtered; deep-recursion tail suites and network/service
+replays are not run. Formatting, `git diff --check` and offline workspace/
+all-target Clippy with warnings denied pass.
+
+Logs use `/private/tmp/blueice-suspension-storage-` with selection names listed
+in `controls-run-20261017.log`; the fixed offline runner is
+`controls-20261017.py`. Final new-group and static-check logs are
+`{snapshot,fmt,clippy}-20261017.log`.
+Receipt: `target/suspension-storage-source-20261017.json` records source/log/
+executable hashes and staged/committed blob checks. No fresh full Test262, real
+Core/MCP replay or coverage result is claimed. This remains an implementation
+checkpoint; the wider M1z and integrated gates stay open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

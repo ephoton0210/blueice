@@ -170,6 +170,7 @@ impl Vm {
         &mut self,
         result: Result<Value, RuntimeError>,
     ) -> Result<Value, RuntimeError> {
+        self.discard_finished_debugger_frames();
         let result = result.and_then(|value| {
             if let Value::Object(id) = value {
                 self.result_root = Some(self.heap.root(id)?);

@@ -1251,6 +1251,37 @@ impl Vm {
             .map(|_| VmDebuggerExecutionState::Completed)
     }
 
+    /// A terminal root has no resumable descendants. Release their leases and
+    /// any uniquely owned completion roots before the final realm collection.
+    pub(super) fn discard_finished_debugger_frames(&mut self) {
+        self.debugger_continuation = None;
+        if let Some(frame) = self.debugger_nested_continuation.take() {
+            self.release_finished_debugger_execution(frame.execution);
+        }
+        if let Some(frame) = self.debugger_nested_intermediate_continuation.take() {
+            self.release_finished_debugger_execution(frame.execution);
+        }
+        if let Some(frame) = self.debugger_module_continuation.take() {
+            self.release_finished_debugger_execution(frame.execution);
+        }
+        if let Some(execution) = self.debugger_nested_parent_execution.take() {
+            self.release_finished_debugger_execution(execution);
+        }
+        self.debugger_module_pause_request = None;
+        self.debugger_nested_pause_request = None;
+        self.debugger_nested_intermediate_active = false;
+        self.debugger_nested_direct_call = false;
+        self.debugger_nested_direct_caller_generation = None;
+        // Root cleanup reconciles after releasing its active containers too.
+    }
+
+    fn release_finished_debugger_execution(&mut self, mut execution: SuspendedModuleExecution) {
+        if let Some(root) = execution.result_root.take() {
+            self.release_root(root);
+        }
+        drop(execution);
+    }
+
     /// Whether an ordinary public execution entry would overwrite a paused
     /// debugger-owned root frame. This is intentionally private: no code
     /// outside the VM may obtain or operate on the saved state.

@@ -465,7 +465,7 @@ impl Vm {
         let new_target = self.new_target.clone();
         let new_target_allowed = self.new_target_allowed;
         let result_root = self.result_root.take();
-        let mut suspended_parent_stack = None;
+        let mut suspended = false;
         let mut suspended_async = None;
         let running = callee
             .object_id()
@@ -475,17 +475,36 @@ impl Vm {
             Err(error)
         } else if async_function {
             let mut iterators = self.iterator_records(Vec::new());
-            match AsyncBody::classify(self.interpret(&code, &mut iterators, 0, None, None, None)) {
+            let mut suspension = None;
+            let body = match AsyncBody::classify(self.interpret(
+                &code,
+                &mut iterators,
+                0,
+                None,
+                None,
+                None,
+            )) {
+                body @ AsyncBody::Awaiting { .. } => {
+                    match self.prepare_suspension_storage(frame_base, false) {
+                        Ok(storage) => {
+                            suspension = Some(storage);
+                            body
+                        }
+                        Err(error) => AsyncBody::Failed(error),
+                    }
+                }
+                body => body,
+            };
+            match body {
                 AsyncBody::Returned(value) => Ok(value),
                 AsyncBody::Awaiting {
                     promise,
                     pc,
                     handlers,
                 } => {
-                    let stack = self.stack.split_off(frame_base);
-                    let mut execution = self.suspend_module_execution();
-                    let parent_stack = std::mem::replace(&mut execution.stack, stack);
-                    execution.refresh_execution_charges();
+                    let execution = self.capture_prepared_execution(
+                        suspension.take().expect("await prepared its stack buffer"),
+                    );
                     let templates = execution.templates.clone();
                     self.templates = templates;
                     let state = AsyncContinuation {
@@ -498,7 +517,7 @@ impl Vm {
                         handlers,
                         call_depth: self.call_depth,
                     };
-                    suspended_parent_stack = Some(parent_stack);
+                    suspended = true;
                     suspended_async = Some((state, promise));
                     Ok(Value::Undefined)
                 }
@@ -535,26 +554,28 @@ impl Vm {
             ) {
                 DebuggerInterpreterExit::Suspended {
                     pc,
-                    iterators,
+                    iterators: saved_iterators,
                     handlers,
-                } => {
-                    let stack = self.stack.split_off(frame_base);
-                    let mut execution = self.suspend_module_execution();
-                    let parent_stack = std::mem::replace(&mut execution.stack, stack);
-                    execution.refresh_execution_charges();
-                    self.next_debugger_frame_serial = next_frame_serial;
-                    self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
-                        frame_serial,
-                        code_unit_ordinal: target_ordinal,
-                        code: code.as_ref().clone(),
-                        pc,
-                        execution,
-                        iterators,
-                        handlers,
-                    });
-                    suspended_parent_stack = Some(parent_stack);
-                    Ok(Value::Undefined)
-                }
+                } => match self.capture_suspension_execution(frame_base) {
+                    Ok(execution) => {
+                        self.next_debugger_frame_serial = next_frame_serial;
+                        self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
+                            frame_serial,
+                            code_unit_ordinal: target_ordinal,
+                            code: code.as_ref().clone(),
+                            pc,
+                            execution,
+                            iterators: saved_iterators,
+                            handlers,
+                        });
+                        suspended = true;
+                        Ok(Value::Undefined)
+                    }
+                    Err(error) => {
+                        iterators = saved_iterators;
+                        Err(error)
+                    }
+                },
                 DebuggerInterpreterExit::Completed(result) => result,
             };
             if result.is_err() {
@@ -568,7 +589,7 @@ impl Vm {
                 }
                 self.stack.truncate(base);
             }
-            if suspended_parent_stack.is_none() {
+            if !suspended {
                 self.pending_completions.truncate(pending_base);
                 self.completion_saves.truncate(save_base);
             }
@@ -584,25 +605,29 @@ impl Vm {
                 match DebuggerInterpreterExit::classify(exit, DebuggerFrameKind::NestedEntry) {
                     DebuggerInterpreterExit::Suspended {
                         pc,
-                        iterators,
+                        iterators: saved_iterators,
                         handlers,
                     } => {
                         debug_assert!(self.debugger_nested_continuation.is_some());
                         debug_assert!(self.debugger_nested_intermediate_continuation.is_none());
-                        let stack = self.stack.split_off(frame_base);
-                        let mut execution = self.suspend_module_execution();
-                        let parent_stack = std::mem::replace(&mut execution.stack, stack);
-                        execution.refresh_execution_charges();
-                        self.debugger_nested_intermediate_continuation =
-                            Some(IntermediateDebuggerContinuation {
-                                code: code.as_ref().clone(),
-                                pc,
-                                execution,
-                                iterators,
-                                handlers,
-                            });
-                        suspended_parent_stack = Some(parent_stack);
-                        Ok(Value::Undefined)
+                        match self.capture_suspension_execution(frame_base) {
+                            Ok(execution) => {
+                                self.debugger_nested_intermediate_continuation =
+                                    Some(IntermediateDebuggerContinuation {
+                                        code: code.as_ref().clone(),
+                                        pc,
+                                        execution,
+                                        iterators: saved_iterators,
+                                        handlers,
+                                    });
+                                suspended = true;
+                                Ok(Value::Undefined)
+                            }
+                            Err(error) => {
+                                iterators = saved_iterators;
+                                Err(error)
+                            }
+                        }
                     }
                     DebuggerInterpreterExit::Completed(result) => result,
                 };
@@ -617,7 +642,7 @@ impl Vm {
                 }
                 self.stack.truncate(base);
             }
-            if suspended_parent_stack.is_none() {
+            if !suspended {
                 self.pending_completions.truncate(pending_base);
                 self.completion_saves.truncate(save_base);
             }
@@ -637,9 +662,7 @@ impl Vm {
                 .unwrap_or(Value::Undefined),
             None => self.this.clone(),
         };
-        let suspended = suspended_parent_stack.is_some();
-        if let Some(stack) = suspended_parent_stack {
-            self.stack = stack;
+        if suspended {
             self.result_root = result_root;
             self.with_objects = with_objects;
             self.inherited_with_depth = inherited_with_depth;

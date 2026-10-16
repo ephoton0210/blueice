@@ -41,6 +41,7 @@ mod global_bindings;
 use frame_maps::PreparedFrameMaps;
 use generator_storage::OwnedGeneratorState;
 mod scope_storage;
+mod suspension_storage;
 use frame_bindings::{FrameBindingKind, PreparedFrameBindings};
 mod for_in;
 mod functions;

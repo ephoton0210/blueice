@@ -2339,7 +2339,14 @@ impl Vm {
                     iterators,
                     handlers,
                 }) => {
-                    let stack = std::mem::take(&mut self.stack);
+                    let mut storage =
+                        self.prepare_suspension_storage(0, true).inspect_err(|_| {
+                            let _ = self
+                                .heap
+                                .set_generator_state(generator, GeneratorState::Done);
+                        })?;
+                    let stack = storage.take_stack(self);
+                    let pending = storage.take_pending(self);
                     let async_delegate = code
                         .async_yield_delegates
                         .iter()
@@ -2367,14 +2374,7 @@ impl Vm {
                         active_scopes: std::mem::take(&mut self.active_scopes),
                         iterators: iterators.into_vec(),
                         handlers: handlers.into_vec(),
-                        pending_completions: std::mem::take(&mut self.pending_completions)
-                            .into_iter()
-                            .map(|completion| {
-                                completion.into_generator_pending().expect(
-                                    "only catchable completions can survive a generator yield",
-                                )
-                            })
-                            .collect(),
+                        pending_completions: pending,
                         completion_saves: std::mem::take(&mut self.completion_saves),
                         async_delegate,
                         delegate: None,
@@ -2384,7 +2384,7 @@ impl Vm {
                         with_objects: std::mem::take(&mut self.with_objects),
                     };
                     self.async_frame_roots.extend(value.object_id());
-                    self.own_generator_state(state).store(self, generator)?;
+                    storage.into_generator(self, state).store(self, generator)?;
                     let mut ambient = ambient
                         .take()
                         .expect("each async generator turn restores its displaced frame once");

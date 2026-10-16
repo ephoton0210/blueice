@@ -323,7 +323,7 @@ impl GeneratorPendingCompletion {
             | Self::TypeError(message)
             | Self::RangeError(message)
             | Self::SyntaxError(message)
-            | Self::Test262(message) => message.len(),
+            | Self::Test262(message) => message.capacity(),
             Self::TailRecur(values) => {
                 values.capacity() * size_of::<Value>()
                     + values.iter().map(Value::payload_bytes).sum::<usize>()

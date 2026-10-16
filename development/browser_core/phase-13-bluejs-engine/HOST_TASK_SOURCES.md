@@ -253,8 +253,24 @@ adopt them. Completion conversion moves values into an admitted vector without
 allocating at installation. A borrowed pending-reference iterator appends roots
 directly instead of building an intermediate root vector. Module association
 preparation preserves the original referrer and caller restoration behavior.
-Outgoing stack splits/completion conversions, generator parameter-entry root
-growth and other association copies remain in the broader preallocation gate.
+Generator parameter-entry root growth and other association copies remain in
+the broader preallocation gate.
+
+Outgoing generator, async and nested-debugger snapshots jointly admit stack
+suffix slots and generator-completion target slots before allocating either
+buffer or moving frame contents. Actual capacities are checked before capture.
+A whole-stack capture moves the existing allocation; an empty completion list
+needs no new target. Conversion moves completion values into the staged vector.
+Saved error messages count retained capacity in both native and managed owners.
+
+Detached stack/completion buffers keep a scoped native lease, including their
+payloads, until generator state or a suspended execution adopts them. Execution
+capture immediately returns the caller's stack prefix to the active VM while
+the continuation owns the suffix. Refusal follows the ordinary caller/iterator
+cleanup and does not publish the refused continuation. If a parent debugger
+capture fails after its child paused, terminal root cleanup discards all saved
+debugger descendants and releases their uniquely owned result roots before
+final collection. A paused root retains its frames and can still resume.
 
 Call, eval and generator entry prepare capture-cell tables before constructor
 entry effects. Minimum slot admission precedes reserve; reported capacity is
@@ -275,9 +291,8 @@ parameter return, snapshot admission and heap store. Native refusal drops the
 state, closes the abandoned frame and reconciles the shared contribution.
 The heap operation releases the lease immediately after adoption/refusal,
 before VM collection bookkeeping can admit native cleanup work. Terminal
-Done/Running cleanup remains allowed after resource abort. Stack/completion
-conversion preallocation and other association
-copies remain separate open work.
+Done/Running cleanup remains allowed after resource abort. Parameter-entry root
+growth, other association copies and wider native storage remain open work.
 
 Iterator and handler vectors carry scoped native charges through execution,
 cleanup, async/module continuations and debugger pauses. New records plan and

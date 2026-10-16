@@ -319,13 +319,16 @@ impl Vm {
                 None,
             )
         };
-        let state = match outcome.map(generator_entry_exit) {
-            Ok((pc, iterators, handlers)) => {
+        let state = outcome
+            .map(generator_entry_exit)
+            .and_then(|(pc, iterators, handlers)| {
                 debug_assert_eq!(pc, code.generator_entry as usize);
                 debug_assert!(iterators.is_empty());
                 debug_assert!(handlers.is_empty());
-                let stack = self.stack.split_off(frame_base);
-                Ok(GeneratorState::Suspended {
+                let mut storage = self.prepare_suspension_storage(frame_base, true)?;
+                let stack = storage.take_stack(self);
+                let pending = storage.take_pending(self);
+                let state = GeneratorState::Suspended {
                     disposables: std::mem::take(&mut self.disposables).into_vec(),
                     dispose_marks: std::mem::take(&mut self.dispose_marks).into_vec(),
                     code,
@@ -340,7 +343,7 @@ impl Vm {
                     active_scopes: std::mem::take(&mut self.active_scopes),
                     iterators: iterators.into_vec(),
                     handlers: Vec::new(),
-                    pending_completions: Vec::new(),
+                    pending_completions: pending,
                     completion_saves: Vec::new(),
                     async_delegate: None,
                     delegate: None,
@@ -348,12 +351,10 @@ impl Vm {
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
                     with_objects: std::mem::take(&mut self.with_objects),
-                })
-            }
-            Err(error) => Err(error),
-        };
-
-        let state = state.and_then(|state| self.own_generator_state(state).admit(self));
+                };
+                Ok(storage.into_generator(self, state))
+            });
+        let state = state.and_then(|state| state.admit(self));
         self.with_objects = with_objects;
         self.inherited_with_depth = inherited_with_depth;
         self.parameter_eval_env = parameter_eval_env;
@@ -765,7 +766,32 @@ impl Vm {
         // result object, which is returned without wrapping it again.
         let mut yielded_delegate_result = false;
 
-        let (next_state, result) = match outcome.map(GeneratorRunExit::from_interpreter) {
+        let mut suspension = None;
+        let outcome = outcome
+            .map(GeneratorRunExit::from_interpreter)
+            .and_then(|mut exit| {
+                let pending = matches!(exit, GeneratorRunExit::Yield { .. });
+                if pending
+                    || (async_target.is_some() && matches!(exit, GeneratorRunExit::Await { .. }))
+                {
+                    match self.prepare_suspension_storage(frame_base, pending) {
+                        Ok(storage) => suspension = Some(storage),
+                        Err(error) => {
+                            // Return yielded iterator records to the common error
+                            // cleanup before restoring the caller's frame.
+                            if let GeneratorRunExit::Yield {
+                                iterators: records, ..
+                            } = &mut exit
+                            {
+                                iterators = std::mem::take(records);
+                            }
+                            return Err(error);
+                        }
+                    }
+                }
+                Ok(exit)
+            });
+        let (next_state, result) = match outcome {
             Ok(GeneratorRunExit::Return(value)) => {
                 // An injected generator return skips the compiler's normal
                 // IteratorFinish/IteratorClose instructions. Keep the
@@ -785,7 +811,11 @@ impl Vm {
                 iterators,
                 handlers,
             }) => {
-                let stack = self.stack.split_off(frame_base);
+                let storage = suspension
+                    .as_mut()
+                    .expect("yield prepared snapshot storage");
+                let stack = storage.take_stack(self);
+                let pending = storage.take_pending(self);
                 // Every compiled async yield first awaits its operand or
                 // delegate's next result. resume_async_continuation captures
                 // asynchronous delegation after that await; this direct exit
@@ -819,14 +849,7 @@ impl Vm {
                     active_scopes: std::mem::take(&mut self.active_scopes),
                     iterators: iterators.into_vec(),
                     handlers: handlers.into_vec(),
-                    pending_completions: std::mem::take(&mut self.pending_completions)
-                        .into_iter()
-                        .map(|completion| {
-                            completion
-                                .into_generator_pending()
-                                .expect("only catchable completions can survive a generator yield")
-                        })
-                        .collect(),
+                    pending_completions: pending,
                     completion_saves: std::mem::take(&mut self.completion_saves),
                     async_delegate: None,
                     delegate,
@@ -858,11 +881,9 @@ impl Vm {
                 handlers,
             }) => {
                 if let Some(target) = async_target {
-                    let stack = self.stack.split_off(frame_base);
-                    let mut execution = self.suspend_module_execution();
-                    let parent_stack = std::mem::replace(&mut execution.stack, stack);
-                    execution.refresh_execution_charges();
-                    self.stack = parent_stack;
+                    let execution = self.capture_prepared_execution(
+                        suspension.take().expect("await prepared snapshot storage"),
+                    );
                     let templates = execution.templates.clone();
                     self.templates = templates;
                     suspended_async = Some((
@@ -894,11 +915,15 @@ impl Vm {
         // can trigger a major collection. Everything this call still holds
         // outside the heap (the caller's frame copied onto the stack above,
         // and the value about to be yielded or thrown) must be visible to it.
+        let next_state = self.own_generator_state(next_state);
+        drop(suspension);
         match &result {
-            Ok((value, _)) | Err(RuntimeError::Thrown(value)) => self.stack.push(value.clone()),
+            Ok((value, _)) | Err(RuntimeError::Thrown(value)) => {
+                self.stack.extend(value.object_id().map(Value::Object));
+            }
             Err(_) => {}
         }
-        let stored = self.own_generator_state(next_state).store(self, *generator);
+        let stored = next_state.store(self, *generator);
         // A failed store must still hand the caller's frame back: leaving the
         // swapped-out execution state in place would unbalance the interpreter
         // (for example an empty `dynamic_eval_outer_bindings` stack) on the
