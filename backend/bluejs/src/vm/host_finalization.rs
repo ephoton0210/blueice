@@ -29,11 +29,14 @@ impl Vm {
             {
                 continue;
             }
-            self.admit_scheduling_work(HostSchedulingUsage {
+            let extra = HostSchedulingUsage {
                 pending_browser_tasks: 1,
-                payload_bytes: 4 * std::mem::size_of::<HostFinalizationTask>(),
                 ..HostSchedulingUsage::default()
-            })?;
+            };
+            let growth = SchedulingCapacity::for_deque_push(&self.host_finalization_tasks);
+            self.admit_scheduling_work(extra.with_growth(growth))?;
+            growth.reserve_deque(&mut self.host_finalization_tasks);
+            self.admit_scheduling_work(extra)?;
             let serial = self
                 .host_scheduling
                 .as_ref()

@@ -355,11 +355,8 @@ impl Vm {
             }
             _ => {}
         }
-        self.admit_scheduling_work(HostSchedulingUsage {
-            pending_browser_tasks: 1,
-            payload_bytes: completion
-                .payload_bytes()
-                .saturating_add(4 * std::mem::size_of::<browser_tasks::BrowserTask>()),
+        self.reserve_browser_task(HostSchedulingUsage {
+            payload_bytes: completion.payload_bytes(),
             ..HostSchedulingUsage::default()
         })?;
         let serial = self.next_host_task_serial()?;

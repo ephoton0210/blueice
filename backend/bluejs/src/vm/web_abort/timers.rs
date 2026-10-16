@@ -28,12 +28,6 @@ impl Vm {
                 "Browser task queue limit exceeded".into(),
             ));
         }
-        self.admit_scheduling_work(HostSchedulingUsage {
-            pending_browser_tasks: 1,
-            payload_bytes: 4 * std::mem::size_of::<BrowserTask>(),
-            ..HostSchedulingUsage::default()
-        })?;
-        let serial = self.next_host_task_serial()?;
         let deadline = if self.host_scheduling.is_some() {
             AbortTimeoutDeadline::Host(self.sample_host_timer_clock().saturating_add(number as u64))
         } else {
@@ -42,6 +36,8 @@ impl Vm {
                 delay: Duration::from_millis(number as u64),
             }
         };
+        self.reserve_browser_task(HostSchedulingUsage::default())?;
+        let serial = self.next_host_task_serial()?;
         let signal = self.fresh_abort_signal()?;
         self.browser_tasks.push_back(BrowserTask::AbortTimeout {
             signal,

@@ -211,11 +211,6 @@ impl Vm {
                     );
                 }
                 let mut state = self.heap.file_reader(reader)?.clone();
-                self.admit_scheduling_work(HostSchedulingUsage {
-                    pending_browser_tasks: 1,
-                    payload_bytes: 4 * std::mem::size_of::<BrowserTask>(),
-                    ..HostSchedulingUsage::default()
-                })?;
                 state.epoch = state.epoch.checked_add(1).ok_or_else(|| {
                     RuntimeError::RangeError("FileReader identity exhausted".into())
                 })?;
@@ -228,6 +223,7 @@ impl Vm {
                 state.loaded = 0;
                 state.total = self.heap.web_blob(blob)?.bytes.len();
                 let epoch = state.epoch;
+                self.reserve_browser_task(HostSchedulingUsage::default())?;
                 let serial = self.next_host_task_serial()?;
                 let root = self.heap.root(reader)?;
                 if let Err(error) = self.with_roots(|heap| heap.set_file_reader(reader, state)) {

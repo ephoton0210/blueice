@@ -67,7 +67,8 @@ interval keeps its registration until cleared, including during its callback.
 Cancellation and realm/document destruction return the owning contribution.
 An unreachable realm with pending work remains alive until that work finishes.
 
-Clock sampling precedes final registration admission and serial assignment.
+Callback-timer and abort-timeout clock sampling precedes final registration
+admission and serial assignment.
 Work enqueued by an embedding clock callback is therefore included in that
 admission and receives the earlier enqueue serial, before the outer timer.
 
@@ -79,16 +80,26 @@ are unchanged. Replacement and close drop the owning queues and reset source
 selection with the realm. These Rust count snapshots do not change the
 private transport's existing byte totals or layout.
 
-Callback-timer/frame vectors, the Promise-job deque and each Promise's pending
-reaction vector admit the slot-capacity delta needed for an append before
-publishing it. Growth explicitly requests at least four slots, doubling an
-existing full capacity. Available slots add no storage charge. If reservation
-reports more capacity than requested, admission checks that actual storage
-again before publishing; a refused timer/frame releases its temporary roots.
-Timer argument storage excludes the callback and delay and retains one callback
-root plus reserved argument-root slots. Browser-task, finalization and rejection
-queue producers still require this capacity review; the broader native storage
-gate remains open.
+Callback-timer/frame vectors, Promise-job/browser/cleanup deques, each Promise's
+pending reaction vector and the pending rejection-notification vector admit
+the slot-capacity delta needed for an append before publishing it. Growth
+explicitly requests at least four slots, doubling an existing full capacity.
+Available slots add no storage charge. If reservation reports more capacity
+than requested, admission checks that actual storage again before publishing;
+a refused timer/frame releases its temporary roots. Timer argument storage
+excludes the callback and delay and retains one callback root plus reserved
+argument-root slots.
+
+All browser-task producers reserve one entry before publishing task roots,
+completion-queued flags or FileReader state. The ledger records actual reserved
+capacity before later native allocations, even if the operation then fails.
+Unhandled rejection delivery transfers its existing pending vector and reaction
+count rather than admitting a second owner. A FileReader event callback can
+fill the queue's spare slots or consume the shared document count; the next
+read stage must readmit its entry after that callback and release its root on
+refusal. FileReader cancellation removes matching entries in place, preserving
+other queued work and its storage without a replacement allocation.
+The broader native control/service-buffer gate remains open.
 
 ### Native-payload collection pressure
 

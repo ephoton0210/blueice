@@ -97,14 +97,20 @@ impl Vm {
         if self.host_rejections.is_none() {
             return;
         }
+        let extra = HostSchedulingUsage {
+            pending_reactions: 1,
+            ..Default::default()
+        };
+        let growth =
+            SchedulingCapacity::for_vec_push(&self.host_rejections.as_ref().unwrap().pending);
         if self
-            .admit_scheduling_work(HostSchedulingUsage {
-                pending_reactions: 1,
-                payload_bytes: 4 * std::mem::size_of::<PendingRejection>(),
-                ..Default::default()
-            })
+            .admit_scheduling_work(extra.with_growth(growth))
             .is_err()
         {
+            return;
+        }
+        growth.reserve_vec(&mut self.host_rejections.as_mut().unwrap().pending);
+        if self.admit_scheduling_work(extra).is_err() {
             return;
         }
         let root = self
@@ -142,19 +148,19 @@ impl Vm {
             // Removing the outstanding bit precedes publishing this task.
             // Only the queued event, not the outstanding set, retains it.
             let result = (|| {
-                self.admit_scheduling_work(HostSchedulingUsage {
-                    pending_browser_tasks: 1,
+                let mut entries = Vec::with_capacity(1);
+                self.reserve_browser_task(HostSchedulingUsage {
                     pending_reactions: 1,
-                    payload_bytes: 4 * std::mem::size_of::<browser_tasks::BrowserTask>()
-                        + std::mem::size_of::<PendingRejection>(),
+                    payload_bytes: entries.capacity() * std::mem::size_of::<PendingRejection>(),
                     ..Default::default()
                 })?;
                 let serial = self.next_host_task_serial()?;
                 let root = self.heap.root(promise)?;
+                entries.push(PendingRejection { promise, root });
                 self.browser_tasks
                     .push_back(browser_tasks::BrowserTask::PromiseRejections {
                         serial,
-                        entries: vec![PendingRejection { promise, root }],
+                        entries,
                         handled: true,
                     });
                 Ok::<(), RuntimeError>(())
@@ -176,11 +182,7 @@ impl Vm {
         {
             return Ok(());
         }
-        self.admit_scheduling_work(HostSchedulingUsage {
-            pending_browser_tasks: 1,
-            payload_bytes: 4 * std::mem::size_of::<browser_tasks::BrowserTask>(),
-            ..Default::default()
-        })?;
+        self.reserve_browser_task(HostSchedulingUsage::default())?;
         let serial = self.next_host_task_serial()?;
         let entries = std::mem::take(&mut self.host_rejections.as_mut().unwrap().pending);
         self.browser_tasks

@@ -20,6 +20,10 @@ mod document_timer_counts;
 #[path = "../../tests/fixtures/scheduling_capacity.rs"]
 mod capacity_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/browser_task_capacity.rs"]
+mod browser_task_capacity;
+
 pub const MAX_PENDING_HOST_MICROTASKS: usize = 1024;
 pub const MAX_PENDING_HOST_REACTIONS: usize = 1024;
 pub const MAX_PENDING_HOST_TIMERS: usize = 1024;

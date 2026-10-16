@@ -63,10 +63,13 @@ the ninth entry to be published before an eight-slot growth is refused;
 it also rejects a timer that fits an existing slot. Admission now plans the
 requested slot growth, reserves it explicitly and rechecks any allocator-
 reported excess before publication. Timer argument/root forecasts exclude
-the callback and delay from the argument vector. Eight capacity groups and
-92 existing controls pass, with formatting and offline workspace/all-target
-Clippy clean. Browser-task, cleanup and rejection queue producers still need
-the same review; final integrated/resource acceptance remains open.
+the callback and delay from the argument vector. The initial four-container
+checkpoint passes 100 selected cases. The browser/cleanup/rejection follow-up
+adds twenty failing-before-fix groups, including FileReader requeue/cancellation
+and timeout clock ordering. The reviewed scheduling vectors/deques now reserve
+capacity before publication. Follow-up validation passes 161 selected cases,
+formatting and offline workspace/all-target Clippy. Final integrated/resource
+acceptance remains open.
 
 **In progress — M1w document callback-timer counts (2026-10-16).**
 Callback timer limits previously applied to each realm separately, while the
@@ -396,8 +399,9 @@ work and exposes its retained payload ledger.
       that fit existing storage without a fictitious growth charge. Timer,
       frame, Promise-job and Promise-reaction regressions use at most nine
       entries and a scalar shared-owner model. The implementation checkpoint
-      below does not close the browser-task/cleanup/rejection producers or
-      the wider native control/service-buffer gate.
+      below now includes browser-task/cleanup/rejection producers, FileReader
+      requeue/cancellation and timeout clock ordering; integrated acceptance
+      and the wider native control/service-buffer gate remain open.
 - [ ] **M1w: document callback-timer counts.** Root and attached child realms
       must share 1,024 pending callback registrations, expose aggregate counts,
       refund delivery/cancellation/document destruction and refuse before
@@ -803,8 +807,9 @@ refuse before queue/owner publication or timer/frame identifier changes;
 preserve successful appends into available slots; reconcile allocator-reported
 capacity before publishing. Preserve callback rooting, document failure,
 delivery, cancellation and Promise checkpoint semantics. This checkpoint
-covers callback timers, animation frames, Promise jobs and pending Promise
-reactions. Other scheduling producers and integrated acceptance remain open.
+covers callback timers, animation frames, Promise jobs, pending Promise
+reactions, browser/cleanup tasks and rejection notifications. Integrated
+acceptance and broader native control/service storage remain open.
 
 - [x] Reproduce five failures with ordinary unit tests using at most nine
       small live entries and a scalar model of another shared owner. The
@@ -820,8 +825,17 @@ reactions. Other scheduling producers and integrated acceptance remain open.
 - [x] Pass eight capacity groups, 23 existing handoff/call-entry/timer-count
       groups and 69 public timer/frame/Promise controls; formatting and offline
       workspace/all-target Clippy pass with warnings denied.
-- [ ] Apply and validate capacity admission for browser-task producers,
-      FileReader task requeue, finalization and rejection notification queues.
+- [x] Apply capacity admission to drag, timeout, FileReader, host completion,
+      handled/unhandled rejection notifications, cleanup and pending-rejection
+      queues before retaining new roots, serials or externally visible state.
+- [x] Readmit FileReader's next stage after callbacks can consume its slot or
+      document count; release the stage's root on refusal. Cancel matching
+      reads in place without rebuilding other tasks into larger storage.
+- [x] Sample abort-timeout clocks before final admission and serial assignment,
+      preserving child work enqueued by an embedding clock callback.
+- [x] Pass follow-up bounded regression/control checks, formatting and offline
+      workspace/all-target Clippy with warnings denied; retain a separate
+      source/executable/log receipt for this checkpoint.
 - [ ] Complete integrated/full-source acceptance under the owner's security
       constraints. M1u remains the latest accepted milestone.
 
@@ -830,7 +844,7 @@ and reaction containers already contain nine entries when the byte ledger
 refuses growth; an available timer slot incorrectly returns SchedulingLimit.
 Red log: `/private/tmp/blueice-scheduling-capacity-unit-red-20261016.log`.
 
-Current-source bounded validation: **100 passed, zero failed, zero ignored**.
+Initial checkpoint (`f39d6385e`) validation: **100 passed, zero failed, zero ignored**.
 All eight capacity groups pass, including fitting appends for all four
 container families. Existing unit controls pass twelve payload-handoff, four
 call-entry and seven timer-count groups. Public `document_timer_counts` (two),
@@ -849,6 +863,42 @@ Logs: `/private/tmp/blueice-scheduling-capacity-final-unit-20261016.log`,
 `/private/tmp/blueice-scheduling-capacity-clippy-20261016.log`.
 Bounded source/executable/log receipt:
 `target/scheduling-capacity-source-20261016.json`.
+No fresh full Test262, real Core/MCP replay or coverage result is claimed.
+
+**Browser/cleanup/rejection follow-up — bounded validation passed.** Twenty
+bounded unit groups fail on the parent and pass with the
+implementation. Twelve cover growth refusal and available slots for six browser
+producers; four cover cleanup and pending-rejection storage. Two cover FileReader
+callbacks consuming spare slots or the shared document count before requeue;
+one covers cancellation without regrowing unrelated tasks and one covers clock
+reentry ordering. Refusal preserves queued entries, capacity, root-registration
+and serial counts, pending rejection ownership and initial FileReader state.
+The requeue failures release the reader root instead of publishing a ninth task.
+Fixtures use at most nine live entries with scalar shared-owner models; no
+corresponding large payload or large task queue is allocated. The complete red
+log is `/private/tmp/blueice-browser-task-capacity-expanded-red-20261016.log`.
+
+Current-source bounded validation: **161 passed, zero failed, zero ignored**.
+The twenty new groups and 36 existing unit controls pass: eight initial
+capacity groups, twelve payload-handoff groups, four call-entry controls,
+seven timer-count groups, two cleanup boundaries and three task-source
+boundaries. Seven public selections pass `host_async_tasks` (18),
+`host_finalization_tasks` (ten), `host_rejections` (twelve), `host_task_turns`
+(27), `web_abort` (six), `web_abort_lifecycle` (seven) and `web_file_api` (25).
+Fifteen other public pressure/limit cases remain filtered. Formatting,
+`git diff --check` and offline workspace/all-target Clippy with warnings
+denied pass.
+
+Logs: `/private/tmp/blueice-browser-task-capacity-final-unit-20261016.log`,
+`/private/tmp/blueice-browser-task-capacity-slot-controls-20261016.log`,
+`/private/tmp/blueice-browser-task-capacity-handoff-controls-20261016.log`,
+`/private/tmp/blueice-browser-task-capacity-call-controls-20261016.log`,
+`/private/tmp/blueice-browser-task-capacity-timer-controls-20261016.log`,
+`/private/tmp/blueice-browser-task-capacity-cleanup-controls-20261016.log`,
+`/private/tmp/blueice-browser-task-capacity-source-controls-20261016.log`,
+`/private/tmp/blueice-browser-task-capacity-public-controls-20261016.log` and
+`/private/tmp/blueice-browser-task-capacity-clippy-20261016.log`.
+Receipt: `target/browser-task-capacity-source-20261016.json`.
 No fresh full Test262, real Core/MCP replay or coverage result is claimed.
 
 ### M1w — Document callback-timer counts (implementation checkpoint, 2026-10-16)
