@@ -199,6 +199,13 @@ impl Vm {
         // allocate an ordinary async-function capability before entering the
         // generator branch, where it would be unreachable and leak state.
         let async_function = code.async_function && !code.generator;
+        let can_suspend =
+            async_function || nested_debugger_target.is_some() || intermediate_debugger_frame;
+        let mut prepared_environment = if !code.generator {
+            Some(self.prepare_call_environment(can_suspend)?)
+        } else {
+            None
+        };
         // AsyncFunctionStart creates the promise capability before executing
         // the body.  If the body reaches await, that same promise owns the
         // saved continuation; otherwise its immediate completion settles it.
@@ -448,26 +455,15 @@ impl Vm {
                 Err(error) => entry_error = Some(error),
             }
         }
-        let can_suspend =
-            async_function || nested_debugger_target.is_some() || intermediate_debugger_frame;
-        let mut frame_dynamic_eval_outer_bindings = if can_suspend {
-            self.dynamic_eval_outer_bindings.clone()
-        } else {
-            Vec::new()
-        };
+        let mut prepared_environment = prepared_environment
+            .take()
+            .expect("ordinary entry prepared its environment stack");
+        let (mut frame_dynamic_eval_outer_bindings, mut active_module_name) =
+            prepared_environment.take_parts();
         let top_level_module = self.top_level_module;
         let remaining_instructions = self.remaining_instructions;
         let new_target = self.new_target.clone();
         let new_target_allowed = self.new_target_allowed;
-        let mut active_module_name = if can_suspend {
-            self.active_module_name.clone()
-        } else {
-            None
-        };
-        let backup_control = self.charge_execution_control(
-            execution_payload::outer_binding_bytes(&frame_dynamic_eval_outer_bindings)
-                .saturating_add(active_module_name.as_ref().map_or(0, String::capacity)),
-        );
         let result_root = self.result_root.take();
         let mut suspended_parent_stack = None;
         let mut suspended_async = None;
@@ -692,7 +688,7 @@ impl Vm {
         drop(caller_control);
         drop(frame_dynamic_eval_outer_bindings);
         drop(active_module_name);
-        drop(backup_control);
+        drop(prepared_environment);
         // A failure to suspend takes the same route as a failure of the body:
         // it ends the call (or rejects the async function's promise) below.
         let result = match suspended_async {

@@ -156,6 +156,15 @@ owners each path actually displaces; ordinary calls forward eval maps into the
 callee and make recovery copies only when async/debugger suspension can occur.
 Necessary recovery copies retain their own charge.
 
+Call entry now jointly admits forwarding-stack growth and any async/debugger
+recovery copy before constructor getters, result-capability publication or
+caller-context replacement. Preparation includes each copied table, name,
+shadowed-cell buffer and module-name string, then checks actual capacities.
+Reserved forwarding slots stay in VM ownership; synchronous calls allocate no
+recovery copies. A scoped owner retains required copies through callbacks and
+detached field transfers, releasing after caller restoration. Refusal preserves
+caller environment contents and reconciles temporary ownership for peer realms.
+
 Suspended frames retain both primitive and control charges, and their container
 records add only storage outside those charges. Stack splits and debugger stack
 edits refresh both saved charges, including a primitive returned into a paused
@@ -186,8 +195,8 @@ Generator resume prepares copied scope-slot lists before taking its saved
 state. The outer vector and each nested buffer retain a native charge until
 transfer into active fields. A common resume exit reconciles released staging,
 including refusal after binding metadata was prepared, so peer realms see the
-released contribution. Dynamic environment backup/publication and per-iteration
-cell staging remain in the broader preallocation/transient gate.
+released contribution. Dynamic binding publication, other module-association
+copies and per-iteration cell staging remain in the broader transient gate.
 
 Call, eval and generator entry prepare capture-cell tables before constructor
 entry effects. Minimum slot admission precedes reserve; reported capacity is
@@ -209,8 +218,8 @@ state, closes the abandoned frame and reconciles the shared contribution.
 The heap operation releases the lease immediately after adoption/refusal,
 before VM collection bookkeeping can admit native cleanup work. Terminal
 Done/Running cleanup remains allowed after resource abort. Stack/completion
-conversion preallocation and dynamic environment backup/publication remain
-separate open work.
+conversion preallocation, dynamic binding publication and other association
+copies remain separate open work.
 
 Iterator and handler vectors carry scoped native charges through execution,
 cleanup, async/module continuations and debugger pauses. New records plan and

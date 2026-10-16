@@ -57,14 +57,24 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Generator storage ownership is the current follow-up. Two finite two-yield
-groups reproduce maps losing 31 reserved slots across resume and now pass.
+Dynamic environment entry/recovery admission is the current follow-up. Two
+finite groups reproduce a constructor getter and async result capability
+published before environment-storage refusal. Both now pass with joint stack/
+recovery preparation before entry effects and context replacement. Necessary
+copies retain scoped ownership; synchronous forwarding creates no recovery
+copy. Eight expanded groups and the full 485-case bounded selection pass with
+formatting and offline workspace/all-target Clippy. This implementation
+checkpoint is recorded below; dynamic binding publication, other association
+copies, conversion preallocation and integrated acceptance remain open.
+
+The generator storage checkpoint addresses two finite two-yield groups that
+reproduced maps losing 31 reserved slots across resume; both now pass.
 Suspension/resume retain the actual maps rather than converting them to/from
 vectors. Managed state counts their table capacity and shared binding edges;
 Rust-held state carries a scoped native charge through admission and heap
 adoption. Ten expanded groups and the full 477-case bounded selection pass,
 along with formatting and offline workspace/all-target Clippy. This checkpoint
-is recorded below; stack/completion conversion preallocation, dynamic backup
+is recorded below; stack/completion conversion preallocation, dynamic binding
 work and integrated acceptance remain open.
 
 The captured/dynamic frame-map checkpoint addresses allocation after constructor
@@ -1397,6 +1407,63 @@ warnings denied pass. Logs use `/private/tmp/blueice-generator-storage-` with
 Receipt: `target/generator-storage-source-20261016.json`.
 Stack/completion conversion preallocation, dynamic environment backups/
 publication, other container/transient/module-cache/service storage and
+integrated acceptance remain open. No fresh full Test262, real Core/MCP replay
+or coverage result is claimed; M1u remains the latest accepted milestone.
+
+#### Call-environment admission follow-up (implementation checkpoint)
+
+Acceptance: jointly admit forwarded dynamic-environment stack growth and required
+recovery copies while the caller context is intact. Refusal precedes constructor
+prototype getters, async result-capability publication and context replacement.
+Include outer/current map slots, copied names/shadowed buffers and module-name
+copies; recheck reported capacity before returning the prepared owner. Existing
+stack slots add no growth. Ordinary synchronous calls retain forwarding without
+recovery copies. Async/debugger handoff keeps snapshot ownership through field
+transfer and restores the same environments/module association on all exits.
+
+- [x] Reproduce a getter running and an async capability published before
+      environment refusal; both initial groups pass after implementation.
+- [x] Prepare stack capacity and required recovery copies before call effects;
+      preserve synchronous forwarding and generator entry behavior.
+- [x] Carry actual recovery capacity through callbacks/detached transfers and
+      reconcile refusal without changing caller environment contents.
+- [x] Pass expanded exact-budget, no-copy, module, recovery, peer and await/GC
+      controls plus related finite semantics/debugger checks, formatting and
+      Clippy; record the source/artifact audit with the checkpoint commit.
+- [ ] Complete dynamic binding publication, other module-association copies,
+      stack/completion conversions,
+      other container/transient/module-cache/service storage and integrated
+      acceptance. M1u remains the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-environment-admission-red-20261016.log`
+(zero passed, two failed). A constructor's native prototype getter runs before
+the forwarded environment vector grows; an async result Promise increases the
+table from one to two entries before recovery-copy admission fails. Initial
+fixed log: `/private/tmp/blueice-environment-admission-green-20261016.log`.
+
+Eight expanded groups pass. Exact-budget/one-byte controls cover growing and
+spare stack slots, populated and reserved-empty tables and both recovery modes.
+Synchronous spare-slot preparation consumes no new native bytes and preserves
+original buffers. Copied name/shadowed buffers use their actual clone capacity;
+detached recovery fields stay charged during a native callback. Refusal preserves
+caller contents and a peer observes the exact contribution. Module-name storage
+joins admission, and await/resume restores environments and module association
+under nursery one/sixteen with at most 32 job turns.
+
+Final bounded validation: **485 passed, zero failed, zero ignored** across 27
+test executables. The eight new groups and the prior 477 ownership/semantic/
+GC/debugger cases pass, including the existing synchronous no-backup contract.
+Fixtures use tiny maps/vectors and scalar peer budgets with no represented
+large-buffer allocation. The seven prior pressure/large-allocation exclusions
+remain filtered; deep-recursion tail suites and network/service replays are
+not run.
+
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass. Logs use `/private/tmp/blueice-environment-admission-` with
+`{environments,storage,maps,scopes,scope-functions,scope-loops,frames,module-entry,entry,heap-restoration,entry-semantics,bound-semantics,tail-semantics,resources,heap-resources,records,closure-exits,module-exits,generator-exits,generator-close,iterator-close,record-semantics,capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
+Receipt: `target/environment-admission-source-20261016.json`.
+Dynamic binding publication, other association copies, stack/completion
+conversions, other container/transient/module-cache/service storage and
 integrated acceptance remain open. No fresh full Test262, real Core/MCP replay
 or coverage result is claimed; M1u remains the latest accepted milestone.
 

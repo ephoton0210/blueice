@@ -25,6 +25,7 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 mod browser_tasks;
 mod builtins;
+mod call_environment;
 mod classification;
 mod completion;
 mod debugger;
