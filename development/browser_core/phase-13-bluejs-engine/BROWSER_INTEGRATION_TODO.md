@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The generator resume checkpoint (2026-10-17) prepares stack/completion/module
+storage and incoming native ownership while saved state stays in the heap.
+Both initial state-consumption regressions and ten expanded controls pass.
+Extracted buffers remain charged through adoption; pending roots use a borrowed
+iterator. All 568 selected cases, formatting and offline workspace/all-target
+Clippy pass; the source/artifact audit is recorded below. Outgoing snapshot/
+parameter-entry preallocation and wider native/integrated gates remain open;
+M1u remains the latest accepted milestone.
+
 The realm-global record checkpoint counts persistent table/key capacity and
 prepares script/eval records and initial values before declaration effects.
 Deleted-global recreation refuses before heap/root effects, while ShadowRealm
@@ -1600,6 +1609,67 @@ This is an implementation checkpoint. Other association copies, stack/completion
 conversions, broader container/transient/module-cache/service storage and
 integrated acceptance remain open. No fresh full Test262, real Core/MCP replay
 or coverage result is claimed; M1u remains the latest accepted milestone.
+
+#### Generator resume storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit the incoming frame's native contribution, caller/environment/
+resource/pending roots, initial operand/result stack slots, typed completion
+conversion storage and module-name copy before extracting heap state. Admit
+minimum storage before allocation and reported capacity before extraction.
+Refusal preserves saved state and caller contents. Keep Rust-held buffers
+leased through field/record adoption, transfer completion values without a
+second allocation, and preserve module-referrer semantics and terminal failure.
+
+- [x] Reproduce two finite failures that consume the saved frame/pending return
+      before native refusal; both initial regressions pass after implementation.
+- [x] Prepare stack/completion/module storage and incoming native ownership
+      before extraction; avoid allocating resume storage for Done/Running.
+- [x] Keep detached buffers charged until active fields/typed records adopt
+      them; append borrowed pending roots without an intermediate vector.
+- [x] Pass ten expanded capacity/refusal/ownership/GC controls and related
+      completion/finally semantics, formatting and Clippy; record the source/
+      artifact audit with the checkpoint commit.
+- [ ] Complete outgoing stack/completion snapshot preallocation,
+      generator parameter-entry root growth, other association copies,
+      wider native storage and integrated acceptance.
+      M1u remains the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-generator-resume-red-20261016.log`
+(zero passed, two failed). Both calls return SchedulingLimit, but the original
+resumable frame is already consumed. Initial fixed log:
+`/private/tmp/blueice-generator-resume-development-20261016.log` (two passed).
+
+Ten expanded groups pass. Exact-budget/one-byte controls cover growing/spare
+stack slots and both referrer/caller module copies. Caller-root preparation
+covers bindings, cells, arguments, environments, resources, tail operands and
+saved completions. Detached completion/state buffers retain their native lease;
+the restored generator completes its real return protocol unchanged. Nursery
+one/sixteen and major collection retain pending returned objects, including an
+async finally round trip with at most 64 job turns. Refusal preserves caller
+contents/state and exactly refunds staged owners to a peer without clearing
+failure. Done/Running preparation adds no resume allocation.
+
+Final bounded validation: **568 passed, zero failed, zero ignored** across 35
+test executables. The ten new groups, three completion protocol/stack-guard
+checks and ten public finally cases join the previous 545 ownership/semantic/
+GC/debugger cases. Existing dynamic-import cases verify generator and async-
+generator module referrers across resumption. Fixtures use tiny frames/short
+values and scalar peer budgets without represented large-buffer allocation.
+The seven prior pressure/large-allocation exclusions remain filtered;
+deep-recursion tail suites and network/service replays are not run.
+
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass. Logs use `/private/tmp/blueice-generator-resume-` with
+selection names listed in `controls-20261016.log`; the runner is
+`controls-20261016.py`. Final new-group/completion/finally logs are
+`{resume,completion,finally}-20261016.log`; static checks use
+`{fmt,clippy}-20261016.log`. These artifacts started on October 16 and are
+retained under their original names for the October 17 checkpoint.
+Receipt: `target/generator-resume-source-20261016.json`.
+Outgoing snapshot preallocation, generator parameter-entry root growth, other
+association copies, wider native storage and integrated acceptance remain open.
+No fresh full Test262, real Core/MCP replay or coverage result is claimed;
+M1u remains the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

@@ -409,6 +409,14 @@ pub(crate) struct DynamicEvalBinding {
     pub(crate) shadowed_cells: Vec<ObjectId>,
 }
 
+pub(crate) struct GeneratorResumeLayout {
+    pub(crate) bytes: usize,
+    pub(crate) stack: usize,
+    pub(crate) completions: usize,
+    pub(crate) with_objects: usize,
+    pub(crate) callee: Option<ObjectId>,
+}
+
 // The suspended frame moves atomically between a generator heap slot and the
 // interpreter and is already boxed in ObjectKind::Generator.
 #[allow(clippy::large_enum_variant)]

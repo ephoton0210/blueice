@@ -248,9 +248,7 @@ impl Vm {
                 .map(Value::Object),
         );
         self.stack.extend(closure_with_objects.iter().cloned());
-        let pending_roots = self.pending_execution_references();
-        self.stack
-            .extend(pending_roots.into_iter().map(Value::Object));
+        self.push_pending_execution_roots();
         let frame_base = self.stack.len();
 
         prepared_maps.adopt_captures(captures);
@@ -460,7 +458,9 @@ impl Vm {
             .unwrap_or_default();
         let mut prepared_scopes = self.prepare_generator_scope_slots(*generator)?;
         let mut prepared_maps = self.prepare_generator_frame_maps(*generator)?;
+        let mut prepared_resume = self.prepare_generator_resume(*generator)?;
         let state = self.heap.take_generator_state(*generator)?;
+        prepared_resume.retain_state(&state);
         let (
             code,
             pc,
@@ -660,9 +660,7 @@ impl Vm {
                 .map(Value::Object),
         );
         self.stack.extend(frame_with_objects.iter().cloned());
-        let pending_roots = self.pending_execution_references();
-        self.stack
-            .extend(pending_roots.into_iter().map(Value::Object));
+        self.push_pending_execution_roots();
         let frame_base = self.stack.len();
         self.stack.extend(frame_stack);
 
@@ -708,14 +706,7 @@ impl Vm {
         // identity -- so an `import()` inside it must resolve against the
         // module or script that created the generator function, exactly as
         // an ordinary call of a module closure does.
-        let referrer = self
-            .callee
-            .object_id()
-            .and_then(|id| self.module_closure_referrers.get(&id).cloned());
-        let active_module_name = match referrer {
-            Some(module) => self.active_module_name.replace(module),
-            None => self.active_module_name.clone(),
-        };
+        let active_module_name = prepared_resume.install_module(self);
         let module_name_control =
             self.charge_execution_control(active_module_name.as_ref().map_or(0, String::capacity));
         let variable_scope = std::mem::replace(&mut self.variable_scope, frame_variable_scope);
@@ -725,10 +716,7 @@ impl Vm {
         );
         let pending_completions = std::mem::replace(
             &mut self.pending_completions,
-            frame_pending_completions
-                .into_iter()
-                .map(Completion::from_generator_pending)
-                .collect(),
+            prepared_resume.take_completions(frame_pending_completions),
         );
         let completion_saves =
             std::mem::replace(&mut self.completion_saves, frame_completion_saves);
@@ -737,6 +725,7 @@ impl Vm {
         drop(prepared_maps);
         let mut iterators = self.iterator_records(frame_iterators);
         let mut handlers = self.handler_records(frame_handlers);
+        drop(prepared_resume);
         let outcome = if let Some(completion) = abrupt {
             // `GeneratorState` keeps handler offsets relative to its saved
             // operand stack. `resolve_completion` runs before `interpret`,

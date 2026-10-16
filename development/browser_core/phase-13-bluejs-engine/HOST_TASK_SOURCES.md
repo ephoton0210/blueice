@@ -240,6 +240,22 @@ including after a resource abort. Restoration releases an overwritten property
 binding's old root. Eval/nested-script return reconciles the final caller fields
 after displaced/staged owners drop, so peer accounts see released aliases too.
 
+Generator resume peeks at the saved frame's owned buffers, operand length,
+completion count, inherited environments and callee without extracting state.
+Joint admission includes the incoming native contribution, caller/environment/
+resource/pending-completion roots, operand/result slots, the typed completion
+target and the required module-name copy. Actual vector capacity is checked
+before taking state or displacing caller fields. Refusal leaves the saved frame
+and caller contents intact; completed/running states allocate no resume buffers.
+
+Extracted buffers retain a native lease until active fields and typed records
+adopt them. Completion conversion moves values into an admitted vector without
+allocating at installation. A borrowed pending-reference iterator appends roots
+directly instead of building an intermediate root vector. Module association
+preparation preserves the original referrer and caller restoration behavior.
+Outgoing stack splits/completion conversions, generator parameter-entry root
+growth and other association copies remain in the broader preallocation gate.
+
 Call, eval and generator entry prepare capture-cell tables before constructor
 entry effects. Minimum slot admission precedes reserve; reported capacity is
 checked before the staged owner escapes. Prepared tables retain a native charge

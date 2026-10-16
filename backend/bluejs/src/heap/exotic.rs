@@ -195,6 +195,42 @@ impl Heap {
         })
     }
 
+    pub(crate) fn generator_resume_layout(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<GeneratorResumeLayout>, HeapError> {
+        let ObjectKind::Generator { state, .. } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok(match &**state {
+            GeneratorState::Start {
+                with_objects,
+                callee,
+                ..
+            } => Some(GeneratorResumeLayout {
+                bytes: state.owned_buffer_bytes(),
+                stack: 0,
+                completions: 0,
+                with_objects: with_objects.len(),
+                callee: callee.object_id(),
+            }),
+            GeneratorState::Suspended {
+                stack,
+                pending_completions,
+                with_objects,
+                callee,
+                ..
+            } => Some(GeneratorResumeLayout {
+                bytes: state.owned_buffer_bytes(),
+                stack: stack.len(),
+                completions: pending_completions.len(),
+                with_objects: with_objects.len(),
+                callee: callee.object_id(),
+            }),
+            GeneratorState::Done | GeneratorState::Running => None,
+        })
+    }
+
     pub(crate) fn generator_scope_layout(
         &self,
         object: ObjectId,

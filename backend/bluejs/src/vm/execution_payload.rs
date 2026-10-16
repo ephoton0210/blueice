@@ -104,6 +104,24 @@ pub(super) fn outer_binding_bytes(values: &Vec<HashMap<String, DynamicEvalBindin
         })
 }
 
+fn pending_references<'a>(
+    pending: &'a [Completion],
+    saves: &'a [(Value, bool)],
+) -> impl Iterator<Item = ObjectId> + 'a {
+    pending
+        .iter()
+        .flat_map(|completion| match completion {
+            Completion::Return(value)
+            | Completion::Yield(value)
+            | Completion::Halt(value)
+            | Completion::Throw(RuntimeError::Thrown(value)) => std::slice::from_ref(value),
+            Completion::TailCall(values) | Completion::TailRecur(values) => values.as_slice(),
+            _ => &[],
+        })
+        .filter_map(Value::object_id)
+        .chain(saves.iter().filter_map(|(value, _)| value.object_id()))
+}
+
 pub(super) struct ExecutionPayloadCharge {
     counter: Rc<Cell<usize>>,
     bytes: usize,
@@ -337,25 +355,18 @@ impl Vm {
     }
 
     pub(super) fn pending_execution_references(&self) -> Vec<ObjectId> {
-        let mut roots = Vec::new();
-        for completion in &self.pending_completions {
-            match completion {
-                Completion::Return(value)
-                | Completion::Yield(value)
-                | Completion::Halt(value)
-                | Completion::Throw(RuntimeError::Thrown(value)) => roots.extend(value.object_id()),
-                Completion::TailCall(values) | Completion::TailRecur(values) => {
-                    roots.extend(values.iter().filter_map(Value::object_id));
-                }
-                _ => {}
-            }
-        }
-        roots.extend(
-            self.completion_saves
-                .iter()
-                .filter_map(|(value, _)| value.object_id()),
+        pending_references(&self.pending_completions, &self.completion_saves).collect()
+    }
+
+    pub(super) fn pending_execution_reference_count(&self) -> usize {
+        pending_references(&self.pending_completions, &self.completion_saves).count()
+    }
+
+    pub(super) fn push_pending_execution_roots(&mut self) {
+        self.stack.extend(
+            pending_references(&self.pending_completions, &self.completion_saves)
+                .map(Value::Object),
         );
-        roots
     }
 
     pub(super) fn pending_execution_payload_bytes(&self) -> usize {
