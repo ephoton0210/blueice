@@ -198,6 +198,21 @@ and cleared interval copies do not remain charged through the callback's
 Promise checkpoint. Cleanup consumes ignored returns and reported page
 exceptions before checkpoint jobs run.
 
+Promise jobs likewise carry a scoped payload lease while outside the queue.
+Reaction inputs transfer to handlers, resumed frames or settled Promise
+records. Their targets and returned/thrown values keep a separate charge
+while still owned by Rust. Species resolution roots object edges without
+copying primitive results solely for GC protection. Dynamic import retains
+its borrowed referrer/specifier strings through module execution. Generator
+yield values release their native copy after the iterator-result property
+owns it, before a successor request runs.
+
+Host-completion tasks transfer their lease after primitive conversion or
+wrapper/error creation and before the Promise takes ownership. Restoring an
+execution context always reconciles scheduling owners, including removed
+continuations, even when primitive byte totals are unchanged. Ordinary
+instruction/call checks retain their unchanged-payload fast path.
+
 GC protection retains object edges without cloning primitive buffers. Normal
 calls move primitive operands to their argument owner; exact debugger calls
 preserve the operand snapshots needed for continuation. Native parameter copies

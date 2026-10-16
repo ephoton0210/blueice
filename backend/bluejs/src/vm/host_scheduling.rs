@@ -206,7 +206,7 @@ pub(super) fn value_payload_bytes(value: &Value) -> usize {
         _ => 0,
     }
 }
-fn capability_bytes(target: &ReactionTarget) -> usize {
+pub(super) fn capability_bytes(target: &ReactionTarget) -> usize {
     match target {
         ReactionTarget::Native(_) => 0,
         ReactionTarget::Capability(cap) => value_payload_bytes(&cap.promise)
@@ -291,16 +291,20 @@ pub(super) fn completion_payload_bytes(completion: &Completion) -> usize {
         Completion::TailCall(values) | Completion::TailRecur(values) => {
             slots(values).saturating_add(values_bytes(values))
         }
-        Completion::Throw(RuntimeError::Thrown(value)) => value_payload_bytes(value),
-        Completion::Throw(
-            RuntimeError::ReferenceError(message)
-            | RuntimeError::TypeError(message)
-            | RuntimeError::RangeError(message)
-            | RuntimeError::SyntaxError(message)
-            | RuntimeError::Test262(message)
-            | RuntimeError::RegexWorker(message)
-            | RuntimeError::ModuleResolution(message),
-        ) => message.capacity(),
+        Completion::Throw(error) => runtime_error_payload_bytes(error),
+        _ => 0,
+    }
+}
+pub(super) fn runtime_error_payload_bytes(error: &RuntimeError) -> usize {
+    match error {
+        RuntimeError::Thrown(value) => value_payload_bytes(value),
+        RuntimeError::ReferenceError(message)
+        | RuntimeError::TypeError(message)
+        | RuntimeError::RangeError(message)
+        | RuntimeError::SyntaxError(message)
+        | RuntimeError::Test262(message)
+        | RuntimeError::RegexWorker(message)
+        | RuntimeError::ModuleResolution(message) => message.capacity(),
         _ => 0,
     }
 }
@@ -801,8 +805,17 @@ impl Vm {
         if bytes == self.last_execution_payload_bytes && !scope.account.borrow().failed {
             return;
         }
+        self.reconcile_scheduling_ownership();
+    }
+
+    /// Context transfer can remove continuations or change other owners even
+    /// when primitive bytes are unchanged. Publish those changes as well.
+    pub(super) fn reconcile_scheduling_ownership(&mut self) {
+        if self.host_scheduling.is_none() {
+            return;
+        }
         let own = self.own_scheduling_usage();
-        self.last_execution_payload_bytes = bytes;
+        self.last_execution_payload_bytes = self.owned_execution_payload_bytes();
         let _ = self
             .host_scheduling
             .as_mut()

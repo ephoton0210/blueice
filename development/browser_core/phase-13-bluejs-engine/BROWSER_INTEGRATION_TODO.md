@@ -109,9 +109,13 @@ and 82 related cases across eight public targets pass at the `6be49f4e2`
 call-entry checkpoint without opening ports or running resource-exhaustion
 probes. A further task-handoff correction removes duplicate timer, drag and
 finalization input charges and releases consumed inputs before Promise
-checkpoint jobs. Current bounded validation passes seven unit groups and
-67 public timer/task/cleanup cases; fifteen public pressure/limit cases remain
-filtered out. These are implementation checkpoints, not final M1v acceptance;
+checkpoint jobs. The `deafa218a` task-handoff checkpoint passes seven unit
+groups and 67 public timer/task/cleanup cases, with fifteen public pressure/
+limit cases filtered out. The next Promise/host-completion follow-up passes
+twelve handoff groups, four call-entry controls and 61 related public cases;
+six host-async pressure/limit cases are filtered out. It also reconciles
+continuation ownership after context restoration even when primitive sizes
+are unchanged. These are implementation checkpoints, not final M1v acceptance;
 see the record below.
 Additional red evidence: `target/active-frame-refund-red-source-20261016.json`
 and `target/active-async-burst-red-source-20261016.json`.
@@ -772,11 +776,17 @@ the generated typings in the same change.
       frames without retaining a duplicate through the Promise checkpoint.
       Preserve actual interval registration and named-parameter copies;
       consume ignored cleanup outcomes before checkpoint jobs run.
-- [x] Pass the current bounded task-handoff selection: three new unit groups,
+- [x] Pass the `deafa218a` bounded task-handoff selection: three new unit groups,
       four call-entry controls and 67 public timer/task/cleanup cases. Fifteen
       public pressure/limit cases are explicitly filtered out.
-- [ ] Finish queued Promise-job and host-completion ownership review before
-      closing active native execution accounting.
+- [x] Review queued Promise-job and host-completion ownership. Transfer input
+      leases into handlers, resumed frames and settled records; retain borrowed
+      loader strings, targets and outcomes for their actual lifetime. Avoid
+      primitive copies used solely as GC roots in species/thenable resolution.
+- [x] Reconcile continuation/control ownership after context restoration even
+      when primitive bytes are unchanged. Preserve the ordinary call/instruction
+      fast path. Pass twelve handoff groups, four call-entry controls and
+      61 related public cases; six host-async pressure/limit cases are filtered.
 - [ ] Finish the final M1v regression selection with stable source/artifacts
       under the owner's security constraints.
 - [ ] Compare a fresh complete pinned Test262 inventory with the accepted
@@ -813,7 +823,7 @@ Seven timer variants cover one-shot/interval delivery, self-cancellation,
 throws and real named-parameter copies. Drag and normal/throwing cleanup
 callbacks also verify their following Promise checkpoint.
 
-Current-source bounded validation passes **74 cases, zero failures and zero
+Task-handoff checkpoint (`deafa218a`) validation passes **74 cases, zero failures and zero
 ignored**: `--lib payload_handoff` (three), `--lib argument_charges` (four),
 `host_timers` (30), `host_task_turns` (27) and `host_finalization_tasks` (ten).
 The three public targets filter out fifteen pressure/limit cases, so this is
@@ -828,6 +838,41 @@ Logs: `/private/tmp/blueice-task-payload-handoff-final-unit-20261016.log`,
 Clippy: `/private/tmp/blueice-task-payload-handoff-clippy-20261016.log`.
 The bounded receipt is
 `target/task-payload-handoff-source-20261016.json`.
+
+Promise/host-completion follow-up: ordinary reaction and host-completion
+callbacks originally count a 14-byte input as 42 rather than 28 bytes across
+its two actual owners (settled result plus running arguments). Custom species
+callbacks observe 56/70 instead of 42/42 bytes because the job retains a moved
+input and resolution creates a primitive GC-root copy. Scoped job, target and
+outcome leases now follow the actual owners; host completions release their
+input lease before settlement. Dynamic import keeps borrowed loader strings
+through module execution. Generator yield/delegate inputs are consumed before
+successor requests or error resumption when they are no longer needed.
+
+The await regression also exposes stale ownership publication: numeric input
+does not change primitive bytes, so the old restoration fast path leaves a
+removed continuation's control storage in the account. The observed string/
+numeric difference is -667 rather than +28 bytes. Restoring a context now
+reconciles all scheduling owners; ordinary instruction/call checks retain
+their unchanged-payload fast path. Refusal/unwind reconciliation keeps the
+document's terminal failure latched.
+
+Current-source bounded validation passes **77 cases, zero failures and zero
+ignored**: twelve `--lib payload_handoff` groups, four `--lib argument_charges`
+controls and 61 public cases. Five targets run completely:
+`async_from_sync_delegation` (two), `async_generator_ticks` (fourteen),
+`async_yield_star_delegate_close` (seven), `dynamic_import` (ten) and
+`promise_capabilities` (ten). `host_async_tasks` passes eighteen cases and
+explicitly filters out six pressure/limit cases. All loaders/services in this
+selection use in-memory fixtures; no external network ingress is exercised.
+Formatting and offline workspace/all-target Clippy with warnings denied pass.
+Logs: `/private/tmp/blueice-promise-payload-handoff-expanded-unit-20261016.log`,
+`/private/tmp/blueice-promise-payload-handoff-call-controls-20261016.log` and
+`/private/tmp/blueice-promise-payload-handoff-public-controls-20261016.log`.
+Clippy: `/private/tmp/blueice-promise-payload-handoff-clippy-20261016.log`.
+Original failures: `/private/tmp/blueice-promise-payload-handoff-unit-red-20261016.log`
+and `/private/tmp/blueice-promise-await-publication-unit-red-20261016.log`.
+Bounded receipt: `target/promise-payload-handoff-source-20261016.json`.
 
 The interrupted 298/405-target replay predates the call-entry follow-up and
 does not validate this final source. It remains partial evidence, not a final

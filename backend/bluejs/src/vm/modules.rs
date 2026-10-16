@@ -1447,7 +1447,7 @@ impl Vm {
         self.class_field_initializer = execution.class_field_initializer;
         self.active_module_name = execution.active_module_name;
         drop(execution.payload_charge);
-        self.refresh_scheduling_ownership();
+        self.reconcile_scheduling_ownership();
     }
 
     /// Heap edges held only by a displaced interpreter frame.  Keeping this

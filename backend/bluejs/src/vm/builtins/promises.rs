@@ -995,11 +995,11 @@ impl Vm {
         if self.promise_jobs.is_empty() {
             self.promise_jobs.shrink_to_fit();
         }
-        let active_bytes = job.scheduling_payload_bytes();
-        self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
+        let job_payload = self.charge_execution_payload(job.scheduling_payload_bytes());
         if let Err(error) = self.synchronize_scheduling_usage() {
-            self.active_scheduling_bytes =
-                self.active_scheduling_bytes.saturating_sub(active_bytes);
+            drop(job);
+            drop(job_payload);
+            self.reconcile_scheduling_ownership();
             return Err(error);
         }
         // Promise jobs always execute in a new ECMAScript execution context.
@@ -1027,7 +1027,8 @@ impl Vm {
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(ambient_bytes);
         let origin = job.rejection_origin().cloned().unwrap_or_default();
         let epoch = self.throw_epoch;
-        let result = self.with_rejection_origin(Some(origin), |vm| vm.execute_promise_job(job));
+        let result =
+            self.with_rejection_origin(Some(origin), |vm| vm.execute_promise_job(job, job_payload));
         let failure_origin = result
             .as_ref()
             .is_err_and(|error| error.is_catchable())
@@ -1041,12 +1042,19 @@ impl Vm {
         }
         self.stack.truncate(root_base);
         self.async_frame_roots.truncate(active_root_base);
-        self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(active_bytes);
-        self.synchronize_scheduling_usage()?;
+        let synchronized = self.synchronize_scheduling_usage();
+        if synchronized.is_err() {
+            self.reconcile_scheduling_ownership();
+        }
+        synchronized?;
         result?;
         Ok(true)
     }
-    fn execute_promise_job(&mut self, job: PromiseJob) -> Result<(), RuntimeError> {
+    fn execute_promise_job(
+        &mut self,
+        job: PromiseJob,
+        job_payload: execution_payload::ExecutionPayloadCharge,
+    ) -> Result<(), RuntimeError> {
         match job {
             PromiseJob::Reaction {
                 target,
@@ -1062,13 +1070,23 @@ impl Vm {
                 let callable = self
                     .is_callable(&handler)
                     .expect("the queued reaction retains its validated handler");
+                let _target_payload =
+                    self.charge_execution_payload(host_scheduling::capability_bytes(&target));
+                drop(job_payload);
                 let outcome = if callable {
                     self.call_native(handler, Value::Undefined, vec![value], false)
-                } else if fulfilled {
-                    Ok(value)
                 } else {
-                    Err(RuntimeError::Thrown(value))
+                    drop(handler);
+                    if fulfilled {
+                        Ok(value)
+                    } else {
+                        Err(RuntimeError::Thrown(value))
+                    }
                 };
+                let outcome_payload = self.charge_execution_payload(match &outcome {
+                    Ok(value) => host_scheduling::value_payload_bytes(value),
+                    Err(error) => host_scheduling::runtime_error_payload_bytes(error),
+                });
                 let origin = if !callable {
                     self.current_rejection_origin()
                 } else if self.throw_epoch != epoch {
@@ -1078,19 +1096,23 @@ impl Vm {
                 };
                 match (target, outcome) {
                     (ReactionTarget::Native(promise), Ok(value)) => {
+                        drop(outcome_payload);
                         self.resolve_promise(promise, value)?
                     }
                     (ReactionTarget::Native(promise), Err(error)) => {
                         let error = self.error_value(error)?;
+                        drop(outcome_payload);
                         self.reject_promise_with_origin(promise, error, origin)?;
                     }
                     (ReactionTarget::Capability(capability), Ok(value)) => {
-                        self.stack.push(value.clone());
+                        self.stack.extend(value.object_id().map(Value::Object));
+                        drop(outcome_payload);
                         self.call_native(capability.resolve, Value::Undefined, vec![value], false)?;
                     }
                     (ReactionTarget::Capability(capability), Err(error)) => {
                         let error = self.error_value(error)?;
-                        self.stack.push(error.clone());
+                        self.stack.extend(error.object_id().map(Value::Object));
+                        drop(outcome_payload);
                         self.with_rejection_origin(Some(origin), |vm| {
                             vm.call_native(capability.reject, Value::Undefined, vec![error], false)
                         })?;
@@ -1102,6 +1124,7 @@ impl Vm {
                 thenable,
                 then,
             } => {
+                drop(job_payload);
                 // NewPromiseResolveThenableJob: a fresh resolving pair
                 // (with its own [[AlreadyResolved]]) is handed to `then`;
                 // if that throws, the pair's reject function decides
@@ -1116,7 +1139,7 @@ impl Vm {
                     {
                         let origin = self.caught_rejection_origin(epoch);
                         let error = self.error_value(error)?;
-                        self.stack.push(error.clone());
+                        self.stack.extend(error.object_id().map(Value::Object));
                         self.with_rejection_origin(Some(origin), |vm| {
                             vm.call_native(reject, Value::Undefined, vec![error], false)
                         })?;
@@ -1133,6 +1156,8 @@ impl Vm {
                 module_type,
                 phase,
             } => {
+                // Module loading borrows both strings across execution.
+                let _job_payload = job_payload;
                 let epoch = self.throw_epoch;
                 let result = self.dynamic_import_job(&referrer, &specifier, module_type, phase);
                 match result {
@@ -1167,13 +1192,19 @@ impl Vm {
                 value,
                 fulfilled,
                 ..
-            } => self.resume_module_await(continuation, value, fulfilled)?,
+            } => {
+                drop(job_payload);
+                self.resume_module_await(continuation, value, fulfilled)?;
+            }
             PromiseJob::AsyncAwait {
                 continuation,
                 value,
                 fulfilled,
                 ..
-            } => self.resume_async_await(continuation, value, fulfilled)?,
+            } => {
+                drop(job_payload);
+                self.resume_async_await(continuation, value, fulfilled)?;
+            }
             PromiseJob::AsyncGeneratorYield {
                 generator,
                 target,
@@ -1181,7 +1212,10 @@ impl Vm {
                 value,
                 fulfilled,
                 ..
-            } => self.finish_async_generator_yield(generator, target, result, value, fulfilled)?,
+            } => {
+                drop(job_payload);
+                self.finish_async_generator_yield(generator, target, result, value, fulfilled)?;
+            }
             PromiseJob::AsyncGeneratorDelegate {
                 generator,
                 target,
@@ -1189,8 +1223,12 @@ impl Vm {
                 value,
                 fulfilled,
                 ..
-            } => self.finish_async_generator_delegate(generator, target, kind, value, fulfilled)?,
+            } => {
+                drop(job_payload);
+                self.finish_async_generator_delegate(generator, target, kind, value, fulfilled)?;
+            }
             PromiseJob::FinalizationCleanup { callback, holdings } => {
+                drop(job_payload);
                 // Cleanup callbacks are host jobs, not Promise reactions. A
                 // throwing callback is reported through this embedding's job
                 // runner but cannot resurrect or re-register the consumed
@@ -1198,6 +1236,7 @@ impl Vm {
                 self.call_native(callback, Value::Undefined, vec![holdings], false)?;
             }
             PromiseJob::HostMicrotask { callback } => {
+                drop(job_payload);
                 self.call_native(callback, Value::Undefined, Vec::new(), false)?;
             }
         }

@@ -2083,7 +2083,12 @@ impl Vm {
             .expect("the scheduler completes the retained FIFO head and its tracked promise");
             return self.resume_async_generator_next(generator);
         }
+        let value_payload =
+            self.charge_execution_payload(host_scheduling::value_payload_bytes(&value));
+        self.synchronize_execution_payload()?;
         self.set_property(&Value::Object(result), &"value".into(), &value)?;
+        drop(value);
+        drop(value_payload);
         self.complete_async_generator_request(
             generator,
             target,
@@ -2130,6 +2135,7 @@ impl Vm {
             return self.throw_at_async_delegate_exit(generator, target, result);
         }
         if !matches!(result, Value::Object(_)) {
+            drop(result);
             let error = self.error_object(
                 "TypeError",
                 "yield* delegate method must return an object".into(),

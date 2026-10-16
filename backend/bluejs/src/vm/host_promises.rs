@@ -383,6 +383,7 @@ impl Vm {
         &mut self,
         token: HostPromiseToken,
         completion: HostPromiseCompletion,
+        completion_payload: execution_payload::ExecutionPayloadCharge,
     ) -> Result<(), RuntimeError> {
         let Some(pending) = self.remove_host_promise(token) else {
             return Ok(());
@@ -391,17 +392,23 @@ impl Vm {
             self.synchronize_scheduling_usage()?;
             match completion {
                 HostPromiseCompletion::Resolve(value) => {
-                    self.resolve_promise(pending.promise, value.into())
+                    let value = value.into();
+                    drop(completion_payload);
+                    self.resolve_promise(pending.promise, value)
                 }
                 HostPromiseCompletion::Reject(value) => {
-                    self.settle_promise(pending.promise, PromiseStatus::Rejected(value.into()))
+                    let value = value.into();
+                    drop(completion_payload);
+                    self.settle_promise(pending.promise, PromiseStatus::Rejected(value))
                 }
                 HostPromiseCompletion::RejectError(error) => {
                     let value = self.error_value(RuntimeError::TypeError(error.0))?;
+                    drop(completion_payload);
                     self.settle_promise(pending.promise, PromiseStatus::Rejected(value))
                 }
                 HostPromiseCompletion::ResolveObject { family, key } => {
                     let object = self.mint_host_family_wrapper(family, key)?;
+                    drop(completion_payload);
                     self.resolve_promise(pending.promise, Value::Object(object))
                 }
             }

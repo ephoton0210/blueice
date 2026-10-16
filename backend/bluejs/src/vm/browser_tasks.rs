@@ -229,7 +229,6 @@ impl Vm {
             .remove(index)
             .expect("a runnable task was selected");
         let active_bytes = match &task {
-            BrowserTask::HostPromise { completion, .. } => completion.payload_bytes(),
             BrowserTask::PromiseRejections { entries, .. } => {
                 entries.capacity() * std::mem::size_of::<host_rejections::PendingRejection>()
             }
@@ -239,6 +238,7 @@ impl Vm {
             BrowserTask::DragString { text, .. } => {
                 text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
             }
+            BrowserTask::HostPromise { completion, .. } => completion.payload_bytes(),
             _ => 0,
         });
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
@@ -256,7 +256,7 @@ impl Vm {
             BrowserTask::HostPromise {
                 token, completion, ..
             } => (
-                self.run_host_promise_task(token, completion),
+                self.run_host_promise_task(token, completion, moved_payload),
                 None,
                 None,
                 true,
