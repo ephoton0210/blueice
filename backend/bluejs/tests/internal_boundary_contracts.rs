@@ -7,6 +7,13 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_json_module_ownership_contracts() {
+    blueice_bluejs::Vm::verify_json_module_ownership_contracts();
+    blueice_bluejs::Vm::verify_json_parser_ownership_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_synthetic_value_ownership_contracts() {
     blueice_bluejs::Vm::verify_synthetic_value_ownership_contracts();
 }

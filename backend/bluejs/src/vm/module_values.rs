@@ -53,6 +53,20 @@ pub(super) struct PreparedSyntheticValue {
 }
 
 impl PreparedSyntheticValue {
+    pub(super) fn adopt_copy(
+        mut self,
+        mut copy: ModuleValueCopy,
+    ) -> Result<SyntheticModuleValue, RuntimeError> {
+        if let Some(charge) = copy.charge.take() {
+            if let Some(owner) = &mut self.charge {
+                owner.absorb(charge)?;
+            } else {
+                self.charge = Some(charge);
+            }
+        }
+        self.finish(copy.value)
+    }
+
     pub(super) fn text(mut self, source: &str) -> Result<SyntheticModuleValue, RuntimeError> {
         let text = encode_text(
             source,
@@ -103,41 +117,28 @@ impl SyntheticModuleValue {
     }
 }
 
-/// A Rust-held UTF-16 parse input or a value copied for a managed binding cell.
+/// A primitive copy awaiting heap adoption or transfer to an export owner.
 pub(super) struct ModuleValueCopy {
     value: Value,
     charge: Option<SharedSchedulingCharge>,
 }
 
 impl ModuleValueCopy {
-    pub(super) fn from_utf8(
-        source: &str,
-        scope: Option<&SchedulingScope>,
-    ) -> Result<Self, RuntimeError> {
-        let bytes = source.encode_utf16().count().saturating_mul(2);
-        let mut charge = scope.map(|scope| scope.shared_charge(bytes)).transpose()?;
-        let value = Value::String(encode_text(source, &mut charge, 0)?);
-        Ok(Self { value, charge })
-    }
-
     pub(super) fn copy(
         value: &Value,
         scope: Option<&SchedulingScope>,
     ) -> Result<Self, RuntimeError> {
+        if let Value::String(text) = value {
+            let copy = ModuleKeyCopy::from_units(text.as_code_units(), scope)?;
+            return Ok(Self {
+                value: Value::String(copy.text),
+                charge: copy.charge,
+            });
+        }
         let mut charge = scope
             .map(|scope| scope.shared_charge(value_payload_bytes(value)))
             .transpose()?;
-        let value = if let Value::String(text) = value {
-            let mut units = Vec::new();
-            units
-                .try_reserve_exact(text.len())
-                .map_err(|_| allocation_error(&charge))?;
-            resize(&mut charge, units.capacity().saturating_mul(2))?;
-            units.extend_from_slice(text.as_code_units());
-            Value::String(JsString::from_code_units(units))
-        } else {
-            value.clone()
-        };
+        let value = value.clone();
         resize(&mut charge, value_payload_bytes(&value))?;
         Ok(Self { value, charge })
     }
@@ -150,6 +151,54 @@ impl ModuleValueCopy {
     pub(super) fn into_managed(self) -> Value {
         drop(self.charge);
         self.value
+    }
+}
+
+pub(super) struct ModuleKeyCopy {
+    text: JsString,
+    charge: Option<SharedSchedulingCharge>,
+}
+
+impl ModuleKeyCopy {
+    pub(super) fn from_units(
+        source: &[u16],
+        scope: Option<&SchedulingScope>,
+    ) -> Result<Self, RuntimeError> {
+        let mut charge = scope
+            .map(|scope| scope.shared_charge(source.len().saturating_mul(2)))
+            .transpose()?;
+        let mut units = Vec::new();
+        units
+            .try_reserve_exact(source.len())
+            .map_err(|_| allocation_error(&charge))?;
+        resize(&mut charge, units.capacity().saturating_mul(2))?;
+        units.extend_from_slice(source);
+        Ok(Self {
+            text: JsString::from_code_units(units),
+            charge,
+        })
+    }
+
+    pub(super) fn index(
+        mut index: u32,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<Self, RuntimeError> {
+        let mut digits = [0u16; 10];
+        let mut start = digits.len();
+        loop {
+            start -= 1;
+            digits[start] = u16::from(b'0') + (index % 10) as u16;
+            index /= 10;
+            if index == 0 {
+                break;
+            }
+        }
+        Self::from_units(&digits[start..], scope)
+    }
+
+    pub(super) fn into_managed(self) -> JsString {
+        drop(self.charge);
+        self.text
     }
 }
 

@@ -10,6 +10,10 @@
 use super::*;
 use std::collections::HashMap;
 
+mod module;
+mod source_parser;
+use source_parser::JsonSourceParser;
+
 type JsonSourceMap = HashMap<(ObjectId, JsString), (Value, JsString)>;
 
 impl Vm {
@@ -88,9 +92,7 @@ impl Vm {
             let input = input
                 .to_utf8()
                 .map_err(|_| RuntimeError::SyntaxError("invalid JSON text".into()))?;
-            let parsed = JsonSourceParser::new(&input)
-                .parse()
-                .map_err(|_| RuntimeError::SyntaxError("invalid JSON text".into()))?;
+            let parsed = JsonSourceParser::new(&input).parse()?;
             let mut sources = JsonSourceMap::new();
             let value = self.json_from_node(&parsed, &mut sources)?;
             let reviver = reviver.cloned().unwrap_or(Value::Undefined);
@@ -135,9 +137,13 @@ impl Vm {
         {
             return Err(RuntimeError::SyntaxError("invalid raw JSON text".into()));
         }
-        let parsed = JsonSourceParser::new(&utf8)
-            .parse()
-            .map_err(|_| RuntimeError::SyntaxError("invalid raw JSON text".into()))?;
+        let parsed = JsonSourceParser::new(&utf8).parse().map_err(|error| {
+            if matches!(error, RuntimeError::SyntaxError(_)) {
+                RuntimeError::SyntaxError("invalid raw JSON text".into())
+            } else {
+                error
+            }
+        })?;
         if parsed.is_container() {
             return Err(RuntimeError::SyntaxError("invalid raw JSON text".into()));
         }
@@ -746,9 +752,8 @@ impl Vm {
     }
 }
 
-/// A parsed JSON value retaining each primitive's original JSON source text.
-/// `JSON.parse` needs this record only while it invokes a reviver; the public
-/// result remains ordinary ECMAScript values and objects.
+/// Parsed JSON. Reviver parses retain primitive source text; module parses
+/// omit it. Public results remain ordinary ECMAScript values and objects.
 enum JsonNode {
     Primitive { value: Value, source: JsString },
     Array(Vec<JsonNode>),
@@ -765,254 +770,6 @@ impl JsonNode {
 
     fn is_container(&self) -> bool {
         matches!(self, Self::Array(_) | Self::Object(_))
-    }
-}
-
-/// Small JSON grammar reader used instead of a data-only deserializer so the
-/// reviver can receive its normative source-text context. It deliberately
-/// records duplicate object names in source order: ordinary property creation
-/// retains the first key position while the final occurrence supplies both the
-/// final value and source text.
-/// Decodes an already-validated JSON string token's body (the bytes between
-/// its quotes) into UTF-16 code units. A `\uXXXX` escape is taken as its raw
-/// code unit with no surrogate-pairing requirement, matching JSON's own
-/// grammar and the WTF-16 strings JS itself allows -- unlike `serde_json`'s
-/// UTF-8-`String`-based decoder, this can represent a lone surrogate.
-fn decode_json_string_body(body: &str) -> Vec<u16> {
-    let bytes = body.as_bytes();
-    let mut units = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'\\' {
-            match bytes[i + 1] {
-                b'"' => units.push(u16::from(b'"')),
-                b'\\' => units.push(u16::from(b'\\')),
-                b'/' => units.push(u16::from(b'/')),
-                b'b' => units.push(0x08),
-                b'f' => units.push(0x0c),
-                b'n' => units.push(u16::from(b'\n')),
-                b'r' => units.push(u16::from(b'\r')),
-                b't' => units.push(u16::from(b'\t')),
-                // Every other escape validated by string() is \uXXXX.
-                _ => {
-                    let code = u16::from_str_radix(&body[i + 2..i + 6], 16)
-                        .expect("the scan above validated four hex digits");
-                    units.push(code);
-                    i += 6;
-                    continue;
-                }
-            }
-            i += 2;
-        } else {
-            let character = body[i..].chars().next().expect("i is a character boundary");
-            let mut buf = [0u16; 2];
-            units.extend_from_slice(character.encode_utf16(&mut buf));
-            i += character.len_utf8();
-        }
-    }
-    units
-}
-
-struct JsonSourceParser<'a> {
-    input: &'a str,
-    index: usize,
-}
-
-impl<'a> JsonSourceParser<'a> {
-    fn new(input: &'a str) -> Self {
-        Self { input, index: 0 }
-    }
-
-    fn parse(mut self) -> Result<JsonNode, ()> {
-        self.skip_whitespace();
-        let value = self.value()?;
-        self.skip_whitespace();
-        (self.index == self.input.len()).then_some(value).ok_or(())
-    }
-
-    fn value(&mut self) -> Result<JsonNode, ()> {
-        self.skip_whitespace();
-        let start = self.index;
-        match self.peek() {
-            Some(b'{') => self.object(),
-            Some(b'[') => self.array(),
-            Some(b'"') => {
-                let value = Value::String(self.string()?);
-                Ok(JsonNode::Primitive {
-                    value,
-                    source: self.input[start..self.index].into(),
-                })
-            }
-            Some(b't') => self.keyword("true", Value::Bool(true), start),
-            Some(b'f') => self.keyword("false", Value::Bool(false), start),
-            Some(b'n') => self.keyword("null", Value::Null, start),
-            Some(b'-' | b'0'..=b'9') => self.number(start),
-            _ => Err(()),
-        }
-    }
-
-    fn array(&mut self) -> Result<JsonNode, ()> {
-        // value() selected this parser only after observing the opening byte.
-        self.index += 1;
-        self.skip_whitespace();
-        if self.take(b']') {
-            return Ok(JsonNode::Array(Vec::new()));
-        }
-        let mut values = Vec::new();
-        loop {
-            values.push(self.value()?);
-            self.skip_whitespace();
-            if self.take(b']') {
-                return Ok(JsonNode::Array(values));
-            }
-            self.expect(b',')?;
-            self.skip_whitespace();
-        }
-    }
-
-    fn object(&mut self) -> Result<JsonNode, ()> {
-        // value() selected this parser only after observing the opening byte.
-        self.index += 1;
-        self.skip_whitespace();
-        if self.take(b'}') {
-            return Ok(JsonNode::Object(Vec::new()));
-        }
-        let mut values = Vec::new();
-        loop {
-            self.skip_whitespace();
-            let key = self.string()?;
-            self.skip_whitespace();
-            self.expect(b':')?;
-            let value = self.value()?;
-            values.push((key, value));
-            self.skip_whitespace();
-            if self.take(b'}') {
-                return Ok(JsonNode::Object(values));
-            }
-            self.expect(b',')?;
-            self.skip_whitespace();
-        }
-    }
-
-    fn keyword(&mut self, keyword: &str, value: Value, start: usize) -> Result<JsonNode, ()> {
-        if !self.input[self.index..].starts_with(keyword) {
-            return Err(());
-        }
-        self.index += keyword.len();
-        Ok(JsonNode::Primitive {
-            value,
-            source: self.input[start..self.index].into(),
-        })
-    }
-
-    fn number(&mut self, start: usize) -> Result<JsonNode, ()> {
-        self.take(b'-');
-        match self.peek() {
-            Some(b'0') => self.index += 1,
-            Some(b'1'..=b'9') => {
-                self.index += 1;
-                while matches!(self.peek(), Some(b'0'..=b'9')) {
-                    self.index += 1;
-                }
-            }
-            _ => return Err(()),
-        }
-        if self.take(b'.') {
-            let decimal_start = self.index;
-            while matches!(self.peek(), Some(b'0'..=b'9')) {
-                self.index += 1;
-            }
-            if self.index == decimal_start {
-                return Err(());
-            }
-        }
-        if matches!(self.peek(), Some(b'e' | b'E')) {
-            self.index += 1;
-            self.take(b'+');
-            self.take(b'-');
-            let exponent_start = self.index;
-            while matches!(self.peek(), Some(b'0'..=b'9')) {
-                self.index += 1;
-            }
-            if self.index == exponent_start {
-                return Err(());
-            }
-        }
-        let source: JsString = self.input[start..self.index].into();
-        let value = self.input[start..self.index]
-            .parse::<f64>()
-            .map_err(|_| ())?;
-        Ok(JsonNode::Primitive {
-            value: Value::Number(value),
-            source,
-        })
-    }
-
-    fn string(&mut self) -> Result<JsString, ()> {
-        let start = self.index;
-        self.expect(b'"')?;
-        loop {
-            match self.peek() {
-                Some(b'"') => {
-                    let body = &self.input[start + 1..self.index];
-                    self.index += 1;
-                    return Ok(JsString::from_code_units(decode_json_string_body(body)));
-                }
-                Some(b'\\') => {
-                    self.index += 1;
-                    match self.peek() {
-                        Some(b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't') => {
-                            self.index += 1;
-                        }
-                        Some(b'u') => {
-                            self.index += 1;
-                            for _ in 0..4 {
-                                if !matches!(
-                                    self.peek(),
-                                    Some(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F')
-                                ) {
-                                    return Err(());
-                                }
-                                self.index += 1;
-                            }
-                        }
-                        _ => return Err(()),
-                    }
-                }
-                Some(byte) if byte < 0x20 => return Err(()),
-                Some(_) => {
-                    let character = self.input[self.index..]
-                        .chars()
-                        .next()
-                        .expect("peek observed a UTF-8 character");
-                    self.index += character.len_utf8();
-                }
-                None => return Err(()),
-            }
-        }
-    }
-
-    fn skip_whitespace(&mut self) {
-        while matches!(self.peek(), Some(b' ' | b'\n' | b'\r' | b'\t')) {
-            self.index += 1;
-        }
-    }
-
-    fn expect(&mut self, byte: u8) -> Result<(), ()> {
-        self.take(byte).then_some(()).ok_or(())
-    }
-
-    fn take(&mut self, byte: u8) -> bool {
-        if self.peek() == Some(byte) {
-            self.index += 1;
-            true
-        } else {
-            false
-        }
-    }
-
-    fn peek(&self) -> Option<u8> {
-        self.input.as_bytes().get(self.index).copied()
     }
 }
 

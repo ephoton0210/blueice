@@ -196,11 +196,11 @@ fn synthetic_value_ownership_scoped_inputs_admit_actual_buffers_and_refund_on_dr
             let before = vm.host_scheduling_snapshot().payload_bytes;
             let scope = vm.host_scheduling.as_ref();
             let result = match kind {
-                0 => module_values::ModuleValueCopy::from_utf8("a😀z", scope).map(|copy| {
-                    assert_eq!(copy.value(), &Value::String("a😀z".into()));
-                    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before + bytes);
-                    drop(copy);
-                }),
+                0 => module_values::ModuleKeyCopy::from_units(&[0x61, 0xd83d, 0xde00, 0x7a], scope)
+                    .map(|copy| {
+                        assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before + bytes);
+                        assert_eq!(copy.into_managed(), JsString::from("a😀z"));
+                    }),
                 1 => module_values::ModuleBytesCopy::copy(&[1, 2, 3], scope).map(|copy| {
                     assert_eq!(copy.len(), 3);
                     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before + bytes);
@@ -352,11 +352,12 @@ fn synthetic_value_ownership_json_retains_only_the_derived_owner_and_refunds_ref
 }
 
 #[cfg_attr(test, test)]
-fn synthetic_value_ownership_json_input_and_output_coexistence_is_admitted_before_heap_effects() {
+fn synthetic_value_ownership_json_ast_and_returned_value_coexistence_is_admitted_before_heap_effects(
+) {
     let mut vm = bounded_vm();
-    vm.set_json_module_sources(HashMap::from([("json".into(), "{}".into())]));
-    // Four UTF-16 bytes for each input/output reservation, plus the owner.
-    let room = SyntheticModuleValue::header_bytes() + 7;
+    vm.set_json_module_sources(HashMap::from([("json".into(), "\"a\"".into())]));
+    // Two bytes each for the AST and returned string, plus the owner.
+    let room = SyntheticModuleValue::header_bytes() + 3;
     let _peer = leave_room(&mut vm, room);
     let before = vm.host_scheduling_snapshot().payload_bytes;
     let managed = vm.heap.stats().managed_bytes;
@@ -502,7 +503,7 @@ impl crate::Vm {
         );
         synthetic_value_ownership_bytes_transfer_to_the_heap_and_refuse_missing_root_storage();
         synthetic_value_ownership_json_retains_only_the_derived_owner_and_refunds_refused_roots();
-        synthetic_value_ownership_json_input_and_output_coexistence_is_admitted_before_heap_effects(
+        synthetic_value_ownership_json_ast_and_returned_value_coexistence_is_admitted_before_heap_effects(
         );
         synthetic_value_ownership_shadow_import_shares_primitives_filters_objects_and_refunds_the_last_realm();
         synthetic_value_ownership_real_typed_imports_survive_gc_with_their_original_values();

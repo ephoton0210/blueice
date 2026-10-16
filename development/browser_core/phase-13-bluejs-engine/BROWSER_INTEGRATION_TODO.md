@@ -2147,8 +2147,10 @@ Realm-local object exports retain their existing GC roots and rebuild policy.
       validate activation, refusal, realm sharing, GC and final-drop cleanup.
 - [x] Run the fixed offline regression/static checks, update evidence and commit
       with a detailed English message.
-- [ ] Complete compiled tables/keys/code, inner JSON coercion/parser/source-map
-      storage, other continuation/cache/service buffers and integrated
+- [x] Replace JSON module coercion/parser/source-map staging with the admitted
+      direct-source AST checkpoint below.
+- [ ] Complete compiled tables/keys/code, general JSON runtime accounting,
+      other continuation/cache/service buffers and integrated
       acceptance. M1u remains the latest accepted milestone.
 
 Initial red log: `/private/tmp/blueice-synthetic-value-red-20261017.log`
@@ -2195,6 +2197,73 @@ Logs use `/private/tmp/blueice-synthetic-value-`; selection names are listed in
 `target/synthetic-value-source-20261017.json` records source/log/executable
 hashes and staged/committed blob checks. No network/service replay, fresh full
 Test262, real Core/MCP replay, coverage or integrated acceptance is claimed.
+
+#### JSON module parser ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: parse module JSON directly from its immutable UTF-8 source, retain
+an admitted AST until conversion ends, and omit unused reviver source storage.
+Admit vector/string growth, conversion roots and heap handoffs before effects;
+preserve complete syntax validation before any managed value construction.
+
+- [x] Reproduce tiny scalar/string over-reservation and unadmitted container
+      storage cases using finite scalar budgets.
+- [x] Implement parser/AST and conversion ownership, bounded nesting, cleanup
+      and direct export adoption without a duplicate payload reservation.
+- [x] Validate grammar, values, GC, refusal and general JSON compatibility;
+      run fixed offline regression/static checks, update evidence and commit.
+- [ ] Complete compiled storage, general JSON runtime accounting, other native
+      buffers and integrated acceptance. M1u remains the latest accepted
+      milestone.
+
+Initial red log: `/private/tmp/blueice-json-module-red-20261017.log`
+(zero passed, three failed). Initial fixed log: `development-20261017.log`
+under the same prefix (three passed). Sixteen expanded groups pass in
+`expanded-20261017.log`. A number now needs only its export header, and a
+one-code-unit string admits its AST/result copies with four payload bytes.
+Array/object AST storage now refuses before managed construction when only the
+former outer-conversion margin remains.
+
+The shared grammar reader leases actual module AST vector/key/value capacities.
+Fallible growth admits complete old/new allocation coexistence, then checks
+actual capacity before publication. Module mode borrows UTF-8 directly and
+omits reviver source copies/maps. Ordinary JSON revivers retain source context.
+Full grammar validation precedes managed construction. Bounded module nesting
+caps at 128; a lowered limit of two tests refusal with seven input characters.
+Standalone parsing retains its independent policy; no deep-recursion workload
+is run.
+
+Conversion admits maximum ancestor/child root slots, preserves the operand
+prefix and leases primitive/key copies until heap adoption. Index keys use
+fixed stack digits. A returned primitive transfers its existing charge into
+the prepared export header without double reservation; a foreign-document
+charge cannot transfer. Syntax, partial parsing, native refusal, instruction,
+string and root-registration failures release temporary owners. The earlier
+synthetic-value fixture now checks AST/result coexistence and key copies after
+removal of the obsolete UTF-16 input helper.
+
+Exact/one-byte controls cover UTF-16 copies, root storage and AST replacement
+growth. Duplicate key order, numeric forms, Unicode and escaped lone surrogates
+keep their values. One-object nursery and major collection preserve nested
+values. Repeated real imports retain object identity and ordinary `__proto__`
+data properties within at most 32 job turns. Inputs and graphs are fixed and
+tiny; scalar peers represent budget occupancy without large buffers or
+physical resource-exhaustion probes.
+
+Final bounded validation: **694 passed, zero failed, zero ignored** across 38
+test executables and 62 fixed selections. Sixteen new ownership cases and
+eleven named ordinary JSON grammar/reviver/raw/string/property/cycle cases join
+the prior 667 checks. The same seven earlier pressure/large-allocation cases
+remain filtered; JSON resource sweeps are not selected. Formatting,
+`git diff --check` and offline workspace/all-target Clippy with warnings denied
+pass.
+
+Logs use `/private/tmp/blueice-json-module-`; selection names are listed in
+`controls-run-20261017.log` and the fixed offline runner is
+`controls-20261017.py`. Final new-group and static logs are
+`{json-modules,fmt,clippy}-20261017.log`. Receipt:
+`target/json-module-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. No network/service replay, fresh full Test262,
+real Core/MCP replay, coverage or integrated acceptance is claimed.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

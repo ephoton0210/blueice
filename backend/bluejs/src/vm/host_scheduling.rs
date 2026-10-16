@@ -274,6 +274,20 @@ pub(super) struct SharedSchedulingCharge {
 }
 
 impl SharedSchedulingCharge {
+    /// Transfer existing ownership without admitting or charging it again.
+    pub(super) fn absorb(&mut self, mut other: Self) -> Result<(), RuntimeError> {
+        if !Rc::ptr_eq(&self.account, &other.account) {
+            return Err(self.fail());
+        }
+        let bytes = self
+            .bytes
+            .checked_add(other.bytes)
+            .ok_or_else(|| self.fail())?;
+        self.bytes = bytes;
+        other.bytes = 0;
+        Ok(())
+    }
+
     pub(super) fn belongs_to(&self, scope: &SchedulingScope) -> bool {
         Rc::ptr_eq(&self.account, &scope.account)
     }

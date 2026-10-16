@@ -352,8 +352,26 @@ existing owner; refusal latches the new document and a void host setter retains
 its previous registry/referrer. Raw source snapshots remain borrowed during
 conversion rather than making another UTF-8 copy. Text conversion admits minimum
 UTF-16 storage before fallible reservation and checks actual capacity before
-filling it. JSON separately reserves its derived value and a scoped UTF-16 input;
-inner JSON coercion/UTF-8/parser/source-map storage remains open work.
+filling it. JSON modules borrow their immutable UTF-8 sources directly, retaining
+an admitted AST until conversion ends; they need no UTF-16/UTF-8 input copies or
+reviver source maps. General JSON runtime accounting remains separate work.
+
+The shared JSON grammar parser leases actual module AST vector/key/value
+capacities. Fallible growth admits a complete replacement while its prior
+allocation exists and checks actual capacity before publication. Module mode
+omits primitive source-text copies; general reviver parses preserve that data.
+The complete grammar is validated before any managed object construction.
+Bounded documents cap module container nesting at 128; the standalone parser
+retains its independent policy. Tests lower the cap to two for a tiny refusal
+case rather than running a deep-recursion workload.
+
+JSON conversion admits its maximum ancestor/child root slots before heap
+effects, preserves the operand prefix and keeps object children rooted through
+property installation. Independent UTF-16 key/value copies retain scoped leases
+until managed adoption. Array index keys use fixed stack digits. The returned
+primitive's existing charge merges with its prepared export header in the same
+document without another payload reservation; foreign-document transfers fail.
+AST, copy and root cleanup preserve original syntax/resource error identities.
 
 Bytes copies own scoped capacity until the heap adopts their immutable buffer.
 The temporary buffer root's operand slot is admitted before prototype or buffer

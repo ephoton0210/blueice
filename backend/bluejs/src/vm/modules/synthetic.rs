@@ -17,6 +17,10 @@ mod boundary_tests;
 #[path = "../../../tests/fixtures/synthetic_value_ownership.rs"]
 mod ownership_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/json_module_ownership.rs"]
+mod json_ownership_tests;
+
 /// A module whose record is synthesized from host data rather than parsed as
 /// JavaScript. Keeping this separate from `ModuleType` makes the source-text
 /// case impossible inside `ensure_synthetic_module`.
@@ -89,13 +93,8 @@ impl Vm {
                         "host did not provide a JSON module source for {path}"
                     )));
                 };
-                let output =
-                    self.prepare_synthetic_value(source.encode_utf16().count().saturating_mul(2))?;
-                let input = module_values::ModuleValueCopy::from_utf8(
-                    source,
-                    self.host_scheduling.as_ref(),
-                )?;
-                let value = self.json_parse(input.value(), None).map_err(|error| {
+                let output = self.prepare_synthetic_value(0)?;
+                let value = self.json_module_value(source).map_err(|error| {
                     if matches!(error, RuntimeError::SyntaxError(_)) {
                         RuntimeError::ModuleResolution(format!(
                             "invalid JSON module {path}: {error}"
@@ -106,8 +105,7 @@ impl Vm {
                         error
                     }
                 })?;
-                drop(input);
-                output.finish(value)?
+                output.adopt_copy(value)?
             }
             SyntheticModuleType::Text => {
                 let sources = self.text_module_sources.clone();
