@@ -192,6 +192,7 @@ struct LauncherProcess {
     control_socket: PathBuf,
     debugger_socket: PathBuf,
     frame_dir: PathBuf,
+    stderr_log: PathBuf,
 }
 
 impl LauncherProcess {
@@ -227,6 +228,19 @@ impl LauncherProcess {
         launcher_binary: &Path,
         map_fault_mode: Option<&str>,
     ) -> Self {
+        // The launcher spawns `blueice-core` from its own directory. Cargo only
+        // builds that binary when its package is part of the invocation, so
+        // fail with the actual cause instead of a bare launcher exit status.
+        let core = launcher_binary.with_file_name(if cfg!(windows) {
+            "blueice-core.exe"
+        } else {
+            "blueice-core"
+        });
+        assert!(
+            core.is_file() || launcher_binary != Path::new(env!("CARGO_BIN_EXE_blueice-launcher")),
+            "sibling {} is missing; build it first (`cargo build -p blueice-engine --bin blueice-core`) or run the whole workspace",
+            core.display()
+        );
         let test_guard = LAUNCHER_DEBUGGER_TEST_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -234,6 +248,7 @@ impl LauncherProcess {
         let control_socket = unique_path("control");
         let debugger_socket = unique_path("debugger");
         let frame_dir = unique_frame_dir();
+        let stderr_log = unique_path("launcher-stderr");
         let _ = std::fs::remove_file(&rendezvous_socket);
         let _ = std::fs::remove_file(&control_socket);
         let _ = std::fs::remove_file(&debugger_socket);
@@ -360,6 +375,11 @@ impl LauncherProcess {
         if let Some(path) = owner_http_policy {
             command.arg("--page-http-policy-file").arg(path);
         }
+        // K.13.3.1: keep the launcher's (and its children's) stderr so an early
+        // exit under load is reported with its cause rather than a bare status.
+        command.stderr(std::process::Stdio::from(
+            std::fs::File::create(&stderr_log).expect("launcher stderr log must be created"),
+        ));
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
             _test_guard: test_guard,
@@ -368,6 +388,7 @@ impl LauncherProcess {
             control_socket,
             debugger_socket,
             frame_dir,
+            stderr_log,
         };
         process.wait_for_socket(&process.rendezvous_socket.clone(), "browser rendezvous");
         process.wait_for_socket(&process.control_socket.clone(), "control");
@@ -386,13 +407,27 @@ impl LauncherProcess {
                 .try_wait()
                 .expect("must be able to poll blueice-launcher")
             {
-                panic!("launcher exited before creating {name} socket: {status}");
+                panic!(
+                    "launcher exited before creating {name} socket: {status}\n{}",
+                    self.stderr_report()
+                );
             }
             if Instant::now() >= deadline {
                 self.wait_or_kill(Duration::from_secs(1));
-                panic!("launcher did not create {name} socket within {STARTUP_TIMEOUT:?}");
+                panic!(
+                    "launcher did not create {name} socket within {STARTUP_TIMEOUT:?}\n{}",
+                    self.stderr_report()
+                );
             }
             thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    fn stderr_report(&self) -> String {
+        match std::fs::read_to_string(&self.stderr_log) {
+            Ok(text) if text.trim().is_empty() => "launcher stderr: <empty>".to_string(),
+            Ok(text) => format!("launcher stderr:\n{text}"),
+            Err(error) => format!("launcher stderr unavailable: {error}"),
         }
     }
 
@@ -437,6 +472,7 @@ impl Drop for LauncherProcess {
         let _ = std::fs::remove_file(&self.control_socket);
         let _ = std::fs::remove_file(&self.debugger_socket);
         let _ = std::fs::remove_dir_all(&self.frame_dir);
+        let _ = std::fs::remove_file(&self.stderr_log);
     }
 }
 

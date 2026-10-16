@@ -639,13 +639,15 @@ Items are independent; may be taken any time.
   - [ ] **AC-K13.2.1** Full extended `typescript-oracle` job passes on GitHub for every matrix leg.
   - [ ] **AC-K13.2.2** Runtime of the slowest leg is recorded and below its timeout with >= 25% margin.
   - [ ] **AC-K13.2.3** Run id and commit hash are written to PLAN.md.
-- [ ] **K.13.3 Launcher start-up flake (M).**
-  - [ ] **AC-K13.3.1** Harness captures and prints the launcher's stderr on early exit.
-  - [ ] **AC-K13.3.2** Reproduced under load (33 parallel processes) or documented as unreproducible
-    after >= 200 iterations.
-  - [ ] **AC-K13.3.3** Cause fixed, or a bounded, *reported* retry is added; no silent retry.
-  - [ ] **AC-K13.3.4** `launcher_relates_nested_parent_roots_but_not_child_local_slots` passes 200
-    consecutive runs under load.
+- [x] **K.13.3 Launcher start-up flake (M).**
+  - [x] **AC-K13.3.1** Harness captures the launcher's stderr and prints it on early exit or start-up timeout.
+  - [x] **AC-K13.3.2** Not reproduced: 200 runs, 33 in parallel, 0 failures (2026-10-16). The only failure
+    mode found is a missing sibling `blueice-core` when only `-p blueice-launcher` is built, now diagnosed by
+    a precondition check. Whether this was the original single failure is not established.
+  - [x] **AC-K13.3.3** No retry added. The harness now fails with the real cause, so a recurrence is reported
+    with its stderr rather than silenced.
+  - [x] **AC-K13.3.4** `launcher_relates_nested_parent_roots_but_not_child_local_slots`: 200 consecutive
+    runs under 33-way parallel load, all passed.
 - [ ] **K.13.4 Per-file coverage (M).**
   - [ ] **AC-K13.4.1** Each of `emitter/decorators.rs`, `emitter/legacy_decorators.rs`, `emitter/jsx.rs`,
     `package_resolution.rs`, `bluets-bluejs/src/jsx_direct.rs` >= 90% line coverage (five separate
