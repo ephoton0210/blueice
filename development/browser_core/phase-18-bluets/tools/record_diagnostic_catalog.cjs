@@ -16,7 +16,7 @@ const filename = path.join(root, '__diagnostic_catalog__.ts');
 const options = { target: ts.ScriptTarget.ES2022, lib: ['lib.es2022.d.ts'], strict: true, noEmit: true };
 const host = ts.createCompilerHost(options);
 const read = host.getSourceFile;
-host.getSourceFile = (name, version, onError, createNew) => name === filename
+host.getSourceFile = (name, version, onError, createNew) => path.normalize(name) === path.normalize(filename)
     ? ts.createSourceFile(name, '', version)
     : read(name, version, onError, createNew);
 const program = ts.createProgram([filename], options, host);
@@ -93,5 +93,5 @@ const catalog = { version: ts.version, templates, constructors, members, compile
 const text = JSON.stringify(catalog, null, 2) + '\n';
 const destination = path.join(root, 'backend/bluets/src/diagnostic/typescript-5.9.3.json');
 if (process.env.BLUEICE_WRITE_DIAGNOSTICS_MATRIX === '1') fs.writeFileSync(destination, text);
-else if (fs.readFileSync(destination, 'utf8') !== text) throw new Error('Pinned diagnostic catalog changed');
+else if (fs.readFileSync(destination, 'utf8').replaceAll('\r\n', '\n') !== text) throw new Error('Pinned diagnostic catalog changed');
 process.stdout.write(`Recorded ${Object.keys(templates).length} templates and ${Object.keys(members).length} library member catalogs\n`);

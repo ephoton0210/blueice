@@ -11027,3 +11027,32 @@ are the required execution evidence. The workflow's Windows arm64 leg is
 configured, but arm64 success is not inferred from the x86_64 VM result.
 GitHub-hosted confirmation of every matrix leg, its runtime margin, and the
 run id/commit hash remain K.13.2.
+
+### K.13.2 Windows preflight before hosted confirmation (2026-10-16)
+
+The first hosted four-leg run (`38841650342`, commit `1378938df`) passed the
+macOS and Ubuntu `typescript-oracle` legs but failed both Windows legs. Its
+Windows x86_64 build/test/lint job also failed at the unused Unix-only
+`Snapshot::row` method in `project_reference_owner_gate.rs` under
+`-D warnings`. The method is now Unix-gated. The Windows oracle differences
+were rooted in drive/verbatim path rendering, `tsc.cmd` package resolution,
+line endings and source-map URLs; the recorder and test normalizers now
+preserve the meaningful diagnostic and output comparisons across platforms.
+
+An isolated source snapshot on the pb60g Windows x86_64 VM, using Node
+24.21.0, TypeScript 5.9.3, Acorn 8.15.0 and Rust 1.95 MSVC, passed all
+82 ignored `typescript_oracle` tests (82/82 in 603 seconds), the ten Node
+oracle-support tests (10/10), all eight `cli_surface` tests including the
+pinned comparisons (8/8), both `output_options` pinned tests, the JSON
+default-binding pinned test, and warnings-denied all-target Clippy for the
+BlueTS and direct bridge crates. The VM snapshot was checked for and cleared
+of macOS tar AppleDouble `._*` transfer artifacts before these acceptance
+runs; those artifacts are absent from Git and from a hosted checkout.
+
+The macOS host passed `cargo test --workspace --quiet`,
+`cargo build --workspace --all-targets`, full ignored pinned TypeScript
+oracles for both BlueTS crates (`typescript_oracle`: 82/82), workspace
+warnings-denied all-target Clippy, rustfmt and the Node oracle-support tests.
+This is preflight evidence only: K.13.2 remains unchecked until the corrected
+commit passes all four hosted `typescript-oracle` legs, the slowest leg stays
+within 180 minutes, and that run's id and commit hash are recorded here.

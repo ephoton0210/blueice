@@ -28,6 +28,41 @@ fn accepted(case: &Value) -> bool {
         .is_empty()
 }
 
+fn normalize_map_source(source: &str, case_path: &str, map_root: &str) -> String {
+    let portable_case_path = case_path.strip_prefix("//?/").unwrap_or(case_path);
+    let result = source
+        .replace(case_path, "<case>")
+        .replace(portable_case_path, "<case>")
+        .replace(portable_case_path.trim_start_matches('/'), "<case>");
+    if let Some(tail) = result.strip_prefix("file:///<case>") {
+        if map_root.starts_with('/') && !map_root.starts_with("//") {
+            return format!("..<case>{tail}");
+        }
+        if map_root.contains("://") {
+            return format!("file://<case>{tail}");
+        }
+    }
+    result
+}
+
+#[test]
+fn source_map_path_normalization_preserves_cross_platform_evidence() {
+    let source = "file:///C:/Users/runner/Temp/root-maproot-7/main.ts";
+    let directory = "C:/Users/runner/Temp/root-maproot-7";
+    assert_eq!(
+        normalize_map_source(source, directory, "/roots"),
+        "..<case>/main.ts"
+    );
+    assert_eq!(
+        normalize_map_source(source, directory, "https://example.invalid/roots"),
+        "file://<case>/main.ts"
+    );
+    assert_eq!(
+        normalize_map_source(source, "//?/C:/Users/runner/Temp/root-maproot-7", "/roots"),
+        "..<case>/main.ts"
+    );
+}
+
 fn temporary(name: &str) -> PathBuf {
     let root = fs::canonicalize(env::temp_dir())
         .unwrap()
@@ -222,14 +257,13 @@ fn emitted_output_options_preserve_runtime_declarations_and_maps() {
         let mut map: Value =
             serde_json::from_str(&fs::read_to_string(out.join("main.js.map")).unwrap()).unwrap();
         let case_path = directory.to_string_lossy().replace('\\', "/");
+        let map_root = config["compilerOptions"]["mapRoot"].as_str().unwrap_or("");
         for source in map["sources"].as_array_mut().unwrap() {
-            *source = Value::String(
-                source
-                    .as_str()
-                    .unwrap()
-                    .replace(&case_path, "<case>")
-                    .replace(case_path.trim_start_matches('/'), "<case>"),
-            );
+            *source = Value::String(normalize_map_source(
+                source.as_str().unwrap(),
+                &case_path,
+                map_root,
+            ));
         }
         for name in ["file", "sourceRoot", "sources", "sourcesContent"] {
             if map[name] != case["reference"]["sourceMap"][name] {

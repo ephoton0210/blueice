@@ -116,7 +116,7 @@ try {
         // A nested invocation uses the same nearest discovered configuration.
         record(`cli:${row.name}`, directory, row.args, { matrix: 'cli', variant: row.variant || null }, row.exit === 0);
     }
-    const rust = fs.readFileSync(path.join(root, 'backend/bluets/tests/option_combinations_oracle.rs'), 'utf8');
+    const rust = fs.readFileSync(path.join(root, 'backend/bluets/tests/option_combinations_oracle.rs'), 'utf8').replaceAll('\r\n', '\n');
     const sources = {};
     for (const [constant, filename] of [['LIB', 'lib.ts'], ['MAIN', 'main.ts']]) {
         sources[`src/${filename}`] = rust.match(new RegExp(`const ${constant}: &str = r#"([\\s\\S]*?)"#;`))[1];

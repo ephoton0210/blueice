@@ -12,8 +12,8 @@ const cases = input.cases.map(row => {
     const options = converted.options;
     const host = ts.createCompilerHost(options);
     const original = host.getSourceFile.bind(host);
-    host.getSourceFile = (name, ...args) => name === file
-        ? ts.createSourceFile(file, row.source, options.target, true)
+    host.getSourceFile = (name, ...args) => path.normalize(name) === path.normalize(file)
+        ? ts.createSourceFile(name, row.source, options.target, true)
         : original(name, ...args);
     const program = ts.createProgram([file], options, host);
     const diagnostics = [...converted.errors, ...ts.getPreEmitDiagnostics(program)].map(d => ({

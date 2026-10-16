@@ -4,6 +4,8 @@
 
 const fs=require('fs'),path=require('path'),cp=require('child_process'),assert=require('assert'),crypto=require('crypto');
 const repository=path.resolve(__dirname,'../../../..'),support=path.join(repository,'backend/bluets/tests/fixtures/oracle_support');
+const relativeFixturePath=require(path.join(support,'fixture_paths.cjs'));
+const redactRoot=require(path.join(support,'redact_root.cjs'));
 const ts=require(path.join(support,'load_typescript.cjs'))(process.env.BLUEICE_BLUETSC_ORACLE || 'tsc');
 const acorn=require(path.join(support,'load_acorn.cjs'))();
 const corpus=path.join(repository,'backend/bluets/tests/fixtures/source_extras');const reference=JSON.parse(fs.readFileSync(path.join(corpus,'reference.json')));const library=path.dirname(ts.getDefaultLibFilePath({})),cache=new Map();
@@ -21,8 +23,8 @@ async function main(){const cases=[];for(const item of reference.cases){
  host.getSourceFile=(file,...args)=>{if(path.dirname(file)!==library)return original(file,...args);const key=file+JSON.stringify(args[0]);if(!cache.has(key))cache.set(key,original(file,...args));return cache.get(key);};
  host.writeFile=(file,text,bom)=>{const name=path.relative(directory,file).replaceAll('\\','/');outputs[name]=(bom?'\ufeff':'')+text;fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,outputs[name]);};
  const program=ts.createProgram(parsed.fileNames,parsed.options,host);const all=[...parsed.errors,...ts.getPreEmitDiagnostics(program)];const emitted=program.emit();for(const d of emitted.diagnostics)if(!all.some(old=>old.code===d.code&&old.start===d.start&&old.file===d.file))all.push(d);
- const diagnostics=all.map(d=>({code:d.code,file:d.file?path.relative(directory,d.file.fileName).replaceAll('\\','/'):null,start:d.start??null,length:d.length??null,message:ts.flattenDiagnosticMessageText(d.messageText,'\n').replaceAll(directory,'<root>')}));
- const row={...item,diagnostics,emitSkipped:emitted.emitSkipped,files:Object.keys(outputs).sort(),outputs,selectedInputs:program.getSourceFiles().map(s=>path.relative(directory,s.fileName).replaceAll('\\','/')).filter(name=>!name.startsWith('../')).sort(),observation:null,syntaxErrors:[]};
+ const diagnostics=all.map(d=>({code:d.code,file:d.file?path.relative(directory,d.file.fileName).replaceAll('\\','/'):null,start:d.start??null,length:d.length??null,message:redactRoot(ts.flattenDiagnosticMessageText(d.messageText,'\n'),directory)}));
+ const row={...item,diagnostics,emitSkipped:emitted.emitSkipped,files:Object.keys(outputs).sort(),outputs,selectedInputs:program.getSourceFiles().map(s=>relativeFixturePath(directory,s.fileName)).filter(Boolean).sort(),observation:null,syntaxErrors:[]};
  if(diagnostics.length){assert.strictEqual(emitted.emitSkipped,true,item.id);assert.deepStrictEqual(row.files,[],item.id);}
  else {
   for(const [file,text] of Object.entries(outputs))if(file.endsWith('.js')){try{acorn.parse(text,{ecmaVersion:'latest',sourceType:item.runtimeModule==='CommonJS'?'script':'module'});}catch(e){row.syntaxErrors.push({file,message:String(e)});}const parsed=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);assert.deepStrictEqual(parsed.parseDiagnostics,[],item.id+':'+file);}

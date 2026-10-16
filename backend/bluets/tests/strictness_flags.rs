@@ -104,7 +104,7 @@ fn recorded_strictness_matrix_matches_pinned_typescript() {
     if write {
         fs::write(root().join("strictness-checker-matrix.tsv"), matrix).unwrap();
     } else {
-        assert_eq!(matrix, MATRIX);
+        assert_eq!(matrix, MATRIX.replace("\r\n", "\n"));
     }
 }
 

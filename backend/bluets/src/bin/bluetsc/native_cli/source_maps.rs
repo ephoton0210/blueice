@@ -7,6 +7,23 @@
 use super::*;
 use blueice_bluets::SourceMap;
 
+fn source_file_url(source: &Path) -> String {
+    let source = output_path(source);
+    if let Some(unc) = source.strip_prefix("//?/UNC/") {
+        return format!("file://{unc}");
+    }
+    if let Some(drive) = source.strip_prefix("//?/") {
+        return format!("file:///{drive}");
+    }
+    if let Some(unc) = source.strip_prefix("//") {
+        return format!("file://{unc}");
+    }
+    format!(
+        "file://{}{source}",
+        if source.starts_with('/') { "" } else { "/" }
+    )
+}
+
 pub(super) fn publication(
     map: &SourceMap,
     invocation: &Invocation,
@@ -43,6 +60,17 @@ pub(super) fn publication(
                 output_path(&map_relative)
             )
         }
+        // A drive-less rooted mapRoot stays drive-less in TypeScript's URL on
+        // Windows. Its source entries become file URLs, not paths relative to
+        // the drive-local logical map directory.
+        Some(root) if cfg!(windows) && root.starts_with('/') && !root.starts_with("//") => {
+            source_url = true;
+            format!(
+                "{}/{}",
+                root.trim_end_matches('/'),
+                output_path(&map_relative)
+            )
+        }
         Some(root) => {
             let logical = tsconfig::clean_path(&project.emit_root.join(root).join(&map_relative));
             base = logical.parent().expect("logical map parent").to_path_buf();
@@ -56,13 +84,27 @@ pub(super) fn publication(
     map.sources = vec![if !map.source_root.is_empty() {
         tsconfig::relative_text(&project.emit_root, source)
     } else if source_url {
-        let source = output_path(source);
-        format!(
-            "file://{}{source}",
-            if source.starts_with('/') { "" } else { "/" }
-        )
+        source_file_url(source)
     } else {
         tsconfig::relative_text(&base, source)
     }];
     Ok((map, url))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::source_file_url;
+    use std::path::Path;
+
+    #[test]
+    fn windows_namespaced_sources_become_standard_file_urls() {
+        assert_eq!(
+            source_file_url(Path::new(r"\\?\C:\Users\runner\main.ts")),
+            "file:///C:/Users/runner/main.ts"
+        );
+        assert_eq!(
+            source_file_url(Path::new(r"\\?\UNC\server\share\main.ts")),
+            "file://server/share/main.ts"
+        );
+    }
 }

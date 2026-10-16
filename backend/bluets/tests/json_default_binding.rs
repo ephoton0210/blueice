@@ -25,6 +25,25 @@ fn primary(output: &Output) -> String {
         .to_string()
 }
 
+fn relative_diagnostic_path(diagnostic: &str, input: &Path) -> String {
+    let prefix = format!("{}/", input.to_string_lossy().replace('\\', "/"));
+    diagnostic
+        .strip_prefix(&prefix)
+        .unwrap_or(diagnostic)
+        .to_string()
+}
+
+#[test]
+fn namespaced_windows_diagnostic_path_is_relative_to_fixture() {
+    let input = Path::new(r"\\?\C:\Windows\SystemTemp\fixture\wrong-field");
+    let diagnostic =
+        "//?/C:/Windows/SystemTemp/fixture/wrong-field/main.ts(1,65): error TS2322: mismatch";
+    assert_eq!(
+        relative_diagnostic_path(diagnostic, input),
+        "main.ts(1,65): error TS2322: mismatch"
+    );
+}
+
 fn declaration(root: &Path) -> String {
     fs::read_to_string(root.join("main.d.ts"))
         .unwrap()
@@ -81,7 +100,7 @@ fn json_default_property_keeps_pinned_inference_execution_and_assignment_diagnos
             assert_eq!(text, "export declare const answer: number;\n");
             (Some(text), None)
         } else {
-            let error = primary(&built);
+            let error = relative_diagnostic_path(&primary(&built), &input);
             assert!(error.contains("error TS2322:"), "{error}");
             assert!(!reference.exists());
             (None, Some(error))
@@ -113,10 +132,12 @@ fn json_default_property_keeps_pinned_inference_execution_and_assignment_diagnos
             }
         }
         if let Some(error) = expected.1 {
-            if primary(&built) != error || blue.exists() {
+            let actual = primary(&built);
+            if actual != error || blue.exists() {
                 failures.push(format!(
-                    "{name}: diagnostic/output differs: {}",
-                    report(&built)
+                    "{name}: diagnostic/output differs: expected {error:?}, actual {actual:?}, output_exists={}, full output: {}",
+                    blue.exists(),
+                    report(&built),
                 ));
             }
         }

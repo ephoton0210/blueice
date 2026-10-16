@@ -6,6 +6,7 @@ const fs = require('fs'), path = require('path'), os = require('os');
 const crypto = require('crypto'), vm = require('vm'), assert = require('assert');
 const repository = path.resolve(__dirname, '../../../..');
 const corpus = path.join(repository, 'backend/bluets/tests/fixtures/output_options');
+const normalizeMapSource = require(path.join(repository, 'backend/bluets/tests/fixtures/oracle_support/normalize_map_source.cjs'));
 const ts = require(path.join(repository, 'backend/bluets/tests/fixtures/oracle_support/load_typescript.cjs'))(process.env.BLUEICE_BLUETSC_ORACLE || 'tsc');
 assert.strictEqual(ts.version, '5.9.3');
 const reference = JSON.parse(fs.readFileSync(path.join(corpus, 'reference.json'), 'utf8'));
@@ -57,8 +58,7 @@ async function record() {
             assert.deepStrictEqual(reference.observation, {result: 42, text: '// literal /* retained */'}, item.id);
             reference.javascript = {bom: javascript.startsWith('\ufeff'), crlf: (javascript.match(/\r\n/g) || []).length, bareLF: (javascript.replaceAll('\r\n', '').match(/\n/g) || []).length, ordinaryComment: javascript.includes('retained ordinary comment'), publicComment: javascript.includes('Public answer.'), internalComment: javascript.includes('@internal'), literalRetained: javascript.includes('// literal /* retained */'), sourceMappingURL: javascript.split(/\r?\n/).find(x => x.includes('sourceMappingURL'))};
             reference.declaration = outputs['main.d.ts'];
-            const casePath = directory.replaceAll('\\', '/');
-            reference.sourceMap = {file: map.file, sourceRoot: map.sourceRoot, sources: map.sources.map(source => source.replace(casePath, '<case>').replace(casePath.replace(/^\//, ''), '<case>'))};
+            reference.sourceMap = {file: map.file, sourceRoot: map.sourceRoot, sources: map.sources.map(source => normalizeMapSource(source, directory, item.config.compilerOptions.mapRoot || ''))};
             if (map.sourcesContent !== undefined) reference.sourceMap.sourcesContent = map.sourcesContent;
         }
         cases.push({id: item.id, form: item.form, options: item.options, reference});

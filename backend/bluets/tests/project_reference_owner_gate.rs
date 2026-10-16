@@ -21,6 +21,7 @@ struct Snapshot {
     built: Vec<String>,
 }
 
+#[cfg(unix)]
 impl Snapshot {
     fn row(&self) -> String {
         format!(

@@ -296,9 +296,9 @@ fn boundary_controls_match_pinned_typescript() {
 const ts = require(process.argv[3])(process.argv[1]);
 for (const row of JSON.parse(process.argv[2])) {
  const converted = ts.convertCompilerOptionsFromJson(row.options, process.cwd());
- const options = converted.options, file = require('path').join(process.cwd(), 'control.ts');
+ const options = converted.options, path = require('path'), file = path.join(process.cwd(), 'control.ts');
  const host = ts.createCompilerHost(options), get = host.getSourceFile.bind(host);
- host.getSourceFile = (name, ...args) => name === file ? ts.createSourceFile(file, row.source, options.target, true) : get(name, ...args);
+ host.getSourceFile = (name, ...args) => path.normalize(name) === path.normalize(file) ? ts.createSourceFile(name, row.source, options.target, true) : get(name, ...args);
  const program = ts.createProgram([file], options, host);
  const diagnostics = [...converted.errors, ...ts.getPreEmitDiagnostics(program)];
  if ((diagnostics.length === 0) !== row.accepts) throw Error(JSON.stringify({source:row.source, diagnostics:diagnostics.map(d => ({code:d.code,message:ts.flattenDiagnosticMessageText(d.messageText, ' ')}))}));

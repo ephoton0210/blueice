@@ -309,6 +309,7 @@ jobs:
   typescript-oracle:
     name: BlueTSC TypeScript compatibility oracles (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
@@ -329,9 +330,12 @@ jobs:
           typescript@5.9.3 acorn@8.15.0
       - name: Select pinned oracle commands
         run: node development/browser_core/phase-18-bluets/tools/select_oracle_commands.cjs
-      - name: Verify cross-platform oracle command resolution
+      - name: Verify cross-platform oracle support
         run: >-
           node --test
+          backend/bluets/tests/fixtures/oracle_support/fixture_paths.test.cjs
+          backend/bluets/tests/fixtures/oracle_support/normalize_map_source.test.cjs
+          backend/bluets/tests/fixtures/oracle_support/redact_root.test.cjs
           backend/bluets/tests/fixtures/oracle_support/resolve_package.test.cjs
           development/browser_core/phase-18-bluets/tools/select_oracle_commands.test.cjs
       - name: Run every pinned TypeScript 5.9.3 oracle of BlueTSC and its direct bridge

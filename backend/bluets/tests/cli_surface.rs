@@ -86,7 +86,14 @@ fn prepare(root: &Path, row: &Value) {
     )
     .unwrap();
 }
+fn normalize_project_path(text: &str, project_root: &str) -> String {
+    let portable_root = project_root.strip_prefix("//?/").unwrap_or(project_root);
+    text.replace('\\', "/")
+        .replace(project_root, "<project>")
+        .replace(portable_root, "<project>")
+}
 fn display(root: &Path, row: &Value, output: &Output) -> Value {
+    let project_root = root.to_string_lossy().replace('\\', "/");
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -102,7 +109,7 @@ fn display(root: &Path, row: &Value, output: &Output) -> Value {
         fn normalize(value: &mut Value, root: &str) {
             match value {
                 Value::String(text) => {
-                    *text = text.replace(root, "<project>").replace('\\', "/");
+                    *text = normalize_project_path(text, root);
                 }
                 Value::Array(values) => {
                     for value in values {
@@ -118,12 +125,10 @@ fn display(root: &Path, row: &Value, output: &Output) -> Value {
             }
         }
         let mut config: Value = serde_json::from_str(&text).unwrap();
-        normalize(&mut config, &root.to_string_lossy());
+        normalize(&mut config, &project_root);
         return json!({"config":config});
     }
-    let text = text
-        .replace(&root.to_string_lossy().to_string(), "<project>")
-        .replace('\\', "/");
+    let text = normalize_project_path(&text, &project_root);
     let mut emitted = text
         .lines()
         .filter_map(|line| line.strip_prefix("TSFILE: "))
@@ -210,19 +215,30 @@ fn native_cli_matches_the_recorded_project_observations() {
 #[test]
 fn serialized_project_paths_normalize_windows_roots() {
     let root = Path::new(r"\\?\C:\Users\runneradmin\Temp\project");
+    let slash_root = root.to_string_lossy().replace('\\', "/");
     let mut output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
         .arg("--help")
         .output()
         .unwrap();
     assert!(output.status.success());
     output.stdout = serde_json::to_vec(&json!({
-        "exclude": [format!(r"{}\out", root.display())],
+        "exclude": [format!("{slash_root}/out"), format!(r"{}\out", root.display()), "C:/Users/runneradmin/Temp/project/out"],
         "files": ["./src/main.ts"]
     }))
     .unwrap();
     assert_eq!(
         display(root, &json!({"args": ["--showConfig"]}), &output),
-        json!({"config": {"exclude": ["<project>/out"], "files": ["./src/main.ts"]}})
+        json!({"config": {"exclude": ["<project>/out", "<project>/out", "<project>/out"], "files": ["./src/main.ts"]}})
+    );
+    output.stdout = format!("TSFILE: {slash_root}/out/main.js\n").into_bytes();
+    assert_eq!(
+        display(root, &json!({"args": ["--listEmittedFiles"]}), &output)["emitted"],
+        json!(["<project>/out/main.js"])
+    );
+    output.stdout = b"TSFILE: C:/Users/runneradmin/Temp/project/out/main.js\n".to_vec();
+    assert_eq!(
+        display(root, &json!({"args": ["--listEmittedFiles"]}), &output)["emitted"],
+        json!(["<project>/out/main.js"])
     );
 }
 

@@ -19,7 +19,7 @@ const cases = reference.cases.map(row => {
     const host = ts.createCompilerHost(options);
     const read = host.getSourceFile;
     host.getSourceFile = (name, version, error, fresh) => {
-        if (name === filename) return ts.createSourceFile(name, row.source, version);
+        if (path.normalize(name) === path.normalize(filename)) return ts.createSourceFile(name, row.source, version);
         if (!libraries.has(name)) libraries.set(name, read(name, version, error, fresh));
         return libraries.get(name);
     };
@@ -33,5 +33,5 @@ const cases = reference.cases.map(row => {
 });
 const text = JSON.stringify({ version: ts.version, cases }, null, 2) + '\n';
 if (process.env.BLUEICE_WRITE_DIAGNOSTICS_MATRIX === '1') fs.writeFileSync(destination, text);
-else if (fs.readFileSync(destination, 'utf8') !== text) throw new Error('Diagnostic source witnesses changed');
+else if (fs.readFileSync(destination, 'utf8').replaceAll('\r\n', '\n') !== text) throw new Error('Diagnostic source witnesses changed');
 process.stdout.write(`Recorded ${cases.length} diagnostic source witnesses\n`);

@@ -642,7 +642,8 @@ Items are independent; may be taken any time.
       diagnostic recorders, rustfmt and warnings-denied two-crate Clippy.
 - [ ] **K.13.2 Hosted CI confirmation (S).**
   - [ ] **AC-K13.2.1** Full extended `typescript-oracle` job passes on GitHub for every matrix leg.
-  - [ ] **AC-K13.2.2** Runtime of the slowest leg is recorded and below its timeout with >= 25% margin.
+  - [ ] **AC-K13.2.2** Runtime of the slowest leg is recorded and stays at or below 180 minutes,
+    leaving at least 25% of the explicit 240-minute job timeout unused.
   - [ ] **AC-K13.2.3** Run id and commit hash are written to PLAN.md.
 - [x] **K.13.3 Launcher start-up flake (M).**
   - [x] **AC-K13.3.1** Harness captures the launcher's stderr and prints it on early exit or start-up timeout.
