@@ -190,22 +190,7 @@ impl Heap {
         };
         Ok(match &**state {
             GeneratorState::Start { captures, .. } => (captures.len(), 0, 0),
-            GeneratorState::Suspended {
-                cells,
-                dynamic_bindings,
-                ..
-            } => {
-                let payload = dynamic_bindings
-                    .iter()
-                    .fold(0usize, |bytes, (name, _, shadowed)| {
-                        bytes.saturating_add(name.capacity()).saturating_add(
-                            shadowed
-                                .capacity()
-                                .saturating_mul(std::mem::size_of::<ObjectId>()),
-                        )
-                    });
-                (cells.len(), dynamic_bindings.len(), payload)
-            }
+            GeneratorState::Suspended { .. } => (0, 0, state.table_bytes()),
             GeneratorState::Running | GeneratorState::Done => (0, 0, 0),
         })
     }

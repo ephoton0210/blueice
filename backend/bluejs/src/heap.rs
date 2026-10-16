@@ -394,9 +394,23 @@ impl DisposableResource {
     }
 }
 
-// The suspended frame is intentionally inline: it moves atomically between a
-// generator heap slot and the interpreter, and is already stored behind a
-// `Box<GeneratorState>` in `ObjectKind::Generator`.
+/// A sloppy direct eval declaration installed in an ordinary function's
+/// VariableEnvironment. Unlike global bindings it is neither permanent nor
+/// property-backed: it lives for the frame, may be deleted, and closures keep
+/// its cell alive when they capture it.
+#[derive(Clone)]
+pub(crate) struct DynamicEvalBinding {
+    pub(crate) cell: ObjectId,
+    /// A direct eval can introduce a binding in the active function's
+    /// VariableEnvironment that shadows a statically captured binding from
+    /// an outer function. Track the exact captured cells, rather than only
+    /// the name: an eval-local block function can use the same name while
+    /// remaining an independent lexical binding.
+    pub(crate) shadowed_cells: Vec<ObjectId>,
+}
+
+// The suspended frame moves atomically between a generator heap slot and the
+// interpreter and is already boxed in ObjectKind::Generator.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum GeneratorState {
     Start {
@@ -414,7 +428,7 @@ pub(crate) enum GeneratorState {
         pc: usize,
         stack: Vec<Value>,
         bindings: Vec<Option<Value>>,
-        cells: Vec<(usize, ObjectId)>,
+        cells: HashMap<usize, ObjectId>,
         this: Value,
         args: Vec<Value>,
         completion: Value,
@@ -440,7 +454,7 @@ pub(crate) enum GeneratorState {
         /// Set only while a compiler-declared ordinary `yield*` loop is
         /// suspended at its public yield boundary.
         delegate: Option<GeneratorDelegate>,
-        dynamic_bindings: Vec<(String, ObjectId, Vec<ObjectId>)>,
+        dynamic_bindings: HashMap<String, DynamicEvalBinding>,
         home: Option<ObjectId>,
         callee: Value,
         /// The `with` objects in scope at the suspension point: the ones the
@@ -563,6 +577,39 @@ impl AsyncGeneratorControl {
 }
 
 impl GeneratorState {
+    pub(crate) fn owned_buffer_bytes(&self) -> usize {
+        self.managed_bytes().saturating_sub(size_of::<Self>())
+    }
+
+    pub(crate) fn table_bytes(&self) -> usize {
+        match self {
+            Self::Suspended {
+                cells,
+                dynamic_bindings,
+                ..
+            } => {
+                let cells = cells
+                    .capacity()
+                    .saturating_mul(size_of::<(usize, ObjectId)>());
+                let dynamic = dynamic_bindings
+                    .capacity()
+                    .saturating_mul(size_of::<(String, DynamicEvalBinding)>());
+                dynamic_bindings.iter().fold(
+                    cells.saturating_add(dynamic),
+                    |bytes, (name, binding)| {
+                        bytes.saturating_add(name.capacity()).saturating_add(
+                            binding
+                                .shadowed_cells
+                                .capacity()
+                                .saturating_mul(size_of::<ObjectId>()),
+                        )
+                    },
+                )
+            }
+            _ => 0,
+        }
+    }
+
     fn managed_bytes(&self) -> usize {
         fn slots<T>(values: &Vec<T>) -> usize {
             values.capacity().saturating_mul(size_of::<T>())
@@ -588,7 +635,6 @@ impl GeneratorState {
             Self::Suspended {
                 stack,
                 bindings,
-                cells,
                 this,
                 args,
                 completion,
@@ -599,7 +645,6 @@ impl GeneratorState {
                 completion_saves,
                 async_delegate,
                 delegate,
-                dynamic_bindings,
                 callee,
                 with_objects,
                 disposables,
@@ -608,14 +653,13 @@ impl GeneratorState {
             } => {
                 let mut bytes = slots(stack)
                     .saturating_add(slots(bindings))
-                    .saturating_add(slots(cells))
+                    .saturating_add(self.table_bytes())
                     .saturating_add(slots(args))
                     .saturating_add(slots(active_scopes))
                     .saturating_add(slots(iterators))
                     .saturating_add(slots(handlers))
                     .saturating_add(slots(pending_completions))
                     .saturating_add(slots(completion_saves))
-                    .saturating_add(slots(dynamic_bindings))
                     .saturating_add(slots(with_objects))
                     .saturating_add(slots(disposables))
                     .saturating_add(slots(dispose_marks))
@@ -639,11 +683,6 @@ impl GeneratorState {
                 }
                 for completion in pending_completions {
                     bytes = bytes.saturating_add(completion.managed_bytes());
-                }
-                for (name, _, shadowed) in dynamic_bindings {
-                    bytes = bytes
-                        .saturating_add(name.capacity())
-                        .saturating_add(slots(shadowed));
                 }
                 for value in async_delegate
                     .iter()
@@ -712,9 +751,9 @@ impl GeneratorState {
                     .chain(async_delegate.iter().map(|delegate| &delegate.record))
                     .chain(delegate.iter().map(|delegate| &delegate.record))
                     .filter_map(Value::object_id)
-                    .chain(cells.iter().map(|(_, id)| *id))
-                    .chain(dynamic_bindings.iter().flat_map(|(_, id, shadowed_cells)| {
-                        std::iter::once(*id).chain(shadowed_cells.iter().copied())
+                    .chain(cells.values().copied())
+                    .chain(dynamic_bindings.values().flat_map(|binding| {
+                        std::iter::once(binding.cell).chain(binding.shadowed_cells.iter().copied())
                     }))
                     .chain(*home)
                     .chain(callee.object_id())

@@ -8,7 +8,9 @@
 
 use crate::bytecode::{Binding, ModuleExport, ModuleImportName, TemplateSiteId};
 use crate::diagnostics::ThrowOrigin;
-use crate::heap::{DisposableResource, DisposeHint, GeneratorState, PrivateElement};
+use crate::heap::{
+    DisposableResource, DisposeHint, DynamicEvalBinding, GeneratorState, PrivateElement,
+};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
@@ -32,7 +34,9 @@ mod execution;
 mod execution_payload;
 mod frame_bindings;
 mod frame_maps;
+mod generator_storage;
 use frame_maps::PreparedFrameMaps;
+use generator_storage::OwnedGeneratorState;
 mod scope_storage;
 use frame_bindings::{FrameBindingKind, PreparedFrameBindings};
 mod for_in;
@@ -401,21 +405,6 @@ fn binding_allows_assignment(
         )));
     }
     Ok(false)
-}
-
-/// A sloppy direct eval declaration installed in an ordinary function's
-/// VariableEnvironment. Unlike global bindings it is neither permanent nor
-/// property-backed: it lives for the frame, may be deleted, and closures keep
-/// its cell alive when they capture it.
-#[derive(Clone)]
-struct DynamicEvalBinding {
-    cell: ObjectId,
-    /// A direct eval can introduce a binding in the active function's
-    /// VariableEnvironment that shadows a statically captured binding from
-    /// an outer function. Track the exact captured cells, rather than only
-    /// the name: an eval-local block function can use the same name while
-    /// remaining an independent lexical binding.
-    shadowed_cells: Vec<ObjectId>,
 }
 
 /// Runtime data that belongs to one member of a transient static module

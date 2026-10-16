@@ -2359,7 +2359,7 @@ impl Vm {
                         pc,
                         stack,
                         bindings: std::mem::take(&mut self.bindings),
-                        cells: std::mem::take(&mut self.cells).into_iter().collect(),
+                        cells: std::mem::take(&mut self.cells),
                         this: std::mem::replace(&mut self.this, Value::Undefined),
                         args: std::mem::take(&mut self.arguments),
                         completion: std::mem::replace(&mut self.completion, Value::Undefined),
@@ -2378,16 +2378,13 @@ impl Vm {
                         completion_saves: std::mem::take(&mut self.completion_saves),
                         async_delegate,
                         delegate: None,
-                        dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
-                            .into_iter()
-                            .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
-                            .collect(),
+                        dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings),
                         home: std::mem::take(&mut self.home_object),
                         callee: std::mem::replace(&mut self.callee, Value::Undefined),
                         with_objects: std::mem::take(&mut self.with_objects),
                     };
                     self.async_frame_roots.extend(value.object_id());
-                    self.with_roots(|heap| heap.set_generator_state(generator, state))?;
+                    self.own_generator_state(state).store(self, generator)?;
                     let mut ambient = ambient
                         .take()
                         .expect("each async generator turn restores its displaced frame once");

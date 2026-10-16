@@ -26,12 +26,14 @@ impl PreparedFrameMaps {
         self.refresh();
     }
 
+    #[cfg(any(test, coverage))]
     pub(super) fn adopt_cells(&mut self, cells: Vec<(usize, ObjectId)>) {
         debug_assert!(self.cells.capacity() >= cells.len());
         self.cells.extend(cells);
         self.refresh();
     }
 
+    #[cfg(any(test, coverage))]
     pub(super) fn adopt_dynamic(&mut self, bindings: Vec<(String, ObjectId, Vec<ObjectId>)>) {
         debug_assert!(self.dynamic.capacity() >= bindings.len());
         self.dynamic
@@ -44,6 +46,16 @@ impl PreparedFrameMaps {
                     },
                 )
             }));
+        self.refresh();
+    }
+
+    pub(super) fn adopt_saved_maps(
+        &mut self,
+        cells: HashMap<usize, ObjectId>,
+        dynamic: HashMap<String, DynamicEvalBinding>,
+    ) {
+        self.cells = cells;
+        self.dynamic = dynamic;
         self.refresh();
     }
 

@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_generator_storage_ownership_contracts() {
+    blueice_bluejs::Vm::verify_generator_storage_ownership_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_frame_map_admission_contracts() {
     blueice_bluejs::Vm::verify_frame_map_admission_contracts();
 }

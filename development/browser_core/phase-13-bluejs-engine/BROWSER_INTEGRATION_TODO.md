@@ -57,9 +57,18 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Captured/dynamic frame-map admission is the current follow-up. Capture tables
-previously allocated after constructor prototype callbacks, and generator map
-reconstruction followed saved-state extraction. Two finite 48-capture groups
+Generator storage ownership is the current follow-up. Two finite two-yield
+groups reproduce maps losing 31 reserved slots across resume and now pass.
+Suspension/resume retain the actual maps rather than converting them to/from
+vectors. Managed state counts their table capacity and shared binding edges;
+Rust-held state carries a scoped native charge through admission and heap
+adoption. Ten expanded groups and the full 477-case bounded selection pass,
+along with formatting and offline workspace/all-target Clippy. This checkpoint
+is recorded below; stack/completion conversion preallocation, dynamic backup
+work and integrated acceptance remain open.
+
+The captured/dynamic frame-map checkpoint addresses allocation after constructor
+prototype callbacks and generator state extraction. Two finite 48-capture groups
 reproduce both effects and now pass with scoped, admitted table preparation.
 Call, eval and generator entry share the path; generator resume admits incoming
 dynamic name/shadowed-buffer ownership before taking state. Expanded controls
@@ -67,9 +76,8 @@ pass all ten groups; the full bounded selection passes 467 cases, formatting
 and offline workspace/all-target Clippy. This implementation checkpoint is
 recorded below; other transient storage and integrated acceptance remain open.
 
-Scope-entry admission is the current follow-up. Two regressions reproduce
-bindings cleared and alias cells published before the following safepoint
-refuses scope storage. Joint scope-vector/list/cell-table admission now precedes
+The scope-entry checkpoint prevents bindings from being cleared and alias cells
+from being published before scope storage is admitted. Joint admission now precedes
 lexical mutation; all ten expanded groups pass. Generator scope-list staging is admitted
 before taking saved state and retains a scoped native charge. Expanded finite
 validation passes 457 cases, formatting and offline workspace/all-target Clippy.
@@ -502,8 +510,10 @@ work and exposes its retained payload ledger.
       forwarded into the callee twice, and preserve suspension/debugger state.
       VM-field, interpreter-record, disposal, call-entry, frame-binding,
       scope-entry/restoration and frame-map checkpoints below pass their bounded
-      selections. Other container growth, outgoing suspension, dynamic
-      environment staging and integrated acceptance remain open.
+      selections. The generator storage checkpoint retains saved maps and
+      native state ownership through heap adoption. Stack/completion conversion
+      preallocation, dynamic environment staging and integrated acceptance
+      remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -1328,6 +1338,67 @@ suspension, dynamic environment backups/publication, per-iteration staging,
 wider module-cache/service storage and integrated acceptance remain open.
 No fresh full Test262, real Core/MCP replay or coverage result is claimed;
 M1u remains the latest accepted milestone.
+
+#### Generator storage ownership follow-up (implementation checkpoint)
+
+Acceptance: generator suspension/resume retains the same owned cell/dynamic
+tables, including spare capacity, bucket allocations and saved cell edges.
+Parameter entry, ordinary yield and async yield-after-await use the same map
+representation. Managed accounting includes actual map/name/shadowed capacity;
+resume admits the existing tables before taking state without allocating
+replacements. Rust-held outgoing state retains native buffer ownership until
+the heap adopts it, releasing that lease before post-collection reconciliation.
+Native refusal closes the abandoned frame and refunds staging; managed refusal
+also releases native ownership. Preserve parameter entry and terminal cleanup.
+
+- [x] Reproduce two ordinary two-yield capacity losses; both initial groups
+      now pass with directly moved tables.
+- [x] Share dynamic binding records with the heap; preserve managed capacity
+      and GC references for both tables and shadowed cells.
+- [x] Replace all three outgoing table conversions and suspended-resume table
+      reconstruction with ownership moves; keep Start capture preparation.
+- [x] Carry outgoing state leases through admission and heap handoff; release
+      inside the heap operation before collection bookkeeping.
+- [x] Pass expanded allocation/lease/refusal/GC/async controls and related
+      finite semantics/debugger checks, formatting and Clippy; record the
+      source/artifact audit with the checkpoint commit.
+- [ ] Complete stack/completion conversion preallocation, dynamic environment
+      backups/publication, other container/transient/module-cache/service
+      storage and integrated acceptance. M1u remains the latest accepted
+      milestone.
+
+Initial red log: `/private/tmp/blueice-generator-storage-red-20261016.log`
+(zero passed, two failed). A reserved empty cell vector and dynamic vector each
+lose all 31 spare slots after an ordinary resume/yield. Fixed initial log:
+`/private/tmp/blueice-generator-storage-green-20261016.log`.
+
+Ten expanded groups pass. They preserve the actual bucket addresses of nonempty
+tables across yield and major collection, check native ownership through a
+callback/drop and native-to-managed byte transfer, and verify native/managed
+refusal cleanup with exact peer refunds. GC checks retain dynamic cell values
+and distinct shadowed cells under nursery one/sixteen and major collection.
+An async await/yield round trip preserves both reserved tables. Synchronous and
+asynchronous generator parameter entry finish their native handoff before returning.
+The native/managed accounting fixtures use small fixed allocations, including
+128 argument slots for one modeled 4 KiB heap refusal.
+
+Final bounded validation: **477 passed, zero failed, zero ignored** across 27
+test executables. The ten new groups and the previous 467 ownership/semantic/
+GC/debugger cases pass. Existing heap capacity tests now measure eleven vectors
+and two maps; the previous frame-map fixture checks adoption of existing full
+table storage rather than reconstruction. Scalar peer budgets allocate no
+represented large buffer. The seven previous pressure/large-allocation
+exclusions remain filtered; deep-recursion tail suites and network/service
+replays are not run.
+
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass. Logs use `/private/tmp/blueice-generator-storage-` with
+`{storage,maps,scopes,scope-functions,scope-loops,frames,module-entry,entry,heap-restoration,entry-semantics,bound-semantics,tail-semantics,resources,heap-resources,records,closure-exits,module-exits,generator-exits,generator-close,iterator-close,record-semantics,capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
+Receipt: `target/generator-storage-source-20261016.json`.
+Stack/completion conversion preallocation, dynamic environment backups/
+publication, other container/transient/module-cache/service storage and
+integrated acceptance remain open. No fresh full Test262, real Core/MCP replay
+or coverage result is claimed; M1u remains the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

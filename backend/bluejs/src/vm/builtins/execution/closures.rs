@@ -261,7 +261,11 @@ impl Vm {
                     home,
                     with_objects: closure_with_objects,
                 };
-                let generator = self.with_roots(|heap| heap.alloc_generator(state, prototype))?;
+                let generator = self.with_roots(|heap| {
+                    let result = heap.alloc_generator(state, prototype);
+                    drop(entry_payload);
+                    result
+                })?;
                 if async_generator {
                     self.enable_async_generator(generator);
                 }
@@ -315,7 +319,7 @@ impl Vm {
                 .set_prototype(generator, Some(prototype))
                 .expect("a freshly allocated generator cannot form a prototype cycle");
             self.stack.push(Value::Object(generator));
-            let stored = self.with_roots(|heap| heap.set_generator_state(generator, state));
+            let stored = state.store(self, generator);
             self.stack.pop();
             stored?;
             return Ok(Value::Object(generator));

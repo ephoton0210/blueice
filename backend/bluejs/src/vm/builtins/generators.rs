@@ -196,7 +196,7 @@ impl Vm {
         entry_payload: execution_payload::CallEntryCharge,
         mut prepared: PreparedFrameBindings,
         mut prepared_maps: PreparedFrameMaps,
-    ) -> Result<GeneratorState, RuntimeError> {
+    ) -> Result<OwnedGeneratorState, RuntimeError> {
         let _caller_payload = self.charge_execution_payload(
             self.caller_execution_payload_bytes()
                 .saturating_add(self.pending_execution_payload_bytes()),
@@ -334,7 +334,7 @@ impl Vm {
                     pc,
                     stack,
                     bindings: std::mem::take(&mut self.bindings),
-                    cells: std::mem::take(&mut self.cells).into_iter().collect(),
+                    cells: std::mem::take(&mut self.cells),
                     this: std::mem::replace(&mut self.this, Value::Undefined),
                     args: std::mem::take(&mut self.arguments),
                     completion: std::mem::replace(&mut self.completion, Value::Undefined),
@@ -346,10 +346,7 @@ impl Vm {
                     completion_saves: Vec::new(),
                     async_delegate: None,
                     delegate: None,
-                    dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
-                        .into_iter()
-                        .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
-                        .collect(),
+                    dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
                     with_objects: std::mem::take(&mut self.with_objects),
@@ -358,6 +355,7 @@ impl Vm {
             Err(error) => Err(error),
         };
 
+        let state = state.and_then(|state| self.own_generator_state(state).admit(self));
         self.with_objects = with_objects;
         self.inherited_with_depth = inherited_with_depth;
         self.parameter_eval_env = parameter_eval_env;
@@ -576,8 +574,7 @@ impl Vm {
                 callee,
                 with_objects,
             } => {
-                prepared_maps.adopt_cells(cells);
-                prepared_maps.adopt_dynamic(dynamic_bindings);
+                prepared_maps.adopt_saved_maps(cells, dynamic_bindings);
                 let variable_scope = code.variable_scope;
                 let variable_scope_lexicals = frame_lexicals;
                 (
@@ -825,7 +822,7 @@ impl Vm {
                     pc,
                     stack,
                     bindings: std::mem::take(&mut self.bindings),
-                    cells: std::mem::take(&mut self.cells).into_iter().collect(),
+                    cells: std::mem::take(&mut self.cells),
                     this: std::mem::replace(&mut self.this, Value::Undefined),
                     args: std::mem::take(&mut self.arguments),
                     completion: std::mem::replace(&mut self.completion, Value::Undefined),
@@ -844,10 +841,7 @@ impl Vm {
                     completion_saves: std::mem::take(&mut self.completion_saves),
                     async_delegate: None,
                     delegate,
-                    dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
-                        .into_iter()
-                        .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
-                        .collect(),
+                    dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
                     with_objects: std::mem::take(&mut self.with_objects),
@@ -915,7 +909,7 @@ impl Vm {
             Ok((value, _)) | Err(RuntimeError::Thrown(value)) => self.stack.push(value.clone()),
             Err(_) => {}
         }
-        let stored = self.with_roots(|heap| heap.set_generator_state(*generator, next_state));
+        let stored = self.own_generator_state(next_state).store(self, *generator);
         // A failed store must still hand the caller's frame back: leaving the
         // swapped-out execution state in place would unbalance the interpreter
         // (for example an empty `dynamic_eval_outer_bindings` stack) on the

@@ -1011,13 +1011,19 @@ fn suspended_generator_references_keep_every_saved_object_visible_to_gc() {
         pc: 0,
         stack: vec![Value::Object(stack)],
         bindings: vec![Some(Value::Object(binding))],
-        cells: vec![(0, cell)],
+        cells: HashMap::from([(0, cell)]),
         this: Value::Object(this),
         args: vec![Value::Object(argument)],
         completion: Value::Object(completion),
         completion_empty: true,
         active_scopes: Vec::new(),
-        dynamic_bindings: vec![("dynamic".into(), dynamic, Vec::new())],
+        dynamic_bindings: HashMap::from([(
+            "dynamic".into(),
+            DynamicEvalBinding {
+                cell: dynamic,
+                shadowed_cells: Vec::new(),
+            },
+        )]),
         iterators: vec![Value::Object(iterator)],
         handlers: Vec::new(),
         pending_completions: vec![GeneratorPendingCompletion::Throw(Value::Object(pending))],
@@ -1171,6 +1177,11 @@ fn generator_entry_storage_counts_reserved_vector_capacity() {
 
 #[test]
 fn generator_entry_storage_counts_all_suspended_container_capacity() {
+    fn grow_map<K: Eq + std::hash::Hash, V>(values: &mut HashMap<K, V>) -> usize {
+        let old = values.capacity();
+        values.reserve(9);
+        (values.capacity() - old) * size_of::<(K, V)>()
+    }
     fn grow<T>(values: &mut Vec<T>) -> usize {
         let old = values.capacity();
         values.reserve(9);
@@ -1182,7 +1193,7 @@ fn generator_entry_storage_counts_all_suspended_container_capacity() {
             pc: 0,
             stack: Vec::new(),
             bindings: Vec::new(),
-            cells: Vec::new(),
+            cells: HashMap::new(),
             this: Value::Undefined,
             args: Vec::new(),
             completion: Value::Undefined,
@@ -1194,7 +1205,7 @@ fn generator_entry_storage_counts_all_suspended_container_capacity() {
             completion_saves: Vec::new(),
             async_delegate: None,
             delegate: None,
-            dynamic_bindings: Vec::new(),
+            dynamic_bindings: HashMap::new(),
             home: None,
             callee: Value::Undefined,
             with_objects: Vec::new(),
@@ -1224,14 +1235,14 @@ fn generator_entry_storage_counts_all_suspended_container_capacity() {
         let delta = match part {
             0 => grow(stack),
             1 => grow(bindings),
-            2 => grow(cells),
+            2 => grow_map(cells),
             3 => grow(args),
             4 => grow(active_scopes),
             5 => grow(iterators),
             6 => grow(handlers),
             7 => grow(pending_completions),
             8 => grow(completion_saves),
-            9 => grow(dynamic_bindings),
+            9 => grow_map(dynamic_bindings),
             10 => grow(with_objects),
             11 => grow(disposables),
             _ => grow(dispose_marks),

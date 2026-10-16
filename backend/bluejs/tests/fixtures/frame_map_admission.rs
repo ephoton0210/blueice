@@ -270,7 +270,13 @@ fn dynamic_generator(vm: &mut Vm) -> (Value, usize) {
     else {
         panic!("the finite generator must be suspended")
     };
-    dynamic_bindings.push(row);
+    dynamic_bindings.insert(
+        row.0,
+        DynamicEvalBinding {
+            cell: row.1,
+            shadowed_cells: row.2,
+        },
+    );
     vm.heap.set_generator_state(id, state).unwrap();
     vm.heap.unroot(root).unwrap();
     (generator, payload)
@@ -281,7 +287,10 @@ fn frame_map_admission_dynamic_refusal_preserves_saved_state_and_peer_charge() {
     let mut vm = bounded_vm();
     let (generator, payload) = dynamic_generator(&mut vm);
     let id = generator.object_id().unwrap();
-    assert_eq!(vm.heap.generator_map_layout(id).unwrap(), (0, 1, payload));
+    assert_eq!(
+        vm.heap.generator_map_layout(id).unwrap(),
+        (0, 0, table_bytes(0, 1) + payload)
+    );
     let peer = Vm {
         host_scheduling: Some(vm.host_scheduling.as_ref().unwrap().child()),
         ..Vm::default()
@@ -309,7 +318,10 @@ fn frame_map_admission_dynamic_refusal_preserves_saved_state_and_peer_charge() {
             .map(|(_, start)| start),
         Some(false)
     );
-    assert_eq!(vm.heap.generator_map_layout(id).unwrap(), (0, 1, payload));
+    assert_eq!(
+        vm.heap.generator_map_layout(id).unwrap(),
+        (0, 0, table_bytes(0, 1) + payload)
+    );
     assert_eq!(vm.heap.stats().managed_bytes, heap_before);
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     drop(owner);

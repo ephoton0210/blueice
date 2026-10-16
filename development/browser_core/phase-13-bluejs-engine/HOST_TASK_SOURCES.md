@@ -186,23 +186,31 @@ Generator resume prepares copied scope-slot lists before taking its saved
 state. The outer vector and each nested buffer retain a native charge until
 transfer into active fields. A common resume exit reconciles released staging,
 including refusal after binding metadata was prepared, so peer realms see the
-released contribution. Other captured/dynamic-map restoration and per-iteration
+released contribution. Dynamic environment backup/publication and per-iteration
 cell staging remain in the broader preallocation/transient gate.
 
 Call, eval and generator entry prepare capture-cell tables before constructor
-entry effects. Minimum slot admission
-precedes reserve; reported table capacity is checked before the staged owner
-escapes. Prepared tables retain a native charge during callbacks and detached
-handoffs, and adopted captures fill their already reserved slots by move.
+entry effects. Minimum slot admission precedes reserve; reported capacity is
+checked before the staged owner escapes. Prepared tables retain a native charge
+during callbacks and detached handoffs, and adopted captures fill their already
+reserved slots by move.
 
-Generator resume inspects table counts and incoming dynamic name/shadowed-cell
-capacities while the state is still managed. It admits that complete incoming
-storage after binding/scope staging and before taking saved state. Names and
-nested buffers move into the prepared dynamic table, preserving their spare
-capacity; the owner charges their adopted storage until active fields take it.
-Simple generator creation still defers table reconstruction to first resume.
-Outgoing map-to-vector suspension, dynamic environment backup/publication and
-other transient staging remain separate open work.
+Suspended generator state now stores the owned cell and dynamic-binding maps
+directly. Ordinary/parameter/async-yield capture and resume move those tables;
+they preserve spare capacity, bucket allocations, name/shadowed buffers and GC
+edges. Managed accounting uses actual table capacity. Resume admits the saved
+tables' future native contribution before state extraction and adopts them
+without rebuilding their allocations. Start-state captures still prepare a
+new table because their saved input is a capture vector.
+
+Rust-held outgoing state carries a native lease for its owned buffers through
+parameter return, snapshot admission and heap store. Native refusal drops the
+state, closes the abandoned frame and reconciles the shared contribution.
+The heap operation releases the lease immediately after adoption/refusal,
+before VM collection bookkeeping can admit native cleanup work. Terminal
+Done/Running cleanup remains allowed after resource abort. Stack/completion
+conversion preallocation and dynamic environment backup/publication remain
+separate open work.
 
 Iterator and handler vectors carry scoped native charges through execution,
 cleanup, async/module continuations and debugger pauses. New records plan and
