@@ -1098,6 +1098,9 @@ pub struct Vm {
     host_timer_clock_ms: u64,
     host_timer_clock: Option<Box<dyn Fn() -> u64>>,
     host_timer_nesting: u32,
+    /// Native Promise/frame payload can pressure a page before its managed
+    /// heap or next host checkpoint reaches a collection threshold.
+    next_host_native_gc_bytes: usize,
     host_animation_frames: Vec<HostAnimationFrame>,
     host_animation_frame_next_id: u64,
     host_animation_frame_timestamp_ms: f64,
@@ -1790,9 +1793,15 @@ impl Vm {
         let ambient_origin = self.take_pending_throw_origin();
         let _ambient_origin_charge = self.charge_diagnostic_payload(ambient_origin.payload_bytes());
         let result = self
-            .dispatch_call(callee, receiver, args, construct)
+            .collect_for_host_native_pressure(&receiver, &args)
+            .and_then(|()| self.dispatch_call(callee, receiver, args, construct))
             .and_then(|value| {
                 self.check_string(&value)?;
+                // Native results can add pressure before an enclosing async
+                // invocation settles. A fresh returned object is not yet in
+                // the caller's stack; the pressure helper protects it only
+                // when collection is necessary.
+                self.collect_for_host_native_pressure(&value, &[])?;
                 Ok(value)
             });
         self.acting_realm = acting_realm;

@@ -456,6 +456,45 @@ fn owned_code_bytes(code: &Bytecode) -> usize {
 }
 
 impl Vm {
+    /// Call boundaries already root the callee, receiver, arguments and
+    /// new.target. A fresh returned value is protected here if GC is needed.
+    /// Collect here before new native payload can exhaust the page account;
+    /// arbitrary admission sites may still own unregistered Rust temporaries.
+    pub(super) fn collect_for_host_native_pressure(
+        &mut self,
+        value: &Value,
+        arguments: &[Value],
+    ) -> Result<(), RuntimeError> {
+        let Some(scope) = &self.host_scheduling else {
+            return Ok(());
+        };
+        let incoming = arguments
+            .iter()
+            .fold(value_payload_bytes(value), |bytes, value| {
+                bytes.saturating_add(value_payload_bytes(value))
+            });
+        let retained = scope.account.borrow().usage.payload_bytes;
+        if retained.saturating_add(incoming) < self.next_host_native_gc_bytes {
+            return Ok(());
+        }
+        let root_base = self.async_frame_roots.len();
+        self.async_frame_roots.extend(value.object_id());
+        let collected = self.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        });
+        self.async_frame_roots.truncate(root_base);
+        collected?;
+        self.synchronize_scheduling_usage()?;
+        let live = self.host_scheduling_snapshot().payload_bytes;
+        // A large live owner must not force a major collection at every call.
+        // Incoming primitive payload still prompts a retry before the cap.
+        self.next_host_native_gc_bytes = live
+            .saturating_mul(2)
+            .clamp(MAX_HOST_SCHEDULING_BYTES / 4, MAX_HOST_SCHEDULING_BYTES);
+        Ok(())
+    }
+
     pub(super) fn finish_host_checkpoint(&mut self) -> Result<(), RuntimeError> {
         // Implicit module drains can run inside an outer execution context;
         // its WeakRef keep-alive guarantee has not ended at that point.

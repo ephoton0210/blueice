@@ -30,12 +30,49 @@ a task queue, rooting). *Host* = policy owned by `backend/core` / launcher
 (origin, gatekeeper, cookies, which profile installs it). A global existing in
 the engine never makes it visible to a page: the owner-selected profile does.
 
-**Integration progress (2026-10-15).** This checkout has merged the product
+**Integration progress (2026-10-16).** This checkout has merged the product
 and BlueTS lines. The baseline descriptions below remain the original gap
 inventory; the dated milestone records identify what has actually been
 implemented and verified on `feature/bluejs-browser-integration-gaps`.
 
-**Latest milestone — M1p Promise rejection tracking (2026-10-15).**
+**Architecture priority — updated 2026-10-16.** Scheduling ownership,
+timer/Promise collectibility, cancellation/navigation cleanup and per-document
+resource containment take precedence over diagnostic-coordinate precision.
+M1r now closes the reproduced within-callback native-pressure failure through
+the real runtime/Core boundaries. Current work is the discarded-realm ownership
+failure below. Next come complete task-source/host-buffer
+accounting and native UI/network ingress, then the long-running two-tab
+acceptance. M1q's diagnostic refinements remain parked until these architectural
+dependencies are closed. Its interrupted 191-target replay is incomplete and
+does not constitute a milestone or a new acceptance gate.
+
+The next ownership audit has a public failure, not just a proposed task:
+discarded ShadowRealm instances become unreachable (`WeakRef.deref()` returns
+undefined), but their VM tables retain global Promise results and their native
+charge. A timer adding one such 400,000-character result per callback grows
+from 800,912 to 8,005,232 native bytes and fails on callback 11. Fix realm
+ownership/reclamation after M1r before resuming diagnostic refinement.
+Evidence: `target/orphan-realm-probe-source-20261016.json` and
+`/private/tmp/blueice-orphan-realm-probe-20261016.log`.
+
+**Latest milestone — M1r native Promise pressure (2026-10-16).**
+The first public timer/GC regression failed on its first callback: repeatedly
+discarded 400,000-character Promise results exhausted the native scheduling
+ledger before the callback's checkpoint. Managed-heap pressure alone does not
+reclaim them. Rooted call-entry/return collection now passes the public native-
+pressure/liveness controls and real JavaScript/BlueTS timer-burst pages while
+retaining the document's hard limits. All 87 selected test executables pass
+2,715 cases, zero failures and 16 existing ignored; formatting and workspace/
+all-target build/Clippy pass. The accepted fresh full Test262 replay matches
+M1p at all 102,926 modes with zero changed source/result records and no new
+timeout. The first attempt's single wall-timeout and six passing isolated
+controls remain separate evidence. See the
+[M1r milestone record](#m1r--native-promise-pressure-during-timer-callbacks-2026-10-16).
+Evidence: `/private/tmp/blueice-promise-native-pressure-red-20261016.log` and
+`target/promise-native-pressure-red-source-20261016.json`. This checkpoint does
+not close A's broader resource-accounting items or whole-realm reclamation.
+
+**Previous host milestone — M1p Promise rejection tracking (2026-10-15).**
 The owner-selected File DOM v16 profile adds `PromiseRejectionEvent`,
 `onunhandledrejection` and `onrejectionhandled` with checked listener typings.
 Completed checkpoints queue bounded document tasks; early handlers suppress
@@ -51,7 +88,22 @@ remain open. See the
 [M1p milestone record](#m1p--promise-rejection-tracking-and-global-events-2026-10-15)
 and [rejection contract](HOST_PROMISE_REJECTIONS.md).
 
-**Current work — M1q original diagnostic source positions (in progress).**
+**Parked work — M1q original diagnostic source positions (in progress).**
+The integrated lifecycle matrix has focused validation across all twenty
+admitted producer/profile routes and normal/deferred execution. It retains
+timer callbacks through a later script and observed major collection, then
+checks delivery, cancellation or navigation, stale-generation refusal and
+resource release. Focused runs pass all 480 lifecycle, forty map-budget and
+eighty retained-filename cap/recovery contexts. The saved patch corrects ES5's
+misclassification of `.catch(name)` as a catch declaration; its public emitted-
+execution regression and actual catch-shadowing control pass. The final replay
+was stopped at the user's priority change. Its five source/document files and
+reversible patch are preserved in
+`/private/tmp/blueice-parked-diagnostics-20261016/` and isolated from the current
+architecture change. A verified durable Git stash also preserves those five
+files: `c165c4ba5d0c8ef0fd23bca9d20b1e47ef98629a`. The gate count remains 6/10;
+this checkpoint is not accepted.
+
 The next operation-owner check reproduces 38 incorrect with/using admission
 and with-reference locations across normal/aggressive GC. Operand and binding
 owners now scope implicit conversion/resource/reference operations. Eleven
@@ -231,6 +283,8 @@ Spec shape is done: `PromiseCapability` records, `WeakRef`,
 `FinalizationRegistry` (page cleanup runs as a queued engine task after collection).
 M1f replaces permanent Promise roots with live-owner tracing and explicit
 ownership for queued/running jobs, module work and host waits.
+These are collectibility guarantees within live VMs; reclamation of an entire
+discarded child VM remains in the unchecked realm-ownership item below.
 
 - [x] **M1f: Promise collectibility (P1).** Settled Promises, result/reaction
       cycles and orphaned async invocations can be collected; a retained async
@@ -271,6 +325,18 @@ ownership for queued/running jobs, module work and host waits.
       native-string polls under the existing scheduling cap. These verify
       bounded retention between callbacks; broader host/RSS accounting remains
       in A's open resource item.
+- [x] **M1r: native pressure within callbacks.** Discarded Promise results
+      can be collected before the callback's checkpoint, including before
+      large async settlement. Live timer/reaction/await/WeakRef owners survive;
+      a retained large result does not cause GC at every small call. Eight
+      public page-runtime groups and real JavaScript/BlueTS burst pages pass,
+      with the related Rust/Core/MCP and full pinned Test262 acceptance below.
+- [ ] **Same-document realm reclamation.** Collect discarded ShadowRealm VMs
+      and release their native Promise charge when no live instance, wrapped
+      function or document work owns them. Acceptance: the failing public
+      timer probe above continues with bounded native bytes after observed
+      major collections; retained wrapped callbacks and queued work remain
+      valid, and navigation/close release the whole document tree.
 
 ## C. Web platform globals (P1)
 
@@ -499,11 +565,16 @@ bridge's lowering code, not by running BlueTS pages; *verify* marks inference.
 
 ## Suggested order
 
-1. A (event loop + timers) - everything async depends on it
-2. `console` + unhandled-rejection reporting (B, C) - cheap, unblocks debugging
-3. D (DOM surface) and C (globals) - needed to run ordinary page scripts
-4. E (fetch/XHR) - needs A
-5. F (end-to-end smoke test, shell) - validates the whole stack
+1. A/B ownership and GC: timer callbacks/arguments, Promise reactions and
+   suspended work remain alive only as required, then release on completion,
+   cancellation, navigation or close. Verify bounded long-running pages.
+2. A resource containment and task-source integration: complete initiating-tab
+   queue/native-buffer accounting and timer/network/UI ordering before adding
+   more producers. Exhaustion must isolate the failing document.
+3. Real Core/child long-running and two-tab acceptance for those contracts.
+4. D/C platform surfaces, then E Fetch/XHR on the established scheduling and
+   request-service boundary, followed by F ordinary-session acceptance.
+5. Remaining M1q diagnostic-coordinate and generated-code precision.
 
 ## I. Ownership and acceptance
 
@@ -524,6 +595,70 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1r — Native Promise pressure during timer callbacks (2026-10-16)
+
+- [x] Reproduce document failure before the first timer callback completes:
+      32 discarded 400,000-character Promise results exhaust native bytes
+      while managed heap remains below its collection threshold.
+- [x] Collect unreachable Promise/frame state at rooted call entry/return
+      boundaries. The burst, large async-return and live-owner controls pass;
+      one thousand small calls cause no more GC than a one-call control.
+      Retained payload is reclaimed after its owner is dropped.
+- [x] Complete final acceptance for the rooted execution boundary
+      before native pressure falsely aborts the callback. Preserve live
+      reactions, timer arguments, async frames and WeakRef job liveness.
+- [x] Verify cancellation/navigation release and independent-document resource
+      containment. All 37 timer and 13 scheduling-limit cases pass; live
+      over-budget data still fails the existing policy. All 147 Core/child,
+      320 launcher and 21 real-page cases pass, including the new JavaScript/
+      BlueTS timer bursts and existing two-tab isolation/navigation fixtures.
+- [x] Pass public runtime and real Core/child long-running page acceptance,
+      formatting, workspace/all-target build/Clippy and pinned Test262.
+- [x] Record final evidence and a detailed English milestone commit.
+
+Native Promise results and suspended payloads can grow without crossing the
+managed-heap collection trigger. Waiting until the host checkpoint falsely
+aborts a timer that discards many results within one callback. Call entry
+already protects the callee/receiver/arguments/new.target; the return boundary
+additionally protects a fresh result only when collection runs. An adaptive
+native-byte watermark reclaims dead state before new pressure reaches admission
+without recollecting an unchanged live owner at every small call. The existing
+8 MiB hard limit and terminal document-failure policy remain in force.
+
+Eight public page-runtime groups pass, including the original first-callback
+failure, the separately reproduced large async-return failure, live timer/
+reaction/await/WeakRef roots, dropped-owner release and a one-call versus
+1,000-call GC control. Existing 4,000-poll/1 MiB and large-native-string timer
+regressions pass. New real JavaScript and direct BlueTS pages each finish
+32-result bursts per callback and publish three distinct frames with matching
+Representations; their cleared interval then stays quiet.
+
+The fixed-input acceptance passes 2,715 cases, zero failures and 16 existing
+ignored across 87 disjoint test executables: BlueJS 1,922 (48 targets, including
+all 1,205 library cases), all 35 bridge targets 300, launcher 341, Core/child
+147 and official MCP console 5. Formatting and full workspace/all-target
+build/Clippy pass. Five Rust and 13,849 workspace/compiler inputs, all 87 test
+executables and seven runtime hashes stay fixed. Evidence is
+`target/promise-native-pressure-source-20261016.json` and
+`target/promise-native-pressure-validation-20261016.json`; both before-fix
+source manifests and public failure logs are retained separately.
+
+The accepted fresh complete Test262 replay takes 467.82s including corpus
+validation/reporting and matches M1p's 102,926-mode inventory exactly: 102,921
+pass, one stale corpus and four exclusions, with zero changed source hashes,
+expectations, features/flags, statuses or actual kind/phase/reason. No accepted
+mode times out. The first full attempt's one deep-WeakMap wall-timeout remains
+unmodified in `target/test262-promise-native-pressure-full-20261016/`; three
+isolated unchanged-binary runs pass both modes in 2.86–3.27s. The separate
+accepted full replay uses the same four jobs and deadlines and lives in
+`target/test262-promise-native-pressure-repeat-full-20261016/`. Runner exit 1
+reflects the five unchanged non-pass modes; the full comparison succeeds.
+
+M1r closes this native-pressure checkpoint. Complete service-buffer/task-source
+accounting and the independently reproduced discarded-ShadowRealm charge leak
+remain open. Whole-realm ownership/reclamation is next, before parked M1q
+diagnostic refinements; M1q stays at 6/10.
 
 ### M1q — Original diagnostic source positions (in progress)
 

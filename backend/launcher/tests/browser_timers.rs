@@ -1081,6 +1081,21 @@ fn javascript_and_bluets_intervals_publish_matching_frames_and_representations()
 }
 
 #[test]
+fn javascript_and_bluets_timer_promise_bursts_keep_publishing_frames() {
+    counter_frames("let count: number = 0; let timer: number = 0;
+        async function garbage() { return 'x'.repeat(400000); }
+        function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
+        function tick(): void {
+            garbage(); garbage(); garbage(); garbage(); garbage(); garbage(); garbage(); garbage();
+            garbage(); garbage(); garbage(); garbage(); garbage(); garbage(); garbage(); garbage();
+            garbage(); garbage(); garbage(); garbage(); garbage(); garbage(); garbage(); garbage();
+            garbage(); garbage(); garbage(); garbage(); garbage(); garbage(); garbage(); garbage();
+            count += 1; queueMicrotask(publish); if (count === 3) { clearInterval(timer); }
+        }
+        timer = setInterval(tick, 500);", true);
+}
+
+#[test]
 fn javascript_and_bluets_cleanup_tasks_publish_post_microtask_frames() {
     counter_frames("let count: number = 0; let timer: number = 0;
         function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }

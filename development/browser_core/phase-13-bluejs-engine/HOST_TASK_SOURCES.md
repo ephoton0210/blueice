@@ -63,6 +63,25 @@ The 64 pending browser/cleanup task cap, 1,024 timer cap, microtask/reaction
 caps and document resource-failure behavior are unchanged. Replacement and
 close drop the owning queues and reset source selection with the realm.
 
+### Native-payload collection pressure
+
+Large Promise results and suspended-frame strings enter the native scheduling
+ledger independently of the managed heap's collection trigger. A timer can
+create and discard many such values before its checkpoint. Rooted call entry
+and return boundaries therefore give unreachable native Promise state a major
+collection opportunity before new pressure exhausts the document account.
+Returned objects are protected until the caller takes ownership; callback
+arguments, live reactions, awaits and current-job WeakRef targets retain their
+ordinary tracing and keep-alive guarantees. Collection runs no queued callback
+or nested task turn.
+
+The collection watermark grows with retained live bytes, bounded by the
+existing scheduling limit, so a large live owner does not trigger collection
+at every small call. Primitive arguments and results can prompt earlier
+collection. The 8 MiB hard limit and terminal document failure are unchanged;
+live queued work is not discarded to make admission succeed. Navigation and
+close still release the owning queues and reset the new realm's watermark.
+
 The legacy browser-only entry uses the same logical source selection while
 leaving callback timers to its separate timer entry. Standalone browser-task
 embeddings retain their existing bounded delivery API.

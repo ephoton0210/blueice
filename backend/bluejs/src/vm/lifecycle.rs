@@ -126,6 +126,7 @@ impl Vm {
             globals: HashMap::new(),
             host_functions: Vec::new(),
             host_promises: super::host_promises::HostPromiseState::default(),
+            next_host_native_gc_bytes: super::MAX_HOST_SCHEDULING_BYTES / 4,
             host_console: None,
             host_error_reporting: None,
             host_rejections: None,
