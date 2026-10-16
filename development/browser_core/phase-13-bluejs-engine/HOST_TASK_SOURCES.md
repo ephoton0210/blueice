@@ -534,9 +534,25 @@ without new admission. Host-neutral caches attach through ordinary bounded realm
 accounting; discarded realms release their caches. Cross-realm marking prepares
 its batch before releasing deferred roots and propagates native preparation errors.
 
-Collector mark/work sets, realm traversal scratch, native payloads of retained
-values, shared programs and other wider native/cache/integrated ownership remain
-open work.
+Realm collection metadata uses a flat admitted plan: discovery nodes/seen IDs,
+edge snapshots, sorted heap/owner indices, ignored pins and reserved wrapper
+targets retain one shared native lease. Detached growth admits coexisting old/new
+storage and validates reported capacities. Each wrapper forwards at most once;
+node active flags and borrowed target slices avoid copied per-iteration metadata.
+External owners and pending work keep realms active without treating traversal
+clones as independent owners.
+
+Bounded contexts retain empty capacity without realm records or mark results.
+Reuse attempts no growth; a larger plan is prepared while the old cache coexists,
+and refusal restores the old empty cache and refunds all candidate storage.
+Existing capacity serves terminal internal cleanup without clearing failure or
+scheduling new jobs. Empty graphs and host-neutral contexts release the plan.
+Borrowed-child fallback happens before allocation where directly detectable;
+descendant borrowing refunds/restores discovery storage before local collection.
+Metadata refusal precedes collection and realm pruning, preserving owners/pins.
+
+Collector-produced mark/work sets, native payloads of retained values, shared
+programs and other wider native/cache/integrated ownership remain open work.
 
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native

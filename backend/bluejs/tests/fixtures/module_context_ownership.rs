@@ -357,6 +357,13 @@ fn module_context_ownership_shadow_transfer_counts_the_name_once_and_preserves_i
             + vm.module_root_storage_bytes()
             + child.module_record_storage_bytes()
             + child.module_root_storage_bytes()
+            + vm.realm_collection_cache
+                .as_ref()
+                .map_or(0, |plan| plan.retained_bytes())
+            + child
+                .realm_collection_cache
+                .as_ref()
+                .map_or(0, |plan| plan.retained_bytes())
     );
 }
 

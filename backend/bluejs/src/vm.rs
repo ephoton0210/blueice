@@ -45,6 +45,7 @@ mod module_cell_storage;
 mod module_context;
 mod module_continuation_storage;
 mod module_graph_storage;
+mod realm_collection;
 use module_graph_storage::ModuleRecords;
 mod displaced_roots;
 mod module_referrers;
@@ -1234,6 +1235,7 @@ pub struct Vm {
     /// until they return, fail, or hand ownership to a suspended frame.
     async_frame_roots: Vec<ObjectId>,
     gc_trace_cache: crate::heap::GcTraceBatch,
+    realm_collection_cache: Option<realm_collection::RealmCollection>,
     test262_done: Option<Result<(), Value>>,
     /// Test262-only host scheduler state. Ordinary realms never install or
     /// expose it; agent VMs receive the same Arc while retaining their own

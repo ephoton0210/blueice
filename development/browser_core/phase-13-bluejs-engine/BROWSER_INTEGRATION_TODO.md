@@ -57,7 +57,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Safepoint trace batch storage is the current follow-up (2026-10-17).
+Realm collection metadata is the current follow-up (2026-10-17).
+Two cold-metadata refusal cases initially collected/pruned without native room;
+both now pass. A flat admitted plan covers discovery, snapshots, owner lookup,
+ignored pins and wrapper targets. Cached capacities retain their owner without
+retaining realm records, and permit existing-graph cleanup after terminal failure.
+All eighteen new finite cases and all 832 fixed selected cases pass, along
+with formatting and offline workspace/all-target Clippy. Collector work/mark
+sets, retained native values, shared programs and wider gates remain open;
+M1u stays the latest accepted milestone.
+
+The safepoint trace batch checkpoint (2026-10-17) precedes this follow-up.
 Three tiny root/edge refusal cases initially entered heap work at a full scalar
 quota; all three now pass. Borrowed visitors replace intermediate reference
 vectors, and reusable flat root/owner-edge batches retain admitted capacity
@@ -2899,6 +2909,87 @@ Evidence: `/private/tmp/blueice-gc-trace-storage-controls-20261017.py`,
 and staged/committed blob checks. This is an M1z implementation checkpoint;
 collector work/mark sets, realm traversal scratch and wider native/integrated
 acceptance remain open.
+
+#### Realm collection metadata follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: realm discovery, edge snapshots, owner lookup, ignored pins and
+wrapper target metadata retain admitted native storage throughout collection.
+Refusal precedes heap marking, collection or realm pruning and refunds every
+preparation allocation. A flat plan avoids copied active/target containers in
+fixed-point iteration; wrappers forward each target at most once. Preserve live
+work/external ownership, borrowed-child fallback and collectible cross-heap cycles.
+Collector-produced mark/work sets remain a separate open ownership boundary.
+
+- [x] Reproduce cold metadata refusal before collection/pruning with tiny
+      offline cases. Both initial cases failed, then passed after admission.
+- [x] Implement admitted discovery, reusable flat metadata and transactional
+      cache replacement; eighteen ownership/failure/fallback/GC cases pass.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Collector work/mark sets, retained native
+      values, shared programs and wider native/integrated gates remain open.
+
+A shared native lease follows actual vector/set capacities while cached or
+Rust-held. Detached growth admits coexisting old/new storage, checks reported
+capacity before publication and preserves old prefixes on refusal. Discovery
+walks each heap once and snapshots child edges directly without a temporary
+children vector. A sorted heap index and sorted owner identities replace the
+outer lookup maps/sets used during fixed-point traversal.
+
+Each realm node owns its instance/wrapper snapshots, ignored pin set and a target
+vector reserved for every incoming wrapper. Active flags live in nodes; each
+wrapper forwards at most once, so iteration copies neither active sets nor target
+vectors and allocates no additional traversal metadata. Identical target IDs may
+appear once per facade; the collector still deduplicates object marking. Known
+table-owner identities distinguish true external owners from traversal clones.
+Pending work keeps its realm active; unreachable cross-heap facade cycles remain
+collectible.
+
+Before reuse, a cached plan is filled without growth. Missing capacity triggers
+fresh preparation while the old cache remains owned; complete success replaces
+it, and refusal refunds the candidate and restores the old empty cache. Recycle
+clears record references, mark results and all logical entries without losing
+admitted capacity. Empty graphs and host-neutral contexts release the plan.
+Bounded contexts can reuse existing capacity after terminal failure for internal
+collection, while preserving the terminal error and scheduling no new cleanup
+jobs. Cold/growing plans still require admission and refuse before heap effects.
+
+Immediate borrowed children take the local-collection fallback before metadata
+allocation. A borrowed descendant found during discovery returns preparation
+storage or restores the cache before fallback. Reentrant/self heap IDs are
+excluded from new-child discovery; shared records are visited once.
+
+Eighteen finite cases cover cold pre-GC refusal, native cached/Rust-held ownership,
+detached vector/set refusal, partial-discovery refunds, direct/nested borrowing,
+shared records, repeated wrapper targets, external ownership, pending jobs,
+cross-heap cycles, terminal reuse/refusal, cache rollback, host-neutral release
+and empty graphs at full scalar quota. Ordinary-library entry points expose the
+same cases; no new coverage result is claimed. Collector-produced mark/work sets
+remain separate open ownership work.
+
+The first inherited run had one failure: a cross-realm module-context aggregate
+assertion omitted the new cached metadata owner. Its parent/child cache terms
+are now explicit; name identity, shared executable identity and callable import
+checks remain intact. The original result is preserved in
+`/private/tmp/blueice-realm-collection-contexts-baseline-red-20261017.log`.
+
+Validation: **832 passed, zero failed/ignored**, across 38 executables and 71
+fixed selections: eighteen new cases and all 814 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled. The same seven pressure cases remain
+excluded and JSON resource sweeps are not selected. No network/service replay,
+fresh full Test262, real Core/MCP replay, coverage result or integrated acceptance
+is claimed. Collector work/mark sets, retained native values, shared programs
+and wider native/integrated gates remain open.
+
+Evidence: `/private/tmp/blueice-realm-collection-controls-20261017.py`,
+`/private/tmp/blueice-realm-collection-commit-20261017.txt`,
+`/private/tmp/blueice-realm-collection-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-realm-collection-{red,first,focused,realms,fmt,clippy}-20261017.log`.
+`target/realm-collection-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. This is an M1z implementation checkpoint;
+collector work/mark sets, retained native values, shared programs and wider
+native/integrated acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

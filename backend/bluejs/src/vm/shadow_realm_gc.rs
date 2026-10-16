@@ -8,29 +8,10 @@
 
 use super::*;
 
-#[derive(Default)]
-struct RealmEdges {
-    instances: Vec<(ObjectId, u64, usize)>,
-    wrappers: Vec<(ObjectId, u64, ObjectId, RootId)>,
-}
+use super::realm_collection::RealmCollection;
 
 impl Vm {
-    fn shadow_gc_edges(&self) -> RealmEdges {
-        RealmEdges {
-            instances: self
-                .shadow_realms
-                .iter()
-                .map(|(id, r)| (*id, r.heap, Rc::as_ptr(&r.owner) as usize))
-                .collect(),
-            wrappers: self
-                .shadow_wrapped_functions
-                .iter()
-                .map(|(id, w)| (*id, w.home_heap, w.target, w.target_root.id))
-                .collect(),
-        }
-    }
-
-    fn shadow_has_work(&self) -> bool {
+    pub(super) fn shadow_has_work(&self) -> bool {
         !self.promise_jobs.is_empty()
             || !self.browser_tasks.is_empty()
             || !self.host_finalization_tasks.is_empty()
@@ -56,13 +37,13 @@ impl Vm {
         Ok(marked)
     }
 
-    fn prune_shadow_owners(&mut self, active: &HashSet<u64>, live: &HashSet<ObjectId>) {
+    fn prune_shadow_owners(&mut self, plan: &RealmCollection, live: &HashSet<ObjectId>) {
         self.shadow_wrapped_functions
             .retain(|id, _| live.contains(id));
         self.shadow_realms
-            .retain(|_, record| active.contains(&record.heap));
+            .retain(|_, record| plan.is_active(record.heap));
         self.shadow_realm_by_heap
-            .retain(|heap, id| active.contains(heap) && self.shadow_realms.contains_key(id));
+            .retain(|heap, id| plan.is_active(*heap) && self.shadow_realms.contains_key(id));
     }
 
     fn collect_local_realm(&mut self) -> Result<(), RuntimeError> {
@@ -76,127 +57,119 @@ impl Vm {
     /// facade supplies an edge to its target; an inactive realm's globals do
     /// not bootstrap it into liveness. This collects cycles across heaps.
     pub(super) fn collect_realm_garbage(&mut self) -> Result<(), RuntimeError> {
-        let Some(realms) = self.shadow_collection_realms() else {
-            // A synchronous cross-realm call still owns a borrowed VM. Its
-            // ordinary heap roots remain valid; defer agent reclamation until
-            // the outer caller reaches a safepoint with the complete tree.
+        if self.shadow_realms.is_empty() && self.shadow_wrapped_functions.is_empty() {
+            return self.collect_local_realm();
+        }
+        let Some(mut plan) = self.prepare_realm_collection()? else {
+            // A synchronous cross-realm call still owns a borrowed VM.
             return self.collect_local_realm();
         };
-        if realms.is_empty() && self.shadow_wrapped_functions.is_empty() {
-            return self.collect_local_realm();
-        }
-        let own_heap = self.object_prototype.heap;
-        let mut edges = HashMap::from([(own_heap, self.shadow_gc_edges())]);
-        let mut known_owners = HashSet::new();
-        let mut active = HashSet::from([own_heap]);
-        for record in &realms {
-            let vm = record.vm.borrow();
-            if vm.shadow_has_work() {
-                active.insert(record.heap);
-            }
-            edges.insert(record.heap, vm.shadow_gc_edges());
-        }
-        let mut ignored = HashMap::<u64, HashSet<RootId>>::new();
-        for realm in edges.values() {
-            for (_, _, owner) in &realm.instances {
-                known_owners.insert(*owner);
-            }
-            for (_, heap, _, root) in &realm.wrappers {
-                ignored.entry(*heap).or_default().insert(*root);
-            }
-        }
-        for record in &realms {
-            // Test262 can share one child with another owner outside this
-            // tree. Only actual owning table entries count; task traversal
-            // snapshots must not keep every discarded realm alive.
-            let mut owners = record.owners.borrow_mut();
-            owners.retain(|owner| owner.strong_count() != 0);
-            if owners
-                .iter()
-                .any(|owner| !known_owners.contains(&(owner.as_ptr() as usize)))
-            {
-                active.insert(record.heap);
+        let terminal_cleanup = self.check_scheduling_failure().is_err();
+        let result = self.collect_prepared_realms(&mut plan, terminal_cleanup);
+        self.recycle_realm_collection(plan);
+        result?;
+        self.collect_local_realm()
+    }
+
+    fn collect_prepared_realms(
+        &mut self,
+        plan: &mut RealmCollection,
+        terminal_cleanup: bool,
+    ) -> Result<(), RuntimeError> {
+        // All native discovery/edge/pin/target capacity is admitted before
+        // pruning owner metadata, tracing roots or collecting either heap.
+        for node in &plan.nodes[..plan.len] {
+            if let Some(record) = &node.record {
+                record
+                    .owners
+                    .borrow_mut()
+                    .retain(|owner| owner.strong_count() != 0);
             }
         }
-        let mut extra = HashMap::<u64, HashSet<ObjectId>>::new();
-        let mut marked = HashMap::new();
         loop {
             let mut changed = false;
-            for heap in active.clone() {
-                let pins = ignored.entry(heap).or_default();
-                let targets: Vec<_> = extra.entry(heap).or_default().iter().copied().collect();
-                let live = if heap == own_heap {
-                    self.shadow_mark(pins, &targets)?
+            for index in 0..plan.len {
+                if !plan.nodes[index].active {
+                    continue;
+                }
+                let node = &plan.nodes[index];
+                let live = if let Some(record) = &node.record {
+                    record
+                        .vm
+                        .borrow_mut()
+                        .shadow_mark(&node.ignored, &node.extra)?
                 } else {
-                    let record = realms.iter().find(|r| r.heap == heap).expect("known realm");
-                    record.vm.borrow_mut().shadow_mark(pins, &targets)?
+                    self.shadow_mark(&node.ignored, &node.extra)?
                 };
-                let realm = &edges[&heap];
-                for (instance, child, _) in &realm.instances {
-                    if live.contains(instance) {
-                        changed |= active.insert(*child);
+                for instance in 0..plan.nodes[index].instances.len() {
+                    let instance = plan.nodes[index].instances[instance];
+                    if live.contains(&instance.object) {
+                        if let Some(child) = plan.index_of(instance.child) {
+                            if !plan.nodes[child].active {
+                                plan.nodes[child].active = true;
+                                changed = true;
+                            }
+                        }
                     }
                 }
-                for (wrapper, home, target, _) in &realm.wrappers {
-                    if live.contains(wrapper) && edges.contains_key(home) {
-                        changed |= active.insert(*home);
-                        changed |= extra.entry(*home).or_default().insert(*target);
+                for wrapper in 0..plan.nodes[index].wrappers.len() {
+                    let edge = plan.nodes[index].wrappers[wrapper];
+                    if !edge.followed && live.contains(&edge.object) {
+                        if let Some(home) = plan.index_of(edge.home) {
+                            plan.nodes[index].wrappers[wrapper].followed = true;
+                            plan.nodes[home].active = true;
+                            // Each wrapper contributes at most one target;
+                            // all incoming slots were reserved during preparation.
+                            assert!(
+                                plan.nodes[home].extra.len() < plan.nodes[home].extra.capacity()
+                            );
+                            plan.nodes[home].extra.push(edge.target);
+                            changed = true;
+                        }
                     }
                 }
-                marked.insert(heap, live);
+                plan.nodes[index].live = Some(live);
             }
             if !changed {
                 break;
             }
         }
-        self.prune_shadow_owners(&active, &marked[&own_heap]);
-        for record in &realms {
+        self.prune_shadow_owners(
+            plan,
+            plan.nodes[0]
+                .live
+                .as_ref()
+                .expect("the root realm is active"),
+        );
+        for node in &plan.nodes[1..plan.len] {
+            let record = node.record.as_ref().expect("a discovered child");
             let mut vm = record.vm.borrow_mut();
-            if let Some(live) = marked.get(&record.heap) {
-                vm.prune_shadow_owners(&active, live);
+            if let Some(live) = &node.live {
+                vm.prune_shadow_owners(plan, live);
             } else {
-                // Clear both directions before dropping snapshots, including
-                // shared-record cycles introduced by the Test262 membrane.
+                // Break record cycles before dropping the traversal snapshot.
                 vm.shadow_wrapped_functions.clear();
                 vm.shadow_realms.clear();
                 vm.shadow_realm_by_heap.clear();
             }
         }
-        // Lease drops above cannot reborrow a suspended source. Drain them
-        // only now, and sweep before any JS can observe WeakRef targets.
-        for record in &realms {
-            if active.contains(&record.heap) {
-                let mut vm = record.vm.borrow_mut();
+        for node in &plan.nodes[1..plan.len] {
+            if node.active {
+                let mut vm = node
+                    .record
+                    .as_ref()
+                    .expect("a discovered child")
+                    .vm
+                    .borrow_mut();
                 vm.collect_local_realm()?;
-                vm.enqueue_finalization_cleanup_jobs()?;
-                vm.synchronize_scheduling_usage()?;
-            }
-        }
-        drop(realms);
-        self.collect_local_realm()
-    }
-
-    fn shadow_collection_realms(&self) -> Option<Vec<ShadowRealmRecord>> {
-        let mut records = Vec::<ShadowRealmRecord>::new();
-        let mut seen = HashSet::from([self.object_prototype.heap]);
-        for record in self.shadow_realms.values() {
-            if seen.insert(record.heap) {
-                records.push(record.clone());
-            }
-        }
-        let mut index = 0;
-        while index < records.len() {
-            let children = {
-                let vm = records[index].vm.try_borrow_mut().ok()?;
-                vm.shadow_realms.values().cloned().collect::<Vec<_>>()
-            };
-            for child in children {
-                if seen.insert(child.heap) {
-                    records.push(child);
+                if terminal_cleanup {
+                    vm.reconcile_scheduling_ownership();
+                } else {
+                    vm.enqueue_finalization_cleanup_jobs()?;
+                    vm.synchronize_scheduling_usage()?;
                 }
             }
-            index += 1;
         }
-        Some(records)
+        Ok(())
     }
 }
