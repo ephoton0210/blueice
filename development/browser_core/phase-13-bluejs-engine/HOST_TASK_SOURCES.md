@@ -179,8 +179,8 @@ intervening JavaScript; resumption returns them to native record ownership.
 Interpreter exits reconcile the document contribution after local owners drop,
 including errors, so peer realms see the released storage. The iterator GC-root
 vector's reported capacity is also charged and completed root scripts release
-it. Call-entry staging and admission before other active-container allocations
-remain open in the broader control-storage work.
+it. Other transient staging and admission before remaining active-container
+allocations remain open in the broader control-storage work.
 
 Declaration resources and disposal scope marks belong to one execution frame.
 Calls/eval preserve caller ownership and root saved ephemeral disposer methods;
@@ -323,12 +323,31 @@ Root and child scopes share the same account, and navigation drops old leases.
 
 Call-entry buffers keep their lease while a constructor's prototype getter or
 base-class field initializer runs, before its arguments enter VM fields.
+The entry lease carries primitive payload and actual argument-vector capacity
+separately. Closure captures and copied with-environments join its native
+control charge before getters or initializers run; metadata inspection borrows
+the closure instead of cloning its environment. Replacing a primitive receiver
+releases that original value before refreshing the entry charge.
+
+Bound dispatch retains an admitted vector of wrapper IDs, then admits and
+builds one final argument buffer. It releases wrapper metadata before executing
+the target. Host callbacks retain an independently admitted conversion vector
+and any copied strings for their entire callback. Tail calls reuse the carrier
+allocation after removing its callee/receiver prefix.
+
 Ordinary and generator parameter initialization release that lease only after
 the VM takes ownership. Direct eval retains its source-argument lease in normal,
 spread and tail-call positions. Proxy trap getters run under the incoming
 lease; forwarding the same buffers transfers ownership rather than charging a
 second copy. A trapped call releases the incoming lease once its argument array
 owns those values and the trap invocation takes over.
+
+Generator parameter entry keeps the original inputs in native ownership and
+uses a rooted running state instead of cloning them into a temporary start
+state. Saved generator states charge their fixed box, actual capacity of each
+retained vector and owned payloads. Their GC reference lists describe
+reachability rather than the size of those allocations. Native-to-managed
+handoffs therefore preserve the storage charge, including spare slots.
 
 Task callbacks use the same transfer rule. Timer arguments, drag text and
 finalization holdings carry an input lease until call dispatch takes ownership.

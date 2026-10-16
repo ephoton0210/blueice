@@ -1674,7 +1674,7 @@ impl Vm {
         receiver: Value,
         args: Vec<Value>,
         construct: bool,
-        entry_payload: execution_payload::ExecutionPayloadCharge,
+        entry_payload: execution_payload::CallEntryCharge,
     ) -> Result<Value, RuntimeError> {
         let Some((target, handler)) = self.heap.proxy(proxy)? else {
             return Err(RuntimeError::TypeError(

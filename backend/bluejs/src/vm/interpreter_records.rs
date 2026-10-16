@@ -40,6 +40,21 @@ impl InterpreterRecord for usize {
     }
 }
 
+impl InterpreterRecord for ObjectId {
+    fn payload_bytes(&self) -> usize {
+        0
+    }
+}
+
+impl InterpreterRecord for HostValue {
+    fn payload_bytes(&self) -> usize {
+        match self {
+            HostValue::String(value) => value.owned_heap_payload_bytes().unwrap_or(usize::MAX),
+            _ => 0,
+        }
+    }
+}
+
 impl InterpreterRecord for DisposableResource {
     fn payload_bytes(&self) -> usize {
         self.values().fold(0usize, |bytes, value| {

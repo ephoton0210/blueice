@@ -1423,16 +1423,34 @@ impl Vm {
                 "host functions are not constructors".into(),
             ));
         }
-        let args = args
-            .iter()
-            .map(HostValue::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
+        let mut converted = self.owned_records(Vec::new());
+        for value in args {
+            if matches!(
+                value,
+                Value::Undefined
+                    | Value::Null
+                    | Value::Bool(_)
+                    | Value::Number(_)
+                    | Value::String(_)
+            ) {
+                let growth = SchedulingCapacity::for_vec_push(&converted);
+                self.admit_scheduling_work(
+                    HostSchedulingUsage {
+                        payload_bytes: host_scheduling::value_payload_bytes(value),
+                        ..Default::default()
+                    }
+                    .with_growth(growth),
+                )?;
+            }
+            let value = HostValue::try_from(value)
+                .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
+            converted.try_push(self, value)?;
+        }
         let result = self
             .host_functions
             .get_mut(index as usize)
             .ok_or_else(|| RuntimeError::TypeError("host function is unavailable".into()))?
-            .call(&args)
+            .call(&converted)
             .map_err(|error| RuntimeError::TypeError(error.to_string()))?
             .into();
         self.check_string(&result)?;
@@ -1708,9 +1726,11 @@ impl Vm {
         // A frame that ended in a `TailCall` has already been torn down; its
         // callee runs here, at the same depth, instead of nesting under it.
         while let Some(mut call) = self.pending_tail_call.take() {
-            let args = call.split_off(2);
-            let receiver = call.pop().expect("a tail call carries its receiver");
-            let callee = call.pop().expect("a tail call carries its callee");
+            let mut prefix = call.drain(..2);
+            let callee = prefix.next().expect("a tail call carries its callee");
+            let receiver = prefix.next().expect("a tail call carries its receiver");
+            drop(prefix);
+            let args = call;
             result = self.enter_call(callee, receiver, args, false, Value::Undefined);
         }
         result
@@ -1724,6 +1744,22 @@ impl Vm {
         construct: bool,
         target: Value,
     ) -> Result<Value, RuntimeError> {
+        let entry = self.call_entry_charge(&callee, &receiver, &args);
+        let result = self.enter_call_owned(callee, receiver, args, construct, target, entry);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn enter_call_owned(
+        &mut self,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+        target: Value,
+        entry: execution_payload::CallEntryCharge,
+    ) -> Result<Value, RuntimeError> {
         // Refuse before the native stack can overflow (see `CALL_STACK_RED_ZONE`).
         if call_stack_exhausted(native_stack::remaining_stack(), self.call_depth) {
             return Err(RuntimeError::RangeError(
@@ -1736,7 +1772,7 @@ impl Vm {
         // derived-constructor arrow invokes `super()`: the superclass must
         // allocate with the original derived class.
         let closure_code = match callee.object_id() {
-            Some(id) => self.heap.closure(id)?.map(|(code, _, _, _)| code),
+            Some(id) => self.heap.closure_code(id)?,
             None => None,
         };
         let arrow = !construct && closure_code.as_ref().is_some_and(|code| code.arrow);
@@ -1770,6 +1806,12 @@ impl Vm {
                 .cloned()
                 .map(|module| self.active_module_name.replace(module))
         });
+        let module_charge = self.charge_execution_control(
+            previous_module
+                .as_ref()
+                .and_then(Option::as_ref)
+                .map_or(0, String::capacity),
+        );
         self.call_depth += 1;
         // Whatever this call runs belongs to its own realm, not to the realm a
         // running native is acting for (see `acting_realm`).
@@ -1781,7 +1823,7 @@ impl Vm {
         let _ambient_origin_charge = self.charge_diagnostic_payload(ambient_origin.payload_bytes());
         let result = self
             .collect_for_host_native_pressure(&receiver, &args)
-            .and_then(|()| self.dispatch_call(callee, receiver, args, construct))
+            .and_then(|()| self.dispatch_call_owned(callee, receiver, args, construct, entry))
             .and_then(|value| {
                 self.check_string(&value)?;
                 // Native results can add pressure before an enclosing async
@@ -1811,6 +1853,7 @@ impl Vm {
         if let Some(module) = previous_module {
             self.active_module_name = module;
         }
+        drop(module_charge);
         self.call_depth -= 1;
         self.stack.truncate(base);
         self.refresh_scheduling_ownership();
@@ -1822,41 +1865,79 @@ impl Vm {
 
     fn dispatch_call(
         &mut self,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let entry = self.call_entry_charge(&callee, &receiver, &args);
+        let result = self.dispatch_call_owned(callee, receiver, args, construct, entry);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn dispatch_call_owned(
+        &mut self,
         mut callee: Value,
         mut receiver: Value,
         mut args: Vec<Value>,
         construct: bool,
+        mut call_payload: execution_payload::CallEntryCharge,
     ) -> Result<Value, RuntimeError> {
-        // Bound wrappers have no execution contexts of their own. Walk them
-        // with fuel rather than consuming Rust stack or the JS frame limit.
-        let mut prefixes = Vec::new();
+        self.synchronize_execution_payload()?;
+        let mut prefixes = self.owned_records(Vec::<ObjectId>::new());
         while let Value::Object(id) = callee {
-            let Some(bound) = self.heap.bound_function(id)?.cloned() else {
+            let Some(bound) = self.heap.bound_function(id)? else {
                 break;
             };
+            let target = bound.target;
+            let constructible = bound.constructible;
             self.charge_step()?;
-            if construct && !bound.constructible {
+            if construct && !constructible {
                 return Err(RuntimeError::TypeError(
                     "bound target is not a constructor".into(),
                 ));
             }
+            prefixes.try_push(self, id)?;
             if construct && self.new_target == callee {
-                self.new_target = Value::Object(bound.target);
+                self.new_target = Value::Object(target);
             }
-            callee = Value::Object(bound.target);
-            receiver = bound.this;
-            prefixes.push(bound.args);
+            callee = Value::Object(target);
         }
         if !prefixes.is_empty() {
-            // Concatenate once, starting at the innermost wrapper, to avoid
-            // repeatedly copying the accumulated arguments of long chains.
-            args = prefixes.into_iter().rev().flatten().chain(args).collect();
+            let mut count = args.len();
+            let mut bytes = 0usize;
+            for id in prefixes.iter() {
+                let bound = self
+                    .heap
+                    .bound_function(*id)?
+                    .expect("bound chain runs no JavaScript");
+                count = count.saturating_add(bound.args.len());
+                bytes = bytes.saturating_add(host_scheduling::values_bytes(&bound.args));
+            }
+            let inner = *prefixes.last().unwrap();
+            if !construct {
+                bytes = bytes.saturating_add(host_scheduling::value_payload_bytes(
+                    &self.heap.bound_function(inner)?.unwrap().this,
+                ));
+            }
+            self.admit_scheduling_work(HostSchedulingUsage {
+                payload_bytes: bytes
+                    .saturating_add(count.saturating_mul(std::mem::size_of::<Value>())),
+                ..Default::default()
+            })?;
+            let mut combined = Vec::with_capacity(count);
+            for id in prefixes.iter().rev() {
+                combined.extend(self.heap.bound_function(*id)?.unwrap().args.iter().cloned());
+            }
+            combined.extend(args);
+            args = combined;
+            if !construct {
+                receiver = self.heap.bound_function(inner)?.unwrap().this.clone();
+            }
+            call_payload.refresh(&callee, &receiver, &args, 0);
         }
-        let call_payload = self.charge_execution_payload(
-            host_scheduling::values_bytes(&args)
-                .saturating_add(host_scheduling::value_payload_bytes(&receiver))
-                .saturating_add(host_scheduling::value_payload_bytes(&callee)),
-        );
+        drop(prefixes);
         self.synchronize_execution_payload()?;
         if let Value::Object(id) = callee {
             if self.heap.proxy(id)?.is_some() {
@@ -1879,16 +1960,43 @@ impl Vm {
             }
         }
         if let Value::Object(id) = callee {
-            if let Some((code, captures, lexical_this, home)) = self
-                .heap
-                .closure(id)
-                .expect("bound and Proxy dispatch already validated the unchanged callee")
-            {
-                let receiver = if code.arrow { lexical_this } else { receiver };
-                let with_objects = self
-                    .heap
-                    .closure_with_objects(id)
-                    .expect("the immediately preceding closure lookup verified this live object");
+            if let Some(code) = self.heap.closure_code(id)? {
+                let (captures, with_objects, lexical_this) =
+                    self.heap.closure_entry_storage(id)?.unwrap();
+                let bytes = captures
+                    .len()
+                    .saturating_mul(std::mem::size_of::<ObjectId>())
+                    .saturating_add(
+                        with_objects
+                            .len()
+                            .saturating_mul(std::mem::size_of::<Value>()),
+                    )
+                    .saturating_add(host_scheduling::values_bytes(with_objects))
+                    .saturating_add(if code.arrow {
+                        host_scheduling::value_payload_bytes(lexical_this)
+                    } else {
+                        0
+                    });
+                self.admit_scheduling_work(HostSchedulingUsage {
+                    payload_bytes: bytes,
+                    ..Default::default()
+                })?;
+                let (_, captures, lexical_this, home) = self.heap.closure_for_call(id)?.unwrap();
+                if code.arrow {
+                    receiver = lexical_this;
+                } else {
+                    drop(lexical_this);
+                }
+                let with_objects = self.heap.closure_with_objects(id)?;
+                call_payload.refresh(
+                    &callee,
+                    &receiver,
+                    &args,
+                    host_scheduling::slots(&captures)
+                        .saturating_add(host_scheduling::slots(&with_objects))
+                        .saturating_add(host_scheduling::values_bytes(&with_objects)),
+                );
+                self.synchronize_execution_payload()?;
                 return self.call_closure(
                     builtins::ClosureCall {
                         code,

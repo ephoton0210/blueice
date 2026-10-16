@@ -198,6 +198,7 @@ pub(crate) struct IteratorHelperState {
     pub executing: bool,
     pub kind: IteratorHelperKind,
 }
+pub(crate) type ClosureEntryStorage<'a> = (&'a [ObjectId], &'a [Value], &'a Value);
 pub(crate) type ClosureState = (Rc<Bytecode>, Vec<ObjectId>, Value, Option<ObjectId>);
 
 /// The class-declaration side of an ECMAScript private element.  These
@@ -324,7 +325,7 @@ impl GeneratorPendingCompletion {
             | Self::SyntaxError(message)
             | Self::Test262(message) => message.len(),
             Self::TailRecur(values) => {
-                values.len() * size_of::<Value>()
+                values.capacity() * size_of::<Value>()
                     + values.iter().map(Value::payload_bytes).sum::<usize>()
             }
             Self::Jump { .. } => 0,
@@ -563,53 +564,101 @@ impl AsyncGeneratorControl {
 
 impl GeneratorState {
     fn managed_bytes(&self) -> usize {
-        let reference_bytes = self.references().len() * size_of::<ObjectId>();
-        match self {
+        fn slots<T>(values: &Vec<T>) -> usize {
+            values.capacity().saturating_mul(size_of::<T>())
+        }
+        fn values(values: &[Value]) -> usize {
+            values.iter().map(Value::payload_bytes).sum()
+        }
+        let buffers = match self {
+            Self::Start {
+                captures,
+                callee,
+                receiver,
+                args,
+                with_objects,
+                ..
+            } => slots(captures)
+                .saturating_add(slots(args))
+                .saturating_add(slots(with_objects))
+                .saturating_add(values(args))
+                .saturating_add(values(with_objects))
+                .saturating_add(callee.payload_bytes())
+                .saturating_add(receiver.payload_bytes()),
             Self::Suspended {
+                stack,
+                bindings,
+                cells,
+                this,
+                args,
+                completion,
+                active_scopes,
+                iterators,
                 handlers,
-                disposables,
-                dispose_marks,
                 pending_completions,
                 completion_saves,
                 async_delegate,
                 delegate,
+                dynamic_bindings,
+                callee,
+                with_objects,
+                disposables,
+                dispose_marks,
                 ..
             } => {
-                reference_bytes
-                    + disposables.capacity() * size_of::<DisposableResource>()
-                    + dispose_marks.capacity() * size_of::<usize>()
-                    + disposables
-                        .iter()
-                        .flat_map(DisposableResource::values)
-                        .map(Value::payload_bytes)
-                        .sum::<usize>()
-                    + handlers.len() * size_of::<GeneratorHandlerFrame>()
-                    + handlers
-                        .iter()
-                        .map(|handler| handler.pending_origin.payload_bytes())
-                        .sum::<usize>()
-                    + pending_completions.len() * size_of::<GeneratorPendingCompletion>()
-                    + pending_completions
-                        .iter()
-                        .map(GeneratorPendingCompletion::managed_bytes)
-                        .sum::<usize>()
-                    + completion_saves.len() * size_of::<(Value, bool)>()
-                    + completion_saves
-                        .iter()
-                        .map(|(value, _)| value.payload_bytes())
-                        .sum::<usize>()
-                    + async_delegate.as_ref().map_or(0, |delegate| {
-                        size_of::<AsyncGeneratorDelegate>() + delegate.record.payload_bytes()
-                    })
-                    + delegate.as_ref().map_or(0, |delegate| {
-                        size_of::<GeneratorDelegate>() + delegate.record.payload_bytes()
-                    })
+                let mut bytes = slots(stack)
+                    .saturating_add(slots(bindings))
+                    .saturating_add(slots(cells))
+                    .saturating_add(slots(args))
+                    .saturating_add(slots(active_scopes))
+                    .saturating_add(slots(iterators))
+                    .saturating_add(slots(handlers))
+                    .saturating_add(slots(pending_completions))
+                    .saturating_add(slots(completion_saves))
+                    .saturating_add(slots(dynamic_bindings))
+                    .saturating_add(slots(with_objects))
+                    .saturating_add(slots(disposables))
+                    .saturating_add(slots(dispose_marks))
+                    .saturating_add(values(stack))
+                    .saturating_add(values(args))
+                    .saturating_add(values(iterators))
+                    .saturating_add(values(with_objects))
+                    .saturating_add(this.payload_bytes())
+                    .saturating_add(callee.payload_bytes())
+                    .saturating_add(completion.payload_bytes());
+                for value in bindings
+                    .iter()
+                    .flatten()
+                    .chain(completion_saves.iter().map(|(value, _)| value))
+                    .chain(disposables.iter().flat_map(DisposableResource::values))
+                {
+                    bytes = bytes.saturating_add(value.payload_bytes());
+                }
+                for handler in handlers {
+                    bytes = bytes.saturating_add(handler.pending_origin.payload_bytes());
+                }
+                for completion in pending_completions {
+                    bytes = bytes.saturating_add(completion.managed_bytes());
+                }
+                for (name, _, shadowed) in dynamic_bindings {
+                    bytes = bytes
+                        .saturating_add(name.capacity())
+                        .saturating_add(slots(shadowed));
+                }
+                for value in async_delegate
+                    .iter()
+                    .map(|delegate| &delegate.record)
+                    .chain(delegate.iter().map(|delegate| &delegate.record))
+                {
+                    bytes = bytes.saturating_add(value.payload_bytes());
+                }
+                bytes
             }
-            Self::Start { args, .. } => {
-                reference_bytes + args.iter().map(Value::payload_bytes).sum::<usize>()
-            }
-            Self::Done | Self::Running => reference_bytes,
-        }
+            Self::Done | Self::Running => 0,
+        };
+        // Every variant occupies the same generator state box. Heap edges
+        // describe reachability; the owned containers describe allocation.
+        size_of::<Self>().saturating_add(buffers)
     }
 
     fn references(&self) -> Vec<ObjectId> {

@@ -193,7 +193,7 @@ impl Vm {
         args: Vec<Value>,
         home: Option<ObjectId>,
         closure_with_objects: Vec<Value>,
-        entry_payload: execution_payload::ExecutionPayloadCharge,
+        entry_payload: execution_payload::CallEntryCharge,
     ) -> Result<GeneratorState, RuntimeError> {
         let _caller_payload = self.charge_execution_payload(
             self.caller_execution_payload_bytes()

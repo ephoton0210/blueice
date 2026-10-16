@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_call_entry_storage_contracts() {
+    blueice_bluejs::Vm::verify_call_entry_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_disposal_ownership_contracts() {
     blueice_bluejs::Vm::verify_disposal_ownership_contracts();
 }

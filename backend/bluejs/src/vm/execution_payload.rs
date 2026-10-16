@@ -16,6 +16,10 @@ mod control_capacity_tests;
 #[path = "../../tests/fixtures/interpreter_record_ownership.rs"]
 mod interpreter_record_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/call_entry_storage.rs"]
+mod call_entry_tests;
+
 /// These transfers displace different owners. Ordinary calls forward dynamic
 /// eval environments into the callee; generator entry saves them in Rust.
 pub(super) enum ControlTransfer {
@@ -86,6 +90,30 @@ pub(super) struct ExecutionPayloadCharge {
     enabled: bool,
 }
 
+pub(super) struct CallEntryCharge {
+    payload: ExecutionPayloadCharge,
+    control: ExecutionPayloadCharge,
+}
+
+impl CallEntryCharge {
+    pub(super) fn refresh(
+        &mut self,
+        callee: &Value,
+        receiver: &Value,
+        args: &Vec<Value>,
+        metadata: usize,
+    ) {
+        let payload = values_bytes(args)
+            .saturating_add(value_payload_bytes(callee))
+            .saturating_add(value_payload_bytes(receiver));
+        self.payload
+            .resize(if self.payload.enabled() { payload } else { 0 });
+        let control = host_scheduling::slots(args).saturating_add(metadata);
+        self.control
+            .resize(if self.control.enabled() { control } else { 0 });
+    }
+}
+
 impl ExecutionPayloadCharge {
     pub(super) fn bytes(&self) -> usize {
         self.bytes
@@ -152,6 +180,21 @@ impl Drop for ExecutionPayloadCharge {
 }
 
 impl Vm {
+    pub(super) fn call_entry_charge(
+        &self,
+        callee: &Value,
+        receiver: &Value,
+        args: &Vec<Value>,
+    ) -> CallEntryCharge {
+        CallEntryCharge {
+            payload: self.charge_execution_payload(
+                values_bytes(args)
+                    .saturating_add(value_payload_bytes(callee))
+                    .saturating_add(value_payload_bytes(receiver)),
+            ),
+            control: self.charge_execution_control(host_scheduling::slots(args)),
+        }
+    }
     /// Finished page jobs return their frame allocations. Persistent template
     /// identities and module association remain owned by the realm.
     pub(super) fn release_finished_execution_control(&mut self) {

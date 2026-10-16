@@ -36,7 +36,7 @@ fn function_realm_validation_rejects_primitives_and_ordinary_objects() {
                 Value::Undefined,
                 Vec::new(),
                 construct,
-                vm.charge_execution_payload(0),
+                vm.call_entry_charge(&Value::Undefined, &Value::Undefined, &Vec::new()),
             ),
             Err(RuntimeError::TypeError(
                 "Proxy target is unavailable".into()
@@ -76,7 +76,7 @@ fn object_operations_reject_a_handle_owned_by_a_different_heap() {
             Value::Undefined,
             Vec::new(),
             false,
-            vm.charge_execution_payload(0),
+            vm.call_entry_charge(&Value::Undefined, &Value::Undefined, &Vec::new()),
         )
         .map(|_| ()),
         vm.ordinary_set_with_receiver(object, &Value::Object(object), &key, &Value::Number(42.0))

@@ -57,6 +57,14 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The call-entry follow-up reproduces six storage/accounting failures before the
+fix. Twelve bounded groups now pass for reserved argument capacity, constructor
+callbacks, bound/Proxy forwarding, host conversion, parameter handoff, tail-call
+buffer reuse and managed generator container capacity. All 436 selected cases,
+formatting and offline workspace/all-target Clippy pass. This implementation
+checkpoint is recorded below; wider staging, preallocation, module-cache/
+service storage and integrated acceptance remain open.
+
 The disposal follow-up addresses two ownership failures: interleaved generator/
 async frames share one resource stack and dispose the wrong frame's entries,
 while disposal side tables root unreachable resources and cycles forever.
@@ -1057,6 +1065,69 @@ warnings denied pass. Logs use `/private/tmp/blueice-disposal-ownership-` with
 `{resources,heap-resources,records,closure-exits,module-exits,generator-exits,generator-close,iterator-close,record-semantics,capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
 Receipt: `target/disposal-ownership-source-20261016.json`.
 Wider entry/transient staging, other active-container preallocation, full
+module-cache/service storage and integrated acceptance remain open. No fresh
+full Test262, real Core/MCP replay or coverage result is claimed; M1u remains
+the latest accepted milestone.
+
+#### Call-entry and generator storage follow-up (implementation checkpoint)
+
+Acceptance: incoming argument vectors retain their actual capacity charge
+through prototype getters, field initializers and native callbacks. Bound
+flattening admits its one final buffer before allocation; closure metadata and
+host argument conversions retain their own native charges. Ordinary, generator
+and Proxy handoffs transfer ownership without duplicate charges. Managed
+generator states account for their boxed state and each retained container's
+actual capacity and payload, independently of their GC reference list.
+
+- [x] Reproduce six failures with tiny vectors and finite callbacks; retain
+      the initial red log.
+- [x] Add paired call-entry payload/control leases, admitted bound/host
+      conversion storage and closure metadata ownership.
+- [x] Reuse the tail-call argument carrier and avoid duplicate generator
+      parameter-entry copies; account for all saved generator containers.
+- [x] Pass twelve focused native/heap groups, including refusal before callback
+      and single-owner handoffs.
+- [x] Pass the selected finite semantic/GC controls, formatting and Clippy;
+      record the source/artifact audit with the checkpoint commit.
+- [ ] Complete wider transient staging, other preallocation, full module-cache/
+      service storage and integrated acceptance. M1u remains the latest
+      accepted milestone; no full Test262/Core/MCP/coverage gate is claimed.
+
+Initial red log: `/private/tmp/blueice-call-entry-storage-red-20261016.log`
+(zero passed, six failed). Focused expanded log:
+`/private/tmp/blueice-call-entry-storage-expanded-20261016.log`
+(twelve passed, zero failed/ignored).
+
+Call entry now retains separate primitive and control leases. Captures and
+with-environments are admitted before copying; borrowed metadata inspection
+avoids an unused captured-environment clone. Receiver replacement releases the
+old primitive owner. Bound dispatch admits wrapper-ID storage and one final
+argument buffer, then releases its lookup vector before the target runs. Host
+conversion admits its native vector and copied strings before conversion and
+keeps them charged throughout the callback. Tail calls consume the carrier
+prefix in place. Every call-entry exit reconciles released native ownership.
+
+Parameter initialization uses a rooted running generator placeholder while
+the original inputs retain native ownership. Saved managed state charges its
+fixed state box, actual retained vector capacities, dynamic-binding storage and
+value/completion payloads; GC references remain reachability edges. The new
+heap cases check reserved start-state vectors and all thirteen suspended
+container capacities.
+
+Final bounded validation: **436 passed, zero failed, zero ignored** across 26
+test executables. This includes twelve new groups, one existing heap restoration
+case, eleven cross-realm/generator-constructor/async-GC cases, eight bound-call
+cases, one finite tail-call semantic matrix and the prior 403 ownership controls.
+The six previous host-async pressure cases and the larger retained-bind
+allocation case remain filtered. Deep-recursion tail suites are not run.
+New vectors/graphs and callback/job loops are fixed and small; scalar budget
+owners allocate no corresponding large buffer.
+
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass. Logs use `/private/tmp/blueice-call-entry-storage-` with
+`{entry,heap-restoration,entry-semantics,bound-semantics,tail-semantics,resources,heap-resources,records,closure-exits,module-exits,generator-exits,generator-close,iterator-close,record-semantics,capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
+Receipt: `target/call-entry-storage-source-20261016.json`.
+Other transient staging, remaining active-container preallocation, full
 module-cache/service storage and integrated acceptance remain open. No fresh
 full Test262, real Core/MCP replay or coverage result is claimed; M1u remains
 the latest accepted milestone.

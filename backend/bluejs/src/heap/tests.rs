@@ -1130,6 +1130,117 @@ fn restoring_generator_state_updates_its_managed_byte_charge() {
 }
 
 #[test]
+fn generator_entry_storage_counts_reserved_vector_capacity() {
+    for part in 0..3 {
+        let mut state = GeneratorState::Start {
+            code: Rc::new(Bytecode::empty()),
+            captures: Vec::new(),
+            callee: Value::Undefined,
+            receiver: Value::Undefined,
+            args: Vec::new(),
+            home: None,
+            with_objects: Vec::new(),
+        };
+        let before = state.managed_bytes();
+        let GeneratorState::Start {
+            captures,
+            args,
+            with_objects,
+            ..
+        } = &mut state
+        else {
+            unreachable!()
+        };
+        let bytes = match part {
+            0 => {
+                args.reserve(9);
+                args.capacity() * size_of::<Value>()
+            }
+            1 => {
+                captures.reserve(9);
+                captures.capacity() * size_of::<ObjectId>()
+            }
+            _ => {
+                with_objects.reserve(9);
+                with_objects.capacity() * size_of::<Value>()
+            }
+        };
+        assert_eq!(state.managed_bytes() - before, bytes, "part={part}");
+    }
+}
+
+#[test]
+fn generator_entry_storage_counts_all_suspended_container_capacity() {
+    fn grow<T>(values: &mut Vec<T>) -> usize {
+        let old = values.capacity();
+        values.reserve(9);
+        (values.capacity() - old) * size_of::<T>()
+    }
+    for part in 0..13 {
+        let mut state = GeneratorState::Suspended {
+            code: Rc::new(Bytecode::empty()),
+            pc: 0,
+            stack: Vec::new(),
+            bindings: Vec::new(),
+            cells: Vec::new(),
+            this: Value::Undefined,
+            args: Vec::new(),
+            completion: Value::Undefined,
+            completion_empty: true,
+            active_scopes: Vec::new(),
+            iterators: Vec::new(),
+            handlers: Vec::new(),
+            pending_completions: Vec::new(),
+            completion_saves: Vec::new(),
+            async_delegate: None,
+            delegate: None,
+            dynamic_bindings: Vec::new(),
+            home: None,
+            callee: Value::Undefined,
+            with_objects: Vec::new(),
+            disposables: Vec::new(),
+            dispose_marks: Vec::new(),
+        };
+        let before = state.managed_bytes();
+        let GeneratorState::Suspended {
+            stack,
+            bindings,
+            cells,
+            args,
+            active_scopes,
+            iterators,
+            handlers,
+            pending_completions,
+            completion_saves,
+            dynamic_bindings,
+            with_objects,
+            disposables,
+            dispose_marks,
+            ..
+        } = &mut state
+        else {
+            unreachable!()
+        };
+        let delta = match part {
+            0 => grow(stack),
+            1 => grow(bindings),
+            2 => grow(cells),
+            3 => grow(args),
+            4 => grow(active_scopes),
+            5 => grow(iterators),
+            6 => grow(handlers),
+            7 => grow(pending_completions),
+            8 => grow(completion_saves),
+            9 => grow(dynamic_bindings),
+            10 => grow(with_objects),
+            11 => grow(disposables),
+            _ => grow(dispose_marks),
+        };
+        assert_eq!(state.managed_bytes() - before, delta, "part={part}");
+    }
+}
+
+#[test]
 fn async_generator_request_origin_capacity_is_charged_and_refusal_is_atomic() {
     let config = HeapConfig {
         max_heap_bytes: 4096,

@@ -949,6 +949,55 @@ impl Heap {
         })
     }
 
+    /// Inspect call metadata without cloning the captured environment.
+    pub(crate) fn closure_code(&self, object: ObjectId) -> Result<Option<Rc<Bytecode>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Closure { code, .. } => Some(code.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn closure_entry_storage(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<ClosureEntryStorage<'_>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Closure { captures, this, .. } => Some((
+                captures,
+                self.closure_metadata
+                    .get(&object)
+                    .map_or(&[][..], |metadata| metadata.with_objects.as_slice()),
+                this,
+            )),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn closure_for_call(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<ClosureState>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Closure {
+                code,
+                captures,
+                this,
+            } => Some((
+                code.clone(),
+                captures.clone(),
+                if code.arrow {
+                    this.clone()
+                } else {
+                    Value::Undefined
+                },
+                self.closure_metadata
+                    .get(&object)
+                    .and_then(|metadata| metadata.home),
+            )),
+            _ => None,
+        })
+    }
+
     pub(crate) fn set_closure_home(
         &mut self,
         object: ObjectId,

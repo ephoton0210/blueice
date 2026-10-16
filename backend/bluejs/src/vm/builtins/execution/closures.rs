@@ -98,7 +98,7 @@ impl Vm {
     pub(in super::super::super) fn call_closure(
         &mut self,
         call: ClosureCall,
-        entry_payload: execution_payload::ExecutionPayloadCharge,
+        entry_payload: execution_payload::CallEntryCharge,
     ) -> Result<Value, RuntimeError> {
         self.with_rejection_origin(None, |vm| vm.call_closure_inner(call, entry_payload))
     }
@@ -106,14 +106,14 @@ impl Vm {
     fn call_closure_inner(
         &mut self,
         call: ClosureCall,
-        entry_payload: execution_payload::ExecutionPayloadCharge,
+        mut entry_payload: execution_payload::CallEntryCharge,
     ) -> Result<Value, RuntimeError> {
         let entry_epoch = self.throw_epoch;
         let ClosureCall {
             code,
             captures,
             callee,
-            receiver,
+            mut receiver,
             args,
             construct,
             home,
@@ -197,18 +197,27 @@ impl Vm {
         // arguments are installed. enter_call releases this stack suffix on
         // every exit; a suspended frame subsequently traces the same target.
         self.stack.extend(async_promise.map(Value::Object));
-        let receiver = if construct && code.derived_constructor {
-            Value::Undefined
+        if construct && code.derived_constructor {
+            receiver = Value::Undefined;
         } else if construct {
             let prototype = self.constructor_prototype(self.object_prototype)?;
-            Value::Object(self.with_roots(|heap| heap.alloc_object(Some(prototype)))?)
-        } else if code.arrow || code.strict {
-            receiver
-        } else if matches!(receiver, Value::Null | Value::Undefined) {
-            self.global("globalThis")?
-        } else {
-            Value::Object(self.coerce_object(&receiver)?)
-        };
+            receiver = Value::Object(self.with_roots(|heap| heap.alloc_object(Some(prototype)))?);
+        } else if !code.arrow && !code.strict {
+            if matches!(receiver, Value::Null | Value::Undefined) {
+                receiver = self.global("globalThis")?;
+            } else {
+                receiver = Value::Object(self.coerce_object(&receiver)?);
+            }
+        }
+        entry_payload.refresh(
+            &callee,
+            &receiver,
+            &args,
+            host_scheduling::slots(&captures)
+                .saturating_add(host_scheduling::slots(&closure_with_objects))
+                .saturating_add(host_scheduling::values_bytes(&closure_with_objects)),
+        );
+        self.synchronize_execution_payload()?;
         if construct && code.class_constructor && !code.derived_constructor {
             // A base class constructor's InitializeInstanceElements runs
             // right after `this` is created, before the body (and even
@@ -248,28 +257,23 @@ impl Vm {
                 }
                 return Ok(Value::Object(generator));
             }
-            // Install a temporary state first so the generator owns every
-            // captured edge while the entry phase may allocate. The actual
-            // parameter frame replaces it below before the object escapes.
-            let generator = self.with_roots(|heap| {
-                heap.alloc_generator(
-                    GeneratorState::Start {
-                        code: code.clone(),
-                        captures: captures.clone(),
-                        callee: callee.clone(),
-                        receiver: receiver.clone(),
-                        args: args.clone(),
-                        home,
-                        with_objects: closure_with_objects.clone(),
-                    },
-                    prototype,
-                )
-            })?;
+            // Inputs remain rooted by the call frame and the closure. Only
+            // a newly boxed receiver needs an extra edge before allocation.
+            let base = self.stack.len();
+            self.stack.extend(receiver.object_id().map(Value::Object));
+            let allocated =
+                self.with_roots(|heap| heap.alloc_generator(GeneratorState::Running, prototype));
+            let generator = match allocated {
+                Ok(generator) => generator,
+                Err(error) => {
+                    self.stack.truncate(base);
+                    return Err(error);
+                }
+            };
+            self.stack.push(Value::Object(generator));
             if async_generator {
                 self.enable_async_generator(generator);
             }
-            let base = self.stack.len();
-            self.stack.push(Value::Object(generator));
             let state = self.initialize_generator(
                 code,
                 captures,
