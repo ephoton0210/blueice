@@ -31,6 +31,22 @@ pub(super) struct InterpreterRecords<T: InterpreterRecord> {
 
 pub(super) type IteratorRecords = InterpreterRecords<Value>;
 pub(super) type HandlerRecords = InterpreterRecords<HandlerFrame>;
+pub(super) type ResourceRecords = InterpreterRecords<DisposableResource>;
+pub(super) type DisposeMarks = InterpreterRecords<usize>;
+
+impl InterpreterRecord for usize {
+    fn payload_bytes(&self) -> usize {
+        0
+    }
+}
+
+impl InterpreterRecord for DisposableResource {
+    fn payload_bytes(&self) -> usize {
+        self.values().fold(0usize, |bytes, value| {
+            bytes.saturating_add(host_scheduling::value_payload_bytes(value))
+        })
+    }
+}
 
 impl<T: InterpreterRecord> Default for InterpreterRecords<T> {
     fn default() -> Self {
@@ -144,6 +160,23 @@ impl<T: InterpreterRecord> InterpreterRecords<T> {
         self.refresh();
     }
 
+    pub(super) fn try_split_off(&mut self, vm: &mut Vm, at: usize) -> Result<Self, RuntimeError> {
+        self.bind(vm);
+        if at == 0 {
+            return Ok(std::mem::take(self));
+        }
+        let bytes = (self.len() - at).saturating_mul(std::mem::size_of::<T>());
+        vm.admit_scheduling_work(HostSchedulingUsage {
+            payload_bytes: bytes,
+            ..Default::default()
+        })?;
+        let values = self.values.split_off(at);
+        self.refresh();
+        let records = vm.owned_records(values);
+        vm.synchronize_scheduling_usage()?;
+        Ok(records)
+    }
+
     /// The managed generator state takes this allocation without intervening
     /// JavaScript. Its heap accounting owns the next published representation.
     pub(super) fn into_vec(self) -> Vec<T> {
@@ -164,6 +197,16 @@ impl<T: InterpreterRecord> From<Vec<T>> for InterpreterRecords<T> {
 }
 
 impl Vm {
+    pub(super) fn owned_records<T: InterpreterRecord>(
+        &self,
+        values: Vec<T>,
+    ) -> InterpreterRecords<T> {
+        let charge = self.charge_execution_control(InterpreterRecords::storage_bytes(&values));
+        InterpreterRecords {
+            values,
+            charge: Some(charge),
+        }
+    }
     pub(super) fn iterator_records(&self, values: Vec<Value>) -> IteratorRecords {
         let charge = self.charge_execution_control(IteratorRecords::storage_bytes(&values));
         InterpreterRecords {

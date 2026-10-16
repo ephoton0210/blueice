@@ -179,8 +179,29 @@ intervening JavaScript; resumption returns them to native record ownership.
 Interpreter exits reconcile the document contribution after local owners drop,
 including errors, so peer realms see the released storage. The iterator GC-root
 vector's reported capacity is also charged and completed root scripts release
-it. Disposal/resource temporaries, call-entry staging and admission before other
-active-container allocations remain open in the broader control-storage work.
+it. Call-entry staging and admission before other active-container allocations
+remain open in the broader control-storage work.
+
+Declaration resources and disposal scope marks belong to one execution frame.
+Calls/eval preserve caller ownership and root saved ephemeral disposer methods;
+async/module/debugger suspension moves the records with the saved context.
+Managed generator states retain both resource buffers and GC references and
+restore their native ownership on resume. Interleaved frames therefore dispose
+their own declarations, including sibling module awaits.
+
+Resource/mark records and both disposal capability maps share native admission.
+Appending checks capacity and payload before publication; moving a stack admits
+the destination table slot before marking the source disposed. Detached disposal
+records, popped resource payloads, pending errors and async entry vectors keep
+their scoped charge during disposal/conversion. Roots copy object references
+without duplicating primitive buffers. Native temporary storage that is wholly
+within an operation's non-JavaScript staging remains part of the wider staging
+gate.
+
+Disposal side tables add conditional resource edges from each stack object.
+They are not permanent roots: an unreachable stack or callback cycle can be
+collected without running a disposer. Collection prunes its rows, releases
+mostly empty capacity and reconciles shared ownership before peer admission.
 
 ### Native-payload collection pressure
 

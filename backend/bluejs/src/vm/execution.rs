@@ -200,6 +200,8 @@ impl Vm {
         self.top_level_module = false;
         self.pending_completions.clear();
         self.completion_saves.clear();
+        self.disposables = Default::default();
+        self.dispose_marks = Default::default();
         self.call_stack.clear();
         self.release_finished_execution_control();
         self.refresh_scheduling_ownership();
@@ -1490,13 +1492,7 @@ impl Vm {
             // the ordinary operand stack while paused, so make every object
             // edge visible to the heap before this allocation safepoint.
             roots.extend(self.debugger_continuation_references());
-            for resource in self
-                .disposable_stacks
-                .values()
-                .chain(self.async_disposable_stacks.values())
-                .flat_map(|state| state.resources.iter())
-                .chain(self.disposables.iter())
-            {
+            for resource in self.disposables.iter() {
                 if let Value::Object(id) = &resource.receiver {
                     roots.push(*id);
                 }
@@ -1601,6 +1597,15 @@ impl Vm {
                 .filter_map(Value::object_id)
                 .map(Value::Object),
         );
+        self.stack.extend(
+            self.disposables
+                .iter()
+                .flat_map(DisposableResource::values)
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
+        let disposables = std::mem::take(&mut self.disposables);
+        let dispose_marks = std::mem::take(&mut self.dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
@@ -1623,6 +1628,8 @@ impl Vm {
         } else {
             self.run(code)
         };
+        self.disposables = disposables;
+        self.dispose_marks = dispose_marks;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
@@ -1807,6 +1814,22 @@ impl Vm {
                 .map(Value::Object),
         );
         self.stack.extend(self.with_objects.iter().cloned());
+        self.stack.extend(
+            self.disposables
+                .iter()
+                .flat_map(DisposableResource::values)
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
+        self.stack.extend(
+            self.disposables
+                .iter()
+                .flat_map(DisposableResource::values)
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
+        let disposables = std::mem::take(&mut self.disposables);
+        let dispose_marks = std::mem::take(&mut self.dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::take(&mut self.cells);
@@ -1827,6 +1850,8 @@ impl Vm {
         let result = self
             .prepare_global_declarations(code)
             .and_then(|()| self.run(code));
+        self.disposables = disposables;
+        self.dispose_marks = dispose_marks;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;

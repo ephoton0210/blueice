@@ -99,7 +99,7 @@ impl Vm {
     }
 
     pub(super) fn promise_owned_edges(&self) -> Vec<(ObjectId, Vec<ObjectId>)> {
-        let mut edges = Vec::with_capacity(self.promises.len());
+        let mut edges = self.disposal_owned_edges().collect::<Vec<_>>();
         for (&promise, record) in &self.promises {
             let mut references = Vec::new();
             match &record.status {
@@ -175,6 +175,7 @@ impl Vm {
 
     pub(super) fn prune_collected_promise_state(&mut self) {
         self.prune_module_error_origins();
+        self.prune_disposal_state();
         self.promises
             .retain(|promise, _| self.heap.contains(*promise));
         if self.promises.len().saturating_mul(4) < self.promises.capacity() {
@@ -217,5 +218,6 @@ impl Vm {
             .retain(|serial, _| modules.contains(serial));
         self.async_continuations
             .retain(|serial, _| functions.contains(serial));
+        self.reconcile_scheduling_ownership();
     }
 }

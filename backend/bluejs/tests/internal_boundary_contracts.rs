@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_disposal_ownership_contracts() {
+    blueice_bluejs::Vm::verify_disposal_ownership_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_interpreter_record_ownership_contracts() {
     blueice_bluejs::Vm::verify_interpreter_record_ownership_contracts();
 }

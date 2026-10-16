@@ -352,6 +352,47 @@ pub(crate) struct GeneratorDelegate {
 
 /// A generator's suspended execution context. The VM moves this out while
 /// `.next()` runs, then restores it before any subsequent allocation.
+/// `async-dispose` hint on a DisposableResource Record.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DisposeHint {
+    Sync,
+    Async,
+}
+
+/// A single entry of a DisposeCapability Record's `[[DisposableResourceStack]]`.
+///
+/// `receiver` is the value `method` is called on; `argument`, when present,
+/// is passed as the sole call argument instead of being used as the
+/// receiver. This lets `DisposableStack.prototype.adopt`'s synthetic
+/// `() => onDispose(value)` closure (spec `CreateDisposableResource`'s
+/// captured Abstract Closure) collapse into an ordinary call description
+/// rather than needing its own heap-allocated closure object: `defer`/plain
+/// resources call `method` on `receiver` with no arguments, while `adopt`
+/// calls `method` on `undefined` with `argument` as the one parameter.
+pub(crate) struct DisposableResource {
+    pub(crate) receiver: Value,
+    pub(crate) argument: Option<Value>,
+    pub(crate) method: Option<Value>,
+    // Not yet read: `dispose_resources_sync` treats every resource
+    // uniformly (see its own doc comment for the one case, a method-less
+    // `async-dispose` resource, where the real algorithm's behavior
+    // depends on this field and this implementation's does not).
+    #[allow(dead_code)]
+    pub(crate) hint: DisposeHint,
+    /// An `async-dispose` resource whose method is the sync `@@dispose`
+    /// fallback: `Dispose` still awaits, but the method's result is
+    /// discarded rather than awaited (its promise may never settle).
+    pub(crate) sync_fallback: bool,
+}
+
+impl DisposableResource {
+    pub(crate) fn values(&self) -> impl Iterator<Item = &Value> {
+        std::iter::once(&self.receiver)
+            .chain(self.argument.iter())
+            .chain(self.method.iter())
+    }
+}
+
 // The suspended frame is intentionally inline: it moves atomically between a
 // generator heap slot and the interpreter, and is already stored behind a
 // `Box<GeneratorState>` in `ObjectKind::Generator`.
@@ -378,6 +419,8 @@ pub(crate) enum GeneratorState {
         completion: Value,
         completion_empty: bool,
         active_scopes: Vec<u32>,
+        disposables: Vec<DisposableResource>,
+        dispose_marks: Vec<usize>,
         /// Open iterator records from a destructuring operation at the yield
         /// suspension point. They must survive GC and be closed by a later
         /// generator return/throw completion.
@@ -524,6 +567,8 @@ impl GeneratorState {
         match self {
             Self::Suspended {
                 handlers,
+                disposables,
+                dispose_marks,
                 pending_completions,
                 completion_saves,
                 async_delegate,
@@ -531,6 +576,13 @@ impl GeneratorState {
                 ..
             } => {
                 reference_bytes
+                    + disposables.capacity() * size_of::<DisposableResource>()
+                    + dispose_marks.capacity() * size_of::<usize>()
+                    + disposables
+                        .iter()
+                        .flat_map(DisposableResource::values)
+                        .map(Value::payload_bytes)
+                        .sum::<usize>()
                     + handlers.len() * size_of::<GeneratorHandlerFrame>()
                     + handlers
                         .iter()
@@ -580,6 +632,7 @@ impl GeneratorState {
                 .chain(with_objects.iter().filter_map(Value::object_id))
                 .collect(),
             Self::Suspended {
+                disposables,
                 stack,
                 bindings,
                 cells,
@@ -605,6 +658,7 @@ impl GeneratorState {
                     .chain(args.iter())
                     .chain(std::iter::once(completion))
                     .chain(iterators.iter())
+                    .chain(disposables.iter().flat_map(DisposableResource::values))
                     .chain(completion_saves.iter().map(|(value, _)| value))
                     .chain(async_delegate.iter().map(|delegate| &delegate.record))
                     .chain(delegate.iter().map(|delegate| &delegate.record))

@@ -346,6 +346,13 @@ impl Vm {
         // The callee sees only the with objects it closed over, not the
         // caller's; keep the caller's rooted on the stack meanwhile.
         self.stack.extend(self.with_objects.iter().cloned());
+        self.stack.extend(
+            self.disposables
+                .iter()
+                .flat_map(DisposableResource::values)
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         let pending_roots = self.pending_execution_references();
         self.stack
             .extend(pending_roots.into_iter().map(Value::Object));
@@ -354,6 +361,8 @@ impl Vm {
         if let Some(slot) = code.self_slot {
             frame_bindings[slot as usize] = Some(callee.clone());
         }
+        let disposables = std::mem::take(&mut self.disposables);
+        let dispose_marks = std::mem::take(&mut self.dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
@@ -631,6 +640,8 @@ impl Vm {
         }
         self.pending_completions = pending_completions;
         self.completion_saves = completion_saves;
+        self.disposables = disposables;
+        self.dispose_marks = dispose_marks;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;

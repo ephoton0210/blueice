@@ -15,6 +15,10 @@
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/disposal_ownership.rs"]
+mod ownership_tests;
+
 impl Vm {
     /// `GetDisposeMethod ( V, hint )`. `V` must already be known to be an
     /// Object; callers that also need to handle nullish `V` do so in
@@ -89,14 +93,19 @@ impl Vm {
     /// Adds the resource obtained from the value's disposal method.
     pub(in super::super) fn add_disposable_resource(
         &mut self,
-        capability: &mut Vec<DisposableResource>,
+        capability: &mut ResourceRecords,
         value: Value,
         hint: DisposeHint,
     ) -> Result<(), RuntimeError> {
-        if let Some(resource) = self.create_disposable_resource(value, hint)? {
-            capability.push(resource);
-        }
-        Ok(())
+        let base = self.stack.len();
+        self.root_resources(capability);
+        let result = self
+            .create_disposable_resource(value, hint)
+            .and_then(|resource| {
+                resource.map_or(Ok(()), |resource| capability.try_push(self, resource))
+            });
+        self.stack.truncate(base);
+        result
     }
 
     /// `Dispose ( V, hint, method )` folded into one call.
@@ -123,7 +132,7 @@ impl Vm {
     /// `Vm::async_dispose_helper`.
     pub(in super::super) fn dispose_resources_sync(
         &mut self,
-        resources: Vec<DisposableResource>,
+        resources: ResourceRecords,
         prior: Option<RuntimeError>,
     ) -> Result<(), RuntimeError> {
         // The resources were drained out of a rooted table (`self.disposables`
@@ -142,13 +151,21 @@ impl Vm {
 
     fn dispose_resources_rooted(
         &mut self,
-        mut resources: Vec<DisposableResource>,
+        mut resources: ResourceRecords,
         prior: Option<RuntimeError>,
     ) -> Result<(), RuntimeError> {
         let mut completion = prior;
+        let mut completion_charge = self.charge_execution_payload(
+            completion
+                .as_ref()
+                .map_or(0, host_scheduling::runtime_error_payload_bytes),
+        );
         let mut origin = self.take_pending_throw_origin();
         let mut origin_charge = self.charge_diagnostic_payload(origin.payload_bytes());
         while let Some(resource) = resources.pop() {
+            let _resource_charge = self.charge_execution_payload(
+                interpreter_records::InterpreterRecord::payload_bytes(&resource),
+            );
             let epoch = self.throw_epoch;
             if let Err(new_error) = self.dispose_one(&resource) {
                 if !new_error.is_catchable() {
@@ -158,6 +175,7 @@ impl Vm {
                 origin_charge.set_bytes(origin.payload_bytes());
                 self.synchronize_scheduling_usage()?;
                 self.root_error(&new_error);
+                drop(completion_charge);
                 completion = Some(match completion {
                     Some(prior_error) if prior_error.is_catchable() => {
                         let error_value = self.error_value(new_error)?;
@@ -171,6 +189,11 @@ impl Vm {
                     }
                     _ => new_error,
                 });
+                completion_charge = self.charge_execution_payload(
+                    completion
+                        .as_ref()
+                        .map_or(0, host_scheduling::runtime_error_payload_bytes),
+                );
             }
         }
         if let Some(error) = completion {
@@ -241,15 +264,13 @@ impl Vm {
     /// collection cannot reclaim it. The caller truncates the stack to the
     /// length it recorded before calling.
     fn root_resources(&mut self, resources: &[DisposableResource]) {
-        for resource in resources {
-            self.stack.push(resource.receiver.clone());
-            if let Some(argument) = &resource.argument {
-                self.stack.push(argument.clone());
-            }
-            if let Some(method) = &resource.method {
-                self.stack.push(method.clone());
-            }
-        }
+        self.stack.extend(
+            resources
+                .iter()
+                .flat_map(DisposableResource::values)
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
     }
 
     /// Roots the JS value carried by a thrown error (native errors that have
@@ -264,7 +285,7 @@ impl Vm {
     /// original completion and native origin across every Await.
     pub(in super::super) fn build_async_dispose_entries(
         &mut self,
-        resources: Vec<DisposableResource>,
+        resources: ResourceRecords,
         prior: Option<RuntimeError>,
     ) -> Result<Value, RuntimeError> {
         if let Some(error) = prior {
@@ -280,13 +301,13 @@ impl Vm {
     /// syncFallback]` records, one per resource, in declaration order.
     fn entries_array_from_resources(
         &mut self,
-        resources: Vec<DisposableResource>,
+        mut resources: ResourceRecords,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         self.root_resources(&resources);
         let result = (|| {
-            let mut entry_values = Vec::with_capacity(resources.len());
-            for resource in resources {
+            let mut entry_values = self.owned_records(Vec::new());
+            while let Some(resource) = resources.pop() {
                 let entry = self.array_from(vec![
                     resource.receiver,
                     resource.method.unwrap_or(Value::Undefined),
@@ -299,9 +320,11 @@ impl Vm {
                 // building the rest: each is otherwise held only by this
                 // Rust-local `Vec`, which the GC cannot see.
                 self.stack.push(entry.clone());
-                entry_values.push(entry);
+                entry_values.try_push(self, entry)?;
             }
-            self.array_from(entry_values)
+            let mut entries = entry_values.into_vec();
+            entries.reverse();
+            self.array_from(entries)
         })();
         self.stack.truncate(base);
         result
@@ -491,13 +514,7 @@ impl Vm {
         let default = self.disposable_stack_prototype(is_async)?;
         let prototype = self.constructor_prototype(default)?;
         let id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        if is_async {
-            self.async_disposable_stacks
-                .insert(id, DisposeCapabilityState::default());
-        } else {
-            self.disposable_stacks
-                .insert(id, DisposeCapabilityState::default());
-        }
+        self.insert_disposal_state(id, DisposeCapabilityState::default(), is_async)?;
         Ok(Value::Object(id))
     }
 
@@ -525,13 +542,7 @@ impl Vm {
         };
         let resource = self.create_disposable_resource(value.clone(), hint)?;
         if let Some(resource) = resource {
-            let state = if is_async {
-                self.async_disposable_stacks.get_mut(&id)
-            } else {
-                self.disposable_stacks.get_mut(&id)
-            }
-            .expect("presence checked above");
-            state.resources.push(resource);
+            self.append_disposal_resource(id, resource, is_async)?;
         }
         Ok(value)
     }
@@ -564,19 +575,17 @@ impl Vm {
         } else {
             DisposeHint::Sync
         };
-        let state = if is_async {
-            self.async_disposable_stacks.get_mut(&id)
-        } else {
-            self.disposable_stacks.get_mut(&id)
-        }
-        .expect("presence checked above");
-        state.resources.push(DisposableResource {
-            receiver: Value::Undefined,
-            argument: Some(value.clone()),
-            method: Some(on_dispose),
-            hint,
-            sync_fallback: false,
-        });
+        self.append_disposal_resource(
+            id,
+            DisposableResource {
+                receiver: Value::Undefined,
+                argument: Some(value.clone()),
+                method: Some(on_dispose),
+                hint,
+                sync_fallback: false,
+            },
+            is_async,
+        )?;
         Ok(value)
     }
 
@@ -607,19 +616,17 @@ impl Vm {
         } else {
             DisposeHint::Sync
         };
-        let state = if is_async {
-            self.async_disposable_stacks.get_mut(&id)
-        } else {
-            self.disposable_stacks.get_mut(&id)
-        }
-        .expect("presence checked above");
-        state.resources.push(DisposableResource {
-            receiver: Value::Undefined,
-            argument: None,
-            method: Some(on_dispose),
-            hint,
-            sync_fallback: false,
-        });
+        self.append_disposal_resource(
+            id,
+            DisposableResource {
+                receiver: Value::Undefined,
+                argument: None,
+                method: Some(on_dispose),
+                hint,
+                sync_fallback: false,
+            },
+            is_async,
+        )?;
         Ok(Value::Undefined)
     }
 
@@ -647,34 +654,30 @@ impl Vm {
             .disposable_stack_prototype(is_async)
             .expect("a branded stack was produced with its initialized intrinsic prototype");
         let new_id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        let moved = if is_async {
-            let mut state = self
-                .async_disposable_stacks
-                .remove(&id)
-                .expect("presence checked above");
-            let moved = std::mem::take(&mut state.resources);
-            state.disposed = true;
-            self.async_disposable_stacks.insert(id, state);
-            moved
+        let map = if is_async {
+            &self.async_disposable_stacks
         } else {
-            let mut state = self
-                .disposable_stacks
-                .remove(&id)
-                .expect("presence checked above");
-            let moved = std::mem::take(&mut state.resources);
-            state.disposed = true;
-            self.disposable_stacks.insert(id, state);
-            moved
+            &self.disposable_stacks
         };
-        let new_state = DisposeCapabilityState {
-            resources: moved,
-            disposed: false,
-        };
-        if is_async {
-            self.async_disposable_stacks.insert(new_id, new_state);
+        let growth = SchedulingMapCapacity::for_insert(map, self.host_scheduling.as_ref())?;
+        self.admit_scheduling_work(HostSchedulingUsage::default().with_map_growth(&growth))?;
+        let map = if is_async {
+            &mut self.async_disposable_stacks
         } else {
-            self.disposable_stacks.insert(new_id, new_state);
-        }
+            &mut self.disposable_stacks
+        };
+        growth.commit(map);
+        let state = map.get_mut(&id).expect("validated disposal capability");
+        let moved = std::mem::take(&mut state.resources);
+        state.disposed = true;
+        map.insert(
+            new_id,
+            DisposeCapabilityState {
+                resources: moved,
+                disposed: false,
+            },
+        );
+        self.synchronize_scheduling_usage()?;
         Ok(Value::Object(new_id))
     }
 

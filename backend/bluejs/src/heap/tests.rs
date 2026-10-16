@@ -995,7 +995,18 @@ fn suspended_generator_references_keep_every_saved_object_visible_to_gc() {
     let saved = heap.alloc_object(None).unwrap();
     let delegate = heap.alloc_object(None).unwrap();
     let with_object = heap.alloc_object(None).unwrap();
+    let resource_receiver = heap.alloc_object(None).unwrap();
+    let resource_argument = heap.alloc_object(None).unwrap();
+    let resource_method = heap.alloc_object(None).unwrap();
     let state = GeneratorState::Suspended {
+        disposables: vec![DisposableResource {
+            receiver: Value::Object(resource_receiver),
+            argument: Some(Value::Object(resource_argument)),
+            method: Some(Value::Object(resource_method)),
+            hint: DisposeHint::Sync,
+            sync_fallback: false,
+        }],
+        dispose_marks: vec![0],
         code: Rc::new(Bytecode::empty()),
         pc: 0,
         stack: vec![Value::Object(stack)],
@@ -1038,10 +1049,30 @@ fn suspended_generator_references_keep_every_saved_object_visible_to_gc() {
         saved,
         delegate,
         with_object,
+        resource_receiver,
+        resource_argument,
+        resource_method,
     ] {
         assert!(references.contains(&object));
     }
     assert!(heap.contains(prototype));
+    let mut state = state;
+    let before = state.managed_bytes();
+    let GeneratorState::Suspended {
+        disposables,
+        dispose_marks,
+        ..
+    } = &mut state
+    else {
+        unreachable!()
+    };
+    let resources_capacity = disposables.capacity();
+    let marks_capacity = dispose_marks.capacity();
+    disposables.reserve(7);
+    dispose_marks.reserve(7);
+    let delta = (disposables.capacity() - resources_capacity) * size_of::<DisposableResource>()
+        + (dispose_marks.capacity() - marks_capacity) * size_of::<usize>();
+    assert_eq!(state.managed_bytes() - before, delta);
 }
 
 #[test]

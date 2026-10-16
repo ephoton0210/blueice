@@ -238,6 +238,13 @@ impl Vm {
         // The caller's `with` objects stay rooted while the generator's own
         // (the ones its function closed over) are in scope.
         self.stack.extend(self.with_objects.iter().cloned());
+        self.stack.extend(
+            self.disposables
+                .iter()
+                .flat_map(DisposableResource::values)
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         self.stack.extend(closure_with_objects.iter().cloned());
         let pending_roots = self.pending_execution_references();
         self.stack
@@ -248,6 +255,8 @@ impl Vm {
         if let Some(slot) = code.self_slot {
             frame_bindings[slot as usize] = Some(callee.clone());
         }
+        let disposables = std::mem::take(&mut self.disposables);
+        let dispose_marks = std::mem::take(&mut self.dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
@@ -324,6 +333,8 @@ impl Vm {
                 debug_assert!(handlers.is_empty());
                 let stack = self.stack.split_off(frame_base);
                 Ok(GeneratorState::Suspended {
+                    disposables: std::mem::take(&mut self.disposables).into_vec(),
+                    dispose_marks: std::mem::take(&mut self.dispose_marks).into_vec(),
                     code,
                     pc,
                     stack,
@@ -355,6 +366,8 @@ impl Vm {
         self.with_objects = with_objects;
         self.inherited_with_depth = inherited_with_depth;
         self.parameter_eval_env = parameter_eval_env;
+        self.disposables = disposables;
+        self.dispose_marks = dispose_marks;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
@@ -448,6 +461,8 @@ impl Vm {
             frame_variable_scope_lexicals,
             frame_dynamic_bindings,
             frame_with_objects,
+            frame_disposables,
+            frame_dispose_marks,
         ) = match state {
             GeneratorState::Running => {
                 self.heap
@@ -517,6 +532,8 @@ impl Vm {
                     variable_scope_lexicals,
                     HashMap::new(),
                     with_objects,
+                    Vec::new(),
+                    Vec::new(),
                 )
             }
             GeneratorState::Suspended {
@@ -536,6 +553,8 @@ impl Vm {
                 completion_saves,
                 async_delegate: _,
                 delegate: _,
+                disposables,
+                dispose_marks,
                 dynamic_bindings,
                 home,
                 callee,
@@ -585,6 +604,8 @@ impl Vm {
                         })
                         .collect(),
                     with_objects,
+                    disposables,
+                    dispose_marks,
                 )
             }
         };
@@ -636,6 +657,13 @@ impl Vm {
         // it is the generator's operand stack, which is saved again at the
         // next yield and must hold only the frame's own operands.
         self.stack.extend(self.with_objects.iter().cloned());
+        self.stack.extend(
+            self.disposables
+                .iter()
+                .flat_map(DisposableResource::values)
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         self.stack.extend(frame_with_objects.iter().cloned());
         let pending_roots = self.pending_execution_references();
         self.stack
@@ -652,6 +680,10 @@ impl Vm {
             (code.with_depth as usize + usize::from(code.parameter_eval_scope))
                 .min(self.with_objects.len()),
         );
+        let disposables = std::mem::take(&mut self.disposables);
+        let dispose_marks = std::mem::take(&mut self.dispose_marks);
+        self.disposables = self.owned_records(frame_disposables);
+        self.dispose_marks = self.owned_records(frame_dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, frame_cells);
@@ -791,6 +823,8 @@ impl Vm {
                     });
                 yielded_delegate_result = delegate.is_some();
                 let state = GeneratorState::Suspended {
+                    disposables: std::mem::take(&mut self.disposables).into_vec(),
+                    dispose_marks: std::mem::take(&mut self.dispose_marks).into_vec(),
                     code,
                     pc,
                     stack,
@@ -892,6 +926,8 @@ impl Vm {
         // very next call return.
         self.with_objects = with_objects;
         self.inherited_with_depth = inherited_with_depth;
+        self.disposables = disposables;
+        self.dispose_marks = dispose_marks;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;

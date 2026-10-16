@@ -838,6 +838,8 @@ impl Vm {
         self.top_level_module = false;
         self.pending_completions.clear();
         self.completion_saves.clear();
+        self.disposables = Default::default();
+        self.dispose_marks = Default::default();
         self.collect_module_garbage();
         self.enqueue_finalization_cleanup_jobs()?;
         self.uncaught_throw_site = if result.as_ref().is_err_and(RuntimeError::is_catchable) {
@@ -1421,6 +1423,8 @@ impl Vm {
 
     pub(super) fn suspend_module_execution(&mut self) -> SuspendedModuleExecution {
         SuspendedModuleExecution {
+            disposables: std::mem::take(&mut self.disposables),
+            dispose_marks: std::mem::take(&mut self.dispose_marks),
             payload_charge: self.charge_execution_payload(self.current_execution_payload_bytes()),
             control_charge: self.charge_execution_control(self.current_execution_control_bytes()),
             result_root: self.result_root.take(),
@@ -1457,6 +1461,8 @@ impl Vm {
     }
 
     pub(super) fn restore_module_execution(&mut self, execution: SuspendedModuleExecution) {
+        self.disposables = execution.disposables;
+        self.dispose_marks = execution.dispose_marks;
         self.result_root = execution.result_root;
         self.stack = execution.stack;
         self.bindings = execution.bindings;
@@ -1516,6 +1522,12 @@ impl Vm {
             .chain(std::iter::once(&execution.callee))
             .chain(std::iter::once(&execution.new_target))
             .chain(execution.completion_saves.iter().map(|(value, _)| value))
+            .chain(
+                execution
+                    .disposables
+                    .iter()
+                    .flat_map(DisposableResource::values),
+            )
         {
             add_value(value);
         }
@@ -2341,6 +2353,8 @@ impl Vm {
                             })
                         });
                     let state = GeneratorState::Suspended {
+                        disposables: std::mem::take(&mut self.disposables).into_vec(),
+                        dispose_marks: std::mem::take(&mut self.dispose_marks).into_vec(),
                         code,
                         pc,
                         stack,

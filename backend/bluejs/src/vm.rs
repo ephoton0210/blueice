@@ -8,7 +8,7 @@
 
 use crate::bytecode::{Binding, ModuleExport, ModuleImportName, TemplateSiteId};
 use crate::diagnostics::ThrowOrigin;
-use crate::heap::{GeneratorState, PrivateElement};
+use crate::heap::{DisposableResource, DisposeHint, GeneratorState, PrivateElement};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
@@ -51,6 +51,7 @@ pub use host_promises::{
     HostAsyncFunction, HostAsyncObjectMethod, HostPromiseCompletion, HostPromiseToken,
     HostTaskSource,
 };
+mod disposal_ownership;
 mod host_registration;
 mod host_scheduling;
 mod host_task_turns;
@@ -67,7 +68,7 @@ pub use host_scheduling::{
     HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_BROWSER_TASKS,
     MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS, MAX_PENDING_HOST_TIMERS,
 };
-use interpreter_records::{HandlerRecords, IteratorRecords};
+use interpreter_records::{DisposeMarks, HandlerRecords, IteratorRecords, ResourceRecords};
 mod agent_registry;
 mod interpreter;
 mod intl;
@@ -601,39 +602,6 @@ struct PromiseRecord {
 /// Whether a disposable resource was added by a `using` declaration/
 /// `DisposableStack` (synchronous) or an `await using` declaration/
 /// `AsyncDisposableStack` (asynchronous). Mirrors the spec's `sync-dispose`/
-/// `async-dispose` hint on a DisposableResource Record.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum DisposeHint {
-    Sync,
-    Async,
-}
-
-/// A single entry of a DisposeCapability Record's `[[DisposableResourceStack]]`.
-///
-/// `receiver` is the value `method` is called on; `argument`, when present,
-/// is passed as the sole call argument instead of being used as the
-/// receiver. This lets `DisposableStack.prototype.adopt`'s synthetic
-/// `() => onDispose(value)` closure (spec `CreateDisposableResource`'s
-/// captured Abstract Closure) collapse into an ordinary call description
-/// rather than needing its own heap-allocated closure object: `defer`/plain
-/// resources call `method` on `receiver` with no arguments, while `adopt`
-/// calls `method` on `undefined` with `argument` as the one parameter.
-pub(super) struct DisposableResource {
-    pub(super) receiver: Value,
-    pub(super) argument: Option<Value>,
-    pub(super) method: Option<Value>,
-    // Not yet read: `dispose_resources_sync` treats every resource
-    // uniformly (see its own doc comment for the one case, a method-less
-    // `async-dispose` resource, where the real algorithm's behavior
-    // depends on this field and this implementation's does not).
-    #[allow(dead_code)]
-    pub(super) hint: DisposeHint,
-    /// An `async-dispose` resource whose method is the sync `@@dispose`
-    /// fallback: `Dispose` still awaits, but the method's result is
-    /// discarded rather than awaited (its promise may never settle).
-    pub(super) sync_fallback: bool,
-}
-
 /// The DisposeCapability Record backing one `DisposableStack`/
 /// `AsyncDisposableStack` instance's `[[DisposeCapability]]` internal slot.
 /// Kept in a side table (like `PromiseRecord`) rather than as ordinary
@@ -641,7 +609,7 @@ pub(super) struct DisposableResource {
 /// through `Object.getOwnPropertySymbols`/`Reflect.ownKeys`.
 #[derive(Default)]
 pub(super) struct DisposeCapabilityState {
-    pub(super) resources: Vec<DisposableResource>,
+    resources: ResourceRecords,
     pub(super) disposed: bool,
 }
 
@@ -873,6 +841,8 @@ struct Test262ForeignBufferMirror {
 /// outer interpreter's frame must survive both the nested graph's cleanup and
 /// an intervening collection.
 struct SuspendedModuleExecution {
+    disposables: ResourceRecords,
+    dispose_marks: DisposeMarks,
     payload_charge: execution_payload::ExecutionPayloadCharge,
     control_charge: execution_payload::ExecutionPayloadCharge,
     result_root: Option<RootId>,
@@ -1212,22 +1182,10 @@ pub struct Vm {
     /// brands: a `DisposableStack` method called on an `AsyncDisposableStack`
     /// instance (or vice versa) must observe a missing internal slot.
     async_disposable_stacks: HashMap<ObjectId, DisposeCapabilityState>,
-    /// Pending `using`/`await using` declaration resources for every
-    /// currently-open using-declaring block, across every active call frame.
-    /// `Opcode::MarkDisposables`/`DisposeResources` push/pop `dispose_marks`
-    /// in strict LIFO order matching lexical nesting and ordinary
-    /// (synchronous) call/return, so a flat, VM-wide stack is sufficient
-    /// for that case, including recursion. It is *not* isolated per
-    /// generator/async-function suspension the way `iterators` is: a
-    /// `yield`/`await` that suspends execution while directly inside a
-    /// `using`-declaring block, with unrelated code running more `using`
-    /// declarations before that generator/async function resumes, is not
-    /// supported correctly. Plain synchronous functions/blocks (the
-    /// overwhelming common case, and the only shape `using` -- as opposed
-    /// to the unimplemented `await using` -- realistically appears in) are
-    /// unaffected.
-    disposables: Vec<DisposableResource>,
-    dispose_marks: Vec<usize>,
+    /// The active frame owns its declarations and disposal scope marks.
+    /// Suspended contexts and generator states carry their own resources.
+    disposables: ResourceRecords,
+    dispose_marks: DisposeMarks,
     /// Targets passed to WeakRef or returned by `deref` must survive the
     /// current ECMAScript job. The list is cleared at the outer execution
     /// boundary and registered by every allocation safepoint.

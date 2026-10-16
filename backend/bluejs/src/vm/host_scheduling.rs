@@ -885,7 +885,8 @@ impl Vm {
         }
         usage.payload_bytes = usage
             .payload_bytes
-            .saturating_add(self.module_dependency_bytes());
+            .saturating_add(self.module_dependency_bytes())
+            .saturating_add(self.disposal_storage_bytes());
         usage
     }
     pub(super) fn admit_scheduling_work(

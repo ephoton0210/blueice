@@ -1920,7 +1920,7 @@ impl Vm {
                     }
                     Opcode::ResumeCompletion => return Ok(Some(Completion::Resume(operand))),
                     Opcode::MarkDisposables => {
-                        self.dispose_marks.push(self.disposables.len());
+                        self.push_disposal_mark()?;
                     }
                     Opcode::AddDisposableResource => {
                         let value = self.pop();
@@ -1935,11 +1935,7 @@ impl Vm {
                         result?;
                     }
                     Opcode::DisposeResources => {
-                        let mark = self
-                            .dispose_marks
-                            .pop()
-                            .expect("compiler matches every DisposeResources with a mark");
-                        let resources = self.disposables.split_off(mark);
+                        let resources = self.take_disposal_resources()?;
                         // The handler's frame stays on the runtime handler
                         // stack (in `Finally` state) until `ResumeCompletion`
                         // runs after this opcode; only an abrupt entry has a
@@ -1965,11 +1961,7 @@ impl Vm {
                         self.dispose_resources_sync(resources, prior)?;
                     }
                     Opcode::DrainAsyncDisposables => {
-                        let mark = self
-                            .dispose_marks
-                            .pop()
-                            .expect("compiler matches every DrainAsyncDisposables with a mark");
-                        let resources = self.disposables.split_off(mark);
+                        let resources = self.take_disposal_resources()?;
                         // See `Opcode::DisposeResources`'s own comment: same
                         // abrupt-vs-normal-entry distinction, same handler
                         // index trick.

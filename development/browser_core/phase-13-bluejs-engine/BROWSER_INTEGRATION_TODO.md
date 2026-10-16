@@ -57,13 +57,23 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The disposal follow-up addresses two ownership failures: interleaved generator/
+async frames share one resource stack and dispose the wrong frame's entries,
+while disposal side tables root unreachable resources and cycles forever.
+Five initial groups reproduce both failures and missing capacity accounting.
+Fifteen expanded groups now pass with frame-owned resource/mark storage, native
+admission, conditional GC edges and peer-ledger reconciliation. All 403 selected
+cases, formatting and offline workspace/all-target Clippy pass. The checkpoint
+is recorded below; wider entry/transient staging, other preallocation and
+integrated acceptance remain open.
+
 The interpreter-record follow-up now carries allocation charges with active,
 Rust-held and suspended owners and admits record growth before reserve and
 publication. Fourteen finite groups cover callbacks, exact spare slots,
 IteratorClose, async/generator handoffs, debugger pause/resume, VM destruction
-and cross-realm ledger release. All 387 selected cases pass; broader disposal/
-resource temporaries, entry staging, other preallocation and integrated gates
-below remain open.
+and cross-realm ledger release. Its 387-case checkpoint is preserved below;
+the following disposal checkpoint addresses resource ownership. Wider entry/
+transient staging, other preallocation and integrated gates remain open.
 
 The active native ledger now includes VM operand, binding, scope, eval and
 completion containers alongside primitive payloads. Scoped charges follow
@@ -72,8 +82,8 @@ maps without unnecessary recovery copies. Suspension/debugger edits update
 both saved charges, and finished root scripts return their frame storage.
 Eleven new groups, 58 debugger cases, 38 public semantic cases and the prior
 193 ownership controls pass: 300 cases, formatting and offline workspace/
-all-target Clippy. This is an implementation checkpoint. Disposal/resource
-temporaries, entry staging, other preallocation and integrated acceptance
+all-target Clippy. This is an implementation checkpoint. Wider entry/transient
+staging, other preallocation and integrated acceptance
 remain open; M1u remains the latest accepted milestone.
 
 **In progress — M1y asynchronous module dependency ownership (2026-10-16).**
@@ -455,8 +465,9 @@ work and exposes its retained payload ledger.
       real call/eval/generator/async ownership transfers, avoid charging maps
       forwarded into the callee twice, and preserve suspension/debugger state.
       The VM-field and interpreter-record checkpoints below pass their bounded
-      selections. Disposal/resource temporaries, entry staging, other
-      preallocation and integrated acceptance remain open.
+      selections. Disposal ownership is covered by the next checkpoint;
+      wider entry/transient staging, other preallocation and integrated
+      acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -888,8 +899,9 @@ finished execution storage without changing persistent JavaScript state.
 
 The initial active-field implementation did not close interpreter-local
 iterator/handler buffers. The follow-up below addresses those record owners.
-Disposal/resource temporaries, all call-entry staging and admission before every
-other active-container allocation remain open alongside the integrated gate;
+The disposal follow-up below addresses resource owners. Wider call-entry/
+transient staging and admission before every other active-container allocation
+remain open alongside the integrated gate;
 safepoint accounting alone is not a preallocation guarantee.
 
 The initial five regression groups fail before implementation and pass with
@@ -938,7 +950,7 @@ warnings denied pass. Logs use `/private/tmp/blueice-execution-control-` with
 Receipt: `target/execution-control-source-20261016.json`.
 No fresh full Test262, real Core/MCP replay or coverage result is claimed.
 
-#### Interpreter record ownership follow-up (implementation checkpoint)
+#### Interpreter record ownership follow-up (`9741452ae` implementation checkpoint)
 
 Acceptance: native iterator/handler allocation charges follow their actual
 owner through active execution, nested callbacks, IteratorClose, async/module
@@ -989,6 +1001,65 @@ Disposal/resource temporaries, call-entry staging, other active-container
 preallocation, full module-cache/service storage and integrated acceptance
 remain open. No fresh full Test262, real Core/MCP replay or coverage result is
 claimed; M1u remains the latest accepted milestone.
+
+#### Disposal ownership follow-up (implementation checkpoint)
+
+Acceptance: each active/suspended call, eval, generator and module frame owns
+its declaration resources and disposal scope marks. Interleaving resumes the
+correct resources in the correct order. Saved disposer methods remain GC-live
+across nested calls, suspension and debugger pauses. Native record/mark/table
+capacity and adopted payloads share document admission; growth refuses before
+publication, existing slots avoid invented growth and move refuses before
+changing the source state. Managed generator storage owns its transferred
+buffers. Side-table resources are conditional edges from their stack object,
+so unreachable stacks and callback cycles release resources without running
+disposers. Collection and frame cleanup reconcile the shared ledger.
+
+- [x] Reproduce five failures with finite scripts and small native allocations.
+- [x] Move declaration resources/marks with frame suspension and restoration;
+      include managed generator capacity and GC references.
+- [x] Charge/admit native resource records, marks, stack tables and temporary
+      entry vectors; retain popped resources and pending error payloads across
+      synchronous disposal callbacks.
+- [x] Replace unconditional side-table resource roots with owner edges; prune
+      dead capability rows and reconcile collected storage for peer realms.
+- [x] Pass bounded controls, formatting and offline workspace/all-target
+      Clippy; record the source/artifact audit with the checkpoint commit.
+- [ ] Complete the wider entry-staging, other preallocation, module-cache/
+      service-buffer and integrated gates. M1u remains the latest accepted
+      milestone; no full-source acceptance is claimed here.
+
+Initial red log: `/private/tmp/blueice-disposal-ownership-red-20261016.log`
+(zero passed, five failed). Interleaved generator cleanup produces `b,a`
+instead of `a,b`; the first resumed async frame disposes `b` instead of `a`;
+unreachable adopted objects stay reachable through side-table roots; active
+resource/mark and side-table capacity deltas report zero.
+The first five groups pass after the ownership implementation. Fifteen expanded
+groups additionally cover refusal/exact spare slots, adopted primitive payload,
+constructor/move atomicity, nursery-one collection of ephemeral disposer
+methods, nested calls/eval/generator entry, sibling module awaits, debugger
+pause/resume, live-stack retention/disposal release, VM destruction and shared
+ledger release after table collection.
+
+Final bounded validation: **403 passed, zero failed, zero ignored** across 21
+test executables. The fifteen new groups, one strengthened heap generator
+reference/capacity group and the previous 387-case ownership selection pass.
+The heap group checks all three resource object edges and the actual resource/
+mark capacity delta in managed state. The previous selection includes sixty-
+seven public disposal/delegation/IteratorClose cases, async/import/Promise GC,
+58 debugger cases and the earlier native admission/ownership controls.
+Six other host-async pressure/limit cases remain filtered under the owner's
+security constraint. New graphs/resources and job loops are fixed and small;
+scalar budget owners allocate no represented large buffer.
+
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass. Logs use `/private/tmp/blueice-disposal-ownership-` with
+`{resources,heap-resources,records,closure-exits,module-exits,generator-exits,generator-close,iterator-close,record-semantics,capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
+Receipt: `target/disposal-ownership-source-20261016.json`.
+Wider entry/transient staging, other active-container preallocation, full
+module-cache/service storage and integrated acceptance remain open. No fresh
+full Test262, real Core/MCP replay or coverage result is claimed; M1u remains
+the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
