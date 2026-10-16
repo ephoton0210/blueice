@@ -355,13 +355,14 @@ impl Vm {
         let outcome: Result<Value, RuntimeError> = match record.vm.try_borrow_mut() {
             Ok(mut child) => {
                 let inner: Result<Value, RuntimeError> = (|| {
+                    if let Some(scope) = child.host_scheduling.as_ref() {
+                        self.attach_module_sources(scope)?;
+                    }
                     // A ShadowRealm has its own module graph and heap, but
-                    // shares its agent's host module loader.  Copy every
-                    // source registry the host supplied, not only eagerly
-                    // compiled bytecode: Test262 deliberately keeps some
-                    // valid `importValue` fixtures as lazy dynamic sources.
-                    // Do not copy module_graph/source-object caches; their
-                    // ObjectIds belong to the caller heap.
+                    // shares immutable host source snapshots. Compiled code
+                    // still needs a per-realm copy; lazy raw sources share
+                    // their original buffers and one document charge.
+                    // Graph/source-object caches contain caller ObjectIds.
                     child.module_registry = self.module_registry.clone();
                     // A synthetic module the caller already built (JSON, bytes)
                     // carries a value living in the *caller's* heap; the child

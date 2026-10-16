@@ -57,7 +57,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Module context-name ownership is the current follow-up (2026-10-17). Module
+Immutable host module-source ownership is the current follow-up (2026-10-17).
+Three small native/runtime probes reproduce uncharged raw JavaScript/JSON/text/
+bytes/source-phase data, replacement without admission and independent ShadowRealm
+buffer copies. All three now pass with immutable shared data, one document charge
+and refusal preserving the previous snapshot. All thirteen expanded lifecycle/
+budget/typed-import groups and offline workspace/all-target Clippy pass. All 641
+selected cases and formatting pass; the source/artifact audit is recorded below.
+Compiled realm-specific registries and code/cache/continuation ownership remain
+separate open work.
+
+The module context-name checkpoint (2026-10-17) addresses these failures. Module
 entry copies names after replacing caller fields; displaced names are unleased,
 and debugger pauses clone the ambient allocation into both VM and continuation.
 Three small module/callback/debugger probes fail initially and now pass after
@@ -1977,7 +1987,9 @@ counting. Every refusal restores or preserves its caller and refunds staging.
 - [x] Pass eleven expanded ownership/refusal/budget/module/debugger/realm groups.
 - [x] Pass the fixed bounded regression/static checks and record the source/
       artifact audit with the checkpoint commit.
-- [ ] Complete source-registry, continuation identifier/code/cell-map and other
+- [x] Complete immutable raw host-source registry ownership in the following
+      checkpoint; compiled realm-specific registries remain separate.
+- [ ] Complete compiled-registry, continuation identifier/code/cell-map and other
       module-cache/service storage plus integrated acceptance. M1u remains the
       latest accepted milestone.
 
@@ -2009,6 +2021,64 @@ Logs use `/private/tmp/blueice-module-context-` with selection names listed in
 `controls-run-20261017.log`; the fixed offline runner is `controls-20261017.py`.
 Final new-group and static logs are `{contexts,fmt,clippy}-20261017.log`.
 Receipt: `target/module-context-source-20261017.json` records source/log/
+executable hashes and staged/committed blob checks. No network/service replay,
+fresh full Test262, real Core/MCP replay or coverage is claimed; the wider
+M1z/native/integrated gates stay open.
+
+#### Immutable host module-source follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: raw JavaScript/JSON/text/bytes/source-phase tables retain one
+immutable snapshot and one document charge for their actual table, key/data
+capacities and owned header. Attached realms share those buffers; replacement
+preserves earlier snapshots until their final owner releases them. Host refusal
+retains its old snapshot and latches terminal failure. Bounded activation must
+attach existing data once and cleanup must remain possible after failure.
+
+- [x] Reproduce three finite uncharged-source, replacement and ShadowRealm-copy
+      failures; all three initial probes pass after implementation.
+- [x] Share immutable raw data with one document charge, preserving empty
+      reserved allocations and isolating different document accounts.
+- [x] Admit full replacement ownership before publication. Source-phase names
+      deduplicate without another table, admit minimum/actual fallible set
+      storage and charge input-vector coexistence until its strings move.
+- [x] Attach previously installed data when bounded mode begins, preserve
+      snapshots across parent replacement and release on final realm/owner drop.
+- [x] Pass thirteen expanded ownership/refusal/activation/realm/typed-import
+      groups and offline workspace/all-target Clippy.
+- [x] Pass the fixed bounded regression/static checks and record the source/
+      artifact audit with the checkpoint commit.
+- [ ] Complete compiled-registry/code, transient parse/compile/conversion,
+      continuation/cache/service storage and integrated acceptance. M1u remains
+      the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-module-source-red-20261017.log`
+(zero passed, three failed): source buffers add no document charge, full-budget
+replacement discards the old table, and a ShadowRealm receives a different raw
+source allocation. Initial fixed log:
+`/private/tmp/blueice-module-source-development-20261017.log` (three passed).
+The existing void host setters preserve their signatures; refusal keeps prior
+data and is reported as document scheduling failure at execution/admission.
+
+Thirteen expanded groups pass. Exact-budget/one-byte controls cover all five
+source kinds and source-phase vector/set coexistence. Full-budget snapshot
+sharing adds no charge; old data survives parent replacement and final drop
+refunds it. Empty reserved tables, deduplication, late/repeated bounded activation,
+terminal cleanup and cross-document rejection preserve their ledger invariants.
+Real ShadowRealm imports share original raw buffers and discarded last realms
+release them. One fixed import batch checks JSON/text/bytes/source-phase values
+within at most 32 job turns. Fixtures use tiny tables, short strings/bytes and
+scalar peer budgets without represented large-buffer allocations.
+
+Final bounded validation: **641 passed, zero failed, zero ignored** across 35
+test executables. The thirteen new groups join the prior 628 selected ownership/
+semantic/GC/debugger cases. The same seven pressure/large-allocation cases remain
+filtered. Formatting, `git diff --check` and offline workspace/all-target Clippy
+with warnings denied pass.
+
+Logs use `/private/tmp/blueice-module-source-` with selection names listed in
+`controls-run-20261017.log`; the fixed offline runner is `controls-20261017.py`.
+Final new-group and static logs are `{sources,fmt,clippy}-20261017.log`.
+Receipt: `target/module-source-source-20261017.json` records source/log/
 executable hashes and staged/committed blob checks. No network/service replay,
 fresh full Test262, real Core/MCP replay or coverage is claimed; the wider
 M1z/native/integrated gates stay open.

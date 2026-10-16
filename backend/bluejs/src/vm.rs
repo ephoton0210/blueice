@@ -41,6 +41,7 @@ mod generator_storage;
 mod global_bindings;
 mod module_context;
 mod module_referrers;
+mod module_sources;
 use frame_maps::PreparedFrameMaps;
 use generator_storage::OwnedGeneratorState;
 mod scope_storage;
@@ -963,22 +964,22 @@ pub struct Vm {
     /// Host-provided raw JSON text for `type: "json"` module requests, keyed
     /// by resolved module name. `ensure_synthetic_module` (`vm/modules.rs`)
     /// reads this lazily, on the first request for a given resolved path.
-    json_module_sources: HashMap<String, String>,
+    json_module_sources: module_sources::TextSources,
     /// Host-provided, already UTF-8-decoded text for `type: "text"` module
     /// requests, keyed by resolved module name; read like `json_module_sources`.
-    text_module_sources: HashMap<String, String>,
+    text_module_sources: module_sources::TextSources,
     /// Host-provided raw bytes for `type: "bytes"` module requests, keyed by
     /// resolved module name; read like `json_module_sources`.
-    bytes_module_sources: HashMap<String, Vec<u8>>,
+    bytes_module_sources: module_sources::ByteSources,
     /// Host-provided raw JavaScript text for modules the host did not (or,
     /// per `ensure_dynamic_module_compiled`'s own reason for existing,
     /// deliberately did not) pre-compile, keyed by resolved module name.
     /// Read lazily, only when a dynamic import actually resolves to a path
     /// not already present in `module_registry`.
-    dynamic_module_sources: HashMap<String, String>,
+    dynamic_module_sources: module_sources::TextSources,
     /// Host-provided source-phase module records. Their opaque identities are
     /// intentionally separate from executable module bytecode.
-    module_source_registry: HashSet<String>,
+    module_source_registry: module_sources::SourceNames,
     module_source_cache: HashMap<String, ObjectId>,
     module_source_roots: HashMap<String, RootId>,
     /// The host-created [[ImportMeta]] value for each source-text module.

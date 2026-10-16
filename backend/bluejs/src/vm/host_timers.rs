@@ -98,6 +98,7 @@ impl Vm {
         if let Some(scope) = &self.host_scheduling {
             self.check_scheduling_failure()?;
             self.symbol_registry.borrow_mut().attach(scope)?;
+            self.attach_module_sources(scope)?;
             self.bounded_host_microtask_checkpoints = true;
             return Ok(());
         }
@@ -105,8 +106,9 @@ impl Vm {
         scope.check(self.own_scheduling_usage(), HostSchedulingUsage::default())?;
         self.symbol_registry.borrow_mut().attach(&scope)?;
         self.heap.begin_document_heap_budget();
-        self.bounded_host_microtask_checkpoints = true;
         self.host_scheduling = Some(scope);
+        self.attach_module_sources(self.host_scheduling.as_ref().unwrap())?;
+        self.bounded_host_microtask_checkpoints = true;
         Ok(())
     }
 

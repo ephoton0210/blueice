@@ -311,6 +311,24 @@ parent contribution before admitting the child's active owner. Name-preparation
 refusal creates no capability. Full source-registry, continuation identifier/
 code/cell-map and other module-cache/service storage remain open work.
 
+Raw JavaScript, JSON, decoded text, bytes and source-phase name tables are
+immutable snapshots shared by attached realms. One owner charges the document
+for its retained table capacity, key/data capacities and owned header; another
+realm's snapshot reference adds no buffer charge or deep copy. Replacement keeps
+old snapshots live until their final owner releases them, including discarded
+realm cleanup. This data never contains realm-local ObjectIds; compiled and
+synthetic module caches retain their separate per-realm policy.
+
+Host installation admits the complete incoming owner while prior snapshots
+coexist. The existing void setter API retains the old snapshot and latches
+document scheduling failure on refusal. Clearing sources remains available
+after terminal failure. Source-phase input vectors deduplicate without another
+table, admit minimum storage before fallible set reservation, check actual
+table capacity and charge the incoming vector until its strings move. Bounded
+activation attaches previously installed snapshots once; snapshots cannot be
+adopted into another document's account. Transient parse/compile/conversion and
+compiled-registry/code/cache/continuation storage remain separate open work.
+
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
 accounting counts its capacity once as realm storage, independently of active

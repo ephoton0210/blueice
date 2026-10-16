@@ -80,11 +80,11 @@ impl Vm {
             remaining_instructions: 0,
             cells: HashMap::new(),
             module_registry: HashMap::new(),
-            json_module_sources: HashMap::new(),
-            text_module_sources: HashMap::new(),
-            bytes_module_sources: HashMap::new(),
-            dynamic_module_sources: HashMap::new(),
-            module_source_registry: HashSet::new(),
+            json_module_sources: Default::default(),
+            text_module_sources: Default::default(),
+            bytes_module_sources: Default::default(),
+            dynamic_module_sources: Default::default(),
+            module_source_registry: Default::default(),
             module_source_cache: HashMap::new(),
             module_source_roots: HashMap::new(),
             module_import_meta: HashMap::new(),
@@ -275,7 +275,9 @@ impl Vm {
     /// These records produce Module Source Objects and must not be supplied as
     /// executable Source Text Module bytecode.
     pub fn set_module_source_loader_context(&mut self, sources: Vec<String>) {
-        self.module_source_registry = sources.into_iter().collect();
+        if let Some(sources) = self.install_module_source_names(sources) {
+            self.module_source_registry = sources;
+        }
     }
 
     /// Installs the host's raw JSON text for `type: "json"` module requests,
@@ -284,7 +286,9 @@ impl Vm {
     /// parses and synthesizes a Synthetic Module Record from this text the
     /// first time each resolved path is actually requested.
     pub fn set_json_module_sources(&mut self, sources: HashMap<String, String>) {
-        self.json_module_sources = sources;
+        if let Some(sources) = self.install_module_source_data(sources) {
+            self.json_module_sources = sources;
+        }
     }
 
     /// Installs the host's text for `type: "text"` module requests, keyed by
@@ -292,14 +296,18 @@ impl Vm {
     /// UTF-8 (import-text's HostLoadImportedModule step); the module's
     /// `default` export is exactly this string.
     pub fn set_text_module_sources(&mut self, sources: HashMap<String, String>) {
-        self.text_module_sources = sources;
+        if let Some(sources) = self.install_module_source_data(sources) {
+            self.text_module_sources = sources;
+        }
     }
 
     /// Installs the host's raw bytes for `type: "bytes"` module requests,
     /// keyed by resolved module name. The module's `default` export is a
     /// `Uint8Array` over an immutable `ArrayBuffer` holding these bytes.
     pub fn set_bytes_module_sources(&mut self, sources: HashMap<String, Vec<u8>>) {
-        self.bytes_module_sources = sources;
+        if let Some(sources) = self.install_module_source_data(sources) {
+            self.bytes_module_sources = sources;
+        }
     }
 
     /// Installs the host's raw JavaScript text for modules it did not
@@ -312,7 +320,9 @@ impl Vm {
     /// fails lazily as that import's own promise rejection, rather than
     /// eagerly before any code has even run.
     pub fn set_dynamic_module_sources(&mut self, sources: HashMap<String, String>) {
-        self.dynamic_module_sources = sources;
+        if let Some(sources) = self.install_module_source_data(sources) {
+            self.dynamic_module_sources = sources;
+        }
     }
 
     /// Links and synchronously evaluates one static module graph.
