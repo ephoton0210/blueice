@@ -253,8 +253,21 @@ adopt them. Completion conversion moves values into an admitted vector without
 allocating at installation. A borrowed pending-reference iterator appends roots
 directly instead of building an intermediate root vector. Module association
 preparation preserves the original referrer and caller restoration behavior.
-Generator parameter-entry root growth and other association copies remain in
-the broader preallocation gate.
+Generator parameter entry admits caller/inherited root stack capacity together
+with any extra parameter-eval environment slot before creating the generator
+or displacing caller fields. Planning includes the outer receiver/generator
+edges and the temporary root used while constructing that environment. Actual
+reported capacity is checked before entry effects. Forwarded environment growth
+extends the existing call-entry lease, which releases only when active fields
+adopt the allocation.
+
+Root construction preserves bindings, cells, caller/closure environments,
+arguments, pending completions, disposal records, new.target, home/parameter
+environment and current/outer dynamic cells including shadowed references.
+Only object edges are copied for GC, leaving primitive buffers with their real
+owners. Refusal preserves caller fields and terminal failure; parameter throws
+use the ordinary restoration path. Other association copies and wider native
+storage remain in the broader preallocation gate.
 
 Outgoing generator, async and nested-debugger snapshots jointly admit stack
 suffix slots and generator-completion target slots before allocating either
@@ -291,8 +304,8 @@ parameter return, snapshot admission and heap store. Native refusal drops the
 state, closes the abandoned frame and reconciles the shared contribution.
 The heap operation releases the lease immediately after adoption/refusal,
 before VM collection bookkeeping can admit native cleanup work. Terminal
-Done/Running cleanup remains allowed after resource abort. Parameter-entry root
-growth, other association copies and wider native storage remain open work.
+Done/Running cleanup remains allowed after resource abort. Other association
+copies and wider native storage remain open work.
 
 Iterator and handler vectors carry scoped native charges through execution,
 cleanup, async/module continuations and debugger pauses. New records plan and

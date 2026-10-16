@@ -35,6 +35,7 @@ mod execution;
 mod execution_payload;
 mod frame_bindings;
 mod frame_maps;
+mod generator_entry;
 mod generator_resume;
 mod generator_storage;
 mod global_bindings;

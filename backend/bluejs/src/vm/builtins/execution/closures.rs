@@ -117,7 +117,7 @@ impl Vm {
             args,
             construct,
             home,
-            with_objects: closure_with_objects,
+            with_objects: mut closure_with_objects,
         } = call;
         let nested_debugger_target = self
             .debugger_nested_pause_request
@@ -278,6 +278,12 @@ impl Vm {
                 }
                 return Ok(Value::Object(generator));
             }
+            self.prepare_generator_entry(
+                &mut closure_with_objects,
+                receiver.object_id().is_some(),
+                code.parameter_eval_scope,
+                &mut entry_payload,
+            )?;
             // Inputs remain rooted by the call frame and the closure. Only
             // a newly boxed receiver needs an extra edge before allocation.
             let base = self.stack.len();

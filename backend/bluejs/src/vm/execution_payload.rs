@@ -40,6 +40,10 @@ mod generator_storage_tests;
 #[path = "../../tests/fixtures/environment_admission.rs"]
 mod environment_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/generator_entry_admission.rs"]
+mod generator_entry_tests;
+
 /// These transfers displace different owners. Ordinary calls forward dynamic
 /// eval environments into the callee; generator entry saves them in Rust.
 pub(super) enum ControlTransfer {
@@ -134,6 +138,14 @@ pub(super) struct CallEntryCharge {
 }
 
 impl CallEntryCharge {
+    /// Forwarded metadata can reserve additional slots before VM adoption.
+    pub(super) fn add_control_storage(&mut self, bytes: usize) {
+        if self.control.enabled() {
+            self.control
+                .resize(self.control.bytes().saturating_add(bytes));
+        }
+    }
+
     pub(super) fn refresh(
         &mut self,
         callee: &Value,

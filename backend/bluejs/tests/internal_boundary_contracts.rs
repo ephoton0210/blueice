@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_generator_entry_admission_contracts() {
+    blueice_bluejs::Vm::verify_generator_entry_admission_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_suspension_storage_contracts() {
     blueice_bluejs::Vm::verify_suspension_storage_contracts();
 }

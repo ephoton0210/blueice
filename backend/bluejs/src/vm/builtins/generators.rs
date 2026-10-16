@@ -204,51 +204,8 @@ impl Vm {
         let _caller_control = self.charge_execution_control(
             self.displaced_control_bytes(execution_payload::ControlTransfer::Generator),
         );
-        self.stack
-            .push(receiver.object_id().map_or(Value::Undefined, Value::Object));
         let base = self.stack.len();
-        self.stack.extend(
-            self.bindings
-                .iter()
-                .flatten()
-                .filter_map(Value::object_id)
-                .map(Value::Object),
-        );
-        self.stack
-            .extend(self.cells.values().copied().map(Value::Object));
-        self.stack.push(
-            self.completion
-                .object_id()
-                .map_or(Value::Undefined, Value::Object),
-        );
-        self.stack.push(
-            self.this
-                .object_id()
-                .map_or(Value::Undefined, Value::Object),
-        );
-        self.stack.push(
-            self.callee
-                .object_id()
-                .map_or(Value::Undefined, Value::Object),
-        );
-        self.stack.extend(
-            self.arguments
-                .iter()
-                .filter_map(Value::object_id)
-                .map(Value::Object),
-        );
-        // The caller's `with` objects stay rooted while the generator's own
-        // (the ones its function closed over) are in scope.
-        self.stack.extend(self.with_objects.iter().cloned());
-        self.stack.extend(
-            self.disposables
-                .iter()
-                .flat_map(DisposableResource::values)
-                .filter_map(Value::object_id)
-                .map(Value::Object),
-        );
-        self.stack.extend(closure_with_objects.iter().cloned());
-        self.push_pending_execution_roots();
+        self.push_generator_entry_roots(&receiver, &closure_with_objects);
         let frame_base = self.stack.len();
 
         prepared_maps.adopt_captures(captures);
@@ -382,7 +339,7 @@ impl Vm {
         self.variable_scope_lexicals = variable_scope_lexicals;
         self.pending_completions = pending_completions;
         self.completion_saves = completion_saves;
-        self.stack.truncate(base - 1);
+        self.stack.truncate(base);
         state
     }
 
