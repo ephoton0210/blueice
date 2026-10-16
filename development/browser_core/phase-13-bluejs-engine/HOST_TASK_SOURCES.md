@@ -414,6 +414,24 @@ creation. Refused filtering immediately publishes its referrer-lease refund to
 peer realms. Graph/cell identity and heap roots remain realm-specific. Compiler
 production scratch and other graph/cache/service owners remain open work.
 
+Top-level await and debugger module frames retain a code view into the immutable
+registry that supplied their executable. The view owns that entire snapshot;
+its ordinal remains valid because the map never mutates. A clone neither copies
+root Bytecode nor reserves its buffers again. Replacing the active loader keeps
+pending executable generations charged until their final frame/view drops.
+Debugger completion also resolves its namespace against the saved snapshot.
+This is snapshot-level retention, not per-code-unit reclamation.
+
+Frame identifiers are admitted before copying and before execution-state capture.
+Their capacity leases follow stored frames and Rust-held resumption owners;
+repeated await prepares its new identifier before moving the next frame. Saved
+records subtract already-leased capacity. Enabling bounded mode attaches pending
+code snapshots even when the active registry has been replaced; unleased saved
+debugger fields participate in initial measurement. Resume transfers preloaded
+identifier capacity into an execution lease. Completion, rejection, registration
+refusal and terminal debugger cleanup return these owners. Shared child/source/
+diagnostic programs, compiler staging and linked-cell-map copies remain open.
+
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
 accounting counts its capacity once as realm storage, independently of active

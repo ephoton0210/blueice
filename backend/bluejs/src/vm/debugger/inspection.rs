@@ -227,7 +227,7 @@ impl Vm {
             (&root.code, root.pc, self.active_scope_slots.as_slice())
         } else if let Some(root) = &self.debugger_module_continuation {
             (
-                &root.code,
+                &*root.code,
                 root.pc,
                 root.execution.active_scope_slots.as_slice(),
             )

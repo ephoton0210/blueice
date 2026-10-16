@@ -743,7 +743,7 @@ impl Vm {
                 });
                 self.synchronize_scheduling_usage()?;
                 for dependency in &dependencies {
-                    self.evaluate_module_record(dependency, modules, &mut linked)?;
+                    self.evaluate_module_record(dependency, &registry, &mut linked)?;
                 }
                 drop(frontier_payload);
                 *frontier = dependencies;
@@ -751,7 +751,7 @@ impl Vm {
                     self.module_namespace(entry, true, modules, &mut linked, &mut roots)?;
                 (Value::Undefined, namespace)
             } else {
-                let value = self.evaluate_module_record(entry, modules, &mut linked)?;
+                let value = self.evaluate_module_record(entry, &registry, &mut linked)?;
                 if self.debugger_module_continuation.is_some() {
                     return Ok(Value::Undefined);
                 }
@@ -931,14 +931,19 @@ impl Vm {
         };
         let ModuleDebuggerContinuation {
             module,
+            mut module_charge,
             code,
             pc,
             execution,
             mut iterators,
             handlers,
         } = continuation;
+        if !module_charge.enabled() {
+            module_charge = self.charge_execution_control(module.capacity());
+        }
         let previous_module = self.take_module_name();
         self.restore_module_execution(execution);
+        let modules = code.registry().clone();
         debug_assert!(self.evaluating_linked.is_none());
         self.evaluating_linked = Some(std::mem::take(&mut graph.linked));
         let outcome = self.interpret(
@@ -969,6 +974,7 @@ impl Vm {
                 previous_module.restore(self);
                 self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
                     module,
+                    module_charge,
                     code,
                     pc,
                     execution,
@@ -991,7 +997,8 @@ impl Vm {
                 promise,
                 pc,
                 handlers,
-            }) => {
+            }) => (|| {
+                let (next_module, next_module_charge) = self.prepare_module_frame_name(&module)?;
                 let execution = self.suspend_module_execution();
                 let record = graph
                     .linked
@@ -1001,7 +1008,8 @@ impl Vm {
                 record.suspended = true;
                 match self.suspend_module_await(
                     ModuleContinuation {
-                        module: module.clone(),
+                        module: next_module,
+                        module_charge: next_module_charge,
                         code,
                         pc,
                         execution,
@@ -1016,7 +1024,7 @@ impl Vm {
                     }
                     Err(error) => Err(error),
                 }
-            }
+            })(),
             Err(error) => Err(error),
         };
         if !awaiting {
@@ -1058,7 +1066,6 @@ impl Vm {
             }
         }
         if result.is_ok() {
-            let modules = self.module_registry.clone();
             match self.module_namespace(
                 &module,
                 false,
@@ -1655,13 +1662,18 @@ impl Vm {
             .expect("an await reaction names a stored continuation");
         let ModuleContinuation {
             module,
+            mut module_charge,
             code,
             pc,
             execution,
             mut iterators,
             handlers,
         } = continuation;
+        if !module_charge.enabled() {
+            module_charge = self.charge_execution_control(module.capacity());
+        }
         self.restore_module_execution(execution);
+        let _module_charge = module_charge;
         let resume_epoch = self.throw_epoch;
         let outcome = if fulfilled {
             self.interpret(
@@ -1713,6 +1725,7 @@ impl Vm {
                 pc,
                 handlers,
             }) => {
+                let (next_module, next_module_charge) = self.prepare_module_frame_name(&module)?;
                 let execution = self.suspend_module_execution();
                 let record = graph
                     .linked
@@ -1722,7 +1735,8 @@ impl Vm {
                 record.suspended = true;
                 self.suspend_module_await(
                     ModuleContinuation {
-                        module: module.clone(),
+                        module: next_module,
+                        module_charge: next_module_charge,
                         code,
                         pc,
                         execution,
@@ -1775,7 +1789,7 @@ impl Vm {
     pub(super) fn settle_module_parents(
         &mut self,
         completed: String,
-        modules: &HashMap<String, Bytecode>,
+        modules: &ModuleRegistry,
         linked: &mut HashMap<String, LinkedModule>,
     ) -> Result<(), RuntimeError> {
         let result = self.settle_module_parents_owned(completed, modules, linked);
@@ -1786,7 +1800,7 @@ impl Vm {
     fn settle_module_parents_owned(
         &mut self,
         completed: String,
-        modules: &HashMap<String, Bytecode>,
+        modules: &ModuleRegistry,
         linked: &mut HashMap<String, LinkedModule>,
     ) -> Result<(), RuntimeError> {
         let mut completed = std::collections::VecDeque::from([completed]);
@@ -2609,7 +2623,7 @@ impl Vm {
     pub(super) fn evaluate_module_record(
         &mut self,
         name: &str,
-        modules: &HashMap<String, Bytecode>,
+        modules: &ModuleRegistry,
         linked: &mut HashMap<String, LinkedModule>,
     ) -> Result<Value, RuntimeError> {
         // Loading the requested modules checked that every module of the graph
@@ -2630,7 +2644,7 @@ impl Vm {
             .evaluating = true;
         let evaluation_epoch = self.throw_epoch;
         let result = (|| {
-            let code = modules.get(name).expect("linked module has bytecode");
+            let code = modules.code(name);
             let mut pending_dependencies = Vec::new();
             for request in &code.module_requests {
                 // Loading the requested modules resolved every request.
@@ -2695,7 +2709,7 @@ impl Vm {
                 .expect("a linked module has an evaluation entry") as usize;
             let mut previous_module = self.prepare_module_name(name)?;
             self.enter_module_record(
-                code,
+                &code,
                 &mut linked
                     .get_mut(name)
                     .expect("checked module record exists")
@@ -2706,7 +2720,7 @@ impl Vm {
             // frame with zero ambient fuel, which must not exhaust this
             // independent module before its first instruction.
             self.remaining_instructions = self.config.instruction_budget;
-            self.enter_scope(code, 0)?;
+            self.enter_scope(&code, 0)?;
             let mut iterators = self.iterator_records(Vec::new());
             previous_module.swap_into(self);
             // Park the graph's records where user code can reach them: a
@@ -2718,7 +2732,7 @@ impl Vm {
                 .as_ref()
                 .filter(|request| request.entry == name)
                 .map(|request| InterpreterSuspensionPoint::Offset(request.target));
-            let outcome = self.interpret(code, &mut iterators, entry, None, suspension, None);
+            let outcome = self.interpret(&code, &mut iterators, entry, None, suspension, None);
             *linked = self
                 .evaluating_linked
                 .take()
@@ -2740,6 +2754,17 @@ impl Vm {
                     // Move the realm frame out before another sibling module
                     // evaluates. The continuation is attached to the Await
                     // promise and resumes in its own Promise job turn.
+                    let (module, module_charge) = match self.prepare_module_frame_name(name) {
+                        Ok(prepared) => prepared,
+                        Err(error) => {
+                            previous_module.restore(self);
+                            linked
+                                .get_mut(name)
+                                .expect("checked module record exists")
+                                .cells = std::mem::take(&mut self.cells);
+                            return Err(error);
+                        }
+                    };
                     let execution = self.suspend_module_execution();
                     previous_module.restore(self);
                     let record = linked.get_mut(name).expect("checked module record exists");
@@ -2747,7 +2772,8 @@ impl Vm {
                     record.suspended = true;
                     self.suspend_module_await(
                         ModuleContinuation {
-                            module: name.to_string(),
+                            module,
+                            module_charge,
                             code: code.clone(),
                             pc,
                             execution,
@@ -2763,13 +2789,25 @@ impl Vm {
                     iterators,
                     handlers,
                 } => {
+                    let (module, module_charge) = match self.prepare_module_frame_name(name) {
+                        Ok(prepared) => prepared,
+                        Err(error) => {
+                            previous_module.restore(self);
+                            linked
+                                .get_mut(name)
+                                .expect("checked module record exists")
+                                .cells = std::mem::take(&mut self.cells);
+                            return Err(error);
+                        }
+                    };
                     let execution = self.suspend_module_execution();
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = execution.cells.clone();
                     record.suspended = true;
                     previous_module.restore(self);
                     self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
-                        module: name.to_string(),
+                        module,
+                        module_charge,
                         code: code.clone(),
                         pc,
                         execution,

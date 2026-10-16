@@ -538,7 +538,7 @@ impl ModuleContinuation {
             .saturating_add(self.handlers.unleased_bytes())
             .saturating_add(handler_origins_bytes(&self.handlers))
             .saturating_add(self.module.capacity())
-            .saturating_add(owned_code_bytes(&self.code))
+            .saturating_sub(self.module_charge.bytes())
     }
 }
 
@@ -948,6 +948,15 @@ impl Vm {
             usage.payload_bytes = usage
                 .payload_bytes
                 .saturating_add(frame.scheduling_payload_bytes());
+        }
+        if let Some(frame) = &self.debugger_module_continuation {
+            usage.payload_bytes = usage.payload_bytes.saturating_add(
+                suspended_bytes(&frame.execution)
+                    .saturating_add(frame.iterators.unleased_bytes())
+                    .saturating_add(frame.handlers.unleased_bytes())
+                    .saturating_add(frame.module.capacity())
+                    .saturating_sub(frame.module_charge.bytes()),
+            );
         }
         usage.payload_bytes = usage
             .payload_bytes

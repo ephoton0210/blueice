@@ -18,7 +18,7 @@ fn compile(source: &str) -> Bytecode {
 
 struct Fixture {
     vm: Vm,
-    registry: HashMap<String, Bytecode>,
+    registry: ModuleRegistry,
     observed: Rc<RefCell<Vec<usize>>>,
 }
 
@@ -64,6 +64,7 @@ impl Fixture {
             vm.execute_module_graph(&format!("test/m{child}.mjs"), &registry)
                 .unwrap();
         }
+        let registry = vm.module_registry.clone();
         let mut fixture = Self {
             vm,
             registry,

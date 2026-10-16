@@ -23,6 +23,31 @@ enum RegistryState {
     Shared(Rc<RegistryOwner>),
 }
 pub(super) struct ModuleRegistry(RegistryState);
+
+/// A code unit borrowed from an immutable snapshot. Its ordinal stays valid
+/// because that snapshot never mutates its map or iteration order.
+#[derive(Clone)]
+pub(super) struct ModuleCode {
+    registry: ModuleRegistry,
+    ordinal: usize,
+}
+impl std::ops::Deref for ModuleCode {
+    type Target = Bytecode;
+    fn deref(&self) -> &Bytecode {
+        self.registry
+            .values()
+            .nth(self.ordinal)
+            .expect("immutable module code ordinal")
+    }
+}
+impl ModuleCode {
+    pub(super) fn registry(&self) -> &ModuleRegistry {
+        &self.registry
+    }
+    pub(super) fn attach(&self, scope: &SchedulingScope) -> Result<(), RuntimeError> {
+        self.registry.attach(scope)
+    }
+}
 impl Default for ModuleRegistry {
     fn default() -> Self {
         Self(RegistryState::Empty(HashMap::new()))
@@ -87,6 +112,16 @@ fn merge(
     Ok(())
 }
 impl ModuleRegistry {
+    pub(super) fn code(&self, name: &str) -> ModuleCode {
+        let ordinal = self
+            .keys()
+            .position(|key| key == name)
+            .expect("linked module has bytecode");
+        ModuleCode {
+            registry: self.clone(),
+            ordinal,
+        }
+    }
     pub(super) fn new(
         data: HashMap<String, Bytecode>,
         scope: Option<&SchedulingScope>,

@@ -40,10 +40,11 @@ mod generator_resume;
 mod generator_storage;
 mod global_bindings;
 mod module_context;
+mod module_continuation_storage;
 mod module_referrers;
 mod module_registry;
 mod module_sources;
-use module_registry::{ModuleRegistry, ModuleRegistryDraft};
+use module_registry::{ModuleCode, ModuleRegistry, ModuleRegistryDraft};
 mod module_values;
 use frame_maps::PreparedFrameMaps;
 use generator_storage::OwnedGeneratorState;
@@ -465,7 +466,8 @@ struct ModuleGraphState {
 /// after the Await opcode, where its settlement value is pushed on resume.
 struct ModuleContinuation {
     module: String,
-    code: Bytecode,
+    module_charge: execution_payload::ExecutionPayloadCharge,
+    code: ModuleCode,
     pc: usize,
     execution: SuspendedModuleExecution,
     iterators: IteratorRecords,

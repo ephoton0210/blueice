@@ -199,6 +199,13 @@ impl Vm {
         self.text_module_sources.attach(scope)?;
         self.bytes_module_sources.attach(scope)?;
         self.module_source_registry.attach(scope)?;
-        self.module_registry.attach(scope)
+        self.module_registry.attach(scope)?;
+        for frame in self.module_continuations.values() {
+            frame.code.attach(scope)?;
+        }
+        if let Some(frame) = &self.debugger_module_continuation {
+            frame.code.attach(scope)?;
+        }
+        Ok(())
     }
 }

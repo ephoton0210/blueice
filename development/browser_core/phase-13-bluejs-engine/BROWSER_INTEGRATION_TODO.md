@@ -57,15 +57,26 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Immutable host module-source ownership is the current follow-up (2026-10-17).
+Module continuation ownership is the current follow-up (2026-10-17).
+Three tiny await/debugger probes initially failed: suspended frames copied root
+Bytecode and did not retain the installed registry's charge. They now share an
+immutable executable snapshot and stage admitted identifier copies before frame
+capture. Thirteen finite ownership/lifecycle groups pass, including replaced
+loaders, repeated await with GC, debugger transitions, late bounded activation,
+rejection and terminal cleanup. All 726 fixed selected cases, formatting and
+offline workspace/all-target Clippy pass. Shared child/source programs, linked
+cell maps and integrated acceptance remain open. M1u stays the latest accepted
+milestone.
+
+The immutable host module-source checkpoint (2026-10-17) precedes this follow-up.
 Three small native/runtime probes reproduce uncharged raw JavaScript/JSON/text/
 bytes/source-phase data, replacement without admission and independent ShadowRealm
 buffer copies. All three now pass with immutable shared data, one document charge
 and refusal preserving the previous snapshot. All thirteen expanded lifecycle/
 budget/typed-import groups and offline workspace/all-target Clippy pass. All 641
 selected cases and formatting pass; the source/artifact audit is recorded below.
-Compiled realm-specific registries and code/cache/continuation ownership remain
-separate open work.
+The later compiled-registry checkpoint passes 713 selected cases (record below).
+Shared programs and wider code/cache/continuation ownership remain open work.
 
 The module context-name checkpoint (2026-10-17) addresses these failures. Module
 entry copies names after replacing caller fields; displaced names are unleased,
@@ -2340,6 +2351,66 @@ Logs use `/private/tmp/blueice-module-registry-`; selection names are listed in
 and staged/committed blob checks. No network/service replay, fresh full Test262,
 real Core/MCP replay, coverage or integrated acceptance is claimed. Shared
 program buffers and wider native storage remain open, beyond this root owner.
+
+#### Module continuation ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: await/debugger module frames retain their immutable executable
+snapshot without another root Bytecode copy. Identifier copies must be admitted
+before frame capture and remain owned across suspension, resume and rejection.
+Replacing the active loader must not drop a pending frame's code owner.
+
+- [x] Reproduce tiny await/debugger code-copy and backing-owner release cases:
+      the initial offline run failed all three assertions; after the code-view
+      change, the same three cases passed (logs under
+      `/private/tmp/blueice-module-continuation-{red,first}-20261017.log`).
+- [x] Implement snapshot-backed module code and staged identifier ownership;
+      thirteen finite groups verify suspension, repeated await, debugger
+      transition, GC, loader replacement, late activation, rejection and failure.
+- [x] Run fixed offline regression/static checks, update evidence and commit
+      with a detailed English message. Shared child/source program storage,
+      linked cell maps and wider native/integrated gates remain open.
+
+Implementation: module evaluation/parent settlement receives a typed immutable
+registry. Saved code retains that snapshot with a stable map ordinal, so clone
+and suspension require no additional root Bytecode buffers. The entire snapshot
+stays charged through loader replacement and drops with its last view; finer
+per-code-unit reclamation remains separate work. Debugger completion uses its
+saved registry for namespace resolution, including after the active cache clears.
+
+Module identifier copies are admitted before allocation and frame capture;
+capacity leases follow saved frames and Rust-held resume owners. Repeated await
+prepares its replacement identifier before moving execution state. Records count
+only unleased storage, including preloaded debugger control/iterator/handler/name
+fields on bounded activation. Activation also attaches code snapshots held only
+by pending frames, and resumption leases preloaded identifiers. Initial name
+refusal restores the caller module and active cells before unwinding. Await
+registration refusal consumes no serial and releases its rejected owners.
+
+Thirteen finite groups cover shared/distinct code selection at a full scalar
+budget; await/debugger buffer identity; old snapshot retention; exact identifier
+admission and one-byte refusal; two awaits with tiny GC and callback ownership;
+execution after loader replacement with a peer-ledger refund observation;
+debugger step-to-await; late await/debugger activation; rejection; registration
+refusal; and terminal debugger cleanup. The fixtures also have the existing
+ordinary-library coverage entry point; no new coverage measurement is claimed.
+
+Validation: **726 passed, zero failed/ignored**, across 38 executables and 64
+fixed selections. The final runner repeats the prior 713 cases plus the thirteen
+new groups after the Clippy-only fixture initialization cleanup. Formatting,
+diff checks and offline workspace/all-target Clippy with warnings denied pass.
+The same seven pressure cases remain excluded; JSON resource sweeps are not
+selected. Cargo uses the existing workspace target with incremental compilation
+and dev/test debug artifacts disabled. No network/service replay, fresh full
+Test262, real Core/MCP replay, coverage or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-module-continuation-controls-20261017.py`,
+`/private/tmp/blueice-module-continuation-commit-20261017.txt`,
+`/private/tmp/blueice-module-continuation-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-module-continuation-{continuations,fmt,clippy}-20261017.log`.
+`target/module-continuation-source-20261017.json` records source/log/executable
+hashes and staged/committed blob checks. This closes this bounded implementation
+follow-up; wider M1z/native/integrated work remains open and M1u remains the latest
+accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

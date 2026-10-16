@@ -87,7 +87,8 @@ pub(super) struct ModuleDebuggerPauseRequest {
 
 pub(super) struct ModuleDebuggerContinuation {
     pub(super) module: String,
-    pub(super) code: Bytecode,
+    pub(super) module_charge: execution_payload::ExecutionPayloadCharge,
+    pub(super) code: ModuleCode,
     pub(super) pc: usize,
     pub(super) execution: SuspendedModuleExecution,
     pub(super) iterators: IteratorRecords,
@@ -1066,7 +1067,10 @@ impl Vm {
             .take()
             .expect("a nested module failure retains its entry root");
         let ModuleDebuggerContinuation {
-            module, execution, ..
+            module,
+            module_charge: _module_charge,
+            execution,
+            ..
         } = continuation;
         let previous_module = self.take_module_name();
         self.restore_module_execution(execution);
