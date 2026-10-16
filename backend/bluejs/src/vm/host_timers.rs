@@ -17,8 +17,9 @@
 
 use super::*;
 
-/// Maximum pending timers in one realm. Further `setTimeout`/`setInterval`
-/// calls throw a `RangeError` until a timer fires or is cleared.
+/// Maximum pending timers in one host-neutral realm. Further registrations
+/// throw a `RangeError` until a timer fires or is cleared. Page-owned realms
+/// use the shared document count and terminal scheduling admission instead.
 pub const MAX_HOST_TIMERS_PER_REALM: usize = 1_024;
 
 /// Jobs one host microtask checkpoint may run before it reports a limit.
@@ -466,7 +467,7 @@ impl Vm {
                 "host timer argument limit exceeded".into(),
             ));
         }
-        if self.host_timers.len() >= MAX_HOST_TIMERS_PER_REALM {
+        if self.host_scheduling.is_none() && self.host_timers.len() >= MAX_HOST_TIMERS_PER_REALM {
             return Err(RuntimeError::RangeError("host timer limit exceeded".into()));
         }
         let id = self.host_timer_next_id;
@@ -475,7 +476,11 @@ impl Vm {
                 "host timer identifiers are exhausted".into(),
             ));
         };
+        // A host clock can enqueue work in another same-document realm.
+        // Observe it before final admission, root retention and serial assignment.
+        let now = self.sample_host_timer_clock();
         self.admit_scheduling_work(HostSchedulingUsage {
+            pending_timers: 1,
             payload_bytes: std::mem::size_of::<HostTimer>()
                 .saturating_mul(4)
                 .saturating_add(
@@ -494,7 +499,6 @@ impl Vm {
         let serial = self.next_host_task_serial()?;
         let arguments = args.iter().skip(2).cloned().collect::<Vec<_>>();
         let roots = self.root_timer_task(callback, &arguments)?;
-        let now = self.sample_host_timer_clock();
         self.host_timer_next_id = next;
         self.host_timers.push(HostTimer {
             id,

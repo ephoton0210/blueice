@@ -9,7 +9,7 @@
 use blueice_bluejs::{
     compile_module, parse, parse_module, BlueJsPageOrigin, BlueJsPageRuntime,
     BlueJsPageRuntimeError, BlueJsProgramV1, BlueJsSourceIdentity, BlueJsTimerRun, RuntimeError,
-    Value, Vm, MAX_HOST_TIMERS_PER_REALM,
+    Value, Vm, MAX_PENDING_HOST_TIMERS,
 };
 
 const TAB: u64 = 1;
@@ -629,19 +629,58 @@ fn debugger_pauses_retain_timers_without_a_runnable_wake() {
 }
 
 #[test]
-fn the_pending_timer_count_is_bounded_per_realm() {
+fn the_pending_timer_count_is_bounded_per_document() {
     let mut page = Page::new();
+    page.runtime.open_realm(2, origin()).unwrap();
+    page.runtime
+        .configure_realm_bindings(2, |host| host.install_host_timers())
+        .unwrap();
+    let neighbor = page
+        .runtime
+        .install_program(
+            2,
+            &origin(),
+            BlueJsSourceIdentity::new("page:///timer-count-neighbor.js", "timer-count-neighbor")
+                .unwrap(),
+            &BlueJsProgramV1::Script(parse("setTimeout(() => {}, 0); 0;").unwrap()),
+        )
+        .unwrap();
+    page.runtime.execute_program(2, neighbor).unwrap();
     let source = format!(
         "for (var i = 0; i < {}; i += 1) {{ setTimeout(function () {{}}, 1000); }}",
-        MAX_HOST_TIMERS_PER_REALM
+        MAX_PENDING_HOST_TIMERS
     );
     page.run(&source).unwrap();
     assert!(matches!(
         page.run("setTimeout(function () {}, 1000);"),
-        Err(BlueJsPageRuntimeError::Runtime(RuntimeError::RangeError(_)))
+        Err(BlueJsPageRuntimeError::Runtime(
+            RuntimeError::SchedulingLimit
+        ))
     ));
-    // Clearing frees capacity.
-    page.run("clearTimeout(1);").unwrap();
+    // Document exhaustion stays terminal until navigation replaces its scope.
+    assert!(page.run("clearTimeout(1);").is_err());
+    assert!(page.runtime.run_due_timers(TAB, 1000).is_err());
+    assert_eq!(
+        page.runtime
+            .realm_stats(TAB)
+            .unwrap()
+            .scheduling
+            .pending_timers,
+        MAX_PENDING_HOST_TIMERS
+    );
+    assert_eq!(page.runtime.run_due_timers(2, 0).unwrap().tasks_run, 1);
+    page.runtime.navigate(TAB, origin()).unwrap();
+    assert_eq!(
+        page.runtime
+            .realm_stats(TAB)
+            .unwrap()
+            .scheduling
+            .pending_timers,
+        0
+    );
+    page.runtime
+        .configure_realm_bindings(TAB, |host| host.install_host_timers())
+        .unwrap();
     page.run("setTimeout(function () {}, 1000);").unwrap();
 }
 

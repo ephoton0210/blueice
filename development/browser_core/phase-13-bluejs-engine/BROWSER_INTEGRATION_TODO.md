@@ -56,6 +56,21 @@ remains separate from the accepted replay.
 Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
+**In progress — M1w document callback-timer counts (2026-10-16).**
+Callback timer limits previously applied to each realm separately, while the
+document ledger had no timer count. The shared account now admits at most
+1,024 callback registrations across attached realms and exposes
+`HostSchedulingUsage.pending_timers`. One-shots leave the count on delivery;
+intervals remain until cleared. Document failure is terminal, while standalone
+VMs keep their per-realm catchable `RangeError` policy. Seven unit groups pass
+on small live queues, scalar admission and the finite default count.
+Clock-hook reentry also reproduces reversed enqueue order; clock sampling now
+precedes final admission and serial assignment. Current bounded validation
+passes 94 cases, zero failures or ignored; the page-runtime default-count case
+verifies refusal, a healthy neighboring tab and navigation recovery. Formatting
+and offline workspace/all-target Clippy pass. Thirteen other public pressure/
+limit cases remain filtered; integrated/full-source acceptance stays open.
+
 **In progress — M1v active native execution payloads (2026-10-16).**
 Two public regressions fail on M1u. Seventeen recursive frames retain at least
 13,600,000 UTF-16 bytes in local variables or arguments, yet complete with
@@ -111,7 +126,7 @@ probes. A further task-handoff correction removes duplicate timer, drag and
 finalization input charges and releases consumed inputs before Promise
 checkpoint jobs. The `deafa218a` task-handoff checkpoint passes seven unit
 groups and 67 public timer/task/cleanup cases, with fifteen public pressure/
-limit cases filtered out. The next Promise/host-completion follow-up passes
+limit cases filtered out. The `0d0f09c0e` Promise/host-completion checkpoint passes
 twelve handoff groups, four call-entry controls and 61 related public cases;
 six host-async pressure/limit cases are filtered out. It also reconciles
 continuation ownership after context restoration even when primitive sizes
@@ -364,6 +379,14 @@ work and exposes its retained payload ledger.
       remain open before `fetch`.
 - [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
       host-held bytes, so a runaway page degrades only itself
+- [ ] **M1w: document callback-timer counts.** Root and attached child realms
+      must share 1,024 pending callback registrations, expose aggregate counts,
+      refund delivery/cancellation/document destruction and refuse before
+      publishing a new registration. Preserve interval ownership, standalone
+      policy, healthy-tab isolation and navigation recovery. Implementation
+      and bounded count/lifecycle validation are recorded below; integrated
+      acceptance, native control/service buffers and the broader per-document
+      resource gate remain open.
 - [ ] **Active native execution payloads.** Active locals, arguments and
       displaced caller frames must share document admission with retained
       Promise/timer/registry storage. Two public recursive-string probes exceed
@@ -754,6 +777,66 @@ the generated typings in the same change.
 
 ## Milestone record
 
+### M1w — Document callback-timer counts (implementation checkpoint, 2026-10-16)
+
+Acceptance: one shared document limit across root/child registrations;
+accurate live counts through firing, self-cancellation and destruction;
+terminal document refusal before another registration is published; healthy
+tab isolation and navigation recovery; preserved standalone catchable limits.
+Clock-hook work must precede the outer timer's final admission and enqueue
+serial. Broader native control/service storage and final integrated acceptance
+remain outside this count-only checkpoint.
+
+- [x] Add `pending_timers` to shared scheduling addition, subtraction and
+      admission; report aggregate callback registrations through runtime stats.
+- [x] Admit one count before retaining timer roots or advancing registration
+      state. Use document `SchedulingLimit` for bounded pages; preserve the
+      host-neutral 1,024-per-realm `RangeError` and capacity recovery.
+- [x] Refund firing one-shots and cancelled intervals; retain an interval's
+      registration during delivery. Queued work keeps a discarded realm alive
+      until delivery; dropping a whole document releases every scope's count.
+- [x] Sample the host clock before final admission and serial assignment.
+      A two-timer regression initially runs root before a child already queued
+      by the clock hook; the corrected order is child then root.
+- [x] Pass seven unit groups: five use small queues/scalar admission, one
+      verifies clock-hook ordering and one checks the existing finite default
+      count plus host-neutral recovery and policy attachment.
+- [x] Pass public runtime refusal/isolation/navigation and related timer
+      selections, formatting and offline workspace/all-target Clippy.
+- [ ] Complete integrated/full-source acceptance under the owner's security
+      constraints. M1u remains the latest accepted milestone.
+
+The new public `document_timer_counts` target must be included in any fresh
+full replay inventory; the historical 405-executable M1v selections predate it.
+No private transport layout or byte-limit change is needed for these Rust
+counter snapshots. Abort timeouts remain in the separate browser-task cap.
+
+Current-source bounded validation: **94 passed, zero failed, zero ignored**.
+The seven timer-count unit groups, twelve existing handoff groups and four
+call-entry controls pass. The new complete `document_timer_counts` public
+target passes two cases. Related public selections pass `host_timers` (32),
+`host_task_turns` (27) and `host_finalization_tasks` (ten), filtering thirteen
+other pressure/limit cases. The fixed 1,024-registration page test and timer
+argument-count test run as ordinary bounded functional checks; no large
+payload, infinite-job or out-of-process resource probe is used for this gate.
+The standalone default-count test also verifies catchable refusal, clearing
+and reuse, then terminal document refusal after policy attachment.
+
+The initial API tests fail to compile on the parent because the shared count
+and limit are absent. A separate two-registration clock regression fails with
+`[root, child]` instead of `[child, root]` before clock sampling moves ahead of
+final admission. Those logs are retained at
+`/private/tmp/blueice-document-timer-count-unit-red-20261016.log` and
+`/private/tmp/blueice-document-timer-clock-unit-red-20261016.log`.
+Current logs:
+`/private/tmp/blueice-document-timer-count-final-unit-20261016.log`,
+`/private/tmp/blueice-document-timer-count-handoff-controls-20261016.log`,
+`/private/tmp/blueice-document-timer-count-call-controls-20261016.log` and
+`/private/tmp/blueice-document-timer-count-public-controls-20261016.log`.
+Clippy: `/private/tmp/blueice-document-timer-count-clippy-20261016.log`.
+Bounded receipt: `target/document-timer-count-source-20261016.json`.
+No fresh full Test262, real Core/MCP replay or coverage result is claimed.
+
 ### M1v — Active execution ownership (implementation checkpoint, 2026-10-16)
 
 - [x] Account for primitive payloads in active VM fields and displaced caller
@@ -857,7 +940,7 @@ reconciles all scheduling owners; ordinary instruction/call checks retain
 their unchanged-payload fast path. Refusal/unwind reconciliation keeps the
 document's terminal failure latched.
 
-Current-source bounded validation passes **77 cases, zero failures and zero
+Promise/host-completion checkpoint (`0d0f09c0e`) validation passes **77 cases, zero failures and zero
 ignored**: twelve `--lib payload_handoff` groups, four `--lib argument_charges`
 controls and 61 public cases. Five targets run completely:
 `async_from_sync_delegation` (two), `async_generator_ticks` (fourteen),

@@ -60,7 +60,7 @@ use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::SchedulingScope;
 pub use host_scheduling::{
     HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_BROWSER_TASKS,
-    MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS,
+    MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS, MAX_PENDING_HOST_TIMERS,
 };
 mod agent_registry;
 mod interpreter;

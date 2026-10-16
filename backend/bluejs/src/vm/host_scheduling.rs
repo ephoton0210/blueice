@@ -12,8 +12,13 @@ use std::cell::RefCell;
 #[path = "../../tests/fixtures/task_payload_handoff.rs"]
 mod task_payload_handoff;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/document_timer_counts.rs"]
+mod document_timer_counts;
+
 pub const MAX_PENDING_HOST_MICROTASKS: usize = 1024;
 pub const MAX_PENDING_HOST_REACTIONS: usize = 1024;
+pub const MAX_PENDING_HOST_TIMERS: usize = 1024;
 pub const MAX_PENDING_BROWSER_TASKS: usize = 64;
 pub const MAX_HOST_SCHEDULING_BYTES: usize = 8 * 1024 * 1024;
 
@@ -25,6 +30,9 @@ pub const MAX_HOST_SCHEDULING_BYTES: usize = 8 * 1024 * 1024;
 pub struct HostSchedulingUsage {
     /// Browser and cleanup tasks; page snapshots include their ShadowRealms.
     pub pending_browser_tasks: usize,
+    /// Callback timer registrations, including same-document ShadowRealms.
+    /// A running interval keeps its registration; a firing one-shot does not.
+    pub pending_timers: usize,
     pub pending_microtasks: usize,
     pub pending_reactions: usize,
     pub payload_bytes: usize,
@@ -36,6 +44,7 @@ impl HostSchedulingUsage {
             pending_browser_tasks: self
                 .pending_browser_tasks
                 .saturating_add(other.pending_browser_tasks),
+            pending_timers: self.pending_timers.saturating_add(other.pending_timers),
             pending_microtasks: self
                 .pending_microtasks
                 .saturating_add(other.pending_microtasks),
@@ -50,6 +59,7 @@ impl HostSchedulingUsage {
             pending_browser_tasks: self
                 .pending_browser_tasks
                 .saturating_sub(other.pending_browser_tasks),
+            pending_timers: self.pending_timers.saturating_sub(other.pending_timers),
             pending_microtasks: self
                 .pending_microtasks
                 .saturating_sub(other.pending_microtasks),
@@ -61,6 +71,7 @@ impl HostSchedulingUsage {
     }
     fn fits(self) -> bool {
         self.pending_browser_tasks <= MAX_PENDING_BROWSER_TASKS
+            && self.pending_timers <= MAX_PENDING_HOST_TIMERS
             && self.pending_microtasks <= MAX_PENDING_HOST_MICROTASKS
             && self.pending_reactions <= MAX_PENDING_HOST_REACTIONS
             && self.payload_bytes <= MAX_HOST_SCHEDULING_BYTES
@@ -598,6 +609,7 @@ impl Vm {
                 .browser_tasks
                 .len()
                 .saturating_add(self.host_finalization_tasks.len()),
+            pending_timers: self.host_timers.len(),
             pending_microtasks: self.promise_jobs.len(),
             pending_reactions: self
                 .heap

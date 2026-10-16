@@ -59,9 +59,25 @@ existing bounded wake chunks and exact-document checks.
 
 Callbacks, arguments, read stages and cleanup registries stay rooted in their
 own VM. Enqueue metadata participates in the existing owned-slot byte ledger.
-The 64 pending browser/cleanup task cap, 1,024 timer cap, microtask/reaction
-caps and document resource-failure behavior are unchanged. Replacement and
-close drop the owning queues and reset source selection with the realm.
+Page-owned callback timers share a 1,024-registration document cap across the
+root and same-document ShadowRealms. `HostSchedulingUsage.pending_timers`
+reports that aggregate. Registration admits one count before publishing its
+ID, roots or table entry. A firing one-shot leaves the pending count; an
+interval keeps its registration until cleared, including during its callback.
+Cancellation and realm/document destruction return the owning contribution.
+An unreachable realm with pending work remains alive until that work finishes.
+
+Clock sampling precedes final registration admission and serial assignment.
+Work enqueued by an embedding clock callback is therefore included in that
+admission and receives the earlier enqueue serial, before the outer timer.
+
+Refusing a registration above the document limit latches terminal scheduling
+failure; navigation creates a fresh account. Host-neutral VMs retain their
+1,024-per-realm catchable `RangeError` policy. Abort-timeout browser entries
+remain in the separate 64-task browser/cleanup cap; microtask/reaction caps
+are unchanged. Replacement and close drop the owning queues and reset source
+selection with the realm. These Rust count snapshots do not change the
+private transport's existing byte totals or layout.
 
 ### Native-payload collection pressure
 

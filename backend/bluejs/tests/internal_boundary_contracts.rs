@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_document_timer_count_contracts() {
+    blueice_bluejs::Vm::verify_document_timer_count_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_task_payload_handoff_contracts() {
     blueice_bluejs::Vm::verify_task_payload_handoff_contracts();
 }
