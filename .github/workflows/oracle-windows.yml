@@ -1,0 +1,55 @@
+name: Oracle Windows
+
+# Slice S2 of K.13.1.3: run only the pinned TypeScript oracle suite on the two
+# Windows architectures, so a Windows-specific fix does not need the full
+# multi-hour CI. Merged back into ci.yml's typescript-oracle matrix (S4) and
+# removed once both legs are green there. The push trigger is path-filtered to
+# this file because workflow_dispatch only works from the default branch.
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/bluets-integration]
+    paths: [".github/workflows/oracle-windows.yml"]
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  oracle:
+    name: Windows TypeScript oracles (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Linux/macOS legs take about an hour; this bound keeps a hang from
+    # holding a runner for six hours and gives K.13.2's margin a denominator.
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, windows-11-arm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: Swatinem/rust-cache@v2
+      - name: Install pinned TypeScript and Acorn oracles
+        run: >-
+          npm install --no-save --package-lock=false --ignore-scripts
+          --prefix "${{ runner.temp }}/bluets-oracles"
+          typescript@5.9.3 acorn@8.15.0
+      - name: Select pinned oracle commands
+        run: node development/browser_core/phase-18-bluets/tools/select_oracle_commands.cjs
+      - name: Verify cross-platform oracle command resolution
+        run: >-
+          node --test
+          backend/bluets/tests/fixtures/oracle_support/resolve_package.test.cjs
+          development/browser_core/phase-18-bluets/tools/select_oracle_commands.test.cjs
+      - name: Run every pinned TypeScript 5.9.3 oracle
+        env:
+          FORCE_COLOR: "0"
+        run: cargo test -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --ignored
+      - name: Report Windows symlink exclusions
+        if: always()
+        run: node development/browser_core/phase-18-bluets/tools/report_windows_symlink_tests.cjs
