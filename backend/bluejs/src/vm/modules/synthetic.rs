@@ -9,6 +9,10 @@
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/synthetic_module_boundary.rs"]
+mod boundary_tests;
+
 /// A module whose record is synthesized from host data rather than parsed as
 /// JavaScript. Keeping this separate from `ModuleType` makes the source-text
 /// case impossible inside `ensure_synthetic_module`.
@@ -77,9 +81,15 @@ impl Vm {
                 };
                 self.json_parse(&Value::String(source.into()), None)
                     .map_err(|error| {
-                        RuntimeError::ModuleResolution(format!(
-                            "invalid JSON module {path}: {error}"
-                        ))
+                        if matches!(error, RuntimeError::SyntaxError(_)) {
+                            RuntimeError::ModuleResolution(format!(
+                                "invalid JSON module {path}: {error}"
+                            ))
+                        } else {
+                            // Preserve each resource failure's identity at
+                            // the module loading boundary.
+                            error
+                        }
                     })?
             }
             SyntheticModuleType::Text => {
@@ -102,11 +112,7 @@ impl Vm {
         if let Value::Object(id) = value {
             // A JSON parse or bytes-module allocation just returned this
             // object; neither caller nor this branch allocates before rooting.
-            roots.push(
-                self.heap
-                    .root(id)
-                    .expect("a newly synthesized module value is live"),
-            );
+            roots.push(self.heap.root(id)?);
         }
         let mut code = Bytecode::empty();
         code.module = true;

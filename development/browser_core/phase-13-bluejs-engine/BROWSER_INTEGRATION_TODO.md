@@ -2083,6 +2083,53 @@ executable hashes and staged/committed blob checks. No network/service replay,
 fresh full Test262, real Core/MCP replay or coverage is claimed; the wider
 M1z/native/integrated gates stay open.
 
+#### Synthetic module resource-refusal follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: a refused synthetic-value root registration returns the original
+heap error without publishing a module; JSON conversion preserves host resource
+abort types and configured string-limit identity, while malformed JSON remains
+a module-resolution failure.
+
+- [x] Reproduce finite root, instruction and string refusal cases with tiny
+      in-memory sources and no network or resource-exhaustion workloads.
+- [x] Propagate resource failures and pass eleven finite root lifetime,
+      caller/graph preservation, cleanup, idempotency and primitive-value groups.
+- [x] Finish the fixed bounded regression/static checks, including ordinary
+      typed imports, and record the source/artifact evidence.
+- [x] Update the checkpoint evidence and commit with a detailed English message.
+- [ ] Complete compiled/transient storage and wider integrated acceptance.
+      M1u remains the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-synthetic-boundary-red-20261017.log`
+(zero passed, three failed): refused root registration panics, and JSON
+conversion rewrites instruction/string failures into module-resolution errors.
+The implementation now propagates root errors before record publication and
+wraps only malformed JSON's SyntaxError. The eleven expanded groups pass in
+`/private/tmp/blueice-synthetic-boundary-development-20261017.log`. Refusal
+preserves the caller's existing modules, roots and operand prefix. Fresh-graph
+preparation releases earlier synthesis roots, while failed extension preserves
+an existing graph's roots/cells. Object exports survive major GC until root
+release and then collect; primitive exports and repeated synthesis need no new
+object roots. Graph instruction refusal precedes module evaluation. Inputs are
+tiny in-memory sources and deterministic scalar limits, without physical
+resource-exhaustion or network/service workloads.
+
+Final bounded validation: **652 passed, zero failed, zero ignored** across 35
+test executables and 53 fixed selections. The eleven new groups join the prior
+641 selected ownership/semantic/GC/debugger cases. The same seven pressure/
+large-allocation cases remain filtered. Formatting, `git diff --check` and
+offline workspace/all-target Clippy with warnings denied pass. Clippy's initial
+test-helper initialization warning was fixed before the final regression run.
+
+Logs use `/private/tmp/blueice-synthetic-boundary-`; selection names are listed
+in `controls-run-20261017.log` and the fixed offline runner is
+`controls-20261017.py`. Final new-group and static logs are
+`{synthetic,fmt,clippy}-20261017.log`. Receipt:
+`target/synthetic-boundary-source-20261017.json` records source/log/executable
+hashes and staged/committed blob checks. No fresh full Test262, real Core/MCP
+replay, coverage or integrated acceptance is claimed. Transient conversion,
+compiled registries/caches and the wider native/integrated gates stay open.
+
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
 Acceptance: account for both dependency maps' table capacity, keys, dependency

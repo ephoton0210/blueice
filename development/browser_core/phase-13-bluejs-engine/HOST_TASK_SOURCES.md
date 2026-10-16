@@ -329,6 +329,16 @@ activation attaches previously installed snapshots once; snapshots cannot be
 adopted into another document's account. Transient parse/compile/conversion and
 compiled-registry/code/cache/continuation storage remain separate open work.
 
+Synthetic JSON/bytes values require a successful GC root registration before
+their module record is published. A refused registration propagates its original
+heap error through graph preparation. Fresh-graph preparation releases any
+earlier synthesis roots on failure; an existing graph preserves its prior roots
+and linked records. JSON synthesis wraps only malformed input's SyntaxError as
+a module-resolution failure. Heap, instruction and scheduling refusals keep
+their original host-abort types; configured string limits retain their ordinary
+RangeError behavior. This failure contract does not account for transient
+conversion or compiled-cache storage; those ownership gates remain open.
+
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
 accounting counts its capacity once as realm storage, independently of active
