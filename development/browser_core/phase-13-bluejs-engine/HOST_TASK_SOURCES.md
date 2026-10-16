@@ -195,7 +195,7 @@ Generator resume prepares copied scope-slot lists before taking its saved
 state. The outer vector and each nested buffer retain a native charge until
 transfer into active fields. A common resume exit reconciles released staging,
 including refusal after binding metadata was prepared, so peer realms see the
-released contribution. Global-binding publication, other module-association
+released contribution. Other module-association
 copies and per-iteration cell staging remain in the broader transient gate.
 
 Function-eval declaration batches prepare their dynamic-binding and slot-alias
@@ -213,6 +213,32 @@ environment edge can restore its old cell even after a document heap failure
 is latched. Staged names/tables and Rust-held primitive values retain native
 ownership through heap collection and release on every exit; new/replaced
 object edges remain rooted until publication or rollback completes.
+
+Realm-global binding records own their table capacity and name buffers for the
+realm lifetime, independently of active script frames. Script and global-eval
+declarations prepare both the persistent table and current slot aliases before
+creating declaration cells/properties. Full replacement capacity is leased while
+old tables coexist; copied initial property values retain a separate payload
+lease before any declaration cell is created. Standard-global validation retains
+its lazy materialization behavior. Existing accessors receive no cell/alias,
+and already recorded aliases need no copy. Staging leases update by byte deltas
+as values/names/tables transfer rather than rescanning the batch for every row.
+
+Deleted-global recreation admits its record and incoming value first, registers
+the root, initializes the retained cell and then defines the ordinary global
+property. Refused property/heap/root operations leave the cell deleted and no
+new global record/root. Permanent roots are released when records are removed
+or replaced. Lexical cleanup removes entries in place, avoiding a temporary
+cloned-name list, and releases an empty table when no restoration slots remain.
+Ordinary abrupt scripts keep their specified persistent global TDZ records.
+
+ShadowRealm reentry admits a temporary lexical table before extracting entries;
+keys and permanent-root ownership move without cloning names. A native lease
+persists while the inner evaluation runs. New global publications reserve slots
+for every suspended lexical record so restoring them requires no allocation,
+including after a resource abort. Restoration releases an overwritten property
+binding's old root. Eval/nested-script return reconciles the final caller fields
+after displaced/staged owners drop, so peer accounts see released aliases too.
 
 Call, eval and generator entry prepare capture-cell tables before constructor
 entry effects. Minimum slot admission precedes reserve; reported capacity is
@@ -234,7 +260,7 @@ state, closes the abandoned frame and reconciles the shared contribution.
 The heap operation releases the lease immediately after adoption/refusal,
 before VM collection bookkeeping can admit native cleanup work. Terminal
 Done/Running cleanup remains allowed after resource abort. Stack/completion
-conversion preallocation, global-binding publication and other association
+conversion preallocation and other association
 copies remain separate open work.
 
 Iterator and handler vectors carry scoped native charges through execution,

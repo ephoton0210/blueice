@@ -57,17 +57,27 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The realm-global record checkpoint counts persistent table/key capacity and
+prepares script/eval records and initial values before declaration effects.
+Deleted-global recreation refuses before heap/root effects, while ShadowRealm
+reentry retains extracted names/roots and reserved restoration slots. Eval and
+nested-script return reconcile after caller restoration and temporary release.
+Fourteen expanded groups and all 545 selected cases pass, with formatting,
+offline workspace/all-target Clippy and the source/artifact audit recorded below.
+Other association copies, conversion preallocation, wider native storage and
+integrated acceptance remain open; M1u remains the latest accepted milestone.
+
 The function-eval publication checkpoint jointly prepares names, shadowed-cell
 lists and declaration/alias tables before heap effects. Two tiny regressions
 reproduce new declarations and deleted-variable recreation succeeding without
 native admission; both now pass. Eleven expanded groups and the full 496-case
 bounded selection pass, together with formatting and offline workspace/all-target
-Clippy. The source/artifact audit is recorded below. Global-binding publication,
-other association copies, conversion preallocation and integrated acceptance
+Clippy. The source/artifact audit is recorded below. Other association copies,
+conversion preallocation and integrated acceptance
 remain open; this does not close the wider M1z gate.
 
 The dynamic environment entry/recovery checkpoint addresses two
-finite groups reproduce a constructor getter and async result capability
+finite groups that reproduce a constructor getter and async result capability
 published before environment-storage refusal. Both now pass with joint stack/
 recovery preparation before entry effects and context replacement. Necessary
 copies retain scoped ownership; synchronous forwarding creates no recovery
@@ -1496,7 +1506,8 @@ deleted. Reconcile temporary ownership on all exits without clearing failure.
       heap-rollback, recreation and peer-refund groups.
 - [x] Pass the related bounded selection, formatting and offline workspace/
       all-target Clippy; record the source/artifact audit with the checkpoint.
-- [ ] Complete global-binding publication, other association copies,
+- [x] Complete global-binding publication in the realm-global checkpoint below.
+- [ ] Complete other association copies,
       stack/completion conversion preallocation, wider native storage and
       integrated acceptance. M1u remains the latest accepted milestone.
 
@@ -1523,10 +1534,72 @@ Logs use `/private/tmp/blueice-dynamic-binding-` with selection names from
 `controls-20261016.log`; the runner is `controls-20261016.py`. The final new-group
 log is `bindings-20261016.log`; `fmt-20261016.log` and `clippy-20261016.log` record
 the static checks. Receipt: `target/dynamic-binding-source-20261016.json`.
-Global-binding publication, other association copies, stack/completion
+Other association copies, stack/completion
 conversions, wider native storage and integrated acceptance remain open.
 No fresh full Test262, real Core/MCP replay or coverage result is claimed;
 M1u remains the latest accepted milestone.
+
+#### Realm-global binding ownership follow-up (implementation checkpoint)
+
+Acceptance: count persistent global table/key capacity independently of script
+frames. Prepare script/global-eval binding and slot-alias records and copied
+initial values before declaration cells/properties; admit actual replacement
+capacity while old tables coexist. Recreate a deleted global only after native
+admission/root registration and undo tentative cell values on property failure.
+Preserve accessor, descriptor, lexical-conflict and abrupt-script TDZ semantics.
+Keep extracted lexical records charged/rooted through ShadowRealm reentry,
+reserve restoration slots during inner publications and release replaced roots.
+Reconcile eval/nested-script owners after the caller context is restored.
+
+- [x] Reproduce uncharged persistent storage and script/eval/recreation effects
+      before native refusal; all three initial finite regressions pass.
+- [x] Prepare tables, names/aliases and initial property-value copies; count
+      persistent capacity and reuse existing aliases/accessors without copies.
+- [x] Move suspended lexical names/root ownership under a lease, reserve return
+      slots and remove cleanup name-list copies; release replaced binding roots.
+- [x] Reproduce stale eval ownership (729 versus 363 bytes) and reconcile after
+      eval/nested-script context restoration and lease release.
+- [x] Pass fourteen expanded GC/refusal/capacity/semantic groups and the final
+      bounded selection, formatting and Clippy; record the source/artifact audit.
+- [ ] Complete other association copies, stack/completion conversion
+      preallocation, wider native storage and integrated acceptance.
+      M1u remains the latest accepted milestone.
+
+Initial logs: `/private/tmp/blueice-global-binding-red-20261016.log` (zero passed,
+three failed) and `restoration-red-20261016.log` under the same prefix (zero
+passed, one failed). The first shows a new 200-byte global record adding zero
+native bytes. The latter observes the stale account immediately after eval
+returns, before another admission or explicit snapshot refresh can hide it.
+
+Fourteen expanded groups pass, including exact-budget/one-byte refusal with
+growing/spare tables, no-copy aliases/accessors, initial-value refusal before
+any cell, persistent name capacity, nested evaluation accounting and required
+abrupt-script TDZ state. Nursery one/sixteen cover real ShadowRealm reentry;
+native refusal after lexical extraction still restores without allocation or
+clearing failure. Major collection proves overwritten and failed-recreation
+cells are collectible after their final real owner releases them. Heap/root
+refusals use small ordinary properties and registration counters. Staging
+ownership updates by byte deltas instead of rescanning the batch for each row.
+
+Final bounded validation: **545 passed, zero failed, zero ignored** across 33
+test executables. This includes fourteen new groups, 34 public global-property/
+ShadowRealm cases, one existing creation-boundary group and the prior 496
+ownership/semantic/GC/debugger cases. Four existing frame/argument-release
+checks now preserve the realm-global charge while still requiring temporary
+control/payload owners to be zero. The seven prior pressure/large-allocation
+exclusions remain filtered; deep-recursion tail suites and network/service
+replays are not run. Formatting, `git diff --check` and offline workspace/
+all-target Clippy with warnings denied pass.
+
+Logs use `/private/tmp/blueice-global-binding-` with selection names listed in
+`controls-20261016.log`; the runner is `controls-20261016.py`. Final new-group
+and public semantic logs are `globals-20261016.log` and
+`global-semantics-20261016.log`; `fmt-20261016.log` and `clippy-20261016.log`
+record the static checks. Receipt: `target/global-binding-source-20261016.json`.
+This is an implementation checkpoint. Other association copies, stack/completion
+conversions, broader container/transient/module-cache/service storage and
+integrated acceptance remain open. No fresh full Test262, real Core/MCP replay
+or coverage result is claimed; M1u remains the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

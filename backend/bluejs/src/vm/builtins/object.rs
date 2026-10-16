@@ -260,6 +260,10 @@ impl Vm {
                         .delete(cell, "value")
                         .expect("removing the rooted global binding's value cannot allocate");
                     self.release_root(binding._root);
+                    if self.global_bindings.is_empty() && self.reserved_global_binding_slots == 0 {
+                        self.global_bindings = HashMap::new();
+                    }
+                    self.reconcile_scheduling_ownership();
                 }
             }
             Ok(deleted)

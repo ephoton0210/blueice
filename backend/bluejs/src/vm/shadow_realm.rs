@@ -241,24 +241,7 @@ impl Vm {
         // evaluate may reenter an ancestor realm that is still executing a
         // wrapped function. Its fresh script context must not erase that
         // function's bindings, operand stack, or dynamic eval environments.
-        let lexical_bindings = {
-            let names = child
-                .global_bindings
-                .iter()
-                .filter(|(_, binding)| !binding.property)
-                .map(|(name, _)| name.clone())
-                .collect::<Vec<_>>();
-            names
-                .into_iter()
-                .map(|name| {
-                    let binding = child
-                        .global_bindings
-                        .remove(&name)
-                        .expect("the suspended lexical binding is still installed");
-                    (name, binding)
-                })
-                .collect::<HashMap<_, _>>()
-        };
+        let lexical_bindings = child.suspend_lexical_global_bindings()?;
         let execution = child.suspend_module_execution();
         let mut roots = child.root_suspended_module_execution(&execution);
         let call_depth = std::mem::replace(&mut child.call_depth, 0);
@@ -305,7 +288,7 @@ impl Vm {
             Ok(value)
         })();
         child.reset_lexical_global_bindings();
-        child.global_bindings.extend(lexical_bindings);
+        lexical_bindings.restore(child);
         if let Some(root) = child.result_root.take() {
             child.release_root(root);
         }

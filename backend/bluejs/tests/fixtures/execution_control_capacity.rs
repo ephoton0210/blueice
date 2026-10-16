@@ -181,7 +181,14 @@ fn active_control_capacity_releases_finished_root_allocations() {
     assert_eq!(vm.active_scopes.capacity(), 0);
     assert_eq!(vm.active_scope_slots.capacity(), 0);
     assert_eq!(vm.call_stack.capacity(), 0);
-    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, 0);
+    // The realm's function binding outlives these released script containers.
+    assert!(vm.global_bindings.contains_key("f"));
+    let persistent = vm.global_binding_storage_bytes();
+    assert!(persistent > 0);
+    assert_eq!(
+        vm.host_scheduling_usage().unwrap().payload_bytes,
+        persistent
+    );
 }
 
 impl crate::Vm {

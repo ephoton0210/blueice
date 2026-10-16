@@ -719,6 +719,7 @@ impl Vm {
                 .capacity()
                 .saturating_mul(std::mem::size_of::<PromiseJob>())
                 .saturating_add(self.active_scheduling_bytes)
+                .saturating_add(self.global_binding_storage_bytes())
                 .saturating_add(self.owned_execution_payload_bytes()),
         };
         usage.payload_bytes = usage

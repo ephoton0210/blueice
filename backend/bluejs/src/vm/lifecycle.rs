@@ -150,6 +150,7 @@ impl Vm {
             host_animation_frame_timestamp_ms: 0.0,
             active_host_drag_event: None,
             global_bindings: HashMap::new(),
+            reserved_global_binding_slots: 0,
             symbol_registry: Rc::new(RefCell::new(AgentSymbolRegistry::default())),
             intl_legacy_constructed_symbol: None,
             script_global_slots: HashMap::new(),

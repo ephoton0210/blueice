@@ -1659,7 +1659,10 @@ fn constructor_entry_retains_argument_charges_during_user_callbacks() {
         assert_eq!(observed.len(), 2, "{source}");
         assert_eq!(observed[1], observed[0] + 14, "{source}: {observed:?}");
         assert_eq!(counter.get(), 0, "{source}");
-        assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, 0);
+        let persistent = vm.global_binding_storage_bytes();
+        assert!(persistent > 0);
+        assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
+        assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, persistent);
     }
 }
 
@@ -1682,7 +1685,13 @@ fn proxy_forwarding_transfers_argument_charges_without_duplicate_owners() {
     assert_eq!(vm.execute_script(&code), Ok(Value::Number(0.0)));
     assert_eq!(*observed.borrow(), vec![14; 7]);
     assert_eq!(counter.get(), 0);
-    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, 0);
+    let persistent = vm.global_binding_storage_bytes();
+    assert!(persistent > 0);
+    assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
+    assert_eq!(
+        vm.host_scheduling_usage().unwrap().payload_bytes,
+        persistent
+    );
 }
 
 #[cfg_attr(test, test)]
@@ -1706,7 +1715,13 @@ fn tail_eval_retains_its_source_argument_charges() {
     // The strict tail caller also retains its 20-byte directive completion.
     assert_eq!(*observed.borrow(), vec![24, 44]);
     assert_eq!(counter.get(), 0);
-    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, 0);
+    let persistent = vm.global_binding_storage_bytes();
+    assert!(persistent > 0);
+    assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
+    assert_eq!(
+        vm.host_scheduling_usage().unwrap().payload_bytes,
+        persistent
+    );
 }
 
 #[cfg_attr(test, test)]

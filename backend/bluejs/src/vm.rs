@@ -36,6 +36,7 @@ mod execution_payload;
 mod frame_bindings;
 mod frame_maps;
 mod generator_storage;
+mod global_bindings;
 use frame_maps::PreparedFrameMaps;
 use generator_storage::OwnedGeneratorState;
 mod scope_storage;
@@ -1094,6 +1095,8 @@ pub struct Vm {
     active_host_drag_event: Option<ObjectId>,
     event_time_origin: std::time::Instant,
     global_bindings: HashMap<String, GlobalBinding>,
+    /// Reentrant evaluations must leave slots for suspended lexical globals.
+    reserved_global_binding_slots: usize,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an
     /// individual Realm. Test262 child realms share this handle; independent
     /// top-level VMs each create their own agent registry.

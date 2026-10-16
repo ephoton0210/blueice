@@ -251,7 +251,13 @@ impl Vm {
         &mut self,
         code: &Bytecode,
     ) -> Result<(), RuntimeError> {
-        let slots = code.scopes.first().cloned().unwrap_or_default();
+        let result = self.prepare_global_declarations_inner(code);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn prepare_global_declarations_inner(&mut self, code: &Bytecode) -> Result<(), RuntimeError> {
+        let slots = code.scopes.first().map(Vec::as_slice).unwrap_or_default();
         if slots.is_empty() {
             return Ok(());
         }
@@ -259,15 +265,16 @@ impl Vm {
             .global("globalThis")?
             .object_id()
             .expect("globalThis is an object");
+        let prepared = self.prepare_global_declaration_records(global, code, false)?;
 
-        for &slot in &slots {
+        for &slot in slots {
             let binding = &code.bindings[slot as usize];
             if binding.lexical {
                 self.materialize_lexical_global(global, &binding.name)?;
             }
         }
 
-        for &slot in &slots {
+        for &slot in slots {
             let binding = &code.bindings[slot as usize];
             let existing = self.global_bindings.get(&binding.name);
             if binding.lexical {
@@ -303,19 +310,7 @@ impl Vm {
             }
         }
 
-        for &slot in &slots {
-            let binding = &code.bindings[slot as usize];
-            let function = code.global_function_names.contains(&binding.name);
-            if !self.global_bindings.contains_key(&binding.name) {
-                if self.global_var_is_accessor(global, binding, function) {
-                    continue;
-                }
-                self.create_global_binding(global, binding, function, false)?;
-            }
-            self.script_global_slots
-                .insert(slot as usize, binding.name.clone());
-        }
-        Ok(())
+        self.publish_global_declaration_records(global, code, false, prepared)
     }
 
     /// Whether a `var` declaration names an existing accessor property of the
@@ -324,7 +319,12 @@ impl Vm {
     /// so it can neither read through the getter nor forward to the setter:
     /// such a `var` gets no global binding at all. Name lookups and
     /// assignments then reach the accessor through the global object itself.
-    fn global_var_is_accessor(&self, global: ObjectId, binding: &Binding, function: bool) -> bool {
+    pub(super) fn global_var_is_accessor(
+        &self,
+        global: ObjectId,
+        binding: &Binding,
+        function: bool,
+    ) -> bool {
         if function || binding.lexical {
             return false;
         }
@@ -421,35 +421,28 @@ impl Vm {
                 && descriptor.enumerable == Some(true)))
     }
 
-    pub(super) fn create_global_binding(
+    pub(super) fn initialize_global_binding(
         &mut self,
         global: ObjectId,
         binding: &Binding,
         function: bool,
         configurable: bool,
-    ) -> Result<(), RuntimeError> {
+        prepared: global_bindings::PreparedGlobalValue,
+    ) -> Result<GlobalBinding, RuntimeError> {
         let property = !binding.lexical;
-        let descriptor = self
-            .heap
-            .get_own_property_descriptor(global, binding.name.as_str())?;
-        let initial = if property && !function {
-            descriptor
-                .as_ref()
-                .and_then(|descriptor| descriptor.value.clone())
-                .unwrap_or(Value::Undefined)
-        } else {
-            Value::Undefined
-        };
+        let global_bindings::PreparedGlobalValue {
+            initial,
+            existed,
+            configurable: was_configurable,
+            charge,
+        } = prepared;
+        let mut initial_charge = Some(charge);
+        self.synchronize_scheduling_usage()?;
         let cell = self.with_roots(|heap| heap.alloc_object(None))?;
         let root = self.heap.root(cell)?;
         let result = (|| {
             if property {
-                if function
-                    && descriptor
-                        .as_ref()
-                        .is_some_and(|descriptor| descriptor.configurable == Some(true))
-                    || descriptor.is_none()
-                {
+                if function && was_configurable || !existed {
                     let defined = self.with_roots(|heap| {
                         heap.define_own_property(
                             global,
@@ -469,7 +462,11 @@ impl Vm {
                 }
             }
             if property {
-                self.with_roots(|heap| heap.set(cell, "value", initial.clone()))?;
+                self.with_roots(|heap| {
+                    let result = heap.set(cell, "value", initial);
+                    drop(initial_charge.take());
+                    result
+                })?;
             }
             Ok(())
         })();
@@ -477,16 +474,12 @@ impl Vm {
             self.release_root(root);
             return Err(error);
         }
-        self.global_bindings.insert(
-            binding.name.clone(),
-            GlobalBinding {
-                cell,
-                mutable: binding.mutable,
-                property,
-                _root: root,
-            },
-        );
-        Ok(())
+        Ok(GlobalBinding {
+            cell,
+            mutable: binding.mutable,
+            property,
+            _root: root,
+        })
     }
 
     /// Drops every purely-lexical (non-property) entry from
@@ -498,20 +491,18 @@ impl Vm {
     /// only one) whose own semantics need a fresh global lexical scope on
     /// each call rather than this VM's ordinary one-persistent-scope model.
     pub(super) fn reset_lexical_global_bindings(&mut self) {
-        let stale: Vec<String> = self
-            .global_bindings
-            .iter()
-            .filter(|(_, binding)| !binding.property)
-            .map(|(name, _)| name.clone())
-            .collect();
-        for name in stale {
-            let binding = self
-                .global_bindings
-                .remove(&name)
-                .expect("the collected lexical binding keys remain in this private map");
-            // Removal transfers this private binding's unique root to cleanup.
-            self.release_root(binding._root);
+        let heap = &mut self.heap;
+        self.global_bindings.retain(|_, binding| {
+            if !binding.property {
+                heap.unroot(binding._root)
+                    .expect("the lexical binding owns its root");
+            }
+            binding.property
+        });
+        if self.global_bindings.is_empty() && self.reserved_global_binding_slots == 0 {
+            self.global_bindings = HashMap::new();
         }
+        self.reconcile_scheduling_ownership();
     }
 
     pub(super) fn global_binding_value(&self, name: &str) -> Result<Option<Value>, RuntimeError> {
@@ -717,43 +708,15 @@ impl Vm {
             "assign_binding_slot just verified this retained cell has a deleted eval value",
         );
         if self.script_global_slots.contains_key(&slot) {
-            let global = *self
-                .globals
-                .get("globalThis")
-                .expect("a global eval slot was installed after its global object was created");
-            let defined = self.with_roots(|heap| {
-                heap.define_own_property(
-                    global,
-                    name,
-                    PropertyDescriptor::data(value.clone(), true, true, true),
-                )
-            })?;
-            if !defined {
-                return Ok(());
-            }
-            let root = self.heap.root(cell)?;
-            if let Err(error) = self.with_roots(|heap| heap.set(cell, "value", value)) {
-                self.release_root(root);
-                return Err(error);
-            }
-            self.global_bindings.insert(
-                name.to_owned(),
-                GlobalBinding {
-                    cell,
-                    mutable: true,
-                    property: true,
-                    _root: root,
-                },
-            );
+            self.recreate_global_eval_binding(slot, name, cell, value)
         } else {
             // InitializeBinding can request recreation only for the declaring
             // eval's own var slot. Global slots were handled above; captures
             // of existing function eval vars and fresh declarations are both
             // recorded by prepare_dynamic_eval_bindings before interpretation.
             debug_assert!(self.eval_dynamic_slots.contains_key(&slot));
-            return self.recreate_function_eval_var(slot, name, cell, value);
+            self.recreate_function_eval_var(slot, name, cell, value)
         }
-        Ok(())
     }
 
     /// `delete name` for a name that statically resolved to an eval-created
@@ -1557,6 +1520,17 @@ impl Vm {
         captures: Vec<ObjectId>,
         global_var_environment: bool,
     ) -> Result<Value, RuntimeError> {
+        let result = self.execute_eval_inner(code, captures, global_var_environment);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn execute_eval_inner(
+        &mut self,
+        code: &Bytecode,
+        captures: Vec<ObjectId>,
+        global_var_environment: bool,
+    ) -> Result<Value, RuntimeError> {
         let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
         let mut prepared_maps = self.prepare_frame_maps(captures.len(), 0, 0)?;
         let _caller_payload = self.charge_execution_payload(self.bindings.iter().flatten().fold(
@@ -1663,13 +1637,23 @@ impl Vm {
         &mut self,
         code: &Bytecode,
     ) -> Result<(), RuntimeError> {
-        let slots = code.scopes.first().cloned().unwrap_or_default();
+        let result = self.prepare_eval_global_var_declarations_inner(code);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn prepare_eval_global_var_declarations_inner(
+        &mut self,
+        code: &Bytecode,
+    ) -> Result<(), RuntimeError> {
+        let slots = code.scopes.first().map(Vec::as_slice).unwrap_or_default();
         let global = self
             .global("globalThis")?
             .object_id()
             .expect("globalThis is an object");
+        let prepared = self.prepare_global_declaration_records(global, code, true)?;
 
-        for &slot in &slots {
+        for &slot in slots {
             let binding = &code.bindings[slot as usize];
             if binding.lexical {
                 continue;
@@ -1696,22 +1680,7 @@ impl Vm {
             }
         }
 
-        for &slot in &slots {
-            let binding = &code.bindings[slot as usize];
-            if binding.lexical {
-                continue;
-            }
-            let function = code.global_function_names.contains(&binding.name);
-            if !self.global_bindings.contains_key(&binding.name) {
-                if self.global_var_is_accessor(global, binding, function) {
-                    continue;
-                }
-                self.create_global_binding(global, binding, function, true)?;
-            }
-            self.script_global_slots
-                .insert(slot as usize, binding.name.clone());
-        }
-        Ok(())
+        self.publish_global_declaration_records(global, code, true, prepared)
     }
 
     /// Evaluates a new classic script in the current realm while another
@@ -1719,6 +1688,12 @@ impl Vm {
     /// path). It deliberately gets fresh script bindings and global `this`,
     /// but preserves the caller frame and the remaining resource budget.
     pub(super) fn execute_nested_script(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
+        let result = self.execute_nested_script_inner(code);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn execute_nested_script_inner(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
         let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
         // Global construction can refuse an allocation. Resolve it before
         // displacing the caller's frame so an entry refusal cannot strand
