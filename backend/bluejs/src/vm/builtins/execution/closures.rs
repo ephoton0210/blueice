@@ -304,6 +304,9 @@ impl Vm {
             self.caller_execution_payload_bytes()
                 .saturating_add(self.pending_execution_payload_bytes()),
         );
+        let caller_control = self.charge_execution_control(
+            self.displaced_control_bytes(execution_payload::ControlTransfer::Call),
+        );
         self.stack
             .push(receiver.object_id().map_or(Value::Undefined, Value::Object));
         let base = self.stack.len();
@@ -413,12 +416,26 @@ impl Vm {
                 Err(error) => entry_error = Some(error),
             }
         }
-        let frame_dynamic_eval_outer_bindings = self.dynamic_eval_outer_bindings.clone();
+        let can_suspend =
+            async_function || nested_debugger_target.is_some() || intermediate_debugger_frame;
+        let mut frame_dynamic_eval_outer_bindings = if can_suspend {
+            self.dynamic_eval_outer_bindings.clone()
+        } else {
+            Vec::new()
+        };
         let top_level_module = self.top_level_module;
         let remaining_instructions = self.remaining_instructions;
         let new_target = self.new_target.clone();
         let new_target_allowed = self.new_target_allowed;
-        let active_module_name = self.active_module_name.clone();
+        let mut active_module_name = if can_suspend {
+            self.active_module_name.clone()
+        } else {
+            None
+        };
+        let backup_control = self.charge_execution_control(
+            execution_payload::outer_binding_bytes(&frame_dynamic_eval_outer_bindings)
+                .saturating_add(active_module_name.as_ref().map_or(0, String::capacity)),
+        );
         let result_root = self.result_root.take();
         let mut suspended_parent_stack = None;
         let mut suspended_async = None;
@@ -440,6 +457,7 @@ impl Vm {
                     let stack = self.stack.split_off(frame_base);
                     let mut execution = self.suspend_module_execution();
                     let parent_stack = std::mem::replace(&mut execution.stack, stack);
+                    execution.refresh_execution_charges();
                     let templates = execution.templates.clone();
                     self.templates = templates;
                     let state = AsyncContinuation {
@@ -495,6 +513,7 @@ impl Vm {
                     let stack = self.stack.split_off(frame_base);
                     let mut execution = self.suspend_module_execution();
                     let parent_stack = std::mem::replace(&mut execution.stack, stack);
+                    execution.refresh_execution_charges();
                     self.next_debugger_frame_serial = next_frame_serial;
                     self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
                         frame_serial,
@@ -545,6 +564,7 @@ impl Vm {
                         let stack = self.stack.split_off(frame_base);
                         let mut execution = self.suspend_module_execution();
                         let parent_stack = std::mem::replace(&mut execution.stack, stack);
+                        execution.refresh_execution_charges();
                         self.debugger_nested_intermediate_continuation =
                             Some(IntermediateDebuggerContinuation {
                                 code: code.as_ref().clone(),
@@ -596,12 +616,13 @@ impl Vm {
             self.with_objects = with_objects;
             self.inherited_with_depth = inherited_with_depth;
             self.parameter_eval_env = parameter_eval_env;
-            self.dynamic_eval_outer_bindings = frame_dynamic_eval_outer_bindings;
+            self.dynamic_eval_outer_bindings =
+                std::mem::take(&mut frame_dynamic_eval_outer_bindings);
             self.top_level_module = top_level_module;
             self.remaining_instructions = remaining_instructions;
             self.new_target = new_target;
             self.new_target_allowed = new_target_allowed;
-            self.active_module_name = active_module_name;
+            self.active_module_name = active_module_name.take();
         } else {
             self.result_root = result_root;
             self.with_objects = with_objects;
@@ -634,6 +655,10 @@ impl Vm {
         self.class_field_initializer = class_field_initializer;
         self.stack.truncate(base - 1);
         drop(caller_payload);
+        drop(caller_control);
+        drop(frame_dynamic_eval_outer_bindings);
+        drop(active_module_name);
+        drop(backup_control);
         // A failure to suspend takes the same route as a failure of the body:
         // it ends the call (or rejects the async function's promise) below.
         let result = match suspended_async {

@@ -201,6 +201,7 @@ impl Vm {
         self.pending_completions.clear();
         self.completion_saves.clear();
         self.call_stack.clear();
+        self.release_finished_execution_control();
         self.refresh_scheduling_ownership();
         // WeakRef's KeepDuringJob guarantee ends only after the complete
         // script/module job (including abrupt completion cleanup) has run.
@@ -1571,6 +1572,9 @@ impl Vm {
             host_scheduling::value_payload_bytes(&self.completion),
             |bytes, value| bytes.saturating_add(host_scheduling::value_payload_bytes(value)),
         ));
+        let _caller_control = self.charge_execution_control(
+            self.displaced_control_bytes(execution_payload::ControlTransfer::Eval),
+        );
         let base = self.stack.len();
         self.stack.extend(
             self.bindings
@@ -1773,6 +1777,9 @@ impl Vm {
         // that frame in the nested execution state.
         let global_this = self.global("globalThis")?;
         let _caller_payload = self.charge_execution_payload(self.caller_execution_payload_bytes());
+        let _caller_control = self.charge_execution_control(
+            self.displaced_control_bytes(execution_payload::ControlTransfer::NestedScript),
+        );
         let base = self.stack.len();
         self.stack.extend(
             self.bindings

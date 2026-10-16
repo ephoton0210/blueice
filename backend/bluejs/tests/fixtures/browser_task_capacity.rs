@@ -384,7 +384,10 @@ fn rejection_uses_existing_slots() {
 fn assert_file_requeue_refused(count_limit: bool) {
     let mut vm = page_vm();
     vm.install_web_file_api().unwrap();
-    execute(&mut vm, "var reader=new FileReader(); reader.onloadstart=()=>{for(var i=0;i<8;i++) AbortSignal.timeout(1);}; reader.readAsText(new Blob(['x'])); 0;");
+    // Native capacity growth must exceed the callback's own frame cost so
+    // refusal occurs at successor admission after the finite callback returns.
+    let entries = if count_limit { 8 } else { 32 };
+    execute(&mut vm, &format!("var reader=new FileReader(); reader.onloadstart=()=>{{for(var i=0;i<{entries};i++) AbortSignal.timeout(1);}}; reader.readAsText(new Blob(['x'])); 0;"));
     assert_eq!(vm.browser_tasks.capacity(), 4);
     let root = match &vm.browser_tasks[0] {
         BrowserTask::FileRead { root, .. } => *root,
@@ -404,15 +407,15 @@ fn assert_file_requeue_refused(count_limit: bool) {
     } else {
         Some(leave_room(
             &mut vm,
-            12 * std::mem::size_of::<BrowserTask>() - 1,
+            (2 * entries - 4) * std::mem::size_of::<BrowserTask>() - 1,
         ))
     };
     assert_eq!(
         vm.run_own_browser_task(0),
         Err(RuntimeError::SchedulingLimit)
     );
-    assert_eq!(vm.browser_tasks.len(), 8, "count_limit={count_limit}");
-    assert_eq!(vm.browser_tasks.capacity(), 8);
+    assert_eq!(vm.browser_tasks.len(), entries, "count_limit={count_limit}");
+    assert_eq!(vm.browser_tasks.capacity(), entries);
     assert!(
         vm.heap.unroot(root).is_err(),
         "refused requeue must release its reader root"

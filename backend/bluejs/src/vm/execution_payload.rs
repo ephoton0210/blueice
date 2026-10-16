@@ -2,20 +2,138 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Primitive buffers owned by active and displaced execution contexts.
+//! Primitive buffers and control storage owned by execution contexts.
 
 use super::host_scheduling::{completion_payload_bytes, value_payload_bytes, values_bytes};
 use super::*;
 use std::cell::Cell;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/execution_control_capacity.rs"]
+mod control_capacity_tests;
+
+/// These transfers displace different owners. Ordinary calls forward dynamic
+/// eval environments into the callee; generator entry saves them in Rust.
+pub(super) enum ControlTransfer {
+    Call,
+    Generator,
+    Eval,
+    NestedScript,
+}
+
+macro_rules! frame_control_bytes {
+    ($frame:expr) => {{
+        use super::host_scheduling::{map_slots, named_cells_bytes, named_slots_bytes, slots};
+        let frame = $frame;
+        let mut bytes = slots(&frame.stack)
+            .saturating_add(slots(&frame.arguments))
+            .saturating_add(slots(&frame.bindings))
+            .saturating_add(binding_metadata_bytes(&frame.binding_metadata))
+            .saturating_add(slots(&frame.with_objects))
+            .saturating_add(scope_bytes(&frame.active_scopes, &frame.active_scope_slots))
+            .saturating_add(slots(&frame.pending_completions))
+            .saturating_add(slots(&frame.completion_saves))
+            .saturating_add(map_slots(&frame.cells))
+            .saturating_add(named_cells_bytes(&frame.dynamic_eval_bindings))
+            .saturating_add(named_slots_bytes(&frame.eval_dynamic_slots))
+            .saturating_add(outer_binding_bytes(&frame.dynamic_eval_outer_bindings))
+            .saturating_add(named_slots_bytes(&frame.script_global_slots))
+            .saturating_add(slots(&frame.variable_scope_lexicals))
+            .saturating_add(map_slots(&frame.templates))
+            .saturating_add(
+                frame
+                    .active_module_name
+                    .as_ref()
+                    .map_or(0, String::capacity),
+            );
+        for name in &frame.variable_scope_lexicals {
+            bytes = bytes.saturating_add(name.capacity());
+        }
+        bytes
+    }};
+}
+
+fn binding_metadata_bytes(values: &Vec<Binding>) -> usize {
+    values
+        .iter()
+        .fold(host_scheduling::slots(values), |bytes, binding| {
+            bytes.saturating_add(binding.name.capacity())
+        })
+}
+
+fn scope_bytes(scopes: &Vec<u32>, slots: &Vec<Vec<u32>>) -> usize {
+    slots.iter().fold(
+        host_scheduling::slots(scopes).saturating_add(host_scheduling::slots(slots)),
+        |bytes, scope| bytes.saturating_add(host_scheduling::slots(scope)),
+    )
+}
+
+pub(super) fn outer_binding_bytes(values: &Vec<HashMap<String, DynamicEvalBinding>>) -> usize {
+    values
+        .iter()
+        .fold(host_scheduling::slots(values), |bytes, bindings| {
+            bytes.saturating_add(host_scheduling::named_cells_bytes(bindings))
+        })
+}
+
 pub(super) struct ExecutionPayloadCharge {
     counter: Rc<Cell<usize>>,
     bytes: usize,
+    enabled: bool,
 }
 
 impl ExecutionPayloadCharge {
     pub(super) fn bytes(&self) -> usize {
         self.bytes
+    }
+
+    fn resize(&mut self, bytes: usize) {
+        self.counter.set(self.counter.get() - self.bytes + bytes);
+        self.bytes = bytes;
+    }
+}
+
+impl SuspendedModuleExecution {
+    pub(super) fn payload_bytes(&self) -> usize {
+        let mut bytes = values_bytes(&self.stack)
+            .saturating_add(values_bytes(&self.arguments))
+            .saturating_add(values_bytes(&self.with_objects));
+        for value in self.bindings.iter().flatten().chain([
+            &self.this,
+            &self.callee,
+            &self.new_target,
+            &self.completion,
+        ]) {
+            bytes = bytes.saturating_add(value_payload_bytes(value));
+        }
+        for completion in &self.pending_completions {
+            bytes = bytes.saturating_add(completion_payload_bytes(completion));
+        }
+        for (value, _) in &self.completion_saves {
+            bytes = bytes.saturating_add(value_payload_bytes(value));
+        }
+        bytes
+    }
+
+    pub(super) fn control_bytes(&self) -> usize {
+        frame_control_bytes!(self)
+    }
+
+    /// Stack splitting and debugger edits change both the allocation and its
+    /// values. A returned primitive can enter a still-paused parent frame.
+    pub(super) fn refresh_execution_charges(&mut self) {
+        let payload = self.payload_bytes();
+        self.payload_charge.resize(if self.payload_charge.enabled {
+            payload
+        } else {
+            0
+        });
+        let bytes = self.control_bytes();
+        self.control_charge.resize(if self.control_charge.enabled {
+            bytes
+        } else {
+            0
+        });
     }
 }
 
@@ -26,6 +144,84 @@ impl Drop for ExecutionPayloadCharge {
 }
 
 impl Vm {
+    /// Finished page jobs return their frame allocations. Persistent template
+    /// identities and module association remain owned by the realm.
+    pub(super) fn release_finished_execution_control(&mut self) {
+        if self.host_scheduling.is_none() {
+            return;
+        }
+        self.stack = Vec::new();
+        self.bindings = Vec::new();
+        self.binding_metadata = Vec::new();
+        self.arguments = Vec::new();
+        self.with_objects = Vec::new();
+        self.active_scopes = Vec::new();
+        self.active_scope_slots = Vec::new();
+        self.pending_completions = Vec::new();
+        self.completion_saves = Vec::new();
+        self.call_stack = Vec::new();
+        self.cells = HashMap::new();
+        self.dynamic_eval_bindings = HashMap::new();
+        self.dynamic_eval_outer_bindings = Vec::new();
+        self.eval_dynamic_slots = HashMap::new();
+        self.script_global_slots = HashMap::new();
+        self.variable_scope_lexicals = Vec::new();
+    }
+
+    pub(super) fn charge_execution_control(&self, bytes: usize) -> ExecutionPayloadCharge {
+        let bytes = if self.host_scheduling.is_some() {
+            bytes
+        } else {
+            0
+        };
+        let counter = self.displaced_execution_control_bytes.clone();
+        counter.set(counter.get().saturating_add(bytes));
+        ExecutionPayloadCharge {
+            counter,
+            bytes,
+            enabled: self.host_scheduling.is_some(),
+        }
+    }
+
+    pub(super) fn current_execution_control_bytes(&self) -> usize {
+        frame_control_bytes!(self)
+    }
+
+    pub(super) fn displaced_control_bytes(&self, transfer: ControlTransfer) -> usize {
+        use host_scheduling::{map_slots, named_cells_bytes, named_slots_bytes, slots};
+        let base = slots(&self.bindings)
+            .saturating_add(binding_metadata_bytes(&self.binding_metadata))
+            .saturating_add(map_slots(&self.cells))
+            .saturating_add(named_slots_bytes(&self.script_global_slots))
+            .saturating_add(scope_bytes(&self.active_scopes, &self.active_scope_slots));
+        let base = if matches!(transfer, ControlTransfer::NestedScript) {
+            base
+        } else {
+            base.saturating_add(named_slots_bytes(&self.eval_dynamic_slots))
+        };
+        if matches!(transfer, ControlTransfer::Eval) {
+            return base;
+        }
+        let base = base
+            .saturating_add(slots(&self.arguments))
+            .saturating_add(slots(&self.with_objects));
+        if matches!(transfer, ControlTransfer::NestedScript) {
+            return base;
+        }
+        let mut bytes = base
+            .saturating_add(slots(&self.pending_completions))
+            .saturating_add(slots(&self.completion_saves))
+            .saturating_add(slots(&self.variable_scope_lexicals));
+        for name in &self.variable_scope_lexicals {
+            bytes = bytes.saturating_add(name.capacity());
+        }
+        if matches!(transfer, ControlTransfer::Generator) {
+            bytes = bytes
+                .saturating_add(named_cells_bytes(&self.dynamic_eval_bindings))
+                .saturating_add(outer_binding_bytes(&self.dynamic_eval_outer_bindings));
+        }
+        bytes
+    }
     /// Normal dispatch moves primitive buffers to its Rust argument owner.
     /// Exact debugger continuations retain their original operand snapshots.
     pub(super) fn take_call_operand(&mut self, index: usize) -> Value {
@@ -45,7 +241,11 @@ impl Vm {
         };
         let counter = self.displaced_execution_bytes.clone();
         counter.set(counter.get().saturating_add(bytes));
-        ExecutionPayloadCharge { counter, bytes }
+        ExecutionPayloadCharge {
+            counter,
+            bytes,
+            enabled: self.host_scheduling.is_some(),
+        }
     }
 
     /// Fields replaced by ordinary calls and generator entry. Operand-stack
@@ -112,12 +312,13 @@ impl Vm {
             return 0;
         }
         self.current_execution_payload_bytes()
+            .saturating_add(self.current_execution_control_bytes())
+            .saturating_add(host_scheduling::slots(&self.call_stack))
+            .saturating_add(self.displaced_execution_control_bytes.get())
             .saturating_add(self.displaced_execution_bytes.get())
-            .saturating_add(
-                self.pending_tail_call
-                    .as_ref()
-                    .map_or(0, |call| values_bytes(call)),
-            )
+            .saturating_add(self.pending_tail_call.as_ref().map_or(0, |call| {
+                host_scheduling::slots(call).saturating_add(values_bytes(call))
+            }))
     }
 
     /// Check at interpreter/native safepoints, including operations which

@@ -199,6 +199,9 @@ impl Vm {
             self.caller_execution_payload_bytes()
                 .saturating_add(self.pending_execution_payload_bytes()),
         );
+        let _caller_control = self.charge_execution_control(
+            self.displaced_control_bytes(execution_payload::ControlTransfer::Generator),
+        );
         self.stack
             .push(receiver.object_id().map_or(Value::Undefined, Value::Object));
         let base = self.stack.len();
@@ -593,6 +596,9 @@ impl Vm {
             self.caller_execution_payload_bytes()
                 .saturating_add(self.pending_execution_payload_bytes()),
         );
+        let caller_control = self.charge_execution_control(
+            self.displaced_control_bytes(execution_payload::ControlTransfer::Generator),
+        );
         let base = self.stack.len();
         let remaining_instructions = self.remaining_instructions;
         self.stack.extend(
@@ -635,7 +641,7 @@ impl Vm {
         self.stack
             .extend(pending_roots.into_iter().map(Value::Object));
         let frame_base = self.stack.len();
-        self.stack.extend(frame_stack.iter().cloned());
+        self.stack.extend(frame_stack);
 
         let with_objects = std::mem::replace(&mut self.with_objects, frame_with_objects);
         // The objects the function itself closed over (and its parameter
@@ -688,6 +694,8 @@ impl Vm {
             Some(module) => self.active_module_name.replace(module),
             None => self.active_module_name.clone(),
         };
+        let module_name_control =
+            self.charge_execution_control(active_module_name.as_ref().map_or(0, String::capacity));
         let variable_scope = std::mem::replace(&mut self.variable_scope, frame_variable_scope);
         let variable_scope_lexicals = std::mem::replace(
             &mut self.variable_scope_lexicals,
@@ -840,6 +848,7 @@ impl Vm {
                     let stack = self.stack.split_off(frame_base);
                     let mut execution = self.suspend_module_execution();
                     let parent_stack = std::mem::replace(&mut execution.stack, stack);
+                    execution.refresh_execution_charges();
                     self.stack = parent_stack;
                     let templates = execution.templates.clone();
                     self.templates = templates;
@@ -909,6 +918,8 @@ impl Vm {
         self.active_module_name = active_module_name;
         self.stack.truncate(base);
         drop(caller_payload);
+        drop(caller_control);
+        drop(module_name_control);
         stored?;
         if let Some((state, promise)) = suspended_async {
             self.suspend_async_await(state, promise)?;

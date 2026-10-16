@@ -840,6 +840,7 @@ impl Vm {
                                 }
                                 _ => unreachable!("nested caller retains a direct-call opcode"),
                             }
+                            root.execution.refresh_execution_charges();
                             root.execution.remaining_instructions = child_remaining_instructions;
                             root.pc += call.opcode.width();
                             return Ok(VmDebuggerNestedExecutionState::FrameReturned {

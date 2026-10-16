@@ -37,11 +37,16 @@ fn scheduling_capacity_refuses_timer_growth_before_ids_or_entries_change() {
     )
     .unwrap();
     let capacity = vm.host_timers.capacity();
+    let callback = vm.lookup_global_name("cb").unwrap().unwrap();
     assert_eq!(capacity, vm.host_timers.len());
     let next_id = vm.host_timer_next_id;
     let _owner = leave_room(&mut vm, capacity * std::mem::size_of::<HostTimer>() - 1);
     assert_eq!(
-        execute(&mut vm, "setTimeout(cb,100);"),
+        vm.host_timer_call(
+            host_timers::HostTimerFunction::SetTimeout,
+            &[callback, Value::Number(100.0)],
+            false,
+        ),
         Err(RuntimeError::SchedulingLimit)
     );
     assert_eq!(vm.host_timers.len(), 8);
@@ -60,10 +65,15 @@ fn scheduling_capacity_uses_existing_timer_slots_without_a_growth_charge() {
     )
     .unwrap();
     let capacity = vm.host_timers.capacity();
+    let callback = vm.lookup_global_name("cb").unwrap().unwrap();
     assert!(vm.host_timers.len() < capacity);
     let _owner = leave_room(&mut vm, std::mem::size_of::<RootId>());
     assert_eq!(
-        execute(&mut vm, "setTimeout(cb,100);"),
+        vm.host_timer_call(
+            host_timers::HostTimerFunction::SetTimeout,
+            &[callback, Value::Number(100.0)],
+            false,
+        ),
         Ok(Value::Number(6.0))
     );
     assert_eq!(vm.host_timers.capacity(), capacity);
@@ -81,6 +91,7 @@ fn scheduling_capacity_refuses_frame_growth_before_handles_or_entries_change() {
     )
     .unwrap();
     let capacity = vm.host_animation_frames.capacity();
+    let callback = vm.lookup_global_name("cb").unwrap().unwrap();
     assert_eq!(capacity, vm.host_animation_frames.len());
     let next_id = vm.host_animation_frame_next_id;
     let _owner = leave_room(
@@ -88,7 +99,11 @@ fn scheduling_capacity_refuses_frame_growth_before_handles_or_entries_change() {
         capacity * std::mem::size_of::<HostAnimationFrame>() - 1,
     );
     assert_eq!(
-        execute(&mut vm, "requestAnimationFrame(cb);"),
+        vm.host_animation_frame_call(
+            host_animation_frames::HostAnimationFrameFunction::Request,
+            &[callback],
+            false,
+        ),
         Err(RuntimeError::SchedulingLimit)
     );
     assert_eq!(vm.host_animation_frames.len(), 8);
@@ -106,10 +121,15 @@ fn scheduling_capacity_uses_existing_frame_slots_without_a_growth_charge() {
     )
     .unwrap();
     let capacity = vm.host_animation_frames.capacity();
+    let callback = vm.lookup_global_name("cb").unwrap().unwrap();
     assert!(vm.host_animation_frames.len() < capacity);
     let _owner = leave_room(&mut vm, 0);
     assert_eq!(
-        execute(&mut vm, "requestAnimationFrame(cb);"),
+        vm.host_animation_frame_call(
+            host_animation_frames::HostAnimationFrameFunction::Request,
+            &[callback],
+            false,
+        ),
         Ok(Value::Number(6.0))
     );
     assert_eq!(vm.host_animation_frames.capacity(), capacity);

@@ -872,6 +872,7 @@ struct Test262ForeignBufferMirror {
 /// an intervening collection.
 struct SuspendedModuleExecution {
     payload_charge: execution_payload::ExecutionPayloadCharge,
+    control_charge: execution_payload::ExecutionPayloadCharge,
     result_root: Option<RootId>,
     stack: Vec<Value>,
     bindings: Vec<Option<Value>>,
@@ -1238,6 +1239,7 @@ pub struct Vm {
     host_scheduling: Option<SchedulingScope>,
     active_scheduling_bytes: usize,
     displaced_execution_bytes: Rc<std::cell::Cell<usize>>,
+    displaced_execution_control_bytes: Rc<std::cell::Cell<usize>>,
     last_execution_payload_bytes: usize,
     browser_tasks: VecDeque<browser_tasks::BrowserTask>,
     host_finalization_tasks: VecDeque<host_finalization::HostFinalizationTask>,

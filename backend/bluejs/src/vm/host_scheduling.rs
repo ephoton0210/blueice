@@ -448,15 +448,15 @@ pub(super) fn values_bytes(values: &[Value]) -> usize {
         total.saturating_add(value_payload_bytes(value))
     })
 }
-fn slots<T>(values: &Vec<T>) -> usize {
+pub(super) fn slots<T>(values: &Vec<T>) -> usize {
     values.capacity().saturating_mul(std::mem::size_of::<T>())
 }
-fn map_slots<K, V>(values: &HashMap<K, V>) -> usize {
+pub(super) fn map_slots<K, V>(values: &HashMap<K, V>) -> usize {
     values
         .capacity()
         .saturating_mul(std::mem::size_of::<(K, V)>())
 }
-fn named_cells_bytes(values: &HashMap<String, DynamicEvalBinding>) -> usize {
+pub(super) fn named_cells_bytes(values: &HashMap<String, DynamicEvalBinding>) -> usize {
     values
         .iter()
         .fold(map_slots(values), |bytes, (name, binding)| {
@@ -465,7 +465,7 @@ fn named_cells_bytes(values: &HashMap<String, DynamicEvalBinding>) -> usize {
                 .saturating_add(slots(&binding.shadowed_cells))
         })
 }
-fn named_slots_bytes(values: &HashMap<usize, String>) -> usize {
+pub(super) fn named_slots_bytes(values: &HashMap<usize, String>) -> usize {
     values.values().fold(map_slots(values), |bytes, name| {
         bytes.saturating_add(name.capacity())
     })
@@ -496,92 +496,12 @@ pub(super) fn runtime_error_payload_bytes(error: &RuntimeError) -> usize {
     }
 }
 fn suspended_bytes(frame: &SuspendedModuleExecution) -> usize {
-    let mut bytes = frame
-        .stack
-        .capacity()
-        .saturating_mul(std::mem::size_of::<Value>())
-        .saturating_add(values_bytes(&frame.stack));
-    bytes = bytes
-        .saturating_add(
-            frame
-                .arguments
-                .capacity()
-                .saturating_mul(std::mem::size_of::<Value>()),
-        )
-        .saturating_add(values_bytes(&frame.arguments));
-    bytes = bytes.saturating_add(
-        frame
-            .bindings
-            .capacity()
-            .saturating_mul(std::mem::size_of::<Option<Value>>()),
-    );
-    for value in frame.bindings.iter().flatten() {
-        bytes = bytes.saturating_add(value_payload_bytes(value));
-    }
-    bytes = bytes.saturating_add(
-        frame
-            .binding_metadata
-            .capacity()
-            .saturating_mul(std::mem::size_of::<Binding>()),
-    );
-    for binding in &frame.binding_metadata {
-        bytes = bytes.saturating_add(binding.name.capacity());
-    }
-    bytes = bytes
-        .saturating_add(
-            frame
-                .with_objects
-                .capacity()
-                .saturating_mul(std::mem::size_of::<Value>()),
-        )
-        .saturating_add(values_bytes(&frame.with_objects));
-    for value in [
-        &frame.this,
-        &frame.callee,
-        &frame.new_target,
-        &frame.completion,
-    ] {
-        bytes = bytes.saturating_add(value_payload_bytes(value));
-    }
-    bytes = bytes
-        .saturating_add(slots(&frame.active_scopes))
-        .saturating_add(slots(&frame.active_scope_slots));
-    for scope in &frame.active_scope_slots {
-        bytes = bytes.saturating_add(slots(scope));
-    }
-    bytes = bytes.saturating_add(slots(&frame.pending_completions));
-    for completion in &frame.pending_completions {
-        bytes = bytes.saturating_add(completion_payload_bytes(completion));
-    }
-    bytes = bytes.saturating_add(slots(&frame.completion_saves));
-    for (value, _) in &frame.completion_saves {
-        bytes = bytes.saturating_add(value_payload_bytes(value));
-    }
-    bytes = bytes
-        .saturating_add(map_slots(&frame.cells))
-        .saturating_add(named_cells_bytes(&frame.dynamic_eval_bindings))
-        .saturating_add(named_slots_bytes(&frame.eval_dynamic_slots));
-    bytes = bytes.saturating_add(slots(&frame.dynamic_eval_outer_bindings));
-    for bindings in &frame.dynamic_eval_outer_bindings {
-        bytes = bytes.saturating_add(named_cells_bytes(bindings));
-    }
-    bytes = bytes
-        .saturating_add(named_slots_bytes(&frame.script_global_slots))
-        .saturating_add(slots(&frame.variable_scope_lexicals));
-    for name in &frame.variable_scope_lexicals {
-        bytes = bytes.saturating_add(name.capacity());
-    }
-    bytes = bytes
-        .saturating_add(map_slots(&frame.templates))
-        .saturating_add(
-            frame
-                .active_module_name
-                .as_ref()
-                .map_or(0, String::capacity),
-        );
-    // Primitive buffers have a lease while suspended as well as while a
-    // Rust frame owns them; only the remaining slots/metadata are added here.
-    bytes.saturating_sub(frame.payload_charge.bytes())
+    // Leases follow Rust-held and suspended owners without charging them twice.
+    frame
+        .control_bytes()
+        .saturating_add(frame.payload_bytes())
+        .saturating_sub(frame.payload_charge.bytes())
+        .saturating_sub(frame.control_charge.bytes())
 }
 
 impl AsyncContinuation {

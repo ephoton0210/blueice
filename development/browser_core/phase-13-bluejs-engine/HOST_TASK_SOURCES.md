@@ -144,6 +144,29 @@ evaluation-list buffer also retain scoped charges while a later dependency
 executes. Wholly native staging, full module caches and active execution control
 containers remain in the broader native-accounting work.
 
+### Native execution ownership
+
+Active execution owns its operand/argument/binding buffers, binding names,
+scope vectors and nested slot buffers, completion storage, cell/eval maps,
+dynamic outer environments, lexical names, template table, module association
+and call stack. Their reported capacity joins primitive payload accounting at
+execution safepoints. Scoped control charges follow allocations displaced into
+Rust callers. Call, eval, nested-script and generator transfers select the
+owners each path actually displaces; ordinary calls forward eval maps into the
+callee and make recovery copies only when async/debugger suspension can occur.
+Necessary recovery copies retain their own charge.
+
+Suspended frames retain both primitive and control charges, and their container
+records add only storage outside those charges. Stack splits and debugger stack
+edits refresh both saved charges, including a primitive returned into a paused
+parent; restore returns ownership
+to the active context. Generator resume consumes its saved operand vector
+instead of keeping an unused cloned copy across the body. Completed bounded
+root scripts return their frame containers; persistent template identity and
+module association remain charged to the realm. Interpreter-local iteration/
+handler storage, call-entry staging and admission before every possible active
+container allocation remain open in the broader control-storage work.
+
 ### Native-payload collection pressure
 
 Large Promise results and suspended-frame strings enter the native scheduling
