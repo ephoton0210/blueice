@@ -16,12 +16,9 @@ fn bounded_vm() -> Vm {
 
 fn synthesize(vm: &mut Vm) -> Result<HashMap<String, Bytecode>, RuntimeError> {
     let mut modules = HashMap::new();
-    vm.ensure_synthetic_module(
-        "value\0text",
-        SyntheticModuleType::Text,
-        &mut modules,
-        &mut Vec::new(),
-    )?;
+    let code =
+        vm.create_synthetic_module_code("value\0text", SyntheticModuleType::Text, &mut Vec::new())?;
+    modules.insert("value\0text".into(), code);
     Ok(modules)
 }
 
@@ -140,6 +137,7 @@ fn synthetic_value_ownership_preloaded_values_attach_once_and_refused_activation
     unbounded.use_bounded_host_microtask_checkpoints().unwrap();
     let expected = unbounded.own_scheduling_usage().payload_bytes
         + unbounded.text_module_sources.retained_bytes()
+        + unbounded.module_registry.retained_bytes()
         + bytes;
     assert_eq!(unbounded.host_scheduling_snapshot().payload_bytes, expected);
     unbounded.use_bounded_host_microtask_checkpoints().unwrap();
@@ -151,7 +149,7 @@ fn synthetic_value_ownership_preloaded_values_attach_once_and_refused_activation
     let mut target = bounded_vm();
     let _peer = leave_room(&mut target, 0);
     let before = target.host_scheduling_snapshot().payload_bytes;
-    target.module_registry = modules;
+    target.module_registry = ModuleRegistry::new(modules, None).unwrap();
     assert_eq!(
         target.use_bounded_host_microtask_checkpoints(),
         Err(RuntimeError::SchedulingLimit)
@@ -303,7 +301,8 @@ fn synthesize_json(
     vm.set_json_module_sources(HashMap::from([("json".into(), source.into())]));
     vm.remaining_instructions = 100;
     let mut modules = HashMap::new();
-    vm.ensure_synthetic_module("json\0json", SyntheticModuleType::Json, &mut modules, roots)?;
+    let code = vm.create_synthetic_module_code("json\0json", SyntheticModuleType::Json, roots)?;
+    modules.insert("json\0json".into(), code);
     Ok(modules)
 }
 
@@ -361,17 +360,11 @@ fn synthetic_value_ownership_json_ast_and_returned_value_coexistence_is_admitted
     let _peer = leave_room(&mut vm, room);
     let before = vm.host_scheduling_snapshot().payload_bytes;
     let managed = vm.heap.stats().managed_bytes;
-    let mut modules = HashMap::new();
     assert_eq!(
-        vm.ensure_synthetic_module(
-            "json\0json",
-            SyntheticModuleType::Json,
-            &mut modules,
-            &mut Vec::new()
-        ),
+        vm.create_synthetic_module_code("json\0json", SyntheticModuleType::Json, &mut Vec::new())
+            .map(|_| ()),
         Err(RuntimeError::SchedulingLimit)
     );
-    assert!(modules.is_empty());
     assert_eq!(vm.heap.stats().managed_bytes, managed);
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
 }

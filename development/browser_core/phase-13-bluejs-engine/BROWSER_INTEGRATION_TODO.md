@@ -2265,6 +2265,82 @@ Logs use `/private/tmp/blueice-json-module-`; selection names are listed in
 and staged/committed blob checks. No network/service replay, fresh full Test262,
 real Core/MCP replay, coverage or integrated acceptance is claimed.
 
+#### Compiled module registry ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: installed compiled registries and immutable snapshots retain admitted
+table/key/root-code buffers; staged copies and growth remain charged until
+publication or refusal. Preserve previous host registry/referrer on rejection,
+share unchanged snapshots and keep realm-local synthetic objects isolated.
+
+- [x] Reproduce tiny uncharged-install, replacement and deep-copy failures.
+- [x] Implement checked snapshots, staging and publication; validate activation,
+      growth, refusal, realm inheritance, GC and final-drop cleanup.
+- [x] Run finite offline regression/static checks, update evidence and commit
+      with a detailed English message.
+- [ ] Complete shared child/source/diagnostic program storage, compiler/producer
+      scratch and other graph/cache/service owners plus integrated acceptance.
+      M1u remains the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-module-registry-red-20261017.log`
+(zero passed, three failed). Initial fixed log: `development-20261017.log`
+under the same prefix (three passed). Immutable snapshots charge their header,
+logical table/key capacities and root code buffers under the existing Value
+payload model, including diagnostic instruction-owner vectors. References add
+no deep copy or charge; final drop releases storage, including empty reserved
+tables and terminal cleanup.
+
+Two additional activation reds are in `activation-red-20261017.log` under the
+same prefix (zero passed, two failed): activation returns success for a scalar
+owner already beyond the limit, and missing referrer bytes permit a peer to
+exceed the document's actual remaining room. Enable execution accounting before
+initial measurement and retain the scope on failure. Initial/activation groups
+now pass together in `activation-development-20261017.log` (five passed).
+
+The expanded red log `expanded-red-20261017.log` reports seventeen passed and
+two failed: cloning reserves unused source capacity, and refused ShadowRealm
+filtering leaves a nine-byte referrer contribution in the peer ledger. Clone
+planning now uses new vector/string lengths, validates actual capacities, and
+publishes the name-lease refund on early failure. All nineteen expanded groups
+pass in `expanded-20261017.log` and the final fixed regression.
+
+Host installation admits the incoming registry and referrer while old owners
+coexist, retaining the prior state on refusal. Borrowed host graphs admit their
+copy before graph mutation. Internal reads share snapshots; only the first
+draft insertion clones root buffers. Table growth admits old/new coexistence,
+moves existing entries and merges previously admitted ownership. Refused growth
+preserves prior data/capacity. Reserved source vectors do not inflate a clone's
+new-buffer requirement. Private snapshots cannot attach to another document.
+
+Preparation failures release newly synthesized roots. A linking failure before
+evaluation restores the old snapshot and root prefix so no unrooted synthetic
+object remains cached. Unchanged ShadowRealm code shares one owner; object
+exports require a checked filtered copy before capability creation. Parent
+records remain intact and discarded final realms refund their code storage.
+
+Synthetic record construction is separate from registry retention. Component
+fixtures keep their returned records in host-owned maps, while public graph and
+registry fixtures validate installed metadata admission. Three prior aggregate
+ledger assertions now include the still-live compiled snapshot; the parent/child
+case also asserts a shared buffer pointer and counts that storage once. Walk,
+name and conversion leases still release independently of retained caches.
+
+Final bounded validation: **713 passed, zero failed, zero ignored** across 38
+test executables and 63 fixed selections. Nineteen new groups join the previous
+694 ownership/semantic/GC/JSON/debugger checks. The same seven prior pressure/
+large-allocation cases remain filtered and JSON resource sweeps are not selected.
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass. Inputs are tiny modules and scalar owners without
+represented large buffers or physical resource-exhaustion workloads.
+
+Logs use `/private/tmp/blueice-module-registry-`; selection names are listed in
+`controls-run-20261017.log` and the fixed offline runner is
+`controls-20261017.py`. Final new-group and static logs are
+`{registries,fmt,clippy}-20261017.log`. Receipt:
+`target/module-registry-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. No network/service replay, fresh full Test262,
+real Core/MCP replay, coverage or integrated acceptance is claimed. Shared
+program buffers and wider native storage remain open, beyond this root owner.
+
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
 Acceptance: account for both dependency maps' table capacity, keys, dependency

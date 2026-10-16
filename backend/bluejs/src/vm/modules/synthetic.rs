@@ -73,7 +73,7 @@ impl Vm {
         &mut self,
         key: &str,
         module_type: SyntheticModuleType,
-        modules: &mut HashMap<String, Bytecode>,
+        modules: &mut ModuleRegistryDraft,
         roots: &mut Vec<RootId>,
     ) -> Result<(), RuntimeError> {
         if let Some(code) = modules.get(key) {
@@ -84,6 +84,18 @@ impl Vm {
             }
             return Ok(());
         }
+        let code = self.create_synthetic_module_code(key, module_type, roots)?;
+        modules.insert(key, code, self.host_scheduling.as_ref())
+    }
+
+    /// Constructs a host-owned record. The graph draft separately admits its
+    /// compiled table/key/root buffers before retaining this record.
+    pub(super) fn create_synthetic_module_code(
+        &mut self,
+        key: &str,
+        module_type: SyntheticModuleType,
+        roots: &mut Vec<RootId>,
+    ) -> Result<Bytecode, RuntimeError> {
         let (path, _) = ModuleType::split_module_key(key);
         let value = match module_type {
             SyntheticModuleType::Json => {
@@ -159,8 +171,7 @@ impl Vm {
             local_slot: 0,
         });
         code.synthetic_default_export = Some(value);
-        modules.insert(key.to_string(), code);
-        Ok(())
+        Ok(code)
     }
 
     /// Scans a fresh static module graph's own requests for a `with`
@@ -172,7 +183,7 @@ impl Vm {
     /// is needed.
     pub(super) fn register_static_synthetic_modules(
         &mut self,
-        modules: &mut HashMap<String, Bytecode>,
+        modules: &mut ModuleRegistryDraft,
         roots: &mut Vec<RootId>,
     ) -> Result<(), RuntimeError> {
         let mut targets = Vec::new();
@@ -257,7 +268,11 @@ mod tests {
         let (_, module_type) = ModuleType::split_module_key(key);
         let synthetic_type = SyntheticModuleType::from_module_type(module_type)
             .expect("test keys always name a synthetic module type");
-        let result = vm.ensure_synthetic_module(key, synthetic_type, &mut modules, &mut roots);
+        let result = vm
+            .create_synthetic_module_code(key, synthetic_type, &mut roots)
+            .map(|code| {
+                modules.insert(key.to_string(), code);
+            });
         (result, modules, roots.len())
     }
 
@@ -305,7 +320,9 @@ mod tests {
     fn a_module_that_already_exists_is_not_synthesized_again() {
         let mut vm = vm_with_sources();
         let key = ModuleType::Text.module_key("t/x.txt");
-        let mut modules = HashMap::from([(key.clone(), Bytecode::empty())]);
+        let registry =
+            ModuleRegistry::new(HashMap::from([(key.clone(), Bytecode::empty())]), None).unwrap();
+        let mut modules = ModuleRegistryDraft::new(registry);
         let mut roots = Vec::new();
         assert_eq!(
             vm.ensure_synthetic_module(&key, SyntheticModuleType::Text, &mut modules, &mut roots),

@@ -483,7 +483,7 @@ fn module_dependency_resource_abort_refunds_walk_leases() {
     assert_eq!(vm.displaced_execution_bytes.get(), 0);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
+        vm.own_scheduling_usage().payload_bytes + vm.module_registry.retained_bytes()
     );
 }
 

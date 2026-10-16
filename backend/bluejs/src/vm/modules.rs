@@ -254,6 +254,19 @@ impl Vm {
         is_dynamic_import: bool,
         phase: ImportPhase,
     ) -> Result<Value, RuntimeError> {
+        self.synchronize_scheduling_usage()?;
+        let registry = ModuleRegistry::copy_host(modules, self.host_scheduling.as_ref())?;
+        self.execute_module_registry_inner(entry, &registry, drain_jobs, is_dynamic_import, phase)
+    }
+
+    pub(super) fn execute_module_registry_inner(
+        &mut self,
+        entry: &str,
+        modules: &ModuleRegistry,
+        drain_jobs: bool,
+        is_dynamic_import: bool,
+        phase: ImportPhase,
+    ) -> Result<Value, RuntimeError> {
         self.execute_module_graph_with_frontier(
             entry,
             modules,
@@ -267,12 +280,13 @@ impl Vm {
     pub(super) fn execute_module_graph_with_frontier(
         &mut self,
         entry: &str,
-        modules: &HashMap<String, Bytecode>,
+        modules: &ModuleRegistry,
         drain_jobs: bool,
         is_dynamic_import: bool,
         phase: ImportPhase,
         frontier: &mut Vec<String>,
     ) -> Result<Value, RuntimeError> {
+        self.synchronize_scheduling_usage()?;
         self.module_execution_depth += 1;
         let result = self.execute_module_graph_inner_scoped(
             entry,
@@ -289,14 +303,14 @@ impl Vm {
     fn execute_module_graph_inner_scoped(
         &mut self,
         entry: &str,
-        modules: &HashMap<String, Bytecode>,
+        modules: &ModuleRegistry,
         drain_jobs: bool,
         is_dynamic_import: bool,
         phase: ImportPhase,
         frontier: &mut Vec<String>,
     ) -> Result<Value, RuntimeError> {
         if let Some(scope) = &self.host_scheduling {
-            Self::attach_synthetic_values(modules, scope)?;
+            modules.attach(scope)?;
         }
         // An import that starts while module code is running (a dynamic
         // `import()` in a Promise job the entry's `await` lets run) joins the
@@ -326,9 +340,9 @@ impl Vm {
         // `roots` this function already threads through its whole closure,
         // so a freshly parsed/compiled value survives the major collection
         // a few lines below before its cell exists.
-        let mut owned_modules;
-        let modules: &HashMap<String, Bytecode> = if is_dynamic_import || fresh_graph {
-            owned_modules = modules.clone();
+        let roots_checkpoint = roots.len();
+        let registry = if is_dynamic_import || fresh_graph {
+            let mut owned_modules = ModuleRegistryDraft::new(modules.clone());
             let prepared = (|| {
                 if is_dynamic_import {
                     // `entry` is already the resolved target: `dynamic_import_job`
@@ -353,6 +367,9 @@ impl Vm {
                 Ok(())
             })();
             if let Err(error) = prepared {
+                for root in roots.drain(roots_checkpoint..) {
+                    self.release_root(root);
+                }
                 // A module that cannot even be compiled or synthesized fails
                 // only this request; an existing graph stays usable.
                 if fresh_graph {
@@ -367,10 +384,11 @@ impl Vm {
                 }
                 return Err(error);
             }
-            &owned_modules
+            owned_modules.finish()
         } else {
-            modules
+            modules.clone()
         };
+        let modules: &HashMap<String, Bytecode> = &registry;
         // Every module in `modules` not already in `linked` is new to this
         // graph -- either every one of them, on a fresh graph, or just the
         // one(s) `ensure_synthetic_module`/`ensure_dynamic_module_compiled` (or a
@@ -387,7 +405,7 @@ impl Vm {
             .filter(|name| !linked.contains_key(name.as_str()))
             .cloned()
             .collect();
-        // Roots pushed from here on, until this call's own success/failure
+        // Roots added since preparation began, until this call's success/failure
         // is known, belong only to `new_names`'s delta -- on a linking
         // failure for that delta (not a fresh graph, which instead discards
         // every root wholesale below), only these need unrooting, and only
@@ -395,13 +413,16 @@ impl Vm {
         // operation on the rest of an existing graph is unaffected and a
         // retried dynamic import of the same specifier is treated as new
         // again rather than silently resuming a half-linked record.
-        let roots_checkpoint = roots.len();
         // Once a module body has started running, its evaluation error (or
         // completion) belongs to the module record and is observed again by
         // every later importer, so the graph is kept rather than rolled back.
         let mut evaluation_started = false;
+        let mut previous_registry = None;
         let mut result = (|| {
-            self.module_registry = modules.clone();
+            previous_registry = Some(std::mem::replace(
+                &mut self.module_registry,
+                registry.clone(),
+            ));
             // Resolution errors can be converted to a dynamic-import Promise
             // rejection before graph setup reaches the usual execution reset.
             // Give that host-visible error construction a fresh budget too.
@@ -693,6 +714,7 @@ impl Vm {
             // even when the only edge to it is a deferred one.
             Self::check_requested_modules_loaded(entry, modules)?;
             evaluation_started = true;
+            drop(previous_registry.take());
             if !is_dynamic_import && self.host_error_reporting.is_some() {
                 if let Some(record) = linked.get_mut(entry) {
                     record.host_error_pending = true;
@@ -756,6 +778,9 @@ impl Vm {
         if result.is_err() && evaluation_started {
             self.store_module_graph(ModuleGraphState { linked, roots }, nested_in_evaluation);
         } else if result.is_err() {
+            if let Some(previous) = previous_registry.take() {
+                self.module_registry = previous;
+            }
             if fresh_graph {
                 // The whole graph never became usable; discard everything.
                 for root in roots {
@@ -1126,7 +1151,7 @@ impl Vm {
     fn ensure_dynamic_module_compiled(
         &mut self,
         target: &str,
-        modules: &mut HashMap<String, Bytecode>,
+        modules: &mut ModuleRegistryDraft,
     ) -> Result<(), RuntimeError> {
         if modules.contains_key(target) {
             return Ok(());
@@ -1138,8 +1163,7 @@ impl Vm {
             .map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let code = crate::compile_module_with_limit(&program, u32::MAX)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
-        modules.insert(target.to_string(), code);
-        Ok(())
+        modules.insert(target, code, self.host_scheduling.as_ref())
     }
 
     /// The module-registry key a request names: its specifier resolved
@@ -1379,7 +1403,7 @@ impl Vm {
             }
         }
         let modules = self.module_registry.clone();
-        self.execute_module_graph_inner(&entry, &modules, false, true, ImportPhase::Evaluation)?;
+        self.execute_module_registry_inner(&entry, &modules, false, true, ImportPhase::Evaluation)?;
         if self
             .linked_record(&entry)
             .is_some_and(|record| record.evaluating || record.suspended)

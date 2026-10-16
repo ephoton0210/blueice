@@ -25,7 +25,7 @@ fn synthetic_module_boundary_root_refusal_returns_the_heap_error_without_publica
         (ModuleType::Bytes, SyntheticModuleType::Bytes),
     ] {
         let mut vm = vm_with_sources();
-        let mut modules = HashMap::new();
+        let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
         let mut roots = Vec::new();
         vm.heap.allow_root_registrations(0);
         assert_eq!(
@@ -45,7 +45,7 @@ fn synthetic_module_boundary_root_refusal_returns_the_heap_error_without_publica
 fn synthetic_module_boundary_json_instruction_refusal_is_not_a_resolution_error() {
     let mut vm = vm_with_sources();
     vm.remaining_instructions = 0;
-    let mut modules = HashMap::new();
+    let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
     let mut roots = Vec::new();
     assert_eq!(
         vm.ensure_synthetic_module(
@@ -64,7 +64,7 @@ fn synthetic_module_boundary_json_string_refusal_is_not_a_resolution_error() {
     let mut vm = vm_with_sources();
     vm.config.max_string_bytes = 2;
     vm.set_json_module_sources(HashMap::from([("value".into(), "\"ab\"".into())]));
-    let mut modules = HashMap::new();
+    let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
     let mut roots = Vec::new();
     assert_eq!(
         vm.ensure_synthetic_module(
@@ -92,7 +92,13 @@ fn synthetic_module_boundary_refusal_preserves_existing_modules_roots_and_stack(
     let caller = vm.heap.alloc_object(None).unwrap();
     let caller_root = vm.heap.root(caller).unwrap();
     let mut roots = vec![caller_root];
-    let mut modules = HashMap::from([("retained".into(), Bytecode::empty())]);
+    let mut modules = ModuleRegistryDraft::new(
+        ModuleRegistry::new(
+            HashMap::from([("retained".into(), Bytecode::empty())]),
+            None,
+        )
+        .unwrap(),
+    );
     vm.stack.push(Value::Number(7.0));
     vm.heap.allow_root_registrations(0);
     assert_eq!(
@@ -120,7 +126,7 @@ fn synthetic_module_boundary_objects_live_until_their_synthesis_roots_are_releas
         (ModuleType::Bytes, SyntheticModuleType::Bytes),
     ] {
         let mut vm = vm_with_sources();
-        let mut modules = HashMap::new();
+        let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
         let mut roots = Vec::new();
         let key = module_type.module_key("value");
         vm.ensure_synthetic_module(&key, synthetic_type, &mut modules, &mut roots)
@@ -160,7 +166,7 @@ fn synthetic_module_boundary_primitives_need_no_object_root_registration() {
         vm.set_json_module_sources(HashMap::from([("value".into(), source.into())]));
         vm.set_text_module_sources(HashMap::from([("value".into(), "text".into())]));
         vm.heap.allow_root_registrations(0);
-        let mut modules = HashMap::new();
+        let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
         let mut roots = Vec::new();
         for (module_type, synthetic_type, expected) in [
             (ModuleType::Json, SyntheticModuleType::Json, expected),
@@ -188,7 +194,7 @@ fn synthetic_module_boundary_primitives_need_no_object_root_registration() {
 #[cfg_attr(test, test)]
 fn synthetic_module_boundary_existing_records_remain_idempotent_after_root_refusal() {
     let mut vm = vm_with_sources();
-    let mut modules = HashMap::new();
+    let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
     let mut roots = Vec::new();
     let key = ModuleType::Json.module_key("value");
     vm.ensure_synthetic_module(&key, SyntheticModuleType::Json, &mut modules, &mut roots)
@@ -218,7 +224,7 @@ fn synthetic_module_boundary_existing_records_remain_idempotent_after_root_refus
 fn synthetic_module_boundary_malformed_and_missing_sources_keep_resolution_semantics() {
     let mut vm = vm_with_sources();
     vm.set_json_module_sources(HashMap::from([("value".into(), "{".into())]));
-    let mut modules = HashMap::new();
+    let mut modules = ModuleRegistryDraft::new(ModuleRegistry::default());
     let mut roots = Vec::new();
     assert_eq!(
         vm.ensure_synthetic_module(

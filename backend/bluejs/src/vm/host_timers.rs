@@ -95,20 +95,24 @@ fn nested_delay(delay: u64, nesting: u32) -> u64 {
 
 impl Vm {
     pub(crate) fn use_bounded_host_microtask_checkpoints(&mut self) -> Result<(), RuntimeError> {
-        if let Some(scope) = &self.host_scheduling {
-            self.check_scheduling_failure()?;
+        if self.host_scheduling.is_some() {
+            self.bounded_host_microtask_checkpoints = true;
+            self.synchronize_scheduling_usage()?;
+            let scope = self.host_scheduling.as_ref().unwrap();
             self.symbol_registry.borrow_mut().attach(scope)?;
             self.attach_module_sources(scope)?;
-            self.bounded_host_microtask_checkpoints = true;
             return Ok(());
         }
-        let mut scope = SchedulingScope::new();
-        scope.check(self.own_scheduling_usage(), HostSchedulingUsage::default())?;
-        self.symbol_registry.borrow_mut().attach(&scope)?;
-        self.heap.begin_document_heap_budget();
-        self.host_scheduling = Some(scope);
-        self.attach_module_sources(self.host_scheduling.as_ref().unwrap())?;
+        // Enable accounting before measuring existing execution fields, and
+        // retain a failed scope so activation cannot bypass a terminal abort.
         self.bounded_host_microtask_checkpoints = true;
+        self.host_scheduling = Some(SchedulingScope::new());
+        self.synchronize_scheduling_usage()?;
+        self.symbol_registry
+            .borrow_mut()
+            .attach(self.host_scheduling.as_ref().unwrap())?;
+        self.heap.begin_document_heap_budget();
+        self.attach_module_sources(self.host_scheduling.as_ref().unwrap())?;
         Ok(())
     }
 

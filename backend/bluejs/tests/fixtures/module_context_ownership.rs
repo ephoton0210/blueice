@@ -345,8 +345,14 @@ fn module_context_ownership_shadow_transfer_counts_the_name_once_and_preserves_i
     child.synchronize_scheduling_usage().unwrap();
     vm.synchronize_scheduling_usage().unwrap();
     assert_eq!(
+        vm.module_registry["page/value.js"].code.as_ptr(),
+        child.module_registry["page/value.js"].code.as_ptr()
+    );
+    assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + child.own_scheduling_usage().payload_bytes
+        vm.own_scheduling_usage().payload_bytes
+            + child.own_scheduling_usage().payload_bytes
+            + vm.module_registry.retained_bytes()
     );
 }
 

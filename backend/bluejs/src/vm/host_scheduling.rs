@@ -548,77 +548,151 @@ fn handler_origins_bytes(handlers: &[HandlerFrame]) -> usize {
     })
 }
 
-/// A module continuation owns a clone of the outer code unit. Child code and
-/// SourceText are shared with the installed program and charged there.
-fn owned_code_bytes(code: &Bytecode) -> usize {
-    let mut bytes = slots(&code.code)
-        .saturating_add(slots(&code.root_statement_offsets))
-        .saturating_add(slots(&code.identifier_offsets))
-        .saturating_add(slots(&code.root_statement_ranges))
-        .saturating_add(slots(&code.root_function_child_indices))
-        .saturating_add(slots(&code.root_statement_child_ranges))
-        .saturating_add(slots(&code.root_declaration_binding_slots))
-        .saturating_add(slots(&code.constants))
-        .saturating_add(values_bytes(&code.constants))
-        .saturating_add(slots(&code.bindings))
-        .saturating_add(slots(&code.scopes))
-        .saturating_add(slots(&code.global_function_names))
-        .saturating_add(slots(&code.dynamic_eval_slots))
-        .saturating_add(slots(&code.functions))
-        .saturating_add(slots(&code.captures))
-        .saturating_add(code.function_name.capacity())
-        .saturating_add(slots(&code.arguments_mapped_slots))
-        .saturating_add(slots(&code.templates))
-        .saturating_add(slots(&code.handlers))
-        .saturating_add(slots(&code.abrupt_jumps))
-        .saturating_add(slots(&code.async_yield_delegates))
-        .saturating_add(slots(&code.yield_delegates))
-        .saturating_add(slots(&code.module_imports))
-        .saturating_add(slots(&code.module_exports))
-        .saturating_add(slots(&code.module_requests));
+/// Unique buffers of one outer code-unit clone. Shared child code, SourceText
+/// and diagnostic maps remain a separate program-storage ownership gate.
+pub(super) fn owned_code_bytes(code: &Bytecode) -> usize {
+    code_bytes(code, false)
+}
+
+pub(super) fn cloned_code_bytes(code: &Bytecode) -> usize {
+    code_bytes(code, true)
+}
+
+fn code_buffer_len(length: usize, capacity: usize, cloned: bool) -> usize {
+    if cloned {
+        length
+    } else {
+        capacity
+    }
+}
+fn code_slots<T>(values: &Vec<T>, cloned: bool) -> usize {
+    code_buffer_len(values.len(), values.capacity(), cloned)
+        .saturating_mul(std::mem::size_of::<T>())
+}
+fn code_text_bytes(text: &JsString, cloned: bool) -> usize {
+    if cloned {
+        text.len().saturating_mul(2)
+    } else {
+        text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+    }
+}
+fn code_value_bytes(value: &Value, cloned: bool) -> usize {
+    if !cloned {
+        return value_payload_bytes(value);
+    }
+    match value {
+        Value::String(text) => code_text_bytes(text, true),
+        Value::Symbol(symbol) => symbol
+            .description
+            .as_ref()
+            .map_or(0, |text| code_text_bytes(text, true)),
+        _ => value_payload_bytes(value),
+    }
+}
+
+fn code_bytes(code: &Bytecode, cloned: bool) -> usize {
+    let mut bytes = code_slots(&code.code, cloned)
+        .saturating_add(code_slots(&code.diagnostic_ast_owners, cloned))
+        .saturating_add(code_slots(&code.root_statement_offsets, cloned))
+        .saturating_add(code_slots(&code.identifier_offsets, cloned))
+        .saturating_add(code_slots(&code.root_statement_ranges, cloned))
+        .saturating_add(code_slots(&code.root_function_child_indices, cloned))
+        .saturating_add(code_slots(&code.root_statement_child_ranges, cloned))
+        .saturating_add(code_slots(&code.root_declaration_binding_slots, cloned))
+        .saturating_add(code_slots(&code.constants, cloned))
+        .saturating_add(code.constants.iter().fold(0usize, |bytes, value| {
+            bytes.saturating_add(code_value_bytes(value, cloned))
+        }))
+        .saturating_add(code_slots(&code.bindings, cloned))
+        .saturating_add(code_slots(&code.scopes, cloned))
+        .saturating_add(code_slots(&code.global_function_names, cloned))
+        .saturating_add(code_slots(&code.dynamic_eval_slots, cloned))
+        .saturating_add(code_slots(&code.functions, cloned))
+        .saturating_add(code_slots(&code.captures, cloned))
+        .saturating_add(code_buffer_len(
+            code.function_name.len(),
+            code.function_name.capacity(),
+            cloned,
+        ))
+        .saturating_add(code_slots(&code.arguments_mapped_slots, cloned))
+        .saturating_add(code_slots(&code.templates, cloned))
+        .saturating_add(code_slots(&code.handlers, cloned))
+        .saturating_add(code_slots(&code.abrupt_jumps, cloned))
+        .saturating_add(code_slots(&code.async_yield_delegates, cloned))
+        .saturating_add(code_slots(&code.yield_delegates, cloned))
+        .saturating_add(code_slots(&code.module_imports, cloned))
+        .saturating_add(code_slots(&code.module_exports, cloned))
+        .saturating_add(code_slots(&code.module_requests, cloned));
     for identifier in &code.identifier_offsets {
-        bytes = bytes.saturating_add(identifier.name.capacity());
+        bytes = bytes.saturating_add(code_buffer_len(
+            identifier.name.len(),
+            identifier.name.capacity(),
+            cloned,
+        ));
     }
     for binding in &code.bindings {
-        bytes = bytes.saturating_add(binding.name.capacity());
+        bytes = bytes.saturating_add(code_buffer_len(
+            binding.name.len(),
+            binding.name.capacity(),
+            cloned,
+        ));
     }
     for scope in &code.scopes {
-        bytes = bytes.saturating_add(slots(scope));
+        bytes = bytes.saturating_add(code_slots(scope, cloned));
     }
     for name in &code.global_function_names {
-        bytes = bytes.saturating_add(name.capacity());
+        bytes = bytes.saturating_add(code_buffer_len(name.len(), name.capacity(), cloned));
     }
     for template in &code.templates {
         bytes = bytes
-            .saturating_add(slots(&template.raw))
-            .saturating_add(slots(&template.cooked));
+            .saturating_add(code_slots(&template.raw, cloned))
+            .saturating_add(code_slots(&template.cooked, cloned));
         for text in template.raw.iter().chain(template.cooked.iter().flatten()) {
-            bytes = bytes.saturating_add(text.owned_heap_payload_bytes().unwrap_or(usize::MAX));
+            bytes = bytes.saturating_add(code_text_bytes(text, cloned));
         }
     }
     for import in &code.module_imports {
-        bytes = bytes.saturating_add(import.module_request.capacity());
+        bytes = bytes.saturating_add(code_buffer_len(
+            import.module_request.len(),
+            import.module_request.capacity(),
+            cloned,
+        ));
         if let crate::bytecode::ModuleImportName::Named(name) = &import.import_name {
-            bytes = bytes.saturating_add(name.capacity());
+            bytes = bytes.saturating_add(code_buffer_len(name.len(), name.capacity(), cloned));
         }
     }
     for request in &code.module_requests {
-        bytes = bytes.saturating_add(request.module_request.capacity());
+        bytes = bytes.saturating_add(code_buffer_len(
+            request.module_request.len(),
+            request.module_request.capacity(),
+            cloned,
+        ));
     }
     for export in &code.module_exports {
         use crate::bytecode::ModuleExport;
         bytes = bytes.saturating_add(match export {
-            ModuleExport::Local { export_name, .. } => export_name.capacity(),
+            ModuleExport::Local { export_name, .. } => {
+                code_buffer_len(export_name.len(), export_name.capacity(), cloned)
+            }
             ModuleExport::Indirect {
                 export_name,
                 module_request,
                 import_name,
                 ..
-            } => export_name
-                .capacity()
-                .saturating_add(module_request.capacity())
-                .saturating_add(import_name.capacity()),
-            ModuleExport::Star { module_request, .. } => module_request.capacity(),
+            } => code_buffer_len(export_name.len(), export_name.capacity(), cloned)
+                .saturating_add(code_buffer_len(
+                    module_request.len(),
+                    module_request.capacity(),
+                    cloned,
+                ))
+                .saturating_add(code_buffer_len(
+                    import_name.len(),
+                    import_name.capacity(),
+                    cloned,
+                )),
+            ModuleExport::Star { module_request, .. } => {
+                code_buffer_len(module_request.len(), module_request.capacity(), cloned)
+            }
             ModuleExport::Namespace {
                 export_name,
                 module_request,
@@ -632,9 +706,9 @@ fn owned_code_bytes(code: &Bytecode) -> usize {
             | ModuleExport::Source {
                 export_name,
                 module_request,
-            } => export_name
-                .capacity()
-                .saturating_add(module_request.capacity()),
+            } => code_buffer_len(export_name.len(), export_name.capacity(), cloned).saturating_add(
+                code_buffer_len(module_request.len(), module_request.capacity(), cloned),
+            ),
         });
     }
     // Synthetic exports retain a separate shared document owner; cloning

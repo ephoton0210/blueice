@@ -30,7 +30,8 @@ fn synthesize(
     roots: &mut Vec<RootId>,
 ) -> Result<HashMap<String, Bytecode>, RuntimeError> {
     let mut modules = HashMap::new();
-    vm.ensure_synthetic_module("json\0json", SyntheticModuleType::Json, &mut modules, roots)?;
+    let code = vm.create_synthetic_module_code("json\0json", SyntheticModuleType::Json, roots)?;
+    modules.insert("json\0json".into(), code);
     Ok(modules)
 }
 

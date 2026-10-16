@@ -41,7 +41,9 @@ mod generator_storage;
 mod global_bindings;
 mod module_context;
 mod module_referrers;
+mod module_registry;
 mod module_sources;
+use module_registry::{ModuleRegistry, ModuleRegistryDraft};
 mod module_values;
 use frame_maps::PreparedFrameMaps;
 use generator_storage::OwnedGeneratorState;
@@ -962,7 +964,7 @@ pub struct Vm {
     cells: HashMap<usize, ObjectId>,
     /// Bytecodes supplied by the host for this realm's module loader.
     /// Dynamic imports resolve only inside this explicit registry.
-    module_registry: HashMap<String, Bytecode>,
+    module_registry: ModuleRegistry,
     /// Host-provided raw JSON text for `type: "json"` module requests, keyed
     /// by resolved module name. `ensure_synthetic_module` (`vm/modules.rs`)
     /// reads this lazily, on the first request for a given resolved path.

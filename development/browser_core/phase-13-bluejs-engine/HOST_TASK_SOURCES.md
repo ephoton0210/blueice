@@ -316,8 +316,9 @@ immutable snapshots shared by attached realms. One owner charges the document
 for its retained table capacity, key/data capacities and owned header; another
 realm's snapshot reference adds no buffer charge or deep copy. Replacement keeps
 old snapshots live until their final owner releases them, including discarded
-realm cleanup. This data never contains realm-local ObjectIds; compiled and
-synthetic module caches retain their separate per-realm policy.
+realm cleanup. This data never contains realm-local ObjectIds. Compiled
+snapshots can also share immutable data; synthetic object exports retain their
+separate per-realm filtering/rebuild policy.
 
 Host installation admits the complete incoming owner while prior snapshots
 coexist. The existing void setter API retains the old snapshot and latches
@@ -379,8 +380,39 @@ allocation. Binding installation similarly admits its independent primitive
 copy. These leases release inside the heap operation immediately before managed
 adoption, and unwind on earlier refusal or heap failure. Managed strings/buffers
 then carry their heap charge; the original export keeps its separate shared
-native owner. Compiled table/key/code storage and other parser/continuation/
-cache/service buffers remain separate gates.
+native owner. Shared child/source/diagnostic program storage, compiler staging
+and other parser/continuation/cache/service buffers remain separate gates.
+
+Compiled registries retain immutable snapshots with one document charge for
+their owned header, logical table capacity, key capacities and root code-unit
+buffers. Root vectors include diagnostic instruction owners; constant payloads
+use the existing Value charge model. Shared child code, SourceText and
+diagnostic maps are excluded from this root-owner count and remain a separate
+program-ownership gate. Snapshot references share buffers and final drop
+refunds them, including empty reserved tables and terminal cleanup.
+
+Host loader replacement admits its incoming registry/referrer while old owners
+coexist and preserves both on refusal. Empty registry/empty-name cleanup remains
+available after terminal failure. Bounded activation measures existing execution
+fields before admission and retains a failed scope. Preloaded compiled snapshots
+attach once and cannot transfer into another document's account.
+
+Borrowed host graphs admit a checked root-buffer copy before graph mutation.
+Internal immutable views share their installed snapshot; a lazy draft copies
+only on its first insertion. Clone admission uses new vector/string lengths,
+then validates reported capacities. Draft growth admits a full replacement
+table while old storage and incoming records coexist. Existing entries move
+without another code copy; publication merges already-admitted charges and
+refunds old/replaced buffers. Refusal preserves prior draft contents/capacity.
+
+Preparation failures release all newly synthesized roots. Linking failures
+before evaluation restore the prior compiled snapshot and root prefix, avoiding
+a cached synthetic record whose object lost its roots. Evaluation retains its
+published snapshot. ShadowRealm inheritance shares unchanged code, or admits a
+filtered copy excluding caller-heap object exports before Promise capability
+creation. Refused filtering immediately publishes its referrer-lease refund to
+peer realms. Graph/cell identity and heap roots remain realm-specific. Compiler
+production scratch and other graph/cache/service owners remain open work.
 
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native

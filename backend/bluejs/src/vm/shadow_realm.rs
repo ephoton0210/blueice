@@ -335,6 +335,17 @@ impl Vm {
             ));
         };
         let mut inherited_module = Some(self.prepare_active_module_name_copy()?);
+        let inherited_registry = match self
+            .module_registry
+            .for_shadow_realm(self.host_scheduling.as_ref())
+        {
+            Ok(registry) => registry,
+            Err(error) => {
+                drop(inherited_module);
+                self.reconcile_scheduling_ownership();
+                return Err(error);
+            }
+        };
         let promise_constructor = self.global("Promise")?;
         let PromiseCapability {
             promise,
@@ -359,20 +370,16 @@ impl Vm {
                         self.attach_module_sources(scope)?;
                     }
                     // A ShadowRealm has its own module graph and heap, but
-                    // shares immutable host source snapshots. Compiled code
-                    // still needs a per-realm copy; lazy raw sources share
-                    // their original buffers and one document charge.
-                    // Graph/source-object caches contain caller ObjectIds.
-                    child.module_registry = self.module_registry.clone();
+                    // shares immutable host source and compiled snapshots.
+                    // Only object-valued synthetic records need filtering;
+                    // graph/source-object caches contain caller ObjectIds.
+                    if let Some(scope) = &child.host_scheduling {
+                        inherited_registry.attach(scope)?;
+                    }
+                    child.module_registry = inherited_registry;
                     // A synthetic module the caller already built (JSON, bytes)
                     // carries a value living in the *caller's* heap; the child
                     // rebuilds its own from the host sources copied below.
-                    child.module_registry.retain(|_, code| {
-                        !code
-                            .synthetic_default_export
-                            .as_ref()
-                            .is_some_and(|value| matches!(value.value(), Value::Object(_)))
-                    });
                     child.dynamic_module_sources = self.dynamic_module_sources.clone();
                     child.json_module_sources = self.json_module_sources.clone();
                     child.text_module_sources = self.text_module_sources.clone();

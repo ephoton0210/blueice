@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use crate::{Bytecode, Heap, HeapError, ImportPhase, Value};
 
-use super::{test262_agents, AgentSymbolRegistry, RuntimeError, Vm, VmConfig};
+use super::{test262_agents, AgentSymbolRegistry, ModuleRegistry, RuntimeError, Vm, VmConfig};
 
 impl Default for Vm {
     fn default() -> Self {
@@ -79,7 +79,7 @@ impl Vm {
             completion_saves: Vec::new(),
             remaining_instructions: 0,
             cells: HashMap::new(),
-            module_registry: HashMap::new(),
+            module_registry: ModuleRegistry::default(),
             json_module_sources: Default::default(),
             text_module_sources: Default::default(),
             bytes_module_sources: Default::default(),
@@ -267,14 +267,7 @@ impl Vm {
         referrer: impl Into<String>,
         modules: HashMap<String, Bytecode>,
     ) {
-        self.reconcile_scheduling_ownership();
-        if let Some(scope) = &self.host_scheduling {
-            if Self::attach_synthetic_values(&modules, scope).is_err() {
-                return;
-            }
-        }
-        self.module_registry = modules;
-        self.active_module_name = Some(referrer.into());
+        let _ = self.install_compiled_module_context(referrer.into(), modules);
     }
 
     /// Installs the host's canonical names for source-phase module records.
