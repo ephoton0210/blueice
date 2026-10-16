@@ -9,8 +9,10 @@ const os = require('os');
 const { spawnSync } = require('child_process');
 const root = path.resolve(__dirname, '../../../..');
 const fixtures = path.join(root, 'backend/bluets/tests/fixtures');
-const ts = require(path.join(fixtures, 'oracle_support/load_typescript.cjs'))(
-    process.env.BLUEICE_BLUETSC_ORACLE || 'tsc');
+const loadTypeScript = require(path.join(fixtures, 'oracle_support/load_typescript.cjs'));
+const compiler = process.env.BLUEICE_BLUETSC_ORACLE || 'tsc';
+const ts = loadTypeScript(compiler);
+const compilerCli = loadTypeScript.cliPath(compiler);
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'bluets-position-oracle-'));
 const cases = [];
 const mismatches = [];
@@ -37,7 +39,7 @@ function config(directory, args, show) {
     if (!path.isAbsolute(filename)) filename = path.join(directory, filename);
     if (fs.existsSync(filename) && fs.statSync(filename).isDirectory()) filename = path.join(filename, 'tsconfig.json');
     if (!fs.existsSync(filename)) return commandError(directory, args);
-    const parsed = ts.getParsedCommandLineOfConfigFile(filename, command.options,
+    const parsed = ts.getParsedCommandLineOfConfigFile(slash(filename), command.options,
         { ...ts.sys, onUnRecoverableConfigFileDiagnostic: d => errors.push(d) });
     if (!parsed) return errors;
     errors = [...errors, ...parsed.errors];
@@ -54,7 +56,7 @@ function config(directory, args, show) {
     return ts.getPreEmitDiagnostics(ts.createProgram({ rootNames: parsed.fileNames, options, host }));
 }
 function commandError(directory, args) {
-    const output = spawnSync(process.env.BLUEICE_BLUETSC_ORACLE || 'tsc', [...args, '--pretty', 'false'],
+    const output = spawnSync(process.execPath, [compilerCli, ...args, '--pretty', 'false'],
         { cwd: directory, encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0' } });
     const text = output.stdout + output.stderr;
     const codes = [...text.matchAll(/^error TS(\d+): (.*)$/gm)];
