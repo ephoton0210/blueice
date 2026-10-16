@@ -415,6 +415,7 @@ fn a_module_only_counts_as_reachable_when_every_request_on_the_way_resolves() {
 fn record(evaluating: bool, suspended: bool) -> LinkedModule {
     LinkedModule {
         cells: HashMap::new(),
+        cells_charge: Vm::default().charge_module_cells(0),
         namespace: None,
         deferred_namespace: None,
         evaluated: false,

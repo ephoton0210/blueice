@@ -39,6 +39,7 @@ mod generator_entry;
 mod generator_resume;
 mod generator_storage;
 mod global_bindings;
+mod module_cell_storage;
 mod module_context;
 mod module_continuation_storage;
 mod module_referrers;
@@ -427,6 +428,7 @@ fn binding_allows_assignment(
 /// rooted cell while the graph is linked and evaluated.
 struct LinkedModule {
     cells: HashMap<usize, ObjectId>,
+    cells_charge: execution_payload::ExecutionPayloadCharge,
     namespace: Option<ObjectId>,
     /// The module's *deferred* namespace object (import-defer proposal), kept
     /// apart from `namespace`: the two are distinct objects.
@@ -1213,6 +1215,7 @@ pub struct Vm {
     active_scheduling_bytes: usize,
     displaced_execution_bytes: Rc<std::cell::Cell<usize>>,
     displaced_execution_control_bytes: Rc<std::cell::Cell<usize>>,
+    linked_module_cell_bytes: Rc<std::cell::Cell<usize>>,
     last_execution_payload_bytes: usize,
     browser_tasks: VecDeque<browser_tasks::BrowserTask>,
     host_finalization_tasks: VecDeque<host_finalization::HostFinalizationTask>,

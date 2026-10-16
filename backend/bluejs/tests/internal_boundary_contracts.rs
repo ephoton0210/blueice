@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_module_cell_ownership_contracts() {
+    blueice_bluejs::Vm::verify_module_cell_ownership_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_module_continuation_ownership_contracts() {
     blueice_bluejs::Vm::verify_module_continuation_ownership_contracts();
 }

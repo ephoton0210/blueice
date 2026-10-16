@@ -432,6 +432,24 @@ identifier capacity into an execution lease. Completion, rejection, registration
 refusal and terminal debugger cleanup return these owners. Shared child/source/
 diagnostic programs, compiler staging and linked-cell-map copies remain open.
 
+Linked module cell tables now reserve admitted root-scope capacity before any
+managed binding cells are created or import aliases are installed. Prepared
+copies validate both minimum slots and reported logical capacity. Their scoped
+leases use a separate realm counter, so installed, parked and Rust-held graphs
+remain accounted without retaining persistent tables on frame-displacement
+counters. Entry and declaration instantiation move admitted storage into active
+VM ownership; completion/error moves it back without a second reservation.
+
+Await and debugger exits stage independent graph copies while the active frame
+still roots their cells. Refusal follows engine-error cleanup before capturing
+the next frame. Copy publication replaces/refunds the old record owner; return,
+throw and debugger abort handoffs update the retained table's capacity. Bounded
+activation attaches preloaded graph tables before measurement. Failed linking
+releases only its new records and roots, while fresh failed graphs drop cell
+owners before publishing cleanup. Realm drop refunds its contribution to peers.
+The surrounding graph record/name/root containers, shared programs and other
+compiler/native/integrated ownership remain separate open gates.
+
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
 accounting counts its capacity once as realm storage, independently of active

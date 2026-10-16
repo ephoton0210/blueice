@@ -57,7 +57,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Module continuation ownership is the current follow-up (2026-10-17).
+Linked module cell ownership is the current follow-up (2026-10-17).
+Three tiny completed/pending/admission cases initially failed and now pass.
+Linked tables reserve capacity before managed cells are created; a separate
+realm counter follows their leases while graphs are stored, parked or held in
+Rust. Entry/completion transfers preserve existing admission, and await/debugger
+copies are staged before execution-state capture. All thirteen finite lifecycle
+groups and all 739 fixed selected cases pass, along with formatting and offline
+workspace/all-target Clippy. Wider graph metadata and shared programs remain
+open; M1u stays the latest accepted milestone.
+
+The module continuation checkpoint (2026-10-17) precedes this follow-up.
 Three tiny await/debugger probes initially failed: suspended frames copied root
 Bytecode and did not retain the installed registry's charge. They now share an
 immutable executable snapshot and stage admitted identifier copies before frame
@@ -2411,6 +2421,65 @@ Evidence: `/private/tmp/blueice-module-continuation-controls-20261017.py`,
 hashes and staged/committed blob checks. This closes this bounded implementation
 follow-up; wider M1z/native/integrated work remains open and M1u remains the latest
 accepted milestone.
+
+#### Linked module cell ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: linked cell tables retain admitted capacity even while their graph
+is held in Rust or parked for reentrant evaluation. Module entry and completion
+transfer that capacity without charging an allocation twice. Await/debugger
+copies must be admitted before moving execution state; bounded activation must
+attach preloaded linked tables. Live bindings and GC roots must remain valid.
+
+- [x] Reproduce completed/pending table undercounting and late admission:
+      all three initial cases failed, then passed after admitted cell storage
+      and frame/graph transfers were implemented. Persistent graph cells use a
+      dedicated counter rather than the transient frame counter.
+- [x] Implement admitted linking/copies, frame ownership transfers and late
+      activation; verify finite live-binding, GC, debugger and refusal cases.
+- [x] Run fixed offline regressions/static checks, update evidence and commit
+      with a detailed English message. Shared programs, wider graph metadata,
+      compiler/native buffers and integrated acceptance remain open.
+
+Implementation: each new record reserves its root-scope cell table before any
+managed cells or import aliases are installed. Preparation admits a minimum
+slot count, reserves fallibly, then checks actual logical table capacity. A
+dedicated realm counter keeps prepared/retained leases visible when graphs are
+installed, parked for reentrant evaluation or held in Rust locals. Persistent
+tables do not remain on the transient displaced-frame counter.
+
+Declaration initialization and evaluation transfer admitted table capacity into
+the active VM and back on completion/error. Await/debugger copies are prepared
+while active cells still root their entries, before execution-state capture;
+copy refusal follows the existing engine-error cleanup path without publishing
+a continuation serial. Initial linking failure drops new table owners and
+preserves old records/root prefixes; a failed fresh graph releases its owners
+before cleanup accounting is published. Bounded activation attaches preloaded
+tables before measuring existing fields and retains a terminal account on
+refusal. Empty table moves require no extra reservation.
+
+Thirteen finite groups cover completed/pending records, early managed-allocation
+refusal, exact table capacity and one-byte refusal, active ownership transfer,
+Rust-held graph accounting, imported live bindings across two awaits and tiny
+GC, late activation/refusal, linking rollback, peer-visible realm drop/refund,
+pre-capture refusal and debugger steps. The fixtures expose the existing
+ordinary-library coverage entry point; no new coverage result is claimed.
+
+Validation: **739 passed, zero failed/ignored**, across 38 executables and 65
+fixed selections: thirteen new groups and all 726 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled. The same seven pressure cases remain
+excluded and JSON resource sweeps are not selected. No network/service replay,
+fresh full Test262, real Core/MCP replay, coverage or integrated acceptance is
+claimed. Shared programs and surrounding graph/native storage remain open.
+
+Evidence: `/private/tmp/blueice-module-cells-controls-20261017.py`,
+`/private/tmp/blueice-module-cells-commit-20261017.txt`,
+`/private/tmp/blueice-module-cells-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-module-cells-{red,first,cells,fmt,clippy}-20261017.log`.
+`target/module-cells-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. This is a bounded implementation checkpoint;
+wider M1z/native/integrated acceptance remains open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

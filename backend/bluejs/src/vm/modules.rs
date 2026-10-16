@@ -459,22 +459,32 @@ impl Vm {
             self.top_level_module = true;
 
             if !new_names.is_empty() {
-                linked.extend(new_names.iter().cloned().map(|name| {
-                    (
-                        name,
-                        LinkedModule {
-                            cells: HashMap::new(),
-                            namespace: None,
-                            evaluated: false,
-                            evaluating: false,
-                            suspended: false,
-                            completion: None,
-                            error: None,
-                            host_error_pending: false,
-                            deferred_namespace: None,
-                        },
-                    )
-                }));
+                for name in &new_names {
+                    let code = modules
+                        .get(name)
+                        .expect("reachable module was checked during collection");
+                    if !code.module {
+                        return Err(RuntimeError::ModuleResolution(format!(
+                            "{name} was not compiled using the module goal"
+                        )));
+                    }
+                    let prepared =
+                        self.prepare_linked_module_cells(code.scopes.first().map_or(0, Vec::len))?;
+                    let mut record = LinkedModule {
+                        cells: HashMap::new(),
+                        cells_charge: self.charge_module_cells(0),
+                        namespace: None,
+                        evaluated: false,
+                        evaluating: false,
+                        suspended: false,
+                        completion: None,
+                        error: None,
+                        host_error_pending: false,
+                        deferred_namespace: None,
+                    };
+                    prepared.install(&mut record);
+                    linked.insert(name.clone(), record);
+                }
 
                 // ModuleDeclarationInstantiation creates all own bindings before
                 // wiring imports.  A `var` binding is initialized immediately;
@@ -493,12 +503,12 @@ impl Vm {
                         .iter()
                         .filter_map(|import| import.local_slot.map(|slot| slot as usize))
                         .collect();
-                    let slots = code.scopes.first().cloned().unwrap_or_default();
+                    let slots = code.scopes.first().map(Vec::as_slice).unwrap_or(&[]);
                     let record = linked
                         .get_mut(name)
                         .expect("linked record was allocated for every module");
                     for slot in slots {
-                        let slot = slot as usize;
+                        let slot = *slot as usize;
                         if imported_slots.contains(&slot) {
                             continue;
                         }
@@ -705,7 +715,7 @@ impl Vm {
                     let record = linked
                         .get_mut(name)
                         .expect("linked record was allocated for every module");
-                    self.initialize_module_record(name, code, &mut record.cells)?;
+                    self.initialize_linked_module_record(name, code, record)?;
                 }
             }
 
@@ -786,6 +796,8 @@ impl Vm {
                 for root in roots {
                     self.release_root(root);
                 }
+                drop(linked);
+                self.reconcile_scheduling_ownership();
             } else {
                 // Only `new_names`'s delta was attempted against an existing,
                 // still-otherwise-valid graph: roll back just that delta (see
@@ -958,6 +970,7 @@ impl Vm {
             .evaluating_linked
             .take()
             .expect("paused module records return after the entry body runs");
+        let (outcome, mut prepared_cells) = self.stage_module_exit_cells(outcome);
         let outcome = match ModuleRun::classify(outcome) {
             ModuleRun::Paused {
                 pc,
@@ -969,7 +982,10 @@ impl Vm {
                     .linked
                     .get_mut(&module)
                     .expect("the stepped entry remains in its linked graph");
-                record.cells = execution.cells.clone();
+                prepared_cells
+                    .take()
+                    .expect("suspension cell table was admitted")
+                    .install(record);
                 record.suspended = true;
                 previous_module.restore(self);
                 self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
@@ -1004,7 +1020,10 @@ impl Vm {
                     .linked
                     .get_mut(&module)
                     .expect("the paused entry remains in its linked graph");
-                record.cells = execution.cells.clone();
+                prepared_cells
+                    .take()
+                    .expect("suspension cell table was admitted")
+                    .install(record);
                 record.suspended = true;
                 match self.suspend_module_await(
                     ModuleContinuation {
@@ -1034,6 +1053,7 @@ impl Vm {
                 .get_mut(&module)
                 .expect("the paused entry remains in its linked graph");
             record.cells = std::mem::take(&mut self.cells);
+            record.refresh_cells_charge();
             record.suspended = false;
             record.evaluating = false;
             match &result {
@@ -1698,6 +1718,7 @@ impl Vm {
             .module_graph
             .take()
             .ok_or(RuntimeError::Unsupported("module graph continuation"))?;
+        let (outcome, mut prepared_cells) = self.stage_module_exit_cells(outcome);
         let outcome = straight_line_exit(outcome, "yield requires a generator function");
         // Keep the graph installed even if a later settlement, allocation,
         // or continuation registration refuses this turn.
@@ -1709,6 +1730,7 @@ impl Vm {
                         .get_mut(&module)
                         .expect("suspended module remains linked");
                     record.cells = std::mem::take(&mut self.cells);
+                    record.refresh_cells_charge();
                     record.evaluating = false;
                     record.suspended = false;
                     record.evaluated = true;
@@ -1731,7 +1753,10 @@ impl Vm {
                     .linked
                     .get_mut(&module)
                     .expect("suspended module remains linked");
-                record.cells = execution.cells.clone();
+                prepared_cells
+                    .take()
+                    .expect("suspension cell table was admitted")
+                    .install(record);
                 record.suspended = true;
                 self.suspend_module_await(
                     ModuleContinuation {
@@ -1756,6 +1781,7 @@ impl Vm {
                     .get_mut(&module)
                     .expect("suspended module remains linked");
                 record.cells = std::mem::take(&mut self.cells);
+                record.refresh_cells_charge();
                 record.evaluating = false;
                 record.suspended = false;
                 record.evaluated = true;
@@ -2490,10 +2516,20 @@ impl Vm {
         result
     }
 
+    #[cfg(any(test, coverage))]
     pub(super) fn enter_module_record(
         &mut self,
         code: &Bytecode,
         cells: &mut HashMap<usize, ObjectId>,
+    ) -> Result<(), RuntimeError> {
+        self.enter_module_record_storage(code, cells, None)
+    }
+
+    fn enter_module_record_storage(
+        &mut self,
+        code: &Bytecode,
+        cells: &mut HashMap<usize, ObjectId>,
+        cells_charge: Option<&mut execution_payload::ExecutionPayloadCharge>,
     ) -> Result<(), RuntimeError> {
         let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
         let (bindings, metadata, _) = prepared.take_parts();
@@ -2501,6 +2537,10 @@ impl Vm {
         self.bindings = bindings;
         self.binding_metadata = metadata;
         self.cells = std::mem::take(cells);
+        if let Some(charge) = cells_charge {
+            charge.resize(0);
+        }
+
         drop(prepared);
         self.completion = Value::Undefined;
         self.completion_empty = true;
@@ -2514,13 +2554,30 @@ impl Vm {
         Ok(())
     }
 
+    #[cfg(any(test, coverage))]
     pub(super) fn initialize_module_record(
         &mut self,
         name: &str,
         code: &Bytecode,
         cells: &mut HashMap<usize, ObjectId>,
     ) -> Result<(), RuntimeError> {
-        let result = self.initialize_module_record_inner(name, code, cells);
+        let result = self.initialize_module_record_inner(name, code, cells, None);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn initialize_linked_module_record(
+        &mut self,
+        name: &str,
+        code: &Bytecode,
+        record: &mut LinkedModule,
+    ) -> Result<(), RuntimeError> {
+        let result = self.initialize_module_record_inner(
+            name,
+            code,
+            &mut record.cells,
+            Some(&mut record.cells_charge),
+        );
         self.reconcile_scheduling_ownership();
         result
     }
@@ -2530,13 +2587,14 @@ impl Vm {
         name: &str,
         code: &Bytecode,
         cells: &mut HashMap<usize, ObjectId>,
+        mut cells_charge: Option<&mut execution_payload::ExecutionPayloadCharge>,
     ) -> Result<(), RuntimeError> {
         // Only a module compiled as one gets here, and it has an entry.
         let entry = code
             .module_evaluate_entry
             .expect("a module has an evaluation entry") as usize;
         let mut previous_module = self.prepare_module_name(name)?;
-        self.enter_module_record(code, cells)?;
+        self.enter_module_record_storage(code, cells, cells_charge.as_deref_mut())?;
         let mut iterators = self.iterator_records(Vec::new());
         // The declaration prefix instantiates the module's hoisted functions;
         // each records the module it is created in (its [[ScriptOrModule]]),
@@ -2553,6 +2611,13 @@ impl Vm {
         );
         previous_module.restore(self);
         *cells = std::mem::take(&mut self.cells);
+        if let Some(charge) = cells_charge {
+            charge.resize(if charge.enabled() {
+                host_scheduling::map_slots(cells)
+            } else {
+                0
+            });
+        }
         self.stack.clear();
         self.active_scopes.clear();
         self.active_scope_slots.clear();
@@ -2708,12 +2773,11 @@ impl Vm {
                 .module_evaluate_entry
                 .expect("a linked module has an evaluation entry") as usize;
             let mut previous_module = self.prepare_module_name(name)?;
-            self.enter_module_record(
+            let record = linked.get_mut(name).expect("checked module record exists");
+            self.enter_module_record_storage(
                 &code,
-                &mut linked
-                    .get_mut(name)
-                    .expect("checked module record exists")
-                    .cells,
+                &mut record.cells,
+                Some(&mut record.cells_charge),
             )?;
             // A sibling Source Text Module runs in a fresh execution context.
             // A suspended async dependency deliberately leaves its displaced
@@ -2737,12 +2801,14 @@ impl Vm {
                 .evaluating_linked
                 .take()
                 .expect("module records are restored after the module body ran");
+            let (outcome, mut prepared_cells) = self.stage_module_exit_cells(outcome);
             match ModuleRun::classify(outcome) {
                 ModuleRun::Completed(Ok(StraightLineExit::Return(value))) => {
                     previous_module.restore(self);
                     let cells = std::mem::take(&mut self.cells);
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = cells;
+                    record.refresh_cells_charge();
                     record.completion = Some(value.clone());
                     Ok(value)
                 }
@@ -2762,13 +2828,20 @@ impl Vm {
                                 .get_mut(name)
                                 .expect("checked module record exists")
                                 .cells = std::mem::take(&mut self.cells);
+                            linked
+                                .get_mut(name)
+                                .expect("checked module record exists")
+                                .refresh_cells_charge();
                             return Err(error);
                         }
                     };
                     let execution = self.suspend_module_execution();
                     previous_module.restore(self);
                     let record = linked.get_mut(name).expect("checked module record exists");
-                    record.cells = execution.cells.clone();
+                    prepared_cells
+                        .take()
+                        .expect("suspension cell table was admitted")
+                        .install(record);
                     record.suspended = true;
                     self.suspend_module_await(
                         ModuleContinuation {
@@ -2797,12 +2870,19 @@ impl Vm {
                                 .get_mut(name)
                                 .expect("checked module record exists")
                                 .cells = std::mem::take(&mut self.cells);
+                            linked
+                                .get_mut(name)
+                                .expect("checked module record exists")
+                                .refresh_cells_charge();
                             return Err(error);
                         }
                     };
                     let execution = self.suspend_module_execution();
                     let record = linked.get_mut(name).expect("checked module record exists");
-                    record.cells = execution.cells.clone();
+                    prepared_cells
+                        .take()
+                        .expect("suspension cell table was admitted")
+                        .install(record);
                     record.suspended = true;
                     previous_module.restore(self);
                     self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
@@ -2821,6 +2901,7 @@ impl Vm {
                     let cells = std::mem::take(&mut self.cells);
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = cells;
+                    record.refresh_cells_charge();
                     Err(error)
                 }
             }

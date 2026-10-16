@@ -1123,6 +1123,7 @@ impl Vm {
             .get_mut(&module)
             .expect("the paused entry remains in its linked graph");
         record.cells = std::mem::take(&mut self.cells);
+        record.refresh_cells_charge();
         record.suspended = false;
         record.evaluating = false;
         if retained.is_some() {

@@ -97,6 +97,7 @@ impl Vm {
     pub(crate) fn use_bounded_host_microtask_checkpoints(&mut self) -> Result<(), RuntimeError> {
         if self.host_scheduling.is_some() {
             self.bounded_host_microtask_checkpoints = true;
+            self.attach_linked_module_cells();
             self.synchronize_scheduling_usage()?;
             let scope = self.host_scheduling.as_ref().unwrap();
             self.symbol_registry.borrow_mut().attach(scope)?;
@@ -107,6 +108,7 @@ impl Vm {
         // retain a failed scope so activation cannot bypass a terminal abort.
         self.bounded_host_microtask_checkpoints = true;
         self.host_scheduling = Some(SchedulingScope::new());
+        self.attach_linked_module_cells();
         self.synchronize_scheduling_usage()?;
         self.symbol_registry
             .borrow_mut()

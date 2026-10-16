@@ -245,6 +245,17 @@ impl Drop for ExecutionPayloadCharge {
 }
 
 impl Vm {
+    pub(super) fn charge_module_cells(&self, bytes: usize) -> ExecutionPayloadCharge {
+        let enabled = self.host_scheduling.is_some();
+        let bytes = if enabled { bytes } else { 0 };
+        let counter = self.linked_module_cell_bytes.clone();
+        counter.set(counter.get().saturating_add(bytes));
+        ExecutionPayloadCharge {
+            counter,
+            bytes,
+            enabled,
+        }
+    }
     pub(super) fn call_entry_charge(
         &self,
         callee: &Value,
