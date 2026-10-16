@@ -92,22 +92,17 @@ impl Vm {
         result
     }
 
-    pub(super) fn disposal_owned_edges(
-        &self,
-    ) -> impl Iterator<Item = (ObjectId, Vec<ObjectId>)> + '_ {
+    pub(super) fn disposal_owned_edges(&self) -> impl Iterator<Item = (ObjectId, ObjectId)> + '_ {
         self.disposable_stacks
             .iter()
             .chain(self.async_disposable_stacks.iter())
-            .map(|(&id, state)| {
-                (
-                    id,
-                    state
-                        .resources
-                        .iter()
-                        .flat_map(DisposableResource::values)
-                        .filter_map(Value::object_id)
-                        .collect(),
-                )
+            .flat_map(|(&id, state)| {
+                state
+                    .resources
+                    .iter()
+                    .flat_map(DisposableResource::values)
+                    .filter_map(Value::object_id)
+                    .map(move |reference| (id, reference))
             })
     }
 

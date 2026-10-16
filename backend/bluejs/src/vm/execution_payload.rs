@@ -436,6 +436,7 @@ impl Vm {
             .saturating_add(self.current_execution_control_bytes())
             .saturating_add(host_scheduling::slots(&self.call_stack))
             .saturating_add(host_scheduling::slots(&self.async_frame_roots))
+            .saturating_add(self.gc_trace_cache.retained_bytes())
             .saturating_add(self.displaced_execution_control_bytes.get())
             .saturating_add(self.displaced_execution_bytes.get())
             .saturating_add(self.pending_tail_call.as_ref().map_or(0, |call| {

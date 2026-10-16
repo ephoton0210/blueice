@@ -991,12 +991,20 @@ impl Vm {
         self.check_scheduling_failure()?;
         let active_root_base = self.async_frame_roots.len();
         if let Some(job) = self.promise_jobs.front() {
-            let references = self.promise_job_references(job);
-            self.extend_async_frame_roots(references.iter().copied())?;
+            let mut references = 0;
+            self.visit_promise_job_references(job, &mut |_| references += 1);
+            self.prepare_async_frame_root_slots(references)?;
         }
         let Some(job) = self.promise_jobs.pop_front() else {
             return Ok(false);
         };
+        // Split the borrow without a reference vector. All slots were admitted
+        // while the queue still owned this job; the lease covers the Rust-held buffer.
+        let mut roots = std::mem::take(&mut self.async_frame_roots);
+        let roots_charge = self.charge_execution_control(host_scheduling::slots(&roots));
+        self.visit_promise_job_references(&job, &mut |id| roots.push(id));
+        self.async_frame_roots = roots;
+        drop(roots_charge);
         if self.promise_jobs.is_empty() {
             self.promise_jobs.shrink_to_fit();
         }

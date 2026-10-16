@@ -36,6 +36,7 @@ mod execution;
 mod execution_payload;
 mod frame_bindings;
 mod frame_maps;
+mod gc_trace_storage;
 mod generator_entry;
 mod generator_resume;
 mod generator_storage;
@@ -1232,6 +1233,7 @@ pub struct Vm {
     /// live outside the operand stack. Nested frames retain their own suffix
     /// until they return, fail, or hand ownership to a suspended frame.
     async_frame_roots: Vec<ObjectId>,
+    gc_trace_cache: crate::heap::GcTraceBatch,
     test262_done: Option<Result<(), Value>>,
     /// Test262-only host scheduler state. Ordinary realms never install or
     /// expose it; agent VMs receive the same Arc while retaining their own

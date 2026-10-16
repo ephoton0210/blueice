@@ -271,7 +271,10 @@ fn global_binding_admission_persistent_capacity_survives_frames_and_releases_wit
     vm.execute_script(&compile("let retained=42;")).unwrap();
     let bytes = vm.global_binding_storage_bytes();
     assert!(bytes > 0);
-    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, bytes);
+    assert_eq!(
+        vm.host_scheduling_usage().unwrap().payload_bytes,
+        bytes + vm.gc_trace_cache.retained_bytes()
+    );
     let before = vm.host_scheduling_usage().unwrap().payload_bytes;
     let (name, binding) = vm.global_bindings.remove_entry("retained").unwrap();
     let old_capacity = name.capacity();
@@ -292,7 +295,10 @@ fn global_binding_admission_persistent_capacity_survives_frames_and_releases_wit
     );
     vm.reset_lexical_global_bindings();
     assert_eq!(vm.global_binding_storage_bytes(), 0);
-    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, 0);
+    assert_eq!(
+        vm.host_scheduling_usage().unwrap().payload_bytes,
+        vm.gc_trace_cache.retained_bytes()
+    );
 }
 
 #[cfg_attr(test, test)]

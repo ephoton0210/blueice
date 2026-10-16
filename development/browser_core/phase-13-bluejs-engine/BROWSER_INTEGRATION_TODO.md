@@ -57,7 +57,18 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Temporary execution root capacity is the current follow-up (2026-10-17).
+Safepoint trace batch storage is the current follow-up (2026-10-17).
+Three tiny root/edge refusal cases initially entered heap work at a full scalar
+quota; all three now pass. Borrowed visitors replace intermediate reference
+vectors, and reusable flat root/owner-edge batches retain admitted capacity
+through cached, Rust-held and heap-held ownership. Joint replacement precedes
+heap effects; retained capacity remains reusable during terminal cleanup.
+All seventeen finite lifecycle cases and all 814 fixed selected cases pass,
+along with formatting and offline workspace/all-target Clippy. Collector
+work/mark sets, realm traversal, retained native values, shared programs and wider
+gates remain open; M1u stays the latest accepted milestone.
+
+The temporary execution root capacity checkpoint (2026-10-17) precedes this follow-up.
 Four tiny native-pressure/callback/job/iterator cases failed before admission
 was moved ahead of vector growth and job removal; all four now pass. Seventeen
 finite ownership/restoration/GC cases pass. Every temporary execution-root
@@ -2812,6 +2823,82 @@ Evidence: `/private/tmp/blueice-async-root-storage-controls-20261017.py`,
 `target/async-root-storage-source-20261017.json` records source/log/executable
 hashes and staged/committed blob checks. This is an M1z implementation checkpoint;
 wider native/integrated acceptance remains open.
+
+#### Safepoint trace batch follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: GC safepoint root and Promise/disposal edge batches own reusable,
+admitted native capacity while cached, Rust-held or attached to the heap.
+Joint preparation admits coexisting replacements before publication or heap work;
+refusal leaves prior capacity and VM state intact. Borrowed traversal builds no
+intermediate reference vectors. Owner edges preserve Promise/continuation cycles
+without turning side-table values into independent roots. Reuse and cleanup
+require no new capacity, including after a terminal scheduling error.
+
+- [x] Reproduce root/edge admission before heap effects with tiny offline cases.
+      All three initial cases failed, then passed after joint preparation.
+- [x] Implement borrowed traversal, admitted reusable flat batches and scoped
+      heap handoff; seventeen ownership/error/GC/realm cases pass.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Collector mark/work sets, realm traversal,
+      retained native values, shared programs and wider gates remain open.
+
+Implementation: safepoints count borrowed execution and conditional owner-edge
+visitors, then prepare a reusable flat batch. Root and edge replacements are
+admitted jointly in full while the old allocations coexist; allocator-reported
+capacities receive a staging lease and another check before commit. Refusal
+returns the old empty cache with stable contents/capacity. Successful preparation
+moves one batch into a non-reentrant optional heap slot without metadata-vector
+allocation. A control lease follows both buffers throughout Rust/heap ownership;
+return clears IDs and restores the charged realm cache on success and heap error.
+
+Promise jobs count borrowed references before reserving active-root slots and
+consume no intermediate vector after queue removal. Execution, pending module,
+continuation, debugger, Promise reaction and disposable references are visited
+directly. Flat edges keep the original conditional owner semantics, including
+inverse async invocation/generator links. Reachable owners keep values alive;
+unreachable Promise/result and suspended-await cycles remain collectible. Active
+parameter eval environments and shadowed dynamic cells are included explicitly.
+
+Cached capacity is charged once and remains reusable at full scalar quota and
+after a prior terminal error for internal cleanup. Normal reuse must publish
+current ownership and reject a newly exceeded budget before heap work. Late
+bounded activation includes host-neutral cache capacity, and discarded child
+realms release their caches. Cross-realm marking prepares its batch before
+releasing deferred roots and propagates preparation failures.
+
+Seventeen finite lifecycle cases pass, including cached/Rust-held ownership,
+full/terminal reuse, heap-error restoration, joint replacement refusal, active
+environment GC, live Promise/await/disposal ownership, unreachable cycles, child
+realm release and bounded activation. The additional normal-reuse ledger-refusal
+case initially entered heap work after the account failed; it now refuses before
+that work and preserves the cache. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed.
+
+The first inherited run had nine failures across seven selections: retained-cache
+bytes were absent from seven aggregate assertions, while converter/declaration
+exact-budget fixtures needed their separate GC slots prepared before the budget
+was filled. Their existing copy/declaration, pointer, collection, refund and
+failure-identity checks remain intact. Original results are preserved in
+`/private/tmp/blueice-gc-trace-storage-*-baseline-red-20261017.log`.
+
+Validation: **814 passed, zero failed/ignored**, across 38 executables and 70
+fixed selections: seventeen new cases and all 797 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled. The same seven pressure cases remain
+excluded and JSON resource sweeps are not selected. No network/service replay,
+fresh full Test262, real Core/MCP replay, coverage result or integrated acceptance
+is claimed. Collector work/mark sets, realm traversal scratch, retained native
+values, shared programs and wider native/integrated gates remain open.
+
+Evidence: `/private/tmp/blueice-gc-trace-storage-controls-20261017.py`,
+`/private/tmp/blueice-gc-trace-storage-commit-20261017.txt`,
+`/private/tmp/blueice-gc-trace-storage-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-gc-trace-storage-{red,reuse-red,first,gc-trace,fmt,clippy}-20261017.log`.
+`target/gc-trace-storage-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. This is an M1z implementation checkpoint;
+collector work/mark sets, realm traversal scratch and wider native/integrated
+acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

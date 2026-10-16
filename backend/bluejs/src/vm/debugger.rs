@@ -1381,35 +1381,36 @@ impl Vm {
     /// Returns heap edges held only by the Rust-owned debugger continuation.
     /// All remaining root-frame state stays in the VM's ordinary fields and
     /// is already gathered by `Vm::with_roots` before any allocating action.
-    pub(super) fn debugger_continuation_references(&self) -> Vec<ObjectId> {
-        let mut references: Vec<_> = self
-            .debugger_continuation
+    pub(super) fn visit_debugger_continuation_references(&self, visit: &mut impl FnMut(ObjectId)) {
+        self.debugger_continuation
             .iter()
-            .flat_map(|continuation| continuation.iterators.iter())
+            .flat_map(|frame| frame.iterators.iter())
             .filter_map(Value::object_id)
-            .collect();
-        if let Some(continuation) = &self.debugger_module_continuation {
-            references.extend(Self::suspended_execution_references(
-                &continuation.execution,
-            ));
-            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
+            .for_each(&mut *visit);
+        for (execution, iterators) in self
+            .debugger_module_continuation
+            .iter()
+            .map(|frame| (&frame.execution, &frame.iterators))
+            .chain(
+                self.debugger_nested_continuation
+                    .iter()
+                    .map(|frame| (&frame.execution, &frame.iterators)),
+            )
+            .chain(
+                self.debugger_nested_intermediate_continuation
+                    .iter()
+                    .map(|frame| (&frame.execution, &frame.iterators)),
+            )
+        {
+            Self::suspended_execution_references(execution).for_each(&mut *visit);
+            iterators
+                .iter()
+                .filter_map(Value::object_id)
+                .for_each(&mut *visit);
         }
-        if let Some(continuation) = &self.debugger_nested_continuation {
-            references.extend(Self::suspended_execution_references(
-                &continuation.execution,
-            ));
-            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
+        if let Some(frame) = &self.debugger_nested_parent_execution {
+            Self::suspended_execution_references(frame).for_each(visit);
         }
-        if let Some(continuation) = &self.debugger_nested_intermediate_continuation {
-            references.extend(Self::suspended_execution_references(
-                &continuation.execution,
-            ));
-            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
-        }
-        if let Some(execution) = &self.debugger_nested_parent_execution {
-            references.extend(Self::suspended_execution_references(execution));
-        }
-        references
     }
 }
 

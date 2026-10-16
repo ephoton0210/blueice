@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_gc_trace_storage_contracts() {
+    blueice_bluejs::Vm::verify_gc_trace_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_async_root_storage_contracts() {
     blueice_bluejs::Vm::verify_async_root_storage_contracts();
 }

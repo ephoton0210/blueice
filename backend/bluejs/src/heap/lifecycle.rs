@@ -91,18 +91,18 @@ impl Heap {
     /// next `pop_scoped_roots` releases. Unlike `root`, this does no per-object
     /// table work; an id that is not (or no longer) in this heap is ignored
     /// when marking, and is still reported by whichever operation uses it.
-    pub(crate) fn push_scoped_roots(
-        &mut self,
-        roots: Vec<ObjectId>,
-        owned_edges: Vec<(ObjectId, Vec<ObjectId>)>,
-    ) {
-        self.scoped_roots.push(roots);
-        self.scoped_owned_edges.push(owned_edges);
+    pub(crate) fn push_scoped_roots(&mut self, batch: GcTraceBatch) {
+        assert!(
+            self.scoped_trace.is_none(),
+            "heap operations cannot reenter the VM"
+        );
+        self.scoped_trace = Some(batch);
     }
 
-    pub(crate) fn pop_scoped_roots(&mut self) {
-        self.scoped_roots.pop();
-        self.scoped_owned_edges.pop();
+    pub(crate) fn pop_scoped_roots(&mut self) -> GcTraceBatch {
+        self.scoped_trace
+            .take()
+            .expect("the safepoint batch is still attached")
     }
 
     pub(super) fn ensure_room(
@@ -151,9 +151,9 @@ impl Heap {
             .filter(|(root, _)| !ignored.contains(root))
             .map(|(_, object)| *object)
             .chain(
-                self.scoped_roots
+                self.scoped_trace
                     .iter()
-                    .flatten()
+                    .flat_map(|batch| batch.roots.iter())
                     .copied()
                     .filter(|id| self.objects.contains_key(id)),
             )
@@ -208,15 +208,18 @@ impl Heap {
         // result and reactions are strong edges from that owner, rather than
         // independent roots. Waiting for the owner also permits unreachable
         // promise/result cycles to be collected.
-        for (owner, references) in self.scoped_owned_edges.iter().flatten() {
-            let references = references
-                .iter()
-                .copied()
-                .filter(|id| self.objects.contains_key(id));
+        for (owner, reference) in self
+            .scoped_trace
+            .iter()
+            .flat_map(|batch| batch.edges.iter())
+        {
+            if !self.objects.contains_key(reference) {
+                continue;
+            }
             if key_is_live(owner, &marked) {
-                ephemeron_work.extend(references);
+                ephemeron_work.push(*reference);
             } else if self.objects.contains_key(owner) {
-                waiting.entry(*owner).or_default().extend(references);
+                waiting.entry(*owner).or_default().push(*reference);
             }
         }
         // Called once per table, at the moment it is known to be live.

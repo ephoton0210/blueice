@@ -517,9 +517,26 @@ the same preparation path. Fatal Test262 host completions stop later delivery bu
 release every pin in the returned host batch. Truncation retains charged capacity;
 finished-execution cleanup returns it, including after terminal failure.
 
-Other GC scratch vectors (execution roots, Promise edges, debugger and realm
-traversal), native payloads of retained values, shared programs and other wider
-native/cache/integrated ownership remain open work.
+Safepoint root and conditional owner-edge buffers use one reusable realm cache.
+Borrowed visitors enumerate execution/debugger/module/job/disposal/Promise edges
+without intermediate vectors; edges are flat `(owner, reference)` pairs. Root
+and edge replacement capacity is admitted jointly while old allocations coexist,
+then allocator-reported capacity is leased and checked before commit or heap work.
+Refusal restores the old cache without changing its capacities or VM execution.
+
+A control lease follows the batch while Rust or the heap owns it. Heap operations
+run no JavaScript, so one non-reentrant optional batch requires no metadata vector.
+The heap traces results, reactions, disposable values and suspended frames only
+from live owners; inverse async invocation/generator edges preserve await liveness
+without rooting unreachable cycles. Cached lengths clear on every normal/error
+return, while retained capacity stays charged once and can serve terminal cleanup
+without new admission. Host-neutral caches attach through ordinary bounded realm
+accounting; discarded realms release their caches. Cross-realm marking prepares
+its batch before releasing deferred roots and propagates native preparation errors.
+
+Collector mark/work sets, realm traversal scratch, native payloads of retained
+values, shared programs and other wider native/cache/integrated ownership remain
+open work.
 
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native

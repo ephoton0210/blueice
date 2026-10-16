@@ -1336,7 +1336,9 @@ fn pauses_a_direct_inner_call_without_consuming_its_parent_call_site() {
         .unwrap();
     let child = vm.debugger_nested_continuation.as_ref().unwrap();
     assert_eq!(child.execution.arguments[0].object_id(), Some(kept));
-    assert!(vm.debugger_continuation_references().contains(&kept));
+    let mut traced = false;
+    vm.visit_debugger_continuation_references(&mut |id| traced |= id == kept);
+    assert!(traced);
     let parent = vm.debugger_continuation.as_ref().unwrap();
     assert_eq!(
         parent.code.instruction(parent.pc).unwrap().opcode,

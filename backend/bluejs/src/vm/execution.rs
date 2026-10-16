@@ -6,15 +6,6 @@
 
 use super::*;
 
-/// Appends the object ids among `values`, skipping every primitive.
-fn push_object_roots<'a>(roots: &mut Vec<ObjectId>, values: impl IntoIterator<Item = &'a Value>) {
-    for value in values {
-        if let Value::Object(id) = value {
-            roots.push(*id);
-        }
-    }
-}
-
 /// The synchronous root entry cannot suspend at a generator or await boundary.
 pub(super) fn root_interpreter_exit(exit: InterpreterExit) -> Result<Value, RuntimeError> {
     match exit {
@@ -1363,126 +1354,15 @@ impl Vm {
         }
     }
 
-    /// Collect the VM's external heap edges once, independently of the
-    /// allocating operation's return type and closure instantiation.
-    pub(super) fn execution_roots(&self) -> Vec<ObjectId> {
-        // Every object the VM holds outside the heap is gathered into one
-        // plain batch and handed to the heap for the duration of `operation`.
-        // Registering each one individually in the heap's root table cost a
-        // hash insert and removal per root on every allocating native call,
-        // which dominated the run time of array-heavy scripts.
-        let mut roots = Vec::with_capacity(self.stack.len() + self.cells.len() + 32);
-        {
-            push_object_roots(&mut roots, &self.stack);
-            push_object_roots(&mut roots, self.bindings.iter().flatten());
-            push_object_roots(
-                &mut roots,
-                [&self.completion, &self.this, &self.callee, &self.new_target],
-            );
-            push_object_roots(&mut roots, &self.arguments);
-            for completion in &self.pending_completions {
-                let values: &[Value] = match completion {
-                    Completion::Return(value)
-                    | Completion::Yield(value)
-                    | Completion::Throw(RuntimeError::Thrown(value)) => std::slice::from_ref(value),
-                    Completion::TailRecur(args) | Completion::TailCall(args) => args,
-                    Completion::Throw(_)
-                    | Completion::Jump { .. }
-                    | Completion::Resume(_)
-                    | Completion::Halt(_) => &[],
-                };
-                push_object_roots(&mut roots, values);
-            }
-            push_object_roots(
-                &mut roots,
-                self.completion_saves.iter().map(|(value, _)| value),
-            );
-            push_object_roots(&mut roots, &self.with_objects);
-            if let Some(call) = &self.pending_tail_call {
-                push_object_roots(&mut roots, call);
-            }
-            for object in &self.kept_weak_objects {
-                roots.push(*object);
-            }
-            roots.extend(self.async_frame_roots.iter().copied());
-            // Lazy prototypes are strong Realm edges even before a public
-            // constructor retains them. Failed constructor publication must
-            // not leave a cached ID pointing at a collected prototype.
-            roots.extend(
-                [
-                    self.promise_prototype,
-                    self.map_prototype,
-                    self.set_prototype,
-                    self.weak_map_prototype,
-                    self.weak_set_prototype,
-                    self.weak_ref_prototype,
-                    self.finalization_registry_prototype,
-                    self.disposable_stack_prototype,
-                    self.async_disposable_stack_prototype,
-                ]
-                .into_iter()
-                .flatten(),
-            );
-            for object in self
-                .home_object
-                .iter()
-                .chain(self.templates.values())
-                .chain(self.joining.iter())
-                .chain(self.call_stack.iter())
-            {
-                roots.push(*object);
-            }
-            for id in self.cells.values() {
-                roots.push(*id);
-            }
-            for binding in self.dynamic_eval_bindings.values() {
-                roots.push(binding.cell);
-            }
-            for bindings in &self.dynamic_eval_outer_bindings {
-                for binding in bindings.values() {
-                    roots.push(binding.cell);
-                }
-            }
-            roots.extend(self.pending_module_and_import_roots());
-            // A native-debugger pause keeps iterator records in a
-            // Rust-owned root-frame continuation. They are not reachable from
-            // the ordinary operand stack while paused, so make every object
-            // edge visible to the heap before this allocation safepoint.
-            roots.extend(self.debugger_continuation_references());
-            for resource in self.disposables.iter() {
-                if let Value::Object(id) = &resource.receiver {
-                    roots.push(*id);
-                }
-                if let Some(Value::Object(id)) = &resource.argument {
-                    roots.push(*id);
-                }
-                if let Some(Value::Object(id)) = &resource.method {
-                    roots.push(*id);
-                }
-            }
-            if let Some(Value::Object(id)) = &self.async_dispose_helper {
-                roots.push(*id);
-            }
-            for job in &self.promise_jobs {
-                roots.extend(self.promise_job_references(job));
-            }
-            if let Some(Err(Value::Object(id))) = &self.test262_done {
-                roots.push(*id);
-            }
-        }
-        roots
-    }
-
     pub(super) fn with_roots<T>(
         &mut self,
         operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>,
     ) -> Result<T, RuntimeError> {
-        let roots = self.execution_roots();
-        let edges = self.promise_owned_edges();
+        let prepared = self.prepare_gc_trace()?;
         let before = self.heap.stats();
-        self.heap.push_scoped_roots(roots, edges);
+        self.heap.push_scoped_roots(prepared.batch);
         let result = operation(&mut self.heap);
-        self.heap.pop_scoped_roots();
+        self.finish_gc_trace(prepared.charge);
         let after = self.heap.stats();
         if before.minor_collections != after.minor_collections
             || before.major_collections != after.major_collections

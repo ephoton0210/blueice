@@ -75,8 +75,7 @@ impl Heap {
             remembered: HashSet::new(),
             roots: HashMap::new(),
             released_realm_roots: Rc::default(),
-            scoped_roots: Vec::new(),
-            scoped_owned_edges: Vec::new(),
+            scoped_trace: None,
             managed_bytes: ManagedBytes::default(),
             next_major_bytes: config.major_threshold_bytes,
             #[cfg(any(test, coverage))]

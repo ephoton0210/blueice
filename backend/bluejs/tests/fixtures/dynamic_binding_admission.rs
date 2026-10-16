@@ -92,6 +92,10 @@ fn dynamic_binding_admission_exact_budget_and_one_byte_refusal() {
                     vm.eval_dynamic_slots.reserve(7);
                 }
                 vm.stack.reserve(16);
+                // Exercise declaration admission with GC batch storage ready.
+                vm.stack.push(Value::Object(vm.object_prototype));
+                vm.with_roots(|_| Ok(())).unwrap();
+                vm.stack.pop();
                 let dynamic = SchedulingMapCapacity::for_additional(
                     &vm.dynamic_eval_bindings,
                     2,

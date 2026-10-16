@@ -187,7 +187,7 @@ fn active_control_capacity_releases_finished_root_allocations() {
     assert!(persistent > 0);
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
-        persistent
+        persistent + vm.gc_trace_cache.retained_bytes()
     );
 }
 

@@ -209,6 +209,7 @@ impl Vm {
             next_host_task_source: 0,
             next_standalone_task_serial: 0,
             async_frame_roots: Vec::new(),
+            gc_trace_cache: Default::default(),
             test262_done: None,
             test262_agent_host: None,
             test262_agent_control: None,

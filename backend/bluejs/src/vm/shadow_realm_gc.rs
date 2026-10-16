@@ -43,14 +43,17 @@ impl Vm {
             || self.debugger_continuation.is_some()
     }
 
-    fn shadow_mark(&mut self, ignored: &HashSet<RootId>, extra: &[ObjectId]) -> HashSet<ObjectId> {
+    fn shadow_mark(
+        &mut self,
+        ignored: &HashSet<RootId>,
+        extra: &[ObjectId],
+    ) -> Result<HashSet<ObjectId>, RuntimeError> {
+        let prepared = self.prepare_gc_trace()?;
         self.heap.release_realm_roots();
-        let roots = self.execution_roots();
-        let edges = self.promise_owned_edges();
-        self.heap.push_scoped_roots(roots, edges);
+        self.heap.push_scoped_roots(prepared.batch);
         let marked = self.heap.realm_reachable(ignored, extra);
-        self.heap.pop_scoped_roots();
-        marked
+        self.finish_gc_trace(prepared.charge);
+        Ok(marked)
     }
 
     fn prune_shadow_owners(&mut self, active: &HashSet<u64>, live: &HashSet<ObjectId>) {
@@ -123,10 +126,10 @@ impl Vm {
                 let pins = ignored.entry(heap).or_default();
                 let targets: Vec<_> = extra.entry(heap).or_default().iter().copied().collect();
                 let live = if heap == own_heap {
-                    self.shadow_mark(pins, &targets)
+                    self.shadow_mark(pins, &targets)?
                 } else {
                     let record = realms.iter().find(|r| r.heap == heap).expect("known realm");
-                    record.vm.borrow_mut().shadow_mark(pins, &targets)
+                    record.vm.borrow_mut().shadow_mark(pins, &targets)?
                 };
                 let realm = &edges[&heap];
                 for (instance, child, _) in &realm.instances {

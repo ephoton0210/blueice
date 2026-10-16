@@ -1822,6 +1822,26 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
         .collect()
 }
 
+/// Admitted VM roots and conditional side-table edges for one heap operation.
+#[derive(Default)]
+pub(crate) struct GcTraceBatch {
+    pub(crate) roots: Vec<ObjectId>,
+    pub(crate) edges: Vec<(ObjectId, ObjectId)>,
+}
+
+impl GcTraceBatch {
+    pub(crate) fn retained_bytes(&self) -> usize {
+        self.roots
+            .capacity()
+            .saturating_mul(std::mem::size_of::<ObjectId>())
+            .saturating_add(
+                self.edges
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<(ObjectId, ObjectId)>()),
+            )
+    }
+}
+
 /// An ordinary-object and sparse-array heap. It owns storage, property writes
 /// (including the generational write barrier), and explicit roots.
 /// No mutable reference to an object's backing map escapes this type.
@@ -1839,11 +1859,9 @@ pub struct Heap {
     remembered: HashSet<ObjectId>,
     roots: HashMap<RootId, ObjectId>,
     released_realm_roots: Rc<std::cell::RefCell<Vec<RootId>>>,
-    /// Batches of temporary roots, innermost last. A VM safepoint registers
-    /// everything it holds as one batch instead of one `roots` entry each.
-    scoped_roots: Vec<Vec<ObjectId>>,
-    /// VM side-table edges, traced only while their heap owner is live.
-    scoped_owned_edges: Vec<Vec<(ObjectId, Vec<ObjectId>)>>,
+    /// Heap operations run no JS and cannot reenter the VM. One admitted
+    /// safepoint batch supplies roots and conditional VM side-table edges.
+    scoped_trace: Option<GcTraceBatch>,
     managed_bytes: ManagedBytes,
     next_major_bytes: usize,
     /// First refused request in a test allocation sweep, after normal GC.
