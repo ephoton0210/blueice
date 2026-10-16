@@ -674,7 +674,10 @@ Items are independent; may be taken any time.
 
 Entry condition: K.12 and K.13 are closed or each open row is named as a gap in the decision.
 
-- [ ] **AC-K14.1 Inventory regenerated** from suites at one commit; no hand-edited counts.
+- [x] **AC-K14.1 Inventory regenerated** from suites at one commit; no hand-edited counts.
+    - *Evidence:* PLAN.md, "AC-K14.1 Source-derived suite inventory" (2026-10-16):
+      `COMPATIBILITY_SUITES.json` at `26a3941b2`, 100 suites / 244 ignored Rust functions,
+      identical Windows/macOS generation, seven tool tests on each OS and complete local workspace gate.
 - [ ] **AC-K14.2 Pass rate** recomputed over the versioned case list (fixture directories and programs, per
   suite) with numerator and denominator printed per suite.
 - [ ] **AC-K14.3 J.6.3 gates** (fmt/Clippy, workspace tests with ignored oracles, coverage) green on every

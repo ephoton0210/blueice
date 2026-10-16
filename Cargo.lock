@@ -168,9 +168,11 @@ name = "blueice-bluets"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "proc-macro2",
  "ring",
  "serde",
  "serde_json",
+ "syn 2.0.119",
  "ureq",
 ]
 

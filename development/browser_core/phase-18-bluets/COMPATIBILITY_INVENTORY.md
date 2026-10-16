@@ -7,163 +7,145 @@ outside it is refused with a diagnostic (section 4) or is listed as an open gap 
 claim "full parity" is the conjunction of J.6.1 to J.6.3 *and* no open required gap; section 3
 has required gaps open, so it stays closed.
 
-The measured K.5–K.10 source at `87ebda8c7` passed all 29 jobs in
-[hosted CI run 38106557070](https://github.com/ephoton0210/blueice/actions/runs/38106557070),
-including both pinned TypeScript oracles and the coverage gates. This
-confirms the recorded subset, not the still-open K.11–K.14 work or full parity.
+K.1–K.13 are complete within their measured subsets. K.13.2 confirms the four
+hosted oracle legs (Ubuntu, macOS, Windows x86_64 and Windows arm64) in
+[run 38877729768](https://github.com/ephoton0210/blueice/actions/runs/38877729768)
+at `d4b13ff5e`; this is an oracle result, not a claim that the entire workflow
+or the later K.13.4 source has passed that run. K.14's final pass-rate,
+all-platform gate and decision remain open.
 
 The authority for every expectation is the pinned `typescript@5.9.3` executable (`BLUEICE_BLUETSC_ORACLE`),
-not documentation. The inventory below is regenerated, not remembered: section 1 is the list of `#[ignore]`
-test files (`grep -rl '#\[ignore' backend/bluets*/tests`), section 4 is
-`python3 tools/inventory_refusals.py` over the source, and CI runs every ignored suite on Linux and macOS
-(`.github/workflows/ci.yml`, job `typescript-oracle`).
+not documentation. Section 1 is generated from one committed Git tree using a
+Rust syntax parser, including tests in external modules, not a grep over text.
+Section 4 is `python3 tools/inventory_refusals.py` over production source.
+CI runs the ignored suites on four oracle platforms; the Windows legs report
+their Unix-only exclusions explicitly (`.github/workflows/ci.yml`, job
+`typescript-oracle`). Suite/function counts in section 1 are not a substitute
+for K.14.2's versioned program/configuration denominators or agreement rates.
 
 ## 1. What is compared with `tsc`, and how
 
-| Suite (`backend/bluets/tests/`, `backend/bluets-bluejs/tests/`) | Compares | Size |
-| --- | --- | --- |
-| `typescript_oracle.rs` | accepted/rejected verdicts, diagnostics, emitted JavaScript, declarations and runtime output of the core language subset (functions, arrows, async, generators, tuples, destructuring, records, generics, modules) | 109 cases, plus the fixture directories below |
-| `class_checker_matrix.rs` | accept/reject of class forms (fields, accessors, visibility, heritage, parameter properties, private names, static blocks) | 523 entries |
-| `class_modifiers_checker_matrix.rs` and `class_modifiers.rs` | abstract/implements/override origins, structural verdicts and exact primary/related diagnostics, constructor capability aliases, runtime and declarations | 95 programs, 12 further capability controls, 5 runtime and 6 declaration witnesses |
-| `class_dynamic_checker_matrix.rs` and `bluets-bluejs/tests/class_dynamic_direct.rs` | generic heritage/methods, captured class expressions and constructor aliases, computed/indexed members, exact primary/related diagnostics, both field modes and ES2020/ES2022 expression lowering | 160 programs, 30 runtime and 36 declaration witnesses, 4 direct tests |
-| `class_retirement_checker_matrix.rs` and `bluets-bluejs/tests/class_retirement_direct.rs` | separate accessor read/write contracts, inferred getters, imported member kinds, merged interface heritage and constructor branch initialization; exact diagnostics, execution and declarations | 35 programs, 16 runtime and 17 declaration witnesses, 3 direct tests |
-| `module_exports_checker_matrix.rs` and `bluets-bluejs/tests/module_exports_direct.rs` | default expressions/declarations, live named/star/namespace re-exports, exact diagnostics, execution and declarations, incremental type refresh and direct default-name/snapshot semantics | 74 programs, 41 runtime and 47 declaration witnesses, 5 direct tests and 2 boundary/cache controls |
-| `module_types_checker_matrix.rs`, `module_type_resolution.rs`, `contextual_type_imports.rs`, `json_default_binding.rs` and `bluets-bluejs/tests/module_types_direct.rs` | whole/inline type forms, attributes, qualified static surfaces, UMD declarations, exact diagnostics, Node/declarations, per-edge conditions and contextual binding names | 86 matrix programs, 54 runtime and 60 declaration witnesses, 8 further pinned programs and 5 direct controls |
-| `ambient_checker_matrix.rs`, `ambient_static_boundaries.rs`, `ambient_static_cache.rs`, `ambient_incremental.rs` and `ambient_reexport_boundaries.rs` | named/merged/shorthand ambient surfaces, module/global augmentation, imported declaration contexts, bounded path/type/lib directives, type queries and re-exports; exact diagnostics, Node/declarations and owner/resource/runtime/cache controls | 80 programs, 44 runtime and declaration witnesses, 16 public controls |
-| `enum_checker_matrix.rs`, `enum_oracle.rs` | accept/reject of enum forms; emitted objects, reverse mappings, `const enum` options run under Node | 57 entries |
-| `namespace_checker_matrix.rs`, `namespace_oracle.rs`, `namespace_declaration_oracle.rs` | accept/reject of namespace forms; ES2022/ES2020 emit run under Node; `.d.ts` output | 76 entries, 2 targets |
-| `class_downlevel_oracle.rs` | private names, fields and static blocks below ES2022, under both field semantics | ES2020 and ES2022 |
-| `commonjs_oracle.rs` | `--module commonjs` output (live bindings, cycles, `export =`, `import = require`, interop) run under Node | 6 programs |
-| `source_extras.rs`, `source_option_boundaries.rs` | relative JSON assets and owner-enabled JavaScript, allow/check policy, exact primary diagnostics, selected physical inputs, declarations/output inventory, asset values and actual emitted execution; canonical symlink and policy controls | 28 configurations, 18 runtime/declaration witnesses, 6 CLI controls |
-| `jsx_typing_extras.rs` and `bluets-bluejs/tests/jsx_direct.rs` | generic tag arguments/components, ElementType, managed/class attributes/defaultProps, duplicate/children/namespaced errors; exact primary/related positions, declarations/inputs/inventory and every actual emitted execution | 60 configurations (26 accept, 34 reject), 26 emitted witnesses, 9 direct Native programs and a CLI argument-refusal guard |
-| `jsx_runtime_namespace.rs` and `jsx_runtime_boundaries.rs` | automatic package JSX namespaces, production/development runtimes, pragma priority, global fallback, per-file provider identity, exact diagnostics/declarations/inputs/inventory and physical execution; owner/cache/resource/symlink controls | 28 configurations (16 accept, 12 reject), 16 emitted witnesses, 8 related records and 6 public controls |
-| `decorator_typing.rs` | standard/legacy replacement compatibility, class/member context fields/access/initializers, wrong-kind and readonly diagnostics, exact declarations/inputs/inventory and actual physical execution | 60 configurations (32 accept, 28 reject; 48 standard, 12 legacy), 32 emitted witnesses and 4 related records |
-| `jsx_checker_matrix.rs`, `jsx_oracle.rs` | accept/reject of JSX against the declared `JSX` namespace (53 entries); every `jsx` mode, factory, pragma and runtime option run under Node | 53 entries, 11 programs |
-| `decorators_checker_matrix.rs`, `decorators_oracle.rs` | standard decorators: accept/reject (32); evaluation/application order, contexts, metadata, class replacement, errors at class definition, run under Node | 32 entries, 20 programs |
-| `legacy_decorators_checker_matrix.rs`, `legacy_decorators_oracle.rs` | `experimentalDecorators`/`emitDecoratorMetadata`: accept/reject (19); `__decorate`/`__param`/metadata call order and values, ES2022 and ES2020, ESM and CommonJS | 19 entries, 18 programs |
-| `unknown_name_checker_matrix.rs` | accept/reject through `check` and `build` for lexical value/type names, hoisting, TDZ, imports, namespaces and shadowing; one program compares Node output and declarations | 108 entries, 1 program |
-| `immutable_checker_matrix.rs` | accept/reject through `check` and `build` for const/import rebinding, compound/update/pattern/iteration writes, shadowing and readonly members; one program compares Node output and declarations | 173 entries, 1 program |
-| `imported_value_checker_matrix.rs` | accept/reject through `check` and `build` for named/default/namespace and CommonJS imports, retained checked value surfaces, private type identities and circular inference; linked Node programs and exact inferred declarations | 81 entries, 2 programs, 15 declaration cases |
-| `standard_library_checker_matrix.rs` | selected ECMAScript types and methods, matching target/lib, owner/runtime policy and versioned manifest; exact inferred declarations and linked Node execution | 123 entries, 1 program, 5 declaration cases |
-| `inferred_return_checker_matrix.rs` | unannotated function/member return signatures, freshness, recursion and completion, async/generators, lexical/default/pattern scopes and importers; exact declarations and Node execution | 121 entries, 1 program, 23 exact declaration cases, 2 union type-equality cases |
-| `declaration_inference.rs` | exact inferred/generic/overload/accessor/merged-namespace/export-assignment/ambient declarations, literal freshness and const-parameter positions; exact rejected primaries and every actual emitted execution/syntax observation | 84 configurations (77 accept, 7 reject), public checked namespace-symbol regression |
-| `declaration_options.rs` and `declaration_option_boundaries.rs` | exact declaration-only/directory/map artifacts and isolated-declaration diagnostics; actual emitted execution/syntax, live Native recorder, CLI override and owner-root publication guards | 48 configurations (28 accept, 20 reject), three CLI boundary tests |
-| `project_config.rs` | JSONC inheritance, normalized compiler options and selected files; owner overlays and confinement; exact declarations and Node runtime, including strict-helper relocation | 69 configurations (59 accept, 10 reject), 2 linked programs |
-| `strictness_flags.rs`, `strictness_controls.rs` | independent parent/strict-family and additional diagnostics, lexical/return/call/index boundaries, unchanged valid JavaScript and cache policy identity; pinned Node execution and exact declarations | 32 configurations (16 accept, 16 reject), 39 boundary controls, 1 program in 2 policies |
-| `cli_surface.rs` | native project CLI flags and overrides, default project discovery, normalized configuration, source/emitted lists, noEmit and pretty/exit observations; input preservation, Node execution and exact declarations | 30 observations (24 accept, 6 reject), 2 emission layouts |
-| `option_combinations_oracle.rs` | one linked multi-feature program over target, module system, default/explicit class-field policy, preservation, isolated modules, sourceMap, declaration, noEmit and strict; project verdicts, artifact inventory, Node output, exact declarations and source-map structure | 768 configurations (384 emitted, 384 noEmit) |
-| `bluets-bluejs/tests/namespace_parity.rs`, `jsx_direct.rs`, `decorators_direct.rs` | the direct runtime (BlueJS) against Node running `tsc`'s output | 7 + 9 + 6 programs |
-| `diagnostic_source_families.rs` | additional lexical/semantic diagnostic source families, exact primary codes and positions | 97 controls |
-| `diagnostics_matrix.rs` | verdicts, TypeScript primary code/template, rendered message, UTF-16 position and related information | 2,544 programs, 217 templates, 1,289 rejected primaries |
-| `diagnostics_projects.rs` | project/configuration, CLI and option-combination diagnostic positions | 867 observations |
-| `diagnostics_presentation.rs` | actual plain/pretty CLI presentation, summaries, related source context, exit status and artifacts | 22 observations |
-| `guards_checker_matrix.rs` | predicate/assertion signatures, lexical call effects, receiver guards and exhaustive completion; exact primary/related diagnostics, Node behavior and every emitted declaration | 75 programs, 5 runtime/declaration witnesses |
-| `inference_checker_matrix.rs` | bounded argument/contextual candidates, constraints/defaults, explicit arguments, generic callable/class/interface signatures and imported boundaries; exact primary/related diagnostics, every emitted declaration, Node behavior and owner budget refusal | 74 programs, 4 runtime/declaration witnesses |
-| `overloads_checker_matrix.rs` | ordered call/construct/method candidates, callback context, literal specialization, merged interface groups and implementation compatibility; exact primary/related diagnostics, every emitted declaration and Node behavior | 74 programs, 6 runtime/declaration witnesses |
-| `narrowing_checker_matrix.rs` | lexical control-flow verdicts and exact primary diagnostics; Node behavior and exact declarations | 123 programs, 14 runtime/declaration witnesses |
-| `operators_checker_matrix.rs` | bounded keyof/indexed/conditional/infer/mapped/template/recursive operators, exact diagnostics and declarations, literal ordering and expansion limits | 82 programs, 3 runtime/declaration witnesses, 6 budget controls |
-| `more_types_checker_matrix.rs` | readonly/indexed containers, bigint/symbol, const/satisfies, tuple metadata, unknown/never, enum and void/undefined forms; exact diagnostics, execution and declarations | 100 programs, 6 runtime/declaration witnesses |
-| `compatibility_checker_matrix.rs` | freshness, weak records, function/method variance, optional/undefined, generic and callable/indexed structural relations; exact diagnostics, execution and declarations | 88 programs, 4 runtime/declaration witnesses |
+<!-- BEGIN GENERATED K14 SUITES -->
 
-The fixture corpus under `tests/fixtures/typescript_oracle/` has 2754 top-level directories; each is an
-entry whose verdict was recorded from the pinned compiler by an ignored test
-(`BLUEICE_WRITE_*_MATRIX=1`), and the ordinary (non-ignored) tests replay the recorded verdicts offline.
+Generated by `cargo run -p blueice-bluets --example compatibility_inventory -- --write 26a3941b2625ab924db9de824a83b49ac8085172`.
 
-BTS diagnostics retain BlueTS's own codes and raw messages. Their separate TypeScript
-counterparts compare exact primary codes, text, original UTF-16 positions and related information
-in the measured corpus. Source maps retain line-level provenance and are validated structurally;
-emitted JavaScript compares behavior under Node, while declarations compare deterministic text.
+Source commit: `26a3941b2625ab924db9de824a83b49ac8085172`. Pinned compiler: TypeScript **5.9.3**.
+Input graph SHA-256: `db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
 
-The K.4.1 Linux verification covers all 33 differential suite files and all 128 ignored oracles.
-All 123 narrowing cases and fourteen runtime/declaration witnesses pass, and the CLI tracker
-compares 840 rejected primaries with zero message or related-information differences.
+**100 Cargo integration suites, 244 ignored Rust test functions.**
+These are harness counts, not program/configuration denominators or a pass rate.
+Unix-only tests remain included in this source inventory; platform selection is separate.
+The complete function names and Git blob ids of each harness's literal include/module closure
+are versioned in [COMPATIBILITY_SUITES.json](COMPATIBILITY_SUITES.json).
 
-The K.4.2 final frozen-source Linux gate passes all 1,105 tests in 69 groups,
-covering 34 differential suite files and all 130 ignored oracles. All 75 guard
-cases and five runtime/declaration witnesses pass; the 123-case narrowing
-regression and fourteen runtime/declaration witnesses also pass. The shared
-diagnostic corpus contains 1,596 programs and 145 templates.
+| Harness (repository-relative) | Ignored Rust functions |
+| --- | ---: |
+| `backend/bluets-bluejs/tests/async_generator_targets.rs` | 1 |
+| `backend/bluets-bluejs/tests/async_targets.rs` | 1 |
+| `backend/bluets-bluejs/tests/decorators_direct.rs` | 1 |
+| `backend/bluets-bluejs/tests/emitted_target_editions.rs` | 1 |
+| `backend/bluets-bluejs/tests/es5_scope_targets.rs` | 1 |
+| `backend/bluets-bluejs/tests/explicit_this_parameters.rs` | 1 |
+| `backend/bluets-bluejs/tests/exponentiation_targets.rs` | 1 |
+| `backend/bluets-bluejs/tests/jsx_direct.rs` | 1 |
+| `backend/bluets-bluejs/tests/logical_assignment_targets.rs` | 1 |
+| `backend/bluets-bluejs/tests/namespace_parity.rs` | 1 |
+| `backend/bluets-bluejs/tests/optional_targets.rs` | 1 |
+| `backend/bluets-bluejs/tests/rest_array_parameters.rs` | 1 |
+| `backend/bluets-bluejs/tests/target_syntax_profiles.rs` | 2 |
+| `backend/bluets-bluejs/tests/variable_patterns.rs` | 1 |
+| `backend/bluets/tests/ambient_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/async_generator_context.rs` | 1 |
+| `backend/bluets/tests/catch_flow_context.rs` | 1 |
+| `backend/bluets/tests/class_checker_matrix.rs` | 1 |
+| `backend/bluets/tests/class_downlevel_oracle.rs` | 1 |
+| `backend/bluets/tests/class_dynamic_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/class_modifiers.rs` | 1 |
+| `backend/bluets/tests/class_modifiers_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/class_retirement_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/cli_surface.rs` | 2 |
+| `backend/bluets/tests/commonjs_oracle.rs` | 1 |
+| `backend/bluets/tests/compatibility_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/contextual_type_imports.rs` | 1 |
+| `backend/bluets/tests/declaration_inference.rs` | 2 |
+| `backend/bluets/tests/declaration_options.rs` | 2 |
+| `backend/bluets/tests/decorator_residuals.rs` | 2 |
+| `backend/bluets/tests/decorator_targets.rs` | 2 |
+| `backend/bluets/tests/decorator_typing.rs` | 2 |
+| `backend/bluets/tests/decorators_checker_matrix.rs` | 1 |
+| `backend/bluets/tests/decorators_oracle.rs` | 1 |
+| `backend/bluets/tests/default_generators.rs` | 1 |
+| `backend/bluets/tests/diagnostic_source_families.rs` | 1 |
+| `backend/bluets/tests/diagnostics_matrix.rs` | 1 |
+| `backend/bluets/tests/diagnostics_presentation.rs` | 1 |
+| `backend/bluets/tests/diagnostics_projects.rs` | 1 |
+| `backend/bluets/tests/enum_checker_matrix.rs` | 1 |
+| `backend/bluets/tests/enum_oracle.rs` | 1 |
+| `backend/bluets/tests/explicit_this_context.rs` | 1 |
+| `backend/bluets/tests/guards_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/immutable_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/imported_value_checker_matrix.rs` | 3 |
+| `backend/bluets/tests/indexed_call_context.rs` | 1 |
+| `backend/bluets/tests/inference_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/inferred_return_checker_matrix.rs` | 4 |
+| `backend/bluets/tests/json_default_binding.rs` | 1 |
+| `backend/bluets/tests/jsx_checker_matrix.rs` | 1 |
+| `backend/bluets/tests/jsx_oracle.rs` | 1 |
+| `backend/bluets/tests/jsx_runtime_namespace.rs` | 2 |
+| `backend/bluets/tests/jsx_typing_extras.rs` | 2 |
+| `backend/bluets/tests/legacy_decorators_checker_matrix.rs` | 1 |
+| `backend/bluets/tests/legacy_decorators_oracle.rs` | 1 |
+| `backend/bluets/tests/module_exports_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/module_script_helpers.rs` | 1 |
+| `backend/bluets/tests/module_systems.rs` | 2 |
+| `backend/bluets/tests/module_type_resolution.rs` | 1 |
+| `backend/bluets/tests/module_types_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/more_types_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/namespace_checker_matrix.rs` | 1 |
+| `backend/bluets/tests/namespace_declaration_oracle.rs` | 1 |
+| `backend/bluets/tests/namespace_oracle.rs` | 1 |
+| `backend/bluets/tests/narrowing_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/object_method_context.rs` | 1 |
+| `backend/bluets/tests/operators_checker_matrix.rs` | 3 |
+| `backend/bluets/tests/option_combinations_oracle.rs` | 1 |
+| `backend/bluets/tests/output_options.rs` | 2 |
+| `backend/bluets/tests/output_validation.rs` | 2 |
+| `backend/bluets/tests/overloads_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/package_extras.rs` | 2 |
+| `backend/bluets/tests/path_extras.rs` | 2 |
+| `backend/bluets/tests/project_build_corrupt_state.rs` | 3 |
+| `backend/bluets/tests/project_build_equivalence.rs` | 1 |
+| `backend/bluets/tests/project_build_errors.rs` | 1 |
+| `backend/bluets/tests/project_build_freshness.rs` | 2 |
+| `backend/bluets/tests/project_build_invalidation.rs` | 2 |
+| `backend/bluets/tests/project_build_order.rs` | 2 |
+| `backend/bluets/tests/project_build_watch.rs` | 1 |
+| `backend/bluets/tests/project_cache_key.rs` | 1 |
+| `backend/bluets/tests/project_config.rs` | 3 |
+| `backend/bluets/tests/project_reference_owner_gate.rs` | 1 |
+| `backend/bluets/tests/project_referenced_declarations.rs` | 4 |
+| `backend/bluets/tests/project_references.rs` | 2 |
+| `backend/bluets/tests/receiver_parameter_boundaries.rs` | 1 |
+| `backend/bluets/tests/rest_array_context.rs` | 1 |
+| `backend/bluets/tests/source_extras.rs` | 2 |
+| `backend/bluets/tests/source_map_publication.rs` | 1 |
+| `backend/bluets/tests/source_map_tokens_oracle.rs` | 9 |
+| `backend/bluets/tests/standard_library_checker_matrix.rs` | 3 |
+| `backend/bluets/tests/strictness_controls.rs` | 1 |
+| `backend/bluets/tests/strictness_flags.rs` | 2 |
+| `backend/bluets/tests/target_library_options.rs` | 1 |
+| `backend/bluets/tests/target_protocols.rs` | 2 |
+| `backend/bluets/tests/targets_checker_matrix.rs` | 5 |
+| `backend/bluets/tests/template_constant_context.rs` | 1 |
+| `backend/bluets/tests/typescript_oracle.rs` | 82 |
+| `backend/bluets/tests/unknown_name_checker_matrix.rs` | 2 |
+| `backend/bluets/tests/variable_pattern_context.rs` | 1 |
 
-The K.4.3 final frozen-source Linux gate passes all 1,110 tests in 70 groups, including all 132 ignored oracles in 35 differential suite files. All 74 generic inference cases,
-four runtime/declaration witnesses and the contextual budget refusal pass.
-The shared diagnostic corpus contains 1,670 programs and 147 templates.
+The versioned `typescript_oracle/` corpus has **3392 top-level fixture directories**.
+The shared diagnostic record contains **3182 unique programs, 221 templates, 1855 accepts and 1327 rejects**.
+These overlapping observations must not be added to the harness count or to each other.
 
-The K.4.4 final frozen-source Linux gate passes all 1,114 tests in 71 groups,
-including all 134 ignored oracles in 36 differential suite files. All 74 ordered
-overload programs and six runtime/declaration witnesses pass. The shared
-diagnostic corpus contains 1,744 programs and 147 templates.
-
-The K.4.5 final frozen-source Linux gate passes all 1,120 tests in 72 groups,
-including all 137 ignored oracles in 37 differential suite files. All 82 operator
-programs, three exact runtime/declaration witnesses, both pinned recorders and
-six budget controls pass. The shared diagnostic corpus contains 1,826 programs
-and 152 templates.
-
-The K.4.6 frozen-source Linux gate passes all 1,124 tests in 73 groups,
-including all 139 ignored oracles in 38 differential suite files. All 100 more-type
-programs and six exact runtime/declaration witnesses pass. The shared diagnostic
-corpus contains 1,926 programs and 164 templates.
-
-The K.4.7 frozen-source Linux gate passes all 1,128 tests in 74 groups,
-including all 141 ignored oracles in 39 differential suite files. All 88
-compatibility programs and four exact runtime/declaration witnesses pass. The
-shared diagnostic corpus contains 2,014 programs and 167 templates.
-
-The K.5.2 frozen-source Linux gate passes all 1,151 tests in 79 groups,
-including all 146 ignored oracles in 42 suite files. Its 160 pinned class
-programs, 30 runtime and 36 exact declaration witnesses pass.
-
-The K.5.3 frozen-source Linux gate passes all 1,158 tests in 81 groups,
-including all 148 ignored oracles in 43 suite files. Its 35 pinned programs,
-16 Node runtime, 17 exact declaration witnesses and three direct regressions
-pass. Three obsolete deferred class fixtures return to the ordinary matrix.
-The shared diagnostic corpus contains 2,304 programs and 195 templates.
-Hosted workspace verification remains open after the macOS IPC fixture race
-in [CI 37845418066](https://github.com/ephoton0210/blueice/actions/runs/37845418066);
-the isolated fixture correction passes all 136 IPC tests on Linux.
-
-The K.6.1 frozen-source Linux gate passes all 1,169 tests in 83 groups,
-including every one of the 150 ignored oracles in 44 suite files. All 74
-module-export programs, 41 Node and 47 exact declaration witnesses pass, as
-do the five direct tests and incremental/private boundary controls. The shared
-diagnostic corpus contains 2,378 programs and 198 templates. The existing
-direct arrow and measured ES2020 anonymous-private default-class refusals
-remain; broader default/re-export compositions stay in G-T10.
-
-The K.6.2 frozen-source Linux gate passes all 1,192 tests in 92 groups,
-including every one of the 156 ignored oracles in 49 suite files. Its 86 pinned
-module-type programs, 54 Node and 60 exact declaration witnesses pass, together
-with eight supplemental pinned programs, direct controls and owner-bounded
-JSON asset/resource-limit/cache controls. The shared diagnostics record has
-2,464 programs and 211 templates and matches the actual recorder byte for byte.
-Final-source hosted workspace/platform/coverage CI remains open.
-
-The final K.3/K.4 source CI passes all 29 jobs on `40de14abd`; workspace line
-coverage is 90.65%, independent BlueJS 93.00%, with no added exclusions.
-Evidence: [CI 37702047861](https://github.com/ephoton0210/blueice/actions/runs/37702047861). The remaining M8 leaves
-and recorded unmeasured combinations stay open.
-
-### Measured pass rate (2026-10-06, Linux aarch64 in Colima on Apple silicon, pinned `typescript@5.9.3`, Node 26)
-
-Every differential suite of section 1 was run against the pinned compiler with none skipped:
-**28 of 28 suites pass, 122 ignored oracle tests pass, 0 failures.** The versioned case list is the
-repository itself at the commit that carries this file: 69 project configurations
-(59 accept, 10 reject), 32 strictness configurations (16 accept, 16 reject) and 39 checking boundary controls, 30 native CLI observations (24 accept, 6 reject), 768 option combinations (all accept), separately from 1366 recorded accepted/rejected verdicts (class
-523, namespace 76, enum 57, JSX 53, decorators 32, legacy decorators 19, unknown names 108, immutables 173, imported values 81, standard library 123, inferred returns 121), 109 core-subset
-cases in `typescript_oracle.rs`, and the emit-and-run programs (JSX 11, standard decorators 20,
-legacy decorators 18, CommonJS 6, unknown names 1, immutables 1, imported values 2, standard library 1, inferred returns 1, option combinations 768 (384 emitted, 384 noEmit),
-namespace/enum/class downlevel under both targets, direct-runtime parity 20). At the measurement date,
-the same suites ran in CI on Ubuntu 24.04 and macOS 15. K.13.1.3 has since added Windows x86_64 and
-arm64 oracle legs; their full hosted confirmation remains K.13.2 (G-M3). The percentage means only: *of the forms inside
-the subset, every one agrees with `tsc`*. It says nothing about the forms in section 3, which are refused.
-
-The M6 workspace milestone passed CI run [37387952696](https://github.com/ephoton0210/blueice/actions/runs/37387952696)
-on `8343929b7`, including all 29 jobs and both pinned oracle platforms. Workspace
-line coverage is 90.48%; independent BlueJS line coverage is 93.00%.
-The K.2 workspace verification passed CI run [37428756632](https://github.com/ephoton0210/blueice/actions/runs/37428756632)
-on `62f6a440d`: all 29 jobs succeeded, including both pinned oracle platforms.
-Workspace line coverage is 90.43%; independent BlueJS is 93.00%.
-The recorded subset measurements above remain the scope of the compatibility claim.
+<!-- END GENERATED K14 SUITES -->
 
 ## 2. What the supported subset is (summary)
 

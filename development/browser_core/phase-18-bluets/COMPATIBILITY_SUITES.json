@@ -1,0 +1,1837 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "source_revision": "26a3941b2625ab924db9de824a83b49ac8085172",
+  "source_graph_sha256": "db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d",
+  "fixture_directories": 3392,
+  "diagnostic_programs": 3182,
+  "diagnostic_templates": 221,
+  "diagnostic_accepts": 1855,
+  "diagnostic_rejects": 1327,
+  "suites": [
+    {
+      "harness": "backend/bluets-bluejs/tests/async_generator_targets.rs",
+      "ignored_tests": [
+        "async_generator_targets_match_native_effects_declarations_and_syntax"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/async_generator_targets.rs": "545b20ff3aef791faad73add5adc6a5bd9a56313",
+        "backend/bluets-bluejs/tests/fixtures/async_generator_targets/main.ts": "09156d5ab69c9d39b96be57cd58627b7aa01db63"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/async_targets.rs",
+      "ignored_tests": [
+        "async_targets_match_effects_declarations_and_syntax"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/async_targets.rs": "7b2c13e1cbf169c4d7e09489db3c96eaa69d7431",
+        "backend/bluets-bluejs/tests/fixtures/async_targets/main.ts": "c7e8761eff4c8b8fcb21eb02cc826a08be12744f"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/decorators_direct.rs",
+      "ignored_tests": [
+        "the_direct_bridge_runs_standard_decorators_to_the_value_typescript_and_node_compute"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/decorators_direct.rs": "c6ac2428ff568bd08707a7ae8cf7046dc7cc29cf"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/emitted_target_editions.rs",
+      "ignored_tests": [
+        "refused_suspension_has_a_pinned_native_positive_control"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/emitted_target_editions.rs": "909fdd7f801b79d72dd3256304e28c54e5e9ffd2",
+        "backend/bluets/tests/fixtures/typescript_oracle/targets-reference.json": "fe7d0ef6e07fd605afbf80381825c121f4695f45"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/es5_scope_targets.rs",
+      "ignored_tests": [
+        "es5_scope_targets_match_native_execution_declarations_and_syntax"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/es5_scope_targets.rs": "ec4a7823902893a1096c94f919f5d6dbce3d24f1",
+        "backend/bluets-bluejs/tests/fixtures/es5_scope_targets/main.ts": "2fd5d0d95b4f6c048ed72b5f83ab4c3dd7edc2a3"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/explicit_this_parameters.rs",
+      "ignored_tests": [
+        "emitted_receiver_parameters_match_node_and_declarations"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/explicit_this_parameters.rs": "eae75b445afdc4f4c4b1270da6fb9f2ef0cf43b9",
+        "backend/bluets-bluejs/tests/fixtures/explicit_this_parameters/main.ts": "4b37141e44aeda9a54bed8bfa4957fc9ed7be911"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/exponentiation_targets.rs",
+      "ignored_tests": [
+        "power_effects_match_pinned_typescript_and_native_exponentiation"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/exponentiation_targets.rs": "fd6d5d677ed302da91b27834135905a76478c8a9",
+        "backend/bluets-bluejs/tests/fixtures/exponentiation_targets/main.ts": "0153e0d6b1af9acd6d903f30734548b5c0c99a91"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/jsx_direct.rs",
+      "ignored_tests": [
+        "the_direct_bridge_runs_classic_jsx_to_the_value_typescript_and_node_compute"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/jsx_direct.rs": "a4e4af6fc21b19aa291082aec6fe3f2ed56574e2"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/logical_assignment_targets.rs",
+      "ignored_tests": [
+        "binding_effects_match_pinned_typescript_and_native_assignments"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/fixtures/logical_assignment_targets/main.ts": "e86176eef3dc36b79fe3d4e87bc8ccd4f49f0d8c",
+        "backend/bluets-bluejs/tests/logical_assignment_targets.rs": "4f84345a5c42c4f3c74749ae3a16755df9a63a2e"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/namespace_parity.rs",
+      "ignored_tests": [
+        "the_direct_bridge_runs_namespaces_to_the_value_typescript_and_node_compute"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/namespace_parity.rs": "5ae71bcbe191045d29b9f8480636fc0cfdf86ac7"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/optional_targets.rs",
+      "ignored_tests": [
+        "optional_targets_match_effects_declarations_and_syntax"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/fixtures/optional_targets/main.ts": "f4bb45f969d3de9704743b9c5db8de6a4a3778e1",
+        "backend/bluets-bluejs/tests/optional_targets.rs": "864dee9870e366c8cad74cd8fca276cc7e6fc4d0"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/rest_array_parameters.rs",
+      "ignored_tests": [
+        "rest_arrays_match_node_and_declarations"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/fixtures/rest_array_parameters/main.ts": "50a49b6bc2c6e39913ad72af4c5634ee2cf2617a",
+        "backend/bluets-bluejs/tests/rest_array_parameters.rs": "6306d64002ddc68090f0fad3649531a59cc5f320"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/target_syntax_profiles.rs",
+      "ignored_tests": [
+        "context_controls_match_the_actual_pinned_independent_parser",
+        "syntax_edition_observations_match_the_pinned_independent_parser"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/target_syntax_profiles.rs": "d9535e26596a429ff18d5fa769c42169f3351c0e",
+        "backend/bluets/tests/fixtures/target_syntax/edition-verdicts.tsv": "98f56758aba890ea0379963b33511f75be585a4c"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/variable_patterns.rs",
+      "ignored_tests": [
+        "variable_patterns_match_node_and_declarations"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/fixtures/variable_patterns/main.ts": "d0cf8201c026207123c0354203bfb4cdd60cd713",
+        "backend/bluets-bluejs/tests/variable_patterns.rs": "ad886fb34b6099e4ff0a8dbd365d637e6b9a082e"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ambient_checker_matrix.rs",
+      "ignored_tests": [
+        "ambient_forms_preserve_execution_and_generated_declarations",
+        "recorded_ambient_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ambient_checker_matrix.rs": "a02495b01dd5f1c83a447f3ef07765f6386d90e3",
+        "backend/bluets/tests/fixtures/typescript_oracle/ambient-checker-matrix.tsv": "ad687a71664ef2d54e6b3b6e53c4aa20c2c66a94",
+        "backend/bluets/tests/fixtures/typescript_oracle/ambient-reference.json": "22487a38f513a8daf9846d6685d674e7673fe5bb"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/async_generator_context.rs",
+      "ignored_tests": [
+        "async_generator_reference_matches_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/async_generator_context.rs": "147ba7255292d516a245021aafac03d182ba3498",
+        "backend/bluets/tests/fixtures/async-generator-context-reference.json": "d74d19dd8cdf4bc3fda12c0def8da4bd99dd7a4c"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/catch_flow_context.rs",
+      "ignored_tests": [
+        "catch_flow_reference_matches_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/catch_flow_context.rs": "1fa055948eebb8aebf07fed9f2930214e2832888",
+        "backend/bluets/tests/fixtures/catch-flow-context-reference.json": "a25ec96895595642dd8f6c4057cf97da8ec563b6"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/class_checker_matrix.rs",
+      "ignored_tests": [
+        "recorded_verdicts_match_the_pinned_typescript_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/class_checker_matrix.rs": "d6ae59ba8ac9582aee5c62d52cdcc73ebc0967e5",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-checker-matrix-deferred.txt": "59774f5b227f2fc31d4d2c81ec2a7900205b6c96",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-checker-matrix.tsv": "abc2725653c88bb39ea92fd66adb90c53f5a0774"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/class_downlevel_oracle.rs",
+      "ignored_tests": [
+        "pinned_class_downlevel_emit_prints_what_typescript_prints_in_every_mode"
+      ],
+      "inputs": {
+        "backend/bluets/tests/class_downlevel_oracle.rs": "58135a5f8e1945f358627e5900857253d1cbb8da",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-downlevel-accessors-and-methods/main.ts": "1d73790def3942637a647aab69b0a1523e63b2ae",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-downlevel-fields/main.ts": "e632dd8d36d8233ab4d8f94e6fcc38b167366bfc",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-downlevel-no-constructor/main.ts": "595a587f5ffe3056e81f17f81cc046dfa1da5184",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-downlevel-private-names/main.ts": "703e7517927930639525afe22ae951fe3b7d4e31",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-downlevel-private-static/main.ts": "a3dd66e23761e78963ea6f626e906fc9c4cf510d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-downlevel-static-order/main.ts": "aac0981b4e3f78db19ac03d3105acdea48651e8c"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/class_dynamic_checker_matrix.rs",
+      "ignored_tests": [
+        "class_dynamic_preserve_execution_and_declarations",
+        "recorded_class_dynamic_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/class_dynamic_checker_matrix.rs": "a69a8b1faef2631621c1e66f4374b1fefab7155a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-dynamic-checker-matrix.tsv": "bee9bf7cd50c9b97b516a4185f83c78660538ea1",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-dynamic-reference.json": "be8c7a99ca7031be62f4b00ec1b410223024b407"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/class_modifiers.rs",
+      "ignored_tests": [
+        "constructor_capability_reference_matches_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/class_modifiers.rs": "7f62b62ecc5ba8a50b571f036a4ef8a8e4845987",
+        "backend/bluets/tests/fixtures/typescript_oracle/modifiers-constructor-carriers.json": "f988900115d4e0159ebdbd735bcdd8dfd0b84e10"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/class_modifiers_checker_matrix.rs",
+      "ignored_tests": [
+        "class_modifiers_preserve_execution_and_declarations",
+        "recorded_class_modifiers_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/class_modifiers_checker_matrix.rs": "943291612bc3be4a48285419d634fc605f3fb06a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-modifiers-checker-matrix.tsv": "c77110b82e3e52a2c1947767f4ed6f7e03fc87d8",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-modifiers-reference.json": "aec5f677325d61da6438351d761b8917894efe9e"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/class_retirement_checker_matrix.rs",
+      "ignored_tests": [
+        "class_retirement_preserve_execution_and_declarations",
+        "recorded_class_retirement_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/class_retirement_checker_matrix.rs": "050977ca608eeb998d1fc16a84eb41b69ce6eef4",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-retirement-checker-matrix.tsv": "d481bc87d29012078725d82b3f0c4025c1ed2dc3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-retirement-reference.json": "b22aef435ac0be9bb62925ec0617a5c04688e572"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/cli_surface.rs",
+      "ignored_tests": [
+        "native_output_runs_and_declares_like_typescript",
+        "recorded_native_cli_observations_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/cli_surface.rs": "5ece9b1459fb471d004ca7f3e226b9b35f49e2be",
+        "backend/bluets/tests/fixtures/cli_surface/cli-checker-matrix.tsv": "9556715dec5af4852b7dd81e197ff8ca09cebe32",
+        "backend/bluets/tests/fixtures/cli_surface/reference.json": "4c3d56476224d83cde2ad4335a27f76697365b79"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/commonjs_oracle.rs",
+      "ignored_tests": [
+        "pinned_commonjs_programs_print_what_typescript_prints"
+      ],
+      "inputs": {
+        "backend/bluets/tests/commonjs_oracle.rs": "dd6dd6c6e363f2f86cf99c6ada9ab993c758cd8b"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/compatibility_checker_matrix.rs",
+      "ignored_tests": [
+        "compatibility_preserves_execution_and_declarations",
+        "recorded_compatibility_matches_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/compatibility_checker_matrix.rs": "7d2f2115b938bbe0a94df15aafcdbd9928e07270",
+        "backend/bluets/tests/fixtures/typescript_oracle/compatibility-checker-matrix.tsv": "b18db9335b38507df47f3b68b39bfb070f917860",
+        "backend/bluets/tests/fixtures/typescript_oracle/compatibility-reference.json": "0e2a260dc2c4d3414ee99e33bb3588f7449838b7"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/contextual_type_imports.rs",
+      "ignored_tests": [
+        "contextual_type_default_and_equals_bindings_match_pinned_execution_and_declarations"
+      ],
+      "inputs": {
+        "backend/bluets/tests/contextual_type_imports.rs": "ebd32934ddd118a258b2c20aa54a49f48d378cc0"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/declaration_inference.rs",
+      "ignored_tests": [
+        "emitted_declarations_preserve_native_execution_declarations_and_target_syntax",
+        "recorded_declaration_inference_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/declaration_inference.rs": "1f2d13c18bdff84adaab8f64b7ce2ae267c30525",
+        "backend/bluets/tests/fixtures/declaration_inference/reference.json": "190b4847bdc55268a351deb0fff14b4af6b53af5"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/declaration_options.rs",
+      "ignored_tests": [
+        "emitted_declarations_preserve_native_execution_declarations_and_target_syntax",
+        "recorded_declaration_options_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/declaration_options.rs": "d5ffb4205cd64ca383961578971775f762b69414",
+        "backend/bluets/tests/fixtures/declaration_options/reference.json": "724aadb3176d126bf070006de9d5ed2887f16e86"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/decorator_residuals.rs",
+      "ignored_tests": [
+        "emitted_decorators_preserve_native_execution_declarations_and_target_syntax",
+        "recorded_decorator_residuals_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/decorator_residuals.rs": "249189b6dd8c452289958a4fb69eed62e88461e0",
+        "backend/bluets/tests/fixtures/decorator_residuals/reference.json": "c5713decff77a8db22d7fcaa9e0164c7a7b69707"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/decorator_targets.rs",
+      "ignored_tests": [
+        "emitted_decorators_preserve_native_execution_declarations_and_target_syntax",
+        "recorded_decorator_targets_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/decorator_targets.rs": "675d2ddf9e4dfd1f588b8999759186b067bb2d54",
+        "backend/bluets/tests/fixtures/decorator_targets/reference.json": "93ae16f6560df55ffb344e2947a9bac3c55badfd"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/decorator_typing.rs",
+      "ignored_tests": [
+        "emitted_decorators_preserve_native_execution_declarations_and_es2022_syntax",
+        "recorded_decorator_typing_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/decorator_typing.rs": "7c2256b1a8d83762cc21b73d8c0b99b6c58a7a4a",
+        "backend/bluets/tests/fixtures/decorator_typing/reference.json": "d2c376dbcbfe40fed4a7a68b3e5006c6e77902d2"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/decorators_checker_matrix.rs",
+      "ignored_tests": [
+        "recorded_verdicts_match_the_pinned_typescript_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/decorators_checker_matrix.rs": "77c3420393c4fc9f05745983ceaf5b85fff6eeae",
+        "backend/bluets/tests/fixtures/typescript_oracle/decorators-checker-matrix-deferred.txt": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "backend/bluets/tests/fixtures/typescript_oracle/decorators-checker-matrix.tsv": "9b96385d775fc124d22de7e9612526b70fccad76"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/decorators_oracle.rs",
+      "ignored_tests": [
+        "pinned_standard_decorators_print_what_typescript_prints"
+      ],
+      "inputs": {
+        "backend/bluets/tests/decorators_oracle.rs": "d145815398e8de724a8a57d9df7981c05b51ab18"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/default_generators.rs",
+      "ignored_tests": [
+        "default_generators_match_pinned_execution_names_and_declarations"
+      ],
+      "inputs": {
+        "backend/bluets/tests/default_generators.rs": "50e9640ad00d85fb6791a1b25388946ebcbd705c",
+        "backend/bluets/tests/fixtures/default_generators/dep-async.ts": "07e98b947dd15df5f3753b87348489a36bc755c2",
+        "backend/bluets/tests/fixtures/default_generators/dep-sync.ts": "23ff77c744381292a75e19a358040a371e94a49d",
+        "backend/bluets/tests/fixtures/default_generators/main-async.ts": "a9e09ca4682e7ac9af9bb9e0554457837bdeb031",
+        "backend/bluets/tests/fixtures/default_generators/main-sync.ts": "b9ff39df34002840c871773e0ac171dfb99c07f4"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/diagnostic_source_families.rs",
+      "ignored_tests": [
+        "source_witnesses_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/diagnostic_source_families.rs": "74b0b7888af5eec821571336bac3383817ec9f1b",
+        "backend/bluets/tests/fixtures/diagnostics/source-families.json": "f9579b777c27e9f5da450668d412707ec4c7b5ee"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/diagnostics_matrix.rs",
+      "ignored_tests": [
+        "recorded_codes_messages_and_spans_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/diagnostics_matrix.rs": "3957bef6806dfec5f0a090b263214505a7818992",
+        "backend/bluets/tests/fixtures/diagnostics/diagnostics-checker-matrix.tsv": "d2cd8fe99130e49e85cf2112c86f58f0d936513c",
+        "backend/bluets/tests/fixtures/diagnostics/no-typescript-counterpart.json": "b84fcf5c6f51a655f1fb74bb8b40af291981ee25",
+        "backend/bluets/tests/fixtures/diagnostics/reference.json": "0ca742b45ade9b379a9d35148b2cb3a57898ef53"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/diagnostics_presentation.rs",
+      "ignored_tests": [
+        "recorded_presentation_matches_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/diagnostics_presentation.rs": "9d1eb6412c78b34126002c8a574159dd54862f40",
+        "backend/bluets/tests/fixtures/diagnostics/presentation-policy-refusals.json": "cb723409b7b836632dbf94d1053ad57ae624e348",
+        "backend/bluets/tests/fixtures/diagnostics/presentation-reference.json": "095e758d22417e60482615b61ff92b0915693ab4"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/diagnostics_projects.rs",
+      "ignored_tests": [
+        "recorded_project_positions_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/diagnostics_projects.rs": "18d9238dc33aecab5062403d4a5f3ce15240132a",
+        "backend/bluets/tests/fixtures/diagnostics/project-positions.json": "c42b5c3b6c3136c0cbaa6633d3cabe63d184d631"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/enum_checker_matrix.rs",
+      "ignored_tests": [
+        "recorded_verdicts_match_the_pinned_typescript_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/enum_checker_matrix.rs": "5770d955a6944120a97585025478efef4d14327b",
+        "backend/bluets/tests/fixtures/typescript_oracle/enum-checker-matrix-deferred.txt": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "backend/bluets/tests/fixtures/typescript_oracle/enum-checker-matrix.tsv": "4b62216a0c62d47065a79e2db795bc7a62533ba7"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/enum_oracle.rs",
+      "ignored_tests": [
+        "pinned_enum_emit_prints_what_typescript_prints_in_every_const_enum_mode"
+      ],
+      "inputs": {
+        "backend/bluets/tests/enum_oracle.rs": "906aeb677703c1fc4fe636f70a7249f11e23a124",
+        "backend/bluets/tests/fixtures/typescript_oracle/enum-const-imported/colors.ts": "bc0f51ce214b33e1cfd4b4a5d4fb3b1fd0f571d9",
+        "backend/bluets/tests/fixtures/typescript_oracle/enum-const-imported/valid.ts": "1036c722b4b87a0a17766ce51b6c83d67bb5b49b",
+        "backend/bluets/tests/fixtures/typescript_oracle/enum-const-runtime/main.ts": "fc2ca33afeb66a7c0a4fe1ec5958a3b5df365184",
+        "backend/bluets/tests/fixtures/typescript_oracle/enum-runtime-basic/main.ts": "7865169a539a48a621dc2c31e1e47d481abfb68a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/explicit_this_context.rs",
+      "ignored_tests": [
+        "explicit_this_reference_matches_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/explicit_this_context.rs": "90090eb3846a1cd1695879781dcf336adf91eb25",
+        "backend/bluets/tests/fixtures/explicit-this-context-reference.json": "75f51a6114fe0f6869795a1e4c9fb72396b3df05"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/guards_checker_matrix.rs",
+      "ignored_tests": [
+        "guards_preserves_execution_and_declarations",
+        "recorded_guards_matches_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/guards-checker-matrix.tsv": "f315c3a6c959bde33d3351fa8490459a58a17afc",
+        "backend/bluets/tests/fixtures/typescript_oracle/guards-reference.json": "1c149b995a99bee6c9864ace7b1c4af90dd2b046",
+        "backend/bluets/tests/guards_checker_matrix.rs": "93e18ad1717f72dfc3cc21cef079f5b129fd0066"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/immutable_checker_matrix.rs",
+      "ignored_tests": [
+        "mutable_program_preserves_execution_and_declarations",
+        "recorded_verdicts_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/immutable-checker-matrix.tsv": "67ce4759cdeec28fd3f1c4e68d9ea656a72bf43c",
+        "backend/bluets/tests/immutable_checker_matrix.rs": "06c52885cc40cb63a07c0149b8ab2f80c23b862d"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/imported_value_checker_matrix.rs",
+      "ignored_tests": [
+        "imported_values_preserve_execution_and_declarations",
+        "inferred_import_declarations_match_typescript",
+        "recorded_verdicts_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/imported-type-checker-matrix.tsv": "21c458d00326c8dcd897fe848eaf170e9038d31f",
+        "backend/bluets/tests/imported_value_checker_matrix.rs": "28a957ea1f1d9c41a4ca820621e7abe7ca99abbe"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/indexed_call_context.rs",
+      "ignored_tests": [
+        "indexed_call_reference_matches_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/indexed-call-context-reference.json": "3aa942245f246f21f1f2453c29e92eaf81b5b407",
+        "backend/bluets/tests/indexed_call_context.rs": "5ae041aa6f4c0246e831e3599817b36069c5471a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/inference_checker_matrix.rs",
+      "ignored_tests": [
+        "inference_preserves_execution_and_declarations",
+        "recorded_inference_matches_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/ginfer-default-context/main.ts": "5ba7a6526e45bd14539a651b344d4ec9653a5e5c",
+        "backend/bluets/tests/fixtures/typescript_oracle/inference-checker-matrix.tsv": "4c6492468092e8e45ad8624fa3856fd43d901e9e",
+        "backend/bluets/tests/fixtures/typescript_oracle/inference-reference.json": "ee9408d1a80644311dc4b61036d89a1b4de889a7",
+        "backend/bluets/tests/inference_checker_matrix.rs": "a5d2e50e3acae356f0e94d9ce482279cd4121f95"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/inferred_return_checker_matrix.rs",
+      "ignored_tests": [
+        "inferred_return_declarations_match_typescript",
+        "inferred_returns_preserve_node_execution",
+        "recorded_verdicts_match_pinned_typescript",
+        "union_declarations_have_the_same_types_despite_literal_intern_order"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/infer-return-checker-matrix.tsv": "f8dcbf991fb7678a13135217cd0e87fd358beda3",
+        "backend/bluets/tests/inferred_return_checker_matrix.rs": "bf39e92647f1ec5040475b5c48b10b579693c917"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/json_default_binding.rs",
+      "ignored_tests": [
+        "json_default_property_keeps_pinned_inference_execution_and_assignment_diagnostic"
+      ],
+      "inputs": {
+        "backend/bluets/tests/json_default_binding.rs": "3c93107144bda83dc123c5881abdf58d170df244"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/jsx_checker_matrix.rs",
+      "ignored_tests": [
+        "recorded_verdicts_match_the_pinned_typescript_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/jsx-checker-matrix-deferred.txt": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "backend/bluets/tests/fixtures/typescript_oracle/jsx-checker-matrix.tsv": "a5aa6bc434af600fec52e236a18da998cf5087cc",
+        "backend/bluets/tests/jsx_checker_matrix.rs": "3cc211b0b4e7996e2f40d93756f8d97bd2a01839"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/jsx_oracle.rs",
+      "ignored_tests": [
+        "pinned_jsx_emit_prints_what_typescript_prints_in_every_mode"
+      ],
+      "inputs": {
+        "backend/bluets/tests/jsx_oracle.rs": "d136bc419d1d40998850f14186a7b7a3fe402938"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/jsx_runtime_namespace.rs",
+      "ignored_tests": [
+        "emitted_jsx_preserves_native_execution_declarations_and_es2022_syntax",
+        "recorded_jsx_runtime_namespace_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/jsx_runtime_namespace/reference.json": "d4e2f5f154b18e0550605c9606c0a0fd4a41c29b",
+        "backend/bluets/tests/jsx_runtime_namespace.rs": "3e2ef41e1c4ae852324b4b0fd383cbed64b10c3d"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/jsx_typing_extras.rs",
+      "ignored_tests": [
+        "emitted_jsx_preserves_native_execution_declarations_and_es2022_syntax",
+        "recorded_jsx_typing_extras_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/jsx_typing_extras/reference.json": "42fad51a1ff131c2a130c79ac65198dc0ccb0835",
+        "backend/bluets/tests/jsx_typing_extras.rs": "ee8ef6a52255dc0e34a858eaa3776667d6fcfe4d"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/legacy_decorators_checker_matrix.rs",
+      "ignored_tests": [
+        "recorded_verdicts_match_the_pinned_typescript_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/legacy-decorators-checker-matrix-deferred.txt": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "backend/bluets/tests/fixtures/typescript_oracle/legacy-decorators-checker-matrix.tsv": "5d5bf0777d571182df1b8c0bc1ae97124659ae33",
+        "backend/bluets/tests/legacy_decorators_checker_matrix.rs": "b7b64f4a0869d04e6010353c4b6431b9d225cee3"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/legacy_decorators_oracle.rs",
+      "ignored_tests": [
+        "pinned_legacy_decorators_print_what_typescript_prints"
+      ],
+      "inputs": {
+        "backend/bluets/tests/legacy_decorators_oracle.rs": "2af0b9802e560c0587003ca1306c3d6cca14727a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/module_exports_checker_matrix.rs",
+      "ignored_tests": [
+        "module_exports_preserve_execution_and_declarations",
+        "recorded_module_exports_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/module-exports-checker-matrix.tsv": "443acd28dd78653a3362c43629b725878b7f344a",
+        "backend/bluets/tests/fixtures/typescript_oracle/module-exports-reference.json": "4366d594aee2ba18283e727d4405a3d12ed90ced",
+        "backend/bluets/tests/module_exports_checker_matrix.rs": "409d692b7b5d86d96c7db667eb40dd04cd0fe085"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/module_script_helpers.rs",
+      "ignored_tests": [
+        "script_helper_observations_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/module_script_helpers.rs": "3558e3cf4345cacd5e9af5fb88d2fe7fa25b1add"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/module_systems.rs",
+      "ignored_tests": [
+        "emitted_modules_preserve_native_execution_and_declarations",
+        "recorded_module_decisions_and_declarations_match_native_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/module_systems/reference.json": "6d629dbb45f40e0a924d60ceafc1ac3a08ebfdb0",
+        "backend/bluets/tests/module_systems.rs": "52e00d19a44aaf5508ea4435c4323535bd835521"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/module_type_resolution.rs",
+      "ignored_tests": [
+        "type_only_imports_and_reexports_select_distinct_conditions_for_the_same_specifier"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/module_type_resolution/barrel.ts": "9402cc5999d4d7e0282f5de80face5accf4ec4eb",
+        "backend/bluets/tests/fixtures/module_type_resolution/import.d.ts": "14f109fbf586798f07bae721df1e4e8026914f0b",
+        "backend/bluets/tests/fixtures/module_type_resolution/imports.ts": "ffa92db7999feb11b6e5702471420ba1b4bdf3ae",
+        "backend/bluets/tests/fixtures/module_type_resolution/reexports.ts": "27aa5ef41007a2e24072ca7a4982e132898cbb66",
+        "backend/bluets/tests/fixtures/module_type_resolution/require.d.ts": "972d45d8b8d2d6c6a1865f31d1ed12b54354bd7d",
+        "backend/bluets/tests/module_type_resolution.rs": "40923990836bc0d0dcdc94ab03108b54ddc85518"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/module_types_checker_matrix.rs",
+      "ignored_tests": [
+        "module_types_preserve_execution_and_declarations",
+        "recorded_module_types_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/module-types-checker-matrix.tsv": "1d7f7233446c6620dc1dfbee390a27576f29a43d",
+        "backend/bluets/tests/fixtures/typescript_oracle/module-types-reference.json": "a895cba3bee7678f3afa76b9f1fda494d54e2764",
+        "backend/bluets/tests/module_types_checker_matrix.rs": "561065d57e4d495e7ba408de053f76c818cf76bf"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/more_types_checker_matrix.rs",
+      "ignored_tests": [
+        "more_types_preserves_execution_and_declarations",
+        "recorded_more_types_matches_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/more_types-checker-matrix.tsv": "56df1e674224cb587d07134081d181ae5386fadf",
+        "backend/bluets/tests/fixtures/typescript_oracle/more_types-reference.json": "2b750964d27d27d1a8436f1d39af408df0f1f772",
+        "backend/bluets/tests/more_types_checker_matrix.rs": "9a5e5c17fb14b411076151a4affb8188c99d3a0a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/namespace_checker_matrix.rs",
+      "ignored_tests": [
+        "recorded_verdicts_match_the_pinned_typescript_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/namespace-checker-matrix-deferred.txt": "6a025cd5b73c2bfcf9bdff7e89db356f6158261b",
+        "backend/bluets/tests/fixtures/typescript_oracle/namespace-checker-matrix.tsv": "43a5c5ce92afc1c5f41cb3a49fedd43dd31036ee",
+        "backend/bluets/tests/namespace_checker_matrix.rs": "182532327dd95b105d0616cf958bbcda3acdd60d"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/namespace_declaration_oracle.rs",
+      "ignored_tests": [
+        "the_declaration_bluetsc_prints_for_namespaces_is_valid_and_means_the_same_to_a_consumer"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/namespace-declaration-output/main.ts": "4c1e1ac95dfd33aa36b726e647f0da10e135feb9",
+        "backend/bluets/tests/namespace_declaration_oracle.rs": "d84565559eb58ea964ce7a06bd287f7ad4639908"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/namespace_oracle.rs",
+      "ignored_tests": [
+        "pinned_namespace_emit_prints_what_typescript_prints_for_every_target"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/namespace-checker-matrix-deferred.txt": "6a025cd5b73c2bfcf9bdff7e89db356f6158261b",
+        "backend/bluets/tests/fixtures/typescript_oracle/namespace-checker-matrix.tsv": "43a5c5ce92afc1c5f41cb3a49fedd43dd31036ee",
+        "backend/bluets/tests/namespace_oracle.rs": "ab27593e27721f827f75e3cb91f0b978b0789c88"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/narrowing_checker_matrix.rs",
+      "ignored_tests": [
+        "narrowing_preserves_execution_and_declarations",
+        "recorded_narrowing_matches_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/narrowing-checker-matrix.tsv": "098934150835d3d2b9a763dd176ac8dfb86226bd",
+        "backend/bluets/tests/fixtures/typescript_oracle/narrowing-reference.json": "09ea0dd63b4ddb1d01eb555d4717a66a276860b1",
+        "backend/bluets/tests/narrowing_checker_matrix.rs": "dbe63c0caa14f01002f4c7f38036c37c2ce607c1"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/object_method_context.rs",
+      "ignored_tests": [
+        "object_receiver_reference_matches_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/object-method-context-reference.json": "0dce4a3c736633561c9f03868201bdf86cfff986",
+        "backend/bluets/tests/object_method_context.rs": "989129c3190dc2e72c6d457d785b507515a02779"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/operators_checker_matrix.rs",
+      "ignored_tests": [
+        "operators_preserves_execution_and_declarations",
+        "recorded_operator_literal_initialization_matches_pinned_typescript",
+        "recorded_operators_matches_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/operators-checker-matrix.tsv": "a2d47d445cd5d4931e6e93c0ae09565eed6dbd01",
+        "backend/bluets/tests/fixtures/typescript_oracle/operators-reference.json": "95e24ab058bacbc71f7b1bc37b3c65dbd95698bc",
+        "backend/bluets/tests/fixtures/typescript_oracle/toper-conditional-true/main.ts": "8514f74742d8dd5a7cd52085931390ba02b700a0",
+        "backend/bluets/tests/fixtures/typescript_oracle/toper-infer-array/main.ts": "58b2842a076aff5f43d982473bc6deb37740db14",
+        "backend/bluets/tests/fixtures/typescript_oracle/toper-keyof-record/main.ts": "c4fa2e18844b8fe78f3e2382f90aa5c63843eb02",
+        "backend/bluets/tests/fixtures/typescript_oracle/toper-mapped-copy/main.ts": "30633235ace4912b63a4cdb1686bd8bdb5f7582d",
+        "backend/bluets/tests/fixtures/typescript_oracle/toper-recursive-conditional/main.ts": "4828ca995f1f1fc72ecf3ee35f9e487efb3f20aa",
+        "backend/bluets/tests/fixtures/typescript_oracle/toper-template-cross-product/main.ts": "9e53d70a85f5a635dac389877a3ec3efa90d8679",
+        "backend/bluets/tests/operators_checker_matrix.rs": "7aaf66b7ac584db2caf92e714708c3e3aaef1924"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/option_combinations_oracle.rs",
+      "ignored_tests": [
+        "every_emit_option_combination_prints_what_typescript_prints"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/option_combinations/cases.json": "673ead1fc0a953253e4e537f623da8c4a7cead77",
+        "backend/bluets/tests/fixtures/option_combinations/options-checker-matrix.tsv": "0fa51083ccefe6d148d082ef79f1bf0d8c674127",
+        "backend/bluets/tests/option_combinations_oracle.rs": "f5899fdefe5606c24b874a7f497b0269ebed651f"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/output_options.rs",
+      "ignored_tests": [
+        "emitted_output_options_preserve_runtime_declarations_and_maps",
+        "recorded_output_options_match_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/output_options/reference.json": "2758408f8065df1e3bf6ad21862ef2c8a403d6d5",
+        "backend/bluets/tests/output_options.rs": "377f22fb1eb8789514c1d8607cb130ac6a273a13"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/output_validation.rs",
+      "ignored_tests": [
+        "output_validation_observations_match_live_typescript",
+        "output_validation_overrides_match_execution_and_declarations"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/output_validation/reference.json": "998e6bc8ca212053bc91460d4e2c6ca0daede875",
+        "backend/bluets/tests/output_validation.rs": "1f2244cfbefd68d435e338735acb1a8c20c67879"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/overloads_checker_matrix.rs",
+      "ignored_tests": [
+        "overloads_preserves_execution_and_declarations",
+        "recorded_overloads_matches_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/overloads-checker-matrix.tsv": "80e9906778b46ca8d2833371abe1c34ed56f193d",
+        "backend/bluets/tests/fixtures/typescript_oracle/overloads-reference.json": "617930fa73fbe08aac48816c3191bcd2d50c1af0",
+        "backend/bluets/tests/overloads_checker_matrix.rs": "ed01df91a50d52d06d1a8eef331bad496d81b6f9"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/package_extras.rs",
+      "ignored_tests": [
+        "emitted_declarations_preserve_native_execution_declarations_and_target_syntax",
+        "recorded_package_extras_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/package_extras/reference.json": "42a235753497eceb4a6004432cb4b9cafc7ee808",
+        "backend/bluets/tests/package_extras.rs": "5f7557173a6d8c28f92837752c748e0404b484e3"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/path_extras.rs",
+      "ignored_tests": [
+        "emitted_declarations_preserve_native_execution_declarations_and_target_syntax",
+        "recorded_path_extras_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/path_extras/reference.json": "941367328b234aa4118a222fa3abb6efcdb11f92",
+        "backend/bluets/tests/path_extras.rs": "93736a15ef97b719b208e3a21914259a649c1fa3"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_build_corrupt_state.rs",
+      "ignored_tests": [
+        "actual_typescript_build_info_is_foreign_to_bluetsc",
+        "pinned_corrupt_build_state_matrix",
+        "pinned_typescript_rebuilds_after_bluetsc_state"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_build_corrupt_state/build-corrupt-state-matrix.tsv": "567f683ac73b02d489cbd54d346f9abf2e2fc2e7",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
+        "backend/bluets/tests/project_build_corrupt_state.rs": "c51bdcaa09d893e82e58b81be9d43732e3d90936"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_build_equivalence.rs",
+      "ignored_tests": [
+        "pinned_seeded_edits_match_clean_outputs_and_ordered_rebuilds"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_build_equivalence/build-equivalence-matrix.tsv": "55df1d95b29ed701c404042f58b0d3b6009dacb6",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
+        "backend/bluets/tests/project_build_equivalence.rs": "5d457de50e156c7483caec9c08c5d200a950c0bb"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_build_errors.rs",
+      "ignored_tests": [
+        "record_pinned_project_error_behavior"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_build_errors/build-error-matrix.tsv": "fba9ebee7b92968ad9178c7052bf5f81c2e87315",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
+        "backend/bluets/tests/project_build_errors.rs": "2b27cc58425793634a8e3529d0225eca3652571f"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_build_freshness.rs",
+      "ignored_tests": [
+        "recorded_rebuilds_match_pinned_typescript",
+        "selective_rebuilds_execute_and_declare_like_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_build_freshness/build-freshness-matrix.tsv": "3405785f59a06aeea8db47acd59abd3c3e2ff2b6",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
+        "backend/bluets/tests/project_build_freshness.rs": "d02c39f31c620fafa785cde82cbb801183eb92fa"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_build_invalidation.rs",
+      "ignored_tests": [
+        "pinned_rebuild_matrix",
+        "pinned_scope_edits_leave_stale_output_without_force"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_build_invalidation/build-invalidation-matrix.tsv": "079516098ab72eaceb31d6bcd8176388dea2b09a",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
+        "backend/bluets/tests/project_build_invalidation.rs": "3a830b9ee8dd3d935ca680affce6ea2c166b627b"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_build_order.rs",
+      "ignored_tests": [
+        "ordered_build_artifacts_execute_and_declare_like_typescript",
+        "recorded_build_order_matches_pinned_typescript_verbose"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_build_order/build-order-cases.json": "442fd307882503e85181d9e1afe4e397dfc27505",
+        "backend/bluets/tests/fixtures/project_build_order/build-order-matrix.tsv": "a570b0071f115004e436bae3e7232684da4997eb",
+        "backend/bluets/tests/project_build_order.rs": "4b9aad35fbce6a108ae25f9e168877a15f5c1e5a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_build_watch.rs",
+      "ignored_tests": [
+        "pinned_build_edit_add_burst_delete_order"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_build_watch/build-watch-matrix.tsv": "f1f9ec7d1e56dc500e042a2d634575ac640237c2",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
+        "backend/bluets/tests/project_build_watch.rs": "65f5339f8c2baacb9cdd47e9327baf22dc377e24"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_cache_key.rs",
+      "ignored_tests": [
+        "pinned_cache_key_matrix"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_cache_key/cache-key-matrix.tsv": "c662250d5002637104b5750b0d868ed8b1139572",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
+        "backend/bluets/tests/project_cache_key.rs": "d87a104fb50fed5cab7809fb9a4911aedeb49b8a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_config.rs",
+      "ignored_tests": [
+        "configuration_builds_match_node_and_exact_declarations",
+        "recorded_configuration_matrix_matches_pinned_typescript",
+        "strict_runtime_crossings_keep_their_audit_after_output_relocation"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_config/config-checker-matrix.tsv": "adef10c8642f27328b21ae3050a2d8f8134b7949",
+        "backend/bluets/tests/project_config.rs": "f231947e36f8a791154aa022542ff966842fbd88"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_reference_owner_gate.rs",
+      "ignored_tests": [
+        "pinned_build_records_owner_gate_difference"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_reference_owner_gate/owner-gate-matrix.tsv": "7e1c5d740de3e74dcc363fab15b51b20033e36af",
+        "backend/bluets/tests/project_reference_owner_gate.rs": "f569c0cf2a7f77b6145109b614314b3762b7af9a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_referenced_declarations.rs",
+      "ignored_tests": [
+        "pinned_typescript_consumes_referenced_declarations",
+        "pinned_typescript_project_reports_missing_referenced_declaration",
+        "pinned_typescript_source_error_stays_in_dependency",
+        "pinned_typescript_uses_custom_referenced_declaration_layout"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_referenced_declarations/rebuild-matrix.tsv": "9442d5ff88f4ff38c33542acc990a9bc6439811f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
+        "backend/bluets/tests/project_referenced_declarations.rs": "78032b47647eeb3b0f234c099f728c7eb68b48b8"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/project_references.rs",
+      "ignored_tests": [
+        "recorded_reference_graph_matrix_matches_pinned_typescript_build",
+        "valid_reference_graph_emits_the_same_executable_exports_as_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/project_references/reference-graph-cases.json": "499c87daec7fe750e5c769113f162109f74520e7",
+        "backend/bluets/tests/fixtures/project_references/reference-graph-matrix.tsv": "7985d7c9960a451cf26b490295241037c80ef823",
+        "backend/bluets/tests/project_references.rs": "d2d39960c77e021b1a3eee11fd65ac04b38bb6f1"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/receiver_parameter_boundaries.rs",
+      "ignored_tests": [
+        "receiver_parameter_boundaries_match_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/receiver-parameter-boundaries-reference.json": "785517fa7d23bae8d695870826ab01eb5c94a4a7",
+        "backend/bluets/tests/receiver_parameter_boundaries.rs": "3b43d161fb08d593ddf994b4b090f9ff937ffa2e"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/rest_array_context.rs",
+      "ignored_tests": [
+        "rest_array_reference_matches_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/rest-array-context-reference.json": "b93497bb31d452a6f906e3878755a04478ef1f52",
+        "backend/bluets/tests/rest_array_context.rs": "4e64f556ca6916884e920fa94d32fd1ccbed202d"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/source_extras.rs",
+      "ignored_tests": [
+        "emitted_sources_preserve_native_execution_declarations_assets_and_syntax",
+        "recorded_source_extras_match_the_live_native_compiler"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/source_extras/reference.json": "20a0ce9c673a99456a5d70a6f20e9bc11a6c0877",
+        "backend/bluets/tests/source_extras.rs": "7cead66cf4fafb2eae78fba188a29c944754e17d"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/source_map_publication.rs",
+      "ignored_tests": [
+        "external_and_inline_source_maps_match_public_typescript_output"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/k11_source_maps/basic.ts": "3838f66543bcad7e78529bd38a707f305ec1a347",
+        "backend/bluets/tests/fixtures/k11_source_maps/source-map-tokens-checker-matrix.tsv": "3e4de19ca1fc561d27f9e4189d9a2b0d16d033bd",
+        "backend/bluets/tests/source_map_publication.rs": "d02c501e3bfd759d85a6b42171df13dd03b8247d"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/source_map_tokens_oracle.rs",
+      "ignored_tests": [
+        "class_and_method_decorators_keep_distinct_source_anchors",
+        "compacted_decorator_relocation_keeps_token_columns",
+        "decoded_token_maps_match_pinned_typescript",
+        "decorator_relocation_and_helper_frames_match_pinned_typescript",
+        "erased_decorator_assertion_keeps_surviving_token_columns",
+        "legacy_decorator_helpers_keep_generated_and_source_frames_distinct",
+        "legacy_metadata::legacy_parameter_and_metadata_frames_match_native",
+        "non_decorator::object_spread_helper_frames_match_native",
+        "system_wrapper::system_wrapper_frames_match_native"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/k11_source_maps/basic.ts": "3838f66543bcad7e78529bd38a707f305ec1a347",
+        "backend/bluets/tests/fixtures/k11_source_maps/decorated.ts": "aa7fb9bcf317c80e07f1bfbd3967d4f3eeee4c7b",
+        "backend/bluets/tests/fixtures/k11_source_maps/decorated_erased_assertion.ts": "615c7d4ff3b1b7bedaf8be447de8f47c4011b974",
+        "backend/bluets/tests/fixtures/k11_source_maps/decorated_multiple.ts": "d047b5ec3800ef4759374047c6bec78641bdbb92",
+        "backend/bluets/tests/fixtures/k11_source_maps/decorated_parenthesized.ts": "1ab925033a8e81e7f378197575b34c6ef85df71c",
+        "backend/bluets/tests/fixtures/k11_source_maps/legacy_decorated.ts": "b2686c916c8bf251c6b73036dd317aab08faee3c",
+        "backend/bluets/tests/fixtures/k11_source_maps/legacy_parameter_metadata.ts": "b0d18d6e48ad14ae93c7ed63c07112d9ff1ba10c",
+        "backend/bluets/tests/fixtures/k11_source_maps/object_spread_helper.ts": "70ba87cc6a537f7ef75fdc672f5374b412221983",
+        "backend/bluets/tests/fixtures/k11_source_maps/source-map-tokens-checker-matrix.tsv": "3e4de19ca1fc561d27f9e4189d9a2b0d16d033bd",
+        "backend/bluets/tests/fixtures/k11_source_maps/system_wrapper.ts": "607fe2bfe741ab3fb70d28c466b10b7fa859fc43",
+        "backend/bluets/tests/source_map_tokens_oracle.rs": "b23c5925085908ea04837b7b01d276dcfa523b27",
+        "backend/bluets/tests/source_map_tokens_oracle/alignment.rs": "8af4017c3d0453e6085cfeaa91bae64bf1e560f5",
+        "backend/bluets/tests/source_map_tokens_oracle/decoder_tests.rs": "665b7a805b47e399b6abf664adac1e2344fc109d",
+        "backend/bluets/tests/source_map_tokens_oracle/decoding.rs": "fd9dee4bd818aa689f1954477fdffe9f24e77c61",
+        "backend/bluets/tests/source_map_tokens_oracle/generated_gap_roles.rs": "e79f5c167f7aec02a5aefaee4a231aa3d950afee",
+        "backend/bluets/tests/source_map_tokens_oracle/legacy_metadata.rs": "0937bea8aae98d6fce73c1e374789d879b6fcca8",
+        "backend/bluets/tests/source_map_tokens_oracle/matrix.rs": "256def89c372ba6019228b74ef817a38d555cf21",
+        "backend/bluets/tests/source_map_tokens_oracle/non_decorator.rs": "22a38fcd13c140c4962fcd7a7d57147503c710fc",
+        "backend/bluets/tests/source_map_tokens_oracle/system_wrapper.rs": "f71c7a6788a28f99f3359a0f77ed843f343e8060"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/standard_library_checker_matrix.rs",
+      "ignored_tests": [
+        "library_calls_preserve_node_execution",
+        "library_inferred_declarations_match_typescript",
+        "recorded_verdicts_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/lib-checker-matrix.tsv": "2ce97ac4870b6fbb4df077d413d91df1d838535a",
+        "backend/bluets/tests/standard_library_checker_matrix.rs": "af8e3a0ded379fd508ab5fb3b17b11f0ef744b85"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/strictness_controls.rs",
+      "ignored_tests": [
+        "boundary_controls_match_pinned_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/strictness_controls.rs": "59780103a18de2b3bd19355d0082c16a246dcb7a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/strictness_flags.rs",
+      "ignored_tests": [
+        "recorded_strictness_matrix_matches_pinned_typescript",
+        "strict_and_relaxed_valid_programs_print_the_same_result"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/strictness/strictness-checker-matrix.tsv": "c7fac36c2e4026c792cefde0149a5a9585d7b5be",
+        "backend/bluets/tests/strictness_flags.rs": "c08fe462ea56d269095b0ff3b7d0797e8774d089"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/target_library_options.rs",
+      "ignored_tests": [
+        "library_reference_matches_the_live_pinned_typescript_oracle"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/target_library_options/reference.json": "440cd14b08e279ba0ba118a724cc465056651bcb",
+        "backend/bluets/tests/target_library_options.rs": "ee635844da9fc24bb1b37091dd01297b1e4185a4"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/target_protocols.rs",
+      "ignored_tests": [
+        "authored_target_output_matches_native_protocol_semantics",
+        "recorded_protocol_observations_match_pinned_tools"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/target_protocols/reference.json": "948eaa62dc2da5889e206b0d1666553c726c1da4",
+        "backend/bluets/tests/target_protocols.rs": "2d6e5615208b94261b7bd42e271a7b9f94c79bf2"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/targets_checker_matrix.rs",
+      "ignored_tests": [
+        "existing_es2020_logical_assignment_obeys_the_syntax_floor",
+        "exponentiation_crosses_the_es2016_syntax_boundary_with_pinned_execution",
+        "owned_target_profiles_match_runtime_declarations_and_syntax",
+        "recorded_targets_match_pinned_typescript",
+        "target_outputs_preserve_execution_declarations_and_syntax_edition"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/targets-checker-matrix.tsv": "b402dfeb171ae320b85760ff7eba6ef2d4338116",
+        "backend/bluets/tests/fixtures/typescript_oracle/targets-reference.json": "fe7d0ef6e07fd605afbf80381825c121f4695f45",
+        "backend/bluets/tests/targets_checker_matrix.rs": "3e843368b1aed6d5b8fdf5e80b7b2293bb038ffd"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/template_constant_context.rs",
+      "ignored_tests": [
+        "template_constant_reference_matches_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/template-constant-context-reference.json": "ce76ca834d542074be4350d12ddc72b2357c25e9",
+        "backend/bluets/tests/template_constant_context.rs": "ccd89ff9bd4a5bb66ecc51147b60e7123b938145"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/typescript_oracle.rs",
+      "ignored_tests": [
+        "pinned_ancestor_method_overrides_match_typescript_without_emit",
+        "pinned_array_rest_method_overrides_match_typescript_without_emit",
+        "pinned_async_functions_match_typescript_without_emit",
+        "pinned_async_nested_functions_match_typescript_without_emit",
+        "pinned_bluetsc_oracle_matches_the_supported_fixture_matrix",
+        "pinned_both_trailing_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_both_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_both_variable_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_catch_annotations_match_typescript_without_emit",
+        "pinned_class_construction_matches_typescript_without_emit",
+        "pinned_class_constructor_bodies_match_typescript_without_emit",
+        "pinned_class_constructor_validation_matches_typescript_without_emit",
+        "pinned_class_dual_binding_matches_typescript_without_emit",
+        "pinned_class_method_body_scopes_match_typescript_without_emit",
+        "pinned_class_method_boundary_matches_typescript_without_emit",
+        "pinned_class_method_returns_match_typescript_without_emit",
+        "pinned_class_override_overload_sets_match_typescript_without_emit",
+        "pinned_class_tuple_rest_annotations_match_typescript_without_emit",
+        "pinned_class_type_imports_match_typescript_without_emit",
+        "pinned_class_value_import_bindings_match_typescript_without_emit",
+        "pinned_class_value_import_calls_match_typescript_without_emit",
+        "pinned_concrete_generic_tuple_spreads_match_typescript_without_emit",
+        "pinned_concrete_named_tuple_spreads_match_typescript_without_emit",
+        "pinned_derived_array_rest_overrides_match_typescript_without_emit",
+        "pinned_derived_constructor_super_calls_match_typescript_without_emit",
+        "pinned_derived_middle_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_derived_trailing_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_derived_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_destructured_parameters_match_typescript_without_emit",
+        "pinned_exported_local_derived_class_surfaces_match_typescript_without_emit",
+        "pinned_fixed_derived_base_rest_overrides_match_typescript_without_emit",
+        "pinned_function_expressions_match_typescript_without_emit",
+        "pinned_generator_functions_match_typescript_without_emit",
+        "pinned_generic_nested_functions_match_typescript_without_emit",
+        "pinned_imported_base_derived_class_surfaces_match_typescript_without_emit",
+        "pinned_imported_base_type_reexport_chain_matches_typescript_without_emit",
+        "pinned_imported_method_overrides_match_typescript_without_emit",
+        "pinned_inherited_constructor_signatures_match_typescript_without_emit",
+        "pinned_inherited_instance_methods_match_typescript_without_emit",
+        "pinned_inherited_middle_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_inherited_static_overloads_match_typescript_without_emit",
+        "pinned_inherited_trailing_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_inherited_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_instance_method_overloads_match_typescript_without_emit",
+        "pinned_instance_this_class_bodies_match_typescript_without_emit",
+        "pinned_labeled_tuple_elements_match_typescript_without_emit",
+        "pinned_labeled_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_local_class_heritage_cycles_match_typescript_without_emit",
+        "pinned_local_class_method_sides_match_typescript_without_emit",
+        "pinned_local_method_overrides_match_typescript_without_emit",
+        "pinned_method_override_arities_match_typescript_without_emit",
+        "pinned_middle_and_fixed_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_middle_tuple_rest_elements_match_typescript_without_emit",
+        "pinned_named_class_heritage_validation_matches_typescript_without_emit",
+        "pinned_named_tuple_spread_overrides_match_typescript_without_emit",
+        "pinned_nested_function_declarations_match_typescript_without_emit",
+        "pinned_object_methods_match_typescript_without_emit",
+        "pinned_optional_fixed_middle_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_optional_tuple_elements_match_typescript_without_emit",
+        "pinned_optional_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_optional_tuple_spreads_match_typescript_without_emit",
+        "pinned_optional_variable_tuple_rest_overrides_match_typescript_without_emit",
+        "pinned_ordinary_optional_directional_tuple_overrides_match_typescript_without_emit",
+        "pinned_ordinary_optional_fixed_tuple_overrides_match_typescript_without_emit",
+        "pinned_ordinary_optional_variable_tuple_overrides_match_typescript_without_emit",
+        "pinned_parenthesized_types_match_typescript_without_emit",
+        "pinned_shifted_array_rest_overrides_match_typescript_without_emit",
+        "pinned_static_class_binding_matches_typescript_without_emit",
+        "pinned_static_class_method_shell_matches_typescript_without_emit",
+        "pinned_static_method_overloads_on_values_and_this_match_typescript_without_emit",
+        "pinned_static_this_class_bodies_match_typescript_without_emit",
+        "pinned_super_member_reads_and_calls_match_typescript_without_emit",
+        "pinned_symbolic_tuple_spread_closure_matches_typescript_without_emit",
+        "pinned_symbolic_tuple_spread_comparison_matches_typescript_without_emit",
+        "pinned_symbolic_tuple_spread_function_annotations_match_typescript_without_emit",
+        "pinned_top_level_await_matches_typescript_without_emit",
+        "pinned_trailing_tuple_rest_elements_match_typescript_without_emit",
+        "pinned_tuple_literal_arguments_match_typescript_without_emit",
+        "pinned_tuple_literal_assignments_match_typescript_without_emit",
+        "pinned_tuple_literal_properties_match_typescript_without_emit",
+        "pinned_tuple_literal_returns_match_typescript_without_emit",
+        "pinned_typed_arrow_functions_match_typescript_without_emit"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/arithmetic-operand-error/main.ts": "dac521678f672ff5afd244804e412e83e9f8e535",
+        "backend/bluets/tests/fixtures/typescript_oracle/array-hole-expression/main.ts": "92486b312bae6a681e6867a7ce768e0525767ca5",
+        "backend/bluets/tests/fixtures/typescript_oracle/array-literal-expression/main.ts": "e1b12898a09783453b6136fc8841f83e4353c5fa",
+        "backend/bluets/tests/fixtures/typescript_oracle/array-spread-expression/main.ts": "34b7f5b5cabb33d236e9f26aee11b6e669450fde",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-assign-error/main.ts": "cda22db1d7d0658c87f9ef1ee279fa265e3c198e",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-block-error/main.ts": "5a00983d8dd690c7a4f27ec9d4eb4d900f6d2bb5",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-closure-error/main.ts": "a823650892554d9b3ae127f1f5daece91ee1e9aa",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-default-error/main.ts": "8c2b20af62f3b5238e7f4a49f7724b7de1ee746c",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-missing-return-error/main.ts": "19422978e74666db269f00ca6b5a467149f618c0",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-nested-error/main.ts": "465b17ba59edf94da3121cad06c8a0a6aad9cb7d",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-parameter-use-error/main.ts": "269db2d4f10265b8c7236ac35cbdf061af6bdffa",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-result-error/main.ts": "696aec457e8dc1f67118858e1c6bcbdac0b50320",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-runtime/main.ts": "6ed26b033f1636be3d19e3fdb360cc45e9e0c866",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-tuple-error/main.ts": "7a0150cc147e0573bc8c233eeded384e48d3b562",
+        "backend/bluets/tests/fixtures/typescript_oracle/arrow-typed-valid/main.ts": "465bde504c0f696ed2fe49585cf4a21358377494",
+        "backend/bluets/tests/fixtures/typescript_oracle/assignment-error/main.ts": "676f3cc929da69e5fb1874682a7a3e149bbdb876",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-function-annotation-error/main.ts": "aa8c8b6d33942e4992633ecfa58b3dcbd5172796",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-function-await-context-error/main.ts": "eb5eb6b5372b38e7a7fef5818ed7896ce58926e1",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-function-await-type-error/main.ts": "863e96dd802c727a184761e26eff24463a64809e",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-function-missing-return-error/main.ts": "4b4d4ffe12df9d6fbdff80aca3d57e4a9ca16817",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-function-promise-mismatch-error/main.ts": "ffdbfaa6b4702c6be3a74e994facdf5e18e8b426",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-function-return-error/main.ts": "5278e2649392e619c6770222fb0f479460a17c45",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-function-runtime/main.ts": "ddcbcdcb6f47ae88b27242a2d4c9b661601b42bf",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-function-valid/main.ts": "a0803279af68a32ee24cf7b85838db81b7f4284f",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-nested-annotation-error/main.ts": "8a06024d72f2eb22b5439c5d20bf22a57a4b5f7c",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-nested-await-type-error/main.ts": "b4add1e6146fd5a4d81dd0cd5474e62dfeeb967e",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-nested-call-error/main.ts": "849a918f2cc280e7f239cefbc25bb0e18f8b9e5f",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-nested-return-error/main.ts": "b1496c36dfbc80687c4d305ffd175d30654a1756",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-nested-runtime/main.ts": "1292e3750b3e7f9743b8c98e199ed7e61ae1b838",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-nested-sync-await-error/main.ts": "1ef383e8f08657be820427cf6a4fc5861ef2b032",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-nested-valid/main.ts": "1780b7ea10946899d9599a6fe9614fca59cedec2",
+        "backend/bluets/tests/fixtures/typescript_oracle/async-nested-value-error/main.ts": "0fa1a8c270291e2ce887bb4d67eeedd922772e9c",
+        "backend/bluets/tests/fixtures/typescript_oracle/bitwise-operand-error/main.ts": "3d732391ecf13ebdb9ad6a2b7600dcabf7b901be",
+        "backend/bluets/tests/fixtures/typescript_oracle/bitwise-shift-expression/main.ts": "b94cacbb69dd7f4ed37b55c26861986f7eca17c8",
+        "backend/bluets/tests/fixtures/typescript_oracle/boolean-conditional-expression/main.ts": "09a2aef7b8c6001ac514a9f37b7474c26cf07b36",
+        "backend/bluets/tests/fixtures/typescript_oracle/call-argument-error/main.ts": "23be759974f9210a079ad1c1733805797d4b739b",
+        "backend/bluets/tests/fixtures/typescript_oracle/callback-method-overload-error/main.ts": "525df99e18674a1454ee1efd4162656c9c87dc1f",
+        "backend/bluets/tests/fixtures/typescript_oracle/callback-method-overload/main.ts": "659b9811faa34111249ee20eeef69e46a2c3634e",
+        "backend/bluets/tests/fixtures/typescript_oracle/catch-annotation-fallthrough-error/main.ts": "0a02d9309b3eff20e29bd50304015ee31e4a97bf",
+        "backend/bluets/tests/fixtures/typescript_oracle/catch-annotation-runtime/main.ts": "6bd2a54cb2bea7c83e75a7d2eeb6389e4f5d8bd2",
+        "backend/bluets/tests/fixtures/typescript_oracle/catch-annotation-try-fallthrough-error/main.ts": "fa58f293c6e1a63ddf3e300f8a5030620c3715a1",
+        "backend/bluets/tests/fixtures/typescript_oracle/catch-annotation-type-error/main.ts": "31106783868f2224e40e3b43aaefdddf5e5bec9d",
+        "backend/bluets/tests/fixtures/typescript_oracle/catch-annotation-unknown-use-error/main.ts": "0b4d49638b964a3df5f27d13ead306e3716c3588",
+        "backend/bluets/tests/fixtures/typescript_oracle/catch-annotation-valid/main.ts": "c53b133847eac2da64f953ca3b38b41a3936f781",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-accessor-emit-declaration/main.ts": "4995e5dd9de514742d9a07318effc7103f54ada8",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-accessor-emit-runtime/main.ts": "d4c8c3f981ed8d1b44e9569bda68c6e4dc415b60",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-construction-argument-error/main.ts": "04ec1f177e4d642c122b9245936da7ebe6e092a0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-construction-arity-error/main.ts": "9cdb5271a9a90ffc4c29ed87575a2867213a671b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-construction-default-arity-error/main.ts": "f66c08cbeb536cc24dcb3474ff439029e093e246",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-construction-inferred-shape-error/main.ts": "d24ef0aaaa208fb57c4b5b5c136f1407328dcb32",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-construction-inherited-deferred/main.ts": "0ac34870a5161b433395e039b5b5a290177f0958",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-construction-nested-argument-error/main.ts": "a5a193b9976f514880bce952942a090cf00fa633",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-construction-overloads/main.ts": "a1395f6428fcd07cd2aa89bb3422fb8cab5916df",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-construction/main.ts": "67607f6b9cd9ab0d43648f07e68e8bd26e60fcaf",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-body-aliased-primitive-return/main.ts": "35210e80c20314427bdb7f68d5b1119a8036bd47",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-body-invalid-call/main.ts": "417ba15f2b0f1228bb5e57a29725eb7ce6ff9ee0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-body-invalid-local/main.ts": "b56695989e2e2e4975074848771dda753ab1c74e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-body-invalid-return/main.ts": "1993ddab0c8b8017f66e50025e4c70dbdb69f557",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-body-nested-return/main.ts": "1919e9bce4a85493c61a0383f5a5795be808da45",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-body-primitive-return/main.ts": "2c3247abea845ba8e1c5d704728996d24503a22b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-body-valid/main.ts": "fa4a45134dde7339de828a9616411aebc8bba002",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-duplicate-implementation/main.ts": "a0fe5e73550dc24ec346ba8415c9aecba013a848",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-incompatible-overload/main.ts": "b9c96f9963aaa417f2823580b9479d6891e2519f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-interrupted-overload/main.ts": "99da8c039f152f9fe8900b4f7a467eff6499c9ea",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-invalid-default/main.ts": "d7e52160df8ce7fe5917e030e4afc603d9069800",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-missing-implementation/main.ts": "00a67597a5ed90c0ae442ced82559cd880f6aa0c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-overload-default/main.ts": "d4fa114c7baf8b123c9129b212b00ccee41a22c0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-unknown-type/main.ts": "59234042940dc52f612966b7bf9da0f045b8037d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-constructor-valid-default/main.ts": "304aef5b4f2879ceefc576131db4a7971f6db858",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-derived-own-constructor-argument-error/main.ts": "e397809ecfd2d8a807df8b3ef577bf6424f36c96",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-dual-binding-wrong-side/main.ts": "2e08f5c7f91d4c22a58c84c7e46cbb04342aaf40",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-dual-binding/main.ts": "579ff9010d2b89a8061293caefadd49804559468",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-duplicate-name/main.ts": "5c5c247942f7230192a3d8ad16c05fd157dc3a8f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-emit-declaration/main.ts": "682d0a9c29a51c0864087d15cb2f5a3df1a230ac",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-emit-runtime/main.ts": "3db22261c16a1b9728510e7a30f2d83e4ec242b7",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-export-inherited-alias/box.ts": "eacc61201019c7f436dea5f4d9131de8845edb3d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-export-inherited-alias/main.ts": "6363cb2b75b4739185c6d38d7f47b791ac9a4a95",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-export-inherited-constructor-error/main.ts": "d613c99fc236553ca88fce272d1bedf87ee3dd98",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-export-inherited-direct/box.ts": "8c4fac4c40d4dc84a867f38db851df6659e15116",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-export-inherited-direct/main.ts": "b7d8bb336058a2af6b38cbeb9a207b185f347c83",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-export-inherited-instance-error/main.ts": "6c989e2ba8a25b8d0d40f5471e43071a01b549c7",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-export-inherited-result-error/main.ts": "b5cecbbb5823f31ddc58d555889e8313a1f22882",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-export-inherited-static-error/main.ts": "0129cb0924ec530cb5550c2e5cdedd591269787f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-field-emit-declaration/main.ts": "ee87877b2fa2b998bbeae043d95ce9447b1c3c98",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-field-emit-runtime/main.ts": "99bfdc05da868a4a4afa6db7aadef5ffc334f855",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-heritage-forward-base/main.ts": "2389dc2eddafaf53fb3aac9465dff3a2c89a148b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-heritage-imported-valid/box.ts": "101f9affd1843116413e58184f2655ef553ac57f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-heritage-imported-valid/main.ts": "649ed43e4720e633227b02fbbe8276afbf0cc647",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-heritage-local-valid/main.ts": "b6f8d1db4efebb671dba5ad573c70e8a698a74bd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-heritage-mutual-cycle/main.ts": "f745718b8c36f602d1b5431018fe8a546c60980f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-heritage-nonconstructor-base/main.ts": "b71a9dfe5ede54e95a7afc4231c8d81aa4cfe04f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-heritage-self-cycle/main.ts": "377676e7b0a199b81b577a9d4b14d463f5ba3089",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-heritage-unknown-base/main.ts": "98ab2917ea0e39cde663dbf35b3adbc4bb333dda",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-alias/box.ts": "3b0a475b03831e8b262ebdcdef7a0d18bdd80862",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-alias/main.ts": "6363cb2b75b4739185c6d38d7f47b791ac9a4a95",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-chain/box.ts": "366cfe8093e9515566181587ec342edffc36ef79",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-chain/main.ts": "b7d8bb336058a2af6b38cbeb9a207b185f347c83",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-chain/middle.ts": "9f5ccc5d2088f4ba18afa71e5d5f97f7bf2fe86d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-constructor-error/main.ts": "d613c99fc236553ca88fce272d1bedf87ee3dd98",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-instance-error/main.ts": "6c989e2ba8a25b8d0d40f5471e43071a01b549c7",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-result-error/main.ts": "b5cecbbb5823f31ddc58d555889e8313a1f22882",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-static-error/main.ts": "0129cb0924ec530cb5550c2e5cdedd591269787f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-valid/base.ts": "cc5f61e9939f28eb98ae1071127cef85b961f3ac",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-valid/box.ts": "8dfbed01109da2ebe1fef9414f07a9f90786eeca",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-derived-valid/main.ts": "b7d8bb336058a2af6b38cbeb9a207b185f347c83",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-type-reexport/argument-error.ts": "74b5c40dbef3b38d41236eb5e18020a4a9f4ff94",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-type-reexport/base.ts": "0400bf09a843712c4d0e5188340afbfbe28ea9f4",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-type-reexport/box.ts": "8dfbed01109da2ebe1fef9414f07a9f90786eeca",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-type-reexport/first.ts": "9b754f40b631627ed245b720954d73900b4faf11",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-type-reexport/result-error.ts": "f9c7521a4e4d82045f9755611aa4125bee31829c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-type-reexport/second.ts": "2db224a8c3d198e35e27ed40c181bc908dacd6d0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-imported-base-type-reexport/valid.ts": "631c85ba2ed990ff34cea13755b15c2f822ff6bd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-constructor-argument-error/main.ts": "70bc34d27131604656bdece9398e47d4a544a74a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-constructor-arity-error/main.ts": "d84e3043cbab88e8c444b33778021e9c79efff08",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-constructor-result-error/main.ts": "f62a6377f9bfa93637aa60e3340f8ec34e589fd6",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-constructor-valid/main.ts": "bab1c831694cb4223412a2d655a4fe491f0bcc47",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-imported-constructor-valid/box.ts": "4c7f92951e7782cbc02c7a37fe2e5215196fe3f3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-imported-constructor-valid/main.ts": "b1315f9a406aa9823492e8dddccce32aea1820c8",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-imported-instance-valid/box.ts": "0fdeb50bf11c89a3a0764ff3d9062ac029fcb829",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-imported-instance-valid/main.ts": "a8f860e0ceccfa8a3b5d721e2e66290cccf1607c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-imported-static-valid/box.ts": "b8024a022a17ff858a4de2d3ef6afc468a5bbfa2",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-imported-static-valid/main.ts": "538de906e44e39df34a28c79fd744b6c4a7a95de",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-instance-argument-error/main.ts": "f83c6acbcc66d25d90d96ece0b05b7ad5710952d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-instance-result-error/main.ts": "51fdadbf18cbf747218f4e7a8feff61f1501f2a9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-instance-valid/main.ts": "49364a08ed2ef601c67d4622ecfa2c6298366a04",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-static-argument-error/main.ts": "d753d7e09fbd2aee3e5bfbc92dff8e3769e7e1fc",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-static-result-error/main.ts": "bca6dd861b40877fca1a253f96bd417c2ace1c70",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-inherited-static-valid/main.ts": "b5719b696693e2f51a556834e445fe1f3bce867c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-overload-argument-error/main.ts": "cbc6ec8ceea4386b37ef26d07a4cc4c3abfc7656",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-overload-inferred-error/main.ts": "67e21d6457ea8d1fbedd5c016768eb22f1cf7d04",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-overload-this-argument-error/main.ts": "8d63373c63f37e89bacb814af3fa8b46985a4595",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-overload-this-return-error/main.ts": "4305b03ecaf8954e22d995fbf6dc222efec389cf",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-overload-valid/main.ts": "bca877275e89526a873c8608ac441b1b5a4210b3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-this-argument-error/main.ts": "f5c7c410eca15f0c5cd55e3a9c5be619f8523927",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-this-inferred-return-error/main.ts": "e7c5aa943a57b0a74f0b0d023a3156a6a187617a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-this-self-return-error/main.ts": "a6563d978d56e3869e98e986ff0d4f3471997dcd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-this-valid/main.ts": "f3ee5ea8be280e7ac52702cb2e5a9b2b90380451",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-this-wrong-side-call/main.ts": "4a5f80f157283a374661757c078f764a6b86b27a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-instance-this-wrong-side-read/main.ts": "bda0f61e0672c032c78dba1e3376a8e21df7f167",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-local-called-without-new/main.ts": "2d5931d3e2dd4971bf98892cb4000664470908a0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-local-instance-method/main.ts": "c0b33cdfbaa57514075211e03b474a04b6d1fcb6",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-local-instance-wrong-side-call/main.ts": "6345e00c0c1359a1b669e693bcb8d1136aac945a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-local-instance-wrong-side-read/main.ts": "1c5224e58a323feb56ba7173d9d813cf96597d52",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-local-nested-call-without-new/main.ts": "44cfe8e51d8dc264228539e76952ffeb75d24a5e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-local-shadowed-call/main.ts": "7f441b1747b748972fd953a07105cb407453f80b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-body-invalid-call/main.ts": "b269efc8ccd11c0e7f41d86bd48995d8b5fd721f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-body-invalid-default/main.ts": "e6e19d85d363dc05a81620c39953f207904632a2",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-body-invalid-instance-local/main.ts": "814cc259710a79253ceda1a67fb31959be111170",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-body-invalid-static-local/main.ts": "b57385762e3fe9a069f4b33e3648d5c607244ff7",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-body-overload-default/main.ts": "5baa6b1272112cdef8cd067d8dc610499786955b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-body-scopes/main.ts": "91e82e2563f8ac7b71d2d05e84d13633dd53f7d4",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-body-unknown-parameter/main.ts": "22b81a10fe3023495e71868d37e1339cce5113f5",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-duplicate-implementations/main.ts": "2ea8efe621a63967e99c03ec269a0d278220d452",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-incompatible-overload/main.ts": "5024bb677e266d47ee9c4e0fbf8c228038d704d3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-interrupted-signature/main.ts": "cf51536129125226f8443b66192486bd4ffe893f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-orphan-signature/main.ts": "5e54427dba52755df50e90492f859ceaa0034d77",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-overloads/main.ts": "8eb75876bc98b9b75d6e46e643045987833c64be",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-private/main.ts": "edcd2a982988d729a78ed5b4c628a1b00fe3c31f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-record-return/main.ts": "fdb9045cf29985b78524de2c08a70c808e079a0f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-returns-bare/main.ts": "3897455fb8192d387a8391fff16df578d6676c45",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-returns-fallthrough/main.ts": "1f0fe45a27f222e659f6ee9964a983cc9490f324",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-returns-invalid-instance/main.ts": "18e995046b2aa2c1676a6a8e35e629234085135d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-returns-invalid-static/main.ts": "a81900861d12a611712e460b7b6b4e58a8f5f761",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-returns-invalid-void/main.ts": "5129798a8e8403d051915089b050b310e249404a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-returns-overload-body/main.ts": "281a985e32cebc5fa2b98983bdcb54f15d88a627",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-returns-unknown-type/main.ts": "cde931564e0ef0ef9db83460d3a6cf85f1390b3f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-method-returns-valid/main.ts": "6bd70572d89c62d8f36b4c5dedd5ca8746a60d9e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ancestor-instance-parameter-error/main.ts": "241890da440c4cb6a32936284c776c2c332a80d0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ancestor-instance-result-error/main.ts": "f57ef20e2781b465369651b5e55384b12647729c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ancestor-nearest-error/main.ts": "c78e4d6f2e575a2d1c750d75c05e88c8ef63d723",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ancestor-static-parameter-error/main.ts": "a8a0810b6c985d617e6168ab37625e42a01351eb",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ancestor-static-result-error/main.ts": "2e1dd24d9c32dc45a4684a8f1f8f6f6eb779f2f8",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ancestor-valid/main.ts": "e3a8deb5e568aa2716e6194e235ba8f960b96ac2",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-arity-instance-extra-required/main.ts": "ddb1c85b94e44a7babb704e94db248a3c6034594",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-arity-instance-optional-required/main.ts": "d474782007d4940d7691f192ab525849cb0bbba9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-arity-instance-optional-type-error/main.ts": "14fea232478bed4fe9013c6932093e7027d81191",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-arity-static-extra-required/main.ts": "22697eb004e50a0025b3e85e554a310b0b95d07c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-arity-static-optional-required/main.ts": "98e10be89885d01e9090bd4a501c58e7c04c3ae1",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-arity-static-optional-type-error/main.ts": "76f7d0748ffaad029c48c05820e4a8a4952c2406",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-arity-valid/main.ts": "20aae6a01aeea85481b70c1aa5671d03f7b68f35",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-array-rest-instance-element-error/main.ts": "6cca0f646add8dc90e4bec9af446af9776a45cdd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-array-rest-instance-result-error/main.ts": "81b9def12585d4ca710566687ce3eb2e25d78de4",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-array-rest-prefix-error/main.ts": "3c07f113aaf29015b8ee5076c5ff9f849d6d6d1f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-array-rest-static-element-error/main.ts": "ecab34c315dd20ef42166338d7e293a053798a69",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-array-rest-static-result-error/main.ts": "72aa3ae368a4fcc73cf529363cc0f89a121b9dae",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-array-rest-valid/main.ts": "b15aa7cc51c4a36e20160b15a9ed88de18233102",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-middle-arity-error/main.ts": "7727aa74b19a9b11f80e85aa916664548634fe4e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-middle-array-error/main.ts": "87bc07e86f17d03787e98d492b35b21ac017305b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-middle-element-error/main.ts": "8e6806702ff66c2435dbbfc99a0edc2080abd204",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-middle-optional-error/main.ts": "86ccd75b94a40b8d5d2228551266659f20075233",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-middle-shift-error/main.ts": "50d9c3bd5ee5467615b6e9c7196466cc6682ebae",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-middle-static-error/main.ts": "a5ce97dfab1c864a28d68193a7f38c6f57b69fe9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-middle-suffix-error/main.ts": "a5801ec8102630990d9361c034d3ffdfeba95fb6",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-middle-valid/main.ts": "17b40326987ee0495e6c69c5c3c4dcf2f3bc1343",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-rest-extra-required/main.ts": "3f08770bc670c818ef72e2c570fbef2dba097b87",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-rest-instance-type-error/main.ts": "14c9fe62b6b720867c5e4ec72d7b976b6435bd95",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-rest-later-type-error/main.ts": "44124120b75893b8882d53733bb0d253589f66f4",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-rest-required/main.ts": "ed2a334a8fafb92ba8d8ae0c6ae50f09ac9fa988",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-rest-static-type-error/main.ts": "d4e30f9bde3c5fdbc13ffd232b7a8e9ba33d841e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-rest-valid/main.ts": "e6ab50b009cedade3c6889b3984e9fd95c53ac43",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-tail-array-error/main.ts": "53a49ac567741ac8facb095f707c12c6da81f667",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-tail-fixed-error/main.ts": "6878eb77543f6a34abfaafe48125a8d0afb750cf",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-tail-valid/main.ts": "c259242cfc0fdce447252fac106d631d1711db56",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-tail-zero-valid/main.ts": "0a968957cb3f17520e333693c5349e25d60d35d6",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-tuple-array-type-error/main.ts": "d56c0a97eb3e87889924982a35721ae0b4430d0a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-tuple-fixed-arity-error/main.ts": "29603f8798783a303a8d0314cff43e34ca11282d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-tuple-fixed-type-error/main.ts": "b93883da2e03f6ce77cde79873e91054a97c0664",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-base-tuple-valid/main.ts": "6f20cd03c5f730aadaaaa1011a46fdd6c96a02c7",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-middle-element-error/main.ts": "5ac5c561b81a32473663be9bb9297d7e7857984c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-middle-shift-error/main.ts": "dbb7caf4f2b9835a8d308312f2f58ac964103475",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-middle-static-error/main.ts": "ea96ed8ebe08dbc0b30cba4a76231750ef797838",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-middle-suffix-error/main.ts": "3958c4f7779dfbcc2219fb91eaa4d772547cabf1",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-middle-tail-error/main.ts": "f50961d3da79c2a0c5b1b5d6c25207162921a4a5",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-middle-valid/main.ts": "e79bae4cdcaa42bfa8f82fe9fd046bf8dfab7745",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-tail-element-error/main.ts": "5c28b1d414f67a618a181a68ab700ddd8fe471c6",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-tail-prefix-error/main.ts": "2faa8478c9a9f8861aa7ee910a755356b1270d7f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-tail-valid/main.ts": "a140b8e70b855f466b47cc04fe73213a3f940411",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-tuple-arity-error/main.ts": "94c14835f07dcd0836d0501068d3f32f6b23c0e3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-tuple-static-type-error/main.ts": "8790aad7ff738d923b7e8eb75677f95b4d6b1f94",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-tuple-type-error/main.ts": "25d9983b4d773e99812c2e5a108c534fddc79050",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-both-tuple-valid/main.ts": "3b197947199e48e91201ba76382d75615c8e0e55",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-middle-arity-error/main.ts": "e5b6b288dd83dd8b50f0749420a6e6e6aa3feded",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-middle-element-error/main.ts": "44ee6cd6c40190b88fdc77180e6f6370cc8f9694",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-middle-optional-error/main.ts": "43f7b7c587f0a42ec755b7f21432e1ff2ba6d78b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-middle-static-error/main.ts": "130bf6f4296894d5e7232482944ed599dbc37475",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-middle-suffix-error/main.ts": "c7cec8da892b0e41b629442b08848d4a9e4aa0eb",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-middle-valid/main.ts": "9ce2c4edd74929b7ccae12f2d773db99343d3ce6",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-rest-instance-type-error/main.ts": "4b3e037a5c1e2c4787ce8bb4f294cc18980da264",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-rest-later-type-error/main.ts": "f2707abc776f78165359ff007d675908789dc1e0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-rest-static-type-error/main.ts": "162a0bad6f7090469c8a0005f95345c147e19fe0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-rest-valid/main.ts": "5db6f940a54b5699c277ae2fceafc005bc76cf96",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-tail-arity-error/main.ts": "aa6eb7bdac9dcf826fce48ffd0b29d573ed3013e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-tail-array-error/main.ts": "d4102c709f36ccb2e5adf54ab47f3d66095f6903",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-tail-fixed-error/main.ts": "e947d9a9fe185bd82f169c21c91eff30babb88e9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-tail-valid/main.ts": "1f06b75518b916be451bafbc2fb42a9dfa085a8f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-tuple-array-type-error/main.ts": "4746221b249578925d1edc5cd08f226476a1076c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-tuple-fixed-arity-error/main.ts": "9bb6f83f9d0b73fdabcf890e97533ee6c5cd6306",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-tuple-fixed-type-error/main.ts": "ef14cabc45a23e69c3ad2aa2d55a4535caf0d628",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-derived-tuple-valid/main.ts": "06d88a777a2c2c4e6d1b383b9aedbd3ef36ccf0e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/alias-static-error.ts": "9bf21594a28b8e2e535779fdca1a4e35926f1fb3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/base.ts": "7147213c922bd03d262f08897fba5e6641978876",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/direct-instance-error.ts": "897868bc9262c1b846dbe442861eb5bb8a63700c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/direct-static-error.ts": "087b31c0530c62036d03481cfa1c7f15811305a8",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/direct-static-result-error.ts": "bec37a76fbcb6c18797c5ebd6c5fc44b3aa641f3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/direct-valid.ts": "dc772fa6a3cb9472711b93aec42b3494b2960912",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/middle.ts": "9f5ccc5d2088f4ba18afa71e5d5f97f7bf2fe86d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/required-extra-error.ts": "65d880af5e03cc5cb3f14df818cd2d485d3b25d0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/transitive-instance-error.ts": "67b2f0ef8046996eae1734f2e816c6bb7b735e6b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/transitive-instance-result-error.ts": "08faa2fb9ddb1df7e4a82923cfb5f4cb510afbb9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/transitive-static-error.ts": "95272f34416b3fae1f48ada009d516c62262fdad",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-imported/transitive-valid.ts": "4ce106cb1d987850b916858275d5330071bb5210",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-labeled-tuple-arity-error/main.ts": "e155bbebf1b9911fd19ea01857e06623d03d2d92",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-labeled-tuple-instance-error/main.ts": "16274e5509abf6ece50c8d6838ce558abf64a7e3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-labeled-tuple-static-error/main.ts": "98ba06feca7698e775ac5dffaa6bd060c1c82fe3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-labeled-tuple-valid/main.ts": "9eaf941243e11790e630e6cfd6159c772d0613f9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-local-instance-parameter-error/main.ts": "03494e601dbd81c72695510c1d0bcd3b8ccade09",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-local-instance-result-error/main.ts": "a9886bb14630056a53f4d61996e7a26e4cd5a2bd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-local-static-parameter-error/main.ts": "7ed7e615b5fdf7ae694a3fcb2352229ecd6f90c8",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-local-static-result-error/main.ts": "bbe1e13b8d36aebcbb16c22f8aa854eae3d2d053",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-local-valid/main.ts": "fe3e4734c1ec4d6644fea03050f716c334868fcc",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-middle-fixed-base-arity-error/main.ts": "f748fb4a0f7e05a19e14bb75c40c1ace631534f9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-middle-fixed-base-element-error/main.ts": "61110af8ad79401aa7051465172afdb05c6729ff",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-middle-fixed-base-suffix-error/main.ts": "2b7eeba8b1b1da784baa50c12d6c21ff417e93ed",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-middle-fixed-derived-arity-error/main.ts": "482513b45e0fb1bda9052c2dd1744627b707d3a4",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-middle-fixed-derived-element-error/main.ts": "c2b1221229c8dc1409dbd5a2158866dd36b3fcb6",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-middle-fixed-derived-suffix-error/main.ts": "d5fb5a49598fe3a3ae342086e12f99b85e67bf96",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-middle-fixed-static-error/main.ts": "9c36d718bf233e87ffdd1f452f79432f40f222bd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-middle-fixed-valid/main.ts": "462cebe4aa535f503770becbe2c802131aaca79d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-named-spread-derived-error/main.ts": "7946112ec7db4d46dafd5f8581d37bd0598b15b7",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-named-spread-inherited-error/main.ts": "a013223ab5a1fccad28817d41ab20539d2326a1c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-named-spread-static-error/main.ts": "6acecf6000b2322abc8ca9cda7e09a9b5e641035",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-named-spread-valid/main.ts": "7123b1ac45b6427b495cc84bca183250885d0ca5",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-fixed-middle-base-error/main.ts": "c57e47f3494bf5e8d830913e5ad3ba676924321c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-fixed-middle-derived-error/main.ts": "fabdaa785bafc516e4fdb5e216e9f539995eeb41",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-fixed-middle-long-error/main.ts": "d76fab94102a618d646a7172d76ce3c5a51989e5",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-fixed-middle-static-error/main.ts": "25e55ac07a0dc46f311d89f0f555f259b40684e8",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-tuple-arity-error/main.ts": "912c1b5827b4188d154467f19ddbf92c5b0140cd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-tuple-element-error/main.ts": "9f7dbe75ea111e4029dc68ed8468856b6c8f3a5d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-tuple-static-element-error/main.ts": "e70978cee33e9b5e6c715e5391368d0b91b1b011",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-tuple-valid/main.ts": "b4c1bb4627f179b8ff59bfe46a8cf5edf64a781e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-variable-base-error/main.ts": "7f874f10979673f1e6174c789635fac402162f1d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-variable-derived-error/main.ts": "4933ea448a5a07a72421ff5b06ccbdfdaec7d165",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-variable-shift-error/main.ts": "7d44368c285e4faf64c386ee4c3d73d9ae7d98f5",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-variable-static-error/main.ts": "c5c7b708dbbf3b43257dc6648aa4a8e1bd806b43",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-optional-variable-valid/main.ts": "f4969477b9d62e2a0a8f653098e655b301973c54",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-both-prefix-error/main.ts": "54a123dd94082dacc6108ebbf5389b8a8f593827",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-both-shift-error/main.ts": "d042725d3bb7942af817de44d47b6771c5430356",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-both-static-error/main.ts": "d175134563f39331815bcfe780649069c97f9210",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-both-suffix-error/main.ts": "af2b92c21f5d2f1e74235b373940c48dfbdec8a9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-both-valid/main.ts": "7d40bc1380f6322fe3ec57d9dd50fda0b977b74f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-direction-arity-error/main.ts": "278a7a25ab906b014001f7541b1a3653a196aea7",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-direction-derived-arity-error/main.ts": "e0c4c0fbdbe719f1def6e22ecfeb15cf7b7ac9cc",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-direction-derived-array-error/main.ts": "22d1a77b9cef3c0c0904ccdc0680b4b87f58d835",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-direction-derived-fixed-error/main.ts": "5cb1f0bcf309509f0f422b12b0fdd39f92b34d45",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-direction-inherited-arity-error/main.ts": "c9359d85208bacb53fe9b9c84d62ecc9dc790b9b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-direction-inherited-array-error/main.ts": "2c7aba2ecb902e005bb55cff8db59b0d753dabf3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-direction-inherited-fixed-error/main.ts": "e1adc3b534ea485e3f9689f5db972068c482bdb9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-direction-static-error/main.ts": "ad0a4a32985ab2015e96aa4419e82358c0e78e76",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-direction-valid/main.ts": "94cc266bc9154c4cebcdcb1e47cd4d56fca0a2bd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-fixedtuple-derived-error/main.ts": "461bf10531461a445633678dd1a24acad17671c4",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-fixedtuple-empty-base-error/main.ts": "bcdab1495c2cd9ccba7d63f50cc11f5da42aed14",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-fixedtuple-empty-derived-error/main.ts": "9c79c7d39420163a14c6e993f705d1949ea70b95",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-fixedtuple-inherited-error/main.ts": "5830e69ba9bd337902a170f1d80c0e2e0d57485f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-fixedtuple-static-error/main.ts": "5ea038faa1e5670b8ceceb6d4ea6a226ec0f6f10",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-ordinary-optional-fixedtuple-valid/main.ts": "73a66e58addeb35c0242fbdb1d55dc2b6a73b19b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-overload-ancestor-error/main.ts": "2db5b6b8ece8677107851681cfd890df26267c45",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-overload-edge-valid/main.ts": "8ca8551412fc13bb8a8f2724f59262e99b0d87c1",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-overload-missing-error/main.ts": "9c41740a2f7eabfbcc2e436a25eaf0c92f0d347d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-overload-required-error/main.ts": "01b36715849b899a7a06c2c5589d7abbe69fce75",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-overload-return-error/main.ts": "1f9085fd5d1d15a456607c6adb75be4d353b4902",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-overload-single-wide-error/main.ts": "72c4292e527df6dc510dba2e22e4bcc596e2a4dd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-overload-static-error/main.ts": "786921b9f67f0dc4037abe35e0724372a9eb8cc5",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-overload-valid/main.ts": "46349813806834e9d18c577d9782c2d36b24d4f0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-shifted-rest-extra-required/main.ts": "08b21c9899c3c780de3c6551780a9f21c2c54f28",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-shifted-rest-prefix-error/main.ts": "544503c12db8fee93c63c66724f3e6b31b9cb50f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-shifted-rest-static-prefix-error/main.ts": "bc027b01165017e9f8a73b235b5bdd8f50495d44",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-shifted-rest-tail-error/main.ts": "b3545a2c2488476735161dedecfff6331e812a96",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-override-shifted-rest-valid/main.ts": "9b0b754b7f012f1c302f730b7fb9964ca112936b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-param-property-emit-declaration/main.ts": "aa35fad49447fe7f09d23dc2827c7c7ee178e939",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-param-property-emit-runtime/main.ts": "eb093d1e34693c03274e49be51877979ee996151",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-private-name-emit-declaration/main.ts": "683365d0fc3ed26f396ee04f4b613e0610daeec5",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-private-name-emit-runtime/main.ts": "abd73afec303284514e75212ead493d22903f2a8",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-argument-error/main.ts": "afdd5489e7bec5f79aab9ce9ca9deaa3e5d230e3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-binding/main.ts": "3a6dc72244da002fd131489dc065ecb4901ca4bd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-block-emit-declaration/main.ts": "a717609289b7bd4f8939af0ef1d1993242648331",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-block-emit-runtime/main.ts": "956740c643ba824cb79ee1e815b6e023c31cca83",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-method-shell/main.ts": "6642506a7ba0d22f1250879435d92c62249c1ea1",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-overload-binding/main.ts": "410dd6f2256f3410961f9b1f8cce1a2b2990de37",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-overload-error/main.ts": "fa18f623c305da199938845382225d3dc85470b1",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-overload-this-argument-error/main.ts": "78b2550ee08fa51e21805c4fc13ab17586a615e7",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-overload-this-return-error/main.ts": "bd01b606b6266c6cf75d821ab8f9983fff36b016",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-overload-this-valid/main.ts": "49e4407c1ba15d538e6ed0b6f22ee4460938a827",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-overload-value-inferred-error/main.ts": "3cb9501daf87deaee8070e3418d41550f8149f19",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-this-argument-error/main.ts": "1c54fef6b284f3ffb7637435e184fa0329f0b823",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-this-inferred-return-error/main.ts": "1abe6b233a945dc6df25b481b56f9829011caba3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-this-self-return-error/main.ts": "44510cef7d83636c49a84466478b489723451581",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-this-valid/main.ts": "5300e3abd097fe7eccc27fb3c91579aa384c724f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-this-wrong-side-call/main.ts": "fb097d8218d9ee9d608f699bfdac4b73d2c7f17d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-this-wrong-side-read/main.ts": "4f20692f97d40975f58124e65cc157facdb48984",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-wrong-instance-call/main.ts": "26aa82b921fc2a5a41b2ca1173390405053b8d78",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-static-wrong-instance-read/main.ts": "efb8718fbe6712b291495d813ec49878d1debbc1",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-call-base-error/main.ts": "cc8a97f81a9a1bf2d6c1f6aeb6eea2ee85be68c5",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-call-count-error/main.ts": "6374b26e0db060cafa8638f86a8e542c93f106e3",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-call-missing-error/main.ts": "850cbd82ecae43f4e9609f0e985b5f1cf59b7ff9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-call-overload-error/main.ts": "54b8eafa20601713305904ad3e46e8b6be946b9e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-call-this-error/main.ts": "9238d13f6ad26e71c0cf1c1458250f9e350c8452",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-call-type-error/main.ts": "460663e25254e10f4446777c855685365b839a80",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-call-valid/main.ts": "f0123d6307e1218003492fd943419a9906cb8ec7",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-argcount-error/main.ts": "44bcaaecfdfbb4f377895512de95b0b70417b154",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-argtype-error/main.ts": "30d25ca1ef76cc19a226abaea4dd05959dd056ed",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-instance-side-error/main.ts": "afe98eea035136296dd451a23e9c7a44b8d80e26",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-method-call-error/main.ts": "483c8eb6768195dfad37068a59369c20217a8e4d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-missing-error/main.ts": "0811d9a04ab6dbf0705d450cf674f3da23eead38",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-nobase-error/main.ts": "2ae5155ce9bfab6eac82735137722157e6ac866b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-overload-error/main.ts": "eb5b83bd7991647a0301d56ffb64e5696e76ccfd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-result-error/main.ts": "19bcac7406469606a2b2886cb69ae9f1f59b4020",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-static-side-error/main.ts": "73240e5c51921816efbd73ca3c0be86e9f25e289",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-super-member-valid/main.ts": "43b82c93e4f6e9db17e40981b07d62c16fc8dbcc",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-tuple-rest-primitive-error/main.ts": "edf8cb9edbdf9b8379edf0e91769de1f6dde569e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-tuple-rest-unknown-element/main.ts": "1118ceeddb60d119d95db042e74a53143deaab98",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-tuple-rest-valid/main.ts": "e0d23d17f919f965c948e1df55ebd55bcfcda5de",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-alias-collision/main.ts": "eeed667aeabf91e01b592f31477a614501d76740",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-export-value-use/main.ts": "02cca96e8ea9b85510069b536ef56e60a4f3830a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-alias/box.ts": "7cc0d0df6a277a871e2cdd3db406f08c0a9b8194",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-alias/main.ts": "432936b5e0bf719019949f4ba8b13e730149360e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-bare-value/main.ts": "9c6c4785303d778e4e6fca63dff4691680b7791f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-private/box.ts": "e11753c2389cc47bc0b9d46c5e975ec1452ca8fe",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-private/main.ts": "35fb82bbbeb5a7a826015533f8fd1977baa5d5a6",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-self-reference/box.ts": "9f2b08e29673a7d1e3752237ecf1690a882e0248",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-self-reference/main.ts": "221a95d850d70bb078b86961927bc471558c417c",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-type-export/box.ts": "7bcbc0f34da7503e2054304147b5b7588e1c4e67",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-type-export/main.ts": "432936b5e0bf719019949f4ba8b13e730149360e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-value-safe/main.ts": "7d8697b152ce044071b2dbfbd641ded776d43752",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-value-use/main.ts": "27a8e2782d5b42ce42b354129b640983aabee569",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-wrong-side/box.ts": "ae8036728053c389943b7424d00b48e4b7e21054",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import-wrong-side/main.ts": "8f495713a6d1dd0fc2a68b4521c5c067d0e29faf",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import/box.ts": "ae8036728053c389943b7424d00b48e4b7e21054",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-type-import/main.ts": "fe86d7ed8e901c487f0cc13d8a10db2fb8b158c0",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-collision/main.ts": "4fe8820946578771430aa67dc0bd26d250d9bd12",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-alias-binding/box.ts": "aceacc81c6bc86e48a2d0fed420ce679eb2f1b2a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-alias-binding/main.ts": "c1172fb4ebadebbaa7defa643200d7bc51d77440",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-bare-call/main.ts": "4fab3690690cb2169a52a5679aad883084bf00fd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-binding/box.ts": "493b4e906910879b6585f86a6397ea8d958856f6",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-binding/main.ts": "2960d193108ba859a95ff1eb34906d2b11a309f8",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-calls-alias/box.ts": "04a60f7cb4fe4d08a18be85599b4be315012de28",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-calls-alias/main.ts": "3868b9158c63bd899228c16e931da0549561ac9b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-calls/box.ts": "c261e510b7d221f31824981ae8b6b193975a860b",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-calls/main.ts": "bd0922f9ba7ed49325f81ea585cc492139fdb6ab",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-constructor-error/main.ts": "b62bff9c90a08d933db55f89547ebb4c2135b21a",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-static-error/main.ts": "da3efce1831d224347b8b577ec77ec781a0cbaee",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-wrong-constructor-side/main.ts": "7feef7540aca3ceb4ae76cbf2a8be7306a57c2a9",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-wrong-instance-side/main.ts": "9d55df1c63235519376ae1a299df17bf0440c95d",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-wrong-side-binding/box.ts": "6aa09edc6ba201336c490df68d41abc78cbb65cd",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-value-import-wrong-side-binding/main.ts": "7f39362af8bb209a1a9472b1203a7696087df25f",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-visibility-emit-declaration/main.ts": "2177b7c48982dbae5e7522729fc4999216f0082e",
+        "backend/bluets/tests/fixtures/typescript_oracle/class-visibility-emit-runtime/main.ts": "6e66d4c726e234a2c97b4ea0dac7a33c721d78be",
+        "backend/bluets/tests/fixtures/typescript_oracle/comma-sequence-expression/main.ts": "b31a9de8b1d68a942157cbb5ae5db54dea970f13",
+        "backend/bluets/tests/fixtures/typescript_oracle/compound-assignment-expression/main.ts": "0063fba7f7d04a8ec746c1e0bbf2145081f8eaf8",
+        "backend/bluets/tests/fixtures/typescript_oracle/computed-object-property-expression/main.ts": "72fb54284785d26dabacd990aafcedd92bec68ba",
+        "backend/bluets/tests/fixtures/typescript_oracle/constructor-expression/main.ts": "91319940b7fada48f1fd1434f447f62386afa28b",
+        "backend/bluets/tests/fixtures/typescript_oracle/default-function-export/main.ts": "970fa136be065c0562b623d92c76a3b555118e8a",
+        "backend/bluets/tests/fixtures/typescript_oracle/default-parameter-expression/main.ts": "acfba77f99c53d9114c567ddcc877f1276d3a15d",
+        "backend/bluets/tests/fixtures/typescript_oracle/default-value-export/main.ts": "c9a823f12818a5ccc07f57380cc4501a55addaed",
+        "backend/bluets/tests/fixtures/typescript_oracle/destructured-parameter-call-error/main.ts": "a6a6b8e6480f6e898202559cec9e5a0615e54bab",
+        "backend/bluets/tests/fixtures/typescript_oracle/destructured-parameter-missing-error/main.ts": "4780f2f1b7a4b72348b1f931edb577e919d415a9",
+        "backend/bluets/tests/fixtures/typescript_oracle/destructured-parameter-named-error/main.ts": "a84bd13854ab46e34391920338a94bbc3892d26e",
+        "backend/bluets/tests/fixtures/typescript_oracle/destructured-parameter-runtime/main.ts": "e6a7d28a9ea331692607c6ece1b7bdb83d4a5152",
+        "backend/bluets/tests/fixtures/typescript_oracle/destructured-parameter-tuple-error/main.ts": "7a8805fe7ee9482e5c7a0b2c468ab6d9e26a4d46",
+        "backend/bluets/tests/fixtures/typescript_oracle/destructured-parameter-use-error/main.ts": "f31dbd436dc18a634b59e5b0e120a7a10c9c9c0c",
+        "backend/bluets/tests/fixtures/typescript_oracle/destructured-parameter-valid/main.ts": "e46e2ad5d02319f41d360330b35175805391821f",
+        "backend/bluets/tests/fixtures/typescript_oracle/enum-emit-declaration/main.ts": "dec853feef1bc625d324c7eefc36118bea955ecb",
+        "backend/bluets/tests/fixtures/typescript_oracle/enum-runtime-basic/main.ts": "7865169a539a48a621dc2c31e1e47d481abfb68a",
+        "backend/bluets/tests/fixtures/typescript_oracle/explicit-generic-call/main.ts": "55452205754f3a85629028894dd9163d75344b6c",
+        "backend/bluets/tests/fixtures/typescript_oracle/explicit-generic-constraint-error/main.ts": "1424e0fcbdc9f001c06059b1c024dbd7d73a9e96",
+        "backend/bluets/tests/fixtures/typescript_oracle/exponentiation-expression/main.ts": "bf7360c0bab07661b966d8a4848bfb4a1dff5f03",
+        "backend/bluets/tests/fixtures/typescript_oracle/exponentiation-operand-error/main.ts": "6060c278a150005c81a3df13e7949e1dc06a0095",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-braced-else-if-statement-call-error/main.ts": "eec61c03507a31cb088aa57c5c6aec237cc5e191",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-braced-else-if-statement/main.ts": "ea5c9eb9a3ebc2a7055b4c2acc06f6ba5c38870f",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-braced-if-statement-call-error/main.ts": "92269b59ecd17ad251eaf67b66c1a833f01856a6",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-braced-if-statement/main.ts": "037defd07ab603e5d69724c6be1646975f0e99a6",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-braced-try-catch-call-error/main.ts": "1bd73aad0f6193d0a2ce5e121c07f0abbb9f6a79",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-braced-try-catch-finally-statement/main.ts": "d1a9ac32c52f3d6c107e084df8ae375d9c1dcb90",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-braced-while-statement-call-error/main.ts": "1ba7a8e663dda4bcb3fc819bd52e064cae6eab0f",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-braced-while-statement-return-error/main.ts": "f474c3a071310c02ff9a088168ac348c61d1476c",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-braced-while-statement/main.ts": "1f0fdfe2401822555374c40a80d94dab0d253dc5",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-assign-error/main.ts": "7564e13bcd4c517fa336f7abb8e3817e424bd996",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-call-error/main.ts": "46e5bb57129ae4c86a668673cc1b4c4769b2aa58",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-closure-error/main.ts": "a425de607d66c9f1374ffe0e597f3dbaf1a7509f",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-default-error/main.ts": "28d08fede444c837ab3a00cd05cfde38c5a2d16c",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-missing-return-error/main.ts": "6c4c5a58135aceaf8c7240d57d8ced9e17637fa2",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-parameter-use-error/main.ts": "fd63d3b07338c5b4e3fd3a303953906c4be18dea",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-result-error/main.ts": "2cfeaa1b2ca95c95b20efd7790df124294a1c64f",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-runtime/main.ts": "2dfe895e3b7fca734fe72e85fb03658d7c69955b",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-statement-call-error/main.ts": "44ad6c3bdac4acbec7426ae4d41cea3ce6f29b7c",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-statement/main.ts": "d60000ff61ea33a3238147aa895965a57d6a7bb5",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-expression-valid/main.ts": "183d87992deae3d8db8065a7286746a58c54f7c2",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-overload-error/main.ts": "4dad11171fcc3f929e56d3a55ae713a95a1c0f89",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-overload/main.ts": "858048313e78ba56c8381c8d0d5fb979ff2cd7ff",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-return-fallthrough-error/main.ts": "73b60e03e436b7d31c2ea37acf5d1d6cf34ee31a",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-throw-statement-error/main.ts": "93fbb77fe146127ef8c1f1fa32697c6f631ba395",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-throw-statement/main.ts": "d4fdf0da2347330a4111bc449eb6460814cf4955",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-typeof-local-guard-error/main.ts": "b4e9fdd3b8a1bd2aff327c5afa8e5af7efa60cd5",
+        "backend/bluets/tests/fixtures/typescript_oracle/function-typeof-local-guard/main.ts": "77abadef00d18a90745a5890c8224faaf870c135",
+        "backend/bluets/tests/fixtures/typescript_oracle/generator-annotation-error/main.ts": "33f58da0596ec51515d53dc8be2b3c87a519e95b",
+        "backend/bluets/tests/fixtures/typescript_oracle/generator-delegate-error/main.ts": "1668e5cc6bf5b1e299f015deb20a91a322b8b87d",
+        "backend/bluets/tests/fixtures/typescript_oracle/generator-delegate-type-error/main.ts": "606a10a25a88582a3f5b74ec37c44e20f753c56d",
+        "backend/bluets/tests/fixtures/typescript_oracle/generator-next-type-error/main.ts": "87755a64bb19531d468aa654aae5926885a541d4",
+        "backend/bluets/tests/fixtures/typescript_oracle/generator-not-iterable-error/main.ts": "f1d99fc7aea9d008bfcfc104ac7f164570aa6bdb",
+        "backend/bluets/tests/fixtures/typescript_oracle/generator-return-type-error/main.ts": "756e672f68292eb010642df9c6a2a55ed7a6d680",
+        "backend/bluets/tests/fixtures/typescript_oracle/generator-runtime/main.ts": "5b185861424487cf4f1306d7bffcfebf39ddb317",
+        "backend/bluets/tests/fixtures/typescript_oracle/generator-valid/main.ts": "3d228694f4d0a99d8c6f2816e94b60040f0eed82",
+        "backend/bluets/tests/fixtures/typescript_oracle/generator-yield-type-error/main.ts": "42666a4dce958eccb227f174d7201fd577e79b2d",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-arithmetic-expression/main.ts": "5cacb754e9bb500210892ec07bc787972bace093",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-constraint-default-declaration-module/main.ts": "b8889b04fdec4702273c3e16bee8baedcb5c0f84",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-constraint-default-declaration-module/types/envelope.d.ts": "351fee6b0aaae11d8b02ab5ad1dce894be60c5a3",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-constraint-error/main.ts": "e432144cf01a0d4495116c3773b26234a3134ea4",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-declaration-module/main.ts": "ec7261d50017b86ba716a2cc3c3200e4427eef39",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-declaration-module/types/envelope.d.ts": "9efec3b00f3c7122c9cb71feaf5c237a57b53ef1",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-function-overload/main.ts": "f4a2fb9c94b4dec8a2600204b5d05ea39cd88aa2",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-interface-heritage-declaration-module/main.ts": "44b0d3e9544c495389d2fcb0a6bfa7af3cae5e90",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-interface-heritage-declaration-module/types/model.d.ts": "517e61c4b494e3ede2728e8d158f948baab3a86e",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-interface-heritage-error/main.ts": "d8433299d7f82c22c8a4b9361e5a05d461d928a0",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-interface-heritage/main.ts": "631e18137102c11ec6c21853d218dd7465de62b3",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-nested-constraint-error/main.ts": "f55b4bfb98fc1457bed716c30cc43541991a38a2",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-nested-parameter-use-error/main.ts": "ee56e6f1cc4384ae885eec24cb052e001007aca4",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-nested-result-error/main.ts": "6fa5e9bb07ccc2de1d0c611141dc5f592aeba958",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-nested-runtime/main.ts": "f902a6d02204310ab2f61c066c9218dab17fd60c",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-nested-unknown-parameter-error/main.ts": "45953ed583ffdf4a5e60c74c41b02ce9785f668e",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-nested-valid/main.ts": "7463a81cc02c32989ec40abb3565a5ced772c5cb",
+        "backend/bluets/tests/fixtures/typescript_oracle/generic-property/main.ts": "f3ecfbdc339318bf26f4a848d182a197ea5ad6a6",
+        "backend/bluets/tests/fixtures/typescript_oracle/interface-heritage-override-error/main.ts": "5501d422f51dff44848f270d0340390431930b71",
+        "backend/bluets/tests/fixtures/typescript_oracle/member-call-expression/main.ts": "28c645f97eb90720a737012ee3486c91fd83880f",
+        "backend/bluets/tests/fixtures/typescript_oracle/named-value-export/main.ts": "8924525997a94fa2f463fdef4c86bd8c75ddfe69",
+        "backend/bluets/tests/fixtures/typescript_oracle/nested-function-call-error/main.ts": "459914b6b9ac779b920b55758e6c895e068b7db6",
+        "backend/bluets/tests/fixtures/typescript_oracle/nested-function-closure-error/main.ts": "9c78077b78f14d5a046cc6f7b0bf89ac41406175",
+        "backend/bluets/tests/fixtures/typescript_oracle/nested-function-hoist/main.ts": "9592fc3c6d4087a669223e087f02145507aaef93",
+        "backend/bluets/tests/fixtures/typescript_oracle/nested-function-missing-return-error/main.ts": "c021b35f8a199a64f50e90f026e50d246c8acbc8",
+        "backend/bluets/tests/fixtures/typescript_oracle/nested-function-parameter-use-error/main.ts": "9e25648ca9fb3e002e041710f2a33dbc1f97f474",
+        "backend/bluets/tests/fixtures/typescript_oracle/nested-function-result-error/main.ts": "49e77f46b3f3c772c3a37d4c4ecd386fed1dbec1",
+        "backend/bluets/tests/fixtures/typescript_oracle/nested-function-runtime/main.ts": "ebdc136178b0bf2303bc46e97a6ff9f981ad994c",
+        "backend/bluets/tests/fixtures/typescript_oracle/nested-function-valid/main.ts": "000775f1e7f76518eb10c5c9092fcd2f1892c2ca",
+        "backend/bluets/tests/fixtures/typescript_oracle/nullish-coalescing-assignment-error/main.ts": "450fac54e1d88d3d536715f645b8eefc5866d906",
+        "backend/bluets/tests/fixtures/typescript_oracle/nullish-coalescing-expression/main.ts": "2863e2c582dc446c6725dc7bf997349695350577",
+        "backend/bluets/tests/fixtures/typescript_oracle/nullish-logical-mixing-error/main.ts": "05c4018bf2eaa0882575b98248721259cb123c5f",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-literal-key-expression/main.ts": "38125c8297feeeb9495edcd02eeccf36d7e3862e",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-literal-property-expression/main.ts": "c257b49b85513aea67005096c25f0e71a244d59f",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-method-call-error/main.ts": "6fc09305d6667b3c01e40171bfbd9254312ca69a",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-method-default-error/main.ts": "d5f3d96fa0318ccc577cd07da35743f960ecdc88",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-method-getter-error/main.ts": "182658821ae4de13254b8ac702c0279f364b0235",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-method-missing-return-error/main.ts": "19b66557cf8d1767bbd3e28eed47ab4e00d93359",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-method-parameter-use-error/main.ts": "1cb3bb5c6797a684ce691180d7286632f349d02f",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-method-result-error/main.ts": "18dd2d5c4a717d9fbe8713a455a5ca999fe00cda",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-method-runtime/main.ts": "40841b4ffa690a07c4dab42f2bc661af6dc95a91",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-method-valid/main.ts": "c4a35b33c851747a50f72ec3c4e82028b220f0f2",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-shorthand-expression/main.ts": "6e12f97e00e9653f6990073baf5f5978941ecbe9",
+        "backend/bluets/tests/fixtures/typescript_oracle/object-spread-expression/main.ts": "bdb1447afb8acd80e01946a1f25919452a6e55b2",
+        "backend/bluets/tests/fixtures/typescript_oracle/optional-default/main.ts": "a1f8c53416d901ee7ea90a1b1d2261c660c77297",
+        "backend/bluets/tests/fixtures/typescript_oracle/optional-dot-property-error/main.ts": "3104f73c81d62f1e529f4ae8539043611c1f6e7f",
+        "backend/bluets/tests/fixtures/typescript_oracle/optional-dot-property/main.ts": "1b5cb5fa3dc54147cc592aac294b10c123365efb",
+        "backend/bluets/tests/fixtures/typescript_oracle/optional-parameter-expression/main.ts": "c24fe5c15d46f7286bb8e374e00a69133afdbecb",
+        "backend/bluets/tests/fixtures/typescript_oracle/optional-record-error/main.ts": "a753ada54bfb19e917b3e55736c3ab90416232ea",
+        "backend/bluets/tests/fixtures/typescript_oracle/optional-record/main.ts": "dfdde2ab98ca65d42af4da9653eb983dc62a4289",
+        "backend/bluets/tests/fixtures/typescript_oracle/paren-type-class-override-error/main.ts": "3bf4326568751de1ba4212e2377e604383efda4a",
+        "backend/bluets/tests/fixtures/typescript_oracle/paren-type-class-override-valid/main.ts": "f07dc6489b15d9877882e07374ba5d07463cb8ba",
+        "backend/bluets/tests/fixtures/typescript_oracle/paren-type-identity-error/main.ts": "98d55d8791ca7ebbf6fd95ed1f3e2f8f2f8a5268",
+        "backend/bluets/tests/fixtures/typescript_oracle/paren-type-valid/main.ts": "6b020d16272d779474b44b0e3d478aca1aacaa5a",
+        "backend/bluets/tests/fixtures/typescript_oracle/property-assignment-expression/main.ts": "c7ca4ce67b81b0e66eb166718c435a3e8713a81d",
+        "backend/bluets/tests/fixtures/typescript_oracle/property-delete-expression/main.ts": "08749cead525e71db204ad3b2ecad2dd3c128174",
+        "backend/bluets/tests/fixtures/typescript_oracle/property-update-expression/main.ts": "3990d9fed5f9bf47acea2549ae7938e8102f89bb",
+        "backend/bluets/tests/fixtures/typescript_oracle/relational-membership-expression/main.ts": "308350cec0f47b906213e2f26e62fa95b1b73584",
+        "backend/bluets/tests/fixtures/typescript_oracle/rest-parameter-expression/main.ts": "ad503a8ac20130bb0cacb894277b9c9ec54640c5",
+        "backend/bluets/tests/fixtures/typescript_oracle/spread-argument-expression/main.ts": "6099a11e30db03ef751677b5e0bf5228e102c055",
+        "backend/bluets/tests/fixtures/typescript_oracle/strict-equality-disjoint-primitive-error/main.ts": "7b46dec847719189f5a6716e5dd02d09f89107c8",
+        "backend/bluets/tests/fixtures/typescript_oracle/string-escape-expression/main.ts": "4fe44ea637d72948aedbbbbf27e9fd9276965c7c",
+        "backend/bluets/tests/fixtures/typescript_oracle/template-escape-expression/main.ts": "6f2ee4c0dce5ad110d2103176b268e9f7bc95ff3",
+        "backend/bluets/tests/fixtures/typescript_oracle/template-identifier-expression/main.ts": "3e0e37e09a6f3320645af20c97d616c68f652a4b",
+        "backend/bluets/tests/fixtures/typescript_oracle/template-literal-expression/main.ts": "f84d346285de02f3610a054aa45f671b774e7244",
+        "backend/bluets/tests/fixtures/typescript_oracle/template-substitution-expression/main.ts": "25e13e2b4bc1bf84653214b260d572a352c216d7",
+        "backend/bluets/tests/fixtures/typescript_oracle/toplevel-await-arrow-error/main.ts": "20cb0c500908676c8bdc128cfd31ca0d6cb88922",
+        "backend/bluets/tests/fixtures/typescript_oracle/toplevel-await-field-error/main.ts": "9b09045fff5ed6672873ab7de38a5ab1ada70f58",
+        "backend/bluets/tests/fixtures/typescript_oracle/toplevel-await-function-error/main.ts": "f4d4de8253f46981518b3c46be28f14aad817fe9",
+        "backend/bluets/tests/fixtures/typescript_oracle/toplevel-await-namespace-error/main.ts": "e9dc99f51b6a8bdfb58caf7b9b8237211fbec67d",
+        "backend/bluets/tests/fixtures/typescript_oracle/toplevel-await-runtime/main.ts": "6b635a6f05a123e2c20f7131b438aff19e7b7fd0",
+        "backend/bluets/tests/fixtures/typescript_oracle/toplevel-await-script-error/main.ts": "3f2c8ed02adbf3551c9686016d7cd17128d4213e",
+        "backend/bluets/tests/fixtures/typescript_oracle/toplevel-await-type-error/main.ts": "70ae99378b8ebc6516fd319de284d66762790691",
+        "backend/bluets/tests/fixtures/typescript_oracle/toplevel-await-valid/main.ts": "2826c4f0506d878deb1d00e14f85165c26bb229d",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-labeled-mixed-valid/main.ts": "2ad99e60093704da5b90cfe35f6df9787896d95b",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-labeled-type-error/main.ts": "c7ce25066e085336534bae2344608a63a5be52ac",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-labeled-valid/main.ts": "f5f27ac762f13b95b63fa2a8d50a1710aadd2b48",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-argument-class-valid/main.ts": "e00630abb38f1b613e8585a368738283905fb44a",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-argument-constructor-error/main.ts": "70378ad7d71531fc59608740fbb67c5496aeb67c",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-argument-method-error/main.ts": "5a0f613079fc256315ba3dfca4249516e6a1cd2d",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-argument-overload-error/main.ts": "a6c06f63e9c7014aa44b77f81a35d16f0432a4ed",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-argument-short-error/main.ts": "5984b4f6eff9ef33d5f88e4afbbdadf3c85ca1ea",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-argument-super-error/main.ts": "db50ed30ae1cfa80926619504b9e4c0e7d5fdd60",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-argument-type-error/main.ts": "f78b3f13202051025613a838f7e3e94b92cdb005",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-argument-valid/main.ts": "e60eab9aa0403dd846f01554436b6b18dd5858ee",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-assignment-element-error/main.ts": "d75878a82e7fce5e82da659baf28bc8896407aa4",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-assignment-member-error/main.ts": "c07dc4c3b60fb12222aa33451218d6cde85b5d40",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-assignment-record-error/main.ts": "ff2076bb326ee25e29c454d8c1982ca2f84c2bef",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-assignment-short-error/main.ts": "7b695dd9a3fe103daee46a853855df05bb79321a",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-assignment-type-error/main.ts": "1517e27cdbf3da8ff929163dc9c9c131e0149036",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-assignment-union-error/main.ts": "6ce6de2a390fb47d9a9f2cb17b5da1a4199dd967",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-assignment-valid/main.ts": "30497c4b662e774035867d2eb8601835b195f8f8",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-property-argument-error/main.ts": "4eb6c5395e836a3f16e0e848aa3a5e8eec9168f8",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-property-array-error/main.ts": "d296071f52ce59bc63b3d9b7b0324a7fa8f773bc",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-property-long-error/main.ts": "c0324ff4c0c56919992eb828d5952df12e2704c1",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-property-missing-error/main.ts": "b34ca28911eb8534c2e7e4fedfbee8a790314d44",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-property-nested-error/main.ts": "e06c480453588ee29133d9a234a8c6d6b49b55fc",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-property-return-error/main.ts": "5ee166e3363eec4ea80b05b08a88134da36c9daf",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-property-short-error/main.ts": "40d0538cac4d46416e89ce11f6fd1d6790eebf81",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-property-type-error/main.ts": "3e73d9f3c8080b615beb1125a12ca791076f11b1",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-property-valid/main.ts": "54e6d15625a0b705b4ba1c1e64f62e85d4ff0ea7",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-return-class-error/main.ts": "a0ee6a5ce0ce5ec7d69e161321d5cc9ab4f846d5",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-return-class-valid/main.ts": "78908460e3fcf9739ff2c2ad3abe21bd9836fe76",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-return-local-error/main.ts": "adda8a34f3ec91db32e131f9fe6ddeb2ef72636b",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-return-long-error/main.ts": "42218dbb714b54d8df1486c9dd65f8deb123c82b",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-return-nested-error/main.ts": "0c195b33f9206329af263909b95eea4a369410a8",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-return-short-error/main.ts": "e6f0eeb308597d4e98452f8b9f69d361fefda2a8",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-return-spread-error/main.ts": "6a9d7bc4c4006d56f2da5f0bd2d2e2fd8715379c",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-return-type-error/main.ts": "d809f9266d489e5c33b30de0491b6e3e2cde6692",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-literal-return-valid/main.ts": "45687f0cad0fcdc7a89f2f541dabf9e83c8a1e4a",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-optional-index-error/main.ts": "a8abcae96817a1560cae1f6620dd8be36b8ee9b6",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-optional-index-valid/main.ts": "5a01db950eb7ff4801bd96fe1a3ed587456b1afc",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-optional-required-after/main.ts": "64aedddc2965eff24f9453899b6482c26058ab6e",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-optional-valid/main.ts": "83e16fe5b7f7497f65a2535a358ec4997d0cca7f",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-optional-wrong-type/main.ts": "37a8fca79664c18776b9bed7f54ffb8bd8d13f6e",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-arity-error/main.ts": "4873a48eb40f1506f2b9395d53d2ab79356f3939",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-assignment-error/main.ts": "948a39cb42c20e340589deb7bd3940fa078d9331",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-double-rest-error/main.ts": "fed585072c3f4126a58db1cc1ad07e2c2a7af230",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-guarantee-error/main.ts": "1b45d00a4867caa6c5c98edf53d3c13881e314e8",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-index-error/main.ts": "5d961685ea72f46850bf2d04284e3c236d95b06c",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-index-narrow-error/main.ts": "9dc60582d352a6275c97126124e41980a6eaf13a",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-optional-prefix-error/main.ts": "3165e277824353690c287ba282d99b7938ddef72",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-rest-error/main.ts": "1edcfe5a704f1ce4db9996377f57fc92e0be0c86",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-tail-error/main.ts": "f520b8bfe392ebe162d942b34a4797b937554d93",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts": "fe6223005b34743675dca9fc5a867d50cabaf43a",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-trailing-arity-error/main.ts": "808390aa27e9b7532d7261216dbbaccc6bf86682",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-trailing-index-error/main.ts": "1040d5f9571f7b019b885e933212370a12d0d392",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-trailing-optional-after-error/main.ts": "d94f5e1f22c97ebbade0e17785f0dcbe1abb6bb1",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-trailing-type-error/main.ts": "980e1db6d3f683e2073dddbb84802da133cd3c85",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-rest-trailing-valid/main.ts": "3a65d56adb3c5873ea5f832b1db5605bc5bc1a88",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-concrete-arity-error/main.ts": "53913b0d07eb716aef00df85909d714a863be03b",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-concrete-optional-arity-error/main.ts": "9b5a5183c75b8877a12322dca1565512099c892d",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-concrete-optional-suffix-error/main.ts": "b892633245df1a2bcb74a72bcc6f475b10799b38",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-concrete-type-error/main.ts": "4593f8791f541c1987b1ee941aa9aeeb85bcaaee",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-concrete-valid/main.ts": "20a89c89757de15ce1362171e1a021319d50d4e3",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-generic-arity-error/main.ts": "13350410348d9e4876773772bd78a6d416abdac6",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-generic-constraint-error/main.ts": "f6fd3ae3f5779d3cfe4215b0b62a0b5f22aef279",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-generic-nontuple-error/main.ts": "41678effe5a338d0566cd1e260c0d1da18c687c8",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-generic-tail-error/main.ts": "436edf7ed8e94f2297e5e02dc544aa1edb99115c",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-generic-type-error/main.ts": "41f3dd2d55103583a6c8bf318b0606c7f556f754",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-generic-unconstrained-error/main.ts": "1a24cc249e6a4883e2fa321ec46c27da1470caf1",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-generic-valid/main.ts": "0a3f49bbc8046b7282aac093998c1ac14f3d5342",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-optional-call-error/main.ts": "bf01b8716fc0b7b652ec1ccb70a09a56025e3e8e",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-optional-constructor-error/main.ts": "59ad8071feb115e9ab3a3e1e08a2d7cbcac2b815",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-optional-literal-error/main.ts": "1c273628215271e6a0beeb99d0f66c90a3be1025",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-optional-method-error/main.ts": "7af5a322d3588f321025093ad4aa6f66b320721b",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-optional-multi-error/main.ts": "f63d062acec3767cd8c6317ea4851c8cdbe85035",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-optional-super-error/main.ts": "564aa6fba006e4d5df0ea3fd778e639746025888",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-optional-valid/main.ts": "6f8bf9688ecabb4c132dc640a4bb8c58ed598496",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-close-cyclic-error/main.ts": "aed8fc361b7dd49c8cdb09bc458793b150cf9814",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-close-nested-valid/main.ts": "fab229288a1d25af54ca83c40b06ad4019799075",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-close-nonarray-error/main.ts": "b05955fc1317b3451566c4873c1d08105becbcec",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-close-unresolved-error/main.ts": "e8c1bf19d8f1e23a557939b718ba6beeb1d7d526",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-compare-distinct-error/main.ts": "7991f3219dc0d17b13b8b7ca6c32a5390467e1a7",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-compare-narrowing-error/main.ts": "7b34947a93e65b19600d472832050c72aa6e1328",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-compare-valid/main.ts": "de6c74d34d1f57b3ed422eb51e447af6893e43ef",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-function-constraint-error/main.ts": "40fb5740c3f345c43a82b073076b7548c40dbd2c",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-function-unconstrained-error/main.ts": "b8fe371c9d30366a8b91f348deaba739f7f037a3",
+        "backend/bluets/tests/fixtures/typescript_oracle/tuple-spread-symbolic-function-valid/main.ts": "65eef9e1ed526993aa15770323e4eabc443f1b8c",
+        "backend/bluets/tests/fixtures/typescript_oracle/typeof-assignment-error/main.ts": "15ffee8c09d01cbbd1e114ec5e18678f7eaa2b03",
+        "backend/bluets/tests/fixtures/typescript_oracle/typeof-void-expression/main.ts": "961e587109d52cd7f3b42d1d00fa3350b1161412",
+        "backend/bluets/tests/fixtures/typescript_oracle/unary-exponentiation-base-error/main.ts": "deddee36cca550f623a78c551b8b8730d0c193f2",
+        "backend/bluets/tests/fixtures/typescript_oracle/update-expression/main.ts": "4c898ef75df56d418b146a8150fb930659c66ba0",
+        "backend/bluets/tests/oracle_support/windows_paths.rs": "ea53e81ad55f7cb9daddb4ce3e34000d2cd7ba1e",
+        "backend/bluets/tests/typescript_oracle.rs": "dbf38a8ff6496c374d2052cae26d690dcd744e68"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/unknown_name_checker_matrix.rs",
+      "ignored_tests": [
+        "recorded_verdicts_match_pinned_typescript",
+        "resolved_scopes_preserve_execution_and_declarations"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/typescript_oracle/unknown-name-checker-matrix.tsv": "037df4d554f5f0812422f08f828a40de55b3d73f",
+        "backend/bluets/tests/unknown_name_checker_matrix.rs": "36c51140520d0d8063d6120a9a19882fbfcf29fb"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/variable_pattern_context.rs",
+      "ignored_tests": [
+        "variable_pattern_reference_matches_live_typescript"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/variable-pattern-context-reference.json": "5ab9c0d1a719d5f43ef8cd919956d5f4daa8dc78",
+        "backend/bluets/tests/variable_pattern_context.rs": "38fee27893e387922938e9a327cfdfe8455a411c"
+      }
+    }
+  ]
+}

@@ -11168,3 +11168,89 @@ CARGO_INCREMENTAL=0 CARGO_PROFILE_TEST_DEBUG=0 \
 The five per-file records each meet the 90% floor. The behavior review,
 Windows acceptance, complete local gates and clean-checkout tool verification
 complete K.13.4 after the K.13.2 hosted confirmation.
+
+### AC-K14.1 Source-derived suite inventory (2026-10-16)
+
+The regenerated suite inventory measures the single committed source tree
+`26a3941b2625ab924db9de824a83b49ac8085172`, after K.13.4. It contains 100
+Cargo integration suites and 244 ignored Rust test functions, including the
+three source-map tests in external modules. The versioned corpus contains
+3,392 top-level fixture directories. The shared diagnostic record contains
+3,182 unique programs, 221 templates, 1,855 accepted and 1,327 rejected
+programs. These are different, overlapping units, not numbers to sum into
+a pass-rate denominator. Program/configuration agreement rates remain
+AC-K14.2 work; this checkpoint does not relabel Rust functions as cases.
+
+The generator replaces the stale section-1 table (which omitted 45 suites)
+and its historical measurements. `COMPATIBILITY_SUITES.json` records the
+full function names, source revision, and each harness's literal include and
+module closure with Git blob ids. Its source-graph SHA-256 is
+`db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
+All counts come from the frozen Git tree, not a mixture of the index and
+working-tree files. Independent Cargo metadata confirms every target name.
+
+```sh
+cargo run -p blueice-bluets --example compatibility_inventory -- \
+  --write 26a3941b2625ab924db9de824a83b49ac8085172
+cargo run -p blueice-bluets --example compatibility_inventory -- --check
+cargo test -p blueice-bluets --test compatibility_inventory
+```
+
+The implementation is split into a Git snapshot reader, Rust syntax facts,
+inventory renderer, and thin example CLI. The syntax parser distinguishes
+real attributes from raw-string text, visits nested macro includes, and
+resolves external modules. Missing inputs, repository escapes and corrupt
+Git batch output are errors, not reasons to silently reduce a count.
+`--check` compares the complete relevant HEAD blob graph to the recorded
+graph, so a shallow CI checkout need not contain the measured parent
+commit. The ordinary integration test runs this check in workspace CI;
+the inventory's own tooling is not counted as a compiler oracle.
+
+Windows x86_64 VM acceptance uses Rust 1.95.0 MSVC and the pinned
+TypeScript 5.9.3 executable. Its 82 ignored core oracles pass in 499.39
+seconds. All seven final inventory tests pass, including raw-string/macro
+distinction, Unicode Git paths, nested modules, immutable source snapshots,
+missing/escaping inputs, corrupt batch responses and marker consistency.
+Native regeneration at the original source commit and `--check` both pass,
+as does warnings-denied Clippy for the example and integration test.
+The Windows-generated `COMPATIBILITY_SUITES.json` SHA-256 is
+`9c54e8ebbaaf8b5fe546ad27c34f1aaea835ccd47a9a95488a34ff383e29a390`.
+
+The first VM inventory check deliberately failed when its temporary Git
+index accidentally included four retained `.k134bak` files. The mismatch
+was localized to those four backup paths; their physical files were
+retained, the temporary index was corrected, and the original source
+commit/tree metadata was imported. All 12,535 relevant blob/path pairs
+then matched the local commit. No expected count or assertion was relaxed.
+The reader now uses NUL-delimited `git ls-tree -z`, so Unicode names are
+actual paths rather than Git's configurable display-quoted strings.
+Windows logs are `k141-typescript-82-final.log`,
+`k141-{regenerate,inventory,generator-check,tooling-clippy}-accepted.log`
+under the existing isolated `bluets-k132-20261016-166bzf` validation root.
+
+The final macOS regeneration is byte-identical to the Windows JSON above;
+all eight final tooling, fixture, manifest and lock inputs also match their
+Windows-validated SHA-256 values. The seven final tool tests pass on macOS,
+as do `--check`, warnings-denied **workspace/all-target** Clippy, and Rust
+1.95 rustfmt. The existing Windows exclusion-report tests pass 3/3. Running
+`tools/inventory_refusals.py` reproduces section 4 exactly: 213 sites in
+eleven areas, with no new refusal or exception.
+
+The first complete local workspace attempt stopped at the engine's 92
+socket tests with sandbox `EPERM`; those results were not counted as a
+successful gate. The same unmodified engine suite passes 490/490 in 2.30
+seconds after local TCP/Unix-socket test communication is authorized.
+The **complete** ordinary workspace suite was then rerun, with the final
+tool sources and generated artifact frozen, in the authorized environment:
+
+```sh
+BLUEJS_REGEXP_WORKER="$PWD/target/debug/bluejs-regexp-worker" \
+  cargo test --workspace --locked --offline --quiet
+```
+
+That complete rerun exits 0, including the 55 launcher/K.11 real-process
+tests. Its retained log is `/private/tmp/bluets-k141-workspace-accepted.log`.
+Local ordinary tests use Homebrew Rust 1.98.0; the native Windows tool and
+oracle validation uses pinned Rust 1.95.0 MSVC. No production source changed
+after `26a3941b2`, and no assertion, test selection or coverage policy was
+weakened. AC-K14.1 is complete; AC-K14.2–AC-K14.6 remain open.

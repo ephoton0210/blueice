@@ -1,0 +1,37 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+const CASES: &[Case] = &[
+    Case { name: "first", source: include_str!("fixtures/first.ts") },
+    Case { name: "second", source: include_str!("fixtures/second.ts") },
+];
+
+#[test]
+#[ignore = "pinned TypeScript"]
+fn pinned() {
+    let cases = [
+        ("quoted", "a string containing ] and },", true),
+        ("raw", r###"#[test]
+#[ignore]
+fn text_is_not_a_test() {}
+] } " quoted"###, false),
+    ];
+    for module in ["es2022", "commonjs"] {
+        consume(module);
+    }
+}
+
+mod nested {
+    #[ignore]
+    #[test]
+    fn second() {}
+}
+
+fn nested_macros() {
+    assert_eq!(outer!({"source": include_str!("fixtures/in_macro.ts")}), true);
+    let _literal = "include_str!(\"not_a_fixture.ts\")";
+}
+
+#[path = "support/custom.rs"]
+mod external;
