@@ -742,6 +742,11 @@ fn managed_heap_exhaustion_stops_only_its_document_and_navigation_recovers() {
     scheduling_exhaustion_case("var realms=[];for(var i=0;i<32;i++){var child=new ShadowRealm();child.evaluate(\"globalThis.held='x'.repeat(400000);0;\");realms.push(child);}document.getElementById('counter').textContent='escaped';");
 }
 
+#[test]
+fn agent_registry_exhaustion_stops_only_its_document_and_navigation_recovers() {
+    scheduling_exhaustion_case("try{for(var i=0;i<16;i++)Symbol.for('x'.repeat(400000)+String(i));}catch(error){}document.getElementById('counter').textContent='escaped';");
+}
+
 fn scheduling_exhaustion_case(exhaustion: &str) {
     let (bad_fixture, bad_url, gatekeeper) = fixture(
         "<p id=counter>failed:0</p><script>

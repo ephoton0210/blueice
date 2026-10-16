@@ -1962,12 +1962,8 @@ impl Vm {
             ))),
             NativeFunction::SymbolFor => {
                 let key = self.coerce_string(first)?;
-                let symbol = self
-                    .symbol_registry
-                    .borrow_mut()
-                    .entry(key.clone())
-                    .or_insert_with(|| JsSymbol::new(Some(key)))
-                    .clone();
+                self.synchronize_scheduling_usage()?;
+                let symbol = self.symbol_registry.borrow_mut().symbol_for(key)?;
                 Ok(Value::Symbol(symbol))
             }
             NativeFunction::SymbolKeyFor => {
@@ -1979,8 +1975,7 @@ impl Vm {
                 Ok(self
                     .symbol_registry
                     .borrow()
-                    .iter()
-                    .find_map(|(key, candidate)| (candidate == symbol).then(|| key.clone()))
+                    .key_for(symbol)
                     .map_or(Value::Undefined, Value::String))
             }
             NativeFunction::Object => {

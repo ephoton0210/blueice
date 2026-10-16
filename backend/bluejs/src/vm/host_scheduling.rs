@@ -13,8 +13,8 @@ pub const MAX_PENDING_HOST_REACTIONS: usize = 1024;
 pub const MAX_PENDING_BROWSER_TASKS: usize = 64;
 pub const MAX_HOST_SCHEDULING_BYTES: usize = 8 * 1024 * 1024;
 
-/// Owned scheduling slot capacities and native host payloads (including the
-/// bounded console buffer), separate from managed heap
+/// Owned scheduling slot capacities and native payloads (including the
+/// bounded console buffer and shared agent registries), separate from managed heap
 /// and shared installed bytecode. Allocator/control-table overhead, spare
 /// BigInt limb capacity and process RSS are not represented by this ledger.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -76,7 +76,62 @@ pub(super) struct SchedulingScope {
     own: HostSchedulingUsage,
 }
 
+/// One shared native owner, independent of individual realm scopes.
+pub(super) struct SharedSchedulingCharge {
+    account: Rc<RefCell<Account>>,
+    bytes: usize,
+}
+
+impl SharedSchedulingCharge {
+    pub(super) fn belongs_to(&self, scope: &SchedulingScope) -> bool {
+        Rc::ptr_eq(&self.account, &scope.account)
+    }
+
+    pub(super) fn resize(&mut self, bytes: usize) -> Result<(), RuntimeError> {
+        let mut account = self.account.borrow_mut();
+        let next = account
+            .usage
+            .sub(HostSchedulingUsage {
+                payload_bytes: self.bytes,
+                ..HostSchedulingUsage::default()
+            })
+            .add(HostSchedulingUsage {
+                payload_bytes: bytes,
+                ..HostSchedulingUsage::default()
+            });
+        if account.failed || !next.fits() {
+            account.failed = true;
+            return Err(RuntimeError::SchedulingLimit);
+        }
+        account.usage = next;
+        self.bytes = bytes;
+        Ok(())
+    }
+
+    pub(super) fn fail(&self) -> RuntimeError {
+        self.account.borrow_mut().failed = true;
+        RuntimeError::SchedulingLimit
+    }
+}
+
+impl Drop for SharedSchedulingCharge {
+    fn drop(&mut self) {
+        self.account.borrow_mut().usage.payload_bytes -= self.bytes;
+    }
+}
+
 impl SchedulingScope {
+    pub(super) fn shared_charge(
+        &self,
+        bytes: usize,
+    ) -> Result<SharedSchedulingCharge, RuntimeError> {
+        let mut charge = SharedSchedulingCharge {
+            account: self.account.clone(),
+            bytes: 0,
+        };
+        charge.resize(bytes)?;
+        Ok(charge)
+    }
     pub(super) fn same_document(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.account, &other.account)
     }
@@ -109,7 +164,7 @@ impl SchedulingScope {
             own: HostSchedulingUsage::default(),
         }
     }
-    fn check(
+    pub(super) fn check(
         &mut self,
         own: HostSchedulingUsage,
         extra: HostSchedulingUsage,
@@ -522,7 +577,7 @@ impl Vm {
         Ok(())
     }
 
-    fn own_scheduling_usage(&self) -> HostSchedulingUsage {
+    pub(super) fn own_scheduling_usage(&self) -> HostSchedulingUsage {
         let mut usage = HostSchedulingUsage {
             pending_browser_tasks: self
                 .browser_tasks

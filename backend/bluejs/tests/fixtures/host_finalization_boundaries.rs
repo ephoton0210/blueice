@@ -12,9 +12,9 @@ fn execute(vm: &mut Vm, source: &str) {
 #[test]
 fn document_task_delivery_does_not_enter_an_adopted_foreign_document() {
     let mut owner = Vm::default();
-    owner.use_bounded_host_microtask_checkpoints();
+    owner.use_bounded_host_microtask_checkpoints().unwrap();
     let mut foreign = Vm::default();
-    foreign.use_bounded_host_microtask_checkpoints();
+    foreign.use_bounded_host_microtask_checkpoints().unwrap();
     execute(
         &mut foreign,
         "var cleaned=0,registry=new FinalizationRegistry(()=>cleaned++);registry.register({},0);",
@@ -46,7 +46,7 @@ fn document_task_delivery_does_not_enter_an_adopted_foreign_document() {
 #[test]
 fn cleanup_file_reading_and_drag_sources_each_get_a_turn() {
     let mut owner = Vm::default();
-    owner.use_bounded_host_microtask_checkpoints();
+    owner.use_bounded_host_microtask_checkpoints().unwrap();
     let log = Rc::new(RefCell::new(Vec::new()));
     let output = log.clone();
     owner

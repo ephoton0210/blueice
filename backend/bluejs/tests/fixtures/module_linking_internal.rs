@@ -1616,7 +1616,7 @@ fn module_origin_accounting_follows_displaced_owners_without_rooting_values() {
 #[cfg_attr(test, test)]
 fn module_origin_admission_charges_spare_capacity_before_cache_publication() {
     let mut vm = Vm::default();
-    vm.use_bounded_host_microtask_checkpoints();
+    vm.use_bounded_host_microtask_checkpoints().unwrap();
     let mut filename = String::with_capacity(MAX_HOST_SCHEDULING_BYTES);
     filename.push_str("memory:///short.js");
     let origin = ThrowOrigin {

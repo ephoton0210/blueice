@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use crate::{Bytecode, Heap, HeapError, ImportPhase, Value};
 
-use super::{test262_agents, RuntimeError, Vm, VmConfig};
+use super::{test262_agents, AgentSymbolRegistry, RuntimeError, Vm, VmConfig};
 
 impl Default for Vm {
     fn default() -> Self {
@@ -151,7 +151,7 @@ impl Vm {
             host_animation_frame_timestamp_ms: 0.0,
             active_host_drag_event: None,
             global_bindings: HashMap::new(),
-            symbol_registry: Rc::new(RefCell::new(HashMap::new())),
+            symbol_registry: Rc::new(RefCell::new(AgentSymbolRegistry::default())),
             intl_legacy_constructed_symbol: None,
             script_global_slots: HashMap::new(),
             variable_scope: 0,

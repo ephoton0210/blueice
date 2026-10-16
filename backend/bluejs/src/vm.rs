@@ -54,12 +54,14 @@ mod host_registration;
 mod host_scheduling;
 mod host_task_turns;
 mod host_timers;
+use agent_registry::AgentSymbolRegistry;
 use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::SchedulingScope;
 pub use host_scheduling::{
     HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_BROWSER_TASKS,
     MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS,
 };
+mod agent_registry;
 mod interpreter;
 mod intl;
 mod intrinsics;
@@ -1125,7 +1127,7 @@ pub struct Vm {
     /// top-level VMs each create their own agent registry.
     /// Registered symbols are not valid WeakMap/WeakSet keys, whereas
     /// ordinary and well-known symbols are.
-    symbol_registry: Rc<RefCell<HashMap<JsString, JsSymbol>>>,
+    symbol_registry: Rc<RefCell<AgentSymbolRegistry>>,
     /// The per-realm hidden key used by the normative-optional legacy
     /// constructors. It is deliberately not a well-known Symbol: callers may
     /// discover it only through the legacy receiver's own symbol keys.

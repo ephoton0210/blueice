@@ -495,7 +495,8 @@ impl BlueJsPageRuntime {
             });
         }
         let mut vm = Vm::new(self.config.vm).map_err(BlueJsPageRuntimeError::VmInitialization)?;
-        vm.use_bounded_host_microtask_checkpoints();
+        vm.use_bounded_host_microtask_checkpoints()
+            .map_err(BlueJsPageRuntimeError::Runtime)?;
         self.realms.insert(
             tab_id,
             PageRealm {
@@ -525,7 +526,8 @@ impl BlueJsPageRuntime {
         }
         // The configuration already created this tab's realm, so it is valid.
         let mut vm = Vm::new(self.config.vm).expect("the realm's own VM configuration is valid");
-        vm.use_bounded_host_microtask_checkpoints();
+        vm.use_bounded_host_microtask_checkpoints()
+            .expect("a fresh realm has no retained agent or scheduling payload");
         let previous = self
             .realms
             .insert(

@@ -46,6 +46,9 @@ impl Vm {
                 ));
             }
         }
+        if self.host_scheduling.is_none() {
+            self.use_bounded_host_microtask_checkpoints()?;
+        }
         self.install_web_rejection_events()?;
         let function = self.function_prototype()?;
         for (attribute, event) in [
@@ -67,9 +70,6 @@ impl Vm {
                     ..Default::default()
                 },
             )?;
-        }
-        if self.host_scheduling.is_none() {
-            self.use_bounded_host_microtask_checkpoints();
         }
         self.host_rejections = Some(HostRejections::default());
         self.synchronize_scheduling_usage()

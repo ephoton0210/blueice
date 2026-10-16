@@ -132,8 +132,32 @@ An exhausted document account stays failed across later script, task and
 checkpoint entries. Another tab has its own account; navigation creates a new
 one and drops the old realm tree. This is a managed-storage budget, with the
 existing per-value string and native scheduling bounds still separate. Native
-agent-registry/control/service payload accounting remains in the open resource
-work; managed-heap aggregation does not close those items.
+control/service payload accounting remains in the open resource work.
+
+### Shared agent registries
+
+The agent's `Symbol.for` registry holds one charge in the document's existing
+8 MiB native account, shared with Promise results, timer arguments and other
+scheduling payloads. Root and nested ShadowRealms share both the registry and
+its charge. Collecting a child VM preserves registered identity and does not
+refund storage still owned by the agent. Navigation and close release the
+document's registry together with its realm tree.
+
+Committed bytes include table entry capacity and the actual UTF-16 capacities
+of stored keys and symbol descriptions. Repeated keys reuse the entry without
+adding a charge. Table growth is prepared separately; admission succeeds
+before the live table or registry entries change. Refusal leaves committed
+bytes unchanged and makes the document's resource failure terminal. Key
+coercion completes before borrowing the registry, allowing reentrant calls.
+
+Enabling document policy on an existing host-neutral VM first admits its
+retained registry and scheduling storage. Oversized storage is refused before
+publishing rejection-event bindings or changing that VM's host-neutral policy.
+Standalone VMs without an owner-selected document scope retain unbounded
+registry semantics. Runtime/Core native totals include the shared charge;
+the managed-heap and private transport layouts are unchanged. This accounts
+for retained registry storage, while allocator/control/service overhead
+remains outside this ledger.
 
 The legacy browser-only entry uses the same logical source selection while
 leaving callback timers to its separate timer entry. Standalone browser-task

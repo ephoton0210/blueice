@@ -5,6 +5,62 @@
 use super::*;
 
 #[test]
+fn real_child_agent_registry_payload_is_charged_to_its_tab_and_released_on_navigation() {
+    use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
+    let (host, config) = SpawnedBlueJsHost::spawn_for_core().unwrap();
+    let (mut tabs, first) = loaded_tabs(
+        "<script>for(var i=0;i<3;i++)Symbol.for('x'.repeat(400000)+String(i));</script>",
+        "https://example.test/registry-first.html",
+    );
+    let second = tabs.open_tab();
+    tabs.get_mut(second).unwrap().load_html_str(
+        "<script>Symbol.for('y'.repeat(400000));</script>",
+        Some("https://example.test/registry-second.html".into()),
+    );
+    let mut executor =
+        OutOfProcessJavaScriptPageExecutor::connect(config.socket_path(), config.session_token())
+            .unwrap();
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let first_bytes = executor
+        .retained_page_cache_payload_bytes(first, 1)
+        .unwrap();
+    let second_bytes = executor
+        .retained_page_cache_payload_bytes(second, 1)
+        .unwrap();
+    assert!(
+        first_bytes >= 4800000,
+        "agent-owned strings escaped Core accounting: {first_bytes}"
+    );
+    assert!(second_bytes >= 1600000 && second_bytes < first_bytes);
+    assert!(
+        executor
+            .realm_stats(first)
+            .unwrap()
+            .scheduling_payload_bytes
+            >= 4800000
+    );
+    tabs.get_mut(first).unwrap().load_html_str(
+        "<p>replacement</p>",
+        Some("https://example.test/registry-replacement.html".into()),
+    );
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.retained_page_cache_payload_bytes(first, 1), None);
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first, 2),
+        Some(0)
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second, 1),
+        Some(second_bytes)
+    );
+    tabs.close_tab(second);
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.retained_page_cache_payload_bytes(second, 1), None);
+    drop(executor);
+    drop(host);
+}
+
+#[test]
 fn real_child_document_heap_totals_include_shadow_realms_and_follow_navigation() {
     use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
     let (host, config) = SpawnedBlueJsHost::spawn_for_core().unwrap();

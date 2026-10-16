@@ -42,7 +42,7 @@ fn child(owner: &Vm) -> Vm {
 #[test]
 fn one_logical_source_keeps_enqueue_order_across_document_realms() {
     let mut owner = Vm::default();
-    owner.use_bounded_host_microtask_checkpoints();
+    owner.use_bounded_host_microtask_checkpoints().unwrap();
     let log = Rc::new(std::cell::RefCell::new(Vec::new()));
     let root_callback = record(&mut owner, &log);
     let mut child = child(&owner);
@@ -67,7 +67,7 @@ fn one_logical_source_keeps_enqueue_order_across_document_realms() {
 #[test]
 fn same_document_child_timers_share_the_timer_source_fifo() {
     let mut owner = Vm::default();
-    owner.use_bounded_host_microtask_checkpoints();
+    owner.use_bounded_host_microtask_checkpoints().unwrap();
     owner.install_host_timer_functions().unwrap();
     let log = Rc::new(std::cell::RefCell::new(Vec::new()));
     record(&mut owner, &log);
@@ -90,7 +90,7 @@ fn same_document_child_timers_share_the_timer_source_fifo() {
 #[test]
 fn child_abort_deadlines_use_the_owning_document_clock_and_wake() {
     let mut owner = Vm::default();
-    owner.use_bounded_host_microtask_checkpoints();
+    owner.use_bounded_host_microtask_checkpoints().unwrap();
     assert_eq!(owner.next_host_task_wake(100).unwrap(), None);
     let log = Rc::new(std::cell::RefCell::new(Vec::new()));
     let mut child = child(&owner);

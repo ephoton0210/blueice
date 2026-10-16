@@ -38,11 +38,10 @@ implemented and verified on `feature/bluejs-browser-integration-gaps`.
 **Architecture priority — updated 2026-10-16.** Scheduling ownership,
 timer/Promise collectibility, cancellation/navigation cleanup and per-document
 resource containment take precedence over diagnostic-coordinate precision.
-M1r, M1s and M1t close the reproduced native-pressure, discarded-realm and
-aggregate managed-heap failures through real runtime/Core boundaries. Next
-comes agent-owned native registry admission (the public failure in A), complete
-task-source/host-buffer accounting and native UI/network ingress, then the
-long-running two-tab
+M1r through M1u close the reproduced native-pressure, discarded-realm,
+aggregate managed-heap and agent-registry failures through real runtime/Core
+boundaries. Next come complete native control/task-source/host-buffer
+accounting and native UI/network ingress, then the long-running two-tab
 acceptance. M1q's diagnostic refinements remain parked until these architectural
 dependencies are closed. Its interrupted 191-target replay is incomplete and
 does not constitute a milestone or a new acceptance gate.
@@ -57,7 +56,25 @@ remains separate from the accepted replay.
 Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
-**Latest milestone — M1t document managed heaps (2026-10-16).**
+**Latest milestone — M1u agent-owned native registries (2026-10-16).**
+Three public regressions reproduce uncharged `Symbol.for` storage through the
+page runtime and the real Core child. One shared document-owned charge now
+accounts for table capacity and retained UTF-16 keys/descriptions across
+ShadowRealms, with admission before mutation. All nine public runtime groups
+pass, including shared Promise/timer limits, repeated keys, child reclamation,
+reentrant coercion, lossless UTF-16 and existing-policy attachment/refusal.
+The original probe now returns `SchedulingLimit` with 8,000,412 committed
+native bytes instead of retaining at least 25,600,000 bytes outside the ledger.
+All 24 real-page and 149 Core/child cases pass, including copied totals,
+release, uncatchable exhaustion, healthy-tab frames and navigation recovery.
+Formatting and workspace/all-target build/Clippy pass. All 89 selected
+Rust/Core/MCP executables pass 2,744 cases, zero failures and sixteen existing
+ignored. Fresh complete Test262 matches all 102,926 modes with zero changed
+source/result records and no new failure or timeout. See the
+[M1u milestone record](#m1u--agent-owned-native-registries-2026-10-16).
+Broader native control/service-buffer accounting remains open; M1q stays parked.
+
+**Previous milestone — M1t document managed heaps (2026-10-16).**
 Two public regressions fail on M1s: sixteen child heaps bypass a 1 MiB document
 envelope, and child-host `heap_bytes` reports only 213,978 bytes despite at
 least 12,800,000 bytes of retained child strings. A shared managed-storage
@@ -290,14 +307,16 @@ work and exposes its retained payload ledger.
       public groups, copied Core totals, real two-tab exhaustion/navigation
       and the full pinned Test262 inventory pass; see M1t below. Original
       evidence remains in `target/live-realm-accounting-probe-source-20261016.json`.
-- [ ] **Agent-owned native registry payloads.** Sixteen distinct
-      `Symbol.for('x'.repeat(400000) + i)` entries retain at least 25,600,000
-      bytes in registry keys and symbol descriptions after the job. The page
-      reports 214,296 managed/document bytes and zero native scheduling bytes.
-      Account shared agent-owned payload once, preserve registered identity,
-      and enforce the initiating document's native budget before insertion.
-      Evidence: `target/agent-registry-probe-source-20261016.json` and
-      `/private/tmp/blueice-agent-registry-probe-20261016.log`.
+- [x] **M1u: agent-owned native registry payloads.** One document charge
+      covers the shared `Symbol.for` table and retained UTF-16 key/description
+      buffers across nested realms. Admission precedes live mutation; duplicate
+      keys do not recharge, and child reclamation preserves registered identity.
+      Promise/timer storage shares the cap. The original sixteen-key probe now
+      fails with 8,000,412 committed native bytes; the three original runtime/
+      Core failures, nine passing runtime groups, real two-tab/navigation/close
+      controls and complete Test262 acceptance are recorded below. Original
+      evidence: `target/agent-registry-probe-source-20261016.json`; after-fix
+      evidence: `target/agent-registry-after-probe-source-20261016.json`.
 - [x] **M1d: document scheduling admission.** Page VMs and their ShadowRealms
       share a 1,024-job, 1,024-waiting-reaction/request and 8 MiB owned-payload
       budget. Promise settlement, thenables, async functions/generators,
@@ -346,8 +365,9 @@ Spec shape is done: `PromiseCapability` records, `WeakRef`,
 M1f replaces permanent Promise roots with live-owner tracing and explicit
 ownership for queued/running jobs, module work and host waits.
 M1s adds reclamation of discarded ShadowRealm VMs, including cross-heap wrapper
-cycles. M1t adds aggregate document managed-heap admission. Agent-owned native
-registry/control/service payload accounting remains open in A.
+cycles. M1t adds aggregate document managed-heap admission; M1u charges shared
+agent registries to the native account. Broader native control/service payload
+accounting remains open in A.
 
 - [x] **M1f: Promise collectibility (P1).** Settled Promises, result/reaction
       cycles and orphaned async invocations can be collected; a retained async
@@ -660,6 +680,59 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1u — Agent-owned native registries (2026-10-16)
+
+- [x] Reproduce uncharged registry storage through two public runtime groups
+      and the real Core child; preserve the original three failures.
+- [x] Give the shared agent registry one document-owned native charge;
+      admit table growth and retained key/description buffers before mutation.
+- [x] Pass nine public groups covering duplicate keys, nested realms,
+      child reclamation, shared Promise/timer limits, transactional refusal,
+      terminal failure, healthy tabs/navigation, UTF-16 and reentrant coercion,
+      host-neutral behavior and policy attachment to existing entries.
+- [x] Verify copied Core totals, navigation/close release and the real
+      two-tab registry-exhaustion page alongside existing lifecycle cases.
+- [x] Pass formatting and workspace/all-target build/Clippy.
+- [x] Complete the related Rust/Core/MCP replay and full pinned Test262.
+- [x] Record accepted evidence and a detailed English milestone commit.
+
+The shared registry owns its charge independently of individual VM scopes.
+Committed bytes include entry capacity and stored key/description buffers;
+prepared growth cannot change the live table before admission. Rejected
+insertion preserves committed usage and leaves that document failed across
+later entries. Existing unbounded VM storage is admitted before document
+policy or rejection bindings are published; standalone VMs keep host-neutral
+semantics. Runtime/Core native totals include the charge without changing the
+private transport layout. See [the ownership contract](HOST_TASK_SOURCES.md#shared-agent-registries).
+
+All 89 disjoint test executables pass 2,744 cases, zero failures and sixteen
+existing ignored: BlueJS 1,945 across 50 targets (all 1,205 library cases),
+bridge 300 across 35 targets, launcher 345 (321 library plus 24 real-page),
+Core/child 149 and official MCP console 5. Formatting and workspace/all-target
+build/Clippy pass. Sixteen Rust inputs, including both new files, 13,855
+workspace/compiler inputs, 89 executable hashes and seven runtime hashes
+remain fixed throughout validation.
+
+Fresh complete Test262 takes 380.38s including validation/reporting
+(runner 375.569s). All 102,926 modes match the accepted M1p
+source/result inventory: 102,921 pass, one stale corpus and four exclusions.
+Hashes, expectations, features/flags, status and actual kind/phase/reason have
+zero changed records and no new failure or timeout. Accepted evidence:
+`target/agent-registry-native-final-source-20261016.json`,
+`target/agent-registry-native-final-validation-20261016.json` and
+`target/test262-agent-registry-native-final-full-20261016/`.
+
+The original three failures remain in
+`target/agent-registry-red-source-20261016.json` and
+`/private/tmp/blueice-agent-registry-{runtime,core}-red-20261016.log`.
+Before/after public probe bindings remain in
+`target/agent-registry-probe-source-20261016.json` and
+`target/agent-registry-after-probe-source-20261016.json`.
+The original validation inventory initialization was interrupted while its
+formatting child was running, then replaced by a cached-inventory script;
+that attempt is not an accepted gate. M1u closes only the registry gap in A.
+Broader native control/service-buffer work remains open, and M1q stays parked.
 
 ### M1t — Aggregate document managed heaps (2026-10-16)
 

@@ -810,11 +810,7 @@ impl Vm {
     fn can_hold_weakly(&self, key: &Value) -> bool {
         match key {
             Value::Object(_) => true,
-            Value::Symbol(symbol) => !self
-                .symbol_registry
-                .borrow()
-                .values()
-                .any(|registered| registered == symbol),
+            Value::Symbol(symbol) => !self.symbol_registry.borrow().is_registered(symbol),
             _ => false,
         }
     }

@@ -93,10 +93,20 @@ fn nested_delay(delay: u64, nesting: u32) -> u64 {
 }
 
 impl Vm {
-    pub(crate) fn use_bounded_host_microtask_checkpoints(&mut self) {
+    pub(crate) fn use_bounded_host_microtask_checkpoints(&mut self) -> Result<(), RuntimeError> {
+        if let Some(scope) = &self.host_scheduling {
+            self.check_scheduling_failure()?;
+            self.symbol_registry.borrow_mut().attach(scope)?;
+            self.bounded_host_microtask_checkpoints = true;
+            return Ok(());
+        }
+        let mut scope = SchedulingScope::new();
+        scope.check(self.own_scheduling_usage(), HostSchedulingUsage::default())?;
+        self.symbol_registry.borrow_mut().attach(&scope)?;
         self.heap.begin_document_heap_budget();
         self.bounded_host_microtask_checkpoints = true;
-        self.host_scheduling = Some(SchedulingScope::new());
+        self.host_scheduling = Some(scope);
+        Ok(())
     }
 
     /// Installs `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`
