@@ -75,6 +75,7 @@ mod realm_reentrancy;
 mod regexp;
 mod rejection_origins;
 mod shadow_realm;
+mod shadow_realm_gc;
 mod temporal;
 mod test262;
 mod test262_agents;
@@ -745,15 +746,10 @@ struct Test262ImportedValue {
     _target_root: RootId,
 }
 
-/// A parent-heap object that stands for an object retained in a Test262 child
-/// realm. The two roots keep both endpoints alive while the membrane identity
-/// is observable; the child object is never stored in the parent heap.
 /// A `ShadowRealm` instance's own isolated realm: a full child `Vm` sharing
 /// this `Vm`'s `GlobalSymbolRegistry` (agent-local, like
-/// `$262.createRealm()`'s identical choice). Kept alive for the lifetime of
-/// this `Vm`: a `ShadowRealm` value can be retained by script indefinitely,
-/// so there is no earlier point at which dropping it would be safe --
-/// matching [`Test262Realm`]'s identical accepted tradeoff.
+/// `$262.createRealm()`'s identical choice). Agent collection retains it
+/// while an instance, wrapped callable or pending host work owns it.
 /// Shared, not exclusive, ownership: a `ShadowRealm`'s child realm must
 /// remain reachable from more than one owner when the `ShadowRealm`
 /// *instance itself* crosses a Test262 `$262.createRealm()` boundary into a
@@ -768,7 +764,22 @@ struct Test262ImportedValue {
 /// panics loudly instead of aliasing `&mut Vm`.
 #[derive(Clone)]
 struct ShadowRealmRecord {
+    heap: u64,
     vm: Rc<RefCell<Vm>>,
+    owner: Rc<()>,
+    owners: Rc<RefCell<Vec<std::rc::Weak<()>>>>,
+}
+
+impl ShadowRealmRecord {
+    fn new(vm: Vm) -> Self {
+        let owner = Rc::new(());
+        Self {
+            heap: vm.object_prototype.heap,
+            vm: Rc::new(RefCell::new(vm)),
+            owners: Rc::new(RefCell::new(vec![Rc::downgrade(&owner)])),
+            owner,
+        }
+    }
 }
 
 /// A caller-heap facade standing in for a callable value that crossed a
@@ -776,17 +787,18 @@ struct ShadowRealmRecord {
 /// by `ObjectId::heap`, the `Vm` that owns `target`; the live pointer to
 /// that `Vm` is resolved dynamically (see `shadow_realm::resolve_active`)
 /// rather than stored here, since a `Vm` is an ordinary owned value its
-/// caller may move between top-level calls. `_target_root` keeps `target`
+/// caller may move between top-level calls. `target_root` keeps `target`
 /// alive against *its own* realm's collector: nothing in that realm's own
 /// reachability graph necessarily still references it (it may have been an
 /// unstored expression completion value), so without this root a later,
 /// unrelated allocation in that realm could reclaim it out from under this
-/// facade.
-#[derive(Clone, Copy)]
+/// facade. The lease is released when the facade is collected; agent tracing
+/// treats it as an edge from that facade, allowing cross-heap cycles to die.
+#[derive(Clone)]
 struct ShadowWrappedFunction {
     home_heap: u64,
     target: ObjectId,
-    _target_root: RootId,
+    target_root: Rc<crate::heap::RealmRoot>,
 }
 
 struct Test262ForeignValue {

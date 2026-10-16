@@ -38,24 +38,46 @@ implemented and verified on `feature/bluejs-browser-integration-gaps`.
 **Architecture priority — updated 2026-10-16.** Scheduling ownership,
 timer/Promise collectibility, cancellation/navigation cleanup and per-document
 resource containment take precedence over diagnostic-coordinate precision.
-M1r now closes the reproduced within-callback native-pressure failure through
-the real runtime/Core boundaries. Current work is the discarded-realm ownership
-failure below. Next come complete task-source/host-buffer
-accounting and native UI/network ingress, then the long-running two-tab
+M1r and M1s close the reproduced within-callback native-pressure and discarded-
+realm ownership failures through real runtime/Core boundaries. Next comes
+aggregate live-realm heap accounting (the public failure in A), complete
+task-source/host-buffer accounting and native UI/network ingress, then the long-running two-tab
 acceptance. M1q's diagnostic refinements remain parked until these architectural
 dependencies are closed. Its interrupted 191-target replay is incomplete and
 does not constitute a milestone or a new acceptance gate.
 
-The next ownership audit has a public failure, not just a proposed task:
+M1s began with this public ownership failure:
 discarded ShadowRealm instances become unreachable (`WeakRef.deref()` returns
 undefined), but their VM tables retain global Promise results and their native
 charge. A timer adding one such 400,000-character result per callback grows
-from 800,912 to 8,005,232 native bytes and fails on callback 11. Fix realm
-ownership/reclamation after M1r before resuming diagnostic refinement.
+from 800,912 to 8,005,232 native bytes and fails on callback 11. The accepted
+realm-reclamation milestone below closes this failure; its original evidence
+remains separate from the accepted replay.
 Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
-**Latest milestone — M1r native Promise pressure (2026-10-16).**
+**Latest milestone — M1s realm ownership (2026-10-16).** Three
+public regressions reproduce discarded timer realms, release after the last
+wrapped-function owner is dropped, and an unreachable cross-heap wrapper
+cycle. All three fail on M1r; the first fails on timer callback 11. The first
+implementation traces instance/callable/task ownership at explicit VM
+safepoints and releases foreign roots through deferred leases. The thirteen
+page-GC groups, eighteen ShadowRealm cases and seventeen cleanup cases pass,
+including queued-work/navigation controls and 64 polls through each timer
+entry without observer scripts. The unified task entry initially still failed
+on callback 19: strong traversal snapshots delayed release and inflated the
+native-GC watermark. Weak traversal snapshots close that failure. All 22 real
+Core page cases now pass, including JavaScript/direct BlueTS callbacks that
+discard sixteen realms each and still publish three frames with matching
+Representations. All 87 selected Rust/Core/MCP executables pass 2,721 cases,
+zero failures and sixteen existing ignored; formatting and workspace/all-target
+build/Clippy pass. Fresh complete Test262 matches the accepted baseline at all
+102,926 modes with zero changed source/result records or new timeout. See the
+[M1s milestone record](#m1s--shadowrealm-ownership-and-reclamation-2026-10-16).
+Red evidence: `target/realm-ownership-red-source-20261016.json` and
+`/private/tmp/blueice-realm-ownership-red-20261016.log`.
+
+**Previous milestone — M1r native Promise pressure (2026-10-16).**
 The first public timer/GC regression failed on its first callback: repeatedly
 discarded 400,000-character Promise results exhausted the native scheduling
 ledger before the callback's checkpoint. Managed-heap pressure alone does not
@@ -236,6 +258,15 @@ work and exposes its retained payload ledger.
       remain open before `fetch`.
 - [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
       host-held bytes, so a runaway page degrades only itself
+- [ ] **Aggregate live-realm heap accounting.** The public page runtime can
+      retain sixteen ShadowRealms with 400,000-character global strings each.
+      With a 1 MiB per-VM heap limit, execution succeeds while its reported
+      root managed heap is 217,502 bytes and native scheduling charge is zero;
+      child string storage alone is at least 12,800,000 bytes. This is a live
+      owner/accounting gap, separate from M1s's discarded-realm reclamation.
+      Charge all live same-document heaps before closing resource containment.
+      Evidence: `target/live-realm-accounting-probe-source-20261016.json` and
+      `/private/tmp/blueice-live-realm-accounting-probe-20261016.log`.
 - [x] **M1d: document scheduling admission.** Page VMs and their ShadowRealms
       share a 1,024-job, 1,024-waiting-reaction/request and 8 MiB owned-payload
       budget. Promise settlement, thenables, async functions/generators,
@@ -283,8 +314,8 @@ Spec shape is done: `PromiseCapability` records, `WeakRef`,
 `FinalizationRegistry` (page cleanup runs as a queued engine task after collection).
 M1f replaces permanent Promise roots with live-owner tracing and explicit
 ownership for queued/running jobs, module work and host waits.
-These are collectibility guarantees within live VMs; reclamation of an entire
-discarded child VM remains in the unchecked realm-ownership item below.
+M1s adds reclamation of discarded ShadowRealm VMs, including cross-heap wrapper
+cycles. Aggregate live-child heap accounting remains open in A.
 
 - [x] **M1f: Promise collectibility (P1).** Settled Promises, result/reaction
       cycles and orphaned async invocations can be collected; a retained async
@@ -331,12 +362,14 @@ discarded child VM remains in the unchecked realm-ownership item below.
       a retained large result does not cause GC at every small call. Eight
       public page-runtime groups and real JavaScript/BlueTS burst pages pass,
       with the related Rust/Core/MCP and full pinned Test262 acceptance below.
-- [ ] **Same-document realm reclamation.** Collect discarded ShadowRealm VMs
+- [x] **M1s: same-document realm reclamation.** Collect discarded ShadowRealm VMs
       and release their native Promise charge when no live instance, wrapped
       function or document work owns them. Acceptance: the failing public
       timer probe above continues with bounded native bytes after observed
       major collections; retained wrapped callbacks and queued work remain
-      valid, and navigation/close release the whole document tree.
+      valid, and navigation/close release the whole document tree. Thirteen
+      page-GC groups, eighteen ShadowRealm cases, seventeen cleanup cases,
+      real JavaScript/BlueTS frames and full pinned Test262 pass; see M1s.
 
 ## C. Web platform globals (P1)
 
@@ -595,6 +628,58 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1s — ShadowRealm ownership and reclamation (2026-10-16)
+
+- [x] Reproduce orphan VM/native-Promise retention through the public runtime:
+      the timer fails at poll 11, dropping the last wrapped callable fails to
+      release its charge, and an unreachable cross-heap wrapper cycle leaks.
+- [x] Trace instance, wrapped-callable and document-work ownership at explicit
+      execution/native-pressure safepoints. Release foreign target-root leases
+      without reborrowing active VMs; defer agent tracing during active borrows.
+- [x] Preserve pending Promise/cleanup work, retained wrapped callbacks,
+      independent Test262 membrane owners and navigation cleanup. Use weak
+      document-task traversal snapshots so collection can release orphan VMs
+      before the native-pressure watermark is sampled.
+- [x] Complete 64 polls through each timer API without intervening scripts,
+      keeping native bytes below 4 MiB, plus the observed-GC WeakRef control.
+- [x] Pass real JavaScript/BlueTS frame pages, related Rust/Core/MCP cases,
+      formatting, workspace/all-target build/Clippy and full pinned Test262.
+- [x] Record final evidence and a detailed English milestone commit.
+
+The implementation makes a child's globals roots only after its VM has a live
+instance, wrapped callable, queued work or independent membrane owner. Foreign
+function pins become edges conditional on their facade; they cannot bootstrap
+an otherwise dead realm/wrapper cycle into liveness. Deferred root releases
+are drained before sweeping, with no JavaScript callback during collection.
+The native and managed hard limits remain unchanged; aggregate child-heap and
+service/control-buffer accounting remain in A's broader open resource item.
+
+All 87 disjoint test executables pass 2,721 cases, zero failures and sixteen
+existing ignored: BlueJS 1,927 across 48 targets (all 1,205 library cases),
+bridge 300 across 35 targets, launcher 342, Core/child 147 and official MCP
+console 5. The 22 real-page cases include JavaScript/direct BlueTS timers that
+discard sixteen realms per callback and publish three frames with matching
+Representations before clearing their interval. Formatting and full workspace/
+all-target build/Clippy pass. Fifteen Rust inputs, 13,851 workspace/compiler
+inputs, 87 test executable hashes and seven runtime hashes remain fixed.
+
+Fresh complete Test262 takes 461.37s including validation/reporting (runner
+453.844s). All 102,926 modes match M1p's accepted inventory: 102,921 pass, one
+stale corpus and four exclusions. Source hashes, expectations, features/flags,
+statuses and actual kind/phase/reason have zero changes; no mode newly fails
+or times out. Accepted evidence is
+`target/realm-ownership-final2-source-20261016.json`,
+`target/realm-ownership-final2-validation-20261016.json` and
+`target/test262-realm-ownership-final2-full-20261016/`.
+
+The original three public failures are retained in
+`target/realm-ownership-red-source-20261016.json` and
+`/private/tmp/blueice-realm-ownership-red-20261016.log`. Earlier failed build/
+page-fixture attempts remain in separate `realm-ownership` and
+`realm-ownership-final` receipts; they are not accepted gates. M1s closes B's
+discarded-realm ownership item. The live-realm managed-heap under-accounting
+probe in A remains the next architecture task; M1q stays parked.
 
 ### M1r — Native Promise pressure during timer callbacks (2026-10-16)
 

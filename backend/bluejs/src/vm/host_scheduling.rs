@@ -479,10 +479,7 @@ impl Vm {
         }
         let root_base = self.async_frame_roots.len();
         self.async_frame_roots.extend(value.object_id());
-        let collected = self.with_roots(|heap| {
-            heap.collect_major();
-            Ok(())
-        });
+        let collected = self.collect_realm_garbage();
         self.async_frame_roots.truncate(root_base);
         collected?;
         self.synchronize_scheduling_usage()?;
@@ -510,10 +507,7 @@ impl Vm {
             // Promise strings live outside managed heap byte pressure. Give
             // dead owner records a collection opportunity between host tasks
             // before they accumulate into a false scheduling admission limit.
-            self.with_roots(|heap| {
-                heap.collect_major();
-                Ok(())
-            })?;
+            self.collect_realm_garbage()?;
             self.synchronize_scheduling_usage()?;
         }
         self.enqueue_finalization_cleanup_jobs()?;

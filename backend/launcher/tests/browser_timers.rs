@@ -1096,6 +1096,22 @@ fn javascript_and_bluets_timer_promise_bursts_keep_publishing_frames() {
 }
 
 #[test]
+fn javascript_and_bluets_timers_reclaim_discarded_realms_and_keep_publishing_frames() {
+    counter_frames("let count: number = 0; let timer: number = 0;
+        const globals: any = window; const Realm: any = globals.ShadowRealm;
+        function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
+        function discard(): void { new Realm().evaluate(\"var retained=Promise.resolve('x'.repeat(400000));0;\"); }
+        function tick(): void {
+            discard(); discard(); discard(); discard();
+            discard(); discard(); discard(); discard();
+            discard(); discard(); discard(); discard();
+            discard(); discard(); discard(); discard();
+            count += 1; queueMicrotask(publish); if (count === 3) { clearInterval(timer); }
+        }
+        timer = setInterval(tick, 500);", true);
+}
+
+#[test]
 fn javascript_and_bluets_cleanup_tasks_publish_post_microtask_frames() {
     counter_frames("let count: number = 0; let timer: number = 0;
         function publish(): void { document.getElementById('counter')!.textContent = 'tick:' + count; }
@@ -1146,6 +1162,7 @@ fn counter_frames(source: &str, check_every_representation: bool) {
             source.to_string()
         } else {
             source
+                .replace(": any", "")
                 .replace(": number", "")
                 .replace(": void", "")
                 .replace("('counter')!", "('counter')")

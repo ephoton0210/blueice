@@ -74,6 +74,7 @@ impl Heap {
             nursery: Vec::new(),
             remembered: HashSet::new(),
             roots: HashMap::new(),
+            released_realm_roots: Rc::default(),
             scoped_roots: Vec::new(),
             scoped_owned_edges: Vec::new(),
             managed_bytes: 0,

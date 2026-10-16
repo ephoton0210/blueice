@@ -50,12 +50,8 @@ impl Vm {
         let heap_tag = child.object_prototype.heap;
         let instance = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.shadow_realm_by_heap.insert(heap_tag, instance);
-        self.shadow_realms.insert(
-            instance,
-            ShadowRealmRecord {
-                vm: Rc::new(RefCell::new(child)),
-            },
-        );
+        self.shadow_realms
+            .insert(instance, ShadowRealmRecord::new(child));
         Ok(Value::Object(instance))
     }
 
@@ -67,8 +63,15 @@ impl Vm {
     /// `evaluate`/`importValue`/a wrapped-function call reached through the
     /// transported stand-in observes the identical realm -- same
     /// `globalThis`, same prior `evaluate` side effects -- as the original.
-    pub(super) fn adopt_shadow_realm(&mut self, instance: ObjectId, record: ShadowRealmRecord) {
-        let heap_tag = record.vm.borrow().object_prototype.heap;
+    pub(super) fn adopt_shadow_realm(&mut self, instance: ObjectId, mut record: ShadowRealmRecord) {
+        let heap_tag = record.heap;
+        // A new table entry is an independent owner. Temporary traversal and
+        // call clones retain the same token and do not create new owners.
+        record.owner = Rc::new(());
+        record
+            .owners
+            .borrow_mut()
+            .push(Rc::downgrade(&record.owner));
         self.shadow_realm_by_heap.insert(heap_tag, instance);
         self.shadow_realms.insert(instance, record);
     }
@@ -452,9 +455,10 @@ impl Vm {
         }
         let ShadowWrappedFunction {
             home_heap, target, ..
-        } = *self
+        } = self
             .shadow_wrapped_functions
             .get(&wrapper)
+            .cloned()
             .expect("dispatch_call only routes here for a registered wrapper");
         // The common case: `self` directly holds a (possibly shared, if it
         // was ever transported through Test262's own membrane -- see
@@ -600,10 +604,9 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         // `target` may otherwise be an unstored expression completion value
         // with nothing else in `source`'s own reachability graph keeping it
-        // alive; root it there for as long as this facade (leaked for the
-        // Vm's lifetime, like every other cross-realm record here and in
-        // `test262.rs`) can still reach it.
-        let target_root = source.heap.root(target)?;
+        // alive until the facade is collected. Releasing the lease queues an
+        // unroot in its home heap, which may currently be an active ancestor.
+        let target_root = source.heap.realm_root(target)?;
         let outcome = (|| {
             let function_prototype = self.function_prototype()?;
             let wrapper = self.with_roots(|heap| {
@@ -627,16 +630,14 @@ impl Vm {
                 ShadowWrappedFunction {
                     home_heap: target.heap,
                     target,
-                    _target_root: target_root,
+                    target_root: target_root.clone(),
                 },
             );
             Ok(Value::Object(wrapper))
         })();
         if outcome.is_err() {
-            source
-                .heap
-                .unroot(target_root)
-                .expect("failed wrapper construction still owns its target root");
+            drop(target_root);
+            source.heap.release_realm_roots();
         }
         outcome
     }

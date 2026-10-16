@@ -26,12 +26,9 @@ fn record(vm: &mut Vm, log: &Rc<std::cell::RefCell<Vec<HostValue>>>) -> ObjectId
 }
 
 fn attach(owner: &mut Vm, child: Vm) {
-    owner.shadow_realms.insert(
-        owner.object_prototype,
-        ShadowRealmRecord {
-            vm: Rc::new(std::cell::RefCell::new(child)),
-        },
-    );
+    owner
+        .shadow_realms
+        .insert(owner.object_prototype, ShadowRealmRecord::new(child));
 }
 
 fn child(owner: &Vm) -> Vm {

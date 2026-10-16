@@ -132,10 +132,20 @@ impl Heap {
     // Mark and sweep are separate phases, with an explicit worklist so
     // a deep user-created graph never turns into recursive Rust calls.
     pub(super) fn mark(&self, young_only: bool, protected: &[ObjectId]) -> HashSet<ObjectId> {
+        self.mark_without_roots(young_only, protected, &HashSet::new())
+    }
+
+    pub(super) fn mark_without_roots(
+        &self,
+        young_only: bool,
+        protected: &[ObjectId],
+        ignored: &HashSet<RootId>,
+    ) -> HashSet<ObjectId> {
         let mut work: Vec<_> = self
             .roots
-            .values()
-            .copied()
+            .iter()
+            .filter(|(root, _)| !ignored.contains(root))
+            .map(|(_, object)| *object)
             .chain(
                 self.scoped_roots
                     .iter()
@@ -282,6 +292,7 @@ impl Heap {
     }
 
     pub(super) fn minor_gc(&mut self, protected: &[ObjectId]) {
+        self.release_realm_roots();
         let marked = self.mark(true, protected);
         let young: HashSet<_> = self.nursery.iter().copied().collect();
         let mut released_weak_entries: usize = 0;
@@ -350,6 +361,7 @@ impl Heap {
     }
 
     pub(super) fn major_gc(&mut self, protected: &[ObjectId]) {
+        self.release_realm_roots();
         let marked = self.mark(false, protected);
         let mut released_weak_entries: usize = 0;
         for (id, object) in &mut self.objects {

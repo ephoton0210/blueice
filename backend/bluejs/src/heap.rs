@@ -48,6 +48,8 @@ mod core;
 mod debugger;
 mod exotic;
 mod lifecycle;
+mod realm_roots;
+pub(crate) use realm_roots::RealmRoot;
 mod object_storage;
 #[cfg(test)]
 mod tests;
@@ -1684,6 +1686,7 @@ pub struct Heap {
     nursery: Vec<ObjectId>,
     remembered: HashSet<ObjectId>,
     roots: HashMap<RootId, ObjectId>,
+    released_realm_roots: Rc<std::cell::RefCell<Vec<RootId>>>,
     /// Batches of temporary roots, innermost last. A VM safepoint registers
     /// everything it holds as one batch instead of one `roots` entry each.
     scoped_roots: Vec<Vec<ObjectId>>,

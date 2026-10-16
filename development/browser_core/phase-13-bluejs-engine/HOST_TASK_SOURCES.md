@@ -82,6 +82,29 @@ collection. The 8 MiB hard limit and terminal document failure are unchanged;
 live queued work is not discarded to make admission succeed. Navigation and
 close still release the owning queues and reset the new realm's watermark.
 
+### ShadowRealm ownership
+
+Explicit script, call-pressure and checkpoint collections trace the realm
+ownership graph. Live instances and wrapped functions retain their child VM;
+queued jobs, cleanup tasks, host waits and module work retain their owning VM.
+The child's globals become roots only after an actual owner makes that realm
+live. A discarded instance alone therefore cannot leave global Promise results
+charged forever, and unreachable wrapper cycles across heaps can be reclaimed.
+
+Foreign callable roots use leases whose release is queued in the target heap.
+Agent tracing treats those pins as conditional edges from live wrappers, then
+sweeps before JavaScript can observe WeakRefs. It runs no callbacks. Active
+cross-realm borrows defer agent reclamation to an outer safepoint; allocation
+safepoints continue to protect their own Rust operation inputs. Independent
+Test262 membrane owners have distinct ownership tokens; temporary scheduler
+and call snapshots do not create owners. A retained wrapped callback keeps
+the same realm even after its original instance is collected. Navigation and
+close discard the document's realm tree and queued work together.
+
+This closes discarded-realm retention within the existing scheduling ledger.
+Complete native control-table/service-buffer and aggregate heap accounting
+remain part of the broader resource-containment work.
+
 The legacy browser-only entry uses the same logical source selection while
 leaving callback timers to its separate timer entry. Standalone browser-task
 embeddings retain their existing bounded delivery API.

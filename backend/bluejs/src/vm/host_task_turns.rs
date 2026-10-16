@@ -81,7 +81,10 @@ impl Vm {
             wake = Some(0);
         }
         for record in self.host_shadow_realms() {
-            let mut vm = record.vm.borrow_mut();
+            let Some(realm) = record.upgrade() else {
+                continue;
+            };
+            let mut vm = realm.borrow_mut();
             if vm.ensure_no_debugger_continuation().is_err() {
                 continue;
             }
@@ -103,7 +106,10 @@ impl Vm {
     fn checkpoint_document_task_entry(&mut self) -> Result<(), RuntimeError> {
         self.run_host_microtask_checkpoint()?;
         for record in self.host_shadow_realms() {
-            let mut vm = record.vm.borrow_mut();
+            let Some(realm) = record.upgrade() else {
+                continue;
+            };
+            let mut vm = realm.borrow_mut();
             if vm.ensure_no_debugger_continuation().is_ok() {
                 vm.sample_host_timer_clock();
                 vm.run_host_microtask_checkpoint()?;
@@ -236,7 +242,10 @@ impl Vm {
             self.snapshot_task_timers(include_timer_callbacks),
         );
         for record in self.host_shadow_realms() {
-            let mut vm = record.vm.borrow_mut();
+            let Some(realm) = record.upgrade() else {
+                continue;
+            };
+            let mut vm = realm.borrow_mut();
             if vm.ensure_no_debugger_continuation().is_ok() {
                 let heap = vm.object_prototype.heap;
                 snapshots.insert(heap, vm.snapshot_task_timers(include_timer_callbacks));
@@ -248,7 +257,10 @@ impl Vm {
             // A callback can create a realm or queue work through a wrapped
             // function. Finish those child jobs before selecting another task.
             for record in &realms {
-                let mut vm = record.vm.borrow_mut();
+                let Some(realm) = record.upgrade() else {
+                    continue;
+                };
+                let mut vm = realm.borrow_mut();
                 if vm.ensure_no_debugger_continuation().is_ok() {
                     vm.sample_host_timer_clock();
                     vm.run_host_microtask_checkpoint()?;
@@ -262,7 +274,10 @@ impl Vm {
                     .own_task_candidate(source, snapshots.get(&self.object_prototype.heap))
                     .map(|task| (0, task));
                 for (index, record) in realms.iter().enumerate() {
-                    let vm = record.vm.borrow();
+                    let Some(realm) = record.upgrade() else {
+                        continue;
+                    };
+                    let vm = realm.borrow();
                     if vm.ensure_no_debugger_continuation().is_err() {
                         continue;
                     }
@@ -289,7 +304,12 @@ impl Vm {
             let heap = if owner == 0 {
                 self.object_prototype.heap
             } else {
-                realms[owner - 1].vm.borrow().object_prototype.heap
+                realms[owner - 1]
+                    .upgrade()
+                    .expect("selected task owns its realm")
+                    .borrow()
+                    .object_prototype
+                    .heap
             };
             if let Delivery::Timer(id) = delivery {
                 if let Some(snapshot) = snapshots.get_mut(&heap) {
@@ -301,7 +321,8 @@ impl Vm {
                 self.deliver_host_task(delivery)?;
             } else {
                 realms[owner - 1]
-                    .vm
+                    .upgrade()
+                    .expect("selected task owns its realm")
                     .borrow_mut()
                     .deliver_host_task(delivery)?;
             }

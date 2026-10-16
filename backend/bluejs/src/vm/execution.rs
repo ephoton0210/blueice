@@ -135,11 +135,7 @@ impl Vm {
         // The next job's initial collection must not retain its WeakRef
         // targets merely because a prior job touched them.
         self.kept_weak_objects.clear();
-        self.with_roots(|heap| {
-            heap.collect_major();
-            Ok(())
-        })
-        .expect("major collection does not allocate or return a heap error");
+        self.collect_realm_garbage()?;
         self.enqueue_finalization_cleanup_jobs()?;
         self.bindings.resize(code.bindings.len(), None);
         self.synchronize_scheduling_usage()?;
@@ -208,11 +204,7 @@ impl Vm {
         // WeakRef's KeepDuringJob guarantee ends only after the complete
         // script/module job (including abrupt completion cleanup) has run.
         self.kept_weak_objects.clear();
-        self.with_roots(|heap| {
-            heap.collect_major();
-            Ok(())
-        })
-        .expect("major collection does not allocate or return a heap error");
+        self.collect_realm_garbage()?;
         self.enqueue_finalization_cleanup_jobs()?;
         self.uncaught_throw_site = if result.as_ref().is_err_and(RuntimeError::is_catchable) {
             self.pending_throw_site
@@ -1412,7 +1404,7 @@ impl Vm {
 
     /// Collect the VM's external heap edges once, independently of the
     /// allocating operation's return type and closure instantiation.
-    fn execution_roots(&self) -> Vec<ObjectId> {
+    pub(super) fn execution_roots(&self) -> Vec<ObjectId> {
         // Every object the VM holds outside the heap is gathered into one
         // plain batch and handed to the heap for the duration of `operation`.
         // Registering each one individually in the heap's root table cost a

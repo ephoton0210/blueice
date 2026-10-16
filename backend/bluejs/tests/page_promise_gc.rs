@@ -229,6 +229,146 @@ fn unchanged_live_promise_payload_does_not_force_gc_at_every_call() {
 }
 
 #[test]
+fn discarded_shadow_realms_release_global_promise_payload_during_timer_polls() {
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime
+        .open_realm(
+            1,
+            BlueJsPageOrigin::new("https://orphan-realms.test").unwrap(),
+        )
+        .unwrap();
+    runtime
+        .configure_realm_bindings(1, |host| host.install_host_timers())
+        .unwrap();
+    page_script(&mut runtime, "var weak;function poll(){var child=new ShadowRealm();weak=new WeakRef(child);child.evaluate(\"var retained=Promise.resolve('x'.repeat(400000));0;\");}setInterval(poll,10);");
+    let before = runtime.realm_stats(1).unwrap().heap.major_collections;
+    for tick in 1..=32 {
+        assert_eq!(
+            runtime
+                .run_due_timers(1, tick * 10)
+                .unwrap_or_else(|error| panic!("orphan realm poll {tick}: {error:?}"))
+                .tasks_run,
+            1
+        );
+        assert_eq!(
+            page_script(&mut runtime, "weak.deref()===undefined;"),
+            Value::Bool(true)
+        );
+    }
+    assert!(runtime.realm_stats(1).unwrap().heap.major_collections > before);
+    assert!(runtime.host_scheduling_usage(1).unwrap().payload_bytes < 64 * 1024);
+}
+
+#[test]
+fn a_live_wrapped_function_keeps_its_realm_until_its_owner_is_dropped() {
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime
+        .open_realm(
+            1,
+            BlueJsPageOrigin::new("https://live-realms.test").unwrap(),
+        )
+        .unwrap();
+    runtime
+        .configure_realm_bindings(1, |host| host.install_host_timers())
+        .unwrap();
+    page_script(&mut runtime, "var read=new ShadowRealm().evaluate(\"var retained=Promise.resolve('x'.repeat(400000));()=>42;\");");
+    assert_eq!(page_script(&mut runtime, "read();"), Value::Number(42.0));
+    assert!(runtime.host_scheduling_usage(1).unwrap().payload_bytes >= 800000);
+    page_script(&mut runtime, "read=null;0;");
+    assert!(runtime.host_scheduling_usage(1).unwrap().payload_bytes < 64 * 1024);
+}
+
+#[test]
+fn an_unreachable_cross_realm_wrapper_cycle_does_not_keep_its_vm_alive() {
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime
+        .open_realm(
+            1,
+            BlueJsPageOrigin::new("https://realm-cycles.test").unwrap(),
+        )
+        .unwrap();
+    runtime
+        .configure_realm_bindings(1, |host| host.install_host_timers())
+        .unwrap();
+    page_script(&mut runtime, "var realm=new ShadowRealm();var callback=realm.evaluate(\"var retained=Promise.resolve('x'.repeat(400000));()=>42;\");var save=realm.evaluate('(callback)=>globalThis.saved=callback');save(callback);realm=null;callback=null;save=null;0;");
+    page_script(&mut runtime, "0;");
+    assert!(runtime.host_scheduling_usage(1).unwrap().payload_bytes < 64 * 1024);
+}
+
+#[test]
+fn document_work_keeps_an_orphan_realm_until_delivery_or_navigation() {
+    for cleanup in [false, true] {
+        for navigate in [false, true] {
+            let mut runtime = BlueJsPageRuntime::default();
+            let origin = BlueJsPageOrigin::new("https://realm-work.test").unwrap();
+            runtime.open_realm(1, origin.clone()).unwrap();
+            runtime
+                .configure_realm_bindings(1, |host| host.install_host_timers())
+                .unwrap();
+            if cleanup {
+                page_script(&mut runtime, "new ShadowRealm().evaluate(\"var retained=Promise.resolve('x'.repeat(400000));var registry=new FinalizationRegistry(()=>{retained=null;});registry.register({},0);0;\");0;");
+            } else {
+                page_script(&mut runtime, "var start=new ShadowRealm().evaluate(\"var retained=Promise.resolve('x'.repeat(400000));()=>{Promise.resolve().then(()=>{retained=null;});}\");start();start=null;0;");
+            }
+            let usage = runtime.host_scheduling_usage(1).unwrap();
+            assert!(
+                usage.payload_bytes >= 800000,
+                "queued work must own its realm"
+            );
+            if cleanup {
+                assert_eq!(usage.pending_browser_tasks, 1);
+            } else {
+                assert_eq!(usage.pending_microtasks, 1);
+            }
+            if navigate {
+                runtime.navigate(1, origin).unwrap();
+                assert_eq!(runtime.host_scheduling_usage(1).unwrap().payload_bytes, 0);
+                assert_eq!(runtime.run_task_turn(1, 10, 1).unwrap().tasks_run, 0);
+            } else {
+                let turn = runtime.run_task_turn(1, 10, 1).unwrap();
+                assert_eq!(turn.tasks_run, u32::from(cleanup));
+                page_script(&mut runtime, "0;");
+                let usage = runtime.host_scheduling_usage(1).unwrap();
+                assert_eq!(usage.pending_microtasks, 0);
+                assert_eq!(usage.pending_browser_tasks, 0);
+                assert!(usage.payload_bytes < 64 * 1024);
+            }
+            assert!(runtime.close_realm(1));
+        }
+    }
+}
+
+#[test]
+fn orphan_realm_timer_pressure_is_bounded_without_observer_scripts() {
+    for document_turn in [false, true] {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime
+            .open_realm(
+                1,
+                BlueJsPageOrigin::new("https://realm-pressure.test").unwrap(),
+            )
+            .unwrap();
+        runtime
+            .configure_realm_bindings(1, |host| host.install_host_timers())
+            .unwrap();
+        page_script(&mut runtime, "function poll(){new ShadowRealm().evaluate(\"var retained=Promise.resolve('x'.repeat(400000));0;\");}setInterval(poll,10);");
+        for tick in 1..=64 {
+            let tasks = if document_turn {
+                runtime.run_task_turn(1, tick * 10, 1).unwrap().tasks_run
+            } else {
+                runtime.run_due_timers(1, tick * 10).unwrap().tasks_run
+            };
+            assert_eq!(tasks, 1);
+            let bytes = runtime.host_scheduling_usage(1).unwrap().payload_bytes;
+            assert!(
+                bytes < 4 * 1024 * 1024,
+                "document_turn={document_turn} tick={tick} bytes={bytes}"
+            );
+        }
+    }
+}
+
+#[test]
 fn awaiting_stream_cancellation_preserves_its_return_promise_across_major_collection() {
     let mut config = VmConfig::default();
     config.heap.nursery_capacity = 1;

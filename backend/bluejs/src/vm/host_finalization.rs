@@ -121,7 +121,7 @@ impl Vm {
         Ok(())
     }
 
-    pub(super) fn host_shadow_realms(&self) -> Vec<ShadowRealmRecord> {
+    pub(super) fn host_shadow_realms(&self) -> Vec<std::rc::Weak<RefCell<Vm>>> {
         let mut queue: VecDeque<_> = self.shadow_realms.values().cloned().collect();
         let mut seen = HashSet::from([self.object_prototype.heap]);
         let mut realms = Vec::new();
@@ -142,7 +142,13 @@ impl Vm {
             realms.push(record);
         }
         realms.sort_by_key(|record| record.vm.borrow().object_prototype.heap);
+        // A traversal snapshot is not a document-work owner. Holding every
+        // VM strongly across callbacks inflates the native-pressure watermark
+        // after agent collection has already removed its actual owners.
         realms
+            .into_iter()
+            .map(|record| Rc::downgrade(&record.vm))
+            .collect()
     }
 
     pub(super) fn run_document_browser_task_turn(
