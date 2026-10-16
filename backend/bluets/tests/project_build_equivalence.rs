@@ -14,6 +14,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
+#[path = "oracle_support/project_paths.rs"]
+mod project_paths;
+
 const STEPS: usize = 24;
 const PROJECTS: [&str; 3] = ["p0", "p1", "."];
 const MATRIX: &str =
@@ -151,14 +154,7 @@ fn build(executable: &Path, root: &Path) -> Vec<String> {
                     .and_then(|rest| rest.split('\'').next())
             })
         })
-        .map(|project| {
-            Path::new(project)
-                .strip_prefix(root)
-                .unwrap_or_else(|_| Path::new(project))
-                .to_string_lossy()
-                .trim_start_matches("./")
-                .replace('\\', "/")
-        })
+        .map(|project| project_paths::relative_to(root, project))
         .collect()
 }
 

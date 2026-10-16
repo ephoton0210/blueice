@@ -4,12 +4,17 @@ name: Oracle Windows
 # Windows architectures, so a Windows-specific fix does not need the full
 # multi-hour CI. Merged back into ci.yml's typescript-oracle matrix (S4) and
 # removed once both legs are green there. The push trigger is path-filtered to
-# this file because workflow_dispatch only works from the default branch.
+# this file and the oracle tests because workflow_dispatch only works from the
+# default branch.
 on:
   workflow_dispatch:
   push:
     branches: [feature/bluets-integration]
-    paths: [".github/workflows/oracle-windows.yml"]
+    paths:
+      - ".github/workflows/oracle-windows.yml"
+      - "backend/bluets/tests/**"
+      - "backend/bluets-bluejs/tests/**"
+      - "development/browser_core/phase-18-bluets/tools/oracle_shards.cjs"
 
 env:
   CARGO_INCREMENTAL: "0"

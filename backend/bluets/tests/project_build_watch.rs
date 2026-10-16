@@ -15,6 +15,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[path = "oracle_support/project_paths.rs"]
+mod project_paths;
+
 const MATRIX: &str = include_str!("fixtures/project_build_watch/build-watch-matrix.tsv");
 const STEPS: [&str; 5] = ["cold", "edit", "add", "burst", "delete"];
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -121,14 +124,7 @@ fn row(step: &str, output: &Output, root: &Path) -> Row {
                     .and_then(|rest| rest.split('\'').next())
             })
         })
-        .map(|project| {
-            Path::new(project)
-                .strip_prefix(root)
-                .unwrap_or_else(|_| Path::new(project))
-                .to_string_lossy()
-                .trim_start_matches("./")
-                .replace('\\', "/")
-        })
+        .map(|project| project_paths::relative_to(root, project))
         .collect();
     Row {
         step: step.to_string(),

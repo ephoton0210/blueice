@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "oracle_support/project_paths.rs"]
+mod project_paths;
+
 const MATRIX: &str = include_str!("fixtures/project_referenced_declarations/rebuild-matrix.tsv");
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -51,14 +54,7 @@ fn rebuilt_projects(output: &Output, root: &Path, native: bool) -> Vec<String> {
                     .and_then(|rest| rest.split('\'').next())
             }
         })
-        .map(|project| {
-            Path::new(project)
-                .strip_prefix(root)
-                .unwrap_or_else(|_| Path::new(project))
-                .to_string_lossy()
-                .trim_start_matches("./")
-                .replace('\\', "/")
-        })
+        .map(|project| project_paths::relative_to(root, project))
         .collect()
 }
 

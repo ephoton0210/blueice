@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "oracle_support/project_paths.rs"]
+mod project_paths;
+
 const MATRIX: &str = include_str!("fixtures/project_build_errors/build-error-matrix.tsv");
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -120,12 +123,7 @@ fn report(output: &Output) -> String {
 }
 
 fn relative(root: &Path, path: &str) -> String {
-    Path::new(path)
-        .strip_prefix(root)
-        .unwrap_or_else(|_| Path::new(path))
-        .to_string_lossy()
-        .trim_start_matches("./")
-        .replace('\\', "/")
+    project_paths::relative_to(root, path)
 }
 
 fn events(output: &Output, root: &Path) -> Vec<String> {

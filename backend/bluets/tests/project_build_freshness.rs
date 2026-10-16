@@ -14,6 +14,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
+#[path = "oracle_support/project_paths.rs"]
+mod project_paths;
+
 const MATRIX: &str = include_str!("fixtures/project_build_freshness/build-freshness-matrix.tsv");
 const STEPS: [&str; 10] = [
     "projfresh-cold",
@@ -144,12 +147,7 @@ fn report(output: &Output) -> String {
 }
 
 fn relative_project(project: &str, root: &Path) -> String {
-    let path = Path::new(project);
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .trim_start_matches("./")
-        .replace('\\', "/")
+    project_paths::relative_to(root, project)
 }
 
 fn rebuilt_projects(output: &Output, root: &Path, native: bool) -> Vec<String> {
