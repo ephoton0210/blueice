@@ -8,6 +8,52 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Once;
+
+/// BlueJS spawns its regex worker from the running test's own directory, and
+/// Cargo builds that binary only when its package is selected with `-p` or the
+/// whole workspace is built. Build it once here so these tests do not depend on
+/// how they were invoked (a bare `cargo test -p blueice-bluets-bluejs`, or
+/// `cargo llvm-cov` over a subset of packages, otherwise fails with ENOENT).
+fn ensure_regexp_worker() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        if std::env::var_os("BLUEJS_REGEXP_WORKER").is_some() {
+            return;
+        }
+        let executable = std::env::current_exe().unwrap();
+        let mut directory = executable.parent().unwrap();
+        if directory.file_name().is_some_and(|name| name == "deps") {
+            directory = directory.parent().unwrap();
+        }
+        let worker = directory.join(format!(
+            "bluejs-regexp-worker{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        if worker.is_file() {
+            return;
+        }
+        let profile = directory.file_name().unwrap().to_str().unwrap();
+        let target_dir = directory.parent().unwrap();
+        let mut build = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+        build
+            .args([
+                "build",
+                "-p",
+                "blueice-bluejs",
+                "--bin",
+                "bluejs-regexp-worker",
+            ])
+            .arg("--target-dir")
+            .arg(target_dir);
+        if profile != "debug" {
+            build.args(["--profile", profile]);
+        }
+        let status = build.status().expect("cargo must be runnable");
+        assert!(status.success(), "building the regex worker failed");
+        assert!(worker.is_file(), "{} was not produced", worker.display());
+    });
+}
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../bluets/tests/fixtures/target_syntax")
@@ -59,6 +105,7 @@ fn edition_evidence_covers_each_witness_and_target() {
 
 #[test]
 fn existing_bluejs_parser_accepts_every_latest_syntax_witness() {
+    ensure_regexp_worker();
     let mut failures = Vec::new();
     for [entry, mode, target, verdict] in rows() {
         if target != "ESNext" {
@@ -80,6 +127,7 @@ fn existing_bluejs_parser_accepts_every_latest_syntax_witness() {
 
 #[test]
 fn selected_bluejs_editions_match_every_independent_syntax_observation() {
+    ensure_regexp_worker();
     use blueice_bluejs::{parse_module_with_edition, parse_with_edition, SyntaxEdition};
 
     let mut failures = Vec::new();
