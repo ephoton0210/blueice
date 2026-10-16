@@ -56,6 +56,18 @@ remains separate from the accepted replay.
 Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
+**In progress — M1x scheduling capacity admission (2026-10-16).**
+Five tiny-container regressions reproduce admission errors in timer, frame,
+Promise-job and Promise-reaction storage. A fixed four-slot forecast permits
+the ninth entry to be published before an eight-slot growth is refused;
+it also rejects a timer that fits an existing slot. Admission now plans the
+requested slot growth, reserves it explicitly and rechecks any allocator-
+reported excess before publication. Timer argument/root forecasts exclude
+the callback and delay from the argument vector. Eight capacity groups and
+92 existing controls pass, with formatting and offline workspace/all-target
+Clippy clean. Browser-task, cleanup and rejection queue producers still need
+the same review; final integrated/resource acceptance remains open.
+
 **In progress — M1w document callback-timer counts (2026-10-16).**
 Callback timer limits previously applied to each realm separately, while the
 document ledger had no timer count. The shared account now admits at most
@@ -379,6 +391,13 @@ work and exposes its retained payload ledger.
       remain open before `fetch`.
 - [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
       host-held bytes, so a runaway page degrades only itself
+- [ ] **M1x: scheduling capacity admission.** Refuse container growth before
+      publishing another task, reaction, registration or handle; admit appends
+      that fit existing storage without a fictitious growth charge. Timer,
+      frame, Promise-job and Promise-reaction regressions use at most nine
+      entries and a scalar shared-owner model. The implementation checkpoint
+      below does not close the browser-task/cleanup/rejection producers or
+      the wider native control/service-buffer gate.
 - [ ] **M1w: document callback-timer counts.** Root and attached child realms
       must share 1,024 pending callback registrations, expose aggregate counts,
       refund delivery/cancellation/document destruction and refuse before
@@ -776,6 +795,61 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1x — Scheduling capacity admission (implementation checkpoint, 2026-10-16)
+
+Acceptance: calculate the requested slot-capacity delta before admission;
+refuse before queue/owner publication or timer/frame identifier changes;
+preserve successful appends into available slots; reconcile allocator-reported
+capacity before publishing. Preserve callback rooting, document failure,
+delivery, cancellation and Promise checkpoint semantics. This checkpoint
+covers callback timers, animation frames, Promise jobs and pending Promise
+reactions. Other scheduling producers and integrated acceptance remain open.
+
+- [x] Reproduce five failures with ordinary unit tests using at most nine
+      small live entries and a scalar model of another shared owner. The
+      tests allocate no corresponding large buffer or large task queue.
+- [x] Replace fixed four-slot forecasts with a shared growth plan and explicit
+      reservation for timer/frame vectors, the Promise-job deque and each
+      Promise record's reaction vector. Recheck unexpected reported spare
+      capacity before publishing; release temporary timer/frame roots on
+      refusal. Avoid a growth charge when existing slots suffice.
+- [x] Forecast timer argument/root storage from arguments after callback and
+      delay. Empty argument lists need one callback root, not two argument
+      values plus three roots.
+- [x] Pass eight capacity groups, 23 existing handoff/call-entry/timer-count
+      groups and 69 public timer/frame/Promise controls; formatting and offline
+      workspace/all-target Clippy pass with warnings denied.
+- [ ] Apply and validate capacity admission for browser-task producers,
+      FileReader task requeue, finalization and rejection notification queues.
+- [ ] Complete integrated/full-source acceptance under the owner's security
+      constraints. M1u remains the latest accepted milestone.
+
+The original five regressions all fail before the change: timer, frame, job
+and reaction containers already contain nine entries when the byte ledger
+refuses growth; an available timer slot incorrectly returns SchedulingLimit.
+Red log: `/private/tmp/blueice-scheduling-capacity-unit-red-20261016.log`.
+
+Current-source bounded validation: **100 passed, zero failed, zero ignored**.
+All eight capacity groups pass, including fitting appends for all four
+container families. Existing unit controls pass twelve payload-handoff, four
+call-entry and seven timer-count groups. Public `document_timer_counts` (two),
+`host_timers` (32), `host_animation_frames` (13), `promise_capabilities` (ten)
+and `promise_gc_lifecycle` (twelve) pass. Six public resource/limit cases are
+filtered; the finite timer/frame default-count controls still execute. No
+large-payload or infinite-job test or out-of-process probe is added to this
+selection. Formatting, `git diff --check` and offline workspace/all-target
+Clippy with warnings denied pass.
+
+Logs: `/private/tmp/blueice-scheduling-capacity-final-unit-20261016.log`,
+`/private/tmp/blueice-scheduling-capacity-handoff-controls-20261016.log`,
+`/private/tmp/blueice-scheduling-capacity-call-controls-20261016.log`,
+`/private/tmp/blueice-scheduling-capacity-timer-controls-20261016.log`,
+`/private/tmp/blueice-scheduling-capacity-public-controls-20261016.log` and
+`/private/tmp/blueice-scheduling-capacity-clippy-20261016.log`.
+Bounded source/executable/log receipt:
+`target/scheduling-capacity-source-20261016.json`.
+No fresh full Test262, real Core/MCP replay or coverage result is claimed.
 
 ### M1w — Document callback-timer counts (implementation checkpoint, 2026-10-16)
 

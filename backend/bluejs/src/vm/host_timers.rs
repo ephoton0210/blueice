@@ -479,26 +479,35 @@ impl Vm {
         // A host clock can enqueue work in another same-document realm.
         // Observe it before final admission, root retention and serial assignment.
         let now = self.sample_host_timer_clock();
-        self.admit_scheduling_work(HostSchedulingUsage {
+        let argument_count = args.len().saturating_sub(2);
+        let extra = HostSchedulingUsage {
             pending_timers: 1,
-            payload_bytes: std::mem::size_of::<HostTimer>()
-                .saturating_mul(4)
+            payload_bytes: argument_count
+                .saturating_mul(std::mem::size_of::<Value>())
+                .saturating_add(
+                    argument_count
+                        .saturating_add(1)
+                        .saturating_mul(std::mem::size_of::<RootId>()),
+                )
                 .saturating_add(
                     args.iter()
                         .skip(2)
                         .map(super::host_scheduling::value_payload_bytes)
                         .sum::<usize>(),
-                )
-                .saturating_add(
-                    args.len().saturating_mul(
-                        std::mem::size_of::<Value>() + std::mem::size_of::<RootId>(),
-                    ),
                 ),
             ..HostSchedulingUsage::default()
-        })?;
+        };
+        let growth = SchedulingCapacity::for_vec_push(&self.host_timers);
+        self.admit_scheduling_work(extra.with_growth(growth))?;
         let serial = self.next_host_task_serial()?;
         let arguments = args.iter().skip(2).cloned().collect::<Vec<_>>();
         let roots = self.root_timer_task(callback, &arguments)?;
+        if growth.reserve_vec(&mut self.host_timers) {
+            if let Err(error) = self.admit_scheduling_work(extra) {
+                self.release_timer_roots(roots);
+                return Err(error);
+            }
+        }
         self.host_timer_next_id = next;
         self.host_timers.push(HostTimer {
             id,

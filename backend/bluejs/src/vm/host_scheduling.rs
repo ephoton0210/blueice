@@ -16,11 +16,64 @@ mod task_payload_handoff;
 #[path = "../../tests/fixtures/document_timer_counts.rs"]
 mod document_timer_counts;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/scheduling_capacity.rs"]
+mod capacity_tests;
+
 pub const MAX_PENDING_HOST_MICROTASKS: usize = 1024;
 pub const MAX_PENDING_HOST_REACTIONS: usize = 1024;
 pub const MAX_PENDING_HOST_TIMERS: usize = 1024;
 pub const MAX_PENDING_BROWSER_TASKS: usize = 64;
 pub const MAX_HOST_SCHEDULING_BYTES: usize = 8 * 1024 * 1024;
+
+/// Planned slot storage for one append. Explicit reservation makes the
+/// capacity admitted before publication match the requested allocation.
+#[derive(Clone, Copy)]
+pub(super) struct SchedulingCapacity {
+    capacity: usize,
+    additional_bytes: usize,
+}
+
+impl SchedulingCapacity {
+    fn for_push<T>(len: usize, capacity: usize) -> Self {
+        let required = len.saturating_add(1);
+        let next = if required <= capacity {
+            capacity
+        } else {
+            required.max(capacity.saturating_mul(2)).max(4)
+        };
+        Self {
+            capacity: next,
+            additional_bytes: next
+                .saturating_sub(capacity)
+                .saturating_mul(std::mem::size_of::<T>()),
+        }
+    }
+
+    pub(super) fn for_vec_push<T>(values: &Vec<T>) -> Self {
+        Self::for_push::<T>(values.len(), values.capacity())
+    }
+
+    pub(super) fn for_deque_push<T>(values: &VecDeque<T>) -> Self {
+        Self::for_push::<T>(values.len(), values.capacity())
+    }
+
+    /// True requires another admission check before publishing the entry:
+    /// reserve_exact permits an allocator to report additional spare slots.
+    pub(super) fn reserve_vec<T>(self, values: &mut Vec<T>) -> bool {
+        if values.capacity() < self.capacity {
+            values.reserve_exact(self.capacity.saturating_sub(values.len()));
+        }
+        values.capacity() > self.capacity
+    }
+
+    pub(super) fn reserve_deque<T>(self, values: &mut VecDeque<T>) -> bool {
+        if values.capacity() < self.capacity {
+            values.reserve_exact(self.capacity.saturating_sub(values.len()));
+        }
+        values.capacity() > self.capacity
+    }
+}
 
 /// Owned scheduling slot capacities and native payloads (including the
 /// bounded console buffer, execution payloads and shared agent registries), separate from managed heap
@@ -39,6 +92,11 @@ pub struct HostSchedulingUsage {
 }
 
 impl HostSchedulingUsage {
+    pub(super) fn with_growth(mut self, growth: SchedulingCapacity) -> Self {
+        self.payload_bytes = self.payload_bytes.saturating_add(growth.additional_bytes);
+        self
+    }
+
     fn add(self, other: Self) -> Self {
         Self {
             pending_browser_tasks: self
@@ -864,15 +922,20 @@ impl Vm {
     /// Failure latches an uncatchable document abort before any later JS work;
     /// infallible internal settlement paths must never panic or report success.
     pub(super) fn enqueue_promise_job(&mut self, job: PromiseJob) {
+        let extra = HostSchedulingUsage {
+            pending_microtasks: 1,
+            payload_bytes: job.scheduling_payload_bytes(),
+            ..HostSchedulingUsage::default()
+        };
+        let growth = SchedulingCapacity::for_deque_push(&self.promise_jobs);
         if self
-            .admit_scheduling_work(HostSchedulingUsage {
-                pending_microtasks: 1,
-                payload_bytes: job
-                    .scheduling_payload_bytes()
-                    .saturating_add(4 * std::mem::size_of::<PromiseJob>()),
-                ..HostSchedulingUsage::default()
-            })
+            .admit_scheduling_work(extra.with_growth(growth))
             .is_err()
+        {
+            return;
+        }
+        if growth.reserve_deque(&mut self.promise_jobs)
+            && self.admit_scheduling_work(extra).is_err()
         {
             return;
         }
@@ -885,15 +948,26 @@ impl Vm {
         reaction: PromiseReaction,
     ) {
         self.mark_promise_handled(promise);
+        let extra = HostSchedulingUsage {
+            pending_reactions: 1,
+            payload_bytes: reaction_bytes(&reaction),
+            ..HostSchedulingUsage::default()
+        };
+        let growth = SchedulingCapacity::for_vec_push(
+            &self
+                .promises
+                .get(&promise)
+                .expect("reaction owner was validated")
+                .reactions,
+        );
         if self
-            .admit_scheduling_work(HostSchedulingUsage {
-                pending_reactions: 1,
-                payload_bytes: reaction_bytes(&reaction)
-                    .saturating_add(4 * std::mem::size_of::<PromiseReaction>()),
-                ..HostSchedulingUsage::default()
-            })
+            .admit_scheduling_work(extra.with_growth(growth))
             .is_err()
         {
+            return;
+        }
+        let exceeded = growth.reserve_vec(&mut self.promises.get_mut(&promise).unwrap().reactions);
+        if exceeded && self.admit_scheduling_work(extra).is_err() {
             return;
         }
         self.promises

@@ -79,6 +79,17 @@ are unchanged. Replacement and close drop the owning queues and reset source
 selection with the realm. These Rust count snapshots do not change the
 private transport's existing byte totals or layout.
 
+Callback-timer/frame vectors, the Promise-job deque and each Promise's pending
+reaction vector admit the slot-capacity delta needed for an append before
+publishing it. Growth explicitly requests at least four slots, doubling an
+existing full capacity. Available slots add no storage charge. If reservation
+reports more capacity than requested, admission checks that actual storage
+again before publishing; a refused timer/frame releases its temporary roots.
+Timer argument storage excludes the callback and delay and retains one callback
+root plus reserved argument-root slots. Browser-task, finalization and rejection
+queue producers still require this capacity review; the broader native storage
+gate remains open.
+
 ### Native-payload collection pressure
 
 Large Promise results and suspended-frame strings enter the native scheduling

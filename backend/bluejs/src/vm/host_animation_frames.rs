@@ -104,11 +104,16 @@ impl Vm {
                     RuntimeError::RangeError("frame identifiers are exhausted".into())
                 })?;
                 let callback = argument.object_id().expect("callable is an object");
-                self.admit_scheduling_work(HostSchedulingUsage {
-                    payload_bytes: 4 * std::mem::size_of::<HostAnimationFrame>(),
-                    ..HostSchedulingUsage::default()
-                })?;
+                let extra = HostSchedulingUsage::default();
+                let growth = SchedulingCapacity::for_vec_push(&self.host_animation_frames);
+                self.admit_scheduling_work(extra.with_growth(growth))?;
                 let root = self.heap.root(callback)?;
+                if growth.reserve_vec(&mut self.host_animation_frames) {
+                    if let Err(error) = self.admit_scheduling_work(extra) {
+                        self.release_root(root);
+                        return Err(error);
+                    }
+                }
                 self.host_animation_frame_next_id += 1;
                 self.host_animation_frames.push(HostAnimationFrame {
                     handle,

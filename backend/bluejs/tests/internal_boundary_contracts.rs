@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_scheduling_capacity_contracts() {
+    blueice_bluejs::Vm::verify_scheduling_capacity_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_document_timer_count_contracts() {
     blueice_bluejs::Vm::verify_document_timer_count_contracts();
 }
