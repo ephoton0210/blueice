@@ -432,6 +432,7 @@ fn synthetic_value_ownership_shadow_import_shares_primitives_filters_objects_and
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
             + vm.text_module_sources.retained_bytes()
             + vm.json_module_sources.retained_bytes()
     );

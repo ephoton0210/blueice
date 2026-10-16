@@ -59,6 +59,11 @@ impl DragStore {
     }
 
     pub fn references(&self) -> Vec<ObjectId> {
+        let mut ids = Vec::new();
+        self.visit_references(&mut |id| ids.push(id));
+        ids
+    }
+    pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         self.items
             .iter()
             .flat_map(|item| {
@@ -71,7 +76,7 @@ impl DragStore {
             .chain(self.file_list)
             .chain(self.types)
             .chain(self.image.map(|(element, _, _)| element))
-            .collect()
+            .for_each(&mut *visit)
     }
 
     pub fn bytes(&self) -> usize {
@@ -150,6 +155,11 @@ impl DragEventState {
     }
 
     pub fn references(&self) -> Vec<ObjectId> {
+        let mut ids = Vec::new();
+        self.visit_references(&mut |id| ids.push(id));
+        ids
+    }
+    pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         self.transfer
             .into_iter()
             .chain(self.current_target)
@@ -159,7 +169,7 @@ impl DragEventState {
                     .iter()
                     .filter_map(|(_, value)| value.object_id()),
             )
-            .collect()
+            .for_each(&mut *visit)
     }
 }
 

@@ -28,13 +28,16 @@ impl Vm {
         &mut self,
         ignored: &HashSet<RootId>,
         extra: &[ObjectId],
-    ) -> Result<HashSet<ObjectId>, RuntimeError> {
+        previous: Option<crate::heap::CollectorMarks>,
+    ) -> Result<crate::heap::CollectorMarks, RuntimeError> {
+        if let Some(marks) = previous {
+            self.heap.recycle_collector_marks(marks)?;
+        }
         let prepared = self.prepare_gc_trace()?;
-        self.heap.release_realm_roots();
         self.heap.push_scoped_roots(prepared.batch);
         let marked = self.heap.realm_reachable(ignored, extra);
         self.finish_gc_trace(prepared.charge);
-        Ok(marked)
+        Ok(marked?)
     }
 
     fn prune_shadow_owners(&mut self, plan: &RealmCollection, live: &HashSet<ObjectId>) {
@@ -66,9 +69,24 @@ impl Vm {
         };
         let terminal_cleanup = self.check_scheduling_failure().is_err();
         let result = self.collect_prepared_realms(&mut plan, terminal_cleanup);
+        let recycled = self.recycle_realm_marks(&mut plan);
         self.recycle_realm_collection(plan);
         result?;
+        recycled?;
         self.collect_local_realm()
+    }
+
+    fn recycle_realm_marks(&mut self, plan: &mut RealmCollection) -> Result<(), RuntimeError> {
+        for node in &mut plan.nodes[..plan.len] {
+            if let Some(marks) = node.live.take() {
+                if let Some(record) = &node.record {
+                    record.vm.borrow_mut().heap.recycle_collector_marks(marks)?;
+                } else {
+                    self.heap.recycle_collector_marks(marks)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn collect_prepared_realms(
@@ -92,14 +110,15 @@ impl Vm {
                 if !plan.nodes[index].active {
                     continue;
                 }
+                let previous = plan.nodes[index].live.take();
                 let node = &plan.nodes[index];
                 let live = if let Some(record) = &node.record {
                     record
                         .vm
                         .borrow_mut()
-                        .shadow_mark(&node.ignored, &node.extra)?
+                        .shadow_mark(&node.ignored, &node.extra, previous)?
                 } else {
-                    self.shadow_mark(&node.ignored, &node.extra)?
+                    self.shadow_mark(&node.ignored, &node.extra, previous)?
                 };
                 for instance in 0..plan.nodes[index].instances.len() {
                     let instance = plan.nodes[index].instances[instance];
@@ -153,6 +172,7 @@ impl Vm {
                 vm.shadow_realm_by_heap.clear();
             }
         }
+        self.recycle_realm_marks(plan)?;
         for node in &plan.nodes[1..plan.len] {
             if node.active {
                 let mut vm = node

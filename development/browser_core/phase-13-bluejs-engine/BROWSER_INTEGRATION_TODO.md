@@ -2991,6 +2991,88 @@ and staged/committed blob checks. This is an M1z implementation checkpoint;
 collector work/mark sets, retained native values, shared programs and wider
 native/integrated acceptance remain open.
 
+#### Collector workspace follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: collector work/mark/conditional-edge storage retains an admitted
+native owner across cache, collection and returned realm-mark results. Capacity
+preparation/refusal precedes marking/sweeping, and automatic or explicit failures
+reach the VM as noncatchable scheduling errors. Reuse supports terminal cleanup.
+Strong edges, ephemerons, dependent abort signals, minor promotion and realm cycles
+retain their semantics without intermediate reference vectors or copied nursery sets.
+
+- [x] Reproduce major/minor workspace admission before heap effects with tiny
+      offline cases. Both initial cases failed, then passed after admission.
+- [x] Implement reusable admitted collector storage, returned mark ownership,
+      bounded worklists and failure propagation; twenty-one finite cases pass.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Remaining heap buffers, retained native values,
+      shared programs and wider native/integrated gates remain open.
+
+Each heap retains admitted work-vector, mark-set, flat waiter-vector and waiter
+index capacity in the document's native account. A replacement is staged while
+the old buffers remain owned; requested and reported capacities are checked
+before publication, and refusal restores the old cache. Returned realm mark sets
+carry a split lease, so Rust-held results remain charged after leaving the heap
+and even after that heap is dropped. Recycle transfers the lease without fresh
+admission; realm fixed-point passes return prior sets before marking again and
+return final sets before local sweeps.
+
+Enqueue checks membership before insertion and queues each heap object at most
+once. This matters even for duplicates: inserting an existing key into a full
+hash table can otherwise allocate before detecting the duplicate. Two finite
+warm-reuse/ephemeron cases first exposed a 64-byte unowned capacity increase;
+their original failures remain in the diagnostic logs. The waiter index keeps
+keys until the batch clears, avoiding mid-mark tombstones and rehashing.
+Borrowed visitors cover object properties/private slots, generator state, native
+closures and Web state;
+allocation protection uses the same kind visitor without a temporary vector.
+Minor collection borrows the monotonically ordered nursery instead of copying it.
+
+Capacity refusal precedes deferred-pin release, marking, weak-target clearing,
+promotion and sweeping. Explicit fallible heap collection and automatic GC
+propagate the noncatchable scheduling error. Legacy void heap hooks latch it for
+the VM safepoint. Module entry/exit and the harness GC hook propagate collection
+refusal instead of assuming collection cannot fail. Warm terminal cleanup reuses
+existing capacity and preserves the document's failure state.
+
+The first inherited run had 35 failures across twenty selections. Thirty cases
+omitted the new collector cache owner from aggregate assertions. Four fixtures now
+prepare the separate collector capacity before filling their converter, registry,
+metadata or empty-realm allowance. The remaining timer fixture now attaches its
+child to the shared document before activation, preserving owner identity instead
+of replacing an already-bound account. Existing pointer, publication, serial,
+managed-storage, callback and refund checks remain intact. Original results are
+preserved in `/private/tmp/blueice-collector-workspace-*-baseline-red-20261017.log`.
+
+
+Twenty-one finite cases cover early explicit/automatic refusal, managed-store
+preservation, cached and Rust-held native ownership, heap destruction, full-quota
+recycle/reuse, foreign marks, reported hash capacity, transactional growth,
+late activation/refusal, released pins, duplicate conditional edges, minor
+remembered/weak edges, ephemeron cycles, dependent signals, warm/cold terminal
+cleanup and noncatchable module/harness collection hooks. Ordinary-library
+entry points expose the same fixtures; no new coverage result is claimed.
+
+Validation: **853 passed, zero failed/ignored**, across 38 executables and 72
+fixed selections: twenty-one new cases and all 832 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled. The same seven pressure cases remain
+excluded and JSON resource sweeps are not selected. No network/service replay,
+physical exhaustion probe, fresh full Test262, real Core/MCP replay, coverage
+result or integrated acceptance is claimed. Remaining managed-container backing
+buffers, retained native values, shared programs and wider native/integrated
+gates remain open.
+
+Evidence: `/private/tmp/blueice-collector-workspace-controls-20261017.py`,
+`/private/tmp/blueice-collector-workspace-commit-20261017.txt`,
+`/private/tmp/blueice-collector-workspace-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-collector-workspace-{red,reuse-red,diagnose,collector,fmt,clippy}-20261017.log`.
+`target/collector-workspace-source-20261017.json` records source/log/executable
+hashes and staged/committed blob checks. This is an M1z implementation checkpoint;
+remaining managed-container buffers and wider native/integrated acceptance
+remain open.
+
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
 Acceptance: account for both dependency maps' table capacity, keys, dependency

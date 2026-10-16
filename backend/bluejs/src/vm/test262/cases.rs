@@ -75,11 +75,7 @@ impl Vm {
             return Ok(Value::Undefined);
         }
         if name == "gc" {
-            self.with_roots(|heap| {
-                heap.collect_major();
-                Ok(())
-            })
-            .expect("collecting cannot fail");
+            self.with_roots(|heap| heap.try_collect_major())?;
             return Ok(Value::Undefined);
         }
         if name == "evalScript" {

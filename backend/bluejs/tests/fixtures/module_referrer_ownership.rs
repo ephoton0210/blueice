@@ -279,7 +279,9 @@ fn module_referrer_ownership_heap_refusal_refunds_unpublished_storage() {
     assert!(retained <= before);
     assert_eq!(
         retained,
-        vm.active_module_name.as_ref().unwrap().capacity() + vm.gc_trace_cache.retained_bytes()
+        vm.active_module_name.as_ref().unwrap().capacity()
+            + vm.gc_trace_cache.retained_bytes()
+            + vm.heap.collector_storage_bytes()
     );
     vm.heap.allow_only(16 * 1024 * 1024);
     assert!(vm

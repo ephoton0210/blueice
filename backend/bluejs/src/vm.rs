@@ -28,6 +28,7 @@ mod browser_tasks;
 mod builtins;
 mod call_environment;
 mod classification;
+mod collector_workspace;
 mod completion;
 mod debugger;
 mod diagnostic_accounting;
@@ -97,6 +98,7 @@ use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::{
     AwaitRegistration, SchedulingCapacity, SchedulingMapCapacity, SchedulingScope,
 };
+pub(crate) use host_scheduling::{CollectorBudget, SharedSchedulingCharge as CollectorCharge};
 pub use host_scheduling::{
     HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_BROWSER_TASKS,
     MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS, MAX_PENDING_HOST_TIMERS,
@@ -352,6 +354,7 @@ impl std::error::Error for RuntimeError {
 impl From<HeapError> for RuntimeError {
     fn from(error: HeapError) -> Self {
         match error {
+            HeapError::CollectorStorageLimit => Self::SchedulingLimit,
             HeapError::InvalidArrayLength => Self::RangeError("invalid array length".into()),
             HeapError::InvalidBufferRange => {
                 Self::RangeError("invalid ArrayBuffer view range".into())

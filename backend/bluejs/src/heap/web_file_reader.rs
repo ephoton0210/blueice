@@ -47,13 +47,18 @@ impl Default for FileReaderState {
 
 impl FileReaderState {
     pub fn references(&self) -> Vec<ObjectId> {
-        self.target
-            .references()
+        let mut ids = Vec::new();
+        self.visit_references(&mut |id| ids.push(id));
+        ids
+    }
+    pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
+        self.target.visit_references(&mut *visit);
+        self.result
+            .object_id()
             .into_iter()
-            .chain(self.result.object_id())
             .chain(self.error)
             .chain(self.blob)
-            .collect()
+            .for_each(&mut *visit)
     }
     pub fn bytes(&self) -> usize {
         size_of::<Self>()

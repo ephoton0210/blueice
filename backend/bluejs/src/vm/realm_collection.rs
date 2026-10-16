@@ -133,7 +133,7 @@ pub(super) struct CollectionRealm {
     pub(super) active: bool,
     // Collector-produced sets have a separate ownership boundary. Metadata
     // accounting here covers their inline headers, not their mark buckets.
-    pub(super) live: Option<HashSet<ObjectId>>,
+    pub(super) live: Option<crate::heap::CollectorMarks>,
 }
 impl CollectionRealm {
     fn new(heap: u64, record: Option<ShadowRealmRecord>) -> Self {

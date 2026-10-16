@@ -268,20 +268,32 @@ pub(super) struct SchedulingScope {
 }
 
 /// One shared native owner, independent of individual realm scopes.
-pub(super) struct SharedSchedulingCharge {
+pub(crate) struct SharedSchedulingCharge {
     account: Rc<RefCell<Account>>,
     bytes: usize,
 }
 
 impl SharedSchedulingCharge {
+    pub(crate) fn split_off(&mut self, bytes: usize) -> Self {
+        assert!(bytes <= self.bytes, "split existing native ownership");
+        self.bytes -= bytes;
+        Self {
+            account: self.account.clone(),
+            bytes,
+        }
+    }
     /// Releasing existing storage is permitted after terminal admission failure.
-    pub(super) fn release_to(&mut self, bytes: usize) {
-        assert!(bytes <= self.bytes, "cleanup cannot acquire native storage");
+    pub(crate) fn release_to(&mut self, bytes: usize) {
+        assert!(
+            bytes <= self.bytes,
+            "cleanup cannot acquire native storage: retaining {bytes}, owned {}",
+            self.bytes
+        );
         self.account.borrow_mut().usage.payload_bytes -= self.bytes - bytes;
         self.bytes = bytes;
     }
     /// Transfer existing ownership without admitting or charging it again.
-    pub(super) fn absorb(&mut self, mut other: Self) -> Result<(), RuntimeError> {
+    pub(crate) fn absorb(&mut self, mut other: Self) -> Result<(), RuntimeError> {
         if !Rc::ptr_eq(&self.account, &other.account) {
             return Err(self.fail());
         }
@@ -298,7 +310,7 @@ impl SharedSchedulingCharge {
         Rc::ptr_eq(&self.account, &scope.account)
     }
 
-    pub(super) fn resize(&mut self, bytes: usize) -> Result<(), RuntimeError> {
+    pub(crate) fn resize(&mut self, bytes: usize) -> Result<(), RuntimeError> {
         let mut account = self.account.borrow_mut();
         let next = account
             .usage
@@ -325,6 +337,31 @@ impl SharedSchedulingCharge {
     }
 }
 
+/// Opaque access to the document native account for collector storage.
+#[derive(Clone)]
+pub(crate) struct CollectorBudget {
+    account: Rc<RefCell<Account>>,
+}
+impl CollectorBudget {
+    pub(crate) fn reserve(&self, bytes: usize) -> Result<SharedSchedulingCharge, crate::HeapError> {
+        let mut charge = SharedSchedulingCharge {
+            account: self.account.clone(),
+            bytes: 0,
+        };
+        charge
+            .resize(bytes)
+            .map_err(|_| crate::HeapError::CollectorStorageLimit)?;
+        Ok(charge)
+    }
+    pub(crate) fn same_document(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.account, &other.account)
+    }
+    pub(crate) fn fail(&self) -> crate::HeapError {
+        self.account.borrow_mut().failed = true;
+        crate::HeapError::CollectorStorageLimit
+    }
+}
+
 impl Drop for SharedSchedulingCharge {
     fn drop(&mut self) {
         self.account.borrow_mut().usage.payload_bytes -= self.bytes;
@@ -332,6 +369,11 @@ impl Drop for SharedSchedulingCharge {
 }
 
 impl SchedulingScope {
+    pub(super) fn collector_budget(&self) -> CollectorBudget {
+        CollectorBudget {
+            account: self.account.clone(),
+        }
+    }
     pub(super) fn fail(&self) -> RuntimeError {
         self.account.borrow_mut().failed = true;
         RuntimeError::SchedulingLimit
@@ -1006,6 +1048,7 @@ impl Vm {
         if self.host_scheduling.is_none() {
             return Ok(());
         }
+        self.bind_collector_budget()?;
         self.check_scheduling_failure()?;
         let own = self.own_scheduling_usage();
         self.last_execution_payload_bytes = self.owned_execution_payload_bytes();

@@ -453,8 +453,9 @@ fn file_cancellation_preserves_existing_non_file_slots() {
 fn timeout_clock_enqueues_precede_the_outer_timeout_serial() {
     let mut vm = page_vm();
     vm.install_web_file_api().unwrap();
-    let mut child = page_vm();
+    let mut child = Vm::default();
     child.host_scheduling = Some(vm.host_scheduling.as_ref().unwrap().child());
+    child.use_bounded_host_microtask_checkpoints().unwrap();
     child.install_web_file_api().unwrap();
     let child = Rc::new(RefCell::new(child));
     let queued = child.clone();

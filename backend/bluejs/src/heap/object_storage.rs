@@ -384,10 +384,11 @@ impl Heap {
             .next_object
             .checked_add(1)
             .ok_or(HeapError::IdExhausted)?;
-        let mut protected = None;
+        if let Some(error) = &self.collection_error {
+            return Err(*error);
+        }
         if self.nursery.len() >= self.config.nursery_capacity {
-            protected = Some(allocation_references(&kind, prototype));
-            self.minor_gc(protected.as_deref().expect("allocated above"));
+            self.minor_gc(ProtectedRoots::Allocation(&kind, prototype))?;
         }
         let bytes = OBJECT_BYTES
             + match &kind {
@@ -461,9 +462,7 @@ impl Heap {
             .is_none_or(|total| total >= self.next_major_bytes)
             || self.managed_bytes.would_exceed(bytes)
         {
-            let protected =
-                protected.get_or_insert_with(|| allocation_references(&kind, prototype));
-            self.ensure_room(bytes, protected)?;
+            self.ensure_room_protected(bytes, ProtectedRoots::Allocation(&kind, prototype))?;
         }
         let id = ObjectId {
             heap: self.identity,

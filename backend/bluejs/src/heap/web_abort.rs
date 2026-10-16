@@ -45,15 +45,20 @@ impl AbortData {
                 .any(|listener| listener.name == "abort")
     }
     pub fn references(&self) -> Vec<ObjectId> {
-        self.target
-            .references()
+        let mut ids = Vec::new();
+        self.visit_references(&mut |id| ids.push(id));
+        ids
+    }
+    pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
+        self.target.visit_references(&mut *visit);
+        self.reason
+            .object_id()
             .into_iter()
-            .chain(self.reason.object_id())
             .chain(self.hooks.iter().filter_map(|hook| match hook {
                 AbortHook::Web { target, .. } => Some(*target),
                 AbortHook::Host { .. } => None,
             }))
-            .collect()
+            .for_each(&mut *visit)
     }
     pub fn bytes(&self) -> usize {
         size_of::<Self>()

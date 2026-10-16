@@ -26,10 +26,15 @@ pub(crate) struct WebTargetData {
 
 impl WebTargetData {
     pub fn references(&self) -> Vec<ObjectId> {
+        let mut ids = Vec::new();
+        self.visit_references(&mut |id| ids.push(id));
+        ids
+    }
+    pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         self.listeners
             .iter()
             .flat_map(|listener| std::iter::once(listener.callback).chain(listener.signal))
-            .collect()
+            .for_each(&mut *visit)
     }
 
     pub fn bytes(&self) -> usize {

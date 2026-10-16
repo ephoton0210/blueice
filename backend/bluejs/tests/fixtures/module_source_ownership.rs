@@ -374,7 +374,7 @@ fn module_source_ownership_discarded_last_realm_releases_its_source_snapshot() {
     assert!(vm.shadow_realms.is_empty());
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
+        vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes()
     );
 }
 

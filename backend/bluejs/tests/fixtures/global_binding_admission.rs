@@ -273,7 +273,7 @@ fn global_binding_admission_persistent_capacity_survives_frames_and_releases_wit
     assert!(bytes > 0);
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
-        bytes + vm.gc_trace_cache.retained_bytes()
+        bytes + vm.gc_trace_cache.retained_bytes() + vm.heap.collector_storage_bytes()
     );
     let before = vm.host_scheduling_usage().unwrap().payload_bytes;
     let (name, binding) = vm.global_bindings.remove_entry("retained").unwrap();
@@ -297,7 +297,7 @@ fn global_binding_admission_persistent_capacity_survives_frames_and_releases_wit
     assert_eq!(vm.global_binding_storage_bytes(), 0);
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
-        vm.gc_trace_cache.retained_bytes()
+        vm.gc_trace_cache.retained_bytes() + vm.heap.collector_storage_bytes()
     );
 }
 
@@ -537,7 +537,7 @@ fn global_binding_admission_eval_restoration_reconciles_alias_storage_to_peers()
         }
         assert_eq!(
             peer.host_scheduling_snapshot().payload_bytes,
-            vm.own_scheduling_usage().payload_bytes
+            vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes()
         );
         assert_eq!(
             vm.global_binding_value("child").unwrap(),

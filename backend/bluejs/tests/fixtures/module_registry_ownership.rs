@@ -343,6 +343,13 @@ fn module_registry_ownership_refused_preparation_releases_its_new_synthetic_root
     vm.set_json_module_sources(HashMap::from([("json".into(), "{}".into())]));
     let roots = vm.module_graph.as_ref().unwrap().roots.snapshot();
     let pointer = vm.module_registry["kept"].code.as_ptr();
+    // Reserve a collector slot for the tiny synthetic object before filling
+    // the separate converter/registry allowance. The dummy is not retained.
+    vm.with_roots(|heap| {
+        heap.alloc_object(None)?;
+        heap.try_collect_major()
+    })
+    .unwrap();
     let _peer = leave_room(&mut vm, SyntheticModuleValue::header_bytes());
     let before = vm.host_scheduling_snapshot().payload_bytes;
     let managed = vm.heap.stats().managed_bytes;
@@ -435,7 +442,7 @@ fn module_registry_ownership_shadow_import_shares_unchanged_code_until_the_last_
     assert!(vm.shadow_realms.is_empty());
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
+        vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes()
     );
 }
 

@@ -157,6 +157,7 @@ fn async_root_storage_growth_retains_native_ownership_and_gc_edges_until_cleanup
     vm.stack = Vec::new();
     let before = vm.host_scheduling_usage().unwrap().payload_bytes;
     let trace_before = vm.gc_trace_cache.retained_bytes();
+    let collector_before = vm.heap.collector_storage_bytes();
     vm.extend_async_frame_roots([id; 4].into_iter()).unwrap();
     vm.extend_async_frame_roots(std::iter::once(id)).unwrap();
     let bytes = vm.async_frame_roots.capacity() * std::mem::size_of::<ObjectId>();
@@ -164,7 +165,9 @@ fn async_root_storage_growth_retains_native_ownership_and_gc_edges_until_cleanup
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     collect(&mut vm);
     assert!(vm.heap.contains(id));
-    let trace_growth = vm.gc_trace_cache.retained_bytes() - trace_before;
+    let trace_growth = vm.gc_trace_cache.retained_bytes() - trace_before
+        + vm.heap.collector_storage_bytes()
+        - collector_before;
     vm.async_frame_roots.truncate(0);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes - before,

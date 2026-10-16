@@ -1362,12 +1362,16 @@ impl Vm {
         let before = self.heap.stats();
         self.heap.push_scoped_roots(prepared.batch);
         let result = operation(&mut self.heap);
+        let collection_error = self.heap.take_collection_error();
         self.finish_gc_trace(prepared.charge);
         let after = self.heap.stats();
         if before.minor_collections != after.minor_collections
             || before.major_collections != after.major_collections
         {
             self.prune_collected_promise_state();
+        }
+        if let Some(error) = collection_error {
+            return Err(error.into());
         }
         result.map_err(RuntimeError::from)
     }

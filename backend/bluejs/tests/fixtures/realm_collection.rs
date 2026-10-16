@@ -429,6 +429,8 @@ fn realm_collection_metadata_host_neutral_graph_releases_temporary_storage() {
 fn realm_collection_metadata_empty_graph_needs_no_capacity_at_full_quota() {
     let mut vm = Vm::default();
     vm.use_bounded_host_microtask_checkpoints().unwrap();
+    // This case isolates realm metadata; warm the separate local collector.
+    vm.collect_realm_garbage().unwrap();
     let _peer = leave_room(&mut vm, 0);
     assert_eq!(vm.collect_realm_garbage(), Ok(()));
     assert!(vm.realm_collection_cache.is_none());

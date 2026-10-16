@@ -263,6 +263,7 @@ fn module_root_ownership_late_activation_attaches_root_segments_once() {
     assert_eq!(
         before,
         vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
             + vm.module_record_storage_bytes()
             + bytes

@@ -351,7 +351,9 @@ fn module_context_ownership_shadow_transfer_counts_the_name_once_and_preserves_i
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
             + child.own_scheduling_usage().payload_bytes
+            + child.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()

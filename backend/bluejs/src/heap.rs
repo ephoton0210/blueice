@@ -44,10 +44,13 @@ mod capabilities;
 pub(crate) use capabilities::ObjectCapabilities;
 mod collection_iteration;
 pub(crate) use collection_iteration::CollectionEntry;
+mod collector;
 mod core;
 mod debugger;
 mod exotic;
 mod lifecycle;
+pub(crate) use collector::CollectorMarks;
+use collector::{CollectorWorkspace, ProtectedRoots};
 mod managed_bytes;
 use managed_bytes::ManagedBytes;
 mod realm_roots;
@@ -124,6 +127,7 @@ pub enum HeapError {
     UninitializedModuleExport,
     ReadOnlyProperty,
     HeapLimitExceeded { limit: usize },
+    CollectorStorageLimit,
     IdExhausted,
 }
 
@@ -154,6 +158,9 @@ impl fmt::Display for HeapError {
                 write!(f, "BlueJS managed heap limit exceeded ({limit} bytes)")
             }
             Self::IdExhausted => write!(f, "BlueJS heap identity counter exhausted"),
+            Self::CollectorStorageLimit => {
+                write!(f, "BlueJS collector native storage limit exceeded")
+            }
         }
     }
 }
@@ -216,20 +223,12 @@ pub(crate) enum PrivateElement {
 
 impl PrivateElement {
     fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
-        match self {
-            Self::Field => Vec::new().into_iter(),
-            Self::Method(value) => value
-                .object_id()
-                .into_iter()
-                .collect::<Vec<_>>()
-                .into_iter(),
-            Self::Accessor { get, set } => get
-                .iter()
-                .chain(set.iter())
-                .filter_map(Value::object_id)
-                .collect::<Vec<_>>()
-                .into_iter(),
-        }
+        let (get, set) = match self {
+            Self::Field => (None, None),
+            Self::Method(value) => (Some(value), None),
+            Self::Accessor { get, set } => (get.as_ref(), set.as_ref()),
+        };
+        get.into_iter().chain(set).filter_map(Value::object_id)
     }
 }
 
@@ -303,16 +302,27 @@ pub(crate) enum GeneratorPendingCompletion {
 }
 
 impl GeneratorPendingCompletion {
+    #[cfg(any(test, coverage))]
     fn references(&self) -> Vec<ObjectId> {
+        let mut ids = Vec::new();
+        self.visit_references(&mut |id| ids.push(id));
+        ids
+    }
+    fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         match self {
-            Self::Throw(value) | Self::Return(value) => value.object_id().into_iter().collect(),
-            Self::TailRecur(values) => values.iter().filter_map(Value::object_id).collect(),
+            Self::Throw(value) | Self::Return(value) => {
+                value.object_id().into_iter().for_each(&mut *visit)
+            }
+            Self::TailRecur(values) => values
+                .iter()
+                .filter_map(Value::object_id)
+                .for_each(&mut *visit),
             Self::ReferenceError(_)
             | Self::TypeError(_)
             | Self::RangeError(_)
             | Self::SyntaxError(_)
             | Self::Test262(_)
-            | Self::Jump { .. } => Vec::new(),
+            | Self::Jump { .. } => (),
         }
     }
 
@@ -575,12 +585,15 @@ impl AsyncGeneratorControl {
     }
 
     fn references(&self) -> Vec<ObjectId> {
-        self.requests
-            .iter()
-            .flat_map(|request| {
-                std::iter::once(request.target).chain(request.completion.references())
-            })
-            .collect()
+        let mut ids = Vec::new();
+        self.visit_references(&mut |id| ids.push(id));
+        ids
+    }
+    fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
+        for request in &self.requests {
+            visit(request.target);
+            request.completion.references().for_each(&mut *visit);
+        }
     }
 }
 
@@ -709,6 +722,11 @@ impl GeneratorState {
     }
 
     fn references(&self) -> Vec<ObjectId> {
+        let mut ids = Vec::new();
+        self.visit_references(&mut |id| ids.push(id));
+        ids
+    }
+    fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         match self {
             Self::Start {
                 captures,
@@ -726,7 +744,7 @@ impl GeneratorState {
                 .chain(args.iter().filter_map(Value::object_id))
                 .chain(*home)
                 .chain(with_objects.iter().filter_map(Value::object_id))
-                .collect(),
+                .for_each(&mut *visit),
             Self::Suspended {
                 disposables,
                 stack,
@@ -746,7 +764,7 @@ impl GeneratorState {
                 with_objects,
                 ..
             } => {
-                let mut references = stack
+                stack
                     .iter()
                     .chain(with_objects.iter())
                     .chain(bindings.iter().flatten())
@@ -765,15 +783,12 @@ impl GeneratorState {
                     }))
                     .chain(*home)
                     .chain(callee.object_id())
-                    .collect::<Vec<_>>();
-                references.extend(
-                    pending_completions
-                        .iter()
-                        .flat_map(GeneratorPendingCompletion::references),
-                );
-                references
+                    .for_each(&mut *visit);
+                for completion in pending_completions {
+                    completion.visit_references(&mut *visit);
+                }
             }
-            Self::Done | Self::Running => Vec::new(),
+            Self::Done | Self::Running => (),
         }
     }
 }
@@ -964,13 +979,13 @@ impl OrderedCollection {
         self.entries[index].take()
     }
 
-    fn references(&self) -> Vec<ObjectId> {
+    fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         self.entries
             .iter()
             .flatten()
             .flat_map(|(key, value)| [key.object_id(), value.object_id()])
             .flatten()
-            .collect()
+            .for_each(visit)
     }
 }
 
@@ -1491,7 +1506,7 @@ impl Object {
         self.properties.get(key).cloned()
     }
 
-    fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
+    fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         self.prototype
             .into_iter()
             .chain(self.properties.values().filter_map(Value::object_id))
@@ -1515,92 +1530,8 @@ impl Object {
                             .flat_map(PrivateElement::references),
                     )
             }))
-            .chain(match &self.kind {
-                ObjectKind::Closure { captures, this, .. } => captures
-                    .iter()
-                    .copied()
-                    .chain(this.object_id())
-                    .collect::<Vec<_>>(),
-                ObjectKind::Generator {
-                    state,
-                    async_control,
-                    ..
-                } => state
-                    .references()
-                    .into_iter()
-                    .chain(
-                        async_control
-                            .iter()
-                            .flat_map(AsyncGeneratorControl::references),
-                    )
-                    .collect(),
-                ObjectKind::BoundFunction(bound) => std::iter::once(bound.target)
-                    .chain(bound.this.object_id())
-                    .chain(bound.args.iter().filter_map(Value::object_id))
-                    .collect(),
-                ObjectKind::NativeFunction { function, .. } => function.references(),
-                ObjectKind::WebAbortController(signal) => vec![*signal],
-                ObjectKind::WebAbortSignal(state) => state.references(),
-                ObjectKind::WebUrl(_) => Vec::new(),
-                ObjectKind::WebFileList(files) => files.clone(),
-                ObjectKind::WebDataTransfer(store) => store.references(),
-                ObjectKind::WebDragItems(store)
-                | ObjectKind::WebDragFiles(store)
-                | ObjectKind::WebDragItem { store, .. } => vec![*store],
-                ObjectKind::WebDragEvent(state) => state.references(),
-                ObjectKind::WebEventTarget(state) => state.references(),
-                ObjectKind::WebFileReader(state) => state.references(),
-                ObjectKind::WebStream(state) => state.references(),
-                ObjectKind::HostSelectionEvent { current_target } => {
-                    current_target.iter().copied().collect()
-                }
-                ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
-                ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
-                ObjectKind::DateTimeFormat { format, .. } => format.iter().copied().collect(),
-                ObjectKind::DisplayNames(_) => Vec::new(),
-                ObjectKind::DurationFormat(_) => Vec::new(),
-                ObjectKind::ListFormat(_) => Vec::new(),
-                ObjectKind::PluralRules(_) => Vec::new(),
-                ObjectKind::RelativeTimeFormat(_) => Vec::new(),
-                ObjectKind::Segmenter(_)
-                | ObjectKind::Segments(_)
-                | ObjectKind::SegmentIterator { .. } => Vec::new(),
-                ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
-                ObjectKind::ArrayIterator { object, .. } => vec![*object],
-                ObjectKind::CollectionIterator { collection, .. } => {
-                    collection.iter().copied().collect()
-                }
-                ObjectKind::IteratorWrapper { iterator, next } => {
-                    std::iter::once(*iterator).chain(next.object_id()).collect()
-                }
-                ObjectKind::IteratorHelper {
-                    record, callback, ..
-                } => std::iter::once(*record)
-                    .chain(callback.object_id())
-                    .collect(),
-                ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
-                    vec![*buffer]
-                }
-                ObjectKind::Map { entries } | ObjectKind::Set { entries } => entries.references(),
-                ObjectKind::Proxy {
-                    target, handler, ..
-                } => target.iter().chain(handler.iter()).copied().collect(),
-                ObjectKind::Arguments { parameter_map } => {
-                    parameter_map.values().copied().collect()
-                }
-                ObjectKind::FinalizationRegistry {
-                    cleanup_callback,
-                    cells,
-                } => cleanup_callback
-                    .object_id()
-                    .into_iter()
-                    .chain(cells.iter().filter_map(|cell| cell.holdings.object_id()))
-                    .collect(),
-                ObjectKind::ModuleNamespace { exports } => {
-                    exports.iter().map(|(_, cell)| *cell).collect()
-                }
-                _ => Vec::new(),
-            })
+            .for_each(&mut *visit);
+        visit_kind_references(&self.kind, visit);
     }
 }
 
@@ -1735,91 +1666,90 @@ fn normalize_collection_key(key: Value) -> Value {
     }
 }
 
+fn visit_kind_references(kind: &ObjectKind, visit: &mut dyn FnMut(ObjectId)) {
+    match kind {
+        ObjectKind::Closure { captures, this, .. } => captures
+            .iter()
+            .copied()
+            .chain(this.object_id())
+            .for_each(visit),
+        ObjectKind::Generator {
+            state,
+            async_control,
+            ..
+        } => {
+            state.visit_references(&mut *visit);
+            if let Some(control) = async_control {
+                control.visit_references(&mut *visit);
+            }
+        }
+        ObjectKind::BoundFunction(bound) => std::iter::once(bound.target)
+            .chain(bound.this.object_id())
+            .chain(bound.args.iter().filter_map(Value::object_id))
+            .for_each(visit),
+        ObjectKind::NativeFunction { function, .. } => function.visit_references(visit),
+        ObjectKind::WebAbortController(signal) => visit(*signal),
+        ObjectKind::WebAbortSignal(state) => state.visit_references(visit),
+        ObjectKind::WebFileList(files) => files.iter().copied().for_each(visit),
+        ObjectKind::WebDataTransfer(state) => state.visit_references(visit),
+        ObjectKind::WebDragItems(store)
+        | ObjectKind::WebDragFiles(store)
+        | ObjectKind::WebDragItem { store, .. } => visit(*store),
+        ObjectKind::WebDragEvent(state) => state.visit_references(visit),
+        ObjectKind::WebEventTarget(state) => state.visit_references(visit),
+        ObjectKind::WebFileReader(state) => state.visit_references(visit),
+        ObjectKind::WebStream(state) => state.visit_references(visit),
+        ObjectKind::HostSelectionEvent { current_target } => {
+            current_target.iter().copied().for_each(visit)
+        }
+        ObjectKind::Collator { compare, .. } => compare.iter().copied().for_each(visit),
+        ObjectKind::NumberFormat { format, .. } | ObjectKind::DateTimeFormat { format, .. } => {
+            format.iter().copied().for_each(visit)
+        }
+        ObjectKind::RegExpIterator { matcher, .. } => visit(*matcher),
+        ObjectKind::ArrayIterator { object, .. } => visit(*object),
+        ObjectKind::CollectionIterator { collection, .. } => {
+            collection.iter().copied().for_each(visit)
+        }
+        ObjectKind::IteratorWrapper { iterator, next } => std::iter::once(*iterator)
+            .chain(next.object_id())
+            .for_each(visit),
+        ObjectKind::IteratorHelper {
+            record, callback, ..
+        } => std::iter::once(*record)
+            .chain(callback.object_id())
+            .for_each(visit),
+        ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
+            visit(*buffer)
+        }
+        ObjectKind::Map { entries } | ObjectKind::Set { entries } => {
+            entries.visit_references(visit)
+        }
+        ObjectKind::Proxy {
+            target, handler, ..
+        } => target.iter().chain(handler.iter()).copied().for_each(visit),
+        ObjectKind::Arguments { parameter_map } => parameter_map.values().copied().for_each(visit),
+        ObjectKind::FinalizationRegistry {
+            cleanup_callback,
+            cells,
+        } => cleanup_callback
+            .object_id()
+            .into_iter()
+            .chain(cells.iter().filter_map(|cell| cell.holdings.object_id()))
+            .for_each(visit),
+        ObjectKind::ModuleNamespace { exports } => {
+            exports.iter().map(|(_, cell)| *cell).for_each(visit)
+        }
+        _ => {}
+    }
+}
+
+#[cfg(any(test, coverage))]
 fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<ObjectId> {
-    prototype
-        .into_iter()
-        .chain(match kind {
-            ObjectKind::Closure { captures, this, .. } => captures
-                .iter()
-                .copied()
-                .chain(this.object_id())
-                .collect::<Vec<_>>(),
-            ObjectKind::Generator {
-                state,
-                async_control,
-                ..
-            } => state
-                .references()
-                .into_iter()
-                .chain(
-                    async_control
-                        .iter()
-                        .flat_map(AsyncGeneratorControl::references),
-                )
-                .collect(),
-            ObjectKind::BoundFunction(bound) => std::iter::once(bound.target)
-                .chain(bound.this.object_id())
-                .chain(bound.args.iter().filter_map(Value::object_id))
-                .collect(),
-            ObjectKind::NativeFunction { function, .. } => function.references(),
-            ObjectKind::WebFileList(files) => files.clone(),
-            ObjectKind::WebDataTransfer(store) => store.references(),
-            ObjectKind::WebDragItems(store)
-            | ObjectKind::WebDragFiles(store)
-            | ObjectKind::WebDragItem { store, .. } => vec![*store],
-            ObjectKind::WebDragEvent(state) => state.references(),
-            ObjectKind::WebEventTarget(state) => state.references(),
-            ObjectKind::WebFileReader(state) => state.references(),
-            ObjectKind::WebStream(state) => state.references(),
-            ObjectKind::HostSelectionEvent { current_target } => {
-                current_target.iter().copied().collect()
-            }
-            ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
-            ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
-            ObjectKind::DateTimeFormat { format, .. } => format.iter().copied().collect(),
-            ObjectKind::DisplayNames(_) => Vec::new(),
-            ObjectKind::DurationFormat(_) => Vec::new(),
-            ObjectKind::ListFormat(_) => Vec::new(),
-            ObjectKind::PluralRules(_) => Vec::new(),
-            ObjectKind::RelativeTimeFormat(_) => Vec::new(),
-            ObjectKind::Segmenter(_)
-            | ObjectKind::Segments(_)
-            | ObjectKind::SegmentIterator { .. } => Vec::new(),
-            ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
-            ObjectKind::ArrayIterator { object, .. } => vec![*object],
-            ObjectKind::CollectionIterator { collection, .. } => {
-                collection.iter().copied().collect()
-            }
-            ObjectKind::IteratorWrapper { iterator, next } => {
-                std::iter::once(*iterator).chain(next.object_id()).collect()
-            }
-            ObjectKind::IteratorHelper {
-                record, callback, ..
-            } => std::iter::once(*record)
-                .chain(callback.object_id())
-                .collect(),
-            ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
-                vec![*buffer]
-            }
-            ObjectKind::Map { entries } | ObjectKind::Set { entries } => entries.references(),
-            ObjectKind::Proxy {
-                target, handler, ..
-            } => target.iter().chain(handler.iter()).copied().collect(),
-            ObjectKind::Arguments { parameter_map } => parameter_map.values().copied().collect(),
-            ObjectKind::FinalizationRegistry {
-                cleanup_callback,
-                cells,
-            } => cleanup_callback
-                .object_id()
-                .into_iter()
-                .chain(cells.iter().filter_map(|cell| cell.holdings.object_id()))
-                .collect(),
-            ObjectKind::ModuleNamespace { exports } => {
-                exports.iter().map(|(_, cell)| *cell).collect()
-            }
-            _ => Vec::new(),
-        })
-        .collect()
+    let mut ids = Vec::new();
+    prototype.into_iter().for_each(|id| ids.push(id));
+    visit_kind_references(kind, &mut |id| ids.push(id));
+    ids
 }
 
 /// Admitted VM roots and conditional side-table edges for one heap operation.
@@ -1862,6 +1792,8 @@ pub struct Heap {
     /// Heap operations run no JS and cannot reenter the VM. One admitted
     /// safepoint batch supplies roots and conditional VM side-table edges.
     scoped_trace: Option<GcTraceBatch>,
+    collector: CollectorWorkspace,
+    collection_error: Option<HeapError>,
     managed_bytes: ManagedBytes,
     next_major_bytes: usize,
     /// First refused request in a test allocation sweep, after normal GC.

@@ -447,7 +447,7 @@ impl Vm {
                 self.release_root(root);
             }
             self.last_module_namespace = None;
-            self.collect_module_garbage();
+            self.collect_module_garbage()?;
             self.enqueue_finalization_cleanup_jobs()?;
             self.stack.clear();
             self.bindings.clear();
@@ -896,7 +896,11 @@ impl Vm {
         self.completion_saves.clear();
         self.disposables = Default::default();
         self.dispose_marks = Default::default();
-        self.collect_module_garbage();
+        if let Err(error) = self.collect_module_garbage() {
+            self.uncaught_throw_site = None;
+            self.pending_throw_site = None;
+            return Err(error);
+        }
         self.enqueue_finalization_cleanup_jobs()?;
         self.uncaught_throw_site = if result.as_ref().is_err_and(RuntimeError::is_catchable) {
             self.pending_throw_site
@@ -924,13 +928,9 @@ impl Vm {
     }
 
     /// A major collection with everything the VM holds as a root. It reclaims
-    /// memory and cannot fail.
-    fn collect_module_garbage(&mut self) {
-        self.with_roots(|heap| {
-            heap.collect_major();
-            Ok(())
-        })
-        .expect("a collection has no way to fail");
+    /// memory after admitting the collector's native workspace.
+    fn collect_module_garbage(&mut self) -> Result<(), RuntimeError> {
+        self.with_roots(|heap| heap.try_collect_major())
     }
 
     pub(super) fn resume_debugger_module_inner(

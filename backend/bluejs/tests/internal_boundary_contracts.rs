@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_collector_workspace_contracts() {
+    blueice_bluejs::Vm::verify_collector_workspace_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_realm_collection_metadata_contracts() {
     blueice_bluejs::Vm::verify_realm_collection_metadata_contracts();
 }

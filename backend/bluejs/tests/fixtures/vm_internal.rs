@@ -1662,7 +1662,7 @@ fn constructor_entry_retains_argument_charges_during_user_callbacks() {
         let persistent = vm.global_binding_storage_bytes();
         assert!(persistent > 0);
         assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
-        assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, persistent+vm.gc_trace_cache.retained_bytes());
+        assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, persistent+vm.gc_trace_cache.retained_bytes() + vm.heap.collector_storage_bytes());
     }
 }
 
@@ -1690,7 +1690,7 @@ fn proxy_forwarding_transfers_argument_charges_without_duplicate_owners() {
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
-        persistent + vm.gc_trace_cache.retained_bytes()
+        persistent + vm.gc_trace_cache.retained_bytes() + vm.heap.collector_storage_bytes()
     );
 }
 
@@ -1720,7 +1720,7 @@ fn tail_eval_retains_its_source_argument_charges() {
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
-        persistent + vm.gc_trace_cache.retained_bytes()
+        persistent + vm.gc_trace_cache.retained_bytes() + vm.heap.collector_storage_bytes()
     );
 }
 

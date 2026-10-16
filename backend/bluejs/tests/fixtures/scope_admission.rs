@@ -112,7 +112,10 @@ fn scope_admission_spare_record_slots_charge_only_the_new_slot_list() {
                 }
             );
         }
-        assert_eq!(vm.own_scheduling_usage().payload_bytes - before, bytes);
+        assert_eq!(
+            vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes() - before,
+            bytes
+        );
         assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     }
 }

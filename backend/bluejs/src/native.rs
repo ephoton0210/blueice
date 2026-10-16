@@ -992,24 +992,34 @@ impl NativeFunction {
     /// Native closures can carry heap identities outside ordinary property
     /// storage.  Keep those identities visible to both allocation protection
     /// and tracing, just like captured JavaScript closures.
-    pub(crate) fn references(self) -> Vec<ObjectId> {
+    pub(crate) fn visit_references(self, visit: &mut dyn FnMut(ObjectId)) {
         match self {
-            Self::ProxyRevoker(proxy) => vec![proxy],
-            Self::StreamReaction { stream, .. } => vec![stream],
-            Self::StreamIteration { request, .. } => vec![request],
-            Self::TeePull { tee, .. } | Self::TeeCancel { tee, .. } => vec![tee],
-            Self::TeeReaction { tee, reader, .. } => vec![tee, reader],
-            Self::PromiseResolvingFunction { promise, state, .. } => vec![promise, state],
-            Self::PromiseCapabilityExecutor { storage } => vec![storage],
-            Self::ArrayFromAsyncResume { state, .. } => vec![state],
-            Self::AsyncFromSyncFulfill { target, .. } => vec![target],
-            Self::AsyncFromSyncReject { target, record } => vec![target, record],
+            Self::ProxyRevoker(proxy) => [proxy].into_iter().for_each(&mut *visit),
+            Self::StreamReaction { stream, .. } => [stream].into_iter().for_each(&mut *visit),
+            Self::StreamIteration { request, .. } => [request].into_iter().for_each(&mut *visit),
+            Self::TeePull { tee, .. } | Self::TeeCancel { tee, .. } => {
+                [tee].into_iter().for_each(&mut *visit)
+            }
+            Self::TeeReaction { tee, reader, .. } => {
+                [tee, reader].into_iter().for_each(&mut *visit)
+            }
+            Self::PromiseResolvingFunction { promise, state, .. } => {
+                [promise, state].into_iter().for_each(&mut *visit)
+            }
+            Self::PromiseCapabilityExecutor { storage } => {
+                [storage].into_iter().for_each(&mut *visit)
+            }
+            Self::ArrayFromAsyncResume { state, .. } => [state].into_iter().for_each(&mut *visit),
+            Self::AsyncFromSyncFulfill { target, .. } => [target].into_iter().for_each(&mut *visit),
+            Self::AsyncFromSyncReject { target, record } => {
+                [target, record].into_iter().for_each(&mut *visit)
+            }
             Self::PromiseElement { state, .. }
             | Self::PromiseFinallyFunction { state, .. }
             | Self::PromiseValueThunk { state, .. }
             | Self::DecoratorAddInitializer { state }
-            | Self::DecoratorAccess { state, .. } => vec![state],
-            _ => Vec::new(),
+            | Self::DecoratorAccess { state, .. } => [state].into_iter().for_each(&mut *visit),
+            _ => (),
         }
     }
 }

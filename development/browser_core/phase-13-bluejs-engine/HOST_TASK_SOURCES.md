@@ -689,6 +689,25 @@ This closes discarded-realm retention within the existing scheduling ledger.
 Complete native control-table/service-buffer accounting remains part of the
 broader resource-containment work.
 
+Collector work queues, mark sets and conditional-edge waiters share the native
+scheduling account. Each heap keeps admitted reusable capacity. Detached growth
+keeps old and replacement storage charged together, checks reported capacities
+before publication and preserves the old cache on refusal. Marking visits borrowed
+object references directly; enqueue-time deduplication bounds the queue by the
+heap's object count. Flat waiter links cover Promise side-table edges, weak-table
+ephemerons and observed dependent abort signals. Minor collection borrows the
+ordered nursery index instead of copying it into a set.
+
+Returned realm mark sets carry their own native lease until recycled or dropped,
+including while Rust holds them outside the heap. Realm traversal recycles each
+previous result before another pass and returns final results before local sweeps.
+Cold or growing collector storage can fail before marking or sweeping; explicit
+fallible collection and automatic allocation propagate that failure as the
+document's noncatchable scheduling limit. Existing void collection hooks preserve
+their signature and report failures at the VM safepoint. Warm capacity remains
+reusable during terminal cleanup. Remaining managed-container backing buffers,
+retained native values, shared programs and service buffers remain open work.
+
 ### Document managed heaps
 
 Document scopes share one managed-storage envelope across the root VM and all

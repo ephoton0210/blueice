@@ -36,10 +36,10 @@ impl Heap {
     }
 
     pub(crate) fn realm_reachable(
-        &self,
+        &mut self,
         ignored: &HashSet<RootId>,
         extra: &[ObjectId],
-    ) -> HashSet<ObjectId> {
-        self.mark_without_roots(false, extra, ignored)
+    ) -> Result<CollectorMarks, HeapError> {
+        self.mark_without_roots(false, ProtectedRoots::Slice(extra), ignored)
     }
 }

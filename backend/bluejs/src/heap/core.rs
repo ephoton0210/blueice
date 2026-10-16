@@ -76,6 +76,8 @@ impl Heap {
             roots: HashMap::new(),
             released_realm_roots: Rc::default(),
             scoped_trace: None,
+            collector: CollectorWorkspace::default(),
+            collection_error: None,
             managed_bytes: ManagedBytes::default(),
             next_major_bytes: config.major_threshold_bytes,
             #[cfg(any(test, coverage))]

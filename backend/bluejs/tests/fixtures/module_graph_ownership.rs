@@ -47,6 +47,7 @@ fn module_graph_ownership_retained_records_and_names_have_a_native_owner() {
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes
             - vm.own_scheduling_usage().payload_bytes
+            - vm.heap.collector_storage_bytes()
             - vm.module_registry.retained_bytes()
             - vm.module_root_storage_bytes(),
         bytes
@@ -62,6 +63,7 @@ fn module_graph_ownership_rust_held_table_retains_and_then_refunds_its_owner() {
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes
             - vm.own_scheduling_usage().payload_bytes
+            - vm.heap.collector_storage_bytes()
             - vm.module_registry.retained_bytes(),
         bytes + graph.roots.retained_bytes()
     );
@@ -72,7 +74,9 @@ fn module_graph_ownership_rust_held_table_retains_and_then_refunds_its_owner() {
     vm.reconcile_scheduling_ownership();
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + vm.module_registry.retained_bytes()
+        vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
+            + vm.module_registry.retained_bytes()
     );
 }
 
@@ -84,6 +88,7 @@ fn module_graph_ownership_refuses_record_metadata_before_managed_cells() {
         HashMap::from([("entry".into(), module("export let answer=42;"))]),
     );
     let snapshot = vm.module_registry.clone();
+    vm.with_roots(|heap| heap.try_collect_major()).unwrap();
     let _peer = leave_room(&mut vm, 98);
     vm.heap.allow_only(0);
     assert_eq!(
@@ -268,6 +273,7 @@ fn module_graph_ownership_late_activation_attaches_metadata_once() {
     assert_eq!(
         before,
         vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
             + bytes
             + vm.module_root_storage_bytes()
@@ -331,6 +337,7 @@ fn module_graph_ownership_linking_rollback_refunds_new_names_and_preserves_old_r
     assert_eq!(
         observer.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
             + snapshot.retained_bytes()
             + bytes
@@ -365,7 +372,9 @@ fn module_graph_ownership_fresh_link_failure_releases_all_record_owners() {
     };
     assert_eq!(
         observer.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + snapshot.retained_bytes()
+        vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
+            + snapshot.retained_bytes()
     );
 }
 

@@ -66,13 +66,27 @@ impl Heap {
     /// Old objects are not reclaimed here; their current young edges are
     /// conservatively retained until a major collection proves them dead.
     pub fn collect_minor(&mut self) {
-        self.minor_gc(&[]);
+        if let Err(error) = self.try_collect_minor() {
+            self.collection_error = Some(error);
+        }
     }
 
     /// Reclaims unreachable objects in both generations, including cycles.
     /// This is also the future process-pressure monitor's collection hook.
     pub fn collect_major(&mut self) {
-        self.major_gc(&[]);
+        if let Err(error) = self.try_collect_major() {
+            self.collection_error = Some(error);
+        }
+    }
+
+    /// Reclaims the nursery after admitting all native marking storage.
+    pub fn try_collect_minor(&mut self) -> Result<(), HeapError> {
+        self.minor_gc(ProtectedRoots::Slice(&[]))
+    }
+
+    /// Reclaims both generations after admitting all native marking storage.
+    pub fn try_collect_major(&mut self) -> Result<(), HeapError> {
+        self.major_gc(ProtectedRoots::Slice(&[]))
     }
 
     pub(super) fn object(&self, id: ObjectId) -> Result<&Object, HeapError> {
@@ -110,6 +124,17 @@ impl Heap {
         additional: usize,
         protected: &[ObjectId],
     ) -> Result<(), HeapError> {
+        self.ensure_room_protected(additional, ProtectedRoots::Slice(protected))
+    }
+
+    pub(super) fn ensure_room_protected(
+        &mut self,
+        additional: usize,
+        protected: ProtectedRoots<'_>,
+    ) -> Result<(), HeapError> {
+        if let Some(error) = &self.collection_error {
+            return Err(*error);
+        }
         if additional == 0 {
             self.managed_bytes.check_room(0)?;
             return Ok(());
@@ -118,7 +143,7 @@ impl Heap {
         if proposed.is_none_or(|bytes| bytes >= self.next_major_bytes)
             || self.managed_bytes.would_exceed(additional)
         {
-            self.major_gc(protected);
+            self.major_gc(protected)?;
         }
         self.managed_bytes.check_room(additional)?;
         let required = self.managed_bytes.get().checked_add(additional);
@@ -133,184 +158,26 @@ impl Heap {
         Ok(())
     }
 
-    // Mark and sweep are separate phases, with an explicit worklist so
-    // a deep user-created graph never turns into recursive Rust calls.
-    pub(super) fn mark(&self, young_only: bool, protected: &[ObjectId]) -> HashSet<ObjectId> {
-        self.mark_without_roots(young_only, protected, &HashSet::new())
-    }
-
-    pub(super) fn mark_without_roots(
-        &self,
-        young_only: bool,
-        protected: &[ObjectId],
-        ignored: &HashSet<RootId>,
-    ) -> HashSet<ObjectId> {
-        let mut work: Vec<_> = self
-            .roots
-            .iter()
-            .filter(|(root, _)| !ignored.contains(root))
-            .map(|(_, object)| *object)
-            .chain(
-                self.scoped_trace
-                    .iter()
-                    .flat_map(|batch| batch.roots.iter())
-                    .copied()
-                    .filter(|id| self.objects.contains_key(id)),
-            )
-            .chain(protected.iter().copied())
-            .collect();
-        if young_only {
-            for id in &self.remembered {
-                work.extend(self.objects[id].references());
-                if let Some(metadata) = self.closure_metadata.get(id) {
-                    work.extend(metadata.references());
-                }
-            }
-        }
-        let mut marked = HashSet::new();
-        while let Some(id) = work.pop() {
-            let obj = &self.objects[&id];
-            if (young_only && !obj.young) || !marked.insert(id) {
-                continue;
-            }
-            work.extend(obj.references());
-            if let Some(metadata) = self.closure_metadata.get(&id) {
-                work.extend(metadata.references());
-            }
-        }
-        // WeakMap/WeakSet entries are ephemerons, rather than ordinary
-        // object edges. Once a live key has independently been marked, its
-        // value joins the mark worklist, and that value may in turn make
-        // another key, or a whole other table, reachable. During a minor
-        // collection old objects are retained conservatively, so old tables
-        // and old keys participate even though only young objects are marked.
-        //
-        // The fixed point is computed with a worklist rather than by
-        // rescanning every table until nothing changes: a chain in which each
-        // key's only reference is the previous key's value needs as many
-        // rescans as it has links, which is quadratic (475 seconds for a
-        // 20,000-entry WeakMap chain). Instead a table is *activated* once,
-        // when it becomes live: each of its entries either releases its value
-        // straight away (its key is already live) or waits on its key, and
-        // marking a key releases exactly the values waiting on it.
-        let key_is_live = |key: &ObjectId, marked: &HashSet<ObjectId>| {
-            if young_only {
-                self.objects
-                    .get(key)
-                    .is_some_and(|key_object| !key_object.young || marked.contains(key))
-            } else {
-                marked.contains(key)
-            }
-        };
-        let mut waiting: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
-        let mut ephemeron_work = Vec::new();
-        // A Promise's Rust-side record belongs to its heap object. Its
-        // result and reactions are strong edges from that owner, rather than
-        // independent roots. Waiting for the owner also permits unreachable
-        // promise/result cycles to be collected.
-        for (owner, reference) in self
-            .scoped_trace
-            .iter()
-            .flat_map(|batch| batch.edges.iter())
-        {
-            if !self.objects.contains_key(reference) {
-                continue;
-            }
-            if key_is_live(owner, &marked) {
-                ephemeron_work.push(*reference);
-            } else if self.objects.contains_key(owner) {
-                waiting.entry(*owner).or_default().push(*reference);
-            }
-        }
-        // Called once per table, at the moment it is known to be live.
-        let activate = |entries: &HashMap<WeakCollectionKey, Value>,
-                        marked: &HashSet<ObjectId>,
-                        waiting: &mut HashMap<ObjectId, Vec<ObjectId>>,
-                        ephemeron_work: &mut Vec<ObjectId>| {
-            for (key, value) in entries {
-                let Some(value) = value
-                    .object_id()
-                    .filter(|value| self.objects.contains_key(value))
-                else {
-                    continue;
-                };
-                match key {
-                    WeakCollectionKey::Object(target) if !key_is_live(target, marked) => {
-                        waiting.entry(*target).or_default().push(value);
-                    }
-                    _ => ephemeron_work.push(value),
-                }
-            }
-        };
-        for (owner, object) in &self.objects {
-            let ObjectKind::WeakCollection { entries, .. } = &object.kind else {
-                continue;
-            };
-            let table_live = if young_only {
-                !object.young || marked.contains(owner)
-            } else {
-                marked.contains(owner)
-            };
-            if table_live {
-                activate(entries, &marked, &mut waiting, &mut ephemeron_work);
-            }
-        }
-        // A dependent signal with observers stays alive only when at least
-        // one original source is independently live. The ordinary ephemeron
-        // worklist also handles sources discovered through WeakMap values.
-        for (dependent, object) in &self.objects {
-            let ObjectKind::WebAbortSignal(state) = &object.kind else {
-                continue;
-            };
-            if state.aborted() || !state.dependent || !state.observed() {
-                continue;
-            }
-            for source in state
-                .sources
-                .iter()
-                .filter(|source| self.objects.contains_key(source))
-            {
-                if key_is_live(source, &marked) {
-                    ephemeron_work.push(*dependent);
-                } else {
-                    waiting.entry(*source).or_default().push(*dependent);
-                }
-            }
-        }
-        while let Some(id) = ephemeron_work.pop() {
-            let obj = &self.objects[&id];
-            if (young_only && !obj.young) || !marked.insert(id) {
-                continue;
-            }
-            ephemeron_work.extend(obj.references());
-            if let Some(metadata) = self.closure_metadata.get(&id) {
-                ephemeron_work.extend(metadata.references());
-            }
-            // A newly marked key releases the values waiting on it, and a
-            // newly marked table becomes live for the first time.
-            if let Some(released) = waiting.remove(&id) {
-                ephemeron_work.extend(released);
-            }
-            if let ObjectKind::WeakCollection { entries, .. } = &obj.kind {
-                activate(entries, &marked, &mut waiting, &mut ephemeron_work);
-            }
-        }
-        marked
-    }
-
-    pub(super) fn minor_gc(&mut self, protected: &[ObjectId]) {
+    pub(super) fn minor_gc(&mut self, protected: ProtectedRoots<'_>) -> Result<(), HeapError> {
+        let marked = self.mark_without_roots(true, protected, &HashSet::new())?;
         self.release_realm_roots();
-        let marked = self.mark(true, protected);
-        let young: HashSet<_> = self.nursery.iter().copied().collect();
+        // Nursery identities are appended in serial order and drained together.
+        // Borrow that index instead of allocating a second set during collection.
+        let nursery = &self.nursery;
+        let identity = self.identity;
+        let is_young = |id: &ObjectId| {
+            id.heap == identity
+                && nursery
+                    .binary_search_by_key(&id.serial, |id| id.serial)
+                    .is_ok()
+        };
         let mut released_weak_entries: usize = 0;
         for (id, object) in &mut self.objects {
             if let ObjectKind::WeakCollection { entries, .. } = &mut object.kind {
                 let mut released: usize = 0;
                 entries.retain(|key, value| {
                     let keep = match key {
-                        WeakCollectionKey::Object(key) => {
-                            !young.contains(key) || marked.contains(key)
-                        }
+                        WeakCollectionKey::Object(key) => !is_young(key) || marked.contains(key),
                         WeakCollectionKey::Symbol(_) => true,
                     };
                     if !keep {
@@ -323,7 +190,7 @@ impl Heap {
             }
             if let ObjectKind::WeakRef { target } = &mut object.kind {
                 if target.as_ref().is_some_and(|target| {
-                    matches!(target, WeakCollectionKey::Object(key) if young.contains(key) && !marked.contains(key))
+                    matches!(target, WeakCollectionKey::Object(key) if is_young(key) && !marked.contains(key))
                 }) {
                     *target = None;
                 }
@@ -331,7 +198,7 @@ impl Heap {
             if let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind {
                 for cell in cells.iter_mut() {
                     if cell.target.as_ref().is_some_and(|target| {
-                        matches!(target, WeakCollectionKey::Object(key) if young.contains(key) && !marked.contains(key))
+                        matches!(target, WeakCollectionKey::Object(key) if is_young(key) && !marked.contains(key))
                     }) {
                         cell.target = None;
                     }
@@ -366,11 +233,12 @@ impl Heap {
         self.clean_abort_weak_edges();
         self.prune_finalization_cleanup_index();
         self.minor_collections += 1;
+        self.recycle_collector_marks(marked)
     }
 
-    pub(super) fn major_gc(&mut self, protected: &[ObjectId]) {
+    pub(super) fn major_gc(&mut self, protected: ProtectedRoots<'_>) -> Result<(), HeapError> {
+        let marked = self.mark_without_roots(false, protected, &HashSet::new())?;
         self.release_realm_roots();
-        let marked = self.mark(false, protected);
         let mut released_weak_entries: usize = 0;
         for (id, object) in &mut self.objects {
             if let ObjectKind::WeakCollection { entries, .. } = &mut object.kind {
@@ -439,6 +307,7 @@ impl Heap {
         self.clean_abort_weak_edges();
         self.prune_finalization_cleanup_index();
         self.major_collections += 1;
+        self.recycle_collector_marks(marked)
     }
 
     fn prune_finalization_cleanup_index(&mut self) {

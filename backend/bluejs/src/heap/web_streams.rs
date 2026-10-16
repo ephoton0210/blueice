@@ -98,10 +98,17 @@ pub(crate) enum WebStreamState {
 }
 impl WebStreamState {
     pub fn references(&self) -> Vec<ObjectId> {
+        let mut ids = Vec::new();
+        self.visit_references(&mut |id| ids.push(id));
+        ids
+    }
+    pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         match self {
             Self::Iterator {
                 reader, ongoing, ..
-            } => std::iter::once(*reader).chain(*ongoing).collect(),
+            } => std::iter::once(*reader)
+                .chain(*ongoing)
+                .for_each(&mut *visit),
             Self::Iteration {
                 iterator,
                 target,
@@ -110,7 +117,7 @@ impl WebStreamState {
             } => [*iterator, *target]
                 .into_iter()
                 .chain(value.object_id())
-                .collect(),
+                .for_each(&mut *visit),
             Self::Tee(state) => std::iter::once(state.source)
                 .chain(Some(state.reader))
                 .chain(state.branches.into_iter().flatten())
@@ -122,7 +129,7 @@ impl WebStreamState {
                         .chain(std::iter::once(&state.pending))
                         .filter_map(Value::object_id),
                 )
-                .collect(),
+                .for_each(&mut *visit),
             Self::Stream(state) => state
                 .controller
                 .into_iter()
@@ -145,7 +152,7 @@ impl WebStreamState {
                         .iter()
                         .filter_map(|(value, _)| value.object_id()),
                 )
-                .collect(),
+                .for_each(&mut *visit),
             Self::Reader(state) => state
                 .stream
                 .into_iter()
@@ -153,11 +160,15 @@ impl WebStreamState {
                 .chain(state.reads.iter().flat_map(|read| {
                     std::iter::once(read.promise).chain(read.into.as_ref().map(|into| into.buffer))
                 }))
-                .collect(),
+                .for_each(&mut *visit),
             Self::Controller {
                 stream, request, ..
-            } => std::iter::once(*stream).chain(*request).collect(),
-            Self::Request { stream, view } => stream.iter().chain(view).copied().collect(),
+            } => std::iter::once(*stream)
+                .chain(*request)
+                .for_each(&mut *visit),
+            Self::Request { stream, view } => {
+                stream.iter().chain(view).copied().for_each(&mut *visit)
+            }
         }
     }
     pub fn bytes(&self) -> usize {

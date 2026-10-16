@@ -145,7 +145,7 @@ fn json_module_ownership_converter_copy_refusal_cleans_ast_roots_and_orphans() {
             vm.stack.push(Value::Number(7.0));
             // Keep the converter-copy budget separate from reusable GC slots.
             vm.stack.push(Value::Object(vm.object_prototype));
-            vm.with_roots(|_| Ok(())).unwrap();
+            vm.with_roots(|heap| heap.try_collect_major()).unwrap();
             vm.stack.pop();
             let ast = JsonSourceParser::for_module(source, vm.host_scheduling.as_ref())
                 .unwrap()
