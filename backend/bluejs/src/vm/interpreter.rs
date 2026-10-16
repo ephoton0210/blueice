@@ -65,6 +65,7 @@ impl Vm {
         self.async_frame_roots.truncate(iterator_root_base);
         self.active_diagnostic_frame = previous_diagnostic_frame;
         drop(_previous_diagnostic_charge);
+        self.release_empty_module_referrer_storage();
         self.reconcile_scheduling_ownership();
         result
     }
@@ -948,6 +949,7 @@ impl Vm {
                         self.pop();
                     }
                     Opcode::Closure => {
+                        let referrer = self.prepare_closure_module_referrer()?;
                         let child = code.functions[operand].clone();
                         let function_prototype = if child.generator && !child.async_function {
                             self.generator_function_prototype()?
@@ -977,9 +979,7 @@ impl Vm {
                         let id = self.with_roots(|heap| {
                             heap.alloc_closure(child.clone(), captures, this, function_prototype)
                         })?;
-                        if let Some(module) = &self.active_module_name {
-                            self.module_closure_referrers.insert(id, module.clone());
-                        }
+                        referrer.publish(self, id);
                         self.stack.push(Value::Object(id));
                         if child.arrow && self.new_target != Value::Undefined {
                             let new_target = self.new_target.clone();

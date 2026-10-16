@@ -39,6 +39,7 @@ mod generator_entry;
 mod generator_resume;
 mod generator_storage;
 mod global_bindings;
+mod module_referrers;
 use frame_maps::PreparedFrameMaps;
 use generator_storage::OwnedGeneratorState;
 mod scope_storage;
@@ -1032,6 +1033,7 @@ pub struct Vm {
     /// closure receives the same association at creation time.
     active_module_name: Option<String>,
     module_closure_referrers: HashMap<ObjectId, String>,
+    pending_module_referrers: Rc<std::cell::Cell<usize>>,
     /// Loader referrers can remain installed outside execution. Only actual
     /// module work suppresses an enclosing host checkpoint's final cleanup.
     module_execution_depth: usize,
@@ -1785,6 +1787,7 @@ impl Vm {
             ),
             _ => target,
         };
+        let mut prepared_module = self.prepare_call_module_referrer(&callee)?;
         self.charge_step()?;
         let base = self.stack.len();
         // These are GC edges, not additional owners of primitive buffers.
@@ -1803,18 +1806,14 @@ impl Vm {
             .is_some_and(|code| code.new_target_allowed);
         let previous_new_target_allowed =
             std::mem::replace(&mut self.new_target_allowed, next_new_target_allowed);
-        let previous_module = callee.object_id().and_then(|id| {
-            self.module_closure_referrers
-                .get(&id)
-                .cloned()
-                .map(|module| self.active_module_name.replace(module))
-        });
+        let previous_module = prepared_module.install(self);
         let module_charge = self.charge_execution_control(
             previous_module
                 .as_ref()
                 .and_then(Option::as_ref)
                 .map_or(0, String::capacity),
         );
+        drop(prepared_module);
         self.call_depth += 1;
         // Whatever this call runs belongs to its own realm, not to the realm a
         // running native is acting for (see `acting_realm`).

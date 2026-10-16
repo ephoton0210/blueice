@@ -48,6 +48,10 @@ mod generator_entry_tests;
 #[path = "../../tests/fixtures/realm_template_cache.rs"]
 mod template_cache_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_referrer_ownership.rs"]
+mod module_referrer_tests;
+
 /// These transfers displace different owners. Ordinary calls forward dynamic
 /// eval environments into the callee; generator entry saves them in Rust.
 pub(super) enum ControlTransfer {

@@ -57,7 +57,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Realm template-cache ownership is the current follow-up (2026-10-17).
+Module closure-referrer ownership is the current follow-up (2026-10-17).
+Four small accounting/runtime/collection probes reproduced uncharged table/name
+storage, dead names after GC, creation without admission and a call-copy refusal
+after instruction consumption. All four now pass with weak-key reclamation,
+staged publication and early call-name preparation. Expanded controls are in
+place and all twelve groups pass, along with offline workspace/all-target
+Clippy. All 617 selected cases and formatting pass; the source/artifact audit is
+recorded below. Other module-name/code/cache/native/integrated work remains
+open; M1u stays the latest accepted milestone.
+
+The realm template-cache checkpoint (2026-10-17) addresses these failures.
 Three finite async/generator/cache-entry probes reproduce stale template
 identity after resumption and allocation without native admission (zero passed,
 three failed). One realm now owns the cache across all frame changes and stages
@@ -1881,6 +1891,59 @@ Receipt: `target/realm-template-source-20261017.json` records source/log/
 executable hashes and staged/committed blob checks. No fresh full Test262,
 real Core/MCP replay or coverage result is claimed; this remains an
 implementation checkpoint with the wider M1z/integrated gates open.
+
+#### Closure module-referrer ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: count actual closure-association table/name capacity as document
+native storage; records disappear when their closure is collected without
+rooting the key. Admit complete creation staging before prototype/capture/closure
+effects, preserve any spare publication slot across GC, and release staging on
+unwind. Admit a call's independent referrer copy before instruction consumption,
+call roots or caller-context replacement. Move each name to its owner and
+restore the caller's original allocation on every return path.
+
+- [x] Reproduce four finite accounting/GC/runtime-entry failures; all four pass.
+- [x] Count table/name capacity, prune dead weak-key records at collection and
+      return empty table storage after the last pending publication releases it.
+- [x] Jointly admit fallible name/table reservation and actual reported capacity
+      before closure creation; retain a scoped lease and GC publication guard.
+- [x] Admit/lease call-name copies before caller effects and preserve the
+      allocation-free absent-association path and associated empty-name behavior.
+- [x] Pass twelve expanded capacity/refusal/lifetime/import-origin groups.
+- [x] Pass the fixed bounded regression/static checks and record the source/
+      artifact audit with the checkpoint commit.
+- [ ] Complete other module-name/code/cache/service copies and integrated
+      native/resource acceptance. M1u remains the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-module-referrer-red-20261017.log`
+(zero passed, four failed). The table/name probe reports zero instead of 184
+bytes; GC leaves a name after collecting its closure; a refused call consumes
+an instruction; a full-budget Closure instruction still publishes its object.
+Initial fixed log: `/private/tmp/blueice-module-referrer-development-20261017.log`
+(four passed). Scalar peer owners allocate no represented large buffer.
+
+Twelve expanded groups pass. They cover full/spare exact-budget and one-byte
+refusal, independent copy leases through module installation, preserving a
+prepared spare slot when nursery one/sixteen and major collection remove the
+last old weak key, heap-failure unwind, absent/empty names, caller allocation
+restoration after return/throw, and collection refund after terminal failure.
+A surviving factory child imports from its original source after the caller's
+loader context changes, using one in-memory module and at most sixteen job
+turns. Fixtures use short names, tiny functions and fixed finite inputs.
+
+Final bounded validation: **617 passed, zero failed, zero ignored** across 35
+test executables. The twelve new groups join the prior 605 selected ownership/
+semantic/GC/debugger cases. The same seven pressure/large-allocation cases remain
+filtered. Formatting, `git diff --check` and offline workspace/all-target Clippy
+with warnings denied pass.
+
+Logs use `/private/tmp/blueice-module-referrer-` with selection names listed in
+`controls-run-20261017.log`; the fixed offline runner is `controls-20261017.py`.
+Final new-group and static logs are `{referrers,fmt,clippy}-20261017.log`.
+Receipt: `target/module-referrer-source-20261017.json` records source/log/
+executable hashes and staged/committed blob checks. No network/service replay,
+fresh full Test262, real Core/MCP replay or coverage is claimed; the wider
+M1z/native/integrated gates stay open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

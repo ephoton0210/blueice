@@ -111,6 +111,7 @@ impl Vm {
             module_import_waiters: HashMap::new(),
             active_module_name: None,
             module_closure_referrers: HashMap::new(),
+            pending_module_referrers: Rc::new(std::cell::Cell::new(0)),
             module_execution_depth: 0,
             module_error_origins: Vec::new(),
             dynamic_eval_bindings: HashMap::new(),

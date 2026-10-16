@@ -174,6 +174,7 @@ impl Vm {
     }
 
     pub(super) fn prune_collected_promise_state(&mut self) {
+        self.prune_module_closure_referrers();
         self.prune_module_error_origins();
         self.prune_disposal_state();
         self.promises

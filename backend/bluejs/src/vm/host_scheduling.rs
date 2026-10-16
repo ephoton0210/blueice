@@ -721,6 +721,7 @@ impl Vm {
                 .saturating_add(self.active_scheduling_bytes)
                 .saturating_add(self.global_binding_storage_bytes())
                 .saturating_add(map_slots(&self.templates))
+                .saturating_add(self.module_referrer_storage_bytes())
                 .saturating_add(self.owned_execution_payload_bytes()),
         };
         usage.payload_bytes = usage

@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_module_referrer_ownership_contracts() {
+    blueice_bluejs::Vm::verify_module_referrer_ownership_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_realm_template_cache_contracts() {
     blueice_bluejs::Vm::verify_realm_template_cache_contracts();
 }

@@ -269,6 +269,29 @@ owners. Refusal preserves caller fields and terminal failure; parameter throws
 use the ordinary restoration path. Other association copies and wider native
 storage remain in the broader preallocation gate.
 
+Closure module-referrer associations are a weak-key realm table. Its actual
+table capacity and retained name capacities share the document native budget.
+Heap collection removes records for collected closures without tracing those
+keys as strong roots. Empty storage is returned once no in-flight closure
+publication relies on its spare slots, including during terminal cleanup.
+
+Before a Closure instruction creates prototypes/capture cells or a function,
+it jointly admits the referrer copy and full detached replacement table while
+the old allocation coexists. Both table and name use fallible reservation;
+actual capacities are checked before heap effects. A scoped lease follows
+staging until publication moves old records and the new name into the realm
+table. A pending-publication guard preserves any source-table slots that GC
+would otherwise release; interpreter unwind releases the unused guard/storage.
+
+Calls admit and copy an associated referrer before consuming an instruction,
+adding call roots or displacing caller context. The copy stays leased until
+active fields adopt it, while the displaced caller name has a separate lease.
+Success and error restore the original allocation and release the temporary
+owner. No association takes the allocation-free path; an associated empty name
+still replaces the caller's context. Generator resume retains its existing
+pre-extraction referrer preparation. Other module-name/code/cache/service copies
+remain separate open work.
+
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
 accounting counts its capacity once as realm storage, independently of active
