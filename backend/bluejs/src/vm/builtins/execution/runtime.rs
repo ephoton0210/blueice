@@ -1410,64 +1410,6 @@ impl Vm {
         Ok(Value::Undefined)
     }
 
-    pub(in super::super::super) fn template_object(
-        &mut self,
-        site: &crate::bytecode::TemplateSite,
-    ) -> Result<Value, RuntimeError> {
-        if let Some(&id) = self.templates.get(&site.id) {
-            return Ok(Value::Object(id));
-        }
-        let base = self.stack.len();
-        let result = (|| {
-            for string in site.raw.iter().chain(site.cooked.iter().flatten()) {
-                self.check_string(&Value::String(string.clone()))?;
-            }
-            let raw = self.array_from(site.raw.iter().cloned().map(Value::String).collect())?;
-            self.stack.push(raw.clone());
-            let cooked = self.array_from(
-                site.cooked
-                    .iter()
-                    .cloned()
-                    .map(|s| s.map_or(Value::Undefined, Value::String))
-                    .collect(),
-            )?;
-            self.stack.push(cooked.clone());
-            self.define_data(
-                cooked.object_id().unwrap(),
-                "raw",
-                raw.clone(),
-                false,
-                false,
-                false,
-            )?;
-            for array in [&raw, &cooked] {
-                let id = array.object_id().unwrap();
-                for key in self
-                    .heap
-                    .own_property_keys(id)
-                    .expect("the unpublished template array remains rooted")
-                {
-                    let mut desc = self
-                        .heap
-                        .get_own_property_descriptor(id, &key)
-                        .expect("a fresh ordinary template array has no namespace export cells")
-                        .expect("the key came from this template array");
-                    desc.writable = Some(false);
-                    desc.configurable = Some(false);
-                    self.with_roots(|heap| heap.define_own_property(id, key, desc))?;
-                }
-                self.heap
-                    .prevent_extensions(id)
-                    .expect("the unpublished template array remains rooted");
-            }
-            self.heap.root(cooked.object_id().unwrap())?;
-            self.templates
-                .insert(site.id.clone(), cooked.object_id().unwrap());
-            Ok(cooked)
-        })();
-        self.stack.truncate(base);
-        result
-    }
     pub(in super::super::super) fn get_iterator(
         &mut self,
         value: &Value,

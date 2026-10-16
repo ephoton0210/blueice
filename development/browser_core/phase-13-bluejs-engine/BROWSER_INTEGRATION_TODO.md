@@ -57,8 +57,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Generator parameter-entry root preparation is the current follow-up
-(2026-10-17). Two runtime-entry regressions reproduced generator/environment
+Realm template-cache ownership is the current follow-up (2026-10-17).
+Three finite async/generator/cache-entry probes reproduce stale template
+identity after resumption and allocation without native admission (zero passed,
+three failed). One realm now owns the cache across all frame changes and stages
+new publication before heap effects. Thirteen expanded controls pass; the final
+bounded selection passes all 605 cases, with formatting and offline workspace/
+all-target Clippy passing. The source/artifact audit is recorded below; wider
+native/integrated gates remain open and M1u stays the latest accepted milestone.
+
+The generator parameter-entry checkpoint (2026-10-17) addresses two
+runtime-entry regressions that reproduced generator/environment
 allocation before native refusal; both pass after joint stack/environment
 preparation before generator creation. Expanded exact-budget, forwarded-owner,
 caller-root/collection and real parameter/eval controls pass all nine groups.
@@ -566,10 +575,11 @@ work and exposes its retained payload ledger.
       forwarded into the callee twice, and preserve suspension/debugger state.
       VM-field, interpreter-record, disposal, call-entry, frame-binding,
       scope-entry/restoration and frame-map checkpoints below pass their bounded
-      selections. The generator storage checkpoint retains saved maps and
-      native state ownership through heap adoption. Stack/completion conversion
-      preallocation, dynamic environment staging and integrated acceptance
-      remain open.
+      selections. Generator storage, dynamic environments/bindings, realm-global
+      records, incoming/outgoing snapshot buffers and parameter-entry roots now
+      have bounded implementation checkpoints. Realm template-cache ownership
+      passes all 605 selected controls; other association copies, wider native
+      storage and integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -1815,6 +1825,62 @@ Receipt: `target/generator-entry-source-20261017.json` records source/log/
 executable hashes and staged/committed blob checks. No deep-recursion tail
 suite, network/service replay, fresh full Test262, real Core/MCP replay or
 coverage result is claimed; the wider M1z and integrated gates stay open.
+
+#### Realm template-cache ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: a realm observes the same tagged-template object for one compiled
+site across active/suspended async, generator, debugger and module frames.
+An older frame must see sites cached after it suspended. Count one realm table
+independently of execution leases; do not copy or merge it on context changes.
+Admit full staging and root capacity before a miss allocates arrays, preserve
+prior entries on refusal and trace cached objects without permanent root pins.
+
+- [x] Reproduce two real async identity failures and a cache miss succeeding
+      at a full native budget (zero passed, three failed).
+- [x] Keep one realm-owned table and native contribution; remove table copies,
+      merges and ownership transfers from every suspended execution path.
+- [x] Jointly admit minimum/actual detached table and operand-root capacity
+      before heap effects; move existing entries only on successful publication.
+- [x] Build final raw/cooked arrays directly with frozen properties, avoiding
+      temporary value/key vectors; trace cache values without permanent roots.
+- [x] Pass thirteen expanded capacity/refusal/identity/GC controls and replace
+      the obsolete permanent-root refusal check with traced liveness/release.
+- [x] Pass the fixed bounded regression/static checks and record the source/
+      artifact audit with the checkpoint commit.
+- [ ] Complete module-association/code copies, wider native/container/module-
+      cache/service storage and integrated acceptance. M1u remains the latest
+      accepted milestone.
+
+Initial red log: `/private/tmp/blueice-realm-template-red-20261017.log`
+(zero passed, three failed). The public async function/generator cases suspend
+before another job creates a template at the same site; resumption returns a
+different object. The native cache-entry probe succeeds despite a full scalar
+budget. These use short strings, one Promise gate and at most sixteen job turns.
+
+Thirteen expanded groups pass. They cover ordinary/async-generator and imported
+module resumption, rejection/repeated await, realm separation, cache ownership
+through displaced frames, full/spare exact budgets and one-byte refusal, cache
+hits/spare insertion at a full budget, string/heap failure cleanup and frozen
+raw/cooked descriptors including invalid cooked escapes. Nursery one/sixteen
+and major collection validate reachability. The updated permanent-root check
+also proves cache removal releases the objects when no other owner remains.
+No agent helper, listener, network/service replay or physical exhaustion probe
+is used; scalar budgets allocate no represented large buffer.
+
+Final bounded validation: **605 passed, zero failed, zero ignored** across 35
+test executables. Thirteen new groups and the updated permanent-root boundary
+join the prior 591 selected ownership/semantic/GC/debugger cases. The same seven
+pressure/large-allocation cases remain filtered. Formatting, `git diff --check`
+and offline workspace/all-target Clippy with warnings denied pass.
+
+Logs use `/private/tmp/blueice-realm-template-` with selection names listed in
+`controls-run-20261017.log`; the fixed offline runner is `controls-20261017.py`.
+Final new-group/root-boundary and static logs are
+`{template,root-ownership,fmt,clippy}-20261017.log`.
+Receipt: `target/realm-template-source-20261017.json` records source/log/
+executable hashes and staged/committed blob checks. No fresh full Test262,
+real Core/MCP replay or coverage result is claimed; this remains an
+implementation checkpoint with the wider M1z/integrated gates open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

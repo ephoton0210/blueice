@@ -43,6 +43,7 @@ use frame_maps::PreparedFrameMaps;
 use generator_storage::OwnedGeneratorState;
 mod scope_storage;
 mod suspension_storage;
+mod template_cache;
 use frame_bindings::{FrameBindingKind, PreparedFrameBindings};
 mod for_in;
 mod functions;
@@ -869,7 +870,6 @@ struct SuspendedModuleExecution {
     script_global_slots: HashMap<usize, String>,
     variable_scope: u32,
     variable_scope_lexicals: Vec<String>,
-    templates: HashMap<TemplateSiteId, ObjectId>,
     new_target: Value,
     new_target_allowed: bool,
     home_object: Option<ObjectId>,
@@ -1124,6 +1124,7 @@ pub struct Vm {
     variable_scope_lexicals: Vec<String>,
     iterator_prototype: Option<ObjectId>,
     regexp_iterator_prototype: Option<ObjectId>,
+    // One realm owns template identity across every active/suspended frame.
     templates: HashMap<TemplateSiteId, ObjectId>,
     new_target: Value,
     new_target_allowed: bool,

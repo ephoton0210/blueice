@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_realm_template_cache_contracts() {
+    blueice_bluejs::Vm::verify_realm_template_cache_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_generator_entry_admission_contracts() {
     blueice_bluejs::Vm::verify_generator_entry_admission_contracts();
 }

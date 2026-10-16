@@ -44,6 +44,10 @@ mod environment_tests;
 #[path = "../../tests/fixtures/generator_entry_admission.rs"]
 mod generator_entry_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/realm_template_cache.rs"]
+mod template_cache_tests;
+
 /// These transfers displace different owners. Ordinary calls forward dynamic
 /// eval environments into the callee; generator entry saves them in Rust.
 pub(super) enum ControlTransfer {
@@ -71,7 +75,6 @@ macro_rules! frame_control_bytes {
             .saturating_add(outer_binding_bytes(&frame.dynamic_eval_outer_bindings))
             .saturating_add(named_slots_bytes(&frame.script_global_slots))
             .saturating_add(slots(&frame.variable_scope_lexicals))
-            .saturating_add(map_slots(&frame.templates))
             .saturating_add(
                 frame
                     .active_module_name

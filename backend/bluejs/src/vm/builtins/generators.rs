@@ -841,8 +841,6 @@ impl Vm {
                     let execution = self.capture_prepared_execution(
                         suspension.take().expect("await prepared snapshot storage"),
                     );
-                    let templates = execution.templates.clone();
-                    self.templates = templates;
                     suspended_async = Some((
                         AsyncContinuation {
                             generator: Some(*generator),

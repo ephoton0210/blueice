@@ -269,6 +269,23 @@ owners. Refusal preserves caller fields and terminal failure; parameter throws
 use the ordinary restoration path. Other association copies and wider native
 storage remain in the broader preallocation gate.
 
+Tagged-template identity belongs to a single realm cache. Suspending, restoring,
+resuming or discarding a frame does not move, copy or merge that table. Native
+accounting counts its capacity once as realm storage, independently of active
+or displaced execution fields. The realm traces cached objects directly;
+template construction creates no additional permanent root registrations.
+
+A cache miss jointly admits the full detached replacement table and two operand
+root slots before allocation; reported capacities are checked before heap
+effects. Existing slots and cache hits require no fictitious table-growth charge.
+The staged table stays leased until successful publication; refusal leaves its
+prior entries intact. Raw/cooked arrays are built directly with their final
+frozen data/length descriptors, avoiding temporary value vectors and property-
+key enumeration buffers. Both arrays stay on the admitted stack suffix until
+the realm cache adopts the cooked array and its raw edge. Array creation errors
+restore the operand prefix and release staging ownership. Async work resumed
+from an older frame observes sites cached later in the same realm.
+
 Outgoing generator, async and nested-debugger snapshots jointly admit stack
 suffix slots and generator-completion target slots before allocating either
 buffer or moving frame contents. Actual capacities are checked before capture.

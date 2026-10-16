@@ -1451,7 +1451,6 @@ impl Vm {
             script_global_slots: std::mem::take(&mut self.script_global_slots),
             variable_scope: std::mem::replace(&mut self.variable_scope, 0),
             variable_scope_lexicals: std::mem::take(&mut self.variable_scope_lexicals),
-            templates: std::mem::take(&mut self.templates),
             new_target: std::mem::replace(&mut self.new_target, Value::Undefined),
             new_target_allowed: std::mem::replace(&mut self.new_target_allowed, false),
             home_object: self.home_object.take(),
@@ -1487,7 +1486,6 @@ impl Vm {
         self.script_global_slots = execution.script_global_slots;
         self.variable_scope = execution.variable_scope;
         self.variable_scope_lexicals = execution.variable_scope_lexicals;
-        self.templates = execution.templates;
         self.new_target = execution.new_target;
         self.new_target_allowed = execution.new_target_allowed;
         self.home_object = execution.home_object;
@@ -1552,7 +1550,6 @@ impl Vm {
             references.push(binding.cell);
             references.extend(binding.shadowed_cells.iter().copied());
         }
-        references.extend(execution.templates.values().copied());
         references.extend(execution.home_object);
         references
     }
@@ -2189,7 +2186,7 @@ impl Vm {
                     fulfilled,
                 );
             }
-            let mut ambient = self.suspend_module_execution();
+            let ambient = self.suspend_module_execution();
             self.async_frame_roots
                 .extend(Self::suspended_execution_references(&ambient));
             let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
@@ -2217,7 +2214,6 @@ impl Vm {
             let outcome = straight_line_exit(outcome, "yield requires an async generator function");
             let result = match outcome {
                 Ok(StraightLineExit::Return(value)) => {
-                    ambient.templates.extend(self.templates.clone());
                     self.restore_module_execution(ambient);
                     self.call_depth = ambient_call_depth;
                     self.resolve_promise(target, value)
@@ -2228,7 +2224,6 @@ impl Vm {
                     handlers,
                 }) => {
                     let execution = self.suspend_module_execution();
-                    ambient.templates.extend(execution.templates.clone());
                     let state = AsyncContinuation {
                         generator,
                         target,
@@ -2257,7 +2252,6 @@ impl Vm {
                         self.iterator_close_preserving_throw(&record);
                     }
                     self.stack.truncate(base);
-                    ambient.templates.extend(self.templates.clone());
                     self.restore_module_execution(ambient);
                     self.call_depth = ambient_call_depth;
                     let origin = self.caught_rejection_origin(resume_epoch);
@@ -2324,10 +2318,9 @@ impl Vm {
                     self.heap
                         .set_generator_state(generator, GeneratorState::Done)
                         .expect("the resumed async frame retains its generator; Done cannot grow");
-                    let mut ambient = ambient
+                    let ambient = ambient
                         .take()
                         .expect("each async generator turn restores its displaced frame once");
-                    ambient.templates.extend(self.templates.clone());
                     self.restore_module_execution(ambient);
                     self.call_depth = ambient_call_depth;
                     let result = self.iterator_result(value, true)?;
@@ -2385,10 +2378,9 @@ impl Vm {
                     };
                     self.async_frame_roots.extend(value.object_id());
                     storage.into_generator(self, state).store(self, generator)?;
-                    let mut ambient = ambient
+                    let ambient = ambient
                         .take()
                         .expect("each async generator turn restores its displaced frame once");
-                    ambient.templates.extend(self.templates.clone());
                     self.restore_module_execution(ambient);
                     self.call_depth = ambient_call_depth;
                     let result = self.iterator_result(value, false)?;
@@ -2400,10 +2392,9 @@ impl Vm {
                     handlers,
                 }) => {
                     let execution = self.suspend_module_execution();
-                    let mut ambient = ambient
+                    let ambient = ambient
                         .take()
                         .expect("each async generator turn restores its displaced frame once");
-                    ambient.templates.extend(execution.templates.clone());
                     let state = AsyncContinuation {
                         generator: Some(generator),
                         target,
@@ -2432,10 +2423,9 @@ impl Vm {
                     self.heap
                         .set_generator_state(generator, GeneratorState::Done)
                         .expect("the resumed async frame retains its generator; Done cannot grow");
-                    let mut ambient = ambient
+                    let ambient = ambient
                         .take()
                         .expect("each async generator turn restores its displaced frame once");
-                    ambient.templates.extend(self.templates.clone());
                     self.restore_module_execution(ambient);
                     self.call_depth = ambient_call_depth;
                     let origin = self.caught_rejection_origin(resume_epoch);
@@ -2453,8 +2443,7 @@ impl Vm {
         })();
         // A failed frame store or iterator-result allocation must restore the
         // caller just as a successful turn does.
-        if let Some(mut ambient) = ambient {
-            ambient.templates.extend(self.templates.clone());
+        if let Some(ambient) = ambient {
             self.restore_module_execution(ambient);
             self.call_depth = ambient_call_depth;
         }

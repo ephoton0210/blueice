@@ -59,18 +59,33 @@ fn a_registered_host_timer_wakes_an_idle_vm_and_releases_its_callback_root() {
 }
 
 #[cfg_attr(test, test)]
-fn template_cache_root_refusal_restores_operands_and_publishes_no_template() {
+fn template_cache_needs_no_permanent_root_registration() {
     let code = compile(&parse("tag`answer${42}tail`").unwrap()).unwrap();
     let site = &code.templates[0];
     let mut vm = Vm::default();
     vm.string_intrinsics().unwrap();
     vm.stack.push(Value::Number(7.0));
+    let registrations = vm.heap.stats().root_registrations;
     vm.heap.allow_root_registrations(0);
-    assert_eq!(
-        vm.template_object(site),
-        Err(RuntimeError::Heap(HeapError::IdExhausted))
-    );
+    let object = vm.template_object(site).unwrap().object_id().unwrap();
+    assert_eq!(vm.heap.stats().root_registrations, registrations);
     assert_eq!(vm.stack, vec![Value::Number(7.0)]);
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    assert!(vm.heap.get_own(object, "raw").is_ok());
+    vm.templates.clear();
+    vm.with_roots(|heap| {
+        heap.collect_major();
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(
+        vm.heap.get_own(object, "raw"),
+        Err(HeapError::InvalidObject(object))
+    );
     assert!(vm.templates.is_empty());
     vm.stack.clear();
     assert_eq!(
@@ -3152,7 +3167,7 @@ impl Vm {
         lazy_intrinsic_root_refusals_preserve_existing_globals_and_roots();
         foreign_proxy_import_root_refusals_preserve_both_heaps_and_partial_facades();
         cold_iterator_entry_and_setter_refusals_leave_receivers_usable();
-        template_cache_root_refusal_restores_operands_and_publishes_no_template();
+        template_cache_needs_no_permanent_root_registration();
         unpublished_collection_promise_and_disposal_prototypes_are_strong_vm_edges();
         cached_shadow_prototypes_survive_collection_and_refused_roots_publish_nothing();
         segmenter_prototype_root_failures_release_the_first_prototype_without_publishing();

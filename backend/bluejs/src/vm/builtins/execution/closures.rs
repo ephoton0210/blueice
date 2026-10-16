@@ -511,8 +511,6 @@ impl Vm {
                     let execution = self.capture_prepared_execution(
                         suspension.take().expect("await prepared its stack buffer"),
                     );
-                    let templates = execution.templates.clone();
-                    self.templates = templates;
                     let state = AsyncContinuation {
                         generator: None,
                         target: async_promise.expect("async function has a promise"),
