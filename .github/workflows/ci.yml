@@ -338,6 +338,7 @@ jobs:
           backend/bluets/tests/fixtures/oracle_support/redact_root.test.cjs
           backend/bluets/tests/fixtures/oracle_support/resolve_package.test.cjs
           development/browser_core/phase-18-bluets/tools/select_oracle_commands.test.cjs
+          development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.test.cjs
       - name: Run every pinned TypeScript 5.9.3 oracle of BlueTSC and its direct bridge
         # Every `#[ignore]` test of the two crates is a differential suite against
         # the pinned compiler (accepted/rejected matrices, emitted JavaScript run

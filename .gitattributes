@@ -46,3 +46,7 @@ backend/bluets/tests/fixtures/k11_source_maps/** text eol=lf
 # The System wrapper embeds this JavaScript verbatim; CRLF checkout shifts its
 # generated-position source map and exposes user provenance on the wrapper.
 backend/bluets/src/emitter/system_helpers.v1.js text eol=lf
+
+# K.14 binds the case report to the raw measurement JSON SHA-256. Keep all
+# generated compatibility JSON byte-identical after native Windows checkout.
+development/browser_core/phase-18-bluets/COMPATIBILITY_*.json text eol=lf

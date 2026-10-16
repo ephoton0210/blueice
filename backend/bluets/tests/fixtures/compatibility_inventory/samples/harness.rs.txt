@@ -35,3 +35,14 @@ fn nested_macros() {
 
 #[path = "support/custom.rs"]
 mod external;
+
+const MODES: &[(Target, Option<bool>)] = &[(Target::Es2022, None), (Target::Es2020, Some(false))];
+
+fn programs() -> Vec<Program> {
+    vec![Program { name: "first-program" }, Program { name: "second-program" }]
+}
+
+fn controls() {
+    accepts("const value = 1;", options, true);
+    accepts("const value: number = 'bad';", options, false);
+}

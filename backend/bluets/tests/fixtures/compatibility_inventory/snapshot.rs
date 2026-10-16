@@ -58,8 +58,10 @@ impl Snapshot {
         let selected: Vec<_> = blobs
             .iter()
             .filter(|(path, _)| {
-                (path.contains("/tests/") && path.ends_with(".rs"))
-                    || path.ends_with("/diagnostics/reference.json")
+                path.contains("/tests/")
+                    && [".rs", ".json", ".tsv", ".cjs", ".txt"]
+                        .iter()
+                        .any(|extension| path.ends_with(extension))
             })
             .collect();
         // Batch avoids a subprocess for every fixture. The tree, not user input,

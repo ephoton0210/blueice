@@ -11,8 +11,9 @@ K.1–K.13 are complete within their measured subsets. K.13.2 confirms the four
 hosted oracle legs (Ubuntu, macOS, Windows x86_64 and Windows arm64) in
 [run 38877729768](https://github.com/ephoton0210/blueice/actions/runs/38877729768)
 at `d4b13ff5e`; this is an oracle result, not a claim that the entire workflow
-or the later K.13.4 source has passed that run. K.14's final pass-rate,
-all-platform gate and decision remain open.
+or the later K.13.4 source has passed that run. AC-K14.2's versioned case-rate
+measurement is complete; the final all-platform gate, row accounting and
+decision remain open.
 
 The authority for every expectation is the pinned `typescript@5.9.3` executable (`BLUEICE_BLUETSC_ORACLE`),
 not documentation. Section 1 is generated from one committed Git tree using a
@@ -22,6 +23,11 @@ CI runs the ignored suites on four oracle platforms; the Windows legs report
 their Unix-only exclusions explicitly (`.github/workflows/ci.yml`, job
 `typescript-oracle`). Suite/function counts in section 1 are not a substitute
 for K.14.2's versioned program/configuration denominators or agreement rates.
+An agreement is limited to the properties asserted by that named suite
+(for example diagnostics, execution, declarations or source-map metadata),
+not universal byte-for-byte output or language-wide equivalence.
+Broader unmeasured gaps in section 3 remain outside this finite case set;
+the agreement percentage does not close them.
 
 ## 1. What is compared with `tsc`, and how
 
@@ -146,6 +152,129 @@ The shared diagnostic record contains **3182 unique programs, 221 templates, 185
 These overlapping observations must not be added to the harness count or to each other.
 
 <!-- END GENERATED K14 SUITES -->
+
+<!-- BEGIN GENERATED K14 CASES -->
+
+### Versioned case pass rate (AC-K14.2)
+
+Pinned TypeScript **5.9.3**; source `26a3941b2625ab924db9de824a83b49ac8085172`; measured on `darwin-arm64`.
+[COMPATIBILITY_CASES.json](COMPATIBILITY_CASES.json) lists every suite-qualified case and its origin selector.
+[COMPATIBILITY_MEASUREMENT.json](COMPATIBILITY_MEASUREMENT.json) records the complete suite run and per-log SHA-256.
+
+Case assertions: **12511 / 12511 (100.0000%)**. Direct agreements: **12010 / 12028 (99.8503%)**, with **6 open** and **12 refused** comparisons.
+**482 native reference controls** and **1 BlueTS-only owner controls** are listed separately and never inflate direct agreement.
+
+A case is a versioned program/matrix row or an explicit supplemental program/configuration probe, not a Rust test function or a compiler invocation.
+Inputs overlap across suites; these are observations, not globally unique programs or a percentage of the TypeScript language.
+Rechecking a row's fields, repeating a deterministic compile, or comparing native/BlueTS output directories does not add a case.
+Explicit configuration axes are expanded. A passing assertion can confirm a documented gap/refusal; it is not an agreement.
+Fixture columns count unique versioned fixture-definition directories (including record files); inline-only programs may have none.
+This measurement is Unix-scoped; Windows exclusions are not silently credited. Full parity remains off.
+
+| Suite | Case assertions | Direct agreement | Open | Refused | Native / owner controls | Fixture dirs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `bluets-bluejs/tests/async_generator_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/async_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/decorators_direct` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 0 |
+| `bluets-bluejs/tests/emitted_target_editions` | 601 / 601 | 600 / 601 | 0 | 1 | 0 / 0 | 601 |
+| `bluets-bluejs/tests/es5_scope_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/explicit_this_parameters` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/exponentiation_targets` | 2 / 2 | 2 / 2 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/jsx_direct` | 9 / 9 | 9 / 9 | 0 | 0 | 0 / 0 | 0 |
+| `bluets-bluejs/tests/logical_assignment_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/namespace_parity` | 7 / 7 | 7 / 7 | 0 | 0 | 0 / 0 | 0 |
+| `bluets-bluejs/tests/optional_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/rest_array_parameters` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/target_syntax_profiles` | 605 / 605 | 605 / 605 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/variable_patterns` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/ambient_checker_matrix` | 80 / 80 | 80 / 80 | 0 | 0 | 0 / 0 | 81 |
+| `bluets/tests/async_generator_context` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/catch_flow_context` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/class_checker_matrix` | 523 / 523 | 522 / 523 | 0 | 1 | 0 / 0 | 508 |
+| `bluets/tests/class_downlevel_oracle` | 30 / 30 | 30 / 30 | 0 | 0 | 0 / 0 | 6 |
+| `bluets/tests/class_dynamic_checker_matrix` | 160 / 160 | 160 / 160 | 0 | 0 | 0 / 0 | 161 |
+| `bluets/tests/class_modifiers` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/class_modifiers_checker_matrix` | 95 / 95 | 95 / 95 | 0 | 0 | 0 / 0 | 96 |
+| `bluets/tests/class_retirement_checker_matrix` | 35 / 35 | 35 / 35 | 0 | 0 | 0 / 0 | 36 |
+| `bluets/tests/cli_surface` | 30 / 30 | 30 / 30 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/commonjs_oracle` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/compatibility_checker_matrix` | 88 / 88 | 88 / 88 | 0 | 0 | 0 / 0 | 89 |
+| `bluets/tests/contextual_type_imports` | 4 / 4 | 4 / 4 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/declaration_inference` | 84 / 84 | 84 / 84 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/declaration_options` | 48 / 48 | 48 / 48 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/decorator_residuals` | 264 / 264 | 264 / 264 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/decorator_targets` | 880 / 880 | 880 / 880 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/decorator_typing` | 60 / 60 | 60 / 60 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/decorators_checker_matrix` | 32 / 32 | 32 / 32 | 0 | 0 | 0 / 0 | 33 |
+| `bluets/tests/decorators_oracle` | 23 / 23 | 23 / 23 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/default_generators` | 8 / 8 | 8 / 8 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/diagnostic_source_families` | 97 / 97 | 88 / 97 | 3 | 6 | 0 / 0 | 1 |
+| `bluets/tests/diagnostics_matrix` | 3182 / 3182 | 3180 / 3182 | 0 | 2 | 0 / 0 | 3120 |
+| `bluets/tests/diagnostics_presentation` | 22 / 22 | 22 / 22 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/diagnostics_projects` | 867 / 867 | 867 / 867 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/enum_checker_matrix` | 57 / 57 | 57 / 57 | 0 | 0 | 0 / 0 | 51 |
+| `bluets/tests/enum_oracle` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 3 |
+| `bluets/tests/explicit_this_context` | 13 / 13 | 13 / 13 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/guards_checker_matrix` | 75 / 75 | 75 / 75 | 0 | 0 | 0 / 0 | 76 |
+| `bluets/tests/immutable_checker_matrix` | 174 / 174 | 174 / 174 | 0 | 0 | 0 / 0 | 174 |
+| `bluets/tests/imported_value_checker_matrix` | 98 / 98 | 98 / 98 | 0 | 0 | 0 / 0 | 82 |
+| `bluets/tests/indexed_call_context` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/inference_checker_matrix` | 74 / 74 | 74 / 74 | 0 | 0 | 0 / 0 | 75 |
+| `bluets/tests/inferred_return_checker_matrix` | 147 / 147 | 147 / 147 | 0 | 0 | 0 / 0 | 122 |
+| `bluets/tests/json_default_binding` | 2 / 2 | 2 / 2 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/jsx_checker_matrix` | 53 / 53 | 53 / 53 | 0 | 0 | 0 / 0 | 54 |
+| `bluets/tests/jsx_oracle` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/jsx_runtime_namespace` | 28 / 28 | 28 / 28 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/jsx_typing_extras` | 60 / 60 | 60 / 60 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/legacy_decorators_checker_matrix` | 19 / 19 | 19 / 19 | 0 | 0 | 0 / 0 | 20 |
+| `bluets/tests/legacy_decorators_oracle` | 18 / 18 | 18 / 18 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/module_exports_checker_matrix` | 74 / 74 | 74 / 74 | 0 | 0 | 0 / 0 | 75 |
+| `bluets/tests/module_script_helpers` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/module_systems` | 106 / 106 | 106 / 106 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/module_type_resolution` | 2 / 2 | 2 / 2 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/module_types_checker_matrix` | 86 / 86 | 86 / 86 | 0 | 0 | 0 / 0 | 87 |
+| `bluets/tests/more_types_checker_matrix` | 100 / 100 | 100 / 100 | 0 | 0 | 0 / 0 | 101 |
+| `bluets/tests/namespace_checker_matrix` | 76 / 76 | 75 / 76 | 0 | 1 | 0 / 0 | 69 |
+| `bluets/tests/namespace_declaration_oracle` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/namespace_oracle` | 92 / 92 | 92 / 92 | 0 | 0 | 0 / 0 | 46 |
+| `bluets/tests/narrowing_checker_matrix` | 123 / 123 | 123 / 123 | 0 | 0 | 0 / 0 | 124 |
+| `bluets/tests/object_method_context` | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/operators_checker_matrix` | 82 / 82 | 82 / 82 | 0 | 0 | 0 / 0 | 83 |
+| `bluets/tests/option_combinations_oracle` | 768 / 768 | 768 / 768 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/output_options` | 176 / 176 | 176 / 176 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/output_validation` | 18 / 18 | 18 / 18 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/overloads_checker_matrix` | 74 / 74 | 74 / 74 | 0 | 0 | 0 / 0 | 75 |
+| `bluets/tests/package_extras` | 54 / 54 | 54 / 54 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/path_extras` | 46 / 46 | 46 / 46 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_corrupt_state` | 8 / 8 | 8 / 8 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_equivalence` | 25 / 25 | 25 / 25 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_errors` | 3 / 3 | 3 / 3 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_freshness` | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_invalidation` | 7 / 7 | 2 / 5 | 3 | 0 | 2 / 0 | 1 |
+| `bluets/tests/project_build_order` | 5 / 5 | 5 / 5 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_watch` | 5 / 5 | 5 / 5 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_cache_key` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_config` | 71 / 71 | 70 / 70 | 0 | 0 | 0 / 1 | 1 |
+| `bluets/tests/project_reference_owner_gate` | 2 / 2 | 1 / 2 | 0 | 1 | 0 / 0 | 1 |
+| `bluets/tests/project_referenced_declarations` | 4 / 4 | 4 / 4 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_references` | 9 / 9 | 9 / 9 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/receiver_parameter_boundaries` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/rest_array_context` | 8 / 8 | 8 / 8 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/source_extras` | 28 / 28 | 28 / 28 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/source_map_publication` | 44 / 44 | 44 / 44 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/source_map_tokens_oracle` | 22 / 22 | 22 / 22 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/standard_library_checker_matrix` | 129 / 129 | 129 / 129 | 0 | 0 | 0 / 0 | 124 |
+| `bluets/tests/strictness_controls` | 39 / 39 | 39 / 39 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/strictness_flags` | 34 / 34 | 34 / 34 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/target_library_options` | 30 / 30 | 30 / 30 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/target_protocols` | 22 / 22 | 22 / 22 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/targets_checker_matrix` | 638 / 638 | 638 / 638 | 0 | 0 | 0 / 0 | 639 |
+| `bluets/tests/template_constant_context` | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/typescript_oracle` | 588 / 588 | 108 / 108 | 0 | 0 | 480 / 0 | 576 |
+| `bluets/tests/unknown_name_checker_matrix` | 109 / 109 | 109 / 109 | 0 | 0 | 0 / 0 | 109 |
+| `bluets/tests/variable_pattern_context` | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
+
+<!-- END GENERATED K14 CASES -->
 
 ## 2. What the supported subset is (summary)
 

@@ -11254,3 +11254,127 @@ Local ordinary tests use Homebrew Rust 1.98.0; the native Windows tool and
 oracle validation uses pinned Rust 1.95.0 MSVC. No production source changed
 after `26a3941b2`, and no assertion, test selection or coverage policy was
 weakened. AC-K14.1 is complete; AC-K14.2–AC-K14.6 remain open.
+
+### AC-K14.2 Versioned program/configuration measurement (2026-10-16)
+
+`COMPATIBILITY_CASES.json` enumerates 12,511 suite-qualified observations
+from the same immutable compiler/oracle tree `26a3941b2625ab924db9de824a83b49ac8085172`
+as AC-K14.1. Its graph remains
+`db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
+Every observation carries a versioned source path, JSON pointer / TSV line /
+Rust scope selector, unit and comparison classification. Each of the 100
+suites lists its fixture-definition directories and prints both numerators
+and denominators in `COMPATIBILITY_INVENTORY.md`.
+
+The complete macOS arm64 measurement ran from `2026-10-16T12:34:17.270Z`
+to `2026-10-16T13:06:01.804Z`: 100/100 suites, 524/524 Rust checks, including
+all 244 selected ignored functions. `COMPATIBILITY_MEASUREMENT.json`
+records the actual binary test-name sets, exit/result counts, elapsed times
+and per-log SHA-256. All 100 log hashes were independently checked against
+the retained raw logs under `/private/tmp/bluets-k142-measurement-acb4a6dc4/`.
+The measurement file SHA-256 is
+`8d15eb2ffb2222cb2df45eeab1b9038651c4b99b719cf27b9b49c2251acf78a3`.
+Its schema-1 `pinned_tests` field means selected ignored Rust functions;
+it includes a BlueTS-only owner control and is not a count of direct `tsc`
+comparisons.
+
+Case assertions pass 12,511/12,511. This does **not** imply 100% agreement:
+direct agreement is **12,010/12,028 (99.8503%)**, retaining six open and
+twelve refused observations in the comparison denominator. The six open
+observations are three source-family checker gaps and three intentional
+build-invalidation policy differences. The twelve refusals include the
+versioned deferred class/namespace forms, diagnostic-counterpart exceptions,
+the reference owner boundary and unsupported opaque-generator lowering.
+All have explicit case-level reasons; no refusal was converted into an
+agreement merely because its expected assertion passed.
+
+The other 483 observations are separated from direct agreement: 480 core
+no-emit native-only controls, two native stale-output/force controls, and
+one BlueTS-only strict-runtime owner/relocation control. Program inputs can
+overlap between suites or between a primary row and an explicit supplemental
+runtime/declaration probe. These are **suite-qualified observations**, not
+globally unique programs or a percentage of the TypeScript language.
+Agreement is restricted to each named suite's asserted properties, such as
+diagnostics, execution, declarations or source-map metadata; it does not
+claim universal output-byte or diagnostic-text equality.
+Broader unmeasured section-3 gaps are not silently closed by this finite
+case percentage.
+Repeated assertions/compiles and the native/BlueTS output-directory sides
+do not add cases. Explicit configuration axes do: source-map publication
+has 11 rows × four settings, and token mapping has 11 rows × two inline-source
+settings. Fixture-directory counts describe versioned definitions, including
+record files; they are not another program-count denominator.
+
+The case adapters are split into structured sources, inline programs,
+supplemental probes, a registry and an evidence-bound report. Publication
+rejects missing/duplicate suites or cases, changed ignored-function sets,
+foreign source graphs/revisions, incomplete/failed/filtered runs and
+unexplained non-agreements. A Windows run with explicit Unix exclusions
+cannot become the full Unix case denominator. Native Windows regeneration
+can check the same source/measurement artifact; that does not claim that
+all 12,511 observations executed on Windows.
+
+```sh
+BLUEICE_BLUETSC_ORACLE=/path/to/typescript-5.9.3/tsc \
+BLUEICE_ACORN_ORACLE=/path/to/acorn-8.15.0/acorn \
+BLUEJS_REGEXP_WORKER="$PWD/target/debug/bluejs-regexp-worker" \
+  node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs \
+    --output-dir /path/to/empty-measurement-directory
+cargo run -p blueice-bluets --example compatibility_inventory -- \
+  --write-cases 26a3941b2625ab924db9de824a83b49ac8085172 \
+  /path/to/empty-measurement-directory/measurement.json
+cargo run -p blueice-bluets --example compatibility_inventory -- --check-cases
+cargo test -p blueice-bluets --test compatibility_inventory
+```
+
+The complete measurement command is macOS/Linux-only. It rejects recording
+and filtering environment variables, verifies the 5.9.3 executable, matches
+Cargo artifacts by full source path, checks binary ignored-test names
+against the source inventory, then runs every selected binary with
+`--include-ignored`. It does not silently substitute a smaller sample.
+The ordinary Rust regression regenerates the complete case JSON, measurement
+binding and Markdown in workspace CI; the Node artifact/result parser tests
+also run on all four hosted oracle platforms.
+
+The final local complete-workspace command exits 0, including all 55
+launcher/K.11 real-process tests and all 17 inventory-tool tests. Its log is
+`/private/tmp/bluets-k142-workspace-accepted.log`. Workspace/all-target
+warnings-denied Clippy and Rust 1.95 rustfmt checking also pass. Local tests
+use Rust 1.98.0 Homebrew; native Windows tools use Rust 1.95.0 MSVC.
+The first VM core rerun is **not accepted**: a temporary validation wrapper
+used `--test-threads=1` and its 1,200-second limit interrupted the last test
+after 81/82 passed. Its failed log/record are retained. The full, unchanged
+82-test selection was repeated with normal libtest parallelism and finishes
+with **82 passed, zero failed, zero ignored, Cargo exit 0** in 541.03 seconds
+(538.55 seconds in libtest). The temporary wrapper initially misclassified
+that successful run because it expected zero filtered tests under
+`--ignored`; libtest correctly excludes the six ordinary path/shim tests.
+An independent validator compares the compiled ignored names, source
+inventory and every passed name: all three sets contain exactly the same
+82 functions. The six ordinary names are recorded separately; no oracle is
+filtered. The original wrapper result is retained alongside the accepted
+`k142-core-oracle-validation-accepted.json` evidence. No test assertion or
+expected oracle count was changed, and no third oracle rerun was needed.
+
+Native Windows acceptance also passes all 17 inventory-tool tests, five
+Node tool/report tests, warnings-denied Rust 1.95 MSVC Clippy, regeneration,
+`--check-cases` and the original suite `--check`. All thirteen final Rust,
+fixture and Node tool files have identical macOS/Windows SHA-256 values.
+The Windows-regenerated case JSON is byte-identical to macOS, SHA-256
+`fb146ef590f405d0b386f4ef88a593b95f4aa1e79329a1f58ada4207c3e0c5b4`.
+The compatibility JSON files are explicitly LF in Git attributes so a
+Windows checkout cannot alter the measurement-byte digest.
+An isolated native `core.autocrlf=true` checkout reproduces all three JSON
+hashes unchanged (`k142-lf-checkout-accepted.json`); its independent temporary
+index does not modify the validation repository's main index or HEAD.
+
+Windows logs/records live under
+`B:/BlueIce/tmp/bluets-k132-20261016-166bzf/`: `k142-{tool-tests,node-tests,tool-clippy,regenerate,case-check,suite-check}.log`,
+the final `k142-typescript-82-accepted.log`, and the independent accepted
+JSON above. The final oracle log SHA-256 is
+`6d4b0242e13f30b406fcce877312e268b62626c890a5378e55f9ef0c1c402d58`.
+The complete local workspace log SHA-256 is
+`3de79b1f5e8a44f5b53d03457ea1ff8f4156bf1b679e29c14a0933bb8d4a3da7`.
+The unchanged refusal inventory reproduces 213 sites in eleven areas.
+No production compiler/runtime or oracle input changed after the measured
+source revision. AC-K14.2 is complete; AC-K14.3–AC-K14.6 remain open.

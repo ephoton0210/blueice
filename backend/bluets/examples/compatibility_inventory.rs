@@ -4,6 +4,16 @@
 
 //! Regenerate/check the suite inventory from one immutable source revision.
 
+#[path = "../tests/fixtures/compatibility_inventory/case_inline.rs"]
+mod case_inline;
+#[path = "../tests/fixtures/compatibility_inventory/case_registry.rs"]
+mod case_registry;
+#[path = "../tests/fixtures/compatibility_inventory/case_report.rs"]
+mod case_report;
+#[path = "../tests/fixtures/compatibility_inventory/case_sources.rs"]
+mod case_sources;
+#[path = "../tests/fixtures/compatibility_inventory/case_supplement.rs"]
+mod case_supplement;
 #[path = "../tests/fixtures/compatibility_inventory/inventory.rs"]
 mod inventory;
 #[path = "../tests/fixtures/compatibility_inventory/rust_facts.rs"]
@@ -18,6 +28,47 @@ fn main() -> snapshot::Result<()> {
     let artifact = directory.join(inventory::ARTIFACT);
     let document = directory.join("COMPATIBILITY_INVENTORY.md");
     match arguments.first().map(String::as_str) {
+        Some("--write-cases") if arguments.len() == 3 => {
+            let tree = snapshot::Snapshot::read(&root, &arguments[1])?;
+            let suites = inventory::generate(&tree)?;
+            let measurement = std::fs::read(&arguments[2])?;
+            let report = case_report::generate(&tree, &suites, &measurement)?;
+            let original = std::fs::read_to_string(&document)?;
+            let updated = case_report::replace_section(&original, &case_report::markdown(&report))?;
+            std::fs::write(directory.join(case_report::ARTIFACT), serde_json::to_string_pretty(&report)? + "\n")?;
+            std::fs::write(directory.join(case_report::MEASUREMENT), measurement)?;
+            std::fs::write(document, updated)?;
+            println!("Regenerated {} cases in {} measured suites", report.counts.listed, report.suites.len());
+        }
+        Some("--check-cases") if arguments.len() == 1 => {
+            let recorded: serde_json::Value = serde_json::from_slice(&std::fs::read(directory.join(case_report::ARTIFACT))?)?;
+            let measurement = std::fs::read(directory.join(case_report::MEASUREMENT))?;
+            let tree = snapshot::Snapshot::read(&root, "HEAD")?;
+            let mut suites = inventory::generate(&tree)?;
+            if recorded["source_graph_sha256"] != suites.source_graph_sha256 {
+                return Err("case input graph differs from the measured tree".into());
+            }
+            suites.source_revision = recorded["source_revision"].as_str().filter(|revision|
+                revision.len() == 40 && revision.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                .ok_or("invalid recorded case revision")?.to_string();
+            let report = case_report::generate(&tree, &suites, &measurement)?;
+            if serde_json::to_value(&report)? != recorded {
+                return Err("case inventory differs from its source or measurement".into());
+            }
+            let original = std::fs::read_to_string(document)?;
+            if case_report::replace_section(&original, &case_report::markdown(&report))? != original {
+                return Err("generated case Markdown differs from the recorded inventory".into());
+            }
+            println!("Case inventory and measurement agree ({} cases, {} suites)", report.counts.listed, report.suites.len());
+        }
+        Some("--cases-audit") if arguments.len() == 2 => {
+            let tree = snapshot::Snapshot::read(&root, &arguments[1])?;
+            let suites = inventory::generate(&tree)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&case_registry::audit(&tree, &suites.suites)?)?
+            );
+        }
         Some("--write") if arguments.len() == 2 => {
             let tree = snapshot::Snapshot::read(&root, &arguments[1])?;
             let measured = inventory::generate(&tree)?;
@@ -59,7 +110,10 @@ fn main() -> snapshot::Result<()> {
                 measured.suites.len()
             );
         }
-        _ => return Err("usage: compatibility_inventory --write <commit> | --check".into()),
+        _ => return Err(
+            "usage: compatibility_inventory --write <commit> | --check | --cases-audit <commit> | --write-cases <commit> <measurement.json> | --check-cases"
+                .into(),
+        ),
     }
     Ok(())
 }

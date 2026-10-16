@@ -4,6 +4,16 @@
 
 //! Source-derived compatibility inventory tooling (K.14.1).
 
+#[path = "fixtures/compatibility_inventory/case_inline.rs"]
+mod case_inline;
+#[path = "fixtures/compatibility_inventory/case_registry.rs"]
+mod case_registry;
+#[path = "fixtures/compatibility_inventory/case_report.rs"]
+mod case_report;
+#[path = "fixtures/compatibility_inventory/case_sources.rs"]
+mod case_sources;
+#[path = "fixtures/compatibility_inventory/case_supplement.rs"]
+mod case_supplement;
 #[path = "fixtures/compatibility_inventory/inventory.rs"]
 mod inventory;
 #[path = "fixtures/compatibility_inventory/rust_facts.rs"]
@@ -27,7 +37,7 @@ fn rust_case_facts_preserve_scope_and_ignore_literal_attribute_text() {
     assert_eq!(facts.modules.len(), 1);
     assert_eq!(facts.modules[0].name, "external");
     assert_eq!(facts.modules[0].path.as_deref(), Some("support/custom.rs"));
-    assert_eq!(facts.arrays.len(), 3);
+    assert_eq!(facts.arrays.len(), 4);
     assert_eq!(facts.arrays[0].scope, "");
     assert_eq!(facts.arrays[0].binding, "CASES");
     assert_eq!(facts.arrays[0].labels, ["first", "second"]);
@@ -37,11 +47,291 @@ fn rust_case_facts_preserve_scope_and_ignore_literal_attribute_text() {
     assert_eq!(facts.arrays[2].scope, "pinned");
     assert_eq!(facts.arrays[2].binding, "for@0");
     assert_eq!(facts.arrays[2].labels, ["es2022", "commonjs"]);
+    assert_eq!(
+        facts.arrays[3].rows,
+        [
+            vec!["Target::Es2022", "None"],
+            vec!["Target::Es2020", "Some(false)"]
+        ]
+    );
+    assert_eq!(facts.program_vectors.len(), 1);
+    assert_eq!(facts.program_vectors[0].scope, "programs");
+    assert_eq!(
+        facts.program_vectors[0].labels,
+        ["first-program", "second-program"]
+    );
+    let controls: Vec<_> = facts
+        .calls
+        .iter()
+        .filter(|call| call.scope == "controls" && call.function == "accepts")
+        .collect();
+    assert_eq!(controls.len(), 2);
+    assert_eq!(
+        controls[0].arguments,
+        ["const value = 1;", "options", "true"]
+    );
 }
 
 #[test]
 fn malformed_rust_is_an_inventory_error() {
     assert!(rust_facts::parse("fn broken( {").is_err());
+}
+
+#[test]
+fn measurement_binding_rejects_partial_forged_or_foreign_evidence() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let inventory = inventory::generate(&tree).unwrap();
+    let rows: Vec<_> = inventory
+        .suites
+        .iter()
+        .map(|suite| {
+            serde_json::json!({
+                "harness": suite.harness, "test_names": suite.ignored_tests,
+                "pinned_tests": suite.ignored_tests, "conclusion":"success",
+                "passed":suite.ignored_tests.len(), "failed":0,"ignored":0,"filtered":0,
+                "log_sha256":"a".repeat(64)
+            })
+        })
+        .collect();
+    let valid = serde_json::json!({"schema":1,"typescript":"5.9.3",
+        "source_revision":inventory.source_revision,"source_graph_sha256":inventory.source_graph_sha256,
+        "platform":"darwin-arm64","conclusion":"success","finished_at":"2026-10-16T13:06:01.804Z","suites":rows});
+    case_report::validate_measurement(&inventory, &valid).unwrap();
+    for (pointer, value) in [
+        ("/conclusion", serde_json::json!("in_progress")),
+        ("/source_graph_sha256", serde_json::json!("foreign")),
+        ("/source_revision", serde_json::json!("foreign")),
+        ("/typescript", serde_json::json!("5.8.0")),
+        ("/platform", serde_json::json!("win32-x64")),
+        ("/finished_at", serde_json::Value::Null),
+        ("/suites/0/failed", serde_json::json!(1)),
+        ("/suites/0/ignored", serde_json::json!(1)),
+        ("/suites/0/filtered", serde_json::json!(1)),
+        ("/suites/0/passed", serde_json::json!(0)),
+        ("/suites/0/log_sha256", serde_json::json!("missing")),
+        ("/suites/0/pinned_tests", serde_json::json!([])),
+        ("/suites/0/test_names", serde_json::json!([])),
+        ("/suites/0/harness", serde_json::json!("foreign")),
+    ] {
+        let mut bad = valid.clone();
+        *bad.pointer_mut(pointer).unwrap() = value;
+        assert!(
+            case_report::validate_measurement(&inventory, &bad).is_err(),
+            "{pointer}"
+        );
+    }
+    let mut missing = valid.clone();
+    missing["suites"].as_array_mut().unwrap().pop();
+    assert!(case_report::validate_measurement(&inventory, &missing).is_err());
+    let mut duplicate = valid.clone();
+    duplicate["suites"][1] = duplicate["suites"][0].clone();
+    assert!(case_report::validate_measurement(&inventory, &duplicate).is_err());
+    let report =
+        case_report::generate(&tree, &inventory, &serde_json::to_vec(&valid).unwrap()).unwrap();
+    assert_eq!(report.counts.listed, report.counts.checked);
+    assert_eq!(
+        report.counts.comparison_cases,
+        report.counts.agreements + report.counts.open + report.counts.refused
+    );
+    assert_eq!(
+        report.counts.listed,
+        report.counts.comparison_cases
+            + report.counts.reference_only
+            + report.counts.boundary_controls
+    );
+    assert!(report.counts.open > 0 && report.counts.refused > 0);
+    let text = case_report::markdown(&report);
+    let original = "intro\n## 2. Subset\nunchanged";
+    let once = case_report::replace_section(original, &text).unwrap();
+    assert_eq!(case_report::replace_section(&once, &text).unwrap(), once);
+    assert!(case_report::replace_section(case_report::START, &text).is_err());
+    assert_eq!(
+        case_report::digest(b"abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+    assert_eq!(case_report::ARTIFACT, "COMPATIBILITY_CASES.json");
+    assert_eq!(case_report::MEASUREMENT, "COMPATIBILITY_MEASUREMENT.json");
+}
+
+#[test]
+fn recorded_case_rates_regenerate_from_the_source_and_complete_measurement() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let directory = root.join(inventory::DIRECTORY);
+    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let mut suites = inventory::generate(&tree).unwrap();
+    let recorded: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.join(case_report::ARTIFACT)).unwrap())
+            .unwrap();
+    assert_eq!(recorded["source_graph_sha256"], suites.source_graph_sha256);
+    suites.source_revision = recorded["source_revision"].as_str().unwrap().to_string();
+    let bytes = std::fs::read(directory.join(case_report::MEASUREMENT)).unwrap();
+    let actual = case_report::generate(&tree, &suites, &bytes).unwrap();
+    assert_eq!(serde_json::to_value(&actual).unwrap(), recorded);
+    let document = std::fs::read_to_string(directory.join("COMPATIBILITY_INVENTORY.md")).unwrap();
+    assert_eq!(
+        case_report::replace_section(&document, &case_report::markdown(&actual)).unwrap(),
+        document
+    );
+}
+
+#[test]
+fn json_case_identity_keeps_configurations_with_the_same_entry_separate() {
+    let source = r#"{"version":"5.9.3","cases":[{"entry":"a.ts","target":"ES5"},{"entry":"a.ts","target":"ES2022"}]}"#;
+    let cases = case_sources::json_cases("record.json", source, "/cases", "configuration").unwrap();
+    assert_eq!(cases.len(), 2);
+    assert_eq!(cases[0].label, cases[1].label);
+    assert_ne!(cases[0].id, cases[1].id);
+    assert_eq!(cases[1].selector, "/cases/1");
+    for bad in [
+        r#"{"version":"5.8.0","cases":[{}]}"#,
+        r#"{"typescript":"5.9.2","cases":[{}]}"#,
+        r#"{"cases":[{"id":"same"},{"id":"same"}]}"#,
+        r#"{"cases":[]}"#,
+        r#"{"cases":[true]}"#,
+    ] {
+        assert!(case_sources::json_cases("bad.json", bad, "/cases", "program").is_err());
+    }
+    assert!(case_sources::json_cases("missing.json", source, "/observations", "program").is_err());
+    assert_eq!(
+        case_sources::json_cases("cli.json", r#"[{"name":"native"}]"#, "", "configuration")
+            .unwrap()[0]
+            .label,
+        "native"
+    );
+}
+
+#[test]
+fn tsv_case_sources_preserve_header_offsets_and_reject_silent_row_loss() {
+    let cases = case_sources::tsv_cases(
+        "matrix.tsv",
+        "case\tverdict\na\taccept\nb\treject\n",
+        true,
+        "program",
+    )
+    .unwrap();
+    assert_eq!(cases.len(), 2);
+    assert_eq!(cases[0].selector, "line:2");
+    for bad in [
+        "",
+        "a",
+        "\taccept",
+        "a\taccept\na\taccept\n",
+        "a\taccept\nb\treject\textra\n",
+    ] {
+        assert!(case_sources::tsv_cases("bad.tsv", bad, false, "program").is_err());
+    }
+}
+
+#[test]
+fn known_gaps_and_refusals_remain_in_the_denominator_but_not_the_agreement_numerator() {
+    use case_sources::{classify, Comparison};
+    let mut cases = case_sources::json_cases(
+        "record.json",
+        r#"{"cases":[{"id":"scope-ok"},{"id":"scope-gap"},{"id":"scope-refused"}]}"#,
+        "/cases",
+        "program",
+    )
+    .unwrap();
+    classify(
+        &mut cases,
+        &["gap".into()],
+        "scope-",
+        Comparison::Open,
+        "known checker gap",
+    )
+    .unwrap();
+    classify(
+        &mut cases,
+        &["refused".into()],
+        "scope-",
+        Comparison::Refused,
+        "owner/subset policy",
+    )
+    .unwrap();
+    assert_eq!(cases.len(), 3);
+    assert_eq!(
+        cases
+            .iter()
+            .filter(|case| case.comparison == Comparison::Compared)
+            .count(),
+        1
+    );
+    assert_eq!(cases[1].reason.as_deref(), Some("known checker gap"));
+    assert!(classify(
+        &mut cases,
+        &["missing".into()],
+        "scope-",
+        Comparison::Open,
+        "gap"
+    )
+    .is_err());
+    assert!(classify(
+        &mut cases,
+        &["gap".into()],
+        "scope-",
+        Comparison::Open,
+        "gap"
+    )
+    .is_err());
+}
+
+#[test]
+fn source_family_adapter_counts_the_actual_known_gaps_and_refusals() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let suites = inventory::generate(&tree).unwrap();
+    let suite = suites
+        .suites
+        .iter()
+        .find(|suite| suite.harness.ends_with("/diagnostic_source_families.rs"))
+        .unwrap();
+    let cases = case_registry::primary(&tree, suite).unwrap().unwrap();
+    let facts = rust_facts::parse(tree.source(&suite.harness).unwrap()).unwrap();
+    for (binding, comparison) in [
+        ("known_checker_gaps", case_sources::Comparison::Open),
+        ("subset_refusals", case_sources::Comparison::Refused),
+    ] {
+        let expected = &facts
+            .arrays
+            .iter()
+            .find(|array| array.binding == binding)
+            .unwrap()
+            .labels;
+        assert_eq!(
+            cases
+                .iter()
+                .filter(|case| case.comparison == comparison)
+                .count(),
+            expected.len()
+        );
+    }
+    assert_eq!(
+        cases.len(),
+        serde_json::from_str::<serde_json::Value>(
+            tree.source("backend/bluets/tests/fixtures/diagnostics/source-families.json")
+                .unwrap()
+        )
+        .unwrap()["cases"]
+            .as_array()
+            .unwrap()
+            .len()
+    );
+}
+
+#[test]
+fn case_source_audit_accounts_for_each_suite_without_publishing_a_partial_pass_rate() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let inventory = inventory::generate(&tree).unwrap();
+    let audit = case_registry::audit(&tree, &inventory.suites).unwrap();
+    assert_eq!(audit["publishable"], false);
+    let primary = audit["primary_sources"].as_array().unwrap();
+    let missing = audit["requires_inline_provider"].as_array().unwrap();
+    assert_eq!(primary.len() + missing.len(), inventory.suites.len());
+    assert!(primary
+        .iter()
+        .all(|row| row["primary_observations"].as_u64().unwrap() > 0));
 }
 
 #[test]
@@ -60,6 +350,107 @@ fn repository_paths_cannot_escape_or_use_host_specific_roots() {
             snapshot::relative("backend/bluets/tests", path).is_err(),
             "{path}"
         );
+    }
+}
+
+#[test]
+fn native_only_core_controls_never_inflate_direct_agreement() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let inventory = inventory::generate(&tree).unwrap();
+    let suite = inventory
+        .suites
+        .iter()
+        .find(|suite| suite.harness.ends_with("/typescript_oracle.rs"))
+        .unwrap();
+    let facts = rust_facts::parse(tree.source(&suite.harness).unwrap()).unwrap();
+    let cases = case_inline::programs(&tree, suite).unwrap().unwrap();
+    let primary = case_inline::array(&facts, "", "CASES").unwrap();
+    assert_eq!(
+        cases
+            .iter()
+            .filter(|case| case.comparison == case_sources::Comparison::Compared)
+            .count(),
+        primary.labels.len()
+    );
+    let controls: Vec<_> = cases
+        .iter()
+        .filter(|case| case.comparison == case_sources::Comparison::ReferenceOnly)
+        .collect();
+    assert!(!controls.is_empty());
+    assert!(controls.iter().all(|case| case
+        .reason
+        .as_deref()
+        .is_some_and(|reason| !reason.is_empty())));
+    assert!(controls
+        .iter()
+        .any(|case| case.selector.contains("pinned_static_class_method_shell")));
+    assert!(controls
+        .iter()
+        .any(|case| case.selector.contains("entry-write")));
+}
+
+#[test]
+fn supplementary_cases_distinguish_comparison_sides_and_owner_only_controls() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let inventory = inventory::generate(&tree).unwrap();
+    let project = inventory
+        .suites
+        .iter()
+        .find(|suite| suite.harness.ends_with("/project_config.rs"))
+        .unwrap();
+    let extras = case_supplement::additional(&tree, project).unwrap();
+    assert_eq!(
+        extras
+            .iter()
+            .filter(|case| case.comparison == case_sources::Comparison::Compared)
+            .count(),
+        1
+    );
+    assert_eq!(
+        extras
+            .iter()
+            .filter(|case| case.comparison == case_sources::Comparison::BoundaryControl)
+            .count(),
+        1
+    );
+    for suite in &inventory.suites {
+        let cases = case_registry::cases(&tree, suite).unwrap();
+        assert!(!cases.is_empty(), "{}", suite.harness);
+        assert_eq!(
+            cases
+                .iter()
+                .map(|case| &case.id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            cases.len(),
+            "{}",
+            suite.harness
+        );
+        assert!(cases
+            .iter()
+            .all(|case| tree.blobs.contains_key(&case.source)));
+    }
+}
+
+#[test]
+fn map_configuration_products_keep_their_versioned_matrix_origin() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let inventory = inventory::generate(&tree).unwrap();
+    for stem in ["source_map_publication", "source_map_tokens_oracle"] {
+        let suite = inventory
+            .suites
+            .iter()
+            .find(|suite| suite.harness.ends_with(&format!("/{stem}.rs")))
+            .unwrap();
+        let base = case_registry::primary(&tree, suite).unwrap().unwrap();
+        let cases = case_supplement::configurations(&tree, suite, base.clone()).unwrap();
+        assert!(cases.len() > base.len());
+        assert!(cases
+            .iter()
+            .all(|case| case.source.ends_with(".tsv") && case.selector.starts_with("line:")));
     }
 }
 
@@ -183,6 +574,8 @@ fn immutable_tree_resolves_nested_modules_and_refuses_missing_inputs() {
     fixture.write(unicode, "export const value = 1;\n");
     let production = "backend/bluets/src/compatibility_inventory.rs";
     fixture.write(production, "pub const INCLUDED: bool = true;\n");
+    let data = "backend/bluets/tests/fixtures/recorded-programs.json";
+    fixture.write(data, r#"{"version":"5.9.3","cases":[{"id":"program"}]}"#);
     let revision = fixture.commit();
     let tree = snapshot::Snapshot::read(&fixture.0, &revision).unwrap();
     assert!(
@@ -193,6 +586,7 @@ fn immutable_tree_resolves_nested_modules_and_refuses_missing_inputs() {
         tree.blobs.contains_key(production),
         "tooling exclusions must not hide production source"
     );
+    assert!(tree.source(data).unwrap().contains("program"));
     let measured = inventory::generate(&tree).unwrap();
     assert_eq!(measured.suites.len(), 1);
     assert_eq!(measured.suites[0].ignored_tests, ["nested::child::witness"]);

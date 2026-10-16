@@ -678,8 +678,11 @@ Entry condition: K.12 and K.13 are closed or each open row is named as a gap in 
     - *Evidence:* PLAN.md, "AC-K14.1 Source-derived suite inventory" (2026-10-16):
       `COMPATIBILITY_SUITES.json` at `26a3941b2`, 100 suites / 244 ignored Rust functions,
       identical Windows/macOS generation, seven tool tests on each OS and complete local workspace gate.
-- [ ] **AC-K14.2 Pass rate** recomputed over the versioned case list (fixture directories and programs, per
+- [x] **AC-K14.2 Pass rate** recomputed over the versioned case list (fixture directories and programs, per
   suite) with numerator and denominator printed per suite.
+    - *Evidence:* PLAN.md, "AC-K14.2 Versioned program/configuration measurement" (2026-10-16):
+      12,511 listed assertions; 12,010/12,028 direct agreements, six open and twelve refused;
+      100/100 measured suites, Windows 82/82, native tool/JSON verification and complete local workspace gate.
 - [ ] **AC-K14.3 J.6.3 gates** (fmt/Clippy, workspace tests with ignored oracles, coverage) green on every
   CI platform in one hosted run.
 - [ ] **AC-K14.4 Row accounting.** Every inventory row is labelled closed / open / refused with a
