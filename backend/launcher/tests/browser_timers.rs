@@ -398,6 +398,27 @@ fn real_pages_report_original_emitted_bluets_and_javascript_module_positions() {
     for (script_type, source, coordinates, extension, emitted) in [
         (
             "application/x-blueice-typescript",
+            "const input: any=null;for(const value of\n input){}",
+            "2:2",
+            "ts",
+            true,
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            "export const marker: number=0;await 0;const input: any=null;for await(const value of\n input){}",
+            "2:2",
+            "ts",
+            true,
+        ),
+        (
+            "module",
+            "var record=Proxy.revocable({},{}),input=record.proxy;record.revoke();for(var key in\n input){}",
+            "2:2",
+            "js",
+            false,
+        ),
+        (
+            "application/x-blueice-typescript",
             "const Base: any=0;const C=class extends\n Base {};",
             "2:2",
             "ts",

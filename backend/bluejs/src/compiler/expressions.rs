@@ -1387,21 +1387,16 @@ impl Compiler {
                 DeclKind::Var,
             )?;
         }
-        self.expression(right)?;
         // A for-in loop's iterator is the engine's own record of the walk over
         // the prototype chain, not a call into the ECMAScript iterator protocol.
-        if for_in {
-            self.emit(Opcode::ForInKeys, 0)?;
+        let acquisition = if for_in {
+            Opcode::ForInKeys
+        } else if is_await {
+            Opcode::GetAsyncIterator
         } else {
-            self.emit(
-                if is_await {
-                    Opcode::GetAsyncIterator
-                } else {
-                    Opcode::GetIterator
-                },
-                0,
-            )?;
-        }
+            Opcode::GetIterator
+        };
+        self.expression_with_operation(right, acquisition, 0)?;
         self.emit(Opcode::InitializeBinding, iterator)?;
         let async_handler = if is_await {
             let index = self.metadata_index(self.bytecode.handlers.len())?;
@@ -1422,13 +1417,15 @@ impl Compiler {
         };
         let start = self.offset();
         self.emit(Opcode::GetBinding, iterator)?;
-        let exit = if is_await {
-            self.emit(Opcode::AsyncIteratorNext, 0)?;
-            self.emit(Opcode::Await, 0)?;
-            self.emit(Opcode::AsyncIteratorStep, 0)?
-        } else {
-            self.emit(Opcode::IteratorStep, 0)?
-        };
+        let exit = self.with_expression_owner(right, |compiler| {
+            if is_await {
+                compiler.emit(Opcode::AsyncIteratorNext, 0)?;
+                compiler.emit(Opcode::Await, 0)?;
+                compiler.emit(Opcode::AsyncIteratorStep, 0)
+            } else {
+                compiler.emit(Opcode::IteratorStep, 0)
+            }
+        })?;
         self.loops.push(Loop {
             labels,
             breakable: true,

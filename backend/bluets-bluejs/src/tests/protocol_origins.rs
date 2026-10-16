@@ -74,3 +74,35 @@ fn direct_dependency_protocol_sources_survive_await_and_field_modes() {
         }
     }
 }
+
+#[test]
+fn direct_iteration_loops_remain_outside_the_admitted_runtime_surface() {
+    for (module_only, source) in [
+        (false, "const input: any=null;for(const value of input){}"),
+        (false, "const input: any=null;for(const key in input){}"),
+        (
+            true,
+            "const input: any=null;for await(const value of input){}",
+        ),
+    ] {
+        let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
+        if !module_only {
+            assert!(
+                matches!(
+                    compile_direct_script(ENTRY, &loader, CompilerOptions::default()),
+                    Err(BridgeError::UnsupportedRuntimeTarget { .. })
+                ),
+                "{source}"
+            );
+        }
+        let module = format!("export const marker: number=0;{source}");
+        let loader = MapLoader::from([ModuleSource::new(GRAPH_ENTRY, &module)]);
+        assert!(
+            matches!(
+                compile_direct_module_graph(GRAPH_ENTRY, &loader, CompilerOptions::default()),
+                Err(BridgeError::UnsupportedRuntimeTarget { .. })
+            ),
+            "{module}"
+        );
+    }
+}

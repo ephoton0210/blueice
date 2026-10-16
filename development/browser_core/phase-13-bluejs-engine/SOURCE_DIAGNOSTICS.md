@@ -880,6 +880,62 @@ is `target/source-profile-origins-conformance-reuse-20261016.json`. This produce
 checkpoint does not close remaining operation-owner or lifecycle acceptance;
 M1q remains at 6/10.
 
+### Loop iteration operation owners
+
+The loop audit reproduces 28 wrong native-protocol locations across ordinary
+and aggressive-GC configurations. `for-in`, `for-of` and `for-await-of` had
+restored the enclosing statement owner after evaluating the right operand.
+Iterator acquisition and later steps therefore reported the loop header
+instead of the written operand.
+
+| Loop | Operations owned by the original right operand |
+| --- | --- |
+| `for-in` | `ForInKeys`, `IteratorStep` |
+| `for-of` | `GetIterator`, `IteratorStep` |
+| `for-await-of` | `GetAsyncIterator`, `AsyncIteratorNext`, `Await`, `AsyncIteratorStep` |
+
+The compiler uses the existing scoped expression owner for acquisition and
+step emission. It restores the surrounding owner before compiling binding
+targets and the body. Five public AST/inventory/recursive-bytecode controls
+cover ordinary, asynchronous and nested loops without adding debugger
+authority or changing executable instruction bytes.
+
+Native failures include noncallable iterator/next methods, primitive iterator
+or step results, revoked enumeration, primitive Proxy ownKeys/descriptor
+results and AsyncFromSync fallback. Ten callback controls retain an authored
+throw or existing rejection's own source and leave dynamic-function failures
+unavailable. Three suspended-loop contexts execute later unrelated code,
+observe a major collection, then settle the retained iterator result. Native
+validation, an authored value getter and a dynamic getter keep their distinct
+known/unavailable origins after resumption.
+
+Eighteen deferred JavaScript/emitted contexts cover classic, module and
+awaited-module entry; three additional module-root contexts include native
+JavaScript without an export and emitted TypeScript with its required original
+module marker. Three real Core/child contexts preserve the operand at 2:2.
+Direct BlueTS explicitly excludes these loop forms; five public classic/module
+refusal controls retain that boundary. This checkpoint does not add direct
+loop lowering or change TypeScript's top-level-await module requirement.
+
+The fixed-input replay passes 2,303 cases, zero failures and 16 existing ignored
+across 32 BlueJS, all 35 bridge and two launcher test executables plus the
+official MCP console selection. All 1,205 BlueJS library cases and all 61
+diagnostic groups pass. Formatting and full workspace/all-target build/Clippy
+pass. Five Rust inputs, 13,849 workspace/compiler inputs, seven runtimes and all
+70 selected test executable hashes remain fixed. The before-fix source manifest
+and failed public VM log are retained separately. Evidence is
+`target/loop-protocol-origins-source-20261016.json` and
+`target/loop-protocol-origins-validation-20261016.json`.
+
+The fresh complete pinned Test262 run matches M1p's 102,926-mode source/result
+inventory: 102,921 pass, one stale corpus, four exclusions, zero changed modes
+and no new failure or timeout. Comparison includes source hashes, expectations,
+features/flags, statuses and actual kind/phase/reason; timing and diagnostic
+message text are not comparison fields. The runner's exit 1 represents the five
+unchanged non-pass modes; the comparison succeeds.
+Abrupt iterator cleanup and the remaining operation-owner/queued/lifecycle
+matrix still require their own integrated evidence; M1q remains at 6/10.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger

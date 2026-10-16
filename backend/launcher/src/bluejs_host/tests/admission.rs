@@ -77,6 +77,76 @@ fn implicit_protocol_sources_survive_deferred_execution_in_each_language() {
 }
 
 #[test]
+fn admitted_loop_protocol_sources_survive_deferred_execution() {
+    for language in [
+        PageHostScriptLanguage::JavaScript,
+        PageHostScriptLanguage::BlueTsEmitted,
+    ] {
+        for (kind, prefix) in [
+            (PageHostScriptKind::Classic, ""),
+            (PageHostScriptKind::Module, "export const marker=0;"),
+            (PageHostScriptKind::Module, "export const marker=0;await 0;"),
+        ] {
+            for (typed,javascript) in [
+                ("const input: any=null;for(const value of\n input){}","var input=null;for(var value of\n input){}"),
+                ("const Factory: any=(globalThis as any).Proxy;const record: any=Factory.revocable({},{});const input: any=record.proxy;record.revoke();for(const key in\n input){}","var record=Proxy.revocable({},{}),input=record.proxy;record.revoke();for(var key in\n input){}"),
+                ("const input: any=null;async function fail(): Promise<void> {for await(const value of\n input){}}fail();","var input=null;async function fail(){for await(var value of\n input){}}fail();"),
+            ] {
+                let source=format!("{prefix}{}",if language==PageHostScriptLanguage::JavaScript {javascript} else {typed});
+                let id="blueice://page/loop-protocol.ts";
+                let messages=debugger_source_messages(PageHostScript {ordinal:0,language,kind,graph:graph(id,vec![PageHostSource::new(id,&source)])});
+                assert_eq!(messages.records.len(),1,"{language:?}/{kind:?}: {messages:?}; {source}");
+                let actual=messages.records[0].source.as_ref().map(|p|(p.filename.as_str(),p.line,p.column));
+                assert_eq!(actual,Some((id,2,2)),"{language:?}/{kind:?}: {messages:?}; {source}");
+            }
+        }
+    }
+}
+
+#[test]
+fn top_level_module_loop_protocol_sources_survive_deferred_execution() {
+    for (language, prefix) in [
+        (PageHostScriptLanguage::JavaScript, "await 0;"),
+        (
+            PageHostScriptLanguage::JavaScript,
+            "export const marker=0;await 0;",
+        ),
+        (
+            PageHostScriptLanguage::BlueTsEmitted,
+            "export const marker=0;await 0;",
+        ),
+    ] {
+        let input = if language == PageHostScriptLanguage::JavaScript {
+            "var input=null;for await(var value of\n input){}"
+        } else {
+            "const input: any=null;for await(const value of\n input){}"
+        };
+        let source = format!("{prefix}{input}");
+        let id = "blueice://page/module-loop.ts";
+        let messages = debugger_source_messages(PageHostScript {
+            ordinal: 0,
+            language,
+            kind: PageHostScriptKind::Module,
+            graph: graph(id, vec![PageHostSource::new(id, &source)]),
+        });
+        assert_eq!(
+            messages.records.len(),
+            1,
+            "{language:?}: {messages:?}; {source}"
+        );
+        let actual = messages.records[0]
+            .source
+            .as_ref()
+            .map(|p| (p.filename.as_str(), p.line, p.column));
+        assert_eq!(
+            actual,
+            Some((id, 2, 2)),
+            "{language:?}: {messages:?}; {source}"
+        );
+    }
+}
+
+#[test]
 fn computed_key_conversion_sources_survive_deferred_execution_in_each_language() {
     for language in [
         PageHostScriptLanguage::JavaScript,

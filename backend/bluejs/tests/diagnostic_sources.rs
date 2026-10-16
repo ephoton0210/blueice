@@ -1700,6 +1700,199 @@ fn asynchronous_delegate_protocol_failures_keep_the_original_operand_source() {
 }
 
 #[test]
+fn loop_protocol_failures_keep_the_original_iterated_operand_source() {
+    let cases = [
+        ("null iterable", "var input=null;for(var value of\n input){}"),
+        ("noncallable iterator", "var input={[Symbol.iterator]:0};for(var value of\n input){}"),
+        ("primitive iterator", "var input={[Symbol.iterator](){return 0;}};for(var value of\n input){}"),
+        ("noncallable next", "var input={[Symbol.iterator](){return {next:0};}};for(var value of\n input){}"),
+        ("primitive step", "var input={[Symbol.iterator](){return this;},next(){try{missing;}catch{}return 0;}};for(var value of\n input){}"),
+        ("revoked enumeration", "var record=Proxy.revocable({},{}),input=record.proxy;record.revoke();for(var key in\n input){}"),
+        ("primitive ownKeys", "var input=new Proxy({},{ownKeys(){try{missing;}catch{}return 0;}});for(var key in\n input){}"),
+        ("primitive descriptor", "var input=new Proxy({},{ownKeys(){return ['value'];},getOwnPropertyDescriptor(){return 0;}});for(var key in\n input){}"),
+    ];
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name, source) in cases {
+            let mut config = blueice_bluejs::VmConfig::default();
+            if aggressive_gc {
+                config.heap.nursery_capacity = 1;
+                config.heap.major_threshold_bytes = 1;
+            }
+            let mut vm = page_with_vm(Vm::new(config).unwrap());
+            assert!(
+                vm.execute_script(&mapped_expression_code(source)).is_err(),
+                "{name}"
+            );
+            let actual = observed(&mut vm);
+            let expected = Value::String("memory:///position.js:2:2".into());
+            if actual != expected {
+                failures.push((name, aggressive_gc, actual));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn async_loop_protocol_failures_keep_the_original_iterated_operand_source() {
+    let inputs = [
+        ("null iterable", "null"),
+        ("noncallable iterator", "{[Symbol.asyncIterator]:0}"),
+        (
+            "primitive iterator",
+            "{[Symbol.asyncIterator](){return 0;}}",
+        ),
+        (
+            "noncallable next",
+            "{[Symbol.asyncIterator](){return {next:0};}}",
+        ),
+        (
+            "primitive async step",
+            "{[Symbol.asyncIterator](){return this;},next(){return Promise.resolve(0);}}",
+        ),
+        (
+            "primitive sync fallback",
+            "{[Symbol.iterator](){return this;},next(){return 0;}}",
+        ),
+    ];
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name, input) in inputs {
+            let source=format!("var input={input};async function fail(){{for await(var value of\n input){{}}}}fail();");
+            let mut config = blueice_bluejs::VmConfig::default();
+            if aggressive_gc {
+                config.heap.nursery_capacity = 1;
+                config.heap.major_threshold_bytes = 1;
+            }
+            let mut vm = page_with_vm(Vm::new(config).unwrap());
+            vm.install_host_rejection_tracking().unwrap();
+            vm.execute_script(&mapped_expression_code(&source)).unwrap();
+            vm.run_host_microtask_checkpoint().unwrap();
+            vm.run_browser_task_turn(1).unwrap();
+            let batch = vm.drain_host_console().unwrap();
+            assert_eq!(batch.records.len(), 1, "{name}: {batch:?}");
+            let actual = batch.records[0]
+                .source
+                .as_ref()
+                .map(|p| (p.filename.as_str(), p.line, p.column));
+            if actual != Some(("memory:///position.js", 2, 2)) {
+                failures.push((name, aggressive_gc, format!("{actual:?}")));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn loop_protocol_scopes_preserve_callback_origins_and_dynamic_gaps() {
+    let cases = [
+        ("var input={[Symbol.iterator](){\n throw 'callback';}};for(var value of\n input){}",Some((2,2)),false),
+        ("var input={[Symbol.iterator](){return this;},next(){\n throw 'callback';}};for(var value of\n input){}",Some((2,2)),false),
+        ("var input=new Proxy({},{ownKeys(){\n throw 'callback';}});for(var key in\n input){}",Some((2,2)),false),
+        ("var input={[Symbol.iterator]:Function(\"throw 'unknown';\")};for(var value of\n input){}",None,false),
+        ("var input={[Symbol.iterator](){return this;},next:Function(\"throw 'unknown';\")};for(var value of\n input){}",None,false),
+        ("var input=new Proxy({},{ownKeys:Function(\"throw 'unknown';\")});for(var key in\n input){}",None,false),
+        ("var input={[Symbol.asyncIterator](){return this;},next(){\n throw 'callback';}};async function fail(){for await(var value of\n input){}}fail();",Some((2,2)),true),
+        ("var rejected=\n Promise.reject('callback');var input={[Symbol.asyncIterator](){return this;},next(){return rejected;}};async function fail(){for await(var value of\n input){}}fail();",Some((2,2)),true),
+        ("var input={[Symbol.asyncIterator](){return this;},next:Function(\"throw 'unknown';\")};async function fail(){for await(var value of\n input){}}fail();",None,true),
+        ("var input={[Symbol.iterator](){return this;},next:Function(\"throw 'unknown';\")};async function fail(){for await(var value of\n input){}}fail();",None,true),
+    ];
+    for (source, expected, asynchronous) in cases {
+        let mut vm = page();
+        vm.execute_script(&compile(&parse("onerror=null;").unwrap()).unwrap())
+            .unwrap();
+        vm.install_host_rejection_tracking().unwrap();
+        let outcome = vm.execute_script(&mapped_expression_code(source));
+        assert_eq!(outcome.is_ok(), asynchronous, "{source}");
+        vm.run_host_microtask_checkpoint().unwrap();
+        vm.run_browser_task_turn(1).unwrap();
+        let batch = vm.drain_host_console().unwrap();
+        assert_eq!(batch.records.len(), 1, "{source}: {batch:?}");
+        let actual = batch.records[0].source.as_ref().map(|p| (p.line, p.column));
+        assert_eq!(actual, expected, "{source}: {batch:?}");
+    }
+}
+
+#[test]
+fn loop_protocol_ownership_preserves_ast_inventory_and_recursive_instruction_bytes() {
+    fn same_code(left: &blueice_bluejs::Bytecode, right: &blueice_bluejs::Bytecode) {
+        assert_eq!(left.bytes(), right.bytes());
+        let left = left.child_code_units().collect::<Vec<_>>();
+        let right = right.child_code_units().collect::<Vec<_>>();
+        assert_eq!(left.len(), right.len());
+        for (left, right) in left.into_iter().zip(right) {
+            same_code(left, right);
+        }
+    }
+    for source in [
+        "for(var value of [1]){}",
+        "for(var key in {value:1}){}",
+        "async function iterate(){for await(const value of [1]){}}iterate();",
+        "var value;outer:for([value] of [[1]]){for(var key in {}){continue outer;}}",
+        "function nested(){for(var value of [1]){return value;}}nested();",
+    ] {
+        let ordinary = parse(source).unwrap();
+        let (captured, _) = blueice_bluejs::parse_with_diagnostic_node_spans(source).unwrap();
+        assert_eq!(ordinary, captured);
+        let program = BlueJsProgramV1::Script(ordinary);
+        let mut registry = BlueJsProgramRegistry::default();
+        let plain = registry.install(identity("plain-loop"), &program).unwrap();
+        let diagnostic = registry
+            .install_for_diagnostics(identity("diagnostic-loop"), &program)
+            .unwrap();
+        let shape = |program: &blueice_bluejs::BlueJsCompiledProgram| {
+            program
+                .ast_nodes()
+                .iter()
+                .map(|node| {
+                    (
+                        node.id().ordinal(),
+                        node.kind(),
+                        node.is_top_level_statement(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            shape(registry.get(plain).unwrap()),
+            shape(registry.get(diagnostic).unwrap())
+        );
+        same_code(
+            registry.get(plain).unwrap().bytecode(),
+            registry.get(diagnostic).unwrap().bytecode(),
+        );
+    }
+}
+
+#[test]
+fn suspended_loop_protocol_sources_survive_later_code_and_observed_major_collection() {
+    let body="var release;var pending=new Promise(function(resolve){release=resolve;});var input={[Symbol.asyncIterator](){return this;},next(){return pending;}};async function fail(){for await(var value of\n input){}}fail();";
+    for (setup,response,expected) in [
+        ("","0",Some((2,2))),
+        ("var result={done:false,get value(){\n throw 'callback';}};","result",Some((2,2))),
+        ("var result={done:false};Object.defineProperty(result,'value',{get:Function(\"throw 'unknown';\")});","result",None),
+    ] {
+        let source=format!("{setup}{body}");
+        let mut config=blueice_bluejs::VmConfig::default();
+        config.heap.nursery_capacity=1;config.heap.major_threshold_bytes=1;
+        let mut vm=page_with_vm(Vm::new(config).unwrap());
+        vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_expression_code(&source)).unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();
+        let before=vm.heap().stats().major_collections;
+        let later="try{throw 'noise';}catch{}for(var i=0;i<3000;i++){var garbage={i:i};}";
+        vm.execute_script(&compile(&parse(later).unwrap()).unwrap()).unwrap();
+        assert!(vm.heap().stats().major_collections>before,"collect before resuming retained code");
+        vm.execute_script(&compile(&parse(&format!("release({response});")).unwrap()).unwrap()).unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();vm.run_browser_task_turn(1).unwrap();
+        let batch=vm.drain_host_console().unwrap();assert_eq!(batch.records.len(),1,"{source}: {batch:?}");
+        let actual=batch.records[0].source.as_ref().map(|p|(p.filename.as_str(),p.line,p.column));
+        assert_eq!(actual,expected.map(|(line,column)|("memory:///position.js",line,column)),"{source}: {batch:?}");
+    }
+}
+
+#[test]
 fn implicit_protocol_scopes_preserve_callback_origins_and_later_operations() {
     for (source,expected) in [
         ("var Base=new Proxy(function(){},{get(){\n throw 'getter';}});class C extends\n Base {}", "memory:///position.js:2:2"),

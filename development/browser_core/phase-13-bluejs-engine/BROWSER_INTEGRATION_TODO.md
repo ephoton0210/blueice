@@ -52,6 +52,17 @@ remain open. See the
 and [rejection contract](HOST_PROMISE_REJECTIONS.md).
 
 **Current work — M1q original diagnostic source positions (in progress).**
+The operation-owner follow-up fixes 28 reproduced loop-protocol locations:
+for-in, for-of and for-await acquisition/step failures retain the written right
+operand. Ten callback controls, three resumed contexts after observed major GC,
+five AST/bytecode controls, 21 deferred contexts and three added real-page
+contexts pass. The related 70-executable Rust replay passes 2,303 cases, zero
+failures and 16 existing ignored. Formatting and workspace/all-target build/
+Clippy pass. The fresh complete Test262 comparison matches M1p at all 102,926
+modes: 102,921 pass, one stale corpus and four exclusions, with zero changed
+modes or new timeout. The completed profile checkpoint below remains separate
+evidence. M1q stays at 6/10.
+
 The producer/profile checkpoint passes 160 authenticated File DOM
 normal/deferred throw/report/rejection/dynamic-code contexts, 28 generated-helper/
 callback controls and eight real Core/child page contexts. Fixes remove duplicate
@@ -903,6 +914,22 @@ the full source-position requirement.
       compiler inputs, seven runtimes and all 189 selected test hashes stay fixed.
       Reuse the earlier Test262 result only after verifying identical adapter/
       worker/runner hashes, all 56,979 pinned corpus files and the saved inventory.
+- [x] Keep the iterated operand through for-in, for-of and for-await acquisition
+      and step operations. Reproduce 28 incorrect locations across normal and
+      aggressive-GC configurations; ten callback/rejection/dynamic controls
+      preserve independent origins. Five AST/inventory/recursive-bytecode
+      comparisons preserve ordinary instructions and debugger identities.
+- [x] Resume three loop protocols after later unrelated code and observed major
+      collection, retaining native, authored-getter and unknown-getter origins.
+      Twenty-one deferred JavaScript/emitted contexts and three added real-page
+      contexts pass. Five direct BlueTS refusal controls preserve its existing
+      excluded loop surface; emitted await fixtures retain original module markers.
+- [x] Pass loop ownership acceptance: 2,303 cases across 70 disjoint executables,
+      zero failures and 16 existing ignored. Full BlueJS library, related
+      iteration/async/GC/resource targets, all 35 bridge targets, launcher library,
+      real pages and official MCP console pass. Formatting and workspace/all-target
+      build/Clippy pass on five fixed Rust inputs. Fresh Test262 matches M1p's
+      complete 102,926-mode source/result inventory with zero changed modes.
 
 #### Remaining implementation and verification
 
@@ -1830,6 +1857,39 @@ stale corpus and four exclusions. Reuse evidence is
 `target/source-profile-origins-conformance-reuse-20261016.json`. Remaining
 operation-owner precision and the integrated queued-origin/lifecycle/resource
 matrix keep M1q at 6/10 and section H open.
+
+The loop-operation follow-up (2026-10-16) reproduces 28 incorrect positions
+in for-in, for-of and for-await acquisition/step failures. Scoped emission
+retains the written right operand through native iterator operations and
+awaited steps; binding targets and bodies keep their own owners. Ten callback,
+forwarded-rejection and dynamic-code controls preserve independent known or
+unavailable locations. Three suspended loops execute later unrelated code,
+observe major collection and retain the appropriate native/getter origin after
+resumption. Five AST/inventory/recursive-bytecode controls preserve ordinary
+instructions and debugger identities. Twenty-one deferred JavaScript/emitted
+contexts and three added real Core/child contexts preserve original 2:2.
+Five direct BlueTS refusal controls retain its explicitly excluded loop
+surface. Emitted top-level-await fixtures retain TypeScript's required original
+module marker; no grammar expansion is claimed.
+
+The fixed-input acceptance passes 2,303 cases, zero failures and 16 existing
+ignored across 70 disjoint executables: BlueJS 1,660, bridge 299, launcher 339
+and five official MCP console cases. The complete 1,205-case BlueJS library and
+all 61 diagnostic groups pass. Formatting and full workspace/all-target build/
+Clippy pass. Five Rust and 13,849 workspace/compiler inputs, seven runtimes and
+all 70 selected test hashes remain fixed. Evidence is
+`target/loop-protocol-origins-source-20261016.json` and
+`target/loop-protocol-origins-validation-20261016.json`; the before-fix source
+manifest and failed public VM log remain separate evidence.
+
+The fresh complete pinned Test262 run takes 357.72s including corpus validation
+and reporting. Every `(path, mode)` source hash, expectation, feature/flag,
+status and actual kind/phase/reason matches M1p across 102,926 modes. Results
+remain 102,921 pass, one stale corpus and four exclusions, with no changed mode,
+new failure or timeout. Runner exit 1 represents the five unchanged non-pass
+modes; the complete comparison succeeds. Abrupt iterator cleanup and remaining
+operation-owner/queued/lifecycle/resource acceptance keep M1q at 6/10 and
+section H open.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 
