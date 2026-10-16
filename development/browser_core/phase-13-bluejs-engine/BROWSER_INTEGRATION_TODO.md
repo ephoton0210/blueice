@@ -57,7 +57,18 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Module closure-referrer ownership is the current follow-up (2026-10-17).
+Module context-name ownership is the current follow-up (2026-10-17). Module
+entry copies names after replacing caller fields; displaced names are unleased,
+and debugger pauses clone the ambient allocation into both VM and continuation.
+Three small module/callback/debugger probes fail initially and now pass after
+staging new names and moving ambient ownership across pause/resume. A separate
+ShadowRealm probe reproduces a Promise capability created before name refusal;
+that preparation now precedes capability creation. Eleven expanded groups pass;
+all 628 selected cases, formatting and offline workspace/all-target Clippy pass.
+The source/artifact audit is recorded below. Source registries and continuation
+code/cell copies remain open; M1u stays the latest accepted milestone.
+
+The module closure-referrer checkpoint (2026-10-17) addresses these failures.
 Four small accounting/runtime/collection probes reproduced uncharged table/name
 storage, dead names after GC, creation without admission and a call-copy refusal
 after instruction consumption. All four now pass with weak-key reclamation,
@@ -1941,6 +1952,63 @@ Logs use `/private/tmp/blueice-module-referrer-` with selection names listed in
 `controls-run-20261017.log`; the fixed offline runner is `controls-20261017.py`.
 Final new-group and static logs are `{referrers,fmt,clippy}-20261017.log`.
 Receipt: `target/module-referrer-source-20261017.json` records source/log/
+executable hashes and staged/committed blob checks. No network/service replay,
+fresh full Test262, real Core/MCP replay or coverage is claimed; the wider
+M1z/native/integrated gates stay open.
+
+#### Module context-name ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: prepare module context-name storage before replacing caller fields
+or entering its frame. Keep displaced caller names charged through callbacks,
+return/throw/await and debugger ownership changes. A pause retains the original
+ambient allocation in the VM; resume, step, nested throw and abort move it via a
+scoped owner without cloning. ShadowRealm inheritance must refuse before Promise
+capability creation and hand the admitted name to the child without double
+counting. Every refusal restores or preserves its caller and refunds staging.
+
+- [x] Reproduce three finite module/callback/debugger failures and a separate
+      ShadowRealm capability-before-name-refusal failure; all now pass.
+- [x] Admit minimum/actual fallible name storage before module frame entry and
+      lease the caller allocation while code executes; reconcile all exits.
+- [x] Remove the continuation's ambient-name backup; move one allocation through
+      pause/resume/step/nested throw/abort and permit cleanup after failure.
+- [x] Prepare inherited names after required argument checks and before Promise
+      creation; transfer the buffer and reconcile parent/child contributions.
+- [x] Pass eleven expanded ownership/refusal/budget/module/debugger/realm groups.
+- [x] Pass the fixed bounded regression/static checks and record the source/
+      artifact audit with the checkpoint commit.
+- [ ] Complete source-registry, continuation identifier/code/cell-map and other
+      module-cache/service storage plus integrated acceptance. M1u remains the
+      latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-module-context-red-20261017.log`
+(zero passed, three failed): instantiation refusal clears the caller operand,
+a module callback reports zero native bytes for its 64-byte displaced caller
+name, and pause substitutes a cloned ambient allocation. Initial fixed log:
+`/private/tmp/blueice-module-context-development-20261017.log` (three passed).
+The separate `shadow-red-20261017.log` under the same prefix reports zero passed,
+one failed: refused inheritance has already increased Promise records from one
+to two. New name preparation precedes that capability and later registry copies.
+
+Eleven expanded groups pass. Exact-budget/one-byte controls validate new names;
+full-budget moves preserve absent, empty and reserved-capacity ambient names.
+Module return/throw/await and debugger pause/step/nested catch/terminal abort
+restore original pointers/capacity and release temporary owners. Later frame
+refusal refunds preparation before another account read can refresh it. One
+in-memory ShadowRealm import preserves its source and callable export while
+the shared ledger equals the sum of parent/child owners. Inputs are fixed tiny
+modules, short names and scalar budgets without represented large buffers.
+
+Final bounded validation: **628 passed, zero failed, zero ignored** across 35
+test executables. The eleven new groups join the prior 617 selected ownership/
+semantic/GC/debugger cases. The same seven pressure/large-allocation cases remain
+filtered. Formatting, `git diff --check` and offline workspace/all-target Clippy
+with warnings denied pass.
+
+Logs use `/private/tmp/blueice-module-context-` with selection names listed in
+`controls-run-20261017.log`; the fixed offline runner is `controls-20261017.py`.
+Final new-group and static logs are `{contexts,fmt,clippy}-20261017.log`.
+Receipt: `target/module-context-source-20261017.json` records source/log/
 executable hashes and staged/committed blob checks. No network/service replay,
 fresh full Test262, real Core/MCP replay or coverage is claimed; the wider
 M1z/native/integrated gates stay open.

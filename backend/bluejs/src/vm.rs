@@ -39,6 +39,7 @@ mod generator_entry;
 mod generator_resume;
 mod generator_storage;
 mod global_bindings;
+mod module_context;
 mod module_referrers;
 use frame_maps::PreparedFrameMaps;
 use generator_storage::OwnedGeneratorState;

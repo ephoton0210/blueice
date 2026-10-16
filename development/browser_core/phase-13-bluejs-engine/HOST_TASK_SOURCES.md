@@ -292,6 +292,25 @@ still replaces the caller's context. Generator resume retains its existing
 pre-extraction referrer preparation. Other module-name/code/cache/service copies
 remain separate open work.
 
+Module instantiation/evaluation prepares its context-name copy before replacing
+caller fields or entering the frame. A scoped name lease swaps the prepared
+allocation into the VM and owns the displaced caller allocation while module
+code runs. Return, throw and await restore the original caller buffer; entry
+refusal releases preparation and reconciles before returning to its caller.
+
+A debugger-paused module keeps its ambient name in the VM, while the suspended
+execution owns the module name. Resume, step, nested throw and abort move the
+ambient allocation into a scoped lease and back. Continuations no longer clone
+or retain a second ambient-name backup. Moving these existing owners requires
+no additional native budget and remains available during terminal cleanup.
+
+ShadowRealm import prepares the inherited name after the required argument
+coercion/type checks and before Promise capability creation. The parent leases
+that independent copy until it transfers into the child, then reconciles the
+parent contribution before admitting the child's active owner. Name-preparation
+refusal creates no capability. Full source-registry, continuation identifier/
+code/cell-map and other module-cache/service storage remain open work.
+
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
 accounting counts its capacity once as realm storage, independently of active

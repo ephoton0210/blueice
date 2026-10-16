@@ -92,7 +92,6 @@ pub(super) struct ModuleDebuggerContinuation {
     pub(super) execution: SuspendedModuleExecution,
     pub(super) iterators: IteratorRecords,
     pub(super) handlers: HandlerRecords,
-    pub(super) previous_module: Option<String>,
 }
 
 pub(super) struct NestedDebuggerPauseRequest {
@@ -1019,6 +1018,7 @@ impl Vm {
             .module_graph
             .take()
             .expect("nested module throw retains its linked graph");
+        let previous_module = self.take_module_name();
         self.restore_module_execution(root.execution);
         self.evaluating_linked = Some(std::mem::take(&mut graph.linked));
         let action = self.resolve_completion(
@@ -1038,7 +1038,7 @@ impl Vm {
             .expect("the paused entry remains in its linked graph");
         record.cells = root.execution.cells.clone();
         record.suspended = true;
-        self.active_module_name = root.previous_module.clone();
+        previous_module.restore(self);
         let outcome = match NestedThrowAction::classify(action) {
             NestedThrowAction::Handler(pc) => {
                 root.pc = pc;
@@ -1066,13 +1066,11 @@ impl Vm {
             .take()
             .expect("a nested module failure retains its entry root");
         let ModuleDebuggerContinuation {
-            module,
-            execution,
-            previous_module,
-            ..
+            module, execution, ..
         } = continuation;
+        let previous_module = self.take_module_name();
         self.restore_module_execution(execution);
-        self.active_module_name = previous_module;
+        previous_module.restore(self);
         let result = if error.is_catchable() {
             self.error_value(error).map(RuntimeError::Thrown)
         } else {

@@ -334,6 +334,7 @@ impl Vm {
                 "ShadowRealm.prototype.importValue requires exportName to be a string".into(),
             ));
         };
+        let mut inherited_module = Some(self.prepare_active_module_name_copy()?);
         let promise_constructor = self.global("Promise")?;
         let PromiseCapability {
             promise,
@@ -373,7 +374,12 @@ impl Vm {
                     child.text_module_sources = self.text_module_sources.clone();
                     child.bytes_module_sources = self.bytes_module_sources.clone();
                     child.module_source_registry = self.module_source_registry.clone();
-                    child.active_module_name = self.active_module_name.clone();
+                    child.active_module_name = inherited_module
+                        .take()
+                        .expect("the import transfers its referrer once")
+                        .into_name();
+                    self.reconcile_scheduling_ownership();
+                    child.synchronize_scheduling_usage()?;
                     child.remaining_instructions = child.config.instruction_budget;
                     let promise_value = child.dynamic_import(
                         Value::String(specifier.clone()),
@@ -420,6 +426,8 @@ impl Vm {
                 "this ShadowRealm is already mid-call".into(),
             )),
         };
+        drop(inherited_module);
+        self.reconcile_scheduling_ownership();
         let settled = match outcome {
             Ok(value) => self.call_native(resolve, Value::Undefined, vec![value], false),
             Err(_) => self

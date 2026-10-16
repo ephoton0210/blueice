@@ -908,8 +908,8 @@ impl Vm {
             execution,
             mut iterators,
             handlers,
-            previous_module,
         } = continuation;
+        let previous_module = self.take_module_name();
         self.restore_module_execution(execution);
         debug_assert!(self.evaluating_linked.is_none());
         self.evaluating_linked = Some(std::mem::take(&mut graph.linked));
@@ -938,7 +938,7 @@ impl Vm {
                     .expect("the stepped entry remains in its linked graph");
                 record.cells = execution.cells.clone();
                 record.suspended = true;
-                self.active_module_name = previous_module.clone();
+                previous_module.restore(self);
                 self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
                     module,
                     code,
@@ -946,7 +946,6 @@ impl Vm {
                     execution,
                     iterators,
                     handlers,
-                    previous_module,
                 });
                 self.store_module_graph(graph, false);
                 return Ok(VmDebuggerExecutionState::Paused {
@@ -956,7 +955,7 @@ impl Vm {
             }
             ModuleRun::Completed(outcome) => outcome,
         };
-        self.active_module_name = previous_module;
+        previous_module.restore(self);
         let mut awaiting = false;
         let mut result = match outcome {
             Ok(StraightLineExit::Return(value)) => Ok(value),
@@ -2480,17 +2479,29 @@ impl Vm {
         code: &Bytecode,
         cells: &mut HashMap<usize, ObjectId>,
     ) -> Result<(), RuntimeError> {
+        let result = self.initialize_module_record_inner(name, code, cells);
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn initialize_module_record_inner(
+        &mut self,
+        name: &str,
+        code: &Bytecode,
+        cells: &mut HashMap<usize, ObjectId>,
+    ) -> Result<(), RuntimeError> {
         // Only a module compiled as one gets here, and it has an entry.
         let entry = code
             .module_evaluate_entry
             .expect("a module has an evaluation entry") as usize;
+        let mut previous_module = self.prepare_module_name(name)?;
         self.enter_module_record(code, cells)?;
         let mut iterators = self.iterator_records(Vec::new());
         // The declaration prefix instantiates the module's hoisted functions;
         // each records the module it is created in (its [[ScriptOrModule]]),
         // which `import.meta` and `import()` inside it resolve against no
         // matter which module later calls it.
-        let previous_module = self.active_module_name.replace(name.to_string());
+        previous_module.swap_into(self);
         let result = self.interpret(
             code,
             &mut iterators,
@@ -2499,7 +2510,7 @@ impl Vm {
             Some(InterpreterSuspensionPoint::Offset(entry)),
             None,
         );
-        self.active_module_name = previous_module;
+        previous_module.restore(self);
         *cells = std::mem::take(&mut self.cells);
         self.stack.clear();
         self.active_scopes.clear();
@@ -2655,6 +2666,7 @@ impl Vm {
             let entry = code
                 .module_evaluate_entry
                 .expect("a linked module has an evaluation entry") as usize;
+            let mut previous_module = self.prepare_module_name(name)?;
             self.enter_module_record(
                 code,
                 &mut linked
@@ -2669,7 +2681,7 @@ impl Vm {
             self.remaining_instructions = self.config.instruction_budget;
             self.enter_scope(code, 0)?;
             let mut iterators = self.iterator_records(Vec::new());
-            let previous_module = self.active_module_name.replace(name.to_string());
+            previous_module.swap_into(self);
             // Park the graph's records where user code can reach them: a
             // deferred namespace observed by this module (or a module it
             // triggers) evaluates other modules of the same graph.
@@ -2686,7 +2698,7 @@ impl Vm {
                 .expect("module records are restored after the module body ran");
             match ModuleRun::classify(outcome) {
                 ModuleRun::Completed(Ok(StraightLineExit::Return(value))) => {
-                    self.active_module_name = previous_module;
+                    previous_module.restore(self);
                     let cells = std::mem::take(&mut self.cells);
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = cells;
@@ -2702,7 +2714,7 @@ impl Vm {
                     // evaluates. The continuation is attached to the Await
                     // promise and resumes in its own Promise job turn.
                     let execution = self.suspend_module_execution();
-                    self.active_module_name = previous_module;
+                    previous_module.restore(self);
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = execution.cells.clone();
                     record.suspended = true;
@@ -2728,7 +2740,7 @@ impl Vm {
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = execution.cells.clone();
                     record.suspended = true;
-                    self.active_module_name = previous_module.clone();
+                    previous_module.restore(self);
                     self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
                         module: name.to_string(),
                         code: code.clone(),
@@ -2736,12 +2748,11 @@ impl Vm {
                         execution,
                         iterators,
                         handlers,
-                        previous_module,
                     });
                     Ok(Value::Undefined)
                 }
                 ModuleRun::Completed(Err(error)) => {
-                    self.active_module_name = previous_module;
+                    previous_module.restore(self);
                     let cells = std::mem::take(&mut self.cells);
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = cells;

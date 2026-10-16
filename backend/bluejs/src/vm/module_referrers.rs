@@ -6,7 +6,10 @@
 
 use super::*;
 
-fn copy_referrer(name: &str, scope: Option<&SchedulingScope>) -> Result<String, RuntimeError> {
+pub(super) fn copy_referrer(
+    name: &str,
+    scope: Option<&SchedulingScope>,
+) -> Result<String, RuntimeError> {
     let mut copy = String::new();
     copy.try_reserve_exact(name.len())
         .map_err(|_| scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail))?;
