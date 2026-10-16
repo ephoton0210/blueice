@@ -1674,6 +1674,7 @@ impl Vm {
         receiver: Value,
         args: Vec<Value>,
         construct: bool,
+        entry_payload: execution_payload::ExecutionPayloadCharge,
     ) -> Result<Value, RuntimeError> {
         let Some((target, handler)) = self.heap.proxy(proxy)? else {
             return Err(RuntimeError::TypeError(
@@ -1683,6 +1684,9 @@ impl Vm {
         let name = if construct { "construct" } else { "apply" };
         let trap = self.proxy_trap(handler, name)?;
         if trap == Value::Undefined {
+            // Forward the same buffers; the target dispatch owns their next
+            // lease. The trap getter above still runs under the Proxy lease.
+            drop(entry_payload);
             return self.dispatch_call(Value::Object(target), receiver, args, construct);
         }
         if !self
@@ -1704,6 +1708,9 @@ impl Vm {
         } else {
             vec![Value::Object(target), receiver, arguments]
         };
+        // The argument array now owns the moved values, and the trap call
+        // takes its own receiver/argument lease.
+        drop(entry_payload);
         let result = self.call_object_callback(trap, Value::Object(handler), values)?;
         if construct && !matches!(result, Value::Object(_)) {
             return Err(RuntimeError::TypeError(

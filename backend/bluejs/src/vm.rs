@@ -29,6 +29,7 @@ mod debugger;
 mod diagnostic_accounting;
 mod errors;
 mod execution;
+mod execution_payload;
 mod for_in;
 mod functions;
 mod host_animation_frames;
@@ -866,6 +867,7 @@ struct Test262ForeignBufferMirror {
 /// outer interpreter's frame must survive both the nested graph's cleanup and
 /// an intervening collection.
 struct SuspendedModuleExecution {
+    payload_charge: execution_payload::ExecutionPayloadCharge,
     result_root: Option<RootId>,
     stack: Vec<Value>,
     bindings: Vec<Option<Value>>,
@@ -1234,6 +1236,8 @@ pub struct Vm {
     host_event_microtask_jobs: Option<usize>,
     host_scheduling: Option<SchedulingScope>,
     active_scheduling_bytes: usize,
+    displaced_execution_bytes: Rc<std::cell::Cell<usize>>,
+    last_execution_payload_bytes: usize,
     browser_tasks: VecDeque<browser_tasks::BrowserTask>,
     host_finalization_tasks: VecDeque<host_finalization::HostFinalizationTask>,
     active_finalization_registry: Option<ObjectId>,
@@ -1475,7 +1479,7 @@ impl Vm {
 
 impl Vm {
     fn charge_step(&mut self) -> Result<(), RuntimeError> {
-        self.check_scheduling_failure()?;
+        self.synchronize_execution_payload()?;
         if self.remaining_instructions == 0 {
             return Err(RuntimeError::InstructionLimit);
         }
@@ -1781,9 +1785,14 @@ impl Vm {
         };
         self.charge_step()?;
         let base = self.stack.len();
-        self.stack.extend([callee.clone(), receiver.clone()]);
-        self.stack.extend(args.iter().cloned());
-        self.stack.push(target.clone());
+        // These are GC edges, not additional owners of primitive buffers.
+        self.stack.extend(
+            [&callee, &receiver, &target]
+                .into_iter()
+                .chain(args.iter())
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         let previous_target = std::mem::replace(&mut self.new_target, target);
         // Whether direct eval may use `new.target` is lexical too: it was
         // decided when the function's own code was compiled.
@@ -1841,6 +1850,7 @@ impl Vm {
         }
         self.call_depth -= 1;
         self.stack.truncate(base);
+        self.refresh_scheduling_ownership();
         if result.is_ok() {
             self.restore_pending_throw_origin(ambient_origin);
         }
@@ -1879,9 +1889,15 @@ impl Vm {
             // repeatedly copying the accumulated arguments of long chains.
             args = prefixes.into_iter().rev().flatten().chain(args).collect();
         }
+        let call_payload = self.charge_execution_payload(
+            host_scheduling::values_bytes(&args)
+                .saturating_add(host_scheduling::value_payload_bytes(&receiver))
+                .saturating_add(host_scheduling::value_payload_bytes(&callee)),
+        );
+        self.synchronize_execution_payload()?;
         if let Value::Object(id) = callee {
             if self.heap.proxy(id)?.is_some() {
-                return self.proxy_call(id, receiver, args, construct);
+                return self.proxy_call(id, receiver, args, construct, call_payload);
             }
         }
         if let Value::Object(id) = callee {
@@ -1910,16 +1926,19 @@ impl Vm {
                     .heap
                     .closure_with_objects(id)
                     .expect("the immediately preceding closure lookup verified this live object");
-                return self.call_closure(builtins::ClosureCall {
-                    code,
-                    captures,
-                    callee,
-                    receiver,
-                    args,
-                    construct,
-                    home,
-                    with_objects,
-                });
+                return self.call_closure(
+                    builtins::ClosureCall {
+                        code,
+                        captures,
+                        callee,
+                        receiver,
+                        args,
+                        construct,
+                        home,
+                        with_objects,
+                    },
+                    call_payload,
+                );
             }
         }
         let function = if let Value::Object(id) = callee {

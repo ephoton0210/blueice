@@ -747,6 +747,11 @@ fn agent_registry_exhaustion_stops_only_its_document_and_navigation_recovers() {
     scheduling_exhaustion_case("try{for(var i=0;i<16;i++)Symbol.for('x'.repeat(400000)+String(i));}catch(error){}document.getElementById('counter').textContent='escaped';");
 }
 
+#[test]
+fn active_frame_exhaustion_stops_only_its_document_and_navigation_recovers() {
+    scheduling_exhaustion_case("function hold(n){var payload='x'.repeat(400000);if(n===0)return payload.length;return hold(n-1)+payload.length;}try{hold(16);}catch(error){}document.getElementById('counter').textContent='escaped';");
+}
+
 fn scheduling_exhaustion_case(exhaustion: &str) {
     let (bad_fixture, bad_url, gatekeeper) = fixture(
         "<p id=counter>failed:0</p><script>

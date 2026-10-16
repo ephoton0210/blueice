@@ -159,6 +159,57 @@ the managed-heap and private transport layouts are unchanged. This accounts
 for retained registry storage, while allocator/control/service overhead
 remains outside this ledger.
 
+### Active execution payloads
+
+Active operand stacks, local bindings, arguments, receivers and completion
+records own primitive buffers outside the managed heap. Those buffers share
+the document's native account with Promise, timer and agent-registry storage.
+Interpreter and native-call safepoints synchronize changed execution payloads;
+unchanged payloads avoid scanning the remaining scheduling owners repeatedly.
+Exhaustion stops the document before another user callback or instruction.
+
+A pause is also an ownership handoff. Before returning it to the host, the
+interpreter admits payload produced by the preceding instruction. A refused
+pause unwinds the frame and leaves the document failed. This check does not
+spend fuel for the paused instruction; single-step and resume keep the same
+remaining instruction budget.
+
+Replacing a caller's fields transfers their payload to a scoped native lease.
+Normal return, throw and entry refusal release it. Suspended async/module and
+debugger contexts carry a lease until restoration or destruction; their normal
+continuation charge adds slots and metadata without charging those buffers a
+second time. Values promoted into managed cells retain managed ownership.
+Root and child scopes share the same account, and navigation drops old leases.
+
+Call-entry buffers keep their lease while a constructor's prototype getter or
+base-class field initializer runs, before its arguments enter VM fields.
+Ordinary and generator parameter initialization release that lease only after
+the VM takes ownership. Direct eval retains its source-argument lease in normal,
+spread and tail-call positions. Proxy trap getters run under the incoming
+lease; forwarding the same buffers transfers ownership rather than charging a
+second copy. A trapped call releases the incoming lease once its argument array
+owns those values and the trap invocation takes over.
+
+GC protection retains object edges without cloning primitive buffers. Normal
+calls move primitive operands to their argument owner; exact debugger calls
+preserve the operand snapshots needed for continuation. Native parameter copies
+remain charged while owned. Rooted pressure collection reserves room for the
+additional copies resolving algorithms can hold before settlement. Existing
+large-payload fixtures reserve that active headroom while preserving their
+collection, terminal-failure and liveness assertions.
+
+This is a retained primitive-payload budget at execution safepoints. Active
+control-table/vector capacity, allocator overhead and temporary buffers wholly
+inside one native operation remain in the broader native-accounting work.
+Standalone VMs keep their host-neutral policy.
+
+Completion records belong to their execution context. Ordinary/async calls
+and generator parameter initialization move the caller's pending completions
+aside, keep their object edges rooted and restore them on every exit. Async
+return records cannot accumulate in the caller, and a child await cannot
+capture a caller's pending `finally` return. Cleanup reconciles released bytes
+even after failure, while leaving the document's failure latched.
+
 The legacy browser-only entry uses the same logical source selection while
 leaving callback timers to its separate timer entry. Standalone browser-task
 embeddings retain their existing bounded delivery API.

@@ -1381,6 +1381,7 @@ impl Vm {
 
     pub(super) fn suspend_module_execution(&mut self) -> SuspendedModuleExecution {
         SuspendedModuleExecution {
+            payload_charge: self.charge_execution_payload(self.current_execution_payload_bytes()),
             result_root: self.result_root.take(),
             stack: std::mem::take(&mut self.stack),
             bindings: std::mem::take(&mut self.bindings),
@@ -1445,6 +1446,8 @@ impl Vm {
         self.home_object = execution.home_object;
         self.class_field_initializer = execution.class_field_initializer;
         self.active_module_name = execution.active_module_name;
+        drop(execution.payload_charge);
+        self.refresh_scheduling_ownership();
     }
 
     /// Heap edges held only by a displaced interpreter frame.  Keeping this

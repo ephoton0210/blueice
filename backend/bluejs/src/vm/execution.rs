@@ -201,6 +201,7 @@ impl Vm {
         self.pending_completions.clear();
         self.completion_saves.clear();
         self.call_stack.clear();
+        self.refresh_scheduling_ownership();
         // WeakRef's KeepDuringJob guarantee ends only after the complete
         // script/module job (including abrupt completion cleanup) has run.
         self.kept_weak_objects.clear();
@@ -1566,13 +1567,36 @@ impl Vm {
         captures: Vec<ObjectId>,
         global_var_environment: bool,
     ) -> Result<Value, RuntimeError> {
+        let _caller_payload = self.charge_execution_payload(self.bindings.iter().flatten().fold(
+            host_scheduling::value_payload_bytes(&self.completion),
+            |bytes, value| bytes.saturating_add(host_scheduling::value_payload_bytes(value)),
+        ));
         let base = self.stack.len();
-        self.stack.extend(self.bindings.iter().flatten().cloned());
+        self.stack.extend(
+            self.bindings
+                .iter()
+                .flatten()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         self.stack
             .extend(self.cells.values().copied().map(Value::Object));
-        self.stack.push(self.completion.clone());
-        self.stack.push(self.this.clone());
-        self.stack.extend(self.arguments.iter().cloned());
+        self.stack.push(
+            self.completion
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.push(
+            self.this
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.extend(
+            self.arguments
+                .iter()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
@@ -1748,13 +1772,33 @@ impl Vm {
         // displacing the caller's frame so an entry refusal cannot strand
         // that frame in the nested execution state.
         let global_this = self.global("globalThis")?;
+        let _caller_payload = self.charge_execution_payload(self.caller_execution_payload_bytes());
         let base = self.stack.len();
-        self.stack.extend(self.bindings.iter().flatten().cloned());
+        self.stack.extend(
+            self.bindings
+                .iter()
+                .flatten()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         self.stack
             .extend(self.cells.values().copied().map(Value::Object));
-        self.stack.push(self.completion.clone());
-        self.stack.push(self.this.clone());
-        self.stack.extend(self.arguments.iter().cloned());
+        self.stack.push(
+            self.completion
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.push(
+            self.this
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.extend(
+            self.arguments
+                .iter()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         self.stack.extend(self.with_objects.iter().cloned());
         let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());

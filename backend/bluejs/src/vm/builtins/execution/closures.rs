@@ -98,11 +98,16 @@ impl Vm {
     pub(in super::super::super) fn call_closure(
         &mut self,
         call: ClosureCall,
+        entry_payload: execution_payload::ExecutionPayloadCharge,
     ) -> Result<Value, RuntimeError> {
-        self.with_rejection_origin(None, |vm| vm.call_closure_inner(call))
+        self.with_rejection_origin(None, |vm| vm.call_closure_inner(call, entry_payload))
     }
 
-    fn call_closure_inner(&mut self, call: ClosureCall) -> Result<Value, RuntimeError> {
+    fn call_closure_inner(
+        &mut self,
+        call: ClosureCall,
+        entry_payload: execution_payload::ExecutionPayloadCharge,
+    ) -> Result<Value, RuntimeError> {
         let entry_epoch = self.throw_epoch;
         let ClosureCall {
             code,
@@ -273,6 +278,7 @@ impl Vm {
                 args,
                 home,
                 closure_with_objects,
+                entry_payload,
             );
             self.stack.truncate(base);
             let state = state?;
@@ -294,21 +300,52 @@ impl Vm {
             stored?;
             return Ok(Value::Object(generator));
         }
-        self.stack.push(receiver.clone());
+        let caller_payload = self.charge_execution_payload(
+            self.caller_execution_payload_bytes()
+                .saturating_add(self.pending_execution_payload_bytes()),
+        );
+        self.stack
+            .push(receiver.object_id().map_or(Value::Undefined, Value::Object));
         let base = self.stack.len();
-        self.stack.extend(self.bindings.iter().flatten().cloned());
+        self.stack.extend(
+            self.bindings
+                .iter()
+                .flatten()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         self.stack
             .extend(self.cells.values().copied().map(Value::Object));
-        self.stack.push(self.completion.clone());
-        self.stack.push(self.this.clone());
+        self.stack.push(
+            self.completion
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.push(
+            self.this
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
         // A resumed async/generator caller is absent from call_stack. Its
         // function must survive while the callee replaces Vm::callee and
         // allocates, so restoring the caller cannot publish a collected ID.
-        self.stack.push(self.callee.clone());
-        self.stack.extend(self.arguments.iter().cloned());
+        self.stack.push(
+            self.callee
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.extend(
+            self.arguments
+                .iter()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         // The callee sees only the with objects it closed over, not the
         // caller's; keep the caller's rooted on the stack meanwhile.
         self.stack.extend(self.with_objects.iter().cloned());
+        let pending_roots = self.pending_execution_references();
+        self.stack
+            .extend(pending_roots.into_iter().map(Value::Object));
         let frame_base = self.stack.len();
         let mut frame_bindings = vec![None; code.bindings.len()];
         if let Some(slot) = code.self_slot {
@@ -338,6 +375,9 @@ impl Vm {
         );
         let this = std::mem::replace(&mut self.this, receiver);
         let arguments = std::mem::replace(&mut self.arguments, args);
+        // Prototype getters and base-class field initializers can run before
+        // this transfer. Keep entry buffers charged until the VM owns them.
+        drop(entry_payload);
         let frame_callee = std::mem::replace(&mut self.callee, callee.clone());
         let completion = std::mem::replace(&mut self.completion, Value::Undefined);
         let completion_empty = std::mem::replace(&mut self.completion_empty, true);
@@ -349,30 +389,29 @@ impl Vm {
             &mut self.class_field_initializer,
             code.class_field_initializer,
         );
-        let pending_completions = self.pending_completions.clone();
-        let completion_saves = self.completion_saves.clone();
+        // A callee owns a separate completion context. In particular, async
+        // Return must not leave its primitive result in the caller's records
+        // or capture the caller's pending finally return across an await.
+        let pending_completions = std::mem::take(&mut self.pending_completions);
+        let completion_saves = std::mem::take(&mut self.completion_saves);
         let with_objects = std::mem::replace(&mut self.with_objects, closure_with_objects);
         let inherited_with_depth =
             std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
         let parameter_eval_env = self.parameter_eval_env.take();
+        let mut entry_error = None;
         if code.parameter_eval_scope {
             // Roots: `with_objects` is a root, and so is the callee frame's
             // stack, which holds the caller's copy until the call returns.
-            let env = match self.new_parameter_eval_env() {
-                Ok(env) => env,
-                Err(error) => {
-                    self.with_objects = with_objects;
-                    self.inherited_with_depth = inherited_with_depth;
-                    self.parameter_eval_env = parameter_eval_env;
-                    self.stack.truncate(base - 1);
-                    return Err(error);
+            match self.new_parameter_eval_env() {
+                Ok(env) => {
+                    self.with_objects.push(Value::Object(env));
+                    // The environment is nested inside the objects the function
+                    // closed over, and its own bindings inside it.
+                    self.inherited_with_depth = self.with_objects.len();
+                    self.parameter_eval_env = Some(env);
                 }
-            };
-            self.with_objects.push(Value::Object(env));
-            // The environment is nested inside the objects the function was
-            // created in, and the function's own bindings inside it.
-            self.inherited_with_depth = self.with_objects.len();
-            self.parameter_eval_env = Some(env);
+                Err(error) => entry_error = Some(error),
+            }
         }
         let frame_dynamic_eval_outer_bindings = self.dynamic_eval_outer_bindings.clone();
         let top_level_module = self.top_level_module;
@@ -387,7 +426,9 @@ impl Vm {
             .object_id()
             .expect("a closure call has a function object as its callee");
         self.call_stack.push(running);
-        let result = if async_function {
+        let result = if let Some(error) = entry_error {
+            Err(error)
+        } else if async_function {
             let mut iterators = Vec::new();
             match AsyncBody::classify(self.interpret(&code, &mut iterators, 0, None, None, None)) {
                 AsyncBody::Returned(value) => Ok(value),
@@ -552,8 +593,6 @@ impl Vm {
         if let Some(stack) = suspended_parent_stack {
             self.stack = stack;
             self.result_root = result_root;
-            self.pending_completions = pending_completions;
-            self.completion_saves = completion_saves;
             self.with_objects = with_objects;
             self.inherited_with_depth = inherited_with_depth;
             self.parameter_eval_env = parameter_eval_env;
@@ -569,6 +608,8 @@ impl Vm {
             self.inherited_with_depth = inherited_with_depth;
             self.parameter_eval_env = parameter_eval_env;
         }
+        self.pending_completions = pending_completions;
+        self.completion_saves = completion_saves;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
@@ -592,6 +633,7 @@ impl Vm {
         self.home_object = home_object;
         self.class_field_initializer = class_field_initializer;
         self.stack.truncate(base - 1);
+        drop(caller_payload);
         // A failure to suspend takes the same route as a failure of the body:
         // it ends the call (or rejects the async function's promise) below.
         let result = match suspended_async {

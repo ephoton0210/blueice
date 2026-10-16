@@ -85,7 +85,9 @@ fn diagnostic_snapshots_and_active_cleanup_cannot_bypass_the_document_byte_cap()
                 })
             })
             .unwrap();
-        execute(&mut runtime, &format!("onerror=function(){{probe(1);return true;}};function noop(){{}}var payload='x'.repeat({padding});for(var i=0;i<16;i++){{setTimeout(noop,1000000,payload);}}")).unwrap();
+        // Small arguments across 1,000 timers let a near-cap queue also
+        // reserve the active registration copy within diagnostic headroom.
+        execute(&mut runtime, &format!("onerror=function(){{probe(1);return true;}};function noop(){{}}var payload='x'.repeat({padding});for(var i=0;i<1000;i++){{setTimeout(noop,1000000,payload);}}")).unwrap();
         (runtime, observations)
     }
 
@@ -94,7 +96,7 @@ fn diagnostic_snapshots_and_active_cleanup_cannot_bypass_the_document_byte_cap()
     let (mut calibration, _) = prepared(1);
     let baseline = calibration.host_scheduling_usage(1).unwrap().payload_bytes;
     let room = 2 * long.len() + 512;
-    let padding = 1 + (MAX_HOST_SCHEDULING_BYTES - baseline - room) / 32;
+    let padding = 1 + (MAX_HOST_SCHEDULING_BYTES - baseline - room) / 2000;
     let mut failures = Vec::new();
     for (name, source, expected_probes) in [
         ("error event snapshots", "throw 'saved';", &[1.0][..]),
@@ -104,7 +106,7 @@ fn diagnostic_snapshots_and_active_cleanup_cannot_bypass_the_document_byte_cap()
         for filename in [short, long.as_str()] {
             let (mut runtime, observations) = prepared(padding);
             let remaining = MAX_HOST_SCHEDULING_BYTES-runtime.host_scheduling_usage(1).unwrap().payload_bytes;
-            assert!((room..room+32).contains(&remaining), "calibrated remaining bytes: {remaining}");
+            assert!((room..room+2000).contains(&remaining), "calibrated remaining bytes: {remaining}");
             let identity = BlueJsSourceIdentity::new(filename, "original").unwrap();
             let handle = runtime.install_program_with_diagnostics(1, &BlueJsPageOrigin::new("https://queue.test").unwrap(), identity, &BlueJsProgramV1::Script(parse(source).unwrap()), |registry, handle| {
                 let compiled=registry.get(handle).unwrap();
@@ -270,9 +272,11 @@ fn firing_and_clearing_timers_release_owned_payload_for_later_admission() {
     assert!(cleared + 700000 < before);
     assert_eq!(runtime.run_due_timers(1, 1).unwrap().tasks_run, 1);
     assert_eq!(runtime.host_scheduling_usage(1).unwrap().payload_bytes, 0);
+    // Nine retained arguments plus the active registration copy fit; ten
+    // retained arguments would omit the new execution owner from the budget.
     execute(
         &mut runtime,
-        "for (var i = 0; i < 10; i += 1) { setTimeout(noop, 100000, payload); }",
+        "for (var i = 0; i < 9; i += 1) { setTimeout(noop, 100000, payload); }",
     )
     .unwrap();
 }
@@ -284,7 +288,7 @@ fn interval_argument_copies_and_running_oneshot_arguments_remain_in_the_budget()
         "setTimeout(rearm, 1, payload);",
     ] {
         let mut runtime = page();
-        execute(&mut runtime, &format!("function noop() {{}} function rearm(value) {{ setTimeout(noop, 100000, value); }} var payload = 'x'.repeat(400000); {first} for (var i = 0; i < 9; i += 1) {{ setTimeout(noop, 100000, payload); }}")).unwrap();
+        execute(&mut runtime, &format!("function noop() {{}} function rearm(value) {{ setTimeout(noop, 100000, value); }} var payload = 'x'.repeat(400000); {first} for (var i = 0; i < 8; i += 1) {{ setTimeout(noop, 100000, payload); }}")).unwrap();
         assert!(
             matches!(
                 runtime.run_due_timers(1, 1),

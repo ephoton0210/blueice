@@ -193,20 +193,52 @@ impl Vm {
         args: Vec<Value>,
         home: Option<ObjectId>,
         closure_with_objects: Vec<Value>,
+        entry_payload: execution_payload::ExecutionPayloadCharge,
     ) -> Result<GeneratorState, RuntimeError> {
-        self.stack.push(receiver.clone());
+        let _caller_payload = self.charge_execution_payload(
+            self.caller_execution_payload_bytes()
+                .saturating_add(self.pending_execution_payload_bytes()),
+        );
+        self.stack
+            .push(receiver.object_id().map_or(Value::Undefined, Value::Object));
         let base = self.stack.len();
-        self.stack.extend(self.bindings.iter().flatten().cloned());
+        self.stack.extend(
+            self.bindings
+                .iter()
+                .flatten()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         self.stack
             .extend(self.cells.values().copied().map(Value::Object));
-        self.stack.push(self.completion.clone());
-        self.stack.push(self.this.clone());
-        self.stack.push(self.callee.clone());
-        self.stack.extend(self.arguments.iter().cloned());
+        self.stack.push(
+            self.completion
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.push(
+            self.this
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.push(
+            self.callee
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.extend(
+            self.arguments
+                .iter()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         // The caller's `with` objects stay rooted while the generator's own
         // (the ones its function closed over) are in scope.
         self.stack.extend(self.with_objects.iter().cloned());
         self.stack.extend(closure_with_objects.iter().cloned());
+        let pending_roots = self.pending_execution_references();
+        self.stack
+            .extend(pending_roots.into_iter().map(Value::Object));
         let frame_base = self.stack.len();
 
         let mut frame_bindings = vec![None; code.bindings.len()];
@@ -222,6 +254,7 @@ impl Vm {
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let this = std::mem::replace(&mut self.this, receiver);
         let arguments = std::mem::replace(&mut self.arguments, args);
+        drop(entry_payload);
         let frame_callee = std::mem::replace(&mut self.callee, callee);
         let completion = std::mem::replace(&mut self.completion, Value::Undefined);
         let completion_empty = std::mem::replace(&mut self.completion_empty, true);
@@ -252,6 +285,8 @@ impl Vm {
         let inherited_with_depth =
             std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
         let parameter_eval_env = self.parameter_eval_env.take();
+        let pending_completions = std::mem::take(&mut self.pending_completions);
+        let completion_saves = std::mem::take(&mut self.completion_saves);
         let mut entry_error = None;
         if code.parameter_eval_scope {
             match self.new_parameter_eval_env() {
@@ -337,6 +372,8 @@ impl Vm {
         self.new_target_allowed = new_target_allowed;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
+        self.pending_completions = pending_completions;
+        self.completion_saves = completion_saves;
         self.stack.truncate(base - 1);
         state
     }
@@ -552,21 +589,51 @@ impl Vm {
             .set_generator_state(*generator, GeneratorState::Running)
             .expect("Running replaces a verified generator frame without increasing its bytes");
 
+        let caller_payload = self.charge_execution_payload(
+            self.caller_execution_payload_bytes()
+                .saturating_add(self.pending_execution_payload_bytes()),
+        );
         let base = self.stack.len();
         let remaining_instructions = self.remaining_instructions;
-        self.stack.extend(self.bindings.iter().flatten().cloned());
+        self.stack.extend(
+            self.bindings
+                .iter()
+                .flatten()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         self.stack
             .extend(self.cells.values().copied().map(Value::Object));
-        self.stack.push(self.completion.clone());
-        self.stack.push(self.this.clone());
-        self.stack.push(self.callee.clone());
-        self.stack.extend(self.arguments.iter().cloned());
+        self.stack.push(
+            self.completion
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.push(
+            self.this
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.push(
+            self.callee
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack.extend(
+            self.arguments
+                .iter()
+                .filter_map(Value::object_id)
+                .map(Value::Object),
+        );
         // The resumer's `with` objects stay rooted while the generator's own
         // are in scope. Both sets sit below the frame's base: everything above
         // it is the generator's operand stack, which is saved again at the
         // next yield and must hold only the frame's own operands.
         self.stack.extend(self.with_objects.iter().cloned());
         self.stack.extend(frame_with_objects.iter().cloned());
+        let pending_roots = self.pending_execution_references();
+        self.stack
+            .extend(pending_roots.into_iter().map(Value::Object));
         let frame_base = self.stack.len();
         self.stack.extend(frame_stack.iter().cloned());
 
@@ -841,6 +908,7 @@ impl Vm {
         self.remaining_instructions = remaining_instructions;
         self.active_module_name = active_module_name;
         self.stack.truncate(base);
+        drop(caller_payload);
         stored?;
         if let Some((state, promise)) = suspended_async {
             self.suspend_async_await(state, promise)?;

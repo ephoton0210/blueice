@@ -160,9 +160,12 @@ fn native_pressure_preserves_timer_reaction_await_and_weakref_owners() {
 
 #[test]
 fn large_native_results_collect_previous_garbage_before_promise_settlement() {
+    // Reserve three simultaneous copies for Promise.resolve and two for
+    // async settlement. Together with 1.4 MB garbage both exceed the cap;
+    // reclaiming that garbage makes the live operation fit.
     for finish in [
-        "Promise.resolve('y'.repeat(3700000));",
-        "async function answer(){return 'y'.repeat(3700000);}answer();",
+        "Promise.resolve('y'.repeat(1200000));",
+        "async function answer(){return 'y'.repeat(1800000);}answer();",
     ] {
         let mut config = BlueJsPageRuntimeConfig::default();
         config.vm.max_string_bytes = blueice_bluejs::MAX_HOST_SCHEDULING_BYTES;
@@ -202,10 +205,10 @@ fn unchanged_live_promise_payload_does_not_force_gc_at_every_call() {
         .unwrap();
     page_script(
         &mut runtime,
-        "var held=Promise.resolve('x'.repeat(2000000));function read(){return 42;}",
+        "var held=Promise.resolve('x'.repeat(1100000));function read(){return 42;}",
     );
     let retained = runtime.host_scheduling_usage(1).unwrap().payload_bytes;
-    assert!(retained >= 4000000);
+    assert!(retained >= 2200000);
     let before = runtime.realm_stats(1).unwrap().heap.major_collections;
     page_script(&mut runtime, "read();42;");
     let after_control = runtime.realm_stats(1).unwrap().heap.major_collections;

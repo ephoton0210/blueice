@@ -56,6 +56,62 @@ remains separate from the accepted replay.
 Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
+**In progress — M1v active native execution payloads (2026-10-16).**
+Two public regressions fail on M1u. Seventeen recursive frames retain at least
+13,600,000 UTF-16 bytes in local variables or arguments, yet complete with
+203,102 document-managed bytes and zero native bytes. Suspended continuations
+already have payload accounting; active VM fields and displaced Rust-owned
+caller frames need admission, release and shared document ownership. The first
+implementation passes both original failures and the operand, cross-realm,
+shared-owner and return/throw/eval release controls. Broader validation remains
+incomplete, including native parameter-copy pressure and existing capacity
+fixtures. GC-only roots now preserve object edges without copying primitives;
+captured values already promoted into managed cells keep that ownership.
+No accepted milestone is claimed yet. Red evidence:
+`target/active-frame-red-source-20261016.json` and
+`/private/tmp/blueice-active-frame-{probe,runtime-red}-20261016.log`.
+The first expanded replay passes formatting/build/Clippy and 24 real-page
+cases, but its async-return burst fails; it is not acceptance. Public follow-up
+also exposes 8,000,000 stale bytes after a child frame fails. Cleanup now
+reconciles released ownership without clearing failure. Async return tracing
+finds accumulated callee completion records and caller pending returns copied
+into child contexts; completion ownership and GC roots are being isolated
+across ordinary, async and generator entries. All fourteen new public groups
+and the five related scheduling/GC/realm suites pass. Parameter-environment
+entry refusal now uses the common restoration path as well. An intermediate
+405-executable and pinned Test262 replay was started. Its formatting,
+workspace build/Clippy, fourteen public runtime groups, all 25 real-page cases
+and 149 Core/child cases pass. Unchanged follow-up probes now refund the child
+to its 400,168-byte registry baseline and complete all eighteen async-burst
+polls with approximately 1.6 MB native usage. That replay was stopped after a
+public pause-boundary probe retained 8,800,000 bytes at offset 88. A pause now
+admits the preceding instruction's retained payload before handing it to the
+host, without spending the paused instruction's fuel. All fifteen public,
+seven page-runtime and twenty debugger controls pass, including the full root
+offset matrix, near-cap pauses, refusal cleanup and one-unit fuel control.
+A fresh complete replay remains required; prior partial runs are not accepted.
+The latest replay was stopped following the owner's instruction to avoid
+operations that could trigger cybersecurity controls. It completed 298 of the
+405 selected Rust executables (4,525 passed, zero failed, 17 ignored), plus
+formatting, workspace build/Clippy and test compilation. Test262 had not
+started; no final input/artifact audit or acceptance summary was produced.
+M1v remains unfinished. Do not repeat the reported probing or
+seek elevated permissions to bypass security controls; continue with
+repository-local static review and ordinary bounded unit checks.
+Interrupted evidence: `target/active-frame-complete-source-20261016.json`,
+`target/active-frame-complete-validation-20261016.json` and
+`/private/tmp/blueice-active-frame-complete-acceptance-20261016.log`.
+Subsequent static review and bounded unit tests close three call-entry gaps:
+constructor arguments retain their lease during prototype getters and field
+initializers; Proxy forwarding transfers one charge instead of multiplying it;
+tail-position direct eval retains its source argument. Four new unit groups
+and 82 related cases across eight public targets pass on this source without
+opening ports or running resource-exhaustion probes. This is an implementation
+checkpoint, not final M1v acceptance; see the record below.
+Additional red evidence: `target/active-frame-refund-red-source-20261016.json`
+and `target/active-async-burst-red-source-20261016.json`.
+Pause evidence: `target/active-frame-pause-red-source-20261016.json`.
+
 **Latest milestone — M1u agent-owned native registries (2026-10-16).**
 Three public regressions reproduce uncharged `Symbol.for` storage through the
 page runtime and the real Core child. One shared document-owned charge now
@@ -299,6 +355,14 @@ work and exposes its retained payload ledger.
       remain open before `fetch`.
 - [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
       host-held bytes, so a runaway page degrades only itself
+- [ ] **Active native execution payloads.** Active locals, arguments and
+      displaced caller frames must share document admission with retained
+      Promise/timer/registry storage. Two public recursive-string probes exceed
+      the 8 MiB envelope with at least 13.6 MB live while reporting zero native
+      bytes. Preserve live execution values, release completed/unwound frames,
+      and cover eval, constructor callbacks, Proxy forwarding, generator/async
+      entry and same-document child calls.
+      Evidence: `target/active-frame-red-source-20261016.json`; M1v is in progress.
 - [x] **M1t: aggregate live-realm heap accounting.** Root and nested
       ShadowRealm heaps share one document envelope. Allocation and growth
       reserve managed bytes before committing storage; shrink, collection and
@@ -680,6 +744,55 @@ unaffected by that order except that every binding added in C or D must update
 the generated typings in the same change.
 
 ## Milestone record
+
+### M1v — Active execution ownership (implementation checkpoint, 2026-10-16)
+
+- [x] Account for primitive payloads in active VM fields and displaced caller
+      frames, sharing the document's Promise/timer/registry account. Preserve
+      object roots without creating primitive copies solely for GC protection.
+- [x] Transfer leases through suspended contexts and restore caller completion
+      records on return, throw and entry refusal. Reconcile released ownership
+      after a terminal resource failure without recovering the document.
+- [x] Keep constructor input charged while prototype getters and base-class
+      field initializers run; transfer ordinary/generator entry ownership only
+      after VM fields take the arguments. Keep direct-eval source arguments
+      charged in ordinary, spread and tail positions.
+- [x] Transfer Proxy arguments through forwarding and trap invocation without
+      charging moved buffers again; preserve the incoming charge during trap
+      getters, including a throwing getter.
+- [x] Pass four bounded call-entry unit groups and 82 related public cases
+      across eight complete targets, zero failures or ignored cases.
+- [ ] Finish the final M1v regression selection with stable source/artifacts
+      under the owner's security constraints.
+- [ ] Compare a fresh complete pinned Test262 inventory with the accepted
+      baseline after the final Rust checks.
+
+The new tests use seven-character arguments and a twelve-character eval
+source. Before these fixes, constructor field callbacks observe zero of the
+argument's 14 bytes; transparent Proxy chains count 14, 28 and 42 bytes for
+the same moved input. Tail eval loses its 24-byte source argument while the
+strict caller's existing completion remains charged. The corrected tests also
+cover normal/throwing prototype and field callbacks, trap getters, trapped
+forwarding, ordinary/async/generator parameter entry and final lease release.
+
+Current-source validation is deliberately bounded: `cargo test --offline -p
+blueice-bluejs --lib argument_charges` passes all four groups; the eight public
+targets are `async_from_sync_delegation`, `class_fields_define`,
+`class_fields_evaluation`, `eval_var_environment_capture`,
+`function_environments`, `generator_function_constructors`,
+`generator_resume_with_objects` and `promise_capabilities`. Formatting and
+offline workspace/all-target Clippy with warnings denied pass.
+Logs: `/private/tmp/blueice-call-entry-final-unit-20261016.log` and
+`/private/tmp/blueice-call-entry-related-units-20261016.log`; Clippy:
+`/private/tmp/blueice-active-frame-call-entry-clippy-20261016.log`.
+The bounded source/test receipt is
+`target/active-frame-call-entry-unit-source-20261016.json`.
+
+The interrupted 298/405-target replay predates the call-entry follow-up and
+does not validate this final source. It remains partial evidence, not a final
+gate. No new full Test262, real Core/MCP replay or coverage result is claimed.
+M1u remains the latest accepted milestone; active control-table/vector
+capacity and general host/service buffers remain separate work in A.
 
 ### M1u — Agent-owned native registries (2026-10-16)
 

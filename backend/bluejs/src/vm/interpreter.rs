@@ -109,6 +109,10 @@ impl Vm {
                 || (executed_root_instruction
                     && suspend_at == Some(InterpreterSuspensionPoint::AfterRootInstruction))
             {
+                // A pause transfers this retained frame to the host. Admit
+                // the preceding instruction's payload without charging fuel
+                // for the instruction that has not executed yet.
+                self.synchronize_execution_payload()?;
                 // The caller owns the returned records while execution is
                 // suspended. Handler stack depths are relative to this
                 // frame's operand-stack base, exactly like `Yield`, so a
@@ -279,12 +283,14 @@ impl Vm {
                     Opcode::CallSpread | Opcode::DirectEvalSpread => {
                         let base = self.stack.len() - 3;
                         let args = self.array_like_values(&self.stack[base + 2].clone())?;
-                        let callee = self.stack[base].clone();
-                        let receiver = self.stack[base + 1].clone();
+                        let callee = self.take_call_operand(base);
+                        let receiver = self.take_call_operand(base + 1);
                         let result = if instruction.opcode == Opcode::DirectEvalSpread
                             && self.is_intrinsic_eval(&callee).expect(
                                 "intrinsic eval classification only reads the live callee tag",
                             ) {
+                            let _arguments =
+                                self.charge_execution_payload(host_scheduling::values_bytes(&args));
                             self.direct_eval(native::argument(&args, 0))?
                         } else {
                             self.call_native(callee, receiver, args, operand != 0)?
@@ -1707,7 +1713,7 @@ impl Vm {
                         let eval_candidate = operand & 1 != 0;
                         let argument_count = operand >> 1;
                         let base = self.stack.len() - argument_count - 2;
-                        let callee = self.stack[base].clone();
+                        let callee = self.take_call_operand(base);
                         if eval_candidate
                             && self.is_intrinsic_eval(&callee).expect(
                                 "intrinsic eval classification only reads the live callee tag",
@@ -1715,7 +1721,11 @@ impl Vm {
                         {
                             // A direct eval runs in this frame's scope: not a
                             // call that can replace it.
-                            let args = self.stack[base + 2..].to_vec();
+                            let args = (base + 2..self.stack.len())
+                                .map(|index| self.take_call_operand(index))
+                                .collect::<Vec<_>>();
+                            let _arguments =
+                                self.charge_execution_payload(host_scheduling::values_bytes(&args));
                             let result = self.direct_eval(native::argument(&args, 0))?;
                             self.check_string(&result)?;
                             self.stack.truncate(base);
@@ -1733,24 +1743,30 @@ impl Vm {
                             // callable (a TypeError raised here, in this
                             // frame): an ordinary call, then the `Return`
                             // the compiler emitted after this instruction.
-                            let receiver = self.stack[base + 1].clone();
-                            let args = self.stack[base + 2..].to_vec();
+                            let receiver = self.take_call_operand(base + 1);
+                            let args = (base + 2..self.stack.len())
+                                .map(|index| self.take_call_operand(index))
+                                .collect::<Vec<_>>();
                             let result = self.call_native(callee, receiver, args, false)?;
                             self.stack.truncate(base);
                             self.stack.push(result);
                         }
                     }
                     Opcode::Call | Opcode::DirectEval | Opcode::Construct => {
-                        // Leave every call input on the stack until dispatch
-                        // completes, so native allocations see all GC roots.
+                        // Keep object edges on the stack until dispatch
+                        // completes; primitive buffers move to the call owner.
                         let base = self.stack.len() - operand - 2;
-                        let callee = self.stack[base].clone();
-                        let receiver = self.stack[base + 1].clone();
-                        let args = self.stack[base + 2..].to_vec();
+                        let callee = self.take_call_operand(base);
+                        let receiver = self.take_call_operand(base + 1);
+                        let args = (base + 2..self.stack.len())
+                            .map(|index| self.take_call_operand(index))
+                            .collect::<Vec<_>>();
                         let result = if instruction.opcode == Opcode::DirectEval
                             && self.is_intrinsic_eval(&callee).expect(
                                 "intrinsic eval classification only reads the live callee tag",
                             ) {
+                            let _arguments =
+                                self.charge_execution_payload(host_scheduling::values_bytes(&args));
                             let value = self.direct_eval(native::argument(&args, 0))?;
                             self.check_string(&value)?;
                             value

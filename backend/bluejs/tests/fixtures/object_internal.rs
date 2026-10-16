@@ -31,7 +31,13 @@ fn function_realm_validation_rejects_primitives_and_ordinary_objects() {
     }
     for construct in [false, true] {
         assert_eq!(
-            vm.proxy_call(object, Value::Undefined, Vec::new(), construct),
+            vm.proxy_call(
+                object,
+                Value::Undefined,
+                Vec::new(),
+                construct,
+                vm.charge_execution_payload(0),
+            ),
             Err(RuntimeError::TypeError(
                 "Proxy target is unavailable".into()
             ))
@@ -65,8 +71,14 @@ fn object_operations_reject_a_handle_owned_by_a_different_heap() {
         vm.validate_function_realm(Value::Object(object))
             .map(|_| ()),
         vm.is_constructor(&Value::Object(object)).map(|_| ()),
-        vm.proxy_call(object, Value::Undefined, Vec::new(), false)
-            .map(|_| ()),
+        vm.proxy_call(
+            object,
+            Value::Undefined,
+            Vec::new(),
+            false,
+            vm.charge_execution_payload(0),
+        )
+        .map(|_| ()),
         vm.ordinary_set_with_receiver(object, &Value::Object(object), &key, &Value::Number(42.0))
             .map(|_| ()),
         vm.get_from_prototype(object, &Value::Object(object), &key)

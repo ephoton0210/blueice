@@ -1633,10 +1633,113 @@ fn temporal_duration_receiver_rejects_invalid_internal_values() {
     ));
 }
 
+#[cfg_attr(test, test)]
+fn constructor_entry_retains_argument_charges_during_user_callbacks() {
+    for source in [
+        "class C { field = observe(); } new C(0); new C('payload'); 0;",
+        "class C { field = (observe(), (() => { throw 7; })()); } try { new C(0); } catch {} try { new C('payload'); } catch {} 0;",
+        "function C() {} var T = new Proxy(C, { get(target, key) { if (key === 'prototype') observe(); return Reflect.get(target, key); } }); Reflect.construct(C, [0], T); Reflect.construct(C, ['payload'], T); 0;",
+        "function C() {} var T = new Proxy(C, { get(target, key) { if (key === 'prototype') { observe(); throw 7; } return Reflect.get(target, key); } }); try { Reflect.construct(C, [0], T); } catch {} try { Reflect.construct(C, ['payload'], T); } catch {} 0;",
+    ] {
+        let mut vm = Vm::default();
+        vm.use_bounded_host_microtask_checkpoints().unwrap();
+        let counter = vm.displaced_execution_bytes.clone();
+        let observed = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let recorded = observed.clone();
+        let callback_counter = counter.clone();
+        vm.install_host_function("observe", 0, move |_args: &[HostValue]| {
+            recorded.borrow_mut().push(callback_counter.get());
+            Ok(HostValue::Undefined)
+        })
+        .unwrap();
+
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert_eq!(vm.execute_script(&code), Ok(Value::Number(0.0)));
+        let observed = observed.borrow();
+        assert_eq!(observed.len(), 2, "{source}");
+        assert_eq!(observed[1], observed[0] + 14, "{source}: {observed:?}");
+        assert_eq!(counter.get(), 0, "{source}");
+        assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, 0);
+    }
+}
+
+#[cfg_attr(test, test)]
+fn proxy_forwarding_transfers_argument_charges_without_duplicate_owners() {
+    let mut vm = Vm::default();
+    vm.use_bounded_host_microtask_checkpoints().unwrap();
+    let counter = vm.displaced_execution_bytes.clone();
+    let observed = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let recorded = observed.clone();
+    let callback_counter = counter.clone();
+    vm.install_host_function("observe", 1, move |_args: &[HostValue]| {
+        recorded.borrow_mut().push(callback_counter.get());
+        Ok(HostValue::Undefined)
+    })
+    .unwrap();
+
+    let source = "observe('payload'); var P = new Proxy(observe, {}); P('payload'); new Proxy(P, {})('payload'); var Q = new Proxy(observe, { get apply() { observe(); return undefined; } }); Q('payload'); new Proxy(observe, { apply(target, receiver, args) { return Reflect.apply(target, receiver, args); } })('payload'); var T = new Proxy(observe, { get apply() { observe(); throw 7; } }); try { T('payload'); } catch {} 0;";
+    let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&code), Ok(Value::Number(0.0)));
+    assert_eq!(*observed.borrow(), vec![14; 7]);
+    assert_eq!(counter.get(), 0);
+    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, 0);
+}
+
+#[cfg_attr(test, test)]
+fn tail_eval_retains_its_source_argument_charges() {
+    let mut vm = Vm::default();
+    vm.use_bounded_host_microtask_checkpoints().unwrap();
+    let counter = vm.displaced_execution_bytes.clone();
+    let observed = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let recorded = observed.clone();
+    let callback_counter = counter.clone();
+    vm.install_host_function("observe", 0, move |_args: &[HostValue]| {
+        recorded.borrow_mut().push(callback_counter.get());
+        Ok(HostValue::Undefined)
+    })
+    .unwrap();
+
+    let source =
+        "eval('observe();0;'); function f() { 'use strict'; return eval('observe();0;'); } f(); 0;";
+    let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&code), Ok(Value::Number(0.0)));
+    // The strict tail caller also retains its 20-byte directive completion.
+    assert_eq!(*observed.borrow(), vec![24, 44]);
+    assert_eq!(counter.get(), 0);
+    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, 0);
+}
+
+#[cfg_attr(test, test)]
+fn parameter_initialization_transfers_argument_charges_to_the_vm() {
+    for kind in ["function", "function*", "async function", "async function*"] {
+        let mut vm = Vm::default();
+        vm.use_bounded_host_microtask_checkpoints().unwrap();
+        let counter = vm.displaced_execution_bytes.clone();
+        let observed = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let recorded = observed.clone();
+        let callback_counter = counter.clone();
+        vm.install_host_function("observe", 0, move |_args: &[HostValue]| {
+            recorded.borrow_mut().push(callback_counter.get());
+            Ok(HostValue::Undefined)
+        })
+        .unwrap();
+
+        let source = format!("{kind} f(value, checked = observe()) {{}} f('payload'); 0;");
+        let code = crate::compile(&crate::parse(&source).unwrap()).unwrap();
+        assert_eq!(vm.execute_script(&code), Ok(Value::Number(0.0)));
+        assert_eq!(*observed.borrow(), vec![0], "{kind}");
+        assert_eq!(counter.get(), 0, "{kind}");
+    }
+}
+
 impl crate::Vm {
     /// Runs retained VM contracts in unit and coverage builds.
     #[doc(hidden)]
     pub fn verify_retained_vm_contracts() {
+        constructor_entry_retains_argument_charges_during_user_callbacks();
+        proxy_forwarding_transfers_argument_charges_without_duplicate_owners();
+        tail_eval_retains_its_source_argument_charges();
+        parameter_initialization_transfers_argument_charges_to_the_vm();
         calls_materialize_their_own_errors_while_a_native_acts_for_another_realm();
         internal_array_append_propagates_length_overflow_and_preserves_prior_writes();
         collection_and_array_helpers_reject_foreign_heap_handles();

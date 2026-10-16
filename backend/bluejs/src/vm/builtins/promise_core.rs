@@ -186,7 +186,8 @@ impl Vm {
                 },
                 1,
             )?;
-            self.stack.push(resolve.clone());
+            self.stack
+                .push(resolve.object_id().map_or(Value::Undefined, Value::Object));
             let reject = self.promise_native_function(
                 NativeFunction::PromiseResolvingFunction {
                     promise,
@@ -246,11 +247,13 @@ impl Vm {
                 NativeFunction::PromiseCapabilityExecutor { storage },
                 2,
             )?;
-            self.stack.push(executor.clone());
+            self.stack
+                .push(executor.object_id().map_or(Value::Undefined, Value::Object));
             let promise =
                 self.call_native(constructor.clone(), Value::Undefined, vec![executor], true)?;
             // Construct always yields an object.
-            self.stack.push(promise.clone());
+            self.stack
+                .push(promise.object_id().map_or(Value::Undefined, Value::Object));
             let resolve = self.promise_field(storage, "resolve");
             let reject = self.promise_field(storage, "reject");
             // The executor stores both values through Heap::set, which
@@ -309,13 +312,27 @@ impl Vm {
             return Ok(value);
         }
         let base = self.stack.len();
-        self.stack.extend([constructor.clone(), value.clone()]);
+        self.stack.extend([
+            constructor
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+            value.object_id().map_or(Value::Undefined, Value::Object),
+        ]);
         let result = (|| {
             let capability = self.new_promise_capability(constructor)?;
             self.stack.extend([
-                capability.promise.clone(),
-                capability.resolve.clone(),
-                capability.reject.clone(),
+                capability
+                    .promise
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
+                capability
+                    .resolve
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
+                capability
+                    .reject
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
             ]);
             self.call_native(capability.resolve, Value::Undefined, vec![value], false)?;
             Ok(capability.promise)
@@ -345,13 +362,27 @@ impl Vm {
         reason: &Value,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
-        self.stack.extend([constructor.clone(), reason.clone()]);
+        self.stack.extend([
+            constructor
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+            reason.object_id().map_or(Value::Undefined, Value::Object),
+        ]);
         let result = (|| {
             let capability = self.new_promise_capability(constructor)?;
             self.stack.extend([
-                capability.promise.clone(),
-                capability.resolve.clone(),
-                capability.reject.clone(),
+                capability
+                    .promise
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
+                capability
+                    .resolve
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
+                capability
+                    .reject
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
             ]);
             self.call_native(
                 capability.reject,
@@ -393,7 +424,10 @@ impl Vm {
         self.stack.push(Value::Object(promise));
         let result = (|| {
             let (resolve, reject) = self.promise_resolving_functions(promise)?;
-            self.stack.extend([resolve.clone(), reject.clone()]);
+            self.stack.extend([
+                resolve.object_id().map_or(Value::Undefined, Value::Object),
+                reject.object_id().map_or(Value::Undefined, Value::Object),
+            ]);
             let epoch = self.throw_epoch;
             if let Err(error) = self.call_native(
                 executor,
@@ -405,7 +439,8 @@ impl Vm {
                 // an earlier resolve() call still wins.
                 let origin = self.caught_rejection_origin(epoch);
                 let reason = self.error_value(error)?;
-                self.stack.push(reason.clone());
+                self.stack
+                    .push(reason.object_id().map_or(Value::Undefined, Value::Object));
                 self.with_rejection_origin(Some(origin), |vm| {
                     vm.call_native(reject, Value::Undefined, vec![reason], false)
                 })?;
@@ -422,13 +457,26 @@ impl Vm {
         constructor: &Value,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
-        self.stack.push(constructor.clone());
+        self.stack.push(
+            constructor
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
         let result = (|| {
             let capability = self.new_promise_capability(constructor)?;
             self.stack.extend([
-                capability.promise.clone(),
-                capability.resolve.clone(),
-                capability.reject.clone(),
+                capability
+                    .promise
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
+                capability
+                    .resolve
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
+                capability
+                    .reject
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
             ]);
             let object_prototype = self.object_prototype;
             let record = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
@@ -457,26 +505,42 @@ impl Vm {
             ));
         }
         let base = self.stack.len();
-        self.stack.push(constructor.clone());
-        self.stack.extend(args.iter().cloned());
+        self.stack.push(
+            constructor
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
+        self.stack
+            .extend(args.iter().filter_map(Value::object_id).map(Value::Object));
         let result = (|| {
             let callback = native::argument(args, 0).clone();
             let rest = args.iter().skip(1).cloned().collect();
             let epoch = self.throw_epoch;
             match self.call_native(callback, Value::Undefined, rest, false) {
                 Ok(value) => {
-                    self.stack.push(value.clone());
+                    self.stack
+                        .push(value.object_id().map_or(Value::Undefined, Value::Object));
                     self.promise_resolve_constructor(constructor, value)
                 }
                 Err(error) => {
                     let origin = self.caught_rejection_origin(epoch);
                     let reason = self.error_value(error)?;
-                    self.stack.push(reason.clone());
+                    self.stack
+                        .push(reason.object_id().map_or(Value::Undefined, Value::Object));
                     let capability = self.new_promise_capability(constructor)?;
                     self.stack.extend([
-                        capability.promise.clone(),
-                        capability.resolve.clone(),
-                        capability.reject.clone(),
+                        capability
+                            .promise
+                            .object_id()
+                            .map_or(Value::Undefined, Value::Object),
+                        capability
+                            .resolve
+                            .object_id()
+                            .map_or(Value::Undefined, Value::Object),
+                        capability
+                            .reject
+                            .object_id()
+                            .map_or(Value::Undefined, Value::Object),
                     ]);
                     self.with_rejection_origin(Some(origin), |vm| {
                         vm.call_native(capability.reject, Value::Undefined, vec![reason], false)
@@ -607,7 +671,11 @@ impl Vm {
             return Ok(());
         }
         let base = self.stack.len();
-        self.stack.push(resolution.clone());
+        self.stack.push(
+            resolution
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        );
         let epoch = self.throw_epoch;
         let then = self.get_property(&resolution, &"then".into());
         self.stack.truncate(base);
@@ -650,8 +718,10 @@ impl Vm {
                 "Promise.prototype.then receiver".into(),
             ))?;
         let base = self.stack.len();
-        self.stack.push(receiver.clone());
-        self.stack.extend(args.iter().cloned());
+        self.stack
+            .push(receiver.object_id().map_or(Value::Undefined, Value::Object));
+        self.stack
+            .extend(args.iter().filter_map(Value::object_id).map(Value::Object));
         let result = (|| {
             let target = self.new_promise()?;
             self.perform_promise_then(
@@ -707,11 +777,17 @@ impl Vm {
                 "Promise.prototype.then receiver".into(),
             ))?;
         let base = self.stack.len();
-        self.stack.push(receiver.clone());
-        self.stack.extend(args.iter().cloned());
+        self.stack
+            .push(receiver.object_id().map_or(Value::Undefined, Value::Object));
+        self.stack
+            .extend(args.iter().filter_map(Value::object_id).map(Value::Object));
         let result = (|| {
             let constructor = self.promise_species_constructor(receiver)?;
-            self.stack.push(constructor.clone());
+            self.stack.push(
+                constructor
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
+            );
             let (target, derived) =
                 if constructor == self.global("Promise").expect(PROMISE_INTRINSICS) {
                     let derived = self.new_promise()?;
@@ -721,7 +797,8 @@ impl Vm {
                     let derived = capability.promise.clone();
                     (ReactionTarget::Capability(capability), derived)
                 };
-            self.stack.push(derived.clone());
+            self.stack
+                .push(derived.object_id().map_or(Value::Undefined, Value::Object));
             self.perform_promise_then(
                 promise,
                 native::argument(args, 0).clone(),
@@ -743,8 +820,10 @@ impl Vm {
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
-        self.stack.push(value.clone());
-        self.stack.extend(args.iter().cloned());
+        self.stack
+            .push(value.object_id().map_or(Value::Undefined, Value::Object));
+        self.stack
+            .extend(args.iter().filter_map(Value::object_id).map(Value::Object));
         let result = self
             .get_property(value, &name.into())
             .and_then(|method| self.call_native(method, value.clone(), args, false));
@@ -777,10 +856,19 @@ impl Vm {
             ));
         }
         let base = self.stack.len();
-        self.stack.extend([receiver.clone(), on_finally.clone()]);
+        self.stack.extend([
+            receiver.object_id().map_or(Value::Undefined, Value::Object),
+            on_finally
+                .object_id()
+                .map_or(Value::Undefined, Value::Object),
+        ]);
         let result = (|| {
             let constructor = self.promise_species_constructor(receiver)?;
-            self.stack.push(constructor.clone());
+            self.stack.push(
+                constructor
+                    .object_id()
+                    .map_or(Value::Undefined, Value::Object),
+            );
             let (then_finally, catch_finally) = if self.is_callable(on_finally)? {
                 let state = self.promise_state()?;
                 self.stack.push(Value::Object(state));
@@ -793,7 +881,11 @@ impl Vm {
                     },
                     1,
                 )?;
-                self.stack.push(then_finally.clone());
+                self.stack.push(
+                    then_finally
+                        .object_id()
+                        .map_or(Value::Undefined, Value::Object),
+                );
                 let catch_finally = self.promise_native_function(
                     NativeFunction::PromiseFinallyFunction { state, catch: true },
                     1,
@@ -820,15 +912,18 @@ impl Vm {
         argument: &Value,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
-        self.stack.push(argument.clone());
+        self.stack
+            .push(argument.object_id().map_or(Value::Undefined, Value::Object));
         let origin = self.current_rejection_origin();
         let result = self.with_rejection_origin(Some(origin), |vm| {
             let on_finally = vm.promise_field(state, "onFinally");
             let constructor = vm.promise_field(state, "constructor");
             let outcome = vm.call_native(on_finally, Value::Undefined, Vec::new(), false)?;
-            vm.stack.push(outcome.clone());
+            vm.stack
+                .push(outcome.object_id().map_or(Value::Undefined, Value::Object));
             let promise = vm.promise_resolve_constructor(&constructor, outcome)?;
-            vm.stack.push(promise.clone());
+            vm.stack
+                .push(promise.object_id().map_or(Value::Undefined, Value::Object));
             let thunk_state = vm.promise_state()?;
             vm.stack.push(Value::Object(thunk_state));
             vm.promise_state_set(thunk_state, "value", argument.clone())?;
@@ -844,7 +939,8 @@ impl Vm {
                 },
                 0,
             )?;
-            vm.stack.push(thunk.clone());
+            vm.stack
+                .push(thunk.object_id().map_or(Value::Undefined, Value::Object));
             vm.invoke(&promise, "then", vec![thunk])
         });
         self.stack.truncate(base);
@@ -904,7 +1000,8 @@ impl Vm {
         // Keep `value` rooted while lazy intrinsic initialization or thenable
         // lookup can allocate.
         let base = self.stack.len();
-        self.stack.push(value.clone());
+        self.stack
+            .push(value.object_id().map_or(Value::Undefined, Value::Object));
         let outcome = (|| {
             let constructor = self.global("Promise")?;
             if value
@@ -927,7 +1024,8 @@ impl Vm {
         // Allocating the promise can collect, and `value` (typically a freshly
         // built error object) is not stored anywhere until it is settled.
         let base = self.stack.len();
-        self.stack.push(value.clone());
+        self.stack
+            .push(value.object_id().map_or(Value::Undefined, Value::Object));
         let promise = self.new_promise();
         let settled = promise.map(|promise| {
             self.settle_tracked_promise(promise, PromiseStatus::Rejected(value));
@@ -947,7 +1045,8 @@ impl Vm {
         let record = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         let base = self.stack.len();
         self.stack.push(Value::Object(record));
-        self.stack.push(value.clone());
+        self.stack
+            .push(value.object_id().map_or(Value::Undefined, Value::Object));
         let result = (|| {
             self.define_data(
                 record,

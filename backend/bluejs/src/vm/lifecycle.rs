@@ -198,6 +198,8 @@ impl Vm {
             host_event_microtask_jobs: None,
             host_scheduling: None,
             active_scheduling_bytes: 0,
+            displaced_execution_bytes: Rc::default(),
+            last_execution_payload_bytes: 0,
             browser_tasks: VecDeque::new(),
             host_finalization_tasks: VecDeque::new(),
             active_finalization_registry: None,

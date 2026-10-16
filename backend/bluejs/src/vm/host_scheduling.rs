@@ -14,7 +14,7 @@ pub const MAX_PENDING_BROWSER_TASKS: usize = 64;
 pub const MAX_HOST_SCHEDULING_BYTES: usize = 8 * 1024 * 1024;
 
 /// Owned scheduling slot capacities and native payloads (including the
-/// bounded console buffer and shared agent registries), separate from managed heap
+/// bounded console buffer, execution payloads and shared agent registries), separate from managed heap
 /// and shared installed bytecode. Allocator/control-table overhead, spare
 /// BigInt limb capacity and process RSS are not represented by this ledger.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -252,7 +252,7 @@ fn reaction_bytes(reaction: &PromiseReaction) -> usize {
         _ => 0,
     }
 }
-fn values_bytes(values: &[Value]) -> usize {
+pub(super) fn values_bytes(values: &[Value]) -> usize {
     values.iter().fold(0usize, |total, value| {
         total.saturating_add(value_payload_bytes(value))
     })
@@ -279,7 +279,7 @@ fn named_slots_bytes(values: &HashMap<usize, String>) -> usize {
         bytes.saturating_add(name.capacity())
     })
 }
-fn completion_payload_bytes(completion: &Completion) -> usize {
+pub(super) fn completion_payload_bytes(completion: &Completion) -> usize {
     match completion {
         Completion::Return(value) | Completion::Yield(value) | Completion::Halt(value) => {
             value_payload_bytes(value)
@@ -384,7 +384,9 @@ fn suspended_bytes(frame: &SuspendedModuleExecution) -> usize {
                 .as_ref()
                 .map_or(0, String::capacity),
         );
-    bytes
+    // Primitive buffers have a lease while suspended as well as while a
+    // Rust frame owns them; only the remaining slots/metadata are added here.
+    bytes.saturating_sub(frame.payload_charge.bytes())
 }
 
 impl AsyncContinuation {
@@ -534,7 +536,12 @@ impl Vm {
             .heap
             .document_heap_budget()
             .is_some_and(|(used, _)| used.saturating_add(incoming) >= self.next_host_heap_gc_bytes);
-        if retained.saturating_add(incoming) < self.next_host_native_gc_bytes && !heap_pressure {
+        // Resolving algorithms can retain the input while another native
+        // call copies it into the settled owner. Collect before those
+        // simultaneously live buffers exhaust admission, not just before
+        // the first copy reaches the watermark.
+        let native_pressure = retained.saturating_add(incoming.saturating_mul(3));
+        if native_pressure < self.next_host_native_gc_bytes && !heap_pressure {
             return Ok(());
         }
         let root_base = self.async_frame_roots.len();
@@ -592,7 +599,8 @@ impl Vm {
                 .promise_jobs
                 .capacity()
                 .saturating_mul(std::mem::size_of::<PromiseJob>())
-                .saturating_add(self.active_scheduling_bytes),
+                .saturating_add(self.active_scheduling_bytes)
+                .saturating_add(self.owned_execution_payload_bytes()),
         };
         usage.payload_bytes = usage
             .payload_bytes
@@ -772,10 +780,30 @@ impl Vm {
         }
         self.check_scheduling_failure()?;
         let own = self.own_scheduling_usage();
+        self.last_execution_payload_bytes = self.owned_execution_payload_bytes();
         self.host_scheduling.as_mut().unwrap().check(own, extra)
     }
     pub(super) fn synchronize_scheduling_usage(&mut self) -> Result<(), RuntimeError> {
         self.admit_scheduling_work(HostSchedulingUsage::default())
+    }
+
+    /// Unwinding must reconcile ownership even after admission has failed.
+    /// This never clears the account's terminal failure or admits new work.
+    pub(super) fn refresh_scheduling_ownership(&mut self) {
+        let Some(scope) = &self.host_scheduling else {
+            return;
+        };
+        let bytes = self.owned_execution_payload_bytes();
+        if bytes == self.last_execution_payload_bytes && !scope.account.borrow().failed {
+            return;
+        }
+        let own = self.own_scheduling_usage();
+        self.last_execution_payload_bytes = bytes;
+        let _ = self
+            .host_scheduling
+            .as_mut()
+            .unwrap()
+            .check(own, HostSchedulingUsage::default());
     }
     pub(super) fn check_scheduling_failure(&self) -> Result<(), RuntimeError> {
         if self

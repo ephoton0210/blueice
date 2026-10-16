@@ -462,7 +462,7 @@ pub struct PageHostRealmStats {
     pub static_metadata_bytes: u64,
     /// Child-owned pending debugger queue and nested graph/AST/attachment data.
     pub deferred_payload_bytes: u64,
-    /// Owned scheduling slots, primitive buffers, async state and agent registries.
+    /// Owned scheduling slots, primitive buffers, execution state and agent registries.
     /// No callback, object handle or scheduled payload crosses this boundary.
     pub scheduling_payload_bytes: u64,
 }

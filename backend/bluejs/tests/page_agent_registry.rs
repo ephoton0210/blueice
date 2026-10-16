@@ -75,6 +75,8 @@ fn registry_payload_cannot_bypass_the_terminal_document_native_budget() {
 
 #[test]
 fn completed_jobs_report_agent_storage_and_repeated_keys_do_not_recharge_it() {
+    // Discard setup completions: active Symbol descriptions have their own
+    // execution charge, independently of the registry storage under test.
     let mut runtime = page();
     execute(
         &mut runtime,
@@ -145,7 +147,7 @@ fn nested_realms_cannot_split_the_agent_registry_budget() {
     execute(
         &mut runtime,
         1,
-        "for(var i=0;i<3;i++)Symbol.for('x'.repeat(400000)+String(i));0;",
+        "for(var i=0;i<3;i++)void Symbol.for('x'.repeat(400000)+String(i));0;",
     )
     .unwrap();
     let source = "for(var i=0;i<3;i++)Symbol.for('y'.repeat(400000)+String(i));0;";
@@ -175,7 +177,7 @@ fn registry_and_existing_promise_or_timer_storage_use_one_cap() {
         runtime
             .configure_realm_bindings(1, |host| host.install_host_timers())
             .unwrap();
-        execute(&mut runtime,1,"for(var i=0;i<4;i++)Symbol.for('x'.repeat(400000)+String(i));var held=[];function noop(){}0;").unwrap();
+        execute(&mut runtime,1,"for(var i=0;i<4;i++)void Symbol.for('x'.repeat(400000)+String(i));var held=[];function noop(){}0;").unwrap();
         let source = if producer == "timer" {
             "for(var i=0;i<3;i++)setTimeout(noop,10000,'y'.repeat(400000));0;"
         } else {
@@ -201,7 +203,7 @@ fn registry_and_existing_promise_or_timer_storage_use_one_cap() {
 #[test]
 fn refused_registry_growth_does_not_increase_committed_native_bytes() {
     let mut runtime = page();
-    execute(&mut runtime,1,"for(var i=0;i<3;i++)Symbol.for('x'.repeat(400000)+String(i));var held=[];for(var i=0;i<3;i++)held.push(Promise.resolve('y'.repeat(350000)));0;").unwrap();
+    execute(&mut runtime,1,"for(var i=0;i<3;i++)void Symbol.for('x'.repeat(400000)+String(i));var held=[];for(var i=0;i<3;i++)held.push(Promise.resolve('y'.repeat(350000)));0;").unwrap();
     let before = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
     let result = execute(&mut runtime, 1, "Symbol.for('new'+'x'.repeat(400000));0;");
     assert!(
@@ -241,7 +243,7 @@ fn host_neutral_registry_is_unbounded_and_oversized_policy_attachment_is_atomic(
     let mut vm = Vm::default();
     script(
         &mut vm,
-        "for(var i=0;i<16;i++)Symbol.for('x'.repeat(400000)+String(i));0;",
+        "for(var i=0;i<16;i++)void Symbol.for('x'.repeat(400000)+String(i));0;",
     )
     .unwrap();
     error_bindings(&mut vm);
