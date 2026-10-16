@@ -423,7 +423,7 @@ fn an_import_that_joins_a_running_graph_leaves_its_roots_with_that_graph() {
         "t/dep.js".to_string(),
         "export var x = 1; export var y = 2;".to_string(),
     )]));
-    vm.evaluating_linked = Some(HashMap::new());
+    vm.evaluating_linked = Some(ModuleRecords::default());
     vm.execute_module_graph_inner(
         "t/dep.js",
         &HashMap::new(),

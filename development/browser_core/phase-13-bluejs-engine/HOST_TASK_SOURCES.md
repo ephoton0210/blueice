@@ -450,6 +450,24 @@ owners before publishing cleanup. Realm drop refunds its contribution to peers.
 The surrounding graph record/name/root containers, shared programs and other
 compiler/native/integrated ownership remain separate open gates.
 
+Module record tables retain one document charge for logical table slots and
+canonical key capacities. The owner moves with stored, parked and Rust-held
+graphs. Growth admits a full detached table while old slots and keys coexist;
+existing entries move after admission, their charges merge, and freed old slots
+refund. Key copies are admitted before allocation and spare slots require no
+table-growth charge. Removal refunds key storage even after terminal failure;
+empty reserved tables remain owned until their final drop. Cached key capacity
+keeps batch rollback from repeatedly scanning the complete table.
+
+New-name selection borrows immutable registry keys into one admitted, sorted
+vector held across module JavaScript. Failure preserves the previous graph and
+releases only preparation roots; the vector drops before final cleanup and
+Promise draining. Bounded activation attaches preloaded record metadata once;
+foreign-document attachment and mutation without the owner scope are refused.
+Link rollback removes new names and keeps actual retained capacity charged.
+Graph root-list merging, native payloads of retained record values, shared
+programs and other compiler/native/integrated storage remain open work.
+
 Tagged-template identity belongs to a single realm cache. Suspending, restoring,
 resuming or discarding a frame does not move, copy or merge that table. Native
 accounting counts its capacity once as realm storage, independently of active

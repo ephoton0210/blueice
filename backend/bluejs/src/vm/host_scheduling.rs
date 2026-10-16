@@ -274,6 +274,12 @@ pub(super) struct SharedSchedulingCharge {
 }
 
 impl SharedSchedulingCharge {
+    /// Releasing existing storage is permitted after terminal admission failure.
+    pub(super) fn release_to(&mut self, bytes: usize) {
+        assert!(bytes <= self.bytes, "cleanup cannot acquire native storage");
+        self.account.borrow_mut().usage.payload_bytes -= self.bytes - bytes;
+        self.bytes = bytes;
+    }
     /// Transfer existing ownership without admitting or charging it again.
     pub(super) fn absorb(&mut self, mut other: Self) -> Result<(), RuntimeError> {
         if !Rc::ptr_eq(&self.account, &other.account) {

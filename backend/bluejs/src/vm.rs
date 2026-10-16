@@ -42,6 +42,8 @@ mod global_bindings;
 mod module_cell_storage;
 mod module_context;
 mod module_continuation_storage;
+mod module_graph_storage;
+use module_graph_storage::ModuleRecords;
 mod module_referrers;
 mod module_registry;
 mod module_sources;
@@ -459,7 +461,7 @@ struct ModuleEvaluationError {
 /// as static imports in an earlier graph, rather than creating a second set
 /// of cells for the same canonical module name.
 struct ModuleGraphState {
-    linked: HashMap<String, LinkedModule>,
+    linked: ModuleRecords,
     roots: Vec<RootId>,
 }
 
@@ -1024,7 +1026,7 @@ pub struct Vm {
     /// now. Module evaluation holds them in a local; while user code runs
     /// they are parked here so a deferred namespace observed by that code
     /// (or an `import()` it starts) can evaluate a module of the same graph.
-    evaluating_linked: Option<HashMap<String, LinkedModule>>,
+    evaluating_linked: Option<ModuleRecords>,
     /// Roots registered by an import that joined the graph whose module code
     /// is running (see `evaluating_linked`). The importing call cannot reach
     /// that graph's own root list, which the outer evaluation holds, so it

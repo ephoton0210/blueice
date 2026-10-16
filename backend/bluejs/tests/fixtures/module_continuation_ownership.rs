@@ -74,8 +74,9 @@ fn module_continuation_ownership_pending_frame_retains_the_replaced_registry_cha
     suspend(&mut vm);
     let retained = vm.module_registry.retained_bytes();
     vm.set_module_loader_context("", HashMap::new());
-    let shared =
-        vm.host_scheduling_snapshot().payload_bytes - vm.own_scheduling_usage().payload_bytes;
+    let shared = vm.host_scheduling_snapshot().payload_bytes
+        - vm.own_scheduling_usage().payload_bytes
+        - vm.module_record_storage_bytes();
     assert!(
         shared >= retained,
         "pending frame released its backing code snapshot: {shared} < {retained}"
@@ -216,12 +217,12 @@ fn module_continuation_ownership_loader_replacement_resumes_the_original_program
     vm.run_promise_jobs_bounded(16).unwrap();
     assert_eq!(
         observer.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + latest
+        vm.own_scheduling_usage().payload_bytes + vm.module_record_storage_bytes() + latest
     );
     assert_eq!(execute(&mut vm, "globalThis.answer;"), Value::Number(42.0));
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + latest
+        vm.own_scheduling_usage().payload_bytes + vm.module_record_storage_bytes() + latest
     );
 }
 
@@ -263,7 +264,7 @@ fn module_continuation_ownership_late_activation_attaches_a_displaced_snapshot()
     vm.use_bounded_host_microtask_checkpoints().unwrap();
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + retained
+        vm.own_scheduling_usage().payload_bytes + vm.module_record_storage_bytes() + retained
     );
     execute(&mut vm, "gate.resolve();0;");
     vm.run_promise_jobs_bounded(16).unwrap();
@@ -271,7 +272,7 @@ fn module_continuation_ownership_late_activation_attaches_a_displaced_snapshot()
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
+        vm.own_scheduling_usage().payload_bytes + vm.module_record_storage_bytes()
     );
 }
 
@@ -289,14 +290,14 @@ fn module_continuation_ownership_late_debugger_activation_retains_and_refunds_th
     );
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + retained
+        vm.own_scheduling_usage().payload_bytes + vm.module_record_storage_bytes() + retained
     );
     vm.resume_debugger_module_execution().unwrap();
     assert_eq!(execute(&mut vm, "globalThis.answer;"), Value::Number(42.0));
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
+        vm.own_scheduling_usage().payload_bytes + vm.module_record_storage_bytes()
     );
 }
 
@@ -315,7 +316,7 @@ fn module_continuation_ownership_rejected_await_refunds_the_old_snapshot() {
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
+        vm.own_scheduling_usage().payload_bytes + vm.module_record_storage_bytes()
     );
 }
 
@@ -340,7 +341,7 @@ fn module_continuation_ownership_registration_refusal_releases_code_and_name_wit
     vm.reconcile_scheduling_ownership();
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
+        vm.own_scheduling_usage().payload_bytes + vm.module_record_storage_bytes()
     );
 }
 
@@ -358,7 +359,7 @@ fn module_continuation_ownership_terminal_debugger_cleanup_refunds_the_old_snaps
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
+        vm.own_scheduling_usage().payload_bytes + vm.module_record_storage_bytes()
     );
 }
 

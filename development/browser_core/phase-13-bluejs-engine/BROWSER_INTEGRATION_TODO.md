@@ -57,7 +57,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Linked module cell ownership is the current follow-up (2026-10-17).
+Module record-table ownership is the current follow-up (2026-10-17).
+Three tiny retained/Rust-held/admission cases initially failed and now pass.
+Record tables now own their admitted slots and canonical key buffers; growth
+reserves a detached replacement while old storage coexists. Name selection
+borrows immutable registry keys with a leased vector. All thirteen finite groups
+and all 752 fixed selected cases pass, together with formatting and offline
+workspace/all-target Clippy. Root-list merging, retained record values and
+shared programs remain open; M1u stays the latest accepted milestone.
+
+The linked module cell checkpoint (2026-10-17) precedes this follow-up.
 Three tiny completed/pending/admission cases initially failed and now pass.
 Linked tables reserve capacity before managed cells are created; a separate
 realm counter follows their leases while graphs are stored, parked or held in
@@ -2480,6 +2489,77 @@ Evidence: `/private/tmp/blueice-module-cells-controls-20261017.py`,
 `target/module-cells-source-20261017.json` records source/log/executable hashes
 and staged/committed blob checks. This is a bounded implementation checkpoint;
 wider M1z/native/integrated acceptance remains open.
+
+#### Module record-table ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: graph record-table slots and canonical-name buffers retain native
+ownership while installed, parked or Rust-held. Table growth admits a complete
+replacement while the old table coexists; refusal preserves existing records.
+Linking name selection borrows immutable registry keys and admits its vector
+before allocation. Bounded activation, rollback and final drop preserve quotas.
+
+- [x] Reproduce retained/Rust-held metadata undercounting and late admission:
+      the initial three cases failed; the same cases now pass. One tiny graph
+      previously omitted 725 bytes of logical table/name storage.
+- [x] Implement owned record tables, checked growth/key copies, borrowed name
+      selection and lifecycle/refusal controls.
+- [x] Run fixed offline regressions/static checks, update evidence and commit
+      with a detailed English message. Graph root-list merging, retained record
+      values, shared programs and wider native/integrated gates remain open.
+
+Implementation: `ModuleRecords` retains a document charge for logical table
+capacity and canonical key capacities. That owner moves with the graph through
+installed, parked and Rust-held states. Growth first admits a full detached
+replacement while old slots/names remain live, then moves entries without
+copying keys or records. Publication merges existing charges and refunds the
+freed old table. Refused planning preserves records, capacity and pointers.
+
+New key copies are admitted before allocation; existing spare slots require no
+new table reservation. Name removal refunds only released buffers, including
+after terminal failure; empty reserved tables keep their charge until drop.
+Key capacity is cached so batch rollback does not repeatedly scan all keys.
+Host-neutral graph metadata attaches once on bounded activation and rejects a
+foreign owner or mutation without its owning document scope.
+
+Linking selects sorted new names directly from immutable registry keys with one
+leased borrowed-name vector. It admits minimum slots before allocation, checks
+reported capacity and keeps the lease across module JavaScript. Preparation refusal
+restores the old graph and new-root prefix; vector ownership drops before final
+graph cleanup and Promise draining. Canonical key copies enter the owned table
+before managed cell linking begins. Rollback removes only newly inserted names;
+retained actual table capacity remains charged.
+
+Thirteen finite groups cover native/Rust-held retention and refund, admission
+before managed cells, old/new table peaks, empty-key spare-slot reuse at full
+scalar quota, name-copy refusal, terminal cleanup, borrowed sorted-name identity
+and slot ownership/refusal, late activation, foreign/missing scope refusal,
+existing-graph rollback and fresh-graph failure with peer-ledger observations.
+The fixtures expose the ordinary-library coverage entry point; no new coverage
+measurement is claimed.
+
+Four older aggregate-ledger fixtures now include each graph's additional native
+owner. Their identity, root, lifetime and refund assertions remain in place;
+the pending-frame executable check also subtracts record metadata to isolate
+its retained code owner. Initial total-only differences remain in diagnostic
+`{cells,continuations,contexts,final-unit}-aggregate-red` logs.
+
+Validation: **752 passed, zero failed/ignored**, across 38 executables and 66
+fixed selections: thirteen new groups and all 739 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled. The same seven pressure cases remain
+excluded and JSON resource sweeps are not selected. No network/service replay,
+fresh full Test262, real Core/MCP replay, coverage measurement or integrated
+acceptance is claimed. Root-list merging, retained record value payloads,
+shared programs and other native/integrated gates remain open.
+
+Evidence: `/private/tmp/blueice-module-graph-controls-20261017.py`,
+`/private/tmp/blueice-module-graph-commit-20261017.txt`,
+`/private/tmp/blueice-module-graph-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-module-graph-{red,first,graphs,fmt,clippy}-20261017.log`.
+`target/module-graph-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. This is an M1z implementation checkpoint;
+wider native/integrated acceptance remains open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

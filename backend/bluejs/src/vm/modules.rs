@@ -323,7 +323,7 @@ impl Vm {
                     nested_in_evaluation = true;
                     (linked, Vec::new(), false)
                 }
-                None => (HashMap::new(), Vec::new(), true),
+                None => (ModuleRecords::default(), Vec::new(), true),
             },
         };
         // `ensure_synthetic_module`/`ensure_dynamic_module_compiled` (below) can
@@ -398,13 +398,25 @@ impl Vm {
         // compiled on demand for a dynamic import gets exactly the same
         // real linking (cell creation, export validation, import aliasing,
         // declaration instantiation) a fresh graph's own modules get.
-        let mut order: Vec<_> = modules.keys().cloned().collect();
-        order.sort_unstable();
-        let new_names: Vec<String> = order
-            .iter()
-            .filter(|name| !linked.contains_key(name.as_str()))
-            .cloned()
-            .collect();
+        let new_names = match self.prepare_module_names(modules, &linked) {
+            Ok(names) => names,
+            Err(error) => {
+                for root in roots.drain(roots_checkpoint..) {
+                    self.release_root(root);
+                }
+                if fresh_graph {
+                    for root in roots {
+                        self.release_root(root);
+                    }
+                } else {
+                    self.store_module_graph(
+                        ModuleGraphState { linked, roots },
+                        nested_in_evaluation,
+                    );
+                }
+                return Err(error);
+            }
+        };
         // Roots added since preparation began, until this call's success/failure
         // is known, belong only to `new_names`'s delta -- on a linking
         // failure for that delta (not a fresh graph, which instead discards
@@ -427,7 +439,7 @@ impl Vm {
             // rejection before graph setup reaches the usual execution reset.
             // Give that host-visible error construction a fresh budget too.
             self.remaining_instructions = self.config.instruction_budget;
-            // The host supplies the closed source set for this realm; `order`/
+            // The host supplies the closed source set for this realm;
             // `new_names` (computed above, before this closure) link every
             // newly-supplied record once so a later dynamic import shares a
             // static import's cells instead of constructing a second module
@@ -459,7 +471,8 @@ impl Vm {
             self.top_level_module = true;
 
             if !new_names.is_empty() {
-                for name in &new_names {
+                linked.reserve(new_names.len(), self.host_scheduling.as_ref())?;
+                for &name in new_names.iter() {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -483,13 +496,13 @@ impl Vm {
                         deferred_namespace: None,
                     };
                     prepared.install(&mut record);
-                    linked.insert(name.clone(), record);
+                    linked.insert_new(name, record, self.host_scheduling.as_ref())?;
                 }
 
                 // ModuleDeclarationInstantiation creates all own bindings before
                 // wiring imports.  A `var` binding is initialized immediately;
                 // lexical bindings deliberately have no `value` property yet.
-                for name in &new_names {
+                for &name in new_names.iter() {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -529,7 +542,7 @@ impl Vm {
                 // mark it evaluated -- `evaluate_module_record` never touches
                 // its (empty) instruction stream for a record already
                 // marked evaluated.
-                for name in &new_names {
+                for &name in new_names.iter() {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -552,7 +565,7 @@ impl Vm {
                 // body would otherwise call $DONOTEVALUATE().  Star exports do
                 // not themselves fail here; their ambiguity matters only when a
                 // particular name is resolved by an import or indirect export.
-                for name in &new_names {
+                for &name in new_names.iter() {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -605,7 +618,7 @@ impl Vm {
                 // Import bindings are immutable aliases.  The importer stores the
                 // exporter's *cell*, so later stores in the exporting module are
                 // visible without any copy or notification mechanism.
-                for name in &new_names {
+                for &name in new_names.iter() {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -708,7 +721,7 @@ impl Vm {
                 // Run declaration instantiation for every reachable module before
                 // evaluating any body.  This makes function exports callable
                 // across a cycle, while lexical exports remain in their TDZ.
-                for name in &new_names {
+                for &name in new_names.iter() {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -805,7 +818,7 @@ impl Vm {
                 // so an unrelated later operation on the existing graph is
                 // unaffected and a retried dynamic import of the same
                 // specifier is treated as new again.
-                for name in &new_names {
+                for &name in new_names.iter() {
                     linked.remove(name);
                 }
                 for root in roots.split_off(roots_checkpoint) {
@@ -816,6 +829,7 @@ impl Vm {
         } else {
             self.store_module_graph(ModuleGraphState { linked, roots }, nested_in_evaluation);
         }
+        drop(new_names);
         // A module can become asynchronous solely through a dependency.  The
         // host-facing evaluation path must advance that dependency's queued
         // continuation just as it does for an entry containing `await`
@@ -1816,7 +1830,7 @@ impl Vm {
         &mut self,
         completed: String,
         modules: &ModuleRegistry,
-        linked: &mut HashMap<String, LinkedModule>,
+        linked: &mut ModuleRecords,
     ) -> Result<(), RuntimeError> {
         let result = self.settle_module_parents_owned(completed, modules, linked);
         self.reconcile_scheduling_ownership();
@@ -1827,7 +1841,7 @@ impl Vm {
         &mut self,
         completed: String,
         modules: &ModuleRegistry,
-        linked: &mut HashMap<String, LinkedModule>,
+        linked: &mut ModuleRecords,
     ) -> Result<(), RuntimeError> {
         let mut completed = std::collections::VecDeque::from([completed]);
         while let Some(child) = completed.pop_front() {
@@ -2689,7 +2703,7 @@ impl Vm {
         &mut self,
         name: &str,
         modules: &ModuleRegistry,
-        linked: &mut HashMap<String, LinkedModule>,
+        linked: &mut ModuleRecords,
     ) -> Result<Value, RuntimeError> {
         // Loading the requested modules checked that every module of the graph
         // exists, and linking made a record for each.

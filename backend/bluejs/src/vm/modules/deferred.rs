@@ -239,7 +239,7 @@ impl Vm {
     /// the installed graph between executions.
     pub(super) fn with_module_records<T>(
         &mut self,
-        operation: impl FnOnce(&mut Self, &mut HashMap<String, LinkedModule>) -> T,
+        operation: impl FnOnce(&mut Self, &mut ModuleRecords) -> T,
     ) -> Result<T, RuntimeError> {
         if let Some(mut linked) = self.evaluating_linked.take() {
             let result = operation(self, &mut linked);
