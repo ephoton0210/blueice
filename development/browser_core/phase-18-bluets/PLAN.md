@@ -11002,3 +11002,25 @@ policy is equivalent. That remains an explicit G-M3 limitation.
 The refusal inventory script was rerun without a section 4 change.
 `cargo fmt --all -- --check`, warnings-denied two-crate all-target Clippy,
 and the complete two-crate test suite with all ignored oracles exit 0.
+
+### K.13.1.3 Windows oracle hosted-run candidate (2026-10-16)
+
+The `typescript-oracle` CI matrix now includes Windows Server 2025 x86_64
+and Windows 11 arm64 alongside the existing Linux and macOS legs. The old
+Windows-exclusion comment is removed. Each leg installs TypeScript 5.9.3 and
+Acorn 8.15.0 into a runner-local directory, exports the explicit npm shim
+paths, and resolves the package libraries and TypeScript CLI through those
+shims. Diagnostic recorders invoke the pinned CLI through Node and normalize
+Windows line endings and paths before comparing checked-in observations.
+
+The isolated pb60g Windows x86_64 VM passed the three new Node command and
+package-resolution tests, both affected diagnostic recorders (22 presentation
+cases and 867 project-position cases), and all 82 ignored TypeScript oracle
+tests using the actual pinned `tsc.cmd` and `acorn.cmd`. The macOS host passed
+the three Node tests, both recorders, the complete two-crate K.0 suite with
+ignored oracles (`typescript_oracle`: 87/87), rustfmt, and warnings-denied
+two-crate all-target Clippy. The isolated VM test copy was removed afterward.
+
+This is pre-hosted evidence only. AC-K13.1.3 remains open until both Windows
+matrix legs pass in one GitHub-hosted run; no arm64 success is inferred from
+the x86_64 VM result.

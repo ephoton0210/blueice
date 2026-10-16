@@ -312,13 +312,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The differential suites compare BlueTSC with the pinned compiler by
-        # running both outputs under Node, so they run wherever Node and the pinned
-        # `tsc` do. Windows is not in this list: those suites call `tsc` through
-        # `npm exec`, whose `tsc.cmd` shim the harness does not yet launch, and the
-        # symlink tests are Unix-only. `COMPATIBILITY_INVENTORY.md` records that as
-        # an open gap, so full parity is not advertised.
-        os: [ubuntu-24.04, macos-15]
+        # Both Windows architectures use the same pinned oracle suite. Unix-only
+        # symlink cases are explicitly listed in each Windows job summary.
+        os: [ubuntu-24.04, macos-15, windows-2025, windows-11-arm]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -326,15 +322,26 @@ jobs:
         with:
           node-version: 24
       - uses: Swatinem/rust-cache@v2
+      - name: Install pinned TypeScript and Acorn oracles
+        run: >-
+          npm install --no-save --package-lock=false --ignore-scripts
+          --prefix "${{ runner.temp }}/bluets-oracles"
+          typescript@5.9.3 acorn@8.15.0
+      - name: Select pinned oracle commands
+        run: node development/browser_core/phase-18-bluets/tools/select_oracle_commands.cjs
+      - name: Verify cross-platform oracle command resolution
+        run: >-
+          node --test
+          backend/bluets/tests/fixtures/oracle_support/resolve_package.test.cjs
+          development/browser_core/phase-18-bluets/tools/select_oracle_commands.test.cjs
       - name: Run every pinned TypeScript 5.9.3 oracle of BlueTSC and its direct bridge
         # Every `#[ignore]` test of the two crates is a differential suite against
         # the pinned compiler (accepted/rejected matrices, emitted JavaScript run
         # under Node, declarations, option combinations, direct-runtime parity), so
         # none may be skipped: one that fails fails the job.
-        run: >-
-          npm exec --yes --package typescript@5.9.3 --package acorn@8.15.0 --
-          env BLUEICE_BLUETSC_ORACLE=tsc BLUEICE_ACORN_ORACLE=acorn FORCE_COLOR=0
-          cargo test -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --ignored
+        env:
+          FORCE_COLOR: "0"
+        run: cargo test -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --ignored
       - name: Report Windows symlink exclusions
         if: runner.os == 'Windows' && always()
         run: node development/browser_core/phase-18-bluets/tools/report_windows_symlink_tests.cjs
