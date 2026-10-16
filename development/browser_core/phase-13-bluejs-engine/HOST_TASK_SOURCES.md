@@ -110,6 +110,22 @@ leave an orphan frame while returning success. Existing owners move without
 cloning after admission. Staging allocations, allocator overhead and broader
 native control/service storage remain outside this logical capacity policy.
 
+Ordinary and deferred dynamic-import waiters consume the same document
+reaction/request count. Ordinary registration checks table/vector growth and a
+new canonical key together; an existing key and spare slot add no payload
+charge. Deferred registration moves dependency names into a prepared set and
+admits its actual slot/name storage with the waiter-vector growth. Admission
+precedes publishing the new target reference or dependency set. Import loading
+still owns its independent namespace-result root while preparing that request.
+
+Namespace construction succeeds before completed waiters are removed. A
+construction refusal retains their ownership. Fulfillment and rejection
+release empty or mostly unused waiting-table/vector storage and reconcile the
+account before publishing further Promise work. Partial deferred completion
+drops obsolete dependency names and shrinks mostly empty sets. Pending targets
+remain GC roots through the existing module-work edges, then become collectible
+when delivery has finished and no other owner retains them.
+
 ### Native-payload collection pressure
 
 Large Promise results and suspended-frame strings enter the native scheduling

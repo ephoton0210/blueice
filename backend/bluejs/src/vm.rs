@@ -55,6 +55,7 @@ mod host_registration;
 mod host_scheduling;
 mod host_task_turns;
 mod host_timers;
+mod import_waiters;
 use agent_registry::AgentSymbolRegistry;
 use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::{

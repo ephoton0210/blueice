@@ -75,9 +75,17 @@ The Promise-table follow-up now checks Promise record growth, paired host wait/
 Promise tables and async/module continuation growth together with their
 resumption work. Twelve of fifteen initial tiny-owner groups fail on the parent;
 all fifteen pass with joint admission. Script refusal and early argument-lease
-refund controls also pass. The current selection passes 148 cases, formatting
+refund controls also pass. That checkpoint passes 148 selected cases, formatting
 and offline workspace/all-target Clippy. No fresh integrated acceptance is
 claimed.
+
+The import-waiter follow-up now covers ordinary/deferred import publication,
+shared waiting counts and release after fulfillment or rejection. Eight of ten
+small-graph tests fail on the parent; the two available-slot controls pass.
+Prepublication admission, reclamation and all twelve expanded groups now pass,
+including partial-dependency shrink and a deterministic namespace-root refusal.
+The full selected checkpoint passes 177 cases, formatting and offline
+workspace/all-target Clippy. Final integrated acceptance remains open.
 
 **In progress — M1w document callback-timer counts (2026-10-16).**
 Callback timer limits previously applied to each realm separately, while the
@@ -409,7 +417,8 @@ work and exposes its retained payload ledger.
       entries and a scalar shared-owner model. The implementation checkpoint
       below now includes browser-task/cleanup/rejection producers, FileReader
       requeue/cancellation, timeout clock ordering and joint Promise/await-table
-      admission; integrated acceptance
+      admission; import-waiter publication and reclamation are in progress.
+      Integrated acceptance
       and the wider native control/service-buffer gate remain open.
 - [ ] **M1w: document callback-timer counts.** Root and attached child realms
       must share 1,024 pending callback registrations, expose aggregate counts,
@@ -850,6 +859,11 @@ acceptance and broader native control/service storage remain open.
       together with frame/table storage and preserve its serial on refusal.
       Host calls must admit both tables and native argument storage together,
       refund argument reservations on every early exit and preserve starts.
+- [x] Finish ordinary/deferred import waiter admission before publishing keys,
+      vectors, dependency sets or target references. Refuse shared request
+      count/byte growth without changing prior waiters; admit spare slots
+      without recharging canonical keys. Release unused wait storage after
+      fulfillment/rejection while preserving waiting targets through GC.
 - [ ] Complete integrated/full-source acceptance under the owner's security
       constraints. M1u remains the latest accepted milestone.
 
@@ -938,7 +952,7 @@ reconciliation. Red log:
 Broader native control/service buffers, allocator overhead and transient
 staging storage remain outside this logical owned-capacity checkpoint.
 
-Current-source bounded validation: **148 passed, zero failed, zero ignored**.
+Promise-table checkpoint (`a70cd7795`) validation: **148 passed, zero failed, zero ignored**.
 Seventeen new groups pass, along with 58 existing unit controls: the 56
 capacity/handoff/call-entry/timer/cleanup/source groups from the preceding
 checkpoint and two actual await serial/invalid-owner restoration controls.
@@ -965,6 +979,54 @@ Logs: `/private/tmp/blueice-promise-table-capacity-final-unit-20261016.log`,
 Clippy: `/private/tmp/blueice-promise-table-capacity-clippy-20261016.log`.
 Receipt: `target/promise-table-capacity-source-20261016.json`.
 No fresh full Test262, real Core/MCP replay or coverage result is claimed.
+
+**Import-waiter follow-up — bounded validation passed.**
+Acceptance: ordinary import waiters
+admit the shared count, any map/vector growth and newly retained canonical key
+before publication; an existing key/slot is not charged again. Deferred
+waiters admit their dependency-set/name payload and vector growth together.
+Refusal preserves prior tables, vectors, counts and target references. Waiting
+targets survive actual collection, then become collectible when settled and
+unreferenced. Fulfillment and rejection release empty wait storage; partial
+dependency completion returns obsolete names and excess set capacity.
+Namespace construction failures must retain the original waiters for cleanup.
+
+Ten initial groups use small real module graphs and import jobs, plus scalar
+models of another document owner. Eight reproduce late publication or retained
+empty storage; two available-slot controls pass on the parent. Red log:
+`/private/tmp/blueice-import-waiter-capacity-unit-red-20261016.log`.
+The new helpers plan storage before publication and reconcile the ledger after
+settlement. All twelve expanded groups pass: ordinary/deferred shared-count
+refusal; first-key, key-table, waiter-vector and deferred growth; both spare-slot
+controls; fulfillment/rejection storage and GC release; partial dependency
+shrink; and deterministic namespace-root refusal. The latter confirms that
+the original pending import references survive the error. The defer loader
+refreshes its separate result-root lease; cumulative root-registration counts
+are not a measure of waiting ownership, so refusal compares retained targets,
+names, namespaces and capacities directly.
+Expanded log:
+`/private/tmp/blueice-import-waiter-capacity-expanded-green-20261016.log`.
+Current-source bounded validation: **177 passed, zero failed, zero ignored**.
+The twelve new groups and 75 existing unit controls pass: seventeen Promise
+table groups, eight initial slot groups, twenty browser groups, twelve handoff
+groups, four call-entry controls, seven timer-count groups, two await-restoration
+controls, two cleanup boundaries and three task-source boundaries. Eight public
+selections pass `async_from_sync_delegation` (two), `async_generator_ticks`
+(fourteen), `async_yield_star_delegate_close` (seven), `dynamic_import` (ten),
+`host_async_tasks` (18), `import_defer` (seventeen), `promise_capabilities` (ten)
+and `promise_gc_lifecycle` (twelve). Six other host-async pressure/limit cases
+remain filtered. Formatting, `git diff --check` and offline workspace/all-target
+Clippy with warnings denied pass. The new tests use small queued jobs and
+deterministic scalar/root-refusal controls, with no represented large buffer
+allocation or resource-exhaustion probe.
+
+Control logs use `/private/tmp/blueice-import-waiter-capacity-` with
+`{promise,slot,browser,handoff,call,timer,await-refusal,continuation,cleanup,source,public}-controls-20261016.log`.
+Clippy: `/private/tmp/blueice-import-waiter-capacity-clippy-20261016.log`.
+Receipt: `target/import-waiter-capacity-source-20261016.json`.
+Broader native control/service buffers, allocator/transient staging accounting
+and final integrated acceptance remain open. No fresh full Test262, real
+Core/MCP replay or coverage result is claimed.
 
 ### M1w — Document callback-timer counts (implementation checkpoint, 2026-10-16)
 
@@ -1000,7 +1062,7 @@ full replay inventory; the historical 405-executable M1v selections predate it.
 No private transport layout or byte-limit change is needed for these Rust
 counter snapshots. Abort timeouts remain in the separate browser-task cap.
 
-Current-source bounded validation: **94 passed, zero failed, zero ignored**.
+Timer-count checkpoint (`733c7ef24`) validation: **94 passed, zero failed, zero ignored**.
 The seven timer-count unit groups, twelve existing handoff groups and four
 call-entry controls pass. The new complete `document_timer_counts` public
 target passes two cases. Related public selections pass `host_timers` (32),

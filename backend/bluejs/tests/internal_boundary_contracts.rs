@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_import_waiter_capacity_contracts() {
+    blueice_bluejs::Vm::verify_import_waiter_capacity_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_promise_table_capacity_contracts() {
     blueice_bluejs::Vm::verify_promise_table_capacity_contracts();
 }

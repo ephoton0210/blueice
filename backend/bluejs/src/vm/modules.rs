@@ -1809,6 +1809,9 @@ impl Vm {
         let mut finished = Vec::new();
         for waiter in &mut self.deferred_import_waiters {
             waiter.pending.remove(module);
+            if waiter.pending.len().saturating_mul(4) < waiter.pending.capacity() {
+                waiter.pending.shrink_to_fit();
+            }
         }
         self.deferred_import_waiters.retain(|waiter| {
             if waiter.pending.is_empty() {
@@ -1825,11 +1828,13 @@ impl Vm {
                 .expect("namespace construction cannot remove the retained import waiters");
             finished.extend(waiters.into_iter().map(|promise| (promise, namespace)));
         }
+        self.reclaim_import_waiter_storage();
+        self.synchronize_scheduling_usage()?;
         for (promise, namespace) in finished {
             self.resolve_promise(promise, Value::Object(namespace))
                 .expect("completed import waiters retain initialized ordinary namespace exports or deferred namespaces without then; Promise resolution only queues callable exports");
         }
-        Ok(())
+        self.synchronize_scheduling_usage()
     }
 
     /// Rejects every `import()` promise that waited for `module` with `error`.
@@ -1847,6 +1852,8 @@ impl Vm {
                 true
             }
         });
+        self.reclaim_import_waiter_storage();
+        self.synchronize_scheduling_usage()?;
         for promise in failed {
             self.reject_promise_with_origin(
                 promise,
@@ -1855,8 +1862,10 @@ impl Vm {
             )?;
         }
         let Some(waiters) = self.module_import_waiters.remove(module) else {
-            return Ok(());
+            return self.synchronize_scheduling_usage();
         };
+        self.reclaim_import_waiter_storage();
+        self.synchronize_scheduling_usage()?;
         for promise in waiters {
             self.reject_promise_with_origin(
                 promise,
@@ -1864,7 +1873,7 @@ impl Vm {
                 error.origin.as_ref().clone(),
             )?;
         }
-        Ok(())
+        self.synchronize_scheduling_usage()
     }
 
     /// Registers a module frame on the Promise it awaits. A fulfilled input

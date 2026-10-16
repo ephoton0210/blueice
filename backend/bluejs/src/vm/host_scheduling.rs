@@ -28,6 +28,10 @@ mod browser_task_capacity;
 #[path = "../../tests/fixtures/promise_table_capacity.rs"]
 mod promise_table_capacity;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/import_waiter_capacity.rs"]
+mod import_waiter_capacity;
+
 pub const MAX_PENDING_HOST_MICROTASKS: usize = 1024;
 pub const MAX_PENDING_HOST_REACTIONS: usize = 1024;
 pub const MAX_PENDING_HOST_TIMERS: usize = 1024;
@@ -98,10 +102,7 @@ impl<K: Eq + std::hash::Hash, V> SchedulingMapCapacity<K, V> {
         let replacement = if values.len() == values.capacity() {
             let mut table = HashMap::new();
             if table.try_reserve(values.len().saturating_add(1)).is_err() {
-                if let Some(scope) = scope {
-                    scope.account.borrow_mut().failed = true;
-                }
-                return Err(RuntimeError::SchedulingLimit);
+                return Err(scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail));
             }
             Some(table)
         } else {
@@ -297,6 +298,11 @@ impl Drop for SharedSchedulingCharge {
 }
 
 impl SchedulingScope {
+    pub(super) fn fail(&self) -> RuntimeError {
+        self.account.borrow_mut().failed = true;
+        RuntimeError::SchedulingLimit
+    }
+
     pub(super) fn shared_charge(
         &self,
         bytes: usize,

@@ -1168,17 +1168,10 @@ impl Vm {
                                 .expect("dynamic import produced a retained namespace: completed export cells are initialized, and a deferred namespace omits then; callable exports execute in later fallible jobs")
                     }
                     Ok(DynamicImportResult::WaitingDeferred { namespace, modules }) => {
-                        self.deferred_import_waiters.push(DeferredImportWaiter {
-                            promise: target,
-                            namespace,
-                            pending: modules.into_iter().collect(),
-                        });
+                        self.enqueue_deferred_import_waiter(target, namespace, modules)?;
                     }
                     Ok(DynamicImportResult::Waiting(module)) => {
-                        self.module_import_waiters
-                            .entry(module)
-                            .or_default()
-                            .push(target);
+                        self.enqueue_module_import_waiter(module, target)?;
                     }
                     Err(error) => {
                         let origin = self.caught_rejection_origin(epoch);
