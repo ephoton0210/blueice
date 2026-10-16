@@ -18,15 +18,19 @@ env:
 
 jobs:
   oracle:
-    name: Windows TypeScript oracles (${{ matrix.os }})
+    name: Windows TypeScript oracles (${{ matrix.os }}, ${{ matrix.shard }})
     runs-on: ${{ matrix.os }}
     # Linux/macOS legs take about an hour; this bound keeps a hang from
     # holding a runner for six hours and gives K.13.2's margin a denominator.
-    timeout-minutes: 150
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         os: [windows-2025, windows-11-arm]
+        # Shards come from oracle_shards.cjs (rule-based, every test file in
+        # exactly one shard). `core` is the single large typescript_oracle
+        # suite; the others are the many small matrices.
+        shard: [core, checker, project, other]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -46,10 +50,12 @@ jobs:
           node --test
           backend/bluets/tests/fixtures/oracle_support/resolve_package.test.cjs
           development/browser_core/phase-18-bluets/tools/select_oracle_commands.test.cjs
-      - name: Run every pinned TypeScript 5.9.3 oracle
+      - name: Verify shard assignment
+        run: node --test development/browser_core/phase-18-bluets/tools/oracle_shards.test.cjs
+      - name: Run pinned TypeScript 5.9.3 oracle shard ${{ matrix.shard }}
         env:
           FORCE_COLOR: "0"
-        run: cargo test -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast -- --ignored
+        run: node development/browser_core/phase-18-bluets/tools/oracle_shards.cjs ${{ matrix.shard }}
       - name: Report Windows symlink exclusions
         if: always()
         run: node development/browser_core/phase-18-bluets/tools/report_windows_symlink_tests.cjs
