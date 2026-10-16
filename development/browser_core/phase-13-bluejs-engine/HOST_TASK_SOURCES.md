@@ -101,6 +101,15 @@ refusal. FileReader cancellation removes matching entries in place, preserving
 other queued work and its storage without a replacement allocation.
 The broader native control/service-buffer gate remains open.
 
+Promise-record and async/module continuation tables prepare empty replacement
+storage to measure actual reported capacity before moving live entries. An
+await admits its continuation payload/table delta and the matching reaction or
+job count, payload and slot growth together. Work slots are reserved and
+checked before the frame and serial are published; failed work admission cannot
+leave an orphan frame while returning success. Existing owners move without
+cloning after admission. Staging allocations, allocator overhead and broader
+native control/service storage remain outside this logical capacity policy.
+
 ### Native-payload collection pressure
 
 Large Promise results and suspended-frame strings enter the native scheduling

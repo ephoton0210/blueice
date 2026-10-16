@@ -89,6 +89,11 @@ impl Vm {
         &mut self,
         prototype: ObjectId,
     ) -> Result<ObjectId, RuntimeError> {
+        let growth =
+            SchedulingMapCapacity::for_insert(&self.promises, self.host_scheduling.as_ref())?;
+        self.admit_scheduling_work(HostSchedulingUsage::default().with_map_growth(&growth))?;
+        growth.commit(&mut self.promises);
+        self.synchronize_scheduling_usage()?;
         let promise = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.promises.insert(
             promise,
@@ -100,6 +105,7 @@ impl Vm {
                 rejection_notified: false,
             },
         );
+        self.synchronize_scheduling_usage()?;
         Ok(promise)
     }
 

@@ -71,6 +71,14 @@ capacity before publication. Follow-up validation passes 161 selected cases,
 formatting and offline workspace/all-target Clippy. Final integrated/resource
 acceptance remains open.
 
+The Promise-table follow-up now checks Promise record growth, paired host wait/
+Promise tables and async/module continuation growth together with their
+resumption work. Twelve of fifteen initial tiny-owner groups fail on the parent;
+all fifteen pass with joint admission. Script refusal and early argument-lease
+refund controls also pass. The current selection passes 148 cases, formatting
+and offline workspace/all-target Clippy. No fresh integrated acceptance is
+claimed.
+
 **In progress — M1w document callback-timer counts (2026-10-16).**
 Callback timer limits previously applied to each realm separately, while the
 document ledger had no timer count. The shared account now admits at most
@@ -400,7 +408,8 @@ work and exposes its retained payload ledger.
       frame, Promise-job and Promise-reaction regressions use at most nine
       entries and a scalar shared-owner model. The implementation checkpoint
       below now includes browser-task/cleanup/rejection producers, FileReader
-      requeue/cancellation and timeout clock ordering; integrated acceptance
+      requeue/cancellation, timeout clock ordering and joint Promise/await-table
+      admission; integrated acceptance
       and the wider native control/service-buffer gate remain open.
 - [ ] **M1w: document callback-timer counts.** Root and attached child realms
       must share 1,024 pending callback registrations, expose aggregate counts,
@@ -836,6 +845,11 @@ acceptance and broader native control/service storage remain open.
 - [x] Pass follow-up bounded regression/control checks, formatting and offline
       workspace/all-target Clippy with warnings denied; retain a separate
       source/executable/log receipt for this checkpoint.
+- [x] Finish Promise-record, host-wait and continuation-table admission before
+      object/capability/frame publication. Await must admit its reaction or job
+      together with frame/table storage and preserve its serial on refusal.
+      Host calls must admit both tables and native argument storage together,
+      refund argument reservations on every early exit and preserve starts.
 - [ ] Complete integrated/full-source acceptance under the owner's security
       constraints. M1u remains the latest accepted milestone.
 
@@ -878,7 +892,7 @@ Fixtures use at most nine live entries with scalar shared-owner models; no
 corresponding large payload or large task queue is allocated. The complete red
 log is `/private/tmp/blueice-browser-task-capacity-expanded-red-20261016.log`.
 
-Current-source bounded validation: **161 passed, zero failed, zero ignored**.
+Browser queue checkpoint (`7c615cf0d`) validation: **161 passed, zero failed, zero ignored**.
 The twenty new groups and 36 existing unit controls pass: eight initial
 capacity groups, twelve payload-handoff groups, four call-entry controls,
 seven timer-count groups, two cleanup boundaries and three task-source
@@ -899,6 +913,57 @@ Logs: `/private/tmp/blueice-browser-task-capacity-final-unit-20261016.log`,
 `/private/tmp/blueice-browser-task-capacity-public-controls-20261016.log` and
 `/private/tmp/blueice-browser-task-capacity-clippy-20261016.log`.
 Receipt: `target/browser-task-capacity-source-20261016.json`.
+No fresh full Test262, real Core/MCP replay or coverage result is claimed.
+
+**Promise-table follow-up — bounded tests passed.** Acceptance: refuse
+Promise-table growth before allocating a new Promise; jointly admit host wait
+and Promise-table growth, request count and native argument copies before
+creating a capability or starting the service. Admit async/module frame
+storage, table growth and the matching reaction/job count, payload and slots
+as one publication. A refusal must preserve the continuation table, serial
+and resumption queues; it must return SchedulingLimit rather than success.
+Preserve available-slot admission, normal Promise/await execution, GC ownership
+and early-error cleanup.
+
+Empty replacement tables determine actual reported growth before any live
+entries move. Existing owners transfer without cloning after admission. A
+scoped argument lease remains charged during Promise allocation and refunds
+all exits. The initial fifteen groups use eight or fewer entries per tested
+table/queue and scalar shared-budget/count models: twelve fail and three
+available-slot controls pass on the parent; all fifteen pass after
+implementation. The final
+selection also checks terminal script refusal and root-refusal lease/capacity
+reconciliation. Red log:
+`/private/tmp/blueice-promise-table-capacity-unit-red-20261016.log`.
+Broader native control/service buffers, allocator overhead and transient
+staging storage remain outside this logical owned-capacity checkpoint.
+
+Current-source bounded validation: **148 passed, zero failed, zero ignored**.
+Seventeen new groups pass, along with 58 existing unit controls: the 56
+capacity/handoff/call-entry/timer/cleanup/source groups from the preceding
+checkpoint and two actual await serial/invalid-owner restoration controls.
+Seven public selections pass `async_from_sync_delegation` (two),
+`async_generator_ticks` (fourteen), `async_yield_star_delegate_close` (seven),
+`dynamic_import` (ten), `host_async_tasks` (18), `promise_capabilities` (ten)
+and `promise_gc_lifecycle` (twelve). Six other host-async pressure/limit cases
+remain filtered. The new models allocate no represented large shared payload,
+and the small root/serial refusal controls use deterministic injected limits.
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass.
+
+Logs: `/private/tmp/blueice-promise-table-capacity-final-unit-20261016.log`,
+`/private/tmp/blueice-promise-table-capacity-slot-controls-20261016.log`,
+`/private/tmp/blueice-promise-table-capacity-browser-controls-20261016.log`,
+`/private/tmp/blueice-promise-table-capacity-handoff-controls-20261016.log`,
+`/private/tmp/blueice-promise-table-capacity-call-controls-20261016.log`,
+`/private/tmp/blueice-promise-table-capacity-timer-controls-20261016.log`,
+`/private/tmp/blueice-promise-table-capacity-await-refusal-controls-20261016.log`,
+`/private/tmp/blueice-promise-table-capacity-continuation-controls-20261016.log`,
+`/private/tmp/blueice-promise-table-capacity-cleanup-controls-20261016.log`,
+`/private/tmp/blueice-promise-table-capacity-source-controls-20261016.log` and
+`/private/tmp/blueice-promise-table-capacity-public-controls-20261016.log`.
+Clippy: `/private/tmp/blueice-promise-table-capacity-clippy-20261016.log`.
+Receipt: `target/promise-table-capacity-source-20261016.json`.
 No fresh full Test262, real Core/MCP replay or coverage result is claimed.
 
 ### M1w — Document callback-timer counts (implementation checkpoint, 2026-10-16)

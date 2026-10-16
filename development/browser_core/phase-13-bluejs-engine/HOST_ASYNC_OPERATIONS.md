@@ -96,6 +96,15 @@ through the existing document resource-failure path. Host callbacks still own
 the bytes they retain outside these VM tables; broader service-buffer and
 process accounting remains open.
 
+Wait admission prepares actual hash-table growth for both the pending capability
+table and its Promise record table, then checks those deltas together with one
+request and native argument storage. Rejection precedes creating the Promise,
+retaining its root, consuming its token serial or starting the service. Appends
+into spare slots add no table-growth charge. A scoped argument reservation
+remains charged while Promise allocation can collect/reconcile the tables;
+every early exit refunds it and reconciles retained capacity. Entries move into
+admitted replacement tables without cloning existing Promise or wait owners.
+
 ## Acceptance
 
 Public page-runtime tests cover real pending Promises, delayed settlement,

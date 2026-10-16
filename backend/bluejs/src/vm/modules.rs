@@ -1882,38 +1882,50 @@ impl Vm {
             .get(&promise)
             .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
             .clone_for_await();
-        self.admit_scheduling_work(HostSchedulingUsage {
-            payload_bytes: continuation_state.scheduling_payload_bytes(),
-            ..HostSchedulingUsage::default()
-        })?;
         let continuation = self.next_module_continuation;
-        self.next_module_continuation = self
+        let next = self
             .next_module_continuation
             .checked_add(1)
             .ok_or(RuntimeError::InstructionLimit)?;
-        self.module_continuations
-            .insert(continuation, continuation_state);
-        match status {
-            PromiseAwaitStatus::Pending => self
-                .enqueue_promise_reaction(promise, PromiseReaction::ModuleAwait { continuation }),
+        let work = match status {
+            PromiseAwaitStatus::Pending => AwaitRegistration::Reaction {
+                promise,
+                reaction: PromiseReaction::ModuleAwait { continuation },
+            },
             PromiseAwaitStatus::Fulfilled(value) => {
-                self.enqueue_promise_job(PromiseJob::ModuleAwait {
+                AwaitRegistration::Job(PromiseJob::ModuleAwait {
                     continuation,
                     value,
                     fulfilled: true,
                     origin: ThrowOrigin::default(),
-                });
+                })
             }
             PromiseAwaitStatus::Rejected(value, origin) => {
-                self.enqueue_promise_job(PromiseJob::ModuleAwait {
+                AwaitRegistration::Job(PromiseJob::ModuleAwait {
                     continuation,
                     value,
                     fulfilled: false,
                     origin,
-                });
+                })
             }
-        }
-        Ok(())
+        };
+        let growth = SchedulingMapCapacity::for_insert(
+            &self.module_continuations,
+            self.host_scheduling.as_ref(),
+        )?;
+        work.admit(
+            self,
+            HostSchedulingUsage {
+                payload_bytes: continuation_state.scheduling_payload_bytes(),
+                ..HostSchedulingUsage::default()
+            }
+            .with_map_growth(&growth),
+        )?;
+        growth.commit(&mut self.module_continuations);
+        self.next_module_continuation = next;
+        self.module_continuations
+            .insert(continuation, continuation_state);
+        work.publish(self)
     }
 
     /// Registers an ordinary async-function frame on the Promise it awaits
@@ -1942,39 +1954,50 @@ impl Vm {
             .get(&promise)
             .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
             .clone_for_await();
-        self.admit_scheduling_work(HostSchedulingUsage {
-            payload_bytes: continuation_state.scheduling_payload_bytes(),
-            ..HostSchedulingUsage::default()
-        })?;
         let continuation = self.next_async_continuation;
-        self.next_async_continuation = self
+        let next = self
             .next_async_continuation
             .checked_add(1)
             .ok_or(RuntimeError::InstructionLimit)?;
-        self.async_continuations
-            .insert(continuation, continuation_state);
-        match status {
-            PromiseAwaitStatus::Pending => {
-                self.enqueue_promise_reaction(promise, PromiseReaction::AsyncAwait { continuation })
-            }
+        let work = match status {
+            PromiseAwaitStatus::Pending => AwaitRegistration::Reaction {
+                promise,
+                reaction: PromiseReaction::AsyncAwait { continuation },
+            },
             PromiseAwaitStatus::Fulfilled(value) => {
-                self.enqueue_promise_job(PromiseJob::AsyncAwait {
+                AwaitRegistration::Job(PromiseJob::AsyncAwait {
                     continuation,
                     value,
                     fulfilled: true,
                     origin: ThrowOrigin::default(),
-                });
+                })
             }
             PromiseAwaitStatus::Rejected(value, origin) => {
-                self.enqueue_promise_job(PromiseJob::AsyncAwait {
+                AwaitRegistration::Job(PromiseJob::AsyncAwait {
                     continuation,
                     value,
                     fulfilled: false,
                     origin,
-                });
+                })
             }
-        }
-        Ok(())
+        };
+        let growth = SchedulingMapCapacity::for_insert(
+            &self.async_continuations,
+            self.host_scheduling.as_ref(),
+        )?;
+        work.admit(
+            self,
+            HostSchedulingUsage {
+                payload_bytes: continuation_state.scheduling_payload_bytes(),
+                ..HostSchedulingUsage::default()
+            }
+            .with_map_growth(&growth),
+        )?;
+        growth.commit(&mut self.async_continuations);
+        self.next_async_continuation = next;
+        self.async_continuations
+            .insert(continuation, continuation_state);
+        work.publish(self)
     }
 
     /// Continues a suspended ordinary async function in its own Promise job

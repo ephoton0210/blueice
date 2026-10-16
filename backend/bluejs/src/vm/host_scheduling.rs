@@ -24,6 +24,10 @@ mod capacity_tests;
 #[path = "../../tests/fixtures/browser_task_capacity.rs"]
 mod browser_task_capacity;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/promise_table_capacity.rs"]
+mod promise_table_capacity;
+
 pub const MAX_PENDING_HOST_MICROTASKS: usize = 1024;
 pub const MAX_PENDING_HOST_REACTIONS: usize = 1024;
 pub const MAX_PENDING_HOST_TIMERS: usize = 1024;
@@ -79,6 +83,96 @@ impl SchedulingCapacity {
     }
 }
 
+/// Prepare actual hash-table capacity without changing live owners. The
+/// replacement receives existing entries by move only after joint admission.
+pub(super) struct SchedulingMapCapacity<K, V> {
+    replacement: Option<HashMap<K, V>>,
+    additional_bytes: usize,
+}
+
+impl<K: Eq + std::hash::Hash, V> SchedulingMapCapacity<K, V> {
+    pub(super) fn for_insert(
+        values: &HashMap<K, V>,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<Self, RuntimeError> {
+        let replacement = if values.len() == values.capacity() {
+            let mut table = HashMap::new();
+            if table.try_reserve(values.len().saturating_add(1)).is_err() {
+                if let Some(scope) = scope {
+                    scope.account.borrow_mut().failed = true;
+                }
+                return Err(RuntimeError::SchedulingLimit);
+            }
+            Some(table)
+        } else {
+            None
+        };
+        let capacity = replacement
+            .as_ref()
+            .map_or(values.capacity(), HashMap::capacity);
+        Ok(Self {
+            replacement,
+            additional_bytes: capacity
+                .saturating_sub(values.capacity())
+                .saturating_mul(std::mem::size_of::<(K, V)>()),
+        })
+    }
+
+    pub(super) fn commit(self, values: &mut HashMap<K, V>) {
+        if let Some(mut table) = self.replacement {
+            table.extend(values.drain());
+            *values = table;
+        }
+    }
+}
+
+/// Await publishes a continuation and its only resumption owner together.
+pub(super) enum AwaitRegistration {
+    Reaction {
+        promise: ObjectId,
+        reaction: PromiseReaction,
+    },
+    Job(PromiseJob),
+}
+
+impl AwaitRegistration {
+    pub(super) fn admit(
+        &self,
+        vm: &mut Vm,
+        mut extra: HostSchedulingUsage,
+    ) -> Result<(), RuntimeError> {
+        match self {
+            Self::Reaction { promise, reaction } => {
+                extra.pending_reactions = extra.pending_reactions.saturating_add(1);
+                extra.payload_bytes = extra.payload_bytes.saturating_add(reaction_bytes(reaction));
+                let growth = SchedulingCapacity::for_vec_push(&vm.promises[promise].reactions);
+                vm.admit_scheduling_work(extra.with_growth(growth))?;
+                growth.reserve_vec(&mut vm.promises.get_mut(promise).unwrap().reactions);
+            }
+            Self::Job(job) => {
+                extra.pending_microtasks = extra.pending_microtasks.saturating_add(1);
+                extra.payload_bytes = extra
+                    .payload_bytes
+                    .saturating_add(job.scheduling_payload_bytes());
+                let growth = SchedulingCapacity::for_deque_push(&vm.promise_jobs);
+                vm.admit_scheduling_work(extra.with_growth(growth))?;
+                growth.reserve_deque(&mut vm.promise_jobs);
+            }
+        }
+        // Account for actual work slots before the frame table or its serial
+        // changes. `extra` still includes the uncommitted frame/table storage.
+        vm.admit_scheduling_work(extra)
+    }
+
+    pub(super) fn publish(self, vm: &mut Vm) -> Result<(), RuntimeError> {
+        match self {
+            Self::Reaction { promise, reaction } => vm.enqueue_promise_reaction(promise, reaction),
+            Self::Job(job) => vm.enqueue_promise_job(job),
+        }
+        vm.check_scheduling_failure()
+    }
+}
+
 /// Owned scheduling slot capacities and native payloads (including the
 /// bounded console buffer, execution payloads and shared agent registries), separate from managed heap
 /// and shared installed bytecode. Allocator/control-table overhead, spare
@@ -96,6 +190,11 @@ pub struct HostSchedulingUsage {
 }
 
 impl HostSchedulingUsage {
+    pub(super) fn with_map_growth<K, V>(mut self, growth: &SchedulingMapCapacity<K, V>) -> Self {
+        self.payload_bytes = self.payload_bytes.saturating_add(growth.additional_bytes);
+        self
+    }
+
     pub(super) fn with_growth(mut self, growth: SchedulingCapacity) -> Self {
         self.payload_bytes = self.payload_bytes.saturating_add(growth.additional_bytes);
         self
