@@ -343,3 +343,50 @@ fn generated_profile_helpers_keep_gaps_and_preserve_authored_callback_sources() 
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[test]
+fn classic_with_operand_and_body_sources_survive_each_admitted_profile() {
+    for route in profile_routes().into_iter().filter(|route| {
+        route.kind == PageHostScriptKind::Classic
+            && route.language != PageHostScriptLanguage::BlueTs
+            && !route.awaited
+    }) {
+        for deferred in [false, true] {
+            for (source, line, message) in [
+                ("with(\n null){}", 2, "cannot convert"),
+                ("with(\n {}){\n throw 'body';}", 3, "body"),
+            ] {
+                let id = "blueice://page/with-profile.ts";
+                let script = PageHostScript {
+                    ordinal: 0,
+                    language: route.language,
+                    kind: route.kind,
+                    graph: graph(id, vec![PageHostSource::new(id, source)]),
+                };
+                let mut selected = document(1, vec![script]);
+                selected.debugger_execution_control = deferred;
+                selected.emitted_bluets_profile = route.profile;
+                selected.emitted_classic_page_console_ambient = route.classic_console;
+                let (reply, messages) = run_profile_document(selected);
+                assert_eq!(
+                    messages.records.len(),
+                    1,
+                    "{route:?}/{deferred}: {reply:?}; {messages:?}"
+                );
+                let actual = messages.records[0]
+                    .source
+                    .as_ref()
+                    .map(|p| (p.filename.as_str(), p.line, p.column));
+                assert_eq!(
+                    actual,
+                    Some((id, line, 2)),
+                    "{route:?}/{deferred}: {messages:?}"
+                );
+                assert!(
+                    messages.records[0].message.contains(message),
+                    "{messages:?}"
+                );
+            }
+        }
+    }
+}

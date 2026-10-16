@@ -393,7 +393,7 @@ impl Compiler {
                             && self.resolve_inside_innermost_with(name).is_none()
                         {
                             let index = self.name_constant(name)?;
-                            self.emit(Opcode::DeleteWithBinding, index)?;
+                            self.emit_reference(arg, Opcode::DeleteWithBinding, index)?;
                             self.emit(Opcode::Dup, 0)?;
                             let found = self.emit(Opcode::JumpIfNotNullish, 0)?;
                             self.emit(Opcode::Pop, 0)?;
@@ -436,7 +436,7 @@ impl Compiler {
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.as_str().into()));
-                            self.emit(Opcode::WithGetOrUndefined, index)?;
+                            self.emit_reference(arg, Opcode::WithGetOrUndefined, index)?;
                             self.emit(opcode, 0)?;
                         }
                         Expr::Identifier(name)
@@ -1463,7 +1463,9 @@ impl Compiler {
             self.wrap_with_disposal(is_async, &mut |this| {
                 this.emit(Opcode::Dup, 0)?;
                 this.bind_pattern(pattern, kind)?;
-                this.emit(Opcode::AddDisposableResource, u32::from(is_async))?;
+                this.with_pattern_owner(pattern, |compiler| {
+                    compiler.emit(Opcode::AddDisposableResource, u32::from(is_async))
+                })?;
                 this.statement(body, false)
             })?;
         } else {

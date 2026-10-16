@@ -607,8 +607,7 @@ impl Compiler {
                         "with is forbidden in strict mode",
                     ));
                 }
-                self.expression(object)?;
-                self.emit(Opcode::EnterWith, 0)?;
+                self.expression_with_operation(object, Opcode::EnterWith, 0)?;
                 // UpdateEmpty(stmtResult, undefined): an empty body leaves
                 // `undefined`, not the previous statement's value.
                 self.emit(Opcode::ClearCompletion, 0)?;
@@ -1408,9 +1407,13 @@ impl Compiler {
             {
                 if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
                     let index = self.name_constant(name)?;
-                    self.emit(Opcode::ResolveWithReference, index)?;
+                    self.with_pattern_owner(&declaration.pattern, |compiler| {
+                        compiler.emit(Opcode::ResolveWithReference, index)
+                    })?;
                     self.expression_with_name(value, Some(name.as_str()))?;
-                    self.emit(Opcode::StoreWithReference, 0)?;
+                    self.with_pattern_owner(&declaration.pattern, |compiler| {
+                        compiler.emit(Opcode::StoreWithReference, 0)
+                    })?;
                     self.emit(Opcode::Pop, 0)?;
                     continue;
                 }
@@ -1447,7 +1450,15 @@ impl Compiler {
             self.bind_pattern(&declaration.pattern, kind)?;
             if is_using {
                 let hint = u32::from(kind == DeclKind::AwaitUsing);
-                self.emit(Opcode::AddDisposableResource, hint)?;
+                if let Some(value) = &declaration.init {
+                    self.with_expression_owner(value, |compiler| {
+                        compiler.emit(Opcode::AddDisposableResource, hint)
+                    })?;
+                } else {
+                    self.with_pattern_owner(&declaration.pattern, |compiler| {
+                        compiler.emit(Opcode::AddDisposableResource, hint)
+                    })?;
+                }
             }
         }
         Ok(())
@@ -1472,6 +1483,16 @@ impl Compiler {
         pattern: &Pattern,
         kind: DeclKind,
     ) -> Result<(), CompileError> {
+        self.with_pattern_owner(pattern, |compiler| {
+            compiler.bind_pattern_with_owner(pattern, kind)
+        })
+    }
+
+    pub(super) fn with_pattern_owner<T>(
+        &mut self,
+        pattern: &Pattern,
+        compile: impl FnOnce(&mut Self) -> Result<T, CompileError>,
+    ) -> Result<T, CompileError> {
         let previous = self.diagnostic_owner;
         self.diagnostic_owner = self
             .diagnostic_ast_ids
@@ -1479,7 +1500,7 @@ impl Compiler {
             .and_then(|ids| ids.pattern_ordinal(pattern))
             .map(|ordinal| self.metadata_index(ordinal))
             .transpose()?;
-        let result = self.bind_pattern_with_owner(pattern, kind);
+        let result = compile(self);
         self.diagnostic_owner = previous;
         result
     }

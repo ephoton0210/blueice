@@ -106,3 +106,19 @@ fn direct_iteration_loops_remain_outside_the_admitted_runtime_surface() {
         );
     }
 }
+
+#[test]
+fn direct_with_and_using_forms_remain_outside_the_admitted_runtime_surface() {
+    for source in [
+        "with(null){}",
+        "{using value=1;}",
+        "async function fail(){await using value=1;}fail();",
+        "for(using value of [1]){}",
+    ] {
+        let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
+        assert!(
+            compile_direct_script(ENTRY, &loader, CompilerOptions::default()).is_err(),
+            "{source}"
+        );
+    }
+}

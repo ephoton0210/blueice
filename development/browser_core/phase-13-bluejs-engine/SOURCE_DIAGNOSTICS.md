@@ -936,6 +936,58 @@ unchanged non-pass modes; the comparison succeeds.
 Abrupt iterator cleanup and the remaining operation-owner/queued/lifecycle
 matrix still require their own integrated evidence; M1q remains at 6/10.
 
+### Dynamic scope and resource admission owners
+
+The next operation audit reproduces 30 wrong admission locations and eight
+wrong with-reference locations under normal/aggressive-GC configurations.
+Implicit conversion, binding resolution and disposable-method validation had
+restored the enclosing statement owner after evaluating their written input.
+
+| Operation | Certified owner |
+| --- | --- |
+| `EnterWith` | Original with-object expression |
+| With-name `WithGetOrUndefined` / `DeleteWithBinding` | Written identifier reference |
+| With `var` initializer `ResolveWithReference` / `StoreWithReference` | Original declaration pattern |
+| Declaration `AddDisposableResource` | Original initializer, or its binding pattern when absent |
+| Iterated using/await-using `AddDisposableResource` | Written for-binding pattern |
+
+The existing binding-owner scope is shared with the implicit resource and
+with-reference operations. Initializer evaluation retains NamedEvaluation;
+binding/body compilation restores its own owner. Eleven ordinary AST,
+debugger-inventory and recursive-instruction comparisons cover with references,
+anonymous using initializers and synchronous/asynchronous iteration without
+adding debugger authority or changing executable instructions.
+
+Eleven callback/body/cleanup controls preserve original getter/body failures
+and explicitly unknown dynamic functions. A disposer failure keeps its own
+known or unavailable source when later synchronous/asynchronous iterator close
+also throws. Four suspended contexts run later unrelated code, observe an
+actual major collection, then resume ordinary or iterated async resource
+admission with independent native/getter origins.
+
+Forty authenticated File DOM contexts cover with-object errors and later body
+throws across the admitted classic JavaScript/emitted profiles, console
+selectors and normal/deferred execution. System is exercised as its admitted
+non-external classic script here; with remains forbidden in strict module
+wrappers. Direct BlueTS retains its existing with/using exclusions. The
+fixed-input Rust/Core/MCP selection passes 2,358 cases, zero failures and 16
+existing ignored across 39 BlueJS, all 35 bridge and two launcher test
+executables plus official MCP console. The complete 1,205-case BlueJS library
+and all 67 diagnostic groups pass. Formatting and full workspace/all-target
+build/Clippy pass. Six Rust inputs, 13,849 workspace/compiler inputs, seven
+runtimes and all 77 selected test executable hashes remain fixed. Admission
+and with-reference red receipts are retained separately. Evidence is
+`target/resource-admission-origins-source-20261016.json` and
+`target/resource-admission-origins-validation-20261016.json`.
+
+Fresh complete pinned Test262 matches M1p across all 102,926 modes: 102,921
+pass, one stale corpus, four exclusions, zero changed modes and no new failure
+or timeout. Comparison includes source hashes, expectations, features/flags,
+statuses and actual kind/phase/reason; timing and diagnostic message text are
+not comparison fields. The runner's exit 1 represents the five unchanged
+non-pass modes; the comparison succeeds. Remaining operation-owner and
+integrated queued/lifecycle/resource acceptance keeps M1q at 6/10.
+
 ## Saved completions and cleanup
 
 An abrupt finalizer saves the incoming diagnostic location, terminal debugger

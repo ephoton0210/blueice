@@ -397,6 +397,20 @@ fn real_pages_report_original_direct_bluets_statement_and_call_sources() {
 fn real_pages_report_original_emitted_bluets_and_javascript_module_positions() {
     for (script_type, source, coordinates, extension, emitted) in [
         (
+            "module",
+            "await using value=\n 1;",
+            "2:2",
+            "js",
+            false,
+        ),
+        (
+            "module",
+            "for await(\n await using value of [1]){}",
+            "2:14",
+            "js",
+            false,
+        ),
+        (
             "application/x-blueice-typescript",
             "const input: any=null;for(const value of\n input){}",
             "2:2",
@@ -570,6 +584,9 @@ fn copied_console_sources_survive_the_real_core_child_boundary() {
 fn uncaught_page_errors_keep_the_throwing_script_source_coordinates() {
     let mut failures = Vec::new();
     for (name, source, coordinates) in [
+        ("with operand", "with(\n null){}", "2:2"),
+        ("using operand", "{using value=\n 1;}", "2:2"),
+        ("iterated using binding", "for(\n using value of [1]){}", "2:8"),
         ("root", "\nthrow 'position-probe';\n", "2:1"),
         (
             "block",

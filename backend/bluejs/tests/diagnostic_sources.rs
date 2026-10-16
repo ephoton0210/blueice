@@ -1893,6 +1893,230 @@ fn suspended_loop_protocol_sources_survive_later_code_and_observed_major_collect
 }
 
 #[test]
+fn with_and_using_admission_failures_keep_the_written_operand_source() {
+    let cases = [
+        ("with null", "with(\n null){}",2),
+        ("with undefined", "with(\n undefined){}",2),
+        ("primitive resource", "{using value=\n 1;}",2),
+        ("symbol resource", "{using value=\n Symbol();}",2),
+        ("missing dispose", "var resource={};{using value=\n resource;}",2),
+        ("noncallable dispose", "var resource={[Symbol.dispose]:0};{using value=\n resource;}",2),
+        ("revoked resource", "var record=Proxy.revocable({},{}),resource=record.proxy;record.revoke();{using value=\n resource;}",2),
+        ("caught getter noise", "var resource={get [Symbol.dispose](){try{missing;}catch{}return 0;}};{using value=\n resource;}",2),
+        ("iterated primitive resource", "for(\n using value of [1]){}",8),
+        ("iterated noncallable dispose", "var resource={[Symbol.dispose]:0};for(\n using value of [resource]){}",8),
+    ];
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name, source, column) in cases {
+            let mut config = blueice_bluejs::VmConfig::default();
+            if aggressive_gc {
+                config.heap.nursery_capacity = 1;
+                config.heap.major_threshold_bytes = 1;
+            }
+            let mut vm = page_with_vm(Vm::new(config).unwrap());
+            assert!(
+                vm.execute_script(&mapped_expression_code(source)).is_err(),
+                "{name}"
+            );
+            let actual = observed(&mut vm);
+            let expected = Value::String(format!("memory:///position.js:2:{column}").into());
+            if actual != expected {
+                failures.push((name, aggressive_gc, actual));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn asynchronous_using_admission_failures_keep_the_written_operand_source() {
+    let cases = [
+        ("primitive resource", "async function fail(){await using value=\n 1;}fail();",2),
+        ("noncallable async dispose", "var resource={[Symbol.asyncDispose]:0};async function fail(){await using value=\n resource;}fail();",2),
+        ("noncallable sync fallback", "var resource={[Symbol.dispose]:0};async function fail(){await using value=\n resource;}fail();",2),
+        ("iterated async resource", "async function fail(){for(\n await using value of [1]){}}fail();",14),
+        ("async iteration sync resource", "async function fail(){for await(\n using value of [1]){}}fail();",8),
+    ];
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name, source, column) in cases {
+            let mut config = blueice_bluejs::VmConfig::default();
+            if aggressive_gc {
+                config.heap.nursery_capacity = 1;
+                config.heap.major_threshold_bytes = 1;
+            }
+            let mut vm = page_with_vm(Vm::new(config).unwrap());
+            vm.install_host_rejection_tracking().unwrap();
+            vm.execute_script(&mapped_expression_code(source)).unwrap();
+            vm.run_host_microtask_checkpoint().unwrap();
+            vm.run_browser_task_turn(1).unwrap();
+            let batch = vm.drain_host_console().unwrap();
+            assert_eq!(batch.records.len(), 1, "{name}: {batch:?}");
+            let actual = batch.records[0]
+                .source
+                .as_ref()
+                .map(|p| (p.filename.as_str(), p.line, p.column));
+            if actual != Some(("memory:///position.js", 2, column)) {
+                failures.push((name, aggressive_gc, format!("{actual:?}")));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn resource_admission_scopes_preserve_callback_and_body_origins() {
+    for (source,expected,asynchronous) in [
+        ("var resource={get [Symbol.dispose](){\n throw 'getter';}};{using value=\n resource;}",Some((2,2)),false),
+        ("var resource={};Object.defineProperty(resource,Symbol.dispose,{get:Function(\"throw 'unknown';\")});{using value=\n resource;}",None,false),
+        ("var resource={get [Symbol.asyncDispose](){\n throw 'getter';}};async function fail(){await using value=\n resource;}fail();",Some((2,2)),true),
+        ("var resource={};Object.defineProperty(resource,Symbol.asyncDispose,{get:Function(\"throw 'unknown';\")});async function fail(){await using value=\n resource;}fail();",None,true),
+        ("with(\n {}){\n null.value;}",Some((3,2)),false),
+        ("var resource={[Symbol.dispose](){}};{using value=\n resource;\n throw 'body';}",Some((3,2)),false),
+        ("var resource={[Symbol.asyncDispose](){}};async function fail(){await using value=\n resource;\n throw 'body';}fail();",Some((3,2)),true),
+        ("var resource={[Symbol.dispose](){\n throw 'dispose';}};var input={[Symbol.iterator](){return this;},next(){return {done:false,value:resource};},return(){\n throw 'close';}};for(using value of input){break;}",Some((2,2)),false),
+        ("var resource={[Symbol.asyncDispose](){\n throw 'dispose';}};var input={[Symbol.asyncIterator](){return this;},next(){return Promise.resolve({done:false,value:resource});},return(){\n throw 'close';}};async function fail(){for await(await using value of input){break;}}fail();",Some((2,2)),true),
+        ("var resource={[Symbol.dispose]:Function(\"throw 'unknown';\")};var input={[Symbol.iterator](){return this;},next(){return {done:false,value:resource};},return(){\n throw 'close';}};for(using value of input){break;}",None,false),
+        ("var resource={[Symbol.asyncDispose]:Function(\"throw 'unknown';\")};var input={[Symbol.asyncIterator](){return this;},next(){return Promise.resolve({done:false,value:resource});},return(){\n throw 'close';}};async function fail(){for await(await using value of input){break;}}fail();",None,true),
+    ] {
+        let mut vm=page();vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&compile(&parse("onerror=null;").unwrap()).unwrap()).unwrap();
+        let result=vm.execute_script(&mapped_expression_code(source));assert_eq!(result.is_ok(),asynchronous,"{source}");
+        vm.run_host_microtask_checkpoint().unwrap();vm.run_browser_task_turn(1).unwrap();
+        let batch=vm.drain_host_console().unwrap();assert_eq!(batch.records.len(),1,"{source}: {batch:?}");
+        let actual=batch.records[0].source.as_ref().map(|p|(p.line,p.column));
+        assert_eq!(actual,expected,"{source}: {batch:?}");
+    }
+}
+
+#[test]
+fn admission_ownership_preserves_ast_inventory_and_recursive_instruction_bytes() {
+    fn same_code(left: &blueice_bluejs::Bytecode, right: &blueice_bluejs::Bytecode) {
+        assert_eq!(left.bytes(), right.bytes());
+        let left = left.child_code_units().collect::<Vec<_>>();
+        let right = right.child_code_units().collect::<Vec<_>>();
+        assert_eq!(left.len(), right.len());
+        for (left, right) in left.into_iter().zip(right) {
+            same_code(left, right);
+        }
+    }
+    for source in [
+        "with({}){true;}",
+        "with({}){typeof value;}",
+        "with({}){delete value;}",
+        "with({}){var value=1;}",
+        "with({value:0}){var value=function(){};}",
+        "{using value=null;}",
+        "{using value=function(){};}",
+        "for(using value of []){}",
+        "async function fail(){await using value=null;}fail();",
+        "async function fail(){for(await using value of []){}}fail();",
+        "async function fail(){for await(using value of []){}}fail();",
+    ] {
+        let ordinary = parse(source).unwrap();
+        let (captured, _) = blueice_bluejs::parse_with_diagnostic_node_spans(source).unwrap();
+        assert_eq!(ordinary, captured);
+        let program = BlueJsProgramV1::Script(ordinary);
+        let mut registry = BlueJsProgramRegistry::default();
+        let plain = registry
+            .install(identity("plain-admission"), &program)
+            .unwrap();
+        let diagnostic = registry
+            .install_for_diagnostics(identity("diagnostic-admission"), &program)
+            .unwrap();
+        let shape = |program: &blueice_bluejs::BlueJsCompiledProgram| {
+            program
+                .ast_nodes()
+                .iter()
+                .map(|node| {
+                    (
+                        node.id().ordinal(),
+                        node.kind(),
+                        node.is_top_level_statement(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            shape(registry.get(plain).unwrap()),
+            shape(registry.get(diagnostic).unwrap())
+        );
+        same_code(
+            registry.get(plain).unwrap().bytecode(),
+            registry.get(diagnostic).unwrap().bytecode(),
+        );
+    }
+}
+
+#[test]
+fn with_reference_failures_keep_the_written_binding_source() {
+    let cases = [
+        (
+            "typeof reference",
+            "var subject=new Proxy({},{has:0});with(subject){typeof\n value;}",
+        ),
+        (
+            "delete reference",
+            "var subject=new Proxy({},{has:0});with(subject){delete\n value;}",
+        ),
+        (
+            "var resolution",
+            "var subject=new Proxy({},{has:0});with(subject){var\n value=1;}",
+        ),
+        (
+            "var store",
+            "var subject=new Proxy({value:0},{set:0});with(subject){var\n value=1;}",
+        ),
+    ];
+    let mut failures = Vec::new();
+    for aggressive_gc in [false, true] {
+        for (name, source) in cases {
+            let mut config = blueice_bluejs::VmConfig::default();
+            if aggressive_gc {
+                config.heap.nursery_capacity = 1;
+                config.heap.major_threshold_bytes = 1;
+            }
+            let mut vm = page_with_vm(Vm::new(config).unwrap());
+            assert!(
+                vm.execute_script(&mapped_expression_code(source)).is_err(),
+                "{name}"
+            );
+            let actual = observed(&mut vm);
+            if actual != Value::String("memory:///position.js:2:2".into()) {
+                failures.push((name, aggressive_gc, actual));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn suspended_resource_admission_keeps_sources_after_later_code_and_major_collection() {
+    let pending = "var release;var pending=new Promise(function(resolve){release=resolve;});";
+    let ordinary = "async function fail(){await using value=\n await pending;}fail();";
+    let iterated="var input={[Symbol.asyncIterator](){return this;},next(){return pending;}};async function fail(){for await(\n await using value of\n input){}}fail();";
+    for(setup,body,response,expected)in[
+        ("",ordinary,"1",Some((2,2))),
+        ("var resource={get [Symbol.asyncDispose](){\n throw 'getter';}};",ordinary,"resource",Some((2,2))),
+        ("var resource={};Object.defineProperty(resource,Symbol.asyncDispose,{get:Function(\"throw 'unknown';\")});",ordinary,"resource",None),
+        ("",iterated,"{done:false,value:1}",Some((2,14))),
+    ]{
+        let source=format!("{setup}{pending}{body}");
+        let mut config=blueice_bluejs::VmConfig::default();config.heap.nursery_capacity=1;config.heap.major_threshold_bytes=1;
+        let mut vm=page_with_vm(Vm::new(config).unwrap());vm.install_host_rejection_tracking().unwrap();
+        vm.execute_script(&mapped_expression_code(&source)).unwrap();vm.run_host_microtask_checkpoint().unwrap();
+        let before=vm.heap().stats().major_collections;
+        vm.execute_script(&compile(&parse("try{throw 'noise';}catch{}for(var i=0;i<3000;i++){var garbage={i:i};}").unwrap()).unwrap()).unwrap();
+        assert!(vm.heap().stats().major_collections>before);
+        vm.execute_script(&compile(&parse(&format!("release({response});")).unwrap()).unwrap()).unwrap();
+        vm.run_host_microtask_checkpoint().unwrap();vm.run_browser_task_turn(1).unwrap();
+        let batch=vm.drain_host_console().unwrap();assert_eq!(batch.records.len(),1,"{source}: {batch:?}");
+        let actual=batch.records[0].source.as_ref().map(|p|(p.line,p.column));assert_eq!(actual,expected,"{source}: {batch:?}");
+    }
+}
+
+#[test]
 fn implicit_protocol_scopes_preserve_callback_origins_and_later_operations() {
     for (source,expected) in [
         ("var Base=new Proxy(function(){},{get(){\n throw 'getter';}});class C extends\n Base {}", "memory:///position.js:2:2"),

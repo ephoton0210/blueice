@@ -52,6 +52,19 @@ remain open. See the
 and [rejection contract](HOST_PROMISE_REJECTIONS.md).
 
 **Current work — M1q original diagnostic source positions (in progress).**
+The next operation-owner check reproduces 38 incorrect with/using admission
+and with-reference locations across normal/aggressive GC. Operand and binding
+owners now scope implicit conversion/resource/reference operations. Eleven
+callback/body/cleanup controls and four resumed contexts after observed major
+GC pass, alongside eleven AST/inventory/recursive-bytecode controls. Forty
+classic-profile contexts, five added real-page contexts and four direct refusal
+controls pass. The related 77-executable replay passes 2,358 cases, zero failures
+and 16 existing ignored. Formatting and workspace/all-target build/Clippy pass;
+fresh Test262 matches M1p across all 102,926 modes with zero changed modes or
+new timeout. Six Rust inputs, 13,849 workspace/compiler inputs, seven runtimes
+and all 77 selected test executable hashes remain fixed. The completed loop
+and profile checkpoints below remain separate evidence; M1q stays at 6/10.
+
 The operation-owner follow-up fixes 28 reproduced loop-protocol locations:
 for-in, for-of and for-await acquisition/step failures retain the written right
 operand. Ten callback controls, three resumed contexts after observed major GC,
@@ -930,6 +943,24 @@ the full source-position requirement.
       real pages and official MCP console pass. Formatting and workspace/all-target
       build/Clippy pass on five fixed Rust inputs. Fresh Test262 matches M1p's
       complete 102,926-mode source/result inventory with zero changed modes.
+- [x] Preserve with-object, disposable-initializer and iterated-binding owners
+      through implicit conversion/resource admission. Reproduce 30 wrong native
+      locations and eight wrong with-reference locations under normal/aggressive
+      GC; typeof/delete references and with-var resolution/store use their
+      written names. Eleven AST/inventory/recursive-bytecode controls preserve
+      executable instructions, anonymous naming and debugger identities.
+- [x] Preserve distinct known/unavailable getter/body/disposer origins in eleven
+      admission/cleanup controls, including synchronous/asynchronous iterator
+      close after a disposer throws. Four suspended resource contexts execute
+      later code, observe major collection and retain their own resumed source.
+      Forty authenticated classic-profile contexts, five added real Core/child
+      contexts and four direct BlueTS refusal controls pass.
+- [x] Pass admission/reference acceptance: 2,358 cases across 77 disjoint
+      executables, zero failures and 16 existing ignored. Full BlueJS library,
+      with/using/GC/resource targets, all 35 bridge targets, launcher library,
+      real pages and official MCP console pass. Formatting and workspace/all-target
+      build/Clippy pass on six fixed Rust inputs. Fresh complete Test262 matches
+      M1p's 102,926-mode source/result inventory with zero changed modes.
 
 #### Remaining implementation and verification
 
@@ -1890,6 +1921,42 @@ new failure or timeout. Runner exit 1 represents the five unchanged non-pass
 modes; the complete comparison succeeds. Abrupt iterator cleanup and remaining
 operation-owner/queued/lifecycle/resource acceptance keep M1q at 6/10 and
 section H open.
+
+The dynamic-scope/resource-admission follow-up (2026-10-16) reproduces 30 wrong
+with/using admission locations plus eight wrong with-reference locations under
+normal/aggressive GC. With-object conversion and disposable-method validation
+retain their written operands; iterated resources retain their binding names.
+Typeof/delete references and with-var resolution/store retain the written
+reference or pattern. The existing pattern-owner scope is shared without
+changing evaluation order, anonymous naming, executable instructions or
+debugger identities; eleven public AST/inventory/recursive-bytecode controls pass.
+
+Eleven callback/body/cleanup controls retain independent known/unavailable
+sources, including synchronous/asynchronous iterator close after a disposer
+throws. Four suspended resource contexts execute unrelated later code, observe
+major collection and retain native/getter origins after resumption. Forty
+authenticated File DOM classic-profile contexts, five added real Core/child
+contexts and four direct BlueTS refusal controls pass. System's with fixture
+uses its admitted non-external classic script; strict module wrappers continue
+rejecting with. The direct/typed resource surface is not expanded.
+
+The fixed-input selection passes 2,358 cases, zero failures and 16 existing
+ignored across 77 disjoint executables: BlueJS 1,713, bridge 300, launcher 340
+and five official MCP console cases. All 1,205 BlueJS library and 67 diagnostic
+cases pass. Formatting and full workspace/all-target build/Clippy pass. Six
+Rust and 13,849 workspace/compiler inputs, seven runtimes and all 77 selected
+test hashes remain fixed. Admission and with-reference failure receipts are
+retained separately. Final evidence is
+`target/resource-admission-origins-source-20261016.json` and
+`target/resource-admission-origins-validation-20261016.json`.
+
+Fresh complete pinned Test262 takes 357.00s including corpus validation and
+reporting. Every source hash, expected result, feature/flag, status and actual
+kind/phase/reason matches M1p across 102,926 modes: 102,921 pass, one stale
+corpus, four exclusions, zero changed modes and no new failure or timeout.
+Runner exit 1 records the five unchanged non-pass modes; the comparison
+succeeds. Remaining operation-owner and integrated queued/lifecycle/resource
+acceptance keep M1q at 6/10 and section H open.
 
 ### M1p — Promise rejection tracking and global events (2026-10-15)
 
