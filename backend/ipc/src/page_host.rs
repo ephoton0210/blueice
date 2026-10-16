@@ -455,6 +455,7 @@ pub struct PageHostRealmStats {
     pub document_generation: u64,
     pub program_count: u32,
     pub bytecode_bytes: u64,
+    /// All managed heaps owned by this document, including ShadowRealms.
     pub heap_bytes: u64,
     /// Child-owned static BlueTS debugger metadata and emitted maps, outside
     /// VM heap/bytecode. This is an aggregate byte count, not a payload.

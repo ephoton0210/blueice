@@ -97,7 +97,8 @@ impl Heap {
             .expect("protected across collection");
         entry.kind = ObjectKind::WebFileReader(Box::new(state));
         entry.bytes = entry.bytes - previous + bytes;
-        self.managed_bytes = self.managed_bytes - previous + bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - previous + bytes);
         for reference in references {
             self.write_barrier(object, Some(reference));
         }

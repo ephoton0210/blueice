@@ -94,6 +94,7 @@ fn nested_delay(delay: u64, nesting: u32) -> u64 {
 
 impl Vm {
     pub(crate) fn use_bounded_host_microtask_checkpoints(&mut self) {
+        self.heap.begin_document_heap_budget();
         self.bounded_host_microtask_checkpoints = true;
         self.host_scheduling = Some(SchedulingScope::new());
     }

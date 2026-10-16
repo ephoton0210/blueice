@@ -154,7 +154,7 @@ impl Heap {
         entries.indexes.clear();
         entries.len = 0;
         entry.bytes -= released;
-        self.managed_bytes -= released;
+        self.managed_bytes.sub(released);
         Ok(())
     }
 }

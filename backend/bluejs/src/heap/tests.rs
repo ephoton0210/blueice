@@ -1512,12 +1512,12 @@ fn collection_clear_releases_entry_bytes_and_keeps_positions_valid_for_iterators
     let mut heap = Heap::default();
     let map = heap.alloc_map(None).unwrap();
     let root = heap.root(map).unwrap();
-    let empty_bytes = heap.managed_bytes;
+    let empty_bytes = heap.managed_bytes.get();
     heap.map_set(map, Value::Number(1.0), Value::Number(2.0))
         .unwrap();
     heap.map_set(map, Value::Number(3.0), Value::Number(4.0))
         .unwrap();
-    assert!(heap.managed_bytes > empty_bytes);
+    assert!(heap.managed_bytes.get() > empty_bytes);
 
     heap.map_delete(map, &Value::Number(1.0)).unwrap();
     assert!(matches!(
@@ -1535,7 +1535,8 @@ fn collection_clear_releases_entry_bytes_and_keeps_positions_valid_for_iterators
 
     heap.collection_clear(map).unwrap();
     assert_eq!(
-        heap.managed_bytes, empty_bytes,
+        heap.managed_bytes.get(),
+        empty_bytes,
         "every entry's bytes are released"
     );
     assert_eq!(heap.map_size(map), Ok(0));

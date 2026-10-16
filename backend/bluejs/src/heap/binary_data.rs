@@ -327,7 +327,7 @@ impl Heap {
         bytes.shrink_to_fit();
         *detached = true;
         obj.bytes -= released;
-        self.managed_bytes -= released;
+        self.managed_bytes.sub(released);
         Ok(())
     }
 
@@ -417,7 +417,7 @@ impl Heap {
         shared_operation: bool,
     ) -> Result<(), HeapError> {
         let limit = self.config.max_heap_bytes;
-        let available = limit.saturating_sub(self.managed_bytes);
+        let available = limit.saturating_sub(self.managed_bytes.get());
         let obj = self
             .objects
             .get_mut(&object)
@@ -449,25 +449,28 @@ impl Heap {
             return Err(HeapError::InvalidBufferRange);
         }
         let growth = byte_length.saturating_sub(current);
+        let accounted = bytes.len();
+        self.managed_bytes
+            .check_room(byte_length.saturating_sub(accounted))?;
         if growth > available {
             // Resize checks its budget directly rather than entering ensure_room.
             // Allocation sweeps still need the actual refused byte requirement.
             #[cfg(any(test, coverage))]
             self.first_failed_allocation
-                .get_or_insert(self.managed_bytes.saturating_add(growth));
+                .get_or_insert(self.managed_bytes.get().saturating_add(growth));
             return Err(HeapError::HeapLimitExceeded { limit });
         }
         // Another agent may already have grown the shared backing. This
         // wrapper's Vec exists only for its local heap accounting, so update
         // that accounting from its own previous length rather than the global
         // byte length observed above.
-        let accounted = bytes.len();
         bytes.resize(byte_length, 0);
         if let Some(backing) = shared_backing {
             backing.resize(byte_length);
         }
         obj.bytes = obj.bytes - accounted + byte_length;
-        self.managed_bytes = self.managed_bytes - accounted + byte_length;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - accounted + byte_length);
         Ok(())
     }
 

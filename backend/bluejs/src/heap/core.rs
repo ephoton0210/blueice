@@ -21,7 +21,7 @@ impl Heap {
     /// the heap limit: the allocator's fast path relies on that invariant.
     /// Allocation may collect normally before reporting exhaustion.
     pub(crate) fn allow_only(&mut self, extra: usize) -> usize {
-        let limit = self.managed_bytes + extra;
+        let limit = self.managed_bytes.get() + extra;
         self.config.max_heap_bytes = limit;
         self.next_major_bytes = limit;
         self.first_failed_allocation = None;
@@ -77,7 +77,7 @@ impl Heap {
             released_realm_roots: Rc::default(),
             scoped_roots: Vec::new(),
             scoped_owned_edges: Vec::new(),
-            managed_bytes: 0,
+            managed_bytes: ManagedBytes::default(),
             next_major_bytes: config.major_threshold_bytes,
             #[cfg(any(test, coverage))]
             first_failed_allocation: None,
@@ -204,7 +204,8 @@ impl Heap {
             .expect("Map was protected across collection");
         entries.set(key.clone(), value.clone());
         *entry_bytes = *entry_bytes - old_bytes + new_bytes;
-        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - old_bytes + new_bytes);
         self.write_barrier(object, key.object_id());
         self.write_barrier(object, value.object_id());
         Ok(())
@@ -223,7 +224,7 @@ impl Heap {
         };
         let bytes = map_entry_bytes(&stored_key, &stored_value);
         entry.bytes -= bytes;
-        self.managed_bytes -= bytes;
+        self.managed_bytes.sub(bytes);
         Ok(true)
     }
 
@@ -260,7 +261,7 @@ impl Heap {
             .expect("Set was protected across collection");
         if entries.set(key.clone(), Value::Undefined).is_none() {
             *entry_bytes += bytes;
-            self.managed_bytes += bytes;
+            self.managed_bytes.add(bytes);
         }
         self.write_barrier(object, key.object_id());
         Ok(())
@@ -279,7 +280,7 @@ impl Heap {
         };
         let bytes = map_entry_bytes(&stored_key, &stored_value);
         entry.bytes -= bytes;
-        self.managed_bytes -= bytes;
+        self.managed_bytes.sub(bytes);
         Ok(true)
     }
 
@@ -381,7 +382,7 @@ impl Heap {
             unregister_token,
         });
         object.bytes += bytes;
-        self.managed_bytes += bytes;
+        self.managed_bytes.add(bytes);
         Ok(())
     }
 
@@ -425,7 +426,7 @@ impl Heap {
             }
             (cells.len() != previous_len, released)
         };
-        self.managed_bytes -= released;
+        self.managed_bytes.sub(released);
         Ok(removed)
     }
 
@@ -469,7 +470,7 @@ impl Heap {
                     .map_or(0, weak_collection_key_bytes),
             );
         object.bytes -= released;
-        self.managed_bytes -= released;
+        self.managed_bytes.sub(released);
         Ok(Some((cleanup_callback.clone(), cell.holdings)))
     }
 
@@ -514,7 +515,7 @@ impl Heap {
             object.bytes -= registry_released;
             released = released.saturating_add(registry_released);
         }
-        self.managed_bytes -= released;
+        self.managed_bytes.sub(released);
         jobs
     }
 
@@ -585,7 +586,8 @@ impl Heap {
             .expect("WeakCollection is protected across collection");
         entries.insert(key, value);
         *entry_bytes = *entry_bytes - old_bytes + new_bytes;
-        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - old_bytes + new_bytes);
         self.remembered.insert(object);
         Ok(())
     }
@@ -614,7 +616,7 @@ impl Heap {
             object.bytes -= released;
             (true, released)
         };
-        self.managed_bytes -= released;
+        self.managed_bytes.sub(released);
         Ok(deleted)
     }
 
@@ -651,7 +653,7 @@ impl Heap {
             .expect("private owner is protected across collection");
         object.private = Some(Box::default());
         object.bytes += PRIVATE_DATA_BYTES;
-        self.managed_bytes += PRIVATE_DATA_BYTES;
+        self.managed_bytes.add(PRIVATE_DATA_BYTES);
         Ok(())
     }
 
@@ -742,7 +744,8 @@ impl Heap {
             .elements
             .insert(name, element);
         object.bytes = object.bytes - old_bytes + new_bytes;
-        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - old_bytes + new_bytes);
         for reference in references {
             self.write_barrier(owner, Some(reference));
         }
@@ -777,7 +780,7 @@ impl Heap {
             .brands
             .insert(owner);
         receiver_object.bytes += bytes;
-        self.managed_bytes += bytes;
+        self.managed_bytes.add(bytes);
         self.write_barrier(receiver, Some(owner));
         Ok(())
     }
@@ -860,7 +863,8 @@ impl Heap {
             .slots
             .insert(key, value.clone());
         receiver_object.bytes = receiver_object.bytes - old_bytes + new_bytes;
-        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - old_bytes + new_bytes);
         self.write_barrier(receiver, Some(owner));
         self.write_barrier(receiver, value.object_id());
         Ok(())
@@ -936,7 +940,7 @@ impl Heap {
             return Err(HeapError::InvalidObject(namespace));
         }
         *existing = exports;
-        self.managed_bytes += additional;
+        self.managed_bytes.add(additional);
         Ok(())
     }
 

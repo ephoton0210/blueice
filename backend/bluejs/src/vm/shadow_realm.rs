@@ -27,6 +27,15 @@ use super::*;
 mod boundary_tests;
 
 impl Vm {
+    fn collect_before_shadow_realm_entry(&mut self) -> Result<(), RuntimeError> {
+        if self.heap.document_heap_budget().is_some() {
+            // Collect the owner before borrowing its child. Once the child
+            // runs, its local collector cannot release dead ancestor storage.
+            self.collect_realm_garbage()?;
+        }
+        Ok(())
+    }
+
     pub(super) fn shadow_realm_constructor(
         &mut self,
         construct: bool,
@@ -36,12 +45,14 @@ impl Vm {
                 "Constructor ShadowRealm requires 'new'".into(),
             ));
         }
+        self.collect_before_shadow_realm_entry()?;
         let default = self.shadow_realm_prototype()?;
         let prototype = self.constructor_prototype(default)?;
         let mut child = Vm::new(self.config)
             .map_err(|_| RuntimeError::RangeError("could not create a ShadowRealm".into()))?;
         child.bounded_host_microtask_checkpoints = self.bounded_host_microtask_checkpoints;
         child.host_scheduling = self.host_scheduling.as_ref().map(SchedulingScope::child);
+        child.heap.inherit_document_heap_budget(&self.heap)?;
         // Realms created within one ShadowRealm agent share the
         // GlobalSymbolRegistry, matching `$262.createRealm()`'s identical
         // choice for the same spec-mandated reason (`Symbol.for` is
@@ -140,6 +151,7 @@ impl Vm {
         source_text: Value,
     ) -> Result<Value, RuntimeError> {
         self.synchronize_scheduling_usage()?;
+        self.collect_before_shadow_realm_entry()?;
         let this_id = self.require_shadow_realm(&this, "evaluate")?;
         let Value::String(source_text) = source_text else {
             return Err(RuntimeError::TypeError(
@@ -324,6 +336,7 @@ impl Vm {
         export_name: Value,
     ) -> Result<Value, RuntimeError> {
         self.synchronize_scheduling_usage()?;
+        self.collect_before_shadow_realm_entry()?;
         let this_id = self.require_shadow_realm(&this, "importValue")?;
         // ToString happens in the caller's own realm and propagates
         // directly (not as a promise rejection) -- it runs before
@@ -448,6 +461,7 @@ impl Vm {
         construct: bool,
     ) -> Result<Value, RuntimeError> {
         self.synchronize_scheduling_usage()?;
+        self.collect_before_shadow_realm_entry()?;
         if construct {
             return Err(RuntimeError::TypeError(
                 "a ShadowRealm wrapped function has no [[Construct]]".into(),

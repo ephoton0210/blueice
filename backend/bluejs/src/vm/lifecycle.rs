@@ -127,6 +127,7 @@ impl Vm {
             host_functions: Vec::new(),
             host_promises: super::host_promises::HostPromiseState::default(),
             next_host_native_gc_bytes: super::MAX_HOST_SCHEDULING_BYTES / 4,
+            next_host_heap_gc_bytes: config.heap.max_heap_bytes / 2,
             host_console: None,
             host_error_reporting: None,
             host_rejections: None,

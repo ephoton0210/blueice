@@ -38,10 +38,11 @@ implemented and verified on `feature/bluejs-browser-integration-gaps`.
 **Architecture priority — updated 2026-10-16.** Scheduling ownership,
 timer/Promise collectibility, cancellation/navigation cleanup and per-document
 resource containment take precedence over diagnostic-coordinate precision.
-M1r and M1s close the reproduced within-callback native-pressure and discarded-
-realm ownership failures through real runtime/Core boundaries. Next comes
-aggregate live-realm heap accounting (the public failure in A), complete
-task-source/host-buffer accounting and native UI/network ingress, then the long-running two-tab
+M1r, M1s and M1t close the reproduced native-pressure, discarded-realm and
+aggregate managed-heap failures through real runtime/Core boundaries. Next
+comes agent-owned native registry admission (the public failure in A), complete
+task-source/host-buffer accounting and native UI/network ingress, then the
+long-running two-tab
 acceptance. M1q's diagnostic refinements remain parked until these architectural
 dependencies are closed. Its interrupted 191-target replay is incomplete and
 does not constitute a milestone or a new acceptance gate.
@@ -56,7 +57,30 @@ remains separate from the accepted replay.
 Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
-**Latest milestone — M1s realm ownership (2026-10-16).** Three
+**Latest milestone — M1t document managed heaps (2026-10-16).**
+Two public regressions fail on M1s: sixteen child heaps bypass a 1 MiB document
+envelope, and child-host `heap_bytes` reports only 213,978 bytes despite at
+least 12,800,000 bytes of retained child strings. A shared managed-storage
+counter now charges allocation/growth, collection/shrink and VM release to
+the creating document; public runtime stats expose the document total while
+retaining root-collector diagnostics. All nine focused runtime groups pass,
+including nested realms, six growth routes, shrink/release, queued cleanup,
+two timer entries, caller garbage and a 1-versus-1,000-call GC control.
+The same probe now refuses the 1 MiB envelope; with the default 16 MiB envelope
+it reports 16,196,190 document bytes versus 217,502 root-heap bytes.
+Workspace/all-target build and Clippy pass. All 23 real-page cases, 148 Core/
+child cases and 321 launcher library cases pass, including copied aggregate
+stats and managed-heap exhaustion with healthy-tab/navigation controls.
+All 88 selected Rust/Core/MCP executables pass 2,733 cases, zero failures and
+sixteen existing ignored, including all 1,205 BlueJS library cases and five
+official MCP console cases. Fresh complete Test262 matches all 102,926 modes
+with zero changed source/result records and no new failure or timeout. See the
+[M1t milestone record](#m1t--aggregate-document-managed-heaps-2026-10-16).
+Evidence: `target/document-heap-red-source-20261016.json` and
+`/private/tmp/blueice-document-heap-{runtime,host}-red-20261016.log`.
+After-fix evidence: `target/document-heap-after-probe-source-20261016.json`.
+
+**Previous milestone — M1s realm ownership (2026-10-16).** Three
 public regressions reproduce discarded timer realms, release after the last
 wrapped-function owner is dropped, and an unreachable cross-heap wrapper
 cycle. All three fail on M1r; the first fails on timer callback 11. The first
@@ -258,15 +282,22 @@ work and exposes its retained payload ledger.
       remain open before `fetch`.
 - [ ] Per-document caps on pending timers, queued tasks, queued microtasks and
       host-held bytes, so a runaway page degrades only itself
-- [ ] **Aggregate live-realm heap accounting.** The public page runtime can
-      retain sixteen ShadowRealms with 400,000-character global strings each.
-      With a 1 MiB per-VM heap limit, execution succeeds while its reported
-      root managed heap is 217,502 bytes and native scheduling charge is zero;
-      child string storage alone is at least 12,800,000 bytes. This is a live
-      owner/accounting gap, separate from M1s's discarded-realm reclamation.
-      Charge all live same-document heaps before closing resource containment.
-      Evidence: `target/live-realm-accounting-probe-source-20261016.json` and
-      `/private/tmp/blueice-live-realm-accounting-probe-20261016.log`.
+- [x] **M1t: aggregate live-realm heap accounting.** Root and nested
+      ShadowRealm heaps share one document envelope. Allocation and growth
+      reserve managed bytes before committing storage; shrink, collection and
+      heap release return their actual charge. Runtime `document_heap_bytes`
+      and private child-host heap totals include all unique live heaps. Nine
+      public groups, copied Core totals, real two-tab exhaustion/navigation
+      and the full pinned Test262 inventory pass; see M1t below. Original
+      evidence remains in `target/live-realm-accounting-probe-source-20261016.json`.
+- [ ] **Agent-owned native registry payloads.** Sixteen distinct
+      `Symbol.for('x'.repeat(400000) + i)` entries retain at least 25,600,000
+      bytes in registry keys and symbol descriptions after the job. The page
+      reports 214,296 managed/document bytes and zero native scheduling bytes.
+      Account shared agent-owned payload once, preserve registered identity,
+      and enforce the initiating document's native budget before insertion.
+      Evidence: `target/agent-registry-probe-source-20261016.json` and
+      `/private/tmp/blueice-agent-registry-probe-20261016.log`.
 - [x] **M1d: document scheduling admission.** Page VMs and their ShadowRealms
       share a 1,024-job, 1,024-waiting-reaction/request and 8 MiB owned-payload
       budget. Promise settlement, thenables, async functions/generators,
@@ -315,7 +346,8 @@ Spec shape is done: `PromiseCapability` records, `WeakRef`,
 M1f replaces permanent Promise roots with live-owner tracing and explicit
 ownership for queued/running jobs, module work and host waits.
 M1s adds reclamation of discarded ShadowRealm VMs, including cross-heap wrapper
-cycles. Aggregate live-child heap accounting remains open in A.
+cycles. M1t adds aggregate document managed-heap admission. Agent-owned native
+registry/control/service payload accounting remains open in A.
 
 - [x] **M1f: Promise collectibility (P1).** Settled Promises, result/reaction
       cycles and orphaned async invocations can be collected; a retained async
@@ -629,6 +661,59 @@ the generated typings in the same change.
 
 ## Milestone record
 
+### M1t — Aggregate document managed heaps (2026-10-16)
+
+- [x] Reproduce bypass of a 1 MiB document envelope through sixteen live
+      ShadowRealms and under-reporting through the public child-host stats.
+- [x] Share managed-storage admission across all nested document heaps;
+      charge each actual heap once and release storage on shrink, deletion,
+      collection and heap destruction. Preserve root collector diagnostics.
+- [x] Verify property/array/Map/Set/buffer allocation and resize refusal,
+      terminal document failure, nested realms, pending cleanup, wrapped
+      owners, shrink/release and 64 polls through each timer entry.
+- [x] Reclaim caller garbage before borrowing a child for large growth;
+      retain live owners and avoid repeated GC at 1,000 unchanged small calls.
+- [x] Pass launcher/Core aggregate-stat transport and a real two-tab timer
+      exhaustion/navigation fixture. All 23 real-page cases pass.
+- [x] Pass formatting and workspace/all-target build/Clippy.
+- [x] Complete the related Rust/Core/MCP replay and full pinned Test262.
+- [x] Record final evidence and a detailed English milestone commit.
+
+The root's immutable managed-heap limit now bounds all managed storage owned
+by its document. `document_heap_bytes` exposes that total separately from
+root `HeapStats`; child realm/child-wide heap reports carry the aggregate.
+Existing child-wide reservations and Core's separate retained-metadata/
+scheduling page-cache ledger remain distinct. Native scheduling, string and
+per-heap limits are unchanged, and host-neutral VMs without a document scope
+retain their per-heap policy. This closes managed storage, not the native
+agent-registry/control/service payloads still open in A.
+
+All 88 disjoint test executables pass 2,733 cases, zero failures and sixteen
+existing ignored: BlueJS 1,936 across 49 targets (all 1,205 library cases),
+bridge 300 across 35 targets, launcher 344, Core/child 148 and official MCP
+console 5. Formatting and workspace/all-target build/Clippy pass. Twenty-eight
+Rust inputs, 13,853 workspace/compiler inputs, 88 test executable hashes and
+seven runtime hashes remain fixed.
+
+The fresh complete Test262 replay takes 436.33s including validation/reporting
+(runner 429.586s). All 102,926 modes match M1p's accepted source/result
+inventory: 102,921 pass, one stale corpus and four exclusions. Source hashes,
+expectations, features/flags, statuses and actual kind/phase/reason have zero
+changes; no mode newly fails or times out. Accepted evidence is
+`target/document-heap-source-20261016.json`,
+`target/document-heap-validation-20261016.json` and
+`target/test262-document-heap-full-20261016/`.
+
+The before-fix runtime and child-host failures are preserved separately in
+`target/document-heap-red-source-20261016.json` and
+`/private/tmp/blueice-document-heap-{runtime,host}-red-20261016.log`.
+The same public probe now refuses the 1 MiB envelope; under the default 16 MiB
+it succeeds and reports 16,196,190 document bytes versus 217,502 root bytes.
+Bindings are in `target/document-heap-after-probe-source-20261016.json`.
+M1t closes A's aggregate managed-heap item. The separately reproduced native
+agent-registry gap remains open in A and is the next architecture task; M1q
+stays parked.
+
 ### M1s — ShadowRealm ownership and reclamation (2026-10-16)
 
 - [x] Reproduce orphan VM/native-Promise retention through the public runtime:
@@ -678,8 +763,8 @@ The original three public failures are retained in
 `/private/tmp/blueice-realm-ownership-red-20261016.log`. Earlier failed build/
 page-fixture attempts remain in separate `realm-ownership` and
 `realm-ownership-final` receipts; they are not accepted gates. M1s closes B's
-discarded-realm ownership item. The live-realm managed-heap under-accounting
-probe in A remains the next architecture task; M1q stays parked.
+discarded-realm ownership item. That checkpoint left live-realm managed-heap aggregation as its next task;
+M1t now closes it. Agent-native/service work remains open; M1q stays parked.
 
 ### M1r — Native Promise pressure during timer callbacks (2026-10-16)
 

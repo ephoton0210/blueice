@@ -468,13 +468,18 @@ impl Vm {
         let Some(scope) = &self.host_scheduling else {
             return Ok(());
         };
+        self.heap.check_document_heap_budget()?;
         let incoming = arguments
             .iter()
             .fold(value_payload_bytes(value), |bytes, value| {
                 bytes.saturating_add(value_payload_bytes(value))
             });
         let retained = scope.account.borrow().usage.payload_bytes;
-        if retained.saturating_add(incoming) < self.next_host_native_gc_bytes {
+        let heap_pressure = self
+            .heap
+            .document_heap_budget()
+            .is_some_and(|(used, _)| used.saturating_add(incoming) >= self.next_host_heap_gc_bytes);
+        if retained.saturating_add(incoming) < self.next_host_native_gc_bytes && !heap_pressure {
             return Ok(());
         }
         let root_base = self.async_frame_roots.len();
@@ -489,6 +494,9 @@ impl Vm {
         self.next_host_native_gc_bytes = live
             .saturating_mul(2)
             .clamp(MAX_HOST_SCHEDULING_BYTES / 4, MAX_HOST_SCHEDULING_BYTES);
+        if let Some((used, limit)) = self.heap.document_heap_budget() {
+            self.next_host_heap_gc_bytes = used.saturating_mul(2).clamp(limit / 2, limit);
+        }
         Ok(())
     }
 
@@ -722,7 +730,9 @@ impl Vm {
         {
             Err(RuntimeError::SchedulingLimit)
         } else {
-            Ok(())
+            self.heap
+                .check_document_heap_budget()
+                .map_err(RuntimeError::from)
         }
     }
     pub fn host_scheduling_usage(&mut self) -> Result<HostSchedulingUsage, RuntimeError> {

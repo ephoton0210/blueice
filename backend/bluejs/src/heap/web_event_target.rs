@@ -59,7 +59,7 @@ impl Heap {
         let entry = self.objects.get_mut(&object).expect("protected global");
         entry.kind = ObjectKind::WebEventTarget(state);
         entry.bytes += bytes;
-        self.managed_bytes += bytes;
+        self.managed_bytes.add(bytes);
         Ok(())
     }
 
@@ -105,7 +105,8 @@ impl Heap {
             _ => unreachable!("validated target"),
         }
         entry.bytes = entry.bytes - previous + bytes;
-        self.managed_bytes = self.managed_bytes - previous + bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - previous + bytes);
         for reference in references {
             self.write_barrier(object, Some(reference));
         }

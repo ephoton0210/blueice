@@ -24,7 +24,8 @@ impl Heap {
         self.ensure_room(bytes.saturating_sub(previous), &[object])?;
         self.objects.get_mut(&object).expect("protected URL").kind =
             ObjectKind::WebUrl(Box::new(url));
-        self.managed_bytes = self.managed_bytes - previous + bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - previous + bytes);
         Ok(())
     }
 }

@@ -737,6 +737,11 @@ fn cleanup_task_exhaustion_in_one_real_child_keeps_another_tab_rendering() {
     scheduling_exhaustion_case("for (var i = 0; i < 65; i += 1) { var registry = new FinalizationRegistry(noop); registries.push(registry); registry.register({}, 0); } for (var j = 0; j < 3; j += 1) { Promise.resolve('x'.repeat(400000)).then(noop); }");
 }
 
+#[test]
+fn managed_heap_exhaustion_stops_only_its_document_and_navigation_recovers() {
+    scheduling_exhaustion_case("var realms=[];for(var i=0;i<32;i++){var child=new ShadowRealm();child.evaluate(\"globalThis.held='x'.repeat(400000);0;\");realms.push(child);}document.getElementById('counter').textContent='escaped';");
+}
+
 fn scheduling_exhaustion_case(exhaustion: &str) {
     let (bad_fixture, bad_url, gatekeeper) = fixture(
         "<p id=counter>failed:0</p><script>

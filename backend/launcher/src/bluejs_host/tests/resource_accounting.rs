@@ -5,6 +5,28 @@
 use super::*;
 
 #[test]
+fn realm_heap_stats_include_live_shadow_realm_heaps() {
+    let mut host = BlueJsChildHost::default();
+    let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+        document: document(1, vec![classic(0, "var realms=[];for(var i=0;i<16;i++){var r=new ShadowRealm();r.evaluate(\"globalThis.retained='x'.repeat(400000);0;\");realms.push(r);}0;")]),
+    });
+    assert!(
+        matches!(reply, PageHostReply::Synchronized { .. }),
+        "{reply:?}"
+    );
+    let PageHostReply::RealmStats(stats) = host.handle_request(PageHostRequest::GetRealmStats {
+        tab_id: 7,
+        document_generation: 1,
+    }) else {
+        panic!("live document stats");
+    };
+    assert!(
+        stats.heap_bytes >= 12800000,
+        "child heaps escaped the reported document total: {stats:?}"
+    );
+}
+
+#[test]
 fn long_abort_deadlines_use_bounded_task_and_frame_wake_replies() {
     let mut host = BlueJsChildHost::default();
     assert!(matches!(

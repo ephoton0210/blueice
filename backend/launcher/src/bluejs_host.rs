@@ -129,7 +129,8 @@ const CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START: u64 = 1 << 63;
 /// Immutable launcher-owner limits for one isolated page-host child.
 ///
 /// Per-realm envelopes and conservative child-wide reservations. Each live
-/// realm reserves its full program, root-bytecode, and VM-managed-heap budget
+/// realm reserves its full program, root-bytecode, and managed-heap budget
+/// (shared by its root VM and same-document ShadowRealms)
 /// before admission. This is not an RSS or fleet memory limit: VM accounting
 /// excludes allocator, Rust, registry, source, and operating-system overhead.
 /// Only the launcher may select these values before starting a core generation;

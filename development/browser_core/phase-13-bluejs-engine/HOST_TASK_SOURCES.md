@@ -102,8 +102,38 @@ the same realm even after its original instance is collected. Navigation and
 close discard the document's realm tree and queued work together.
 
 This closes discarded-realm retention within the existing scheduling ledger.
-Complete native control-table/service-buffer and aggregate heap accounting
-remain part of the broader resource-containment work.
+Complete native control-table/service-buffer accounting remains part of the
+broader resource-containment work.
+
+### Document managed heaps
+
+Document scopes share one managed-storage envelope across the root VM and all
+ShadowRealms, including nested realms. The immutable root heap limit also
+bounds the document total. Each heap's storage counter joins that account once;
+multiple instances or wrappers retaining the same VM do not duplicate its
+charge. Host-neutral VMs without a document scope retain their per-heap policy.
+
+Allocation and growing properties, collection entries, strings and buffers
+check the shared account before committing storage. Minor/major collection,
+deletion, cleanup, buffer shrinking and heap destruction release that heap's
+actual delta. Page runtime stats keep root collector diagnostics in `heap` and
+expose the aggregate as `document_heap_bytes`; private child-host `heap_bytes`
+and child-wide actual totals use that aggregate. The existing heap reservation
+remains separate from retained page-cache metadata/scheduling payloads.
+
+Rooted call-pressure safepoints collect managed garbage before admission;
+their adaptive watermark avoids repeated collection of unchanged live data.
+Page realm entry also collects the caller before borrowing its child, allowing
+dead caller storage to be released before large child growth. Allocating heap
+operations retain their existing protected-input rules. Collection runs no
+JavaScript or nested task turn and retains queued/running owners.
+
+An exhausted document account stays failed across later script, task and
+checkpoint entries. Another tab has its own account; navigation creates a new
+one and drops the old realm tree. This is a managed-storage budget, with the
+existing per-value string and native scheduling bounds still separate. Native
+agent-registry/control/service payload accounting remains in the open resource
+work; managed-heap aggregation does not close those items.
 
 The legacy browser-only entry uses the same logical source selection while
 leaving callback timers to its separate timer entry. Standalone browser-task

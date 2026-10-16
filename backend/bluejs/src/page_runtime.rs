@@ -49,7 +49,8 @@ impl BlueJsPageOrigin {
 /// Limits and VM policy for every realm owned by one page runtime.
 #[derive(Debug, Clone, Copy)]
 pub struct BlueJsPageRuntimeConfig {
-    /// VM limits copied into each newly created tab realm.
+    /// VM limits copied into each newly created tab realm. `heap.max_heap_bytes`
+    /// also bounds all managed storage in that document's ShadowRealms.
     pub vm: VmConfig,
     /// Maximum concurrently live tab realms.
     pub max_realms: usize,
@@ -81,6 +82,8 @@ pub struct BlueJsPageRealmStats {
     /// Root bytecode plus immutable diagnostic maps admitted for its programs.
     pub bytecode_bytes: usize,
     pub heap: HeapStats,
+    /// Managed storage across this document's root VM and all ShadowRealms.
+    pub document_heap_bytes: usize,
     /// Owned document scheduling state, including ShadowRealms.
     pub scheduling: crate::HostSchedulingUsage,
 }
@@ -1789,6 +1792,7 @@ impl BlueJsPageRuntime {
             program_count: realm.programs.len(),
             bytecode_bytes: realm.bytecode_bytes,
             heap: realm.vm.heap().stats(),
+            document_heap_bytes: realm.vm.heap().document_heap_bytes(),
             scheduling: realm.vm.host_scheduling_snapshot(),
         })
     }

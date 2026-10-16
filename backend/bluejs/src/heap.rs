@@ -48,6 +48,8 @@ mod core;
 mod debugger;
 mod exotic;
 mod lifecycle;
+mod managed_bytes;
+use managed_bytes::ManagedBytes;
 mod realm_roots;
 pub(crate) use realm_roots::RealmRoot;
 mod object_storage;
@@ -1692,7 +1694,7 @@ pub struct Heap {
     scoped_roots: Vec<Vec<ObjectId>>,
     /// VM side-table edges, traced only while their heap owner is live.
     scoped_owned_edges: Vec<Vec<(ObjectId, Vec<ObjectId>)>>,
-    managed_bytes: usize,
+    managed_bytes: ManagedBytes,
     next_major_bytes: usize,
     /// First refused request in a test allocation sweep, after normal GC.
     #[cfg(any(test, coverage))]

@@ -111,7 +111,8 @@ impl Heap {
         let entry = self.objects.get_mut(&object).expect("protected signal");
         entry.kind = ObjectKind::WebAbortSignal(Box::new(state));
         entry.bytes = entry.bytes - previous + bytes;
-        self.managed_bytes = self.managed_bytes - previous + bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - previous + bytes);
         for reference in references {
             self.write_barrier(object, Some(reference));
         }
@@ -132,6 +133,6 @@ impl Heap {
                 released += removed;
             }
         }
-        self.managed_bytes -= released;
+        self.managed_bytes.sub(released);
     }
 }

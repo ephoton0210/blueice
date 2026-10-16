@@ -286,8 +286,11 @@ impl Heap {
         }
         obj.attributes.insert(key.clone(), merged);
         obj.bytes = obj.bytes - old_property - old_attributes + new_property + new_attributes;
-        self.managed_bytes =
-            self.managed_bytes - old_property - old_attributes + new_property + new_attributes;
+        self.managed_bytes.set(
+            self.managed_bytes.get() - old_property - old_attributes
+                + new_property
+                + new_attributes,
+        );
         let mapped_update = if length_failed || descriptor_is_accessor {
             None
         } else {
@@ -453,8 +456,10 @@ impl Heap {
         // limit) there is nothing to collect and nothing to refuse.
         if self
             .managed_bytes
+            .get()
             .checked_add(bytes)
             .is_none_or(|total| total >= self.next_major_bytes)
+            || self.managed_bytes.would_exceed(bytes)
         {
             let protected =
                 protected.get_or_insert_with(|| allocation_references(&kind, prototype));
@@ -481,7 +486,7 @@ impl Heap {
             },
         );
         self.nursery.push(id);
-        self.managed_bytes += bytes;
+        self.managed_bytes.add(bytes);
         Ok(id)
     }
 
@@ -681,7 +686,8 @@ impl Heap {
             obj.properties.insert(key, value);
             obj.bytes = obj.bytes - old_bytes + new_bytes;
         }
-        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - old_bytes + new_bytes);
         if let (Some(cell), Some(value)) = (mapped_cell, mapped_value) {
             self.set(cell, "value", value)?;
         }
@@ -760,7 +766,7 @@ impl Heap {
             let bytes = property_bytes(&key, &value) + removed_attributes;
             obj.order.retain(|name| name != &key);
             obj.bytes -= bytes;
-            self.managed_bytes -= bytes;
+            self.managed_bytes.sub(bytes);
             self.structure_epoch += 1;
         }
         if mapped_cell.is_some() {
@@ -1336,7 +1342,7 @@ mod coverage_tests {
             let mut heap = heap();
             let (arguments, cell) = arguments_object(&mut heap);
             let value = Value::String("x".repeat(200).into());
-            heap.config.max_heap_bytes = heap.managed_bytes + extra;
+            heap.config.max_heap_bytes = heap.managed_bytes.get() + extra;
             let write = heap.set_key(arguments, "0".into(), value.clone());
             let define = heap.define_own_property_key(
                 arguments,

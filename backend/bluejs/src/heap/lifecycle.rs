@@ -54,7 +54,7 @@ impl Heap {
         HeapStats {
             nursery_objects: self.nursery.len(),
             tenured_objects: self.objects.len() - self.nursery.len(),
-            managed_bytes: self.managed_bytes,
+            managed_bytes: self.managed_bytes.get(),
             next_major_bytes: self.next_major_bytes,
             minor_collections: self.minor_collections,
             major_collections: self.major_collections,
@@ -111,13 +111,17 @@ impl Heap {
         protected: &[ObjectId],
     ) -> Result<(), HeapError> {
         if additional == 0 {
+            self.managed_bytes.check_room(0)?;
             return Ok(());
         }
-        let proposed = self.managed_bytes.checked_add(additional);
-        if proposed.is_none_or(|bytes| bytes >= self.next_major_bytes) {
+        let proposed = self.managed_bytes.get().checked_add(additional);
+        if proposed.is_none_or(|bytes| bytes >= self.next_major_bytes)
+            || self.managed_bytes.would_exceed(additional)
+        {
             self.major_gc(protected);
         }
-        let required = self.managed_bytes.checked_add(additional);
+        self.managed_bytes.check_room(additional)?;
+        let required = self.managed_bytes.get().checked_add(additional);
         if required.is_none_or(|bytes| bytes > self.config.max_heap_bytes) {
             #[cfg(any(test, coverage))]
             self.first_failed_allocation
@@ -336,7 +340,7 @@ impl Heap {
                 }
             }
         }
-        self.managed_bytes -= released_weak_entries;
+        self.managed_bytes.sub(released_weak_entries);
         for id in self.nursery.drain(..) {
             if marked.contains(&id) {
                 self.objects
@@ -344,13 +348,14 @@ impl Heap {
                     .expect("nursery handle is live")
                     .young = false;
             } else {
-                self.managed_bytes -= self
-                    .objects
-                    .remove(&id)
-                    .expect("nursery handle is live")
-                    .bytes;
+                self.managed_bytes.sub(
+                    self.objects
+                        .remove(&id)
+                        .expect("nursery handle is live")
+                        .bytes,
+                );
                 if self.closure_metadata.remove(&id).is_some() {
-                    self.managed_bytes -= CLOSURE_METADATA_BYTES;
+                    self.managed_bytes.sub(CLOSURE_METADATA_BYTES);
                 }
             }
         }
@@ -402,7 +407,7 @@ impl Heap {
                 }
             }
         }
-        self.managed_bytes -= released_weak_entries;
+        self.managed_bytes.sub(released_weak_entries);
         let reclaimed_metadata = self
             .closure_metadata
             .keys()
@@ -413,16 +418,18 @@ impl Heap {
                 obj.young = false;
                 true
             } else {
-                self.managed_bytes -= obj.bytes;
+                self.managed_bytes.sub(obj.bytes);
                 false
             }
         });
         self.closure_metadata.retain(|id, _| marked.contains(id));
-        self.managed_bytes -= reclaimed_metadata * CLOSURE_METADATA_BYTES;
+        self.managed_bytes
+            .sub(reclaimed_metadata * CLOSURE_METADATA_BYTES);
         self.nursery.clear();
         self.remembered.clear();
         self.next_major_bytes = self
             .managed_bytes
+            .get()
             .saturating_mul(2)
             .max(self.config.major_threshold_bytes)
             .min(self.config.max_heap_bytes);

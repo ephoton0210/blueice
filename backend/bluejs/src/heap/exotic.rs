@@ -251,7 +251,8 @@ impl Heap {
             *current_bytes = state_bytes;
             *entry_bytes = *entry_bytes - old_state_bytes + state_bytes;
         }
-        self.managed_bytes = self.managed_bytes - old_state_bytes + state_bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - old_state_bytes + state_bytes);
         for reference in references {
             self.write_barrier(object, Some(reference));
         }
@@ -336,7 +337,8 @@ impl Heap {
             *async_control_bytes = control_bytes;
             *entry_bytes = *entry_bytes - old_bytes + control_bytes;
         }
-        self.managed_bytes = self.managed_bytes - old_bytes + control_bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - old_bytes + control_bytes);
         for reference in references {
             self.write_barrier(object, Some(reference));
         }
@@ -872,7 +874,8 @@ impl Heap {
             .expect("protected RegExp survives collection");
         *current = regexp;
         *entry_bytes = *entry_bytes - old_bytes + new_bytes;
-        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - old_bytes + new_bytes);
         Ok(())
     }
     pub(crate) fn regexp(
@@ -1073,7 +1076,7 @@ impl Heap {
         self.ensure_room(CLOSURE_METADATA_BYTES, &protected)?;
         self.closure_metadata
             .insert(object, ClosureMetadata::default());
-        self.managed_bytes += CLOSURE_METADATA_BYTES;
+        self.managed_bytes.add(CLOSURE_METADATA_BYTES);
         Ok(())
     }
 

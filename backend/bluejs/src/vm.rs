@@ -1113,6 +1113,7 @@ pub struct Vm {
     /// Native Promise/frame payload can pressure a page before its managed
     /// heap or next host checkpoint reaches a collection threshold.
     next_host_native_gc_bytes: usize,
+    next_host_heap_gc_bytes: usize,
     host_animation_frames: Vec<HostAnimationFrame>,
     host_animation_frame_next_id: u64,
     host_animation_frame_timestamp_ms: f64,

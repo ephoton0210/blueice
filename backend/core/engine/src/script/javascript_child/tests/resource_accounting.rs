@@ -5,6 +5,43 @@
 use super::*;
 
 #[test]
+fn real_child_document_heap_totals_include_shadow_realms_and_follow_navigation() {
+    use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
+    let (host, config) = SpawnedBlueJsHost::spawn_for_core().unwrap();
+    let (mut tabs,first)=loaded_tabs("<script>var realms=[];for(var i=0;i<8;i++){var r=new ShadowRealm();r.evaluate(\"globalThis.held='x'.repeat(400000);0;\");realms.push(r);}</script>","https://example.test/heap-first.html");
+    let second = tabs.open_tab();
+    tabs.get_mut(second).unwrap().load_html_str(
+        "<script>var value=42;</script>",
+        Some("https://example.test/heap-second.html".into()),
+    );
+    let mut executor =
+        OutOfProcessJavaScriptPageExecutor::connect(config.socket_path(), config.session_token())
+            .unwrap();
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let first_stats = executor.realm_stats(first).unwrap().clone();
+    let second_stats = executor.realm_stats(second).unwrap().clone();
+    assert!(
+        first_stats.heap_bytes >= 6400000,
+        "child heaps escaped copied Core stats: {first_stats:?}"
+    );
+    assert!(second_stats.heap_bytes < first_stats.heap_bytes);
+    tabs.get_mut(first).unwrap().load_html_str(
+        "<script>42;</script>",
+        Some("https://example.test/heap-replacement.html".into()),
+    );
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let replacement = executor.realm_stats(first).unwrap();
+    assert_eq!(replacement.document_generation, 2);
+    assert!(replacement.heap_bytes < first_stats.heap_bytes);
+    assert_eq!(executor.realm_stats(second), Some(&second_stats));
+    tabs.close_tab(second);
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.realm_stats(second), None);
+    drop(executor);
+    drop(host);
+}
+
+#[test]
 fn real_child_scheduling_payload_is_charged_to_its_tab_and_released_on_navigation() {
     use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
     let (host, config) = SpawnedBlueJsHost::spawn_for_core().unwrap();
