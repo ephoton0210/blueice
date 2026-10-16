@@ -1185,7 +1185,7 @@ fn module_scope_cleanup_retains_graph_owned_export_cells() {
         .cells
         .clone();
     assert!(!cells.is_empty());
-    vm.enter_module_record(&code, cells.clone());
+    vm.enter_module_record(&code, &mut cells.clone()).unwrap();
     vm.reset_scope(&code, 0);
     assert_eq!(vm.cells, cells);
     assert!(vm.bindings.iter().all(Option::is_none));

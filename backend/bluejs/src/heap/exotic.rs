@@ -181,6 +181,20 @@ impl Heap {
         )
     }
 
+    pub(crate) fn generator_execution_code(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<(Rc<Bytecode>, bool)>, HeapError> {
+        let ObjectKind::Generator { state, .. } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok(match &**state {
+            GeneratorState::Start { code, .. } => Some((code.clone(), true)),
+            GeneratorState::Suspended { code, .. } => Some((code.clone(), false)),
+            GeneratorState::Running | GeneratorState::Done => None,
+        })
+    }
+
     pub(crate) fn take_generator_state(
         &mut self,
         object: ObjectId,

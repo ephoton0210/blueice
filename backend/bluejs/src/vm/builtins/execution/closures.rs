@@ -185,6 +185,11 @@ impl Vm {
                 "arrow function is not a constructor".into(),
             ));
         }
+        let mut prepared = if !code.generator || code.generator_initializes_parameters {
+            Some(self.prepare_frame_bindings(&code, FrameBindingKind::Function)?)
+        } else {
+            None
+        };
         // Async generator requests own their own Promise capabilities. Do not
         // allocate an ordinary async-function capability before entering the
         // generator branch, where it would be unreachable and leak state.
@@ -283,6 +288,9 @@ impl Vm {
                 home,
                 closure_with_objects,
                 entry_payload,
+                prepared
+                    .take()
+                    .expect("parameter entry prepared its bindings"),
             );
             self.stack.truncate(base);
             let state = state?;
@@ -361,14 +369,17 @@ impl Vm {
         self.stack
             .extend(pending_roots.into_iter().map(Value::Object));
         let frame_base = self.stack.len();
-        let mut frame_bindings = vec![None; code.bindings.len()];
+        let mut prepared = prepared
+            .take()
+            .expect("ordinary entry prepared its bindings");
+        let (mut frame_bindings, frame_metadata, frame_lexicals) = prepared.take_parts();
         if let Some(slot) = code.self_slot {
             frame_bindings[slot as usize] = Some(callee.clone());
         }
         let disposables = std::mem::take(&mut self.disposables);
         let dispose_marks = std::mem::take(&mut self.dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
-        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
         let mut dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
@@ -377,18 +388,8 @@ impl Vm {
         let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let variable_scope = std::mem::replace(&mut self.variable_scope, code.variable_scope);
-        let variable_scope_lexicals = std::mem::replace(
-            &mut self.variable_scope_lexicals,
-            code.scopes
-                .get(code.variable_scope as usize)
-                .into_iter()
-                .flat_map(|scope| scope.iter())
-                .filter_map(|slot| {
-                    let binding = &code.bindings[*slot as usize];
-                    binding.lexical.then(|| binding.name.clone())
-                })
-                .collect(),
-        );
+        let variable_scope_lexicals =
+            std::mem::replace(&mut self.variable_scope_lexicals, frame_lexicals);
         let this = std::mem::replace(&mut self.this, receiver);
         let arguments = std::mem::replace(&mut self.arguments, args);
         // Prototype getters and base-class field initializers can run before
@@ -414,6 +415,7 @@ impl Vm {
         let inherited_with_depth =
             std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
         let parameter_eval_env = self.parameter_eval_env.take();
+        drop(prepared);
         let mut entry_error = None;
         if code.parameter_eval_scope {
             // Roots: `with_objects` is a root, and so is the callee frame's

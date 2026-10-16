@@ -194,6 +194,7 @@ impl Vm {
         home: Option<ObjectId>,
         closure_with_objects: Vec<Value>,
         entry_payload: execution_payload::CallEntryCharge,
+        mut prepared: PreparedFrameBindings,
     ) -> Result<GeneratorState, RuntimeError> {
         let _caller_payload = self.charge_execution_payload(
             self.caller_execution_payload_bytes()
@@ -251,14 +252,14 @@ impl Vm {
             .extend(pending_roots.into_iter().map(Value::Object));
         let frame_base = self.stack.len();
 
-        let mut frame_bindings = vec![None; code.bindings.len()];
+        let (mut frame_bindings, frame_metadata, frame_lexicals) = prepared.take_parts();
         if let Some(slot) = code.self_slot {
             frame_bindings[slot as usize] = Some(callee.clone());
         }
         let disposables = std::mem::take(&mut self.disposables);
         let dispose_marks = std::mem::take(&mut self.dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
-        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
         let dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
@@ -281,24 +282,15 @@ impl Vm {
         let new_target_allowed =
             std::mem::replace(&mut self.new_target_allowed, code.new_target_allowed);
         let variable_scope = std::mem::replace(&mut self.variable_scope, code.variable_scope);
-        let variable_scope_lexicals = std::mem::replace(
-            &mut self.variable_scope_lexicals,
-            code.scopes
-                .get(code.variable_scope as usize)
-                .into_iter()
-                .flat_map(|scope| scope.iter())
-                .filter_map(|slot| {
-                    let binding = &code.bindings[*slot as usize];
-                    binding.lexical.then(|| binding.name.clone())
-                })
-                .collect(),
-        );
+        let variable_scope_lexicals =
+            std::mem::replace(&mut self.variable_scope_lexicals, frame_lexicals);
         let with_objects = std::mem::replace(&mut self.with_objects, closure_with_objects);
         let inherited_with_depth =
             std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
         let parameter_eval_env = self.parameter_eval_env.take();
         let pending_completions = std::mem::take(&mut self.pending_completions);
         let completion_saves = std::mem::take(&mut self.completion_saves);
+        drop(prepared);
         let mut entry_error = None;
         if code.parameter_eval_scope {
             match self.new_parameter_eval_env() {
@@ -438,6 +430,21 @@ impl Vm {
                 "Generator is already running".into(),
             ));
         }
+        let mut prepared = match self.heap.generator_execution_code(*generator)? {
+            Some((code, start)) => Some(self.prepare_frame_bindings(
+                &code,
+                if start {
+                    FrameBindingKind::Function
+                } else {
+                    FrameBindingKind::ResumedGenerator
+                },
+            )?),
+            None => None,
+        };
+        let (initial_bindings, frame_metadata, frame_lexicals) = prepared
+            .as_mut()
+            .map(PreparedFrameBindings::take_parts)
+            .unwrap_or_default();
         let state = self.heap.take_generator_state(*generator)?;
         let (
             code,
@@ -495,18 +502,9 @@ impl Vm {
                 home,
                 with_objects,
             } => {
-                let mut bindings = vec![None; code.bindings.len()];
+                let mut bindings = initial_bindings;
                 let variable_scope = code.variable_scope;
-                let variable_scope_lexicals = code
-                    .scopes
-                    .get(variable_scope as usize)
-                    .into_iter()
-                    .flat_map(|scope| scope.iter())
-                    .filter_map(|slot| {
-                        let binding = &code.bindings[*slot as usize];
-                        binding.lexical.then(|| binding.name.clone())
-                    })
-                    .collect();
+                let variable_scope_lexicals = frame_lexicals;
                 if let Some(slot) = code.self_slot {
                     bindings[slot as usize] = Some(callee.clone());
                 }
@@ -561,16 +559,7 @@ impl Vm {
                 with_objects,
             } => {
                 let variable_scope = code.variable_scope;
-                let variable_scope_lexicals = code
-                    .scopes
-                    .get(variable_scope as usize)
-                    .into_iter()
-                    .flat_map(|scope| scope.iter())
-                    .filter_map(|slot| {
-                        let binding = &code.bindings[*slot as usize];
-                        binding.lexical.then(|| binding.name.clone())
-                    })
-                    .collect();
+                let variable_scope_lexicals = frame_lexicals;
                 (
                     code,
                     pc,
@@ -685,7 +674,7 @@ impl Vm {
         self.disposables = self.owned_records(frame_disposables);
         self.dispose_marks = self.owned_records(frame_dispose_marks);
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
-        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
         let cells = std::mem::replace(&mut self.cells, frame_cells);
         let dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
         let dynamic_eval_bindings =
@@ -742,6 +731,7 @@ impl Vm {
         );
         let completion_saves =
             std::mem::replace(&mut self.completion_saves, frame_completion_saves);
+        drop(prepared);
         let mut iterators = self.iterator_records(frame_iterators);
         let mut handlers = self.handler_records(frame_handlers);
         let outcome = if let Some(completion) = abrupt {

@@ -165,6 +165,16 @@ instead of keeping an unused cloned copy across the body. Completed bounded
 root scripts return their frame containers; persistent template identity and
 module association remain charged to the realm.
 
+New binding frames first admit value slots, metadata/name copies and function
+variable-scope lexical names as one staged allocation. A scoped owner charges
+their actual capacities while constructor getters/field initializers or other
+entry work runs, and releases after all parts enter VM fields. Root script,
+ordinary/async call, generator parameter/resume, eval, nested script and module
+entry share this path. Generator resume prepares names before taking saved
+state; module entry admits before taking input cells or clearing the context.
+Other container growth, map/scope restoration and non-JavaScript staging remain
+part of the wider preallocation gate.
+
 Iterator and handler vectors carry scoped native charges through execution,
 cleanup, async/module continuations and debugger pauses. New records plan and
 admit capacity before reserve and publication, including actual-capacity

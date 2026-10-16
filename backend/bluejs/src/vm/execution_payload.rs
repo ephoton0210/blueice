@@ -20,6 +20,10 @@ mod interpreter_record_tests;
 #[path = "../../tests/fixtures/call_entry_storage.rs"]
 mod call_entry_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/frame_binding_admission.rs"]
+mod frame_binding_tests;
+
 /// These transfers displace different owners. Ordinary calls forward dynamic
 /// eval environments into the callee; generator entry saves them in Rust.
 pub(super) enum ControlTransfer {

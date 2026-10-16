@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The frame-binding admission follow-up reproduces root allocation before refusal
+and constructor field effects before frame admission. Shared binding/name
+staging now admits before allocation and keeps a scoped charge through entry;
+all eight expanded groups pass. Script, call, eval, nested script, module and
+generator entry use this path; module cells and generator state remain in place
+until admission succeeds. All 445 selected cases, formatting and offline
+workspace/all-target Clippy pass. The implementation checkpoint is recorded
+below; broader preallocation/staging and integrated acceptance remain open.
+
 The call-entry follow-up reproduces six storage/accounting failures before the
 fix. Twelve bounded groups now pass for reserved argument capacity, constructor
 callbacks, bound/Proxy forwarding, host conversion, parameter handoff, tail-call
@@ -472,10 +481,10 @@ work and exposes its retained payload ledger.
       budget alongside primitive payloads. Admission/release tests must follow
       real call/eval/generator/async ownership transfers, avoid charging maps
       forwarded into the callee twice, and preserve suspension/debugger state.
-      The VM-field and interpreter-record checkpoints below pass their bounded
-      selections. Disposal ownership is covered by the next checkpoint;
-      wider entry/transient staging, other preallocation and integrated
-      acceptance remain open.
+      VM-field, interpreter-record, disposal, call-entry and frame-binding
+      admission checkpoints below pass their bounded selections. Other
+      container growth, map/scope restoration, wider transient staging and
+      integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -1128,6 +1137,60 @@ warnings denied pass. Logs use `/private/tmp/blueice-call-entry-storage-` with
 `{entry,heap-restoration,entry-semantics,bound-semantics,tail-semantics,resources,heap-resources,records,closure-exits,module-exits,generator-exits,generator-close,iterator-close,record-semantics,capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
 Receipt: `target/call-entry-storage-source-20261016.json`.
 Other transient staging, remaining active-container preallocation, full
+module-cache/service storage and integrated acceptance remain open. No fresh
+full Test262, real Core/MCP replay or coverage result is claimed; M1u remains
+the latest accepted milestone.
+
+#### Frame-binding admission follow-up (implementation checkpoint)
+
+Acceptance: binding-value slots, metadata slots/names and function variable-
+scope lexical names are admitted before allocating a new execution frame.
+Actual staged capacity retains a native owner until transfer into VM fields.
+Script, ordinary/async call, generator parameter/resume, eval, nested script
+and module entry use this same path. Refusal precedes constructor field/default
+parameter effects, preserves a generator's saved state, and leaves module input
+cells and the caller context intact.
+
+- [x] Reproduce root allocation after refusal and constructor field effects
+      before a rejected frame; both initial groups pass after implementation.
+- [x] Share staged binding/name admission across execution entries, retaining
+      actual-capacity charges through callbacks and field transfer.
+- [x] Make module entry fallible before taking input cells; prepare generator
+      metadata/bindings before taking its saved state.
+- [x] Pass expanded refusal/exact-budget/ownership and related finite semantic/
+      GC controls, formatting and Clippy; record the source/artifact audit with
+      the checkpoint commit.
+- [ ] Complete other container growth, map/scope restoration and temporary
+      staging, full module-cache/service storage and integrated acceptance.
+      M1u remains the latest accepted milestone.
+
+Initial red log: `/private/tmp/blueice-frame-binding-red-20261016.log`
+(zero passed, two failed). Root binding capacity changes from zero to four
+despite refusal; a constructor with 48 parameters executes its field callback
+before its binding frame exceeds a scalar shared-owner budget. The fixed
+two-case log is `/private/tmp/blueice-frame-binding-green-20261016.log`.
+
+Eight expanded groups pass: exact-budget and one-byte refusal for script,
+function and resumed-generator staging; storage ownership through callbacks
+and detached-part lifetime; eval/nested caller preservation; module input cell/
+context preservation; initial/suspended generator state preservation; and
+default initializer refusal for ordinary/generator/async/async-generator calls
+before publishing a result capability. The constructor checks 48 small formal
+names and one field callback. Scalar peer owners allocate no represented large
+buffer. Simple generator creation still defers its binding frame to first
+resume; suspended resume reuses its saved bindings.
+
+Final bounded validation: **445 passed, zero failed, zero ignored** across 26
+test executables. The eight new groups, an existing module scope/cell cleanup
+contract and the previous 436 finite ownership/semantic/GC/debugger cases pass.
+The seven previous pressure/large-allocation exclusions remain filtered;
+deep-recursion tail suites and network/service replays are not run.
+
+Formatting, `git diff --check` and offline workspace/all-target Clippy with
+warnings denied pass. Logs use `/private/tmp/blueice-frame-binding-` with
+`{frames,module-entry,entry,heap-restoration,entry-semantics,bound-semantics,tail-semantics,resources,heap-resources,records,closure-exits,module-exits,generator-exits,generator-close,iterator-close,record-semantics,capacity,debugger,semantics,final-unit,waiter-controls,promise-controls,slot-controls,browser-controls,handoff-controls,call-controls,timer-controls,await-refusal-controls,continuation-controls,cleanup-controls,source-controls,public-controls,fmt,clippy}-20261016.log`.
+Receipt: `target/frame-binding-source-20261016.json`.
+Other container growth, map/scope restoration, wider transient staging, full
 module-cache/service storage and integrated acceptance remain open. No fresh
 full Test262, real Core/MCP replay or coverage result is claimed; M1u remains
 the latest accepted milestone.

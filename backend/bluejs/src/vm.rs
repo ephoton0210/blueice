@@ -30,6 +30,8 @@ mod diagnostic_accounting;
 mod errors;
 mod execution;
 mod execution_payload;
+mod frame_bindings;
+use frame_bindings::{FrameBindingKind, PreparedFrameBindings};
 mod for_in;
 mod functions;
 mod host_animation_frames;

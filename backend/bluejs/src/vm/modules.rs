@@ -2464,11 +2464,18 @@ impl Vm {
         result
     }
 
-    pub(super) fn enter_module_record(&mut self, code: &Bytecode, cells: HashMap<usize, ObjectId>) {
+    pub(super) fn enter_module_record(
+        &mut self,
+        code: &Bytecode,
+        cells: &mut HashMap<usize, ObjectId>,
+    ) -> Result<(), RuntimeError> {
+        let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
+        let (bindings, metadata, _) = prepared.take_parts();
         self.stack.clear();
-        self.bindings = vec![None; code.bindings.len()];
-        self.binding_metadata = code.bindings.clone();
-        self.cells = cells;
+        self.bindings = bindings;
+        self.binding_metadata = metadata;
+        self.cells = std::mem::take(cells);
+        drop(prepared);
         self.completion = Value::Undefined;
         self.completion_empty = true;
         self.active_scopes.clear();
@@ -2478,6 +2485,7 @@ impl Vm {
         self.strict = true;
         self.this = Value::Undefined;
         self.top_level_module = true;
+        Ok(())
     }
 
     pub(super) fn initialize_module_record(
@@ -2490,7 +2498,7 @@ impl Vm {
         let entry = code
             .module_evaluate_entry
             .expect("a module has an evaluation entry") as usize;
-        self.enter_module_record(code, std::mem::take(cells));
+        self.enter_module_record(code, cells)?;
         let mut iterators = self.iterator_records(Vec::new());
         // The declaration prefix instantiates the module's hoisted functions;
         // each records the module it is created in (its [[ScriptOrModule]]),
@@ -2661,13 +2669,13 @@ impl Vm {
             let entry = code
                 .module_evaluate_entry
                 .expect("a linked module has an evaluation entry") as usize;
-            let cells = std::mem::take(
+            self.enter_module_record(
+                code,
                 &mut linked
                     .get_mut(name)
                     .expect("checked module record exists")
                     .cells,
-            );
-            self.enter_module_record(code, cells);
+            )?;
             // A sibling Source Text Module runs in a fresh execution context.
             // A suspended async dependency deliberately leaves its displaced
             // frame with zero ambient fuel, which must not exhaust this

@@ -137,9 +137,12 @@ impl Vm {
         self.kept_weak_objects.clear();
         self.collect_realm_garbage()?;
         self.enqueue_finalization_cleanup_jobs()?;
-        self.bindings.resize(code.bindings.len(), None);
+        let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
+        let (bindings, metadata, _) = prepared.take_parts();
+        self.bindings = bindings;
+        self.binding_metadata = metadata;
+        drop(prepared);
         self.synchronize_scheduling_usage()?;
-        self.binding_metadata = code.bindings.clone();
         self.remaining_instructions = self.config.instruction_budget;
         self.strict = code.strict;
         self.top_level_module = module;
@@ -1564,6 +1567,7 @@ impl Vm {
         captures: Vec<ObjectId>,
         global_var_environment: bool,
     ) -> Result<Value, RuntimeError> {
+        let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
         let _caller_payload = self.charge_execution_payload(self.bindings.iter().flatten().fold(
             host_scheduling::value_payload_bytes(&self.completion),
             |bytes, value| bytes.saturating_add(host_scheduling::value_payload_bytes(value)),
@@ -1606,8 +1610,10 @@ impl Vm {
         );
         let disposables = std::mem::take(&mut self.disposables);
         let dispose_marks = std::mem::take(&mut self.dispose_marks);
-        let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
-        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
+        let (frame_bindings, frame_metadata, _) = prepared.take_parts();
+        let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
+        drop(prepared);
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
@@ -1779,6 +1785,7 @@ impl Vm {
     /// path). It deliberately gets fresh script bindings and global `this`,
     /// but preserves the caller frame and the remaining resource budget.
     pub(super) fn execute_nested_script(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
+        let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
         // Global construction can refuse an allocation. Resolve it before
         // displacing the caller's frame so an entry refusal cannot strand
         // that frame in the nested execution state.
@@ -1830,8 +1837,10 @@ impl Vm {
         );
         let disposables = std::mem::take(&mut self.disposables);
         let dispose_marks = std::mem::take(&mut self.dispose_marks);
-        let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
-        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
+        let (frame_bindings, frame_metadata, _) = prepared.take_parts();
+        let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
+        drop(prepared);
         let cells = std::mem::take(&mut self.cells);
         let completion = std::mem::replace(&mut self.completion, Value::Undefined);
         let completion_empty = std::mem::replace(&mut self.completion_empty, true);
