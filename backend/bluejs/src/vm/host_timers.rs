@@ -27,7 +27,7 @@ const MAX_HOST_CHECKPOINT_JOBS: usize = 1_024;
 
 /// A turn yields with pending timers intact, independent of the realm cap.
 const MAX_HOST_TIMER_TASKS_PER_TURN: usize = 64;
-const MAX_HOST_TIMER_ARGUMENTS: usize = 32;
+pub(super) const MAX_HOST_TIMER_ARGUMENTS: usize = 32;
 
 /// Which host timer function a native call is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,11 +50,11 @@ pub struct BlueJsTimerRun {
 
 pub(super) struct HostTimer {
     pub(super) id: u32,
-    callback: ObjectId,
-    arguments: Vec<Value>,
+    pub(super) callback: ObjectId,
+    pub(super) arguments: Vec<Value>,
     pub(super) due_ms: u64,
     pub(super) serial: u64,
-    interval_ms: Option<u64>,
+    pub(super) interval_ms: Option<u64>,
     nesting: u32,
     /// One registration for the callback and one per object argument.
     roots: Vec<RootId>,
@@ -253,43 +253,38 @@ impl Vm {
             return Ok(());
         };
         let interval = self.host_timers[index].interval_ms;
-        let (callback, arguments, nesting, snapshot) = if interval.is_none() {
+        let mut prepared = self.prepare_timer_entry(index)?;
+        let previous_fuel = self.remaining_instructions;
+        self.remaining_instructions = self.config.instruction_budget;
+        if let Err(error) = self.charge_step() {
+            self.remaining_instructions = previous_fuel;
+            drop(prepared);
+            self.reconcile_scheduling_ownership();
+            return Err(error);
+        }
+        let root_base = self.async_frame_roots.len();
+        let (callback, nesting, snapshot) = if interval.is_none() {
             let timer = self.host_timers.remove(index);
-            (timer.callback, timer.arguments, timer.nesting, timer.roots)
+            prepared.adopt_arguments(timer.arguments);
+            (timer.callback, timer.nesting, timer.roots)
         } else {
             let timer = &self.host_timers[index];
-            // The registration stays alive while the interval runs; its
-            // argument copy must also fit before it is allocated.
-            let bytes = timer.scheduling_payload_bytes();
-            self.admit_scheduling_work(HostSchedulingUsage {
-                payload_bytes: bytes,
-                ..HostSchedulingUsage::default()
-            })?;
-            let timer = &self.host_timers[index];
-            let (callback, arguments, nesting) =
-                (timer.callback, timer.arguments.clone(), timer.nesting);
-            let roots = self.root_timer_task(callback, &arguments)?;
-            (callback, arguments, nesting, roots)
+            self.async_frame_roots
+                .extend(prepared.references.into_iter().flatten());
+            (timer.callback, timer.nesting, Vec::new())
         };
-        let active_bytes = arguments
-            .capacity()
-            .saturating_mul(std::mem::size_of::<Value>())
-            .saturating_add(
-                snapshot
-                    .capacity()
-                    .saturating_mul(std::mem::size_of::<RootId>()),
-            );
-        let arguments_payload =
-            self.charge_execution_payload(host_scheduling::values_bytes(&arguments));
+        let active_bytes = host_scheduling::slots(&snapshot);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
         if self.host_timers.is_empty() {
             self.host_timers.shrink_to_fit();
         }
-        let outcome = self.synchronize_scheduling_usage().and_then(|()| {
-            self.run_timer_task(callback, arguments, nesting, run, arguments_payload)
-        });
+        let outcome = self
+            .synchronize_scheduling_usage()
+            .and_then(|()| self.run_timer_task(callback, prepared, nesting, run));
+        self.async_frame_roots.truncate(root_base);
         self.release_timer_roots(snapshot);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(active_bytes);
+        self.reconcile_scheduling_ownership();
         self.synchronize_scheduling_usage()?;
         outcome?;
         if let Some(interval) = interval {
@@ -311,10 +306,8 @@ impl Vm {
         arguments: &[Value],
     ) -> Result<Vec<RootId>, RuntimeError> {
         let mut roots = Vec::with_capacity(arguments.len() + 1);
-        let objects = std::iter::once(callback)
-            .chain(arguments.iter().filter_map(Value::object_id))
-            .collect::<Vec<_>>();
-        for object in objects {
+        for object in std::iter::once(callback).chain(arguments.iter().filter_map(Value::object_id))
+        {
             match self.heap.root(object) {
                 Ok(root) => roots.push(root),
                 Err(error) => {
@@ -337,18 +330,16 @@ impl Vm {
     fn run_timer_task(
         &mut self,
         callback: ObjectId,
-        arguments: Vec<Value>,
+        prepared: timer_entry::PreparedTimerEntry,
         nesting: u32,
         run: &mut BlueJsTimerRun,
-        arguments_payload: execution_payload::ExecutionPayloadCharge,
     ) -> Result<(), RuntimeError> {
-        self.remaining_instructions = self.config.instruction_budget;
         run.tasks_run += 1;
         let this = self.global("globalThis")?;
         let previous_nesting = std::mem::replace(&mut self.host_timer_nesting, nesting);
         // Dispatch takes ownership of these buffers. The task keeps only its
         // roots/control storage, not another copy through the checkpoint.
-        drop(arguments_payload);
+        let arguments = prepared.into_arguments();
         let outcome = self.call_native(Value::Object(callback), this, arguments, false);
         // Checkpoint jobs run after the timer task's running callback; they
         // are not timer tasks for HTML's nesting calculation.

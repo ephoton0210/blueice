@@ -87,6 +87,7 @@ mod host_objects;
 mod host_promises;
 mod host_rejections;
 mod host_task_storage;
+mod timer_entry;
 mod window_aliases;
 pub use host_promises::{
     HostAsyncFunction, HostAsyncObjectMethod, HostPromiseCompletion, HostPromiseToken,

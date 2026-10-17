@@ -99,6 +99,23 @@ deadline and enqueue serial after its callback and checkpoint, unless cleared.
 A late interval does not replay missed periods. Canceling a snapshotted timer
 does not spend another delivery.
 
+Callback entry validates document state and starting fuel while the original
+timer remains registered. A one-shot transfers its existing arguments and root
+vector. An interval first admits its independent primitive copy and argument
+slots, checks reported capacity and prepares temporary execution-root capacity.
+Its callback and object arguments use a fixed reference array and remain traced
+through self-cancellation and the Promise checkpoint without additional
+persistent root registrations. Partial preparation returns staged ownership;
+refusal preserves the registration, deadline/serial, run counters and ambient
+fuel/nesting. The first host instruction is charged before committing an attempt.
+
+Dispatch takes over argument payload and vector capacity exactly once. Task
+accounting retains only its independent root protection through the checkpoint;
+consumed argument slots do not remain charged there. All exits restore the
+original execution-root prefix and nesting and reconcile released ownership.
+An attempted one-shot is consumed even if dispatch fails; an interval retains
+its registration and is rearmed only after a successful task/checkpoint.
+
 Host-turn snapshots own admitted native storage until their Rust-held lifetime
 ends. Due callback timers use one sorted deadline/ID vector, preserving its lease
 through standalone delivery as well as document turns. Runnable abort serials

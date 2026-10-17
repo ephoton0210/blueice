@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_timer_entry_contracts() {
+    blueice_bluejs::Vm::verify_timer_entry_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_finalization_backing_contracts() {
     blueice_bluejs::Vm::verify_finalization_backing_contracts();
 }
