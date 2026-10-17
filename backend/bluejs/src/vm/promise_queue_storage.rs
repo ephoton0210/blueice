@@ -108,11 +108,10 @@ impl<K: Eq + std::hash::Hash, V> PreparedMap<K, V> {
         prepared.replacement = Some(replacement);
         Ok(prepared)
     }
-    pub(super) fn commit(mut self, values: &mut HashMap<K, V>) {
+    pub(super) fn commit(mut self, values: &mut retained_control_map::RetainedControlMap<K, V>) {
         assert_eq!((values.len(), values.capacity()), self.previous);
-        if let Some(mut replacement) = self.replacement.take() {
-            replacement.extend(values.drain());
-            *values = replacement;
+        if let Some(replacement) = self.replacement.take() {
+            values.replace_prepared(replacement);
         }
         assert!(
             values.len() < values.capacity(),

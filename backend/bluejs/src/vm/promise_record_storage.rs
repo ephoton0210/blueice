@@ -35,24 +35,19 @@ impl Vm {
     ) -> Result<ObjectId, RuntimeError> {
         let before = self.heap.stats();
         let result = self.allocate_promise_record_inner(prototype);
-        self.finish_promise_record_attempt(before, result.is_err());
+        self.finish_promise_record_attempt(before);
         result
     }
 
-    pub(super) fn finish_promise_record_attempt(
-        &mut self,
-        before: crate::heap::HeapStats,
-        failed: bool,
-    ) {
+    pub(super) fn finish_promise_record_attempt(&mut self, before: crate::heap::HeapStats) {
         let after = self.heap.stats();
         let collected = before.minor_collections != after.minor_collections
             || before.major_collections != after.major_collections;
-        // Collection may have emptied the old table during a refused creation.
-        // Preserve an existing empty cache when preparation failed without GC.
-        // Releasing an actually collected empty table requires no allocation.
-        if failed && collected && !self.preserve_promise_table_capacity && self.promises.is_empty()
-        {
-            self.promises.release_empty();
+        // The guard kept staged backing stable during managed allocation.
+        // All prepared candidates have now committed or dropped. Reclaim any
+        // pruned control storage, preserving cached capacity without real GC.
+        if collected {
+            self.reclaim_scheduling_maps();
         }
         self.reconcile_scheduling_ownership();
     }

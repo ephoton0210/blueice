@@ -1652,6 +1652,9 @@ impl Vm {
             .module_continuations
             .remove(&continuation)
             .expect("an await reaction names a stored continuation");
+        if self.module_continuations.is_empty() {
+            self.module_continuations.release_empty();
+        }
         let ModuleContinuation {
             module,
             mut module_charge,
@@ -2214,6 +2217,9 @@ impl Vm {
             .async_continuations
             .remove(&continuation)
             .expect("an await reaction names a stored continuation");
+        if self.async_continuations.is_empty() {
+            self.async_continuations.release_empty();
+        }
         let AsyncContinuation {
             generator,
             target,

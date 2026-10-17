@@ -331,8 +331,22 @@ refunds the candidate lease.
 Insufficient headroom skips optional compaction without poisoning collection;
 later GC may retry. Empty backing releases without a candidate, and managed
 Promise preparation still preserves admitted spare slots. Mandatory admission
-continues to latch an abort; reclamation never clears a prior abort. Other
-control maps still need retained-allocation ownership.
+continues to latch an abort; reclamation never clears a prior abort.
+Provenance/import and other control maps still need retained-allocation ownership.
+
+Host waits and async/module continuations now keep allocation ledgers too.
+Prepared growth commits through those owners; partial removal retains backing
+until admitted compaction, and final wait completion/await resumption releases
+empty tables. GC reconciles pruned payload, then optionally reclaims all four
+scheduling maps with a candidate lease held through each ownership update.
+
+Managed Promise/host-wait preparation defers replacement of every staged map,
+including a sparse wait table whose candidate expects its original capacity.
+After actual collection, the completed registration boundary reclaims deferred
+storage only after candidates commit or drop. A refusal without collection keeps
+existing caches. Optional compaction never clears terminal failure; empty-table
+cleanup needs no admission. Cancellation retains committed token/root semantics
+and still runs once for each unfinished wait while live backing is charged.
 
 Host-wait registration first admits its shared pending count and preflights
 root-ID space. Converted primitive inputs and actual argument-vector slots have

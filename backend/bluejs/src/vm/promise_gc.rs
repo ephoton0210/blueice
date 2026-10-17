@@ -215,23 +215,6 @@ impl Vm {
         self.prune_disposal_state();
         self.promises
             .retain(|promise, _| self.heap.contains(*promise));
-        if !self.preserve_promise_table_capacity {
-            if self.promises.is_empty() {
-                self.promises.release_empty();
-            } else if self.promises.has_sparse_backing() {
-                // Refund dead payload before admitting a complete coexisting
-                // replacement. Refusal leaves retained backing charged.
-                self.reconcile_scheduling_ownership();
-                if let Some(prepared) = self
-                    .promises
-                    .prepare_compaction(self.host_scheduling.as_ref())
-                {
-                    let charge = self.promises.commit_compaction(prepared);
-                    self.reconcile_scheduling_ownership();
-                    drop(charge);
-                }
-            }
-        }
         self.promise_thunk_origins
             .retain(|state, _| self.heap.contains(*state));
         if self.promise_thunk_origins.len().saturating_mul(4)
@@ -269,6 +252,6 @@ impl Vm {
             .retain(|serial, _| modules.contains(serial));
         self.async_continuations
             .retain(|serial, _| functions.contains(serial));
-        self.reconcile_scheduling_ownership();
+        self.reclaim_scheduling_maps();
     }
 }

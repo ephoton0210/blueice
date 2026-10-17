@@ -64,6 +64,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The host-wait/continuation map follow-up (2026-10-17) now extends allocation
+ledgers to external waits and async/module continuations. Last resumption and
+orphan collection release empty backing; a shared guard protects all four staged
+scheduling tables during managed allocation. Twenty finite groups and all 1339
+prior selected controls pass: **1359 total**, across 47 executables and 129 fixed
+selections. Formatting and offline workspace/all-target Clippy pass. Other retained
+maps, event/dispatch scratch, heap/host buffers, shared programs and integrated
+acceptance remain open; M1u stays the latest accepted milestone.
+
 The Promise retained-allocation follow-up (2026-10-17) now retains allocation
 cost across deletion and prepares optional GC compaction under a native lease.
 Its initial finite reproduction failed before the fix. Eighteen finite groups
@@ -4729,6 +4738,75 @@ Evidence paths: `/private/tmp/blueice-retained-promises-controls-20261017.py`,
 `target/retained-promises-source-20261017.json`. Ordinary-library entry points
 expose the same fixtures; no fresh coverage result is claimed. This remains
 an M1z checkpoint with wider acceptance open.
+
+#### Host-wait/continuation map follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: external-wait and async/module continuation tables must retain their
+admitted allocation cost across deletion. Prepared growth must publish through
+the retained owner, empty tables must release after final completion/resumption
+or orphan pruning, and optional sparse compaction must fund a complete coexisting
+replacement. Managed host-wait allocation must preserve any staged table's old
+capacity through GC. Reclaim deferred empty/sparse storage only after candidates
+commit or drop; preserve roots, serials, cancellation and pending await behavior.
+
+- [x] Reproduce empty async/module backing retained after the final resumption.
+      The initial run reported **0/3 passed**: two valid resumption failures and
+      an orphan fixture cleared too early and collected during setup. Retain its
+      page references until suspension, then remove them before explicit GC.
+- [x] Route all four core scheduling tables through retained allocation owners
+      and guarded reclamation. The first three corrected cases pass; all twenty
+      expanded finite groups passed on their first run.
+- [x] Complete fixed offline controls/static checks, evidence and a detailed
+      English commit. Remaining maps and integrated gates stay open.
+
+External waits and async/module continuations now use the same controlled map
+as Promise records. Deletion changes insertion headroom without refunding live
+backing. Prepared growth moves survivors into admitted replacement storage and
+updates the live ledger. Final wait completion or await resumption releases empty
+backing directly; GC prunes orphan frames, then reconciles dead payload before
+optional compaction of all four scheduling tables. Each successful replacement
+retains its independent candidate lease through live-owner reconciliation.
+
+Host-wait registration stages native wait and Promise candidates before managed
+allocation can collect. The existing preparation guard now defers replacement
+of every staged scheduling map. After real GC, registration completion (success
+or failure) reclaims any deferred empty/sparse backing after its candidates have
+committed or dropped. Refusal without collection keeps existing caches. Optional
+compaction remains nonterminal and may retry later; cleanup releases empty
+backing even after terminal failure without clearing that failure.
+
+Twenty finite groups cover final async/module resumption, orphan GC, host wait
+completion/root collectibility, exact/no/one-byte-short compaction allowance,
+managed registration GC with a sparse staged wait table, failed managed creation,
+root/serial preservation on mandatory refusal, independently leased candidates
+after VM destruction, cancellation exactly once while backing remains charged,
+partial and chained awaits, all-table guards, terminal cleanup, deferred orphan
+cleanup, live-frame compaction/retry and deterministic tombstone removal. New
+fixtures use up to seven live waits/awaits, four small garbage objects, twenty-
+eight scalar keys and numerical peers; no external operation is started.
+
+Validation: **1359 passed, zero failed/ignored**, across 47 executables and 129
+fixed selections: twenty new groups and all 1339 prior selected controls.
+Existing Promise record/queue, host-wait, async/module await, timer, finalization,
+browser and ownership controls retain their behavior. Formatting, diff checks
+and offline workspace/all-target Clippy with warnings denied pass. Cargo reuses
+the workspace target with incremental compilation and dev/test debug artifact
+growth disabled.
+
+The same nine explicit resource/infinite-loop skips and other finite-public-case
+exclusions remain. No large/resource/infinite cases or JSON resource sweeps are
+selected. Other retained maps, provenance/import tables, event/dispatch scratch,
+other heap/host buffers, shared programs and integrated gates remain open. No
+network/service replay, physical exhaustion, privileged validation, process
+killing, fresh full Test262, coverage result or integrated acceptance is claimed.
+
+Evidence paths: `/private/tmp/blueice-retained-awaits-controls-20261017.py`,
+`/private/tmp/blueice-retained-awaits-commit-20261017.txt`,
+`/private/tmp/blueice-retained-awaits-audit-20261017.py`, logs matching
+`/private/tmp/blueice-retained-awaits-*-20261017.log`, and
+`target/retained-awaits-source-20261017.json`. Ordinary-library entry points expose
+the same fixtures; no fresh coverage result is claimed. This remains an M1z
+checkpoint; M1u stays the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

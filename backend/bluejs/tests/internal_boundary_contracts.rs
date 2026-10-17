@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_retained_async_maps_contracts() {
+    blueice_bluejs::Vm::verify_retained_async_maps_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_retained_control_map_contracts() {
     blueice_bluejs::Vm::verify_retained_control_map_contracts();
 }

@@ -48,6 +48,9 @@ impl<K: Eq + Hash, V, S: BuildHasher + Clone> RetainedControlMap<K, V, S> {
     pub(super) fn get_mut(&mut self, key: &K) -> Option<&mut V> {
         self.data.get_mut(key)
     }
+    pub(super) fn remove(&mut self, key: &K) -> Option<V> {
+        self.data.remove(key)
+    }
     pub(super) fn insert(&mut self, key: K, value: V) {
         assert!(!self.data.contains_key(&key), "record identity is new");
         assert!(
@@ -119,6 +122,20 @@ impl<K: Eq + Hash, V, S: BuildHasher + Clone> RetainedControlMap<K, V, S> {
         // The caller reconciles the VM's smaller live allocation before refund.
         prepared.charge
     }
+    pub(super) fn reclaim(
+        &mut self,
+        scope: Option<&SchedulingScope>,
+    ) -> Option<SharedSchedulingCharge> {
+        if self.data.is_empty() {
+            self.release_empty();
+            None
+        } else if self.has_sparse_backing() {
+            let prepared = self.prepare_compaction(scope)?;
+            self.commit_compaction(prepared)
+        } else {
+            None
+        }
+    }
     #[cfg(any(test, coverage))]
     pub(super) fn reserve(&mut self, additional: usize) {
         // Fixture-only cache setup; ordinary producers use prepared replacement.
@@ -126,6 +143,15 @@ impl<K: Eq + Hash, V, S: BuildHasher + Clone> RetainedControlMap<K, V, S> {
         self.allocation_bytes = self
             .allocation_bytes
             .max(host_scheduling::map_slots(&self.data));
+    }
+    #[cfg(any(test, coverage))]
+    pub(super) fn shrink_to_fit(&mut self) {
+        // Fixture-only shaping of a full table before admission assertions.
+        if self.data.is_empty() {
+            self.release_empty();
+        } else if let Some(prepared) = self.prepare_compaction(None) {
+            self.commit_compaction(prepared);
+        }
     }
 }
 

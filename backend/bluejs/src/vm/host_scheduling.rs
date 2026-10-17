@@ -866,15 +866,9 @@ impl Vm {
                 state.pending.capacity() * std::mem::size_of::<host_rejections::PendingRejection>(),
             );
         }
-        usage.payload_bytes = usage.payload_bytes.saturating_add(
-            self.host_promises
-                .pending
-                .capacity()
-                .saturating_mul(std::mem::size_of::<(
-                    HostPromiseToken,
-                    host_promises::PendingHostPromise,
-                )>()),
-        );
+        usage.payload_bytes = usage
+            .payload_bytes
+            .saturating_add(self.host_promises.pending.retained_bytes());
         for job in &self.promise_jobs {
             usage.payload_bytes = usage
                 .payload_bytes
@@ -979,8 +973,8 @@ impl Vm {
         usage.payload_bytes = usage
             .payload_bytes
             .saturating_add(self.promises.retained_bytes())
-            .saturating_add(map_slots(&self.async_continuations))
-            .saturating_add(map_slots(&self.module_continuations))
+            .saturating_add(self.async_continuations.retained_bytes())
+            .saturating_add(self.module_continuations.retained_bytes())
             .saturating_add(map_slots(&self.module_import_waiters));
         for (name, waiters) in &self.module_import_waiters {
             usage.pending_reactions = usage.pending_reactions.saturating_add(waiters.len());

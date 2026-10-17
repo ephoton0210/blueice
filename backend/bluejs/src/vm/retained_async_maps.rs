@@ -1,0 +1,41 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Await and external-wait maps retain their native allocation owners.
+
+use super::*;
+
+impl Vm {
+    /// No staged registration may observe replacement of its old backing.
+    /// Reconcile after pruning, and after each move, before refunding candidates.
+    pub(super) fn reclaim_scheduling_maps(&mut self) {
+        self.reconcile_scheduling_ownership();
+        if self.preserve_promise_table_capacity {
+            return;
+        }
+        let charge = self.promises.reclaim(self.host_scheduling.as_ref());
+        self.reconcile_scheduling_ownership();
+        drop(charge);
+        let charge = self
+            .host_promises
+            .pending
+            .reclaim(self.host_scheduling.as_ref());
+        self.reconcile_scheduling_ownership();
+        drop(charge);
+        let charge = self
+            .async_continuations
+            .reclaim(self.host_scheduling.as_ref());
+        self.reconcile_scheduling_ownership();
+        drop(charge);
+        let charge = self
+            .module_continuations
+            .reclaim(self.host_scheduling.as_ref());
+        self.reconcile_scheduling_ownership();
+        drop(charge);
+    }
+}
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/retained_async_maps.rs"]
+mod ownership_tests;

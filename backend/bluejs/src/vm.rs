@@ -95,6 +95,7 @@ mod host_wait_storage;
 mod promise_queue_storage;
 mod promise_record_storage;
 mod rejection_batch_entry;
+mod retained_async_maps;
 mod retained_control_map;
 mod timer_entry;
 mod timer_registration;
@@ -1056,9 +1057,9 @@ pub struct Vm {
     /// graph, which owns every root of its modules.
     nested_module_roots: ModuleRoots,
     deferred_import_waiters: Vec<DeferredImportWaiter>,
-    module_continuations: HashMap<u64, ModuleContinuation>,
+    module_continuations: retained_control_map::RetainedControlMap<u64, ModuleContinuation>,
     next_module_continuation: u64,
-    async_continuations: HashMap<u64, AsyncContinuation>,
+    async_continuations: retained_control_map::RetainedControlMap<u64, AsyncContinuation>,
     next_async_continuation: u64,
     module_pending_dependencies: HashMap<String, HashSet<String>>,
     module_async_parents: HashMap<String, Vec<String>>,
@@ -1230,6 +1231,7 @@ pub struct Vm {
     /// boundary and registered by every allocation safepoint.
     kept_weak_objects: Vec<ObjectId>,
     promises: retained_control_map::RetainedControlMap<ObjectId, PromiseRecord>,
+    /// Managed Promise/host-wait preparation preserves every staged control map.
     preserve_promise_table_capacity: bool,
     promise_jobs: VecDeque<PromiseJob>,
     /// Page realms bound even the implicit drains used by module evaluation.

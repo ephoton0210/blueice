@@ -138,12 +138,13 @@ pub(super) struct PendingHostPromise {
 #[derive(Default)]
 pub(super) struct HostPromiseState {
     functions: Vec<Registration>,
-    pub(super) pending: HashMap<HostPromiseToken, PendingHostPromise>,
+    pub(super) pending:
+        retained_control_map::RetainedControlMap<HostPromiseToken, PendingHostPromise>,
 }
 
 impl Drop for HostPromiseState {
     fn drop(&mut self) {
-        for (token, pending) in &self.pending {
+        for (token, pending) in self.pending.iter() {
             self.functions[pending.function as usize]
                 .operation
                 .cancel(*token);
@@ -231,7 +232,7 @@ impl Vm {
     fn remove_host_promise(&mut self, token: HostPromiseToken) -> Option<PendingHostPromise> {
         let pending = self.host_promises.pending.remove(&token);
         if self.host_promises.pending.is_empty() {
-            self.host_promises.pending.shrink_to_fit();
+            self.host_promises.pending.release_empty();
         }
         pending
     }
@@ -255,7 +256,7 @@ impl Vm {
         }
         let before = self.heap.stats();
         let result = self.host_async_function_call_prepared(index, receiver, args);
-        self.finish_promise_record_attempt(before, result.is_err());
+        self.finish_promise_record_attempt(before);
         result
     }
 
