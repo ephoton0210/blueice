@@ -148,10 +148,11 @@ impl Fixture {
     }
 
     fn extra_payload(producer: Producer) -> usize {
-        if matches!(producer, Producer::Handled) {
-            std::mem::size_of::<host_rejections::PendingRejection>()
-        } else {
-            0
+        match producer {
+            Producer::Handled => std::mem::size_of::<host_rejections::PendingRejection>(),
+            // Queue-slot reuse still needs the independent staged reader copy.
+            Producer::Read => std::mem::size_of::<crate::heap::FileReaderState>(),
+            _ => 0,
         }
     }
 }
@@ -422,7 +423,10 @@ fn assert_file_requeue_refused(count_limit: bool) {
     } else {
         Some(leave_room(
             &mut vm,
-            (2 * entries - 4) * std::mem::size_of::<BrowserTask>() - 1,
+            // The callback must fund its complete coexisting replacements.
+            // After it returns, the old `entries` slots coexist with a new
+            // `2 * entries` successor candidate; refuse that peak by one byte.
+            (3 * entries - 4) * std::mem::size_of::<BrowserTask>() - 1,
         ))
     };
     assert_eq!(

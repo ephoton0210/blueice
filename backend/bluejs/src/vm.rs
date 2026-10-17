@@ -24,6 +24,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 mod async_root_storage;
+mod browser_task_storage;
 mod browser_tasks;
 mod builtins;
 mod call_environment;

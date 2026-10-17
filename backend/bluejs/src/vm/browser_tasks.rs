@@ -108,26 +108,6 @@ impl BrowserTask {
 }
 
 impl Vm {
-    /// Reserve one browser entry before publishing roots, wait flags or read
-    /// state. `extra` describes payload/reaction ownership added by that entry.
-    pub(super) fn reserve_browser_task(
-        &mut self,
-        mut extra: HostSchedulingUsage,
-    ) -> Result<(), RuntimeError> {
-        if self.host_scheduling.is_none() && self.browser_tasks.len() >= MAX_PENDING_BROWSER_TASKS {
-            return Err(RuntimeError::RangeError(
-                "Browser task queue limit exceeded".into(),
-            ));
-        }
-        extra.pending_browser_tasks = extra.pending_browser_tasks.saturating_add(1);
-        let growth = SchedulingCapacity::for_deque_push(&self.browser_tasks);
-        self.admit_scheduling_work(extra.with_growth(growth))?;
-        growth.reserve_deque(&mut self.browser_tasks);
-        // Publish the actual capacity to the ledger even if a later native
-        // allocation fails. No entry/count has been added yet.
-        self.admit_scheduling_work(extra)
-    }
-
     pub(super) fn browser_task_wake(&self, task: &BrowserTask) -> u64 {
         if let BrowserTask::AbortTimeout {
             signal, deadline, ..
@@ -170,18 +150,25 @@ impl Vm {
                 "Browser task queue limit exceeded".into(),
             ));
         }
-        self.reserve_browser_task(HostSchedulingUsage {
+        self.heap.check_root_registration_count(1)?;
+        let prepared = self.prepare_browser_task(HostSchedulingUsage {
             payload_bytes: text.owned_heap_payload_bytes().unwrap_or(usize::MAX),
             ..HostSchedulingUsage::default()
         })?;
+        let objects = [callback];
+        let roots = self.heap.prepare_root_batch(&objects)?;
+        self.check_scheduling_failure()?;
         let serial = self.next_host_task_serial()?;
-        let root = self.heap.root(callback)?;
-        self.browser_tasks.push_back(BrowserTask::DragString {
-            serial,
-            callback,
-            text,
-            root,
-        });
+        let root = self.heap.commit_single_root(roots);
+        prepared.commit(
+            self,
+            BrowserTask::DragString {
+                serial,
+                callback,
+                text,
+                root,
+            },
+        );
         self.synchronize_scheduling_usage()?;
         Ok(())
     }
@@ -349,11 +336,16 @@ impl Vm {
         if let Some(mut next) = next {
             // FileReader event callbacks can consume the freed slot and the
             // document's remaining task budget before this stage returns.
-            let admitted = self
-                .reserve_browser_task(HostSchedulingUsage::default())
-                .and_then(|_| self.next_host_task_serial());
+            let admitted = (|| {
+                let prepared = self.prepare_browser_task(HostSchedulingUsage::default())?;
+                let serial = self.next_host_task_serial()?;
+                Ok::<_, RuntimeError>((prepared, serial))
+            })();
             match admitted {
-                Ok(serial) => next.set_serial(serial),
+                Ok((prepared, serial)) => {
+                    next.set_serial(serial);
+                    prepared.commit(self, next);
+                }
                 Err(error) => {
                     if let Some(root) = root {
                         self.release_root(root);
@@ -361,7 +353,6 @@ impl Vm {
                     return Err(error);
                 }
             }
-            self.browser_tasks.push_back(next);
         } else if let Some(root) = root {
             self.heap.unroot(root)?;
         }

@@ -134,8 +134,9 @@ impl Vm {
             return;
         }
         record.handled = true;
-        let notified = std::mem::take(&mut record.rejection_notified);
+        let notified = record.rejection_notified;
         let Some(state) = &mut self.host_rejections else {
+            record.rejection_notified = false;
             return;
         };
         if let Some(index) = state
@@ -145,34 +146,50 @@ impl Vm {
         {
             let entry = state.pending.remove(index);
             self.release_root(entry.root);
+            self.promises.get_mut(&promise).unwrap().rejection_notified = false;
         } else if notified {
-            // Removing the outstanding bit precedes publishing this task.
-            // Only the queued event, not the outstanding set, retains it.
+            // The language handled status is already committed. Keep the
+            // notification bit until its follow-up event can also publish.
             let result = (|| {
-                let mut entries = Vec::with_capacity(1);
-                self.reserve_browser_task(HostSchedulingUsage {
+                self.heap.check_root_registration_count(1)?;
+                let mut prepared = self.prepare_browser_task(HostSchedulingUsage {
                     pending_reactions: 1,
-                    payload_bytes: entries.capacity() * std::mem::size_of::<PendingRejection>(),
+                    payload_bytes: std::mem::size_of::<PendingRejection>(),
                     ..Default::default()
                 })?;
+                let mut entries = Vec::new();
+                entries.try_reserve_exact(1).map_err(|_| {
+                    self.host_scheduling
+                        .as_ref()
+                        .map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail)
+                })?;
+                prepared.resize_payload(host_scheduling::slots(&entries))?;
+                let objects = [promise];
+                let roots = self.heap.prepare_root_batch(&objects)?;
+                self.check_scheduling_failure()?;
                 let serial = self.next_host_task_serial()?;
-                let root = self.heap.root(promise)?;
+                let root = self.heap.commit_single_root(roots);
                 entries.push(PendingRejection { promise, root });
-                self.browser_tasks
-                    .push_back(browser_tasks::BrowserTask::PromiseRejections {
+                self.promises.get_mut(&promise).unwrap().rejection_notified = false;
+                prepared.commit(
+                    self,
+                    browser_tasks::BrowserTask::PromiseRejections {
                         serial,
                         entries,
                         handled: true,
-                    });
+                    },
+                );
                 Ok::<(), RuntimeError>(())
             })();
             // Resource failure poisons the existing document account and is
             // surfaced by the execution/checkpoint boundary, like job admission.
             if result.is_err() {
-                return;
+                if let Some(scope) = &self.host_scheduling {
+                    let _ = scope.fail();
+                }
             }
         }
-        let _ = self.synchronize_scheduling_usage();
+        self.reconcile_scheduling_ownership();
     }
 
     pub(super) fn notify_host_rejections(&mut self) -> Result<(), RuntimeError> {
@@ -183,15 +200,17 @@ impl Vm {
         {
             return Ok(());
         }
-        self.reserve_browser_task(HostSchedulingUsage::default())?;
+        let prepared = self.prepare_browser_task(HostSchedulingUsage::default())?;
         let serial = self.next_host_task_serial()?;
         let entries = std::mem::take(&mut self.host_rejections.as_mut().unwrap().pending);
-        self.browser_tasks
-            .push_back(browser_tasks::BrowserTask::PromiseRejections {
+        prepared.commit(
+            self,
+            browser_tasks::BrowserTask::PromiseRejections {
                 serial,
                 entries,
                 handled: false,
-            });
+            },
+        );
         self.synchronize_scheduling_usage()
     }
 

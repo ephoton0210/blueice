@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_browser_task_storage_contracts() {
+    blueice_bluejs::Vm::verify_browser_task_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_rooted_task_storage_contracts() {
     blueice_bluejs::Vm::verify_rooted_task_storage_contracts();
 }

@@ -152,6 +152,11 @@ impl Drop for HostPromiseState {
 }
 
 impl Vm {
+    #[cfg(any(test, coverage))]
+    pub(super) fn host_completion_queued_for_test(&self, token: HostPromiseToken) -> bool {
+        self.host_promises.pending[&token].queued
+    }
+
     pub fn install_host_async_function(
         &mut self,
         name: &str,
@@ -370,7 +375,7 @@ impl Vm {
             }
             _ => {}
         }
-        self.reserve_browser_task(HostSchedulingUsage {
+        let prepared = self.prepare_browser_task(HostSchedulingUsage {
             payload_bytes: completion.payload_bytes(),
             ..HostSchedulingUsage::default()
         })?;
@@ -380,13 +385,15 @@ impl Vm {
             .get_mut(&token)
             .expect("validated wait")
             .queued = true;
-        self.browser_tasks
-            .push_back(browser_tasks::BrowserTask::HostPromise {
+        prepared.commit(
+            self,
+            browser_tasks::BrowserTask::HostPromise {
                 token,
                 completion,
                 source,
                 serial,
-            });
+            },
+        );
         self.synchronize_scheduling_usage()?;
         Ok(true)
     }

@@ -10,6 +10,39 @@ use crate::native::ReaderNative;
 use base64::Engine;
 use browser_tasks::BrowserTask;
 
+fn reader_state_storage_bytes(state: &crate::heap::FileReaderState, cloned: bool) -> usize {
+    let text = |value: &JsString| {
+        if cloned {
+            value.byte_len()
+        } else {
+            value.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+        }
+    };
+    std::mem::size_of::<crate::heap::FileReaderState>()
+        .saturating_add(
+            if cloned {
+                state.target.listeners.len()
+            } else {
+                state.target.listeners.capacity()
+            }
+            .saturating_mul(std::mem::size_of::<WebListener>()),
+        )
+        .saturating_add(
+            state
+                .target
+                .listeners
+                .iter()
+                .fold(0usize, |bytes, listener| {
+                    bytes.saturating_add(text(&listener.name))
+                }),
+        )
+        .saturating_add(state.encoding.as_ref().map_or(0, &text))
+        .saturating_add(match &state.result {
+            Value::String(value) => text(value),
+            _ => 0,
+        })
+}
+
 const HANDLERS: [&str; 6] = ["loadstart", "progress", "abort", "error", "load", "loadend"];
 
 impl Vm {
@@ -210,10 +243,33 @@ impl Vm {
                         "File reading task queue limit exceeded",
                     );
                 }
+                let epoch = self
+                    .heap
+                    .file_reader(reader)?
+                    .epoch
+                    .checked_add(1)
+                    .ok_or_else(|| {
+                        RuntimeError::RangeError("FileReader identity exhausted".into())
+                    })?;
+                let prepared = self.prepare_browser_task(HostSchedulingUsage::default())?;
+                self.heap.check_root_registration_count(1)?;
+                let encoding_bytes = encoding.as_ref().map_or(0, |value| {
+                    value.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+                });
+                let forecast = reader_state_storage_bytes(self.heap.file_reader(reader)?, true)
+                    .saturating_add(encoding_bytes);
+                let mut state_charge = self
+                    .host_scheduling
+                    .as_ref()
+                    .map(|scope| scope.shared_charge(forecast))
+                    .transpose()?;
                 let mut state = self.heap.file_reader(reader)?.clone();
-                state.epoch = state.epoch.checked_add(1).ok_or_else(|| {
-                    RuntimeError::RangeError("FileReader identity exhausted".into())
-                })?;
+                if let Some(charge) = &mut state_charge {
+                    charge.resize(
+                        reader_state_storage_bytes(&state, false).saturating_add(encoding_bytes),
+                    )?;
+                }
+                state.epoch = epoch;
                 state.ready = 1;
                 state.result = Value::Null;
                 state.error = None;
@@ -222,21 +278,28 @@ impl Vm {
                 state.encoding = encoding;
                 state.loaded = 0;
                 state.total = self.heap.web_blob(blob)?.bytes.len();
-                let epoch = state.epoch;
-                self.reserve_browser_task(HostSchedulingUsage::default())?;
-                let serial = self.next_host_task_serial()?;
-                let root = self.heap.root(reader)?;
-                if let Err(error) = self.with_roots(|heap| heap.set_file_reader(reader, state)) {
-                    self.heap.unroot(root)?;
-                    return Err(error);
+                if let Some(charge) = &mut state_charge {
+                    charge.resize(reader_state_storage_bytes(&state, false))?;
                 }
-                self.browser_tasks.push_back(BrowserTask::FileRead {
-                    serial,
-                    reader,
-                    epoch,
-                    stage: 0,
-                    root,
-                });
+                let state =
+                    self.with_roots(|heap| heap.prepare_file_reader_update(reader, state))?;
+                let objects = [reader];
+                let roots = self.heap.prepare_root_batch(&objects)?;
+                self.check_scheduling_failure()?;
+                let serial = self.next_host_task_serial()?;
+                let root = self.heap.commit_single_root(roots);
+                self.heap.commit_file_reader_update(state);
+                drop(state_charge);
+                prepared.commit(
+                    self,
+                    BrowserTask::FileRead {
+                        serial,
+                        reader,
+                        epoch,
+                        stage: 0,
+                        root,
+                    },
+                );
                 self.synchronize_scheduling_usage()?;
             }
             _ => unreachable!("constructor handled above"),

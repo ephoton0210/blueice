@@ -205,20 +205,42 @@ Cancellation, notification handoff and callback/cleanup completion retain the
 existing root and GC lifecycle. Timer argument storage excludes the callback
 and delay and uses the complete preparation protocol above.
 
-Browser-task deque growth still admits its slot-capacity delta before append.
-Complete coexisting replacement/root/state preparation for that queue, broader
-callback-entry scratch and retained-map allocation ownership remain open work.
+All browser-task producers now admit a complete detached deque replacement while
+old backing stays charged. Incoming text/completion/rejection-vector payload
+keeps an independent document lease through preparation. Actual queue/input
+capacity is checked before subsequent allocation; spare queue slots require
+only the newly owned payload. Managed-only preparation may collect while the
+installed task queue remains unchanged. Root storage is prepared afterward,
+and enqueue serial acquisition is the final fallible step before publication.
 
-All browser-task producers reserve one entry before publishing task roots,
-completion-queued flags or FileReader state. The ledger records actual reserved
-capacity before later native allocations, even if the operation then fails.
-Unhandled rejection delivery transfers its existing pending vector and reaction
-count rather than admitting a second owner. A FileReader event callback can
-fill the queue's spare slots or consume the shared document count; the next
-read stage must readmit its entry after that callback and release its root on
-refusal. FileReader cancellation removes matching entries in place, preserving
-other queued work and its storage without a replacement allocation.
-The broader native control/service-buffer gate remains open.
+Drag roots and handled-rejection event vectors publish with their admitted
+tasks. Completion flags change only when the prepared task can commit.
+Unhandled rejection delivery moves its existing vector/reaction ownership once.
+Handling a notified rejection commits the language handled status first; its
+notification bit clears only after event preparation succeeds. Infallible
+resource refusal latches the document abort after detached owners refund.
+
+Timeout allocation precedes serial publication. A later refusal leaves its
+unpublished signal unrooted and collectible. Initial FileReader reads lease
+their complete cloned state, including listener slots/names and primitive
+payload, while the old managed owner remains installed. A staged boxed update
+validates incoming references and admits managed growth with borrowed reference
+visitors protecting the reader and new edges across GC. Conservative remembered
+edges are prepared before publication, avoiding callback/reference scratch
+vectors and allocation during commitment. Root/serial/native/managed refusal
+drops that update without changing the reader's fields or task queue.
+
+The root, staged reader state and prepared task then commit without another
+allocation or collection. Native clone ownership refunds when the managed state
+adopts its buffers. Epoch validation retains its language-error precedence over
+resource preparation. A callback can consume queue slots/count before its read
+stage returns, so the successor readmits complete deque storage afterward.
+Refusal retains callback effects, publishes no successor/serial and releases
+the read root. Cancellation removes matching entries in place, preserving
+other queued work. Empty/old backing refunds when actually released, including
+terminal failure and Rust-held preparation lifetimes beyond VM destruction.
+Callback-entry scratch, retained-map allocation ownership, other heap/host
+buffers and broader native/integrated acceptance remain open work.
 
 Async/module await admits counts and settled value/origin ownership before
 copying its status, then leases unowned frame payload, complete queue growth and

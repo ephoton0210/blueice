@@ -64,6 +64,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The browser-task preparation checkpoint (2026-10-17) now admits complete queue
+replacements and incoming payload, stages roots and FileReader updates, and
+publishes task flags/state only after preparation succeeds. Twenty-seven
+finite groups pass, covering managed/root/native/serial refusal without consuming
+an enqueue serial or live queue capacity, plus error order, nested state copies,
+GC and cancellation. Four exact finite public read/timeout cases and all 1207
+prior selected controls also pass: **1238 total**, with formatting and offline
+workspace/all-target Clippy. Callback-entry scratch, retained-map ownership,
+other heap/host buffers, shared programs and integrated acceptance remain open;
+M1u stays the latest accepted milestone.
+
 The rooted scheduling registration checkpoint (2026-10-17) now admits
 animation-frame, cleanup-task and pending-rejection producers'
 complete coexisting replacements and root storage before publishing capacity,
@@ -845,7 +856,9 @@ work and exposes its retained payload ledger.
       joint tables and root storage before token/capability publication; all
       1176 selected controls passed that checkpoint. Rooted frame/cleanup/
       rejection registration now prepares complete queue and root storage
-      before capacity/handle/serial publication; all 1207 selected controls pass.
+      before capacity/handle/serial publication. Complete browser-task queue/
+      payload/root preparation and staged FileReader state now join those
+      checkpoints; all 1238 selected controls pass.
       Shared programs, other managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -4241,6 +4254,109 @@ fixtures; no new coverage result is claimed. This is an M1z checkpoint. Complete
 browser-task queue/root/state preparation, callback-entry scratch, retained-map
 ownership, other buffers, shared programs and integrated acceptance remain open;
 M1u stays the latest accepted milestone.
+
+#### Browser-task preparation follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit complete browser-task replacements and incoming ownership
+while old backing remains charged. Drag, timeout, host-completion, rejection
+notification and FileReader initial/successor producers must publish only after
+their native, managed and root preparation succeeds. Preserve old queue capacity,
+root identities, serials, queued-completion flags and initial FileReader state
+on preparation refusal, apart from ordinary GC and the language operation's
+handled status. A consumed read stage retains its callback effects; successor
+refusal publishes no new task/serial and releases its reader root. Keep queued
+order, cancellation/navigation and completion/rejection/read lifecycle behavior.
+
+- [x] Reproduce premature queue/serial publication and net-only admission at
+      the actual producers using tiny finite fixtures.
+      All three original cases failed, then passed after detached preparation.
+- [x] Implement detached task preparation and staged FileReader state; verify
+      joint allowances, refusal/refunds, GC and lifecycle behavior.
+      All twenty-seven finite groups pass, including exact nested listener
+      storage and epoch validation before resource preparation.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Callback-entry scratch, retained-map ownership,
+      other heap/host buffers, shared programs and integrated acceptance stay open.
+
+All browser-task producers now use one prepared deque/payload owner. Complete
+candidate storage coexists with the old deque until commitment; incoming
+completion/text/rejection-vector payload has its own lease, and actual reported
+capacity is checked before the next allocation. Rooted producers preflight root
+IDs and prepare table storage before acquiring a serial. Timeout managed
+allocation precedes that final serial step; a later refusal leaves its unpublished
+signal unrooted and collectible. Existing spare slots add no queue storage fee.
+
+Initial FileReader reads prepare their incoming managed state before root/serial
+publication. The cloned state has an independent native lease for its boxed
+header, actual listener slots/names and primitive strings while the old managed
+owner remains installed. Heap preparation validates borrowed reference visitors,
+protects the reader and incoming edges during GC, and admits managed growth.
+Conservative write barriers are prepared before commitment. Root, staged boxed
+state and task then publish without further allocation or collection; the native
+clone lease refunds when managed ownership adopts its buffers. The existing
+general state setter uses the same prepare/commit protocol without bulk reference
+and protection vectors.
+
+Completion flags and handled-rejection notification bits change only with an
+admitted task. The language handled status remains committed when resource
+preparation refuses; the infallible producer latches failure after refunds.
+Unhandled notification still moves its existing vector/reaction owner once.
+Successor reads prepare after callbacks, since those callbacks may fill the
+queue or consume its document count. A refused successor preserves callback
+effects, releases its reader root and consumes no enqueue serial or new capacity.
+Existing cancellation removes matching entries in place.
+
+Twenty-seven finite groups cover all six initial producer kinds, complete versus
+net-only growth, exact/one-byte-short queue/root/input allowances, spare slots,
+shared scalar counts, root/serial/managed/epoch/terminal refusal, original reader
+fields and wait/notification flags, sibling refunds, VM destruction and Rust-held
+leases. Small component cases check preparation protection through major GC,
+new young Blob retention after commitment, dropped-state rollback and
+unpublished standalone timeout collection. Completion delivery and read abort
+retain their root lifecycle. Listener cases include the copied slot and name
+buffer under exact and one-byte-short allowances.
+
+The older spare-queue-slot read control initially failed because its zero-byte
+allowance omitted the newly admitted reader copy. Funding exactly that independent
+header preserves its original slot-reuse/root assertions. After twenty-five
+groups passed, a zero-headroom epoch control reproduced a validation-order
+regression: task admission masked the original catchable RangeError. Preflighting
+the epoch before native/root preparation preserves that language error without
+latching document failure. The final twenty-seven groups pass both corrections.
+
+The first fixed replay exposed one obsolete successor allowance: funding only
+net deque growth stopped its callback at sixteen entries, before the intended
+thirty-two-entry requeue boundary. Model the complete coexisting old thirty-two
+slots and new sixty-four-slot candidate, one byte short of that peak. This funds
+the callback's replacements while retaining every original queue-capacity and
+reader-root-release assertion. All twenty existing browser-task controls pass
+with the revised scalar allowance.
+
+Validation: **1238 passed, zero failed/ignored**, across 45 executables and 111
+fixed selections: twenty-seven new browser-task groups, four exact finite public
+read/timeout cases and all 1207 prior selected controls. Public cases cover read
+abort, event/microtask ordering, callback read chaining and timeout behavior.
+Existing finite timer, finalization, frame, rejection and Promise controls retain
+their behavior. Formatting, diff checks and offline workspace/all-target Clippy
+with warnings denied pass. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled.
+
+The same nine earlier resource/infinite-loop skips remain. New public read/
+timeout selection names only finite cases; large/resource/infinite cases and
+JSON resource sweeps remain unselected. No network/service replay, physical
+exhaustion probe, privileged validation, process killing, fresh full Test262,
+real Core/MCP replay, coverage result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-browser-tasks-controls-20261017.py`,
+`/private/tmp/blueice-browser-tasks-commit-20261017.txt`,
+`/private/tmp/blueice-browser-tasks-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-browser-tasks-{red,first,reader-allowance-red,expanded-first,epoch-red,expanded,browser-controls-red,browser-controls-first,controls-first,browser-storage,fmt,clippy}-20261017.log`.
+`target/browser-tasks-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint.
+Callback-entry scratch, retained-map ownership, other heap/host buffers, shared
+programs and integrated acceptance remain open; M1u stays the latest accepted
+milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

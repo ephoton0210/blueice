@@ -36,15 +36,19 @@ impl Vm {
                 delay: Duration::from_millis(number as u64),
             }
         };
-        self.reserve_browser_task(HostSchedulingUsage::default())?;
-        let serial = self.next_host_task_serial()?;
+        let prepared = self.prepare_browser_task(HostSchedulingUsage::default())?;
         let signal = self.fresh_abort_signal()?;
-        self.browser_tasks.push_back(BrowserTask::AbortTimeout {
-            signal,
-            deadline,
-            serial,
-            root: None,
-        });
+        self.check_scheduling_failure()?;
+        let serial = self.next_host_task_serial()?;
+        prepared.commit(
+            self,
+            BrowserTask::AbortTimeout {
+                signal,
+                deadline,
+                serial,
+                root: None,
+            },
+        );
         self.synchronize_scheduling_usage()?;
         Ok(Value::Object(signal))
     }

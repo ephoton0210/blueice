@@ -66,20 +66,9 @@ impl SchedulingCapacity {
         Self::for_push::<T>(values.len(), values.capacity())
     }
 
-    pub(super) fn for_deque_push<T>(values: &VecDeque<T>) -> Self {
-        Self::for_push::<T>(values.len(), values.capacity())
-    }
-
     /// True requires another admission check before publishing the entry:
     /// reserve_exact permits an allocator to report additional spare slots.
     pub(super) fn reserve_vec<T>(self, values: &mut Vec<T>) -> bool {
-        if values.capacity() < self.capacity {
-            values.reserve_exact(self.capacity.saturating_sub(values.len()));
-        }
-        values.capacity() > self.capacity
-    }
-
-    pub(super) fn reserve_deque<T>(self, values: &mut VecDeque<T>) -> bool {
         if values.capacity() < self.capacity {
             values.reserve_exact(self.capacity.saturating_sub(values.len()));
         }
