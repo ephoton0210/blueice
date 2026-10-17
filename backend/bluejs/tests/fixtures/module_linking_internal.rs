@@ -87,11 +87,11 @@ fn namespace_and_deferred_walks_reject_invalid_requests_and_missing_execution_co
     }
     let absent = HashMap::new();
     assert_eq!(
-        Vm::gather_async_dependencies("missing", &absent, &HashMap::new(), &mut HashSet::new()),
+        Vm::gather_async_dependencies("missing", &absent, &HashMap::new()),
         Ok(Vec::new())
     );
     assert_eq!(
-        Vm::ready_for_sync_execution("missing", &absent, &HashMap::new(), &mut HashSet::new()),
+        Vm::ready_for_sync_execution("missing", &absent, &HashMap::new(), None),
         Ok(true)
     );
     for broken_entry in [false, true] {
@@ -116,16 +116,16 @@ fn namespace_and_deferred_walks_reject_invalid_requests_and_missing_execution_co
             ("other.mjs".into(), record(false, false)),
         ]);
         assert!(matches!(
-            Vm::gather_async_dependencies("main.mjs", &modules, &linked, &mut HashSet::new()),
+            Vm::gather_async_dependencies("main.mjs", &modules, &linked),
             Err(RuntimeError::ModuleResolution(_))
         ));
         assert!(matches!(
-            Vm::ready_for_sync_execution("main.mjs", &modules, &linked, &mut HashSet::new()),
+            Vm::ready_for_sync_execution("main.mjs", &modules, &linked, None),
             Err(RuntimeError::ModuleResolution(_))
         ));
         linked.get_mut("main.mjs").unwrap().evaluated = true;
         assert!(matches!(
-            Vm::scc_evaluated("main.mjs", &modules, &linked),
+            Vm::scc_evaluated("main.mjs", &modules, &linked, None),
             Err(RuntimeError::ModuleResolution(_))
         ));
         linked.get_mut("other.mjs").unwrap().error = Some(
@@ -135,7 +135,7 @@ fn namespace_and_deferred_walks_reject_invalid_requests_and_missing_execution_co
         );
         linked.get_mut("other.mjs").unwrap().evaluated = true;
         assert!(matches!(
-            Vm::cycle_root_error("main.mjs", &modules, &linked),
+            Vm::cycle_root_error("main.mjs", &modules, &linked, None),
             Err(RuntimeError::ModuleResolution(_))
         ));
     }
@@ -389,8 +389,7 @@ fn a_module_only_counts_as_reachable_when_every_request_on_the_way_resolves() {
             hand_built(Vec::new(), &[("./leaf.js", false)], Some(0)),
         ),
     ]);
-    let reaches =
-        |from: &str, goal: &str| Vm::module_reaches(from, goal, &modules, &mut HashSet::new());
+    let reaches = |from: &str, goal: &str| Vm::module_reaches(from, goal, &modules, None);
     assert_eq!(
         reaches("t/nowhere.js", "t/goal.js"),
         Err(RuntimeError::ModuleResolution(
@@ -401,14 +400,12 @@ fn a_module_only_counts_as_reachable_when_every_request_on_the_way_resolves() {
     assert_eq!(reaches("t/b.js", "t/goal.js"), escapes);
     assert_eq!(reaches("t/a.js", "t/goal.js"), escapes);
     // A module reaches itself, and what its requests reach; a deferred
-    // request is no edge, and a module that is asked about twice while
-    // one walk is under way is only walked once.
+    // request is no edge; a fresh walk of a leaf reaches no other module.
     assert_eq!(reaches("t/a.js", "t/a.js"), Ok(true));
     assert_eq!(reaches("t/d.js", "t/leaf.js"), Ok(true));
     assert_eq!(reaches("t/d.js", "t/a.js"), Ok(false));
-    let mut visited = HashSet::from(["t/leaf.js".to_string()]);
     assert_eq!(
-        Vm::module_reaches("t/leaf.js", "t/a.js", &modules, &mut visited),
+        Vm::module_reaches("t/leaf.js", "t/a.js", &modules, None),
         Ok(false)
     );
 }
@@ -1223,10 +1220,8 @@ fn changed_host_registry_errors_preserve_deferred_records_and_observer_roots() {
     vm.set_module_loader_context("entry.mjs", changed.clone());
     let linked = &vm.module_graph.as_ref().unwrap().linked;
     for result in [
-        Vm::gather_async_dependencies("entry.mjs", &changed, linked, &mut HashSet::new())
-            .map(|_| ()),
-        Vm::ready_for_sync_execution("entry.mjs", &changed, linked, &mut HashSet::new())
-            .map(|_| ()),
+        Vm::gather_async_dependencies("entry.mjs", &changed, linked).map(|_| ()),
+        Vm::ready_for_sync_execution("entry.mjs", &changed, linked, None).map(|_| ()),
     ] {
         assert!(
             matches!(result, Err(RuntimeError::ModuleResolution(_))),

@@ -201,16 +201,6 @@ impl ModuleNames {
         merge(&mut self.charge, charge);
         Ok(())
     }
-    pub(super) fn append(
-        &mut self,
-        other: Self,
-        scope: Option<&SchedulingScope>,
-    ) -> Result<(), RuntimeError> {
-        for name in other {
-            self.push_owned(name, scope)?;
-        }
-        Ok(())
-    }
     pub(super) fn retain(&mut self, keep: impl FnMut(&String) -> bool) {
         self.names.retain(keep);
         self.name_bytes = self.names.iter().map(String::capacity).sum();

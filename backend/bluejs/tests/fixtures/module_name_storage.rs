@@ -278,7 +278,9 @@ fn module_name_storage_append_moves_payloads_and_refunds_source_backing() {
     let more = names(Some(&scope), &["e", "f"]);
     let original = values[0].as_ptr();
     let incoming = more[0].as_ptr();
-    values.append(more, Some(&scope)).unwrap();
+    for name in more {
+        values.push_owned(name, Some(&scope)).unwrap();
+    }
     assert_eq!(values.as_slice(), ["a", "b", "c", "d", "e", "f"]);
     assert_eq!(values[0].as_ptr(), original);
     assert_eq!(values[4].as_ptr(), incoming);
@@ -343,7 +345,9 @@ fn module_name_storage_host_neutral_lists_preserve_order() {
         None,
     )
     .unwrap();
-    values.append(more, None).unwrap();
+    for name in more {
+        values.push_owned(name, None).unwrap();
+    }
     let values: Vec<_> = values.into_iter().map(ModuleName::into_unleased).collect();
     assert_eq!(values, ["a", "b", "test/c\0text"]);
 }
@@ -382,7 +386,6 @@ fn module_name_storage_frontier_result_retains_its_complete_storage() {
                 "test/root.mjs",
                 &registry,
                 linked,
-                &mut HashSet::new(),
                 vm.host_scheduling.as_ref(),
             )
         })

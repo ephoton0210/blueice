@@ -610,7 +610,7 @@ impl Vm {
             || !dependency_code.module
             || entry_code.debugger_program_generation != Some(target.entry_generation)
             || dependency_code.debugger_program_generation != Some(target.dependency_generation)
-            || !Self::module_reaches(entry, dependency, modules, &mut HashSet::new())?
+            || !Self::module_reaches(entry, dependency, modules, None)?
         {
             return Err(RuntimeError::Unsupported(
                 "linked debugger target is not an exact live entry dependency",

@@ -64,9 +64,21 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-The module-name producer follow-up (2026-10-17) is in progress. Admit request
+The module-walk storage follow-up (2026-10-17) now admits complete
+visited tables, explicit DFS/loading stacks and ordered SCC candidate storage.
+It borrows canonical registry keys and reuses scratch within one operation,
+preserving source/error order, cycle semantics and resource propagation. Three
+fixed old-code runtime observations failed and now pass without allocation.
+Twenty-three new groups, four additional legacy boundaries and all 1606 prior
+selected controls pass: **1633 total**, across 47 executables and 146 fixed
+selections. Formatting and offline workspace/all-target Clippy pass. Linking/
+export producers, module-evaluation recursion, allocator/error-message overhead,
+shared programs and integrated acceptance remain open; M1u stays the latest
+accepted milestone.
+
+The module-name producer follow-up (2026-10-17) now admits request
 canonicalization buffers, evaluation/frontier vectors and pending-name copies
-before allocation, then retain independent ownership across dependency execution
+before allocation, and retains independent ownership across dependency execution
 and result handoff. Fixed eager/deferred runtime boundary observations failed
 with 6/9 allocation attempts and now pass without allocation. Nineteen new groups
 and all 1587 prior selected controls pass: **1606 total**, across 47 executables
@@ -5987,6 +5999,103 @@ Evidence paths: `/private/tmp/blueice-module-name-storage-controls-20261017.py`,
 `target/module-name-storage-source-20261017.json`. The fixture-placement compile
 error is preserved separately and is not counted as behavioral red evidence.
 This remains an M1z implementation checkpoint with wider acceptance open.
+
+#### Module-walk storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: independently admit complete visited hash tables, explicit DFS and
+loading stacks and lexically ordered SCC candidate vectors before allocation.
+Borrow canonical keys, retain backing ownership across scratch reuse, and
+propagate resource refusal through frontier/readiness/cycle callers. Preserve
+source-order analysis, eager cycle edges, all-phase loading and error selection.
+
+- [x] Reproduce allocation before frontier refusal, an unadmitted cycle-root
+      walk and readiness returning a language error at zero native headroom:
+      **0/3 passed** before implementation, **3/3 passed** without allocation
+      afterwards. Frontier previously attempted two allocations before refusal.
+- [x] Replace recursive analysis with admitted explicit frames and borrowed
+      visited keys; expanded finite contracts pass **23/23** on their first
+      behavioral run. The separate fixture type-inference compile error is
+      preserved and is not behavioral red evidence.
+- [x] Finish fixed offline controls/static checks, source/artifact audit and
+      detailed English commit.
+
+Visited hash storage borrows immutable canonical registry keys instead of
+cloning a String for every visit. Growth admits a complete replacement while
+the old table is still owned, checks reported capacity, then moves borrowed
+entries and transfers the lease. Explicit frames retain a canonical name and
+the next request index. Complete vector candidates follow the same prepared
+ownership transfer. Clearing a walk preserves allocated backing and its charge;
+no operation pretends those retained buffers have been freed.
+
+One query owner reuses visited/frame/candidate storage for mutual reachability
+and SCC/error analysis. Candidate keys borrow linked records and remain sorted
+lexically; source order is preserved inside each DFS. Frontier and readiness
+walks use a separate admitted explicit stack while reusing the SCC query owner.
+They execute no JavaScript or managed collection. The query owns an independent
+document scope, so a Rust caller can retain scratch after VM destruction while
+the immutable registry/record borrow remains valid. Every container drops its
+data before its own native lease.
+
+Loading uses admitted pending-node storage and includes requests of every phase.
+It resolves each current node's requests in source order before visiting the
+last queued child, preserving both resolution-error precedence and the original
+reverse pending order. Known targets immediately borrow their registry key;
+missing targets retain their leased name until selected or dropped. Unreachable
+registry records stay outside this loading walk. Cycle reachability continues
+to exclude deferred edges, while frontier/readiness/loading include them.
+
+Resource admission now propagates through asynchronous parent selection,
+finished-cycle error lookup and deferred synchronous readiness. Former
+resolution-only `expect` assumptions no longer turn resource refusal into a
+panic. An ordinary suspended/asynchronous readiness failure still returns its
+language TypeError when native work fits. Fresh helpers own their visited state;
+internal fixtures migrate away from an externally seeded String set. Standalone
+debugger graph validation keeps its host-neutral policy and public signature.
+
+The frontier now writes one unique ordered result list; obsolete recursive
+child-list append glue is removed. Earlier list move/refund contracts exercise
+the retained iterator and owned-name push operations directly.
+
+Twenty-three finite groups cover the three original failures, allocation-free
+identity/reuse, canonical key pointers, exact/short operation peaks, full hash
+and frame candidates, detached lifetimes, terminal cleanup, deferred/missing-goal
+reachability, cyclic/diamond frontier order, sync cycles and missing records,
+SCC completion and candidate reuse, lexical error identity, loading order and
+reachability scope, loading refusal, cached import resource propagation and
+normal readiness language failure. Twenty functional groups are available to
+the ordinary-library entry point. Chains contain at most five short-named nodes;
+numerical native peers and one fixed peak observation replace physical pressure.
+
+The first complete runner reached every selection, with one historical success
+fixture failing (**15/16** in the dependency selection). Its allowance covered
+batch staging rather than the newly admitted analysis peak. One fixed equivalent
+runtime preview now budgets complete preparation while retaining final growth,
+refund and parent-order assertions. The original runner/source/check evidence
+is preserved separately; this introduces no quota search or large allocation.
+
+Validation: **1633 passed, zero failed/ignored**, across 47 executables and 146
+fixed selections: twenty-three new groups, four additional legacy resolver/cycle/
+registry boundaries and all 1606 prior selected controls. Formatting, diff checks
+and offline workspace/all-target Clippy with warnings denied pass. Source, staged
+and post-commit audits bind final source/build inputs, the eleven unchanged Rust
+inputs, runner, executables, initial/final logs and detailed English commit text.
+Cargo reuses the workspace target with incremental compilation and dev/test debug
+artifact growth disabled. The same nine explicit resource/infinite-loop skips and
+finite public-case filters remain. Linking/export traversal producers, module-body
+evaluation recursion, allocator/error-message overhead, full module caches,
+shared programs, other native/host buffers and integrated acceptance remain
+open; M1u stays the latest accepted milestone. Admission follows the existing
+reported-slot accounting model. No resource-exhaustion probe, external network/
+service/Core/MCP replay, privileged validation, process killing, full Test262,
+fresh coverage or integrated acceptance is claimed.
+
+Evidence paths: `/private/tmp/blueice-module-walk-storage-controls-20261017.py`,
+`/private/tmp/blueice-module-walk-storage-commit-20261017.txt`,
+`/private/tmp/blueice-module-walk-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-module-walk-storage-*-20261017.log`, and
+`target/module-walk-storage-source-20261017.json`. The intermediate Clippy log
+identifies the obsolete append helper before its removal. This remains an M1z
+implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

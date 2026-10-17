@@ -16,6 +16,10 @@ mod dependency_ownership_tests;
 #[path = "../../tests/fixtures/module_name_storage.rs"]
 mod module_name_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_walk_storage.rs"]
+mod module_walk_storage_tests;
+
 /// How code that is not a generator -- a module body, an async function body
 /// -- finishes a run: it returns, or it awaits. It never yields, and no
 /// running code suspends at a generator's entry.
@@ -740,7 +744,7 @@ impl Vm {
             // LoadRequestedModules has to have succeeded for every phase before
             // anything is evaluated: a missing module fails the whole request
             // even when the only edge to it is a deferred one.
-            Self::check_requested_modules_loaded(entry, modules)?;
+            Self::check_requested_modules_loaded(entry, modules, self.host_scheduling.as_ref())?;
             evaluation_started = true;
             drop(previous_registry.take());
             if !is_dynamic_import && self.host_error_reporting.is_some() {
@@ -757,7 +761,6 @@ impl Vm {
                     entry,
                     modules,
                     &linked,
-                    &mut HashSet::new(),
                     self.host_scheduling.as_ref(),
                 )?;
                 self.synchronize_scheduling_usage()?;
@@ -1433,9 +1436,12 @@ impl Vm {
                 return self
                     .with_module_records(|vm, linked| {
                         // Every request of an evaluated graph resolves.
-                        if let Some(error) = Self::cycle_root_error(&entry, &modules, linked)
-                            .expect("every request of the graph resolves")
-                        {
+                        if let Some(error) = Self::cycle_root_error(
+                            &entry,
+                            &modules,
+                            linked,
+                            vm.host_scheduling.as_ref(),
+                        )? {
                             return Err(vm.propagate_module_error(error));
                         }
                         // A dependency can finish without ever being an entry
@@ -2510,31 +2516,9 @@ impl Vm {
         from: &str,
         goal: &str,
         modules: &HashMap<String, Bytecode>,
-        visited: &mut HashSet<String>,
+        scope: Option<&SchedulingScope>,
     ) -> Result<bool, RuntimeError> {
-        if from == goal {
-            return Ok(true);
-        }
-        if !visited.insert(from.to_string()) {
-            return Ok(false);
-        }
-        let code = modules.get(from).ok_or_else(|| {
-            RuntimeError::ModuleResolution(format!("module {from} was not linked"))
-        })?;
-        for request in &code.module_requests {
-            // A deferred request is not an edge of the evaluation DFS (its
-            // module only runs when a namespace of it is observed), so it can
-            // never put two modules into one dependency cycle.
-            if request.deferred {
-                continue;
-            }
-            let target =
-                Self::resolve_module_target(from, &request.module_request, request.module_type)?;
-            if Self::module_reaches(&target, goal, modules, visited)? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        ModuleQueries::new(modules, scope)?.reaches(from, goal)
     }
 
     /// InnerModuleEvaluation attaches an importer to a suspended dependency's
@@ -2547,6 +2531,7 @@ impl Vm {
         modules: &HashMap<String, Bytecode>,
         linked: &HashMap<String, LinkedModule>,
     ) -> Result<&'a str, RuntimeError> {
+        let mut queries = ModuleQueries::new(modules, self.host_scheduling.as_ref())?;
         for candidate in self
             .module_async_parents
             .get(dependency)
@@ -2556,7 +2541,7 @@ impl Vm {
             if linked
                 .get(candidate)
                 .is_some_and(|record| record.evaluating || record.suspended)
-                && Self::module_reaches(dependency, candidate, modules, &mut HashSet::new())?
+                && queries.reaches(dependency, candidate)?
             {
                 return Ok(candidate.as_str());
             }
@@ -2606,7 +2591,6 @@ impl Vm {
                         &target,
                         modules,
                         linked,
-                        &mut HashSet::new(),
                         self.host_scheduling.as_ref(),
                     )?
                 } else {
@@ -2629,8 +2613,7 @@ impl Vm {
                         // `target` is part of the graph, whose requests all
                         // resolve.
                         pending_dependencies.push_copy(
-                            self.async_dependency_root(&target, modules, linked)
-                                .expect("every request of the graph resolves"),
+                            self.async_dependency_root(&target, modules, linked)?,
                             self.host_scheduling.as_ref(),
                         )?;
                     }

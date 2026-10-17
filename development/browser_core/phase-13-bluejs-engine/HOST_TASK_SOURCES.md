@@ -552,7 +552,7 @@ Evaluation and ordinary/deferred dynamic-import jobs prepare request targets in
 one independently leased normalization/type-key buffer. Relative path processing
 uses that buffer in place, covering the largest intermediate path and reported
 capacity before writing; it creates neither a segment vector nor a second typed
-key. Unchanged host-neutral linking/loading helpers retain their existing policy.
+key. Remaining linking/export-resolution helpers retain their existing policy.
 
 Pending-name and eager/deferred evaluation/frontier lists independently own every
 String capacity and vector slot. New copies and complete vector replacements
@@ -565,6 +565,23 @@ frontier leases until consumption or drop, including beyond a VM's lifetime.
 Immediate dependency-batch/waiter handoff refunds the incoming lease directly
 before its recipient admits retained input or discards a duplicate, with no
 intervening callback or allocation and no transient duplicate native charge.
+
+Reachability, SCC membership/error selection, deferred readiness/frontiers and
+requested-module loading use independently leased analysis scratch. Visited hash
+tables borrow canonical registry keys, and explicit DFS frames replace recursive
+analysis calls. New hash tables and frame/candidate/pending vectors admit complete
+coexisting replacements and reported capacities before allocation/adoption.
+Clearing a traversal reuses backing while retaining its native charge; a query
+owner can retain that scratch after VM destruction while its immutable registry
+borrow remains valid. Analysis executes no JavaScript or managed collection.
+
+SCC/error candidates remain lexically ordered, with one query workspace reused
+for mutual reachability. Deferred edges stay outside evaluation-cycle reachability
+and inside loading/frontier/readiness walks. Loading resolves a node's requests
+in source order before visiting its last queued child, retaining missing-target
+names until their error is selected. Unreachable registry entries remain outside
+that loading walk. Resource refusals propagate from cycle/readiness/frontier
+queries without the previous resolution-only panic assumptions.
 
 The graph's retained table/set/vector allocations and UTF-8 names share the document
 native-byte budget. Registration first admits the incoming vector, original
@@ -592,7 +609,7 @@ its frontier back to its caller without a realm cache and charges it across
 dependency JavaScript. Collected pending dependency names and the remaining
 evaluation-list buffer also retain scoped charges while a later dependency
 executes. Earlier traversal/frontier evidence covers ownership across callbacks;
-DFS/visited/SCC scratch, readiness/loading/linking producer allocation, full module
+Linking/export traversal producers, module-evaluation recursion, full module
 caches, shared programs and broader native/integrated acceptance remain open. The
 module-dependency batch follow-up is an M1z implementation checkpoint, separate
 from the original M1y evidence and final integration acceptance.

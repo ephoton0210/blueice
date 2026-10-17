@@ -272,8 +272,14 @@ fn module_dependency_batch_refusal_does_not_publish_a_partial_first_edge() {
 
 #[cfg_attr(test, test)]
 fn module_dependency_spare_slots_admit_only_new_set_and_name_storage() {
+    // The runtime now owns analysis scratch before the dependency batch. Fund
+    // its complete preparation peak while still checking only retained growth.
+    let mut preview = Fixture::new(1, false);
+    let scope = preview.vm.host_scheduling.as_ref().unwrap().child();
+    let (result, bytes) = scope.measure_payload_peak(|| preview.evaluate("test/p1.mjs"));
+    assert_eq!(result, Ok(Value::Undefined));
+    drop(preview);
     let mut fixture = Fixture::new(1, false);
-    let bytes = batch_budget(&mut fixture.vm, "test/p1.mjs", &["test/m0.mjs"]);
     let before = fixture.vm.module_dependency_bytes();
     let _owner = leave_room(&mut fixture.vm, bytes);
     assert_eq!(fixture.evaluate("test/p1.mjs"), Ok(Value::Undefined));

@@ -94,36 +94,18 @@ impl Vm {
     /// deferred ones) has. A cycle member that already finished can still
     /// belong to a cycle whose asynchronous root is suspended, and anything
     /// that must wait for that root has to see it.
+    #[cfg(any(test, coverage))]
     pub(super) fn scc_evaluated(
         module: &str,
         modules: &HashMap<String, Bytecode>,
         linked: &HashMap<String, LinkedModule>,
+        scope: Option<&SchedulingScope>,
     ) -> Result<bool, RuntimeError> {
-        if !linked.get(module).is_none_or(|record| record.evaluated) {
-            return Ok(false);
-        }
-        // `linked` is a HashMap. Its order cannot affect cycle discovery:
-        // although this predicate only returns a boolean today, retaining a
-        // canonical traversal makes a future diagnostic here reproducible.
-        let mut candidates: Vec<_> = linked.keys().collect();
-        candidates.sort_unstable();
-        for other in candidates {
-            let record = linked
-                .get(other)
-                .expect("module key was collected from this map");
-            if other != module
-                && !record.evaluated
-                && Self::module_reaches(module, other, modules, &mut HashSet::new())?
-                && Self::module_reaches(other, module, modules, &mut HashSet::new())?
-            {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        ModuleQueries::new(modules, scope)?.scc_evaluated(module, linked)
     }
 
     /// Whether a module's own top-level code awaits (its [[HasTLA]] slot).
-    pub(super) fn module_has_tla(code: &Bytecode) -> bool {
+    pub(in super::super) fn module_has_tla(code: &Bytecode) -> bool {
         code.instructions()
             .any(|instruction| instruction.opcode == Opcode::Await)
     }
@@ -135,27 +117,9 @@ impl Vm {
     pub(super) fn check_requested_modules_loaded(
         entry: &str,
         modules: &HashMap<String, Bytecode>,
+        scope: Option<&SchedulingScope>,
     ) -> Result<(), RuntimeError> {
-        let mut seen = HashSet::new();
-        let mut pending = vec![entry.to_string()];
-        while let Some(name) = pending.pop() {
-            if !seen.insert(name.clone()) {
-                continue;
-            }
-            let code = modules.get(&name).ok_or_else(|| {
-                RuntimeError::ModuleResolution(format!(
-                    "module {name} was not supplied by the host"
-                ))
-            })?;
-            for request in &code.module_requests {
-                pending.push(Self::resolve_module_target(
-                    &name,
-                    &request.module_request,
-                    request.module_type,
-                )?);
-            }
-        }
-        Ok(())
+        ModuleQueries::new(modules, scope)?.check_loaded(entry)
     }
 
     /// GatherAsynchronousTransitiveDependencies (import-defer proposal): the
@@ -168,9 +132,8 @@ impl Vm {
         module: &str,
         modules: &HashMap<String, Bytecode>,
         linked: &HashMap<String, LinkedModule>,
-        seen: &mut HashSet<String>,
     ) -> Result<Vec<String>, RuntimeError> {
-        Self::gather_async_dependency_names(module, modules, linked, seen, None)
+        Self::gather_async_dependency_names(module, modules, linked, None)
             .map(ModuleNames::into_unleased)
     }
 
@@ -178,70 +141,19 @@ impl Vm {
         module: &str,
         modules: &HashMap<String, Bytecode>,
         linked: &HashMap<String, LinkedModule>,
-        seen: &mut HashSet<String>,
         scope: Option<&SchedulingScope>,
     ) -> Result<ModuleNames, RuntimeError> {
-        let mut result = ModuleNames::default();
-        if !seen.insert(module.to_string()) {
-            return Ok(result);
-        }
-        let (Some(record), Some(code)) = (linked.get(module), modules.get(module)) else {
-            return Ok(result);
-        };
-        // `evaluating` stays set while a module waits on an asynchronous
-        // dependency (spec: evaluating-async), which is not the same as being
-        // on the synchronous DFS stack.
-        if (record.evaluating && !record.suspended) || Self::scc_evaluated(module, modules, linked)?
-        {
-            return Ok(result);
-        }
-        if Self::module_has_tla(code) {
-            result.push_copy(module, scope)?;
-            return Ok(result);
-        }
-        for request in &code.module_requests {
-            let target =
-                ModuleName::resolve(module, &request.module_request, request.module_type, scope)?;
-            // One shared visited set spans every recursive request. A TLA
-            // frontier member is emitted only on its first visit, so another
-            // result-vector membership check cannot remove any duplicates.
-            result.append(
-                Self::gather_async_dependency_names(&target, modules, linked, seen, scope)?,
-                scope,
-            )?;
-        }
-        Ok(result)
+        ModuleQueries::new(modules, scope)?.frontier(module, linked)
     }
 
-    /// ReadyForSyncExecution (import-defer proposal): whether `module` and
-    /// everything it requests could evaluate to completion without waiting,
-    /// i.e. none of it is running, suspended or contains a top-level `await`.
+    /// Readiness uses the same admitted explicit traversal as frontier analysis.
     pub(super) fn ready_for_sync_execution(
         module: &str,
         modules: &HashMap<String, Bytecode>,
         linked: &HashMap<String, LinkedModule>,
-        seen: &mut HashSet<String>,
+        scope: Option<&SchedulingScope>,
     ) -> Result<bool, RuntimeError> {
-        if !seen.insert(module.to_string()) {
-            return Ok(true);
-        }
-        let (Some(record), Some(code)) = (linked.get(module), modules.get(module)) else {
-            return Ok(true);
-        };
-        if Self::scc_evaluated(module, modules, linked)? {
-            return Ok(true);
-        }
-        if record.evaluating || Self::module_has_tla(code) {
-            return Ok(false);
-        }
-        for request in &code.module_requests {
-            let target =
-                Self::resolve_module_target(module, &request.module_request, request.module_type)?;
-            if !Self::ready_for_sync_execution(&target, modules, linked, seen)? {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        ModuleQueries::new(modules, scope)?.ready(module, linked)
     }
 
     /// Runs `operation` with the module records of the realm's graph, wherever
@@ -282,8 +194,8 @@ impl Vm {
             None => {}
         }
         let modules = self.module_registry.clone();
-        let ready = self.with_module_records(|_, linked| {
-            Self::ready_for_sync_execution(module, &modules, linked, &mut HashSet::new())
+        let ready = self.with_module_records(|vm, linked| {
+            Self::ready_for_sync_execution(module, &modules, linked, vm.host_scheduling.as_ref())
         }).expect("the preceding records lookup retained the graph; cloning its registry cannot run JS")?;
         if !ready {
             return Err(RuntimeError::TypeError(
@@ -356,21 +268,9 @@ impl Vm {
         module: &str,
         modules: &HashMap<String, Bytecode>,
         linked: &HashMap<String, LinkedModule>,
+        scope: Option<&SchedulingScope>,
     ) -> Result<Option<ModuleEvaluationError>, RuntimeError> {
-        let mut candidates: Vec<_> = linked
-            .iter()
-            .filter(|(name, record)| name.as_str() != module && record.error.is_some())
-            .map(|(name, _)| name.as_str())
-            .collect();
-        candidates.sort_unstable();
-        for candidate in candidates {
-            if Self::module_reaches(module, candidate, modules, &mut HashSet::new())?
-                && Self::module_reaches(candidate, module, modules, &mut HashSet::new())?
-            {
-                return Ok(linked[candidate].error.clone());
-            }
-        }
-        Ok(None)
+        ModuleQueries::new(modules, scope)?.cycle_error(module, linked)
     }
 
     /// Materializes the host identity supplied for a source-phase import.
