@@ -1452,6 +1452,33 @@ pub fn read_page_host_request<R: Read>(reader: &mut R) -> io::Result<PageHostReq
     serde_json::from_slice(&bytes).map_err(io::Error::other)
 }
 
+/// Measure a complete immutable child reply before allocating encoded storage.
+/// The four-byte length prefix is included and the existing write cap is kept.
+pub fn page_host_reply_frame_len(reply: &PageHostReply) -> io::Result<usize> {
+    crate::encoded_payload_len(reply, crate::MAX_FRAME_BYTES)?
+        .checked_add(4)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "encoded frame size overflow"))
+}
+
+/// Encode a child reply into caller-admitted fixed storage. No buffer growth or
+/// external write occurs; callers retain ownership through their write/flush.
+pub fn encode_page_host_reply_into(reply: &PageHostReply, frame: &mut [u8]) -> io::Result<()> {
+    let length = page_host_reply_frame_len(reply)?;
+    if frame.len() != length {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "encoded frame storage does not match its admitted size",
+        ));
+    }
+    crate::encode_payload_into(reply, &mut frame[4..])?;
+    frame[..4].copy_from_slice(
+        &u32::try_from(length - 4)
+            .map_err(io::Error::other)?
+            .to_le_bytes(),
+    );
+    Ok(())
+}
+
 /// Writes one length-prefixed child reply frame.
 pub fn write_page_host_reply<W: Write>(writer: &mut W, reply: &PageHostReply) -> io::Result<()> {
     crate::write_framed(writer, reply)

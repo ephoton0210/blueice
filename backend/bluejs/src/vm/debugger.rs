@@ -32,7 +32,7 @@ mod inspection_storage_tests;
 mod inspection_storage;
 mod storage;
 pub(crate) use inspection_storage::InspectionStorage;
-pub use inspection_storage::VmDebuggerInspection;
+pub use inspection_storage::{VmDebuggerInspection, VmDebuggerOutput};
 
 /// Exact source-free bytecode instruction that originated the last uncaught
 /// catchable exception. The embedding host must bind this to its own live

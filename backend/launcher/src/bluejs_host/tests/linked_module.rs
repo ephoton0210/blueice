@@ -521,7 +521,7 @@ fn linked_module_child_keeps_distinct_programs_and_resumes_its_entry() {
             [child_source, (entry_source.0, u32::MAX)],
         )
         .is_err());
-    let mut wrong_stack = stack.clone();
+    let mut wrong_stack = stack.as_ref().clone();
     wrong_stack.frames[0].safe_point = wrong_stack.frames[1].safe_point;
     assert!(host
         .debugger_linked_source_spans(

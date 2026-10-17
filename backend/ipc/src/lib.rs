@@ -742,22 +742,81 @@ fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
     write_framed_with_limit(w, msg, MAX_FRAME_BYTES)
 }
 
-pub(crate) fn write_framed_with_limit<W: Write, T: Serialize>(
-    w: &mut W,
-    msg: &T,
-    max_bytes: usize,
-) -> io::Result<()> {
-    let bytes = serde_json::to_vec(msg).map_err(io::Error::other)?;
-    if bytes.len() > max_bytes {
+#[cfg(test)]
+#[path = "../tests/fixtures/framing_storage.rs"]
+mod framing_storage_tests;
+
+struct EncodedLength {
+    bytes: usize,
+    maximum: usize,
+    exceeded: bool,
+}
+impl Write for EncodedLength {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let next = self.bytes.checked_add(bytes.len());
+        if next.is_none_or(|count| count > self.maximum) {
+            self.exceeded = true;
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "frame exceeds protocol byte limit",
+            ));
+        }
+        self.bytes = next.unwrap();
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+/// Count immutable wire data without an output allocation before reserving it.
+pub(crate) fn encoded_payload_len<T: Serialize>(message: &T, maximum: usize) -> io::Result<usize> {
+    let mut length = EncodedLength {
+        bytes: 0,
+        maximum,
+        exceeded: false,
+    };
+    if let Err(error) = serde_json::to_writer(&mut length, message) {
+        return Err(if length.exceeded {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "frame exceeds protocol byte limit",
+            )
+        } else {
+            io::Error::other(error)
+        });
+    }
+    u32::try_from(length.bytes).map_err(io::Error::other)?;
+    Ok(length.bytes)
+}
+/// Serialize into admitted fixed storage. Changing/custom serialization cannot
+/// grow a Vec or publish a prefix after size validation has failed.
+pub(crate) fn encode_payload_into<T: Serialize>(message: &T, buffer: &mut [u8]) -> io::Result<()> {
+    let expected = buffer.len();
+    let mut writer = io::Cursor::new(buffer);
+    serde_json::to_writer(&mut writer, message).map_err(io::Error::other)?;
+    if writer.position() != expected as u64 {
         return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "frame exceeds protocol byte limit",
+            io::ErrorKind::InvalidData,
+            "serialized frame changed after size admission",
         ));
     }
-    let len = u32::try_from(bytes.len()).map_err(io::Error::other)?;
-    w.write_all(&len.to_le_bytes())?;
-    w.write_all(&bytes)?;
-    w.flush()
+    Ok(())
+}
+
+pub(crate) fn write_framed_with_limit<W: Write, T: Serialize>(
+    writer: &mut W,
+    message: &T,
+    max_bytes: usize,
+) -> io::Result<()> {
+    let length = encoded_payload_len(message, max_bytes)?;
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(length).map_err(io::Error::other)?;
+    bytes.resize(length, 0);
+    encode_payload_into(message, &mut bytes)?;
+    let length = u32::try_from(length).map_err(io::Error::other)?;
+    writer.write_all(&length.to_le_bytes())?;
+    writer.write_all(&bytes)?;
+    writer.flush()
 }
 
 fn read_frame_bytes<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {

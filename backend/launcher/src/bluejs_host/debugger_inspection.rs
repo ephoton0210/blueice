@@ -22,29 +22,33 @@ impl BlueJsChildHost {
                 return self.debugger_static_scope_linked_relation(target);
             }
         };
-        let stack = match self.debugger_stack_snapshot(
+        let owned_stack = self.debugger_stack_snapshot(
             scope_target.tab_id,
             scope_target.document_generation,
             scope_target.program,
             scope_target.frame,
             2,
             PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES,
-        ) {
+        );
+        let stack = match owned_stack.as_ref() {
             PageHostReply::DebuggerStackSnapshot {
                 tab_id,
                 document_generation,
                 program,
                 frame,
                 snapshot,
-            } if tab_id == scope_target.tab_id
-                && document_generation == scope_target.document_generation
-                && program == scope_target.program
-                && frame == scope_target.frame =>
+            } if *tab_id == scope_target.tab_id
+                && *document_generation == scope_target.document_generation
+                && *program == scope_target.program
+                && *frame == scope_target.frame =>
             {
                 snapshot
             }
             PageHostReply::Error { code, message } => {
-                return PageHostReply::Error { code, message };
+                return PageHostReply::Error {
+                    code: *code,
+                    message: message.clone(),
+                };
             }
             _ => return invalid_debugger_state(),
         };
@@ -126,10 +130,10 @@ impl BlueJsChildHost {
             active,
             expected_stack.max_scope_entries,
         ) {
-            Ok(current) => current.to_wire(),
+            Ok(current) => current,
             Err(reply) => return reply,
         };
-        if current != **expected_stack || !current.is_well_formed(*frame) {
+        if current.as_ref() != expected_stack.as_ref() || !current.is_well_formed(*frame) {
             return invalid_debugger_state();
         }
         let selected = &current.frames[*frame_index as usize];
@@ -172,13 +176,13 @@ impl BlueJsChildHost {
     pub(super) fn debugger_value_snapshot(
         &self,
         target: PageHostDebuggerValueTarget,
-    ) -> PageHostReply {
+    ) -> BlueJsHostReply {
         if !target.is_well_formed() {
-            return invalid_request();
+            return invalid_request().into();
         }
         let document = match self.exact_document(target.tab_id, target.document_generation) {
             Ok(document) => document,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
         if !document.debugger_execution_control
             || document
@@ -187,13 +191,13 @@ impl BlueJsChildHost {
                 .and_then(|pending| pending.program)
                 != Some(target.program)
         {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         }
         let Some(record) = document
             .debugger_programs
             .get(&target.program.program_handle)
         else {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         };
         if record.program_generation != target.program.program_generation
             || self
@@ -201,7 +205,7 @@ impl BlueJsChildHost {
                 .get(self.runtime.program_registry(), record.runtime_handle)
                 .is_err()
         {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         }
         let runtime_frame = match (
             target.frame,
@@ -234,7 +238,7 @@ impl BlueJsChildHost {
             {
                 Some(active)
             }
-            _ => return invalid_debugger_state(),
+            _ => return invalid_debugger_state().into(),
         };
         let preview = match self.runtime.debugger_value_preview(
             target.tab_id,
@@ -250,14 +254,10 @@ impl BlueJsChildHost {
                 },
             },
         ) {
-            Ok(preview) => page_host_debugger_value_preview(preview.as_ref()),
-            Err(_) => return invalid_debugger_state(),
+            Ok(preview) => preview,
+            Err(_) => return invalid_debugger_state().into(),
         };
-        let snapshot = PageHostDebuggerValueSnapshot { target, preview };
-        if !snapshot.is_well_formed() {
-            return invalid_debugger_state();
-        }
-        PageHostReply::DebuggerValueSnapshot(Box::new(snapshot))
+        project_value_reply(&preview, target)
     }
 
     /// Copies one entry-root binding only after the full retained linked
@@ -266,14 +266,14 @@ impl BlueJsChildHost {
     pub(super) fn debugger_linked_value_snapshot(
         &self,
         target: PageHostDebuggerLinkedValueTarget,
-    ) -> PageHostReply {
+    ) -> BlueJsHostReply {
         if !target.is_well_formed() {
-            return invalid_request();
+            return invalid_request().into();
         }
         let frame = target.frame;
         let active = match self.exact_linked_runtime_frame(frame) {
             Ok(active) => active,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
         let current = match self.debugger_linked_stack_snapshot(
             frame.tab_id,
@@ -282,11 +282,11 @@ impl BlueJsChildHost {
             active,
             target.expected_stack.max_scope_entries,
         ) {
-            Ok(current) => current.to_wire(),
-            Err(reply) => return reply,
+            Ok(current) => current,
+            Err(reply) => return reply.into(),
         };
-        if current != *target.expected_stack {
-            return invalid_debugger_state();
+        if current.as_ref() != target.expected_stack.as_ref() {
+            return invalid_debugger_state().into();
         }
         let stack = match self.runtime.debugger_linked_stack_snapshot(
             frame.tab_id,
@@ -295,7 +295,7 @@ impl BlueJsChildHost {
             VM_DEBUGGER_MAX_SCOPE_ENTRIES,
         ) {
             Ok(stack) => stack,
-            Err(_) => return invalid_debugger_state(),
+            Err(_) => return invalid_debugger_state().into(),
         };
         let preview = match self.runtime.debugger_linked_value_preview(
             frame.tab_id,
@@ -306,17 +306,13 @@ impl BlueJsChildHost {
                 scope_depth: target.scope_entry.scope_depth,
             },
         ) {
-            Ok(preview) => page_host_debugger_value_preview(preview.as_ref()),
+            Ok(preview) => preview,
             Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
                 "debugger value exceeds the payload byte budget",
-            ))) => return resource_limit(),
-            Err(_) => return invalid_debugger_state(),
+            ))) => return resource_limit().into(),
+            Err(_) => return invalid_debugger_state().into(),
         };
-        let snapshot = PageHostDebuggerLinkedValueSnapshot { target, preview };
-        if !snapshot.is_well_formed() {
-            return invalid_debugger_state();
-        }
-        PageHostReply::DebuggerLinkedValueSnapshot(Box::new(snapshot))
+        project_linked_value_reply(&preview, target)
     }
 
     pub(super) fn debugger_execution_state(

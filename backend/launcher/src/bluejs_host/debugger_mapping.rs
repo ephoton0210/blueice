@@ -159,6 +159,7 @@ pub(super) fn child_debugger_linked_frame(
     }
 }
 
+#[cfg(test)]
 pub(super) fn page_host_debugger_value_preview(
     value: &VmDebuggerValuePreview,
 ) -> PageHostDebuggerValuePreview {

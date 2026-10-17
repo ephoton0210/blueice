@@ -527,49 +527,9 @@ enum ChildDebuggerExecutionStatus {
     Completed,
 }
 
-/// A child-local cross-program stack; the v39 same-program wire never sees it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ChildLinkedStackFrame {
-    safe_point: PageHostDebuggerSafePoint,
-    scope_entries: Vec<PageHostDebuggerScopeEntry>,
-    scope_truncated: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ChildLinkedStackSnapshot {
-    frames: [ChildLinkedStackFrame; 2],
-    stack_truncated: bool,
-    max_scope_entries: u32,
-}
-
-impl ChildLinkedStackSnapshot {
-    fn to_wire(&self) -> PageHostDebuggerLinkedStackSnapshot {
-        PageHostDebuggerLinkedStackSnapshot {
-            frames: self
-                .frames
-                .clone()
-                .map(|frame| PageHostDebuggerLinkedStackFrame {
-                    safe_point: frame.safe_point,
-                    scope_entries: frame.scope_entries,
-                    scope_truncated: frame.scope_truncated,
-                }),
-            stack_truncated: self.stack_truncated,
-            max_scope_entries: self.max_scope_entries,
-        }
-    }
-
-    fn from_wire(snapshot: &PageHostDebuggerLinkedStackSnapshot) -> Self {
-        Self {
-            frames: snapshot.frames.clone().map(|frame| ChildLinkedStackFrame {
-                safe_point: frame.safe_point,
-                scope_entries: frame.scope_entries,
-                scope_truncated: frame.scope_truncated,
-            }),
-            stack_truncated: snapshot.stack_truncated,
-            max_scope_entries: snapshot.max_scope_entries,
-        }
-    }
-}
+// The private owned linked projection uses the exact wire shape, so internal
+// validation can borrow it without cloning two further scope vectors.
+type ChildLinkedStackSnapshot = PageHostDebuggerLinkedStackSnapshot;
 
 /// A document-order declaration retained by the child in an explicitly
 /// core-selected debugger-execution document. Classic programs are admitted
@@ -1172,6 +1132,9 @@ pub struct BlueJsChildHost {
 mod execution_drive;
 
 mod debugger_inspection;
+mod reply_storage;
+pub use reply_storage::BlueJsHostReply;
+use reply_storage::*;
 
 mod debugger_control;
 mod emitted_map_lookup;
@@ -1868,8 +1831,8 @@ pub fn serve_bluejs_host_connection(
             Err(error) => return Err(error),
         };
         let shutting_down = matches!(request, PageHostRequest::Shutdown);
-        let reply = host.handle_request(request);
-        page_host::write_page_host_reply(&mut stream, &reply)?;
+        let reply = host.handle_reply(request);
+        reply.write(&mut stream)?;
         if shutting_down {
             return Ok(true);
         }

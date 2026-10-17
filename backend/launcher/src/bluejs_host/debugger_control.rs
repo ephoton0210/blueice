@@ -653,10 +653,10 @@ impl BlueJsChildHost {
         &self,
         frame: PageHostDebuggerLinkedFrame,
         max_scope_entries: u32,
-    ) -> PageHostReply {
+    ) -> BlueJsHostReply {
         let active = match self.exact_linked_runtime_frame(frame) {
             Ok(active) => active,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
         let snapshot = match self.debugger_linked_stack_snapshot(
             frame.tab_id,
@@ -665,16 +665,13 @@ impl BlueJsChildHost {
             active,
             max_scope_entries,
         ) {
-            Ok(snapshot) => snapshot.to_wire(),
-            Err(reply) => return reply,
+            Ok(snapshot) => snapshot,
+            Err(reply) => return reply.into(),
         };
         if !snapshot.is_well_formed(frame) {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         }
-        PageHostReply::DebuggerLinkedStackSnapshot {
-            frame,
-            snapshot: Box::new(snapshot),
-        }
+        project_linked_reply(&snapshot, frame)
     }
 
     pub(super) fn debugger_linked_stack_spans_reply(
@@ -682,37 +679,43 @@ impl BlueJsChildHost {
         frame: PageHostDebuggerLinkedFrame,
         expected_stack: PageHostDebuggerLinkedStackSnapshot,
         sources: [PageHostDebuggerLinkedSource; 2],
-    ) -> PageHostReply {
+    ) -> BlueJsHostReply {
         if !expected_stack.is_well_formed(frame)
             || sources
                 .iter()
                 .any(|source| !source.metadata.is_well_formed())
         {
-            return invalid_request();
+            return invalid_request().into();
         }
         let active = match self.exact_linked_runtime_frame(frame) {
             Ok(active) => active,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
         let spans = match self.debugger_linked_source_spans(
             frame.tab_id,
             frame.document_generation,
             frame.entry_program,
             active,
-            &ChildLinkedStackSnapshot::from_wire(&expected_stack),
+            &expected_stack,
             [
                 (sources[0].metadata, sources[0].source_id),
                 (sources[1].metadata, sources[1].source_id),
             ],
         ) {
             Ok(spans) => spans,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
-        PageHostReply::DebuggerLinkedStackSpans {
-            frame,
-            snapshot: Box::new(expected_stack),
-            spans: Box::new(spans),
-        }
+        let snapshot = match self.debugger_linked_stack_snapshot(
+            frame.tab_id,
+            frame.document_generation,
+            frame.entry_program,
+            active,
+            expected_stack.max_scope_entries,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(reply) => return reply.into(),
+        };
+        project_linked_spans(&snapshot, frame, spans)
     }
 
     pub(super) fn request_debugger_linked_resume(
@@ -877,7 +880,7 @@ impl BlueJsChildHost {
         frame: Option<PageHostDebuggerFrame>,
         max_frames: u32,
         max_scope_entries: u32,
-    ) -> PageHostReply {
+    ) -> BlueJsHostReply {
         if max_frames == 0
             || max_frames > PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES
             || max_frames > VM_DEBUGGER_MAX_STACK_FRAMES
@@ -887,11 +890,11 @@ impl BlueJsChildHost {
             || !program.is_well_formed()
             || frame.is_some_and(|frame| !frame.is_well_formed())
         {
-            return invalid_request();
+            return invalid_request().into();
         }
         let document = match self.exact_document(tab_id, document_generation) {
             Ok(document) => document,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
         if !document.debugger_execution_control
             || document
@@ -900,13 +903,13 @@ impl BlueJsChildHost {
                 .and_then(|pending| pending.program)
                 != Some(program)
         {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         }
         let Some(record) = document.debugger_programs.get(&program.program_handle) else {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         };
         if record.program_generation != program.program_generation {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         }
         let runtime_frame = match (
             frame,
@@ -930,7 +933,7 @@ impl BlueJsChildHost {
             {
                 Some(active)
             }
-            _ => return invalid_debugger_state(),
+            _ => return invalid_debugger_state().into(),
         };
         let snapshot = match self.runtime.debugger_stack_snapshot(
             tab_id,
@@ -940,34 +943,9 @@ impl BlueJsChildHost {
             max_scope_entries,
         ) {
             Ok(snapshot) => snapshot,
-            Err(_) => return invalid_debugger_state(),
+            Err(_) => return invalid_debugger_state().into(),
         };
-        PageHostReply::DebuggerStackSnapshot {
-            tab_id,
-            document_generation,
-            program,
-            frame,
-            snapshot: PageHostDebuggerStackSnapshot {
-                frames: snapshot
-                    .frames
-                    .iter()
-                    .map(|frame| PageHostDebuggerStackFrame {
-                        code_unit_ordinal: frame.code_unit_ordinal,
-                        bytecode_offset: frame.bytecode_offset,
-                        scope_entries: frame
-                            .scope_entries
-                            .iter()
-                            .map(|entry| PageHostDebuggerScopeEntry {
-                                slot_ordinal: entry.slot_ordinal,
-                                scope_depth: entry.scope_depth,
-                            })
-                            .collect(),
-                        scope_truncated: frame.scope_truncated,
-                    })
-                    .collect(),
-                stack_truncated: snapshot.stack_truncated,
-            },
-        }
+        project_classic_stack(&snapshot, tab_id, document_generation, program, frame)
     }
 
     /// Re-maps the exact retained System execute path without passing through
@@ -977,18 +955,18 @@ impl BlueJsChildHost {
         frame: PageHostDebuggerFrame,
         loader_program: PageHostDebuggerProgram,
         max_scope_entries: u32,
-    ) -> PageHostReply {
+    ) -> BlueJsHostReply {
         if !frame.is_well_formed()
             || !loader_program.is_well_formed()
             || loader_program == frame.program
             || !(1..=PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&max_scope_entries)
             || max_scope_entries > VM_DEBUGGER_MAX_SCOPE_ENTRIES
         {
-            return invalid_request();
+            return invalid_request().into();
         }
         let document = match self.exact_document(frame.tab_id, frame.document_generation) {
             Ok(document) => document,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
         if !document.debugger_execution_control
             || !document
@@ -999,7 +977,7 @@ impl BlueJsChildHost {
                         && pending.system_loader_program == Some(loader_program)
                 })
         {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         }
         let Some(ChildDebuggerExecutionStatus::NestedPaused {
             frame: active,
@@ -1009,7 +987,7 @@ impl BlueJsChildHost {
             .get(&frame.program)
             .copied()
         else {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         };
         if frame
             != child_debugger_frame(
@@ -1020,7 +998,7 @@ impl BlueJsChildHost {
             )
             || !frame.matches_safe_point(safe_point)
         {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         }
         let runtime_handle = |program: PageHostDebuggerProgram| {
             document
@@ -1032,11 +1010,11 @@ impl BlueJsChildHost {
         };
         let emitted_handle = match runtime_handle(frame.program) {
             Ok(handle) if handle == active.program() => handle,
-            _ => return invalid_debugger_state(),
+            _ => return invalid_debugger_state().into(),
         };
         let loader_handle = match runtime_handle(loader_program) {
             Ok(handle) => handle,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
         let snapshot = match self.runtime.debugger_foreign_intermediate_stack_snapshot(
             frame.tab_id,
@@ -1046,10 +1024,10 @@ impl BlueJsChildHost {
             max_scope_entries,
         ) {
             Ok(snapshot) => snapshot,
-            Err(_) => return invalid_debugger_state(),
+            Err(_) => return invalid_debugger_state().into(),
         };
         let [child, loader, root] = snapshot.frames.as_slice() else {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         };
         if snapshot.stack_truncated
             || [
@@ -1062,54 +1040,25 @@ impl BlueJsChildHost {
                 emitted_handle.generation().as_u64(),
             ]
         {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         }
-        let remap = |source: &blueice_bluejs::VmDebuggerStackFrame,
-                     program: PageHostDebuggerProgram| {
-            PageHostDebuggerSystemStackFrame {
-                safe_point: PageHostDebuggerSafePoint {
-                    program,
-                    code_unit_ordinal: source.code_unit_ordinal,
-                    bytecode_offset: source.bytecode_offset,
-                },
-                scope_entries: source
-                    .scope_entries
-                    .iter()
-                    .map(|entry| PageHostDebuggerScopeEntry {
-                        slot_ordinal: entry.slot_ordinal,
-                        scope_depth: entry.scope_depth,
-                    })
-                    .collect(),
-                scope_truncated: source.scope_truncated,
-            }
-        };
-        let mapped = PageHostDebuggerSystemStackSnapshot {
-            frames: [
-                remap(child, frame.program),
-                remap(loader, loader_program),
-                remap(root, frame.program),
-            ],
-            stack_truncated: false,
-            max_scope_entries,
-        };
-        if !mapped.is_well_formed(frame, loader_program)
-            || mapped.frames[0].safe_point != safe_point
-            || mapped.frames.iter().any(|entry| {
-                self.exact_debugger_safe_point(
-                    frame.tab_id,
-                    frame.document_generation,
-                    entry.safe_point,
-                )
-                .is_err()
+        let programs = [frame.program, loader_program, frame.program];
+        let points =
+            [child, loader, root].map(|source| (source.code_unit_ordinal, source.bytecode_offset));
+        let points = std::array::from_fn::<_, 3, _>(|index| PageHostDebuggerSafePoint {
+            program: programs[index],
+            code_unit_ordinal: points[index].0,
+            bytecode_offset: points[index].1,
+        });
+        if points[0] != safe_point
+            || points.iter().any(|point| {
+                self.exact_debugger_safe_point(frame.tab_id, frame.document_generation, *point)
+                    .is_err()
             })
         {
-            return invalid_debugger_state();
+            return invalid_debugger_state().into();
         }
-        PageHostReply::DebuggerSystemStackSnapshot {
-            frame,
-            loader_program,
-            snapshot: Box::new(mapped),
-        }
+        project_system_stack(&snapshot, frame, loader_program, max_scope_entries)
     }
 
     /// Re-maps only an exact retained dependency/entry stack. Every frame
@@ -1121,7 +1070,7 @@ impl BlueJsChildHost {
         entry_program: PageHostDebuggerProgram,
         frame: BlueJsPageDebuggerLinkedFrame,
         max_scope_entries: u32,
-    ) -> Result<ChildLinkedStackSnapshot, PageHostReply> {
+    ) -> Result<blueice_bluejs::VmDebuggerInspection<ChildLinkedStackSnapshot>, PageHostReply> {
         if max_scope_entries == 0
             || max_scope_entries > PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES
             || max_scope_entries > VM_DEBUGGER_MAX_SCOPE_ENTRIES
@@ -1196,36 +1145,7 @@ impl BlueJsChildHost {
         {
             return Err(invalid_debugger_state());
         }
-        Ok(ChildLinkedStackSnapshot {
-            frames: [
-                ChildLinkedStackFrame {
-                    safe_point: child_point,
-                    scope_entries: child
-                        .scope_entries
-                        .iter()
-                        .map(|entry| PageHostDebuggerScopeEntry {
-                            slot_ordinal: entry.slot_ordinal,
-                            scope_depth: entry.scope_depth,
-                        })
-                        .collect(),
-                    scope_truncated: child.scope_truncated,
-                },
-                ChildLinkedStackFrame {
-                    safe_point: root_point,
-                    scope_entries: root
-                        .scope_entries
-                        .iter()
-                        .map(|entry| PageHostDebuggerScopeEntry {
-                            slot_ordinal: entry.slot_ordinal,
-                            scope_depth: entry.scope_depth,
-                        })
-                        .collect(),
-                    scope_truncated: root.scope_truncated,
-                },
-            ],
-            stack_truncated: snapshot.stack_truncated,
-            max_scope_entries,
-        })
+        project_linked_stack(&snapshot, [child_point, root_point], max_scope_entries)
     }
 
     /// Maps a complete live linked stack through two independent retained
@@ -1247,7 +1167,7 @@ impl BlueJsChildHost {
             frame,
             expected_stack.max_scope_entries,
         )?;
-        if current != *expected_stack {
+        if current.as_ref() != expected_stack {
             return Err(invalid_request());
         }
         let document = self.exact_document(tab_id, document_generation)?;

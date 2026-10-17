@@ -68,6 +68,20 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The debugger reply projection/framing follow-up (2026-10-18) has an
+implementation checkpoint. Launcher runtime-inspection copies and complete
+encoded frames now retain document ownership through final write/flush.
+Projection and JSON preparation admit storage before allocation; failed native
+encoding returns a bounded document error without disconnecting healthy peers.
+The seven runtime stack/value reply families use immutable owners and borrowed
+linked intermediates. All twenty-six new contracts and the previous 111 finite
+controls pass: **137 distinct selected tests**, six executable targets and fifty-
+nine selections. Formatting, diff checks and offline workspace/all-target Clippy
+pass. Frozen source/artifact and Git audits bind the checkpoint. Other metadata/
+control/error replies, incoming decode, wider native/neutral-tree producers and
+integrated acceptance remain open. M1u remains the latest accepted milestone;
+M1z's integrated gates remain open.
+
 The debugger inspection/request producer follow-up (2026-10-18) has an
 implementation checkpoint. VM/page stack/value outputs now retain shared
 immutable document ownership through final result drop, including after VM
@@ -1385,8 +1399,10 @@ work and exposes its retained payload ledger.
       selected cases. Active cross-realm registry metadata now has an independent
       ownership checkpoint with eighteen new contracts and 85 selected cases.
       BlueJS inspection/request producers now have an immutable output/name
-      checkpoint with twenty-two new contracts and 111 selected cases. Host
-      reply/serialization buffers, shared programs' remaining storage, other
+      checkpoint with twenty-two new contracts and 111 selected cases. Runtime
+      reply projection/framing now adds twenty-six contracts and 137 selected
+      cases. Other metadata/control/error replies, incoming decode buffers,
+      shared programs' remaining storage, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -8311,6 +8327,90 @@ Evidence: `target/debugger-inspection-storage-source-20261018.json` and prefix
 original failing/first/planned/expanded/joined/final source archives, immutable
 fixture adapters, frozen inputs, exact controls, static gates and English
 checkpoint message.
+
+#### Debugger reply projection and framing (implementation checkpoint, 2026-10-18)
+
+Acceptance: launcher runtime-inspection copies and encoded frames must retain
+their document account until final use. Admit a complete projection before new
+vectors/boxes or transferred raw backing are published. Keep source, mapped data
+and encoded bytes charged while they physically coexist. Hold encoded credit
+through write/flush and release candidates on conversion, serialization or I/O
+failure. A native admission refusal must report a bounded document error rather
+than disconnecting healthy neighboring documents.
+
+- [x] Write six native projection contracts before adding the mapping API;
+      preserve their compile-only missing-API result and first passing run.
+- [x] Add immutable admitted projections, complete-plan consumption and final
+      terminal checks, including boxed and transferred raw storage.
+- [x] Retain owners through the seven runtime stack/value reply families and
+      linked/System intermediate projections, removing unowned stack clones.
+- [x] Count JSON before allocation, encode into fixed storage before publishing
+      a prefix and retain a separate encoded owner through delivery.
+- [x] Preserve document isolation on native encoding refusal and true I/O error
+      propagation; adapt production dispatch and compile-only fault delivery.
+- [x] Pass all twenty-six new finite contracts and the previous 111 controls,
+      formatting, diff checks and offline workspace/all-target Clippy.
+- [x] Complete source/artifact and staged/committed audits, final documents and
+      the detailed English checkpoint commit; record its identity in the receipt.
+
+`VmDebuggerInspection::try_map` prepares the new payload/header and complete
+buffer plan before calling trusted Rust conversion code. `VmDebuggerOutput`
+admits vectors/boxes and attaches existing raw allocations moved into the result.
+Every planned byte is consumed; reported vector excess is reconciled before
+copying. Existing native leases are retained by their owners rather than attached
+again as raw storage. The converter cannot mutate the source. A terminal account
+refuses before conversion and is checked again before result publication.
+Data drops before its charge, while clones share the completed immutable owner.
+Neutral results preserve neutral policy and separate documents keep their accounts.
+
+Classic, linked and System stacks, linked spans, System locations and ordinary/
+linked values now use owned projections. Linked temporary stacks use the exact
+wire shape and borrowed comparisons rather than additional unowned scope-vector
+clones. Linked value replies attach their transferred expected-stack backing.
+Production `handle_reply` returns `BlueJsHostReply`, and connection delivery uses
+its owned write path. The old raw request/value mapping helpers are test-only
+comparison adapters. The Core fault fixture also follows owned delivery but is
+only compiled here; no Core or service replay is performed. Exact authority,
+generation and slot validation and the wire schema remain unchanged.
+
+Shared JSON framing now counts before reserving a payload buffer, then serializes
+into a fixed slice. Serialization failure or a changed admitted size publishes
+no prefix. The existing 8 MiB write cap and byte representation are preserved.
+Runtime inspection replies acquire a second document owner for the complete
+encoded frame. That owner survives write and flush. Native encoding refusal
+returns the existing bounded ResourceLimit error; other errors while building
+the encoded candidate use HostFailure. Neither is promoted to a connection failure. Actual I/O failures
+still propagate and release the encoded candidate while the mapped owner remains.
+
+The initial missing-`try_map` result is a compile-only contract check, not a
+runtime failure count. Its first implementation passes **6/6** native cases.
+The functional source run passes **24/24** new cases; the final expansion adds
+healthy-document isolation and bounded refusal delivery. All **26/26** new cases
+pass: eleven native projection, six in-memory framing and nine pure launcher
+mapping/writer contracts. The latter use the public bounded Page Runtime and
+memory writers, never a child-host state machine, socket or listener.
+
+Together with twenty-two inspection, eighteen active-realm, eighteen retained-
+frame and fifty-three exact finite semantic controls, validation passes **137
+distinct selected tests**, six executable targets and fifty-nine selections.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Frozen source/artifact and Git content audits bind twenty-one Rust
+inputs, twenty-three changed source/document files, thirty-seven related control
+inputs, six executables and the detailed English message.
+
+This checkpoint covers the named runtime-inspection reply families and shared
+framing preparation. Other metadata/control/error reply ownership, incoming
+decode buffers, remaining program/diagnostic/native producers and complete
+neutral-tree adoption remain required work. No fresh coverage, workspace runtime
+sweep, resource-boundary/exhaustion/infinite-input probe or network/listener/
+service/Core/MCP/privileged runtime replay is claimed. Rejected push and process
+inspection are not retried. M1u remains the latest accepted milestone; M1z's
+integrated gates remain open. Earlier checkpoint counts remain historical.
+
+Evidence: `target/debugger-reply-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-debugger-reply-storage-` (2026-10-18), including test-first,
+first/wired/joined/adapted/functional/final source archives, compile adapters,
+finite in-memory tests, final frozen inputs, static gates and the English message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

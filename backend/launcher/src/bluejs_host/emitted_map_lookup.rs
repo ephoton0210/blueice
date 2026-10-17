@@ -500,35 +500,30 @@ impl BlueJsChildHost {
         frame: PageHostDebuggerFrame,
         loader_program: PageHostDebuggerProgram,
         max_scope_entries: u32,
-    ) -> PageHostReply {
-        let snapshot =
-            match self.debugger_system_stack_snapshot(frame, loader_program, max_scope_entries) {
-                PageHostReply::DebuggerSystemStackSnapshot { snapshot, .. } => snapshot,
-                reply => return reply,
-            };
+    ) -> BlueJsHostReply {
+        let owned = self.debugger_system_stack_snapshot(frame, loader_program, max_scope_entries);
+        let snapshot = match owned.as_ref() {
+            PageHostReply::DebuggerSystemStackSnapshot { snapshot, .. } => snapshot,
+            reply => return reply.clone().into(),
+        };
         let (bound, installed) =
             match self.exact_emitted_map(frame.tab_id, frame.document_generation, frame.program) {
                 Ok(map) if map.0.emission_profile == PageHostBlueTsEmissionProfile::System => map,
-                Ok(_) => return invalid_debugger_state(),
-                Err(reply) => return reply,
+                Ok(_) => return invalid_debugger_state().into(),
+                Err(reply) => return reply.into(),
             };
         let project = |index: usize| {
             project_emitted_safe_point(bound, installed, snapshot.frames[index].safe_point)
         };
         let child = match project(0) {
             Ok(location) => location,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
         let root = match project(2) {
             Ok(location) => location,
-            Err(reply) => return reply,
+            Err(reply) => return reply.into(),
         };
-        PageHostReply::DebuggerSystemStackLocations {
-            frame,
-            loader_program,
-            snapshot,
-            locations: Box::new([child, None, root]),
-        }
+        project_system_locations(&owned, [child, None, root])
     }
 }
 

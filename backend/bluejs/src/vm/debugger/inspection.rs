@@ -415,10 +415,10 @@ impl Vm {
                 scope_truncated: truncated,
             });
         }
-        Ok(storage.finish(VmDebuggerStackSnapshot {
+        storage.finish(VmDebuggerStackSnapshot {
             program_generation,
             frames,
             stack_truncated,
-        }))
+        })
     }
 }

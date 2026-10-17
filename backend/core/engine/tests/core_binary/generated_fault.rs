@@ -47,10 +47,11 @@ fn spawn_map_fault_child() -> (PathBuf, String, Arc<AtomicUsize>, thread::JoinHa
                         code: PageHostErrorCode::HostFailure,
                         message: "private map decode failed".to_string(),
                     }
+                    .into()
                 } else {
-                    host.handle_request(request)
+                    host.handle_reply(request)
                 };
-                page_host::write_page_host_reply(&mut stream, &reply).unwrap();
+                reply.write(&mut stream).unwrap();
                 if shutdown {
                     return;
                 }

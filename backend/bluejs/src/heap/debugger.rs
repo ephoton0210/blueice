@@ -101,7 +101,7 @@ impl Heap {
         let output =
             self.preview_value(value, 0, prototypes, &mut build, &mut [None; MAX_DEPTH + 1])?;
         debug_assert_eq!(build.budget.buffer_bytes, plan.budget.buffer_bytes);
-        Ok(storage.finish(output))
+        storage.finish(output)
     }
 
     /// Compiler-owned binding cells are ordinary stored data. Borrow their

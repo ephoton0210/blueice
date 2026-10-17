@@ -115,7 +115,7 @@ pub use vm::{
     HostObjectMethod, HostObjectPairMethod, HostObjectUrls, HostPromiseCompletion,
     HostPromiseToken, HostSchedulingUsage, HostTaskSource, HostValue, RuntimeError, Vm, VmConfig,
     VmDebuggerExecutionState, VmDebuggerInspection, VmDebuggerLinkedPauseTarget,
-    VmDebuggerNestedExecutionState, VmDebuggerScopeEntry, VmDebuggerStackFrame,
+    VmDebuggerNestedExecutionState, VmDebuggerOutput, VmDebuggerScopeEntry, VmDebuggerStackFrame,
     VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
     MAX_HOST_ANIMATION_FRAME_CALLBACKS, MAX_HOST_CONSOLE_BYTES, MAX_HOST_CONSOLE_GROUP_DEPTH,
     MAX_HOST_CONSOLE_LABELS, MAX_HOST_CONSOLE_LABEL_BYTES, MAX_HOST_CONSOLE_MESSAGE_BYTES,

@@ -205,7 +205,7 @@ use debugger::{
 };
 pub use debugger::{
     VmDebuggerExecutionState, VmDebuggerInspection, VmDebuggerLinkedPauseTarget,
-    VmDebuggerNestedExecutionState, VmDebuggerScopeEntry, VmDebuggerStackFrame,
+    VmDebuggerNestedExecutionState, VmDebuggerOutput, VmDebuggerScopeEntry, VmDebuggerStackFrame,
     VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
     VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
     VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,

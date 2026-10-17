@@ -127,11 +127,19 @@ impl BlueJsChildHost {
         Ok(host)
     }
 
+    /// Legacy unit fixtures explicitly copy protocol data for shape assertions.
+    /// Production delivery uses `handle_reply` and retains its native owner.
+    #[cfg(test)]
+    pub fn handle_request(&mut self, request: PageHostRequest) -> PageHostReply {
+        self.handle_reply(request).as_ref().clone()
+    }
+
     /// Handles one post-handshake request. The connection boundary performs
     /// `Hello` authentication first, so a later `Hello` is rejected rather
     /// than accidentally resetting host state.
-    pub fn handle_request(&mut self, request: PageHostRequest) -> PageHostReply {
-        match request {
+    /// Runtime inspection payloads retain native ownership through delivery.
+    pub fn handle_reply(&mut self, request: PageHostRequest) -> BlueJsHostReply {
+        let reply = match request {
             PageHostRequest::DrainConsole {
                 tab_id,
                 document_generation,
@@ -544,38 +552,52 @@ impl BlueJsChildHost {
                 frame,
                 max_frames,
                 max_scope_entries,
-            } => self.debugger_stack_snapshot(
-                tab_id,
-                document_generation,
-                program,
-                frame,
-                max_frames,
-                max_scope_entries,
-            ),
+            } => {
+                return self.debugger_stack_snapshot(
+                    tab_id,
+                    document_generation,
+                    program,
+                    frame,
+                    max_frames,
+                    max_scope_entries,
+                )
+            }
             PageHostRequest::GetDebuggerSystemStackSnapshot {
                 frame,
                 loader_program,
                 max_scope_entries,
-            } => self.debugger_system_stack_snapshot(frame, loader_program, max_scope_entries),
+            } => {
+                return self.debugger_system_stack_snapshot(
+                    frame,
+                    loader_program,
+                    max_scope_entries,
+                )
+            }
             PageHostRequest::GetDebuggerSystemStackLocations {
                 frame,
                 loader_program,
                 max_scope_entries,
-            } => self.debugger_system_stack_locations(frame, loader_program, max_scope_entries),
+            } => {
+                return self.debugger_system_stack_locations(
+                    frame,
+                    loader_program,
+                    max_scope_entries,
+                )
+            }
             PageHostRequest::GetDebuggerLinkedStackSnapshot {
                 frame,
                 max_scope_entries,
-            } => self.debugger_linked_stack_reply(frame, max_scope_entries),
+            } => return self.debugger_linked_stack_reply(frame, max_scope_entries),
             PageHostRequest::DescribeDebuggerLinkedStackSpans {
                 frame,
                 expected_stack,
                 sources,
-            } => self.debugger_linked_stack_spans_reply(frame, expected_stack, sources),
+            } => return self.debugger_linked_stack_spans_reply(frame, expected_stack, sources),
             PageHostRequest::GetDebuggerValueSnapshot { target } => {
-                self.debugger_value_snapshot(target)
+                return self.debugger_value_snapshot(target)
             }
             PageHostRequest::GetDebuggerLinkedValueSnapshot { target } => {
-                self.debugger_linked_value_snapshot(*target)
+                return self.debugger_linked_value_snapshot(*target)
             }
             PageHostRequest::DescribeDebuggerStaticScopeRelation { target } => {
                 self.debugger_static_scope_relation(*target)
@@ -599,7 +621,8 @@ impl BlueJsChildHost {
             } => self.advance_debugger_execution(tab_id, document_generation),
             PageHostRequest::Shutdown => PageHostReply::ShutdownAck,
             PageHostRequest::Hello { .. } | PageHostRequest::Unknown => invalid_request(),
-        }
+        };
+        reply.into()
     }
 
     pub(super) fn synchronize(&mut self, document: PageHostDocument) -> PageHostReply {

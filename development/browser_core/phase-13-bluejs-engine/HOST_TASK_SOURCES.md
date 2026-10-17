@@ -1341,6 +1341,43 @@ producers and complete neutral-tree adoption remain open; M1u remains latest
 accepted and M1z's integrated gates stay open. Evidence:
 `target/debugger-inspection-storage-source-20261018.json`.
 
+Runtime-inspection transport now preserves that ownership across mapped copies
+and encoded frames. `VmDebuggerInspection::try_map` admits a complete output
+payload/header and buffer plan before conversion. `VmDebuggerOutput` stages new
+vectors/boxes and raw backing moved into the result, consuming the complete plan
+and reconciling reported excess before copies. Existing leased data keeps its
+own owner. Terminal admission refuses before conversion and before publication;
+data drops before credit, clones share completed storage and neutral policy stays
+neutral. Independent documents retain separate admission/failure state.
+
+Classic/linked/System stacks, linked spans, System locations and ordinary/linked
+values retain native owners through launcher mapping. Linked intermediate stacks
+use the wire shape with borrowed comparisons. The linked value target's moved
+expected-stack backing joins its outgoing owner. Production `handle_reply` and
+`BlueJsHostReply::write` retain mapped data until delivery finishes. Legacy raw
+mapping helpers remain test-only; compile-only Core fault delivery uses the owned
+entry too. No authority, target or wire-schema change is introduced.
+
+JSON framing counts before allocation and serializes into fixed admitted storage
+before publishing its prefix, preserving the existing write cap and bytes.
+Encoded runtime replies have a separate document owner that stays live through
+write/flush. Native admission failure becomes the ordinary bounded ResourceLimit
+reply, preserving the connection for healthy documents; other encoded-candidate
+preparation failures use HostFailure. Actual I/O errors propagate while releasing only their candidate.
+Other metadata/control/error replies and incoming decode buffers remain separate
+ownership gates.
+
+The reply checkpoint passes eleven native projection, six in-memory framing and
+nine pure mapping/writer contracts plus the previous 111 finite controls: one
+hundred thirty-seven distinct cases, six executable targets and fifty-nine
+selections. Formatting, diff checks and offline workspace/all-target Clippy pass,
+with frozen source/artifact and Git audits. All runtime tests are local finite
+functional/in-memory cases; no service/listener/Core/MCP or resource-boundary
+replay is resumed. No fresh coverage or integrated acceptance is claimed. Wider
+native and complete neutral-tree gates stay open; M1u remains latest accepted and
+M1z's integrated gates remain open. Evidence:
+`target/debugger-reply-storage-source-20261018.json`.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads
