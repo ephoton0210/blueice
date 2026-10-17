@@ -9,6 +9,10 @@
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/import_source_admission.rs"]
+mod source_admission_tests;
+
 impl Vm {
     /// Source-phase dynamic import has the same promise and argument
     /// boundary as ordinary import(), but asks the host for a Module Source
@@ -23,18 +27,20 @@ impl Vm {
         module_type: ModuleType,
     ) -> Result<(), RuntimeError> {
         let result = (|| {
+            self.synchronize_scheduling_usage()?;
             if module_type != ModuleType::JavaScript {
                 return Err(RuntimeError::SyntaxError(
                     "a synthetic module has no source-phase representation".into(),
                 ));
             }
-            let referrer = self
-                .active_module_name
-                .clone()
-                .unwrap_or_else(|| "<script>".to_string());
-            let entry = Self::resolve_module_request(&referrer, specifier)?;
+            let entry = ModuleName::resolve(
+                self.active_module_name.as_deref().unwrap_or("<script>"),
+                specifier,
+                ModuleType::JavaScript,
+                self.host_scheduling.as_ref(),
+            )?;
             let modules = self.module_registry.clone();
-            if modules.contains_key(&entry) {
+            if modules.contains_key(entry.as_str()) {
                 return Err(RuntimeError::SyntaxError(
                     "a Source Text Module has no source-phase representation".into(),
                 ));
@@ -42,15 +48,17 @@ impl Vm {
             let source = self.module_source_object(&entry, &modules)?;
             Ok(Value::Object(source))
         })();
-        match result {
-            Ok(value) => self.resolve_promise(promise, value)?,
-            Err(error) => {
-                let error = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(error))
-                    .expect("the dynamic-import job retains its registered native promise; rejection cannot allocate");
-            }
-        }
-        Ok(())
+        let result = match result {
+            Ok(value) => self.resolve_promise(promise, value),
+            Err(error) if !error.is_catchable() => Err(error),
+            Err(error) => self
+                .error_value(error)
+                .and_then(|error| self.settle_promise(promise, PromiseStatus::Rejected(error))),
+        };
+        self.reconcile_scheduling_ownership();
+        // Shared native resolvers latch refusal to preserve their infallible
+        // contract. This fallible source entry must report that abort now.
+        result.and_then(|()| self.check_scheduling_failure())
     }
 
     /// ContinueDynamicImport for the `defer` phase: load and link `entry`'s

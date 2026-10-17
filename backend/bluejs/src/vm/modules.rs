@@ -1317,6 +1317,7 @@ impl Vm {
         Ok(module_type.module_key(&Self::resolve_module_request(referrer, request)?))
     }
 
+    #[cfg(any(test, coverage))]
     pub(super) fn resolve_module_request(
         referrer: &str,
         request: &str,

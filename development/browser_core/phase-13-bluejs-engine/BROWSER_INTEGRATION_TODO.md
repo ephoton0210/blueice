@@ -68,6 +68,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The source-phase import admission follow-up (2026-10-17) now resolves source
+requests through admitted native name storage and returns latched settlement/
+thenable-job failure through its fallible entry. Three old-code cases reproduce
+early allocation and a successful return after document failure. The first
+expanded run passes **14/14**. Final focused validation passes **105 distinct
+selected tests**, across four executable targets and nine selections, including
+the preserved test-reference resolver. Formatting, diff checks and offline
+workspace/all-target Clippy pass, with source/artifact and commit audits. The
+earlier Clippy dead-code failure and source state are archived. No broad replay
+is claimed; compilation, producer storage and integrated acceptance remain open.
+
 The ImportCall argument-storage follow-up (2026-10-17) now admits incoming native
 payloads and temporary-root capacity before Promise creation, moves input values
 without operand copies, and retains converted UTF-8 specifiers and attribute-key
@@ -7181,6 +7192,75 @@ the latest accepted milestone; the previously rejected push is not retried.
 Evidence: `target/import-call-storage-source-20261017.json` and prefix
 `/private/tmp/blueice-import-call-storage-`, including red/first source archives,
 frozen Rust inputs, explicit focused selections and logs.
+
+#### Source-phase import admission follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: synchronize native ownership before source-phase work, admit canonical
+name storage before resolver allocation, borrow the ambient referrer, and return
+latched settlement/thenable-job failures through the fallible entry. Remove the
+obsolete rejection assertion. A refused settlement keeps the pending Promise
+and its reaction unchanged. Preserve source identity,
+ordinary type/path language errors and successful no-job settlement when another
+realm uses the shared microtask count. Keep source getter effects and normal
+thenable behavior after committed source lookup.
+
+- [x] Preserve original resolver-allocation, terminal-entry and masked-refusal
+      failures using tiny fixed fixtures and scalar quota peers.
+- [x] Implement source-phase name admission and propagation of latched settlement
+      and thenable-job failures through the fallible source entry.
+- [x] Pass focused source/import/Promise controls, formatting and offline Clippy;
+      record source/artifact and commit audits with a detailed English message.
+
+All three original cases fail (**0/3 passed**). Zero native headroom and terminal
+entry each permit **three resolver allocations** before refusal. With one source
+Promise reaction and a scalar peer holding the shared microtask count, rejection
+returns `Ok(())` after common settlement latches document failure. A host panic
+was not reproduced; the failure is a successful return with the Promise still
+pending. The red source archive retains the original source-entry body unchanged
+from the parent checkpoint.
+
+The source entry now synchronizes ownership before lookup, borrows its referrer
+and resolves through admitted module-name storage. Lookup's temporary name drops
+before Promise resolution/rejection callbacks. Uncatchable lookup errors return
+directly. Common native settlement retains its latching contract; the fallible
+source entry reconciles VM ownership and checks the document failure before
+reporting success. The obsolete rejection-allocation assertion is removed.
+This covers fulfillment/rejection fan-out and thenable-job refusal while keeping
+pending reactions, unqueued work, source identity and committed getter/cache
+effects. A full shared microtask count still permits settlement that creates no
+new job.
+
+Fourteen fixed groups cover early/terminal allocation refusal, rejection and
+fulfillment fan-out, thenable-job refusal without calling `then`, full-count
+no-job fulfillment/rejection, cached identity/root preservation, normalized
+requests, temporary-name refunds, thrown reason identity, explicit GC in a then
+getter, host-neutral calls and public source Promise delivery. Twelve functional
+contracts have an ordinary-library entry point; two allocation observations
+remain unit-only. The first expanded run passes **14/14**.
+
+The initial related selection passes **86** cases; Clippy then reports that the
+allocation-based resolver has only test references. Preserve that full source/
+log/artifact state. Restrict the reference to test/coverage configurations and
+rerun the same eight fixed selections on four frozen final Rust inputs: **86
+passed**. A supplemental **19/19** name-producer selection validates the retained
+reference and path behavior, yielding **105 distinct selected tests**, across
+four executable targets and nine contributing selections. Related controls
+include ImportCall inputs (14), source/meta identity caches (23), common Promise
+settlement (22), public dynamic import (10) and three exact static/source/
+synthetic cases. Formatting, diff checks and offline workspace/all-target Clippy
+with warnings denied pass. Source/artifact and commit audits bind six source/
+document files, preserve all earlier evidence and confirm the remaining deferred
+helpers and module evaluation controller/body are unchanged. This focused result
+does not renew the earlier broad inventory.
+
+Dynamic compilation, generic coercion/own-key producer preallocation, shared
+program storage and integrated acceptance remain open. M1u remains the latest
+accepted milestone. Do not replay broad/pressure/infinite-execution or network/
+Core/MCP validations, and do not retry the previously rejected push.
+
+Evidence: `target/import-source-admission-source-20261017.json` and prefix
+`/private/tmp/blueice-import-source-admission-`, including red/first/pre-cfg source
+archives, frozen Rust inputs, the fixed runner, supplemental name control and logs.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

@@ -686,6 +686,17 @@ the caller, while language errors retain Promise rejection and original identity
 Temporary owners/root entries release on every exit; reusable root capacity
 remains in the VM's native account.
 
+Source-phase import synchronizes document ownership before lookup, borrows its
+ambient referrer and resolves the canonical request through admitted module-name
+storage. Uncatchable lookup errors return directly. Shared native Promise
+settlement retains its infallible/latching contract; the fallible source entry
+checks the document failure after resolution or rejection before reporting
+success. This covers fulfillment/rejection fan-out and thenable-job admission.
+Refusal preserves pending reactions and unqueued work; a full shared microtask
+count still permits settlement that creates no job. Source identity, then-getter
+effects and already-published source cache entries retain their normal lifetime.
+Temporary-name owners drop and VM ownership reconciles on all exits.
+
 Module completion/rejection notifications own complete admitted queue backing
 and independent module-name leases. Whole parent batches precede reverse-row
 detachment; seed copies are admitted before graph mutation. Detaching a reverse
