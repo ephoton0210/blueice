@@ -24,6 +24,10 @@ mod module_walk_storage_tests;
 #[path = "../../tests/fixtures/namespace_cache_storage.rs"]
 mod namespace_cache_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/export_name_storage.rs"]
+mod export_name_storage_tests;
+
 /// How code that is not a generator -- a module body, an async function body
 /// -- finishes a run: it returns, or it awaits. It never yields, and no
 /// running code suspends at a generator's entry.

@@ -68,6 +68,19 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The export-name traversal follow-up (2026-10-17) now admits iterative name
+collection. Three tiny namespace cases reproduce 2/4/9 extra allocations after
+cache preparation uses
+all remaining native headroom. `GetExportedNames` now uses admitted iterative
+walks and borrows canonical module/export names instead of copying Strings into
+recursive hash/tree sets. All three old-code failures now pass. Nineteen new
+groups and all 1659 prior selected controls pass: **1678 total**, across 47
+executables and 152 fixed selections. Formatting, diff checks and offline
+workspace/all-target Clippy pass; source/artifact and commit audits bind the
+evidence to this checkpoint. `ResolveExport`, binding-list staging, namespace/
+module-body recursion and wider acceptance remain open. M1u remains the latest
+accepted milestone.
+
 The namespace-cache ownership follow-up (2026-10-17) now retains allocation
 ledgers for five persistent cache/root/reverse-map layers and pre-admits complete
 publication storage. Three old-code cases failed and now pass.
@@ -6205,6 +6218,76 @@ Evidence paths: `/private/tmp/blueice-namespace-cache-storage-controls-20261017.
 `/private/tmp/blueice-namespace-cache-storage-audit-20261017.py`, logs matching
 `/private/tmp/blueice-namespace-cache-storage-*-20261017.log`, and
 `target/namespace-cache-storage-source-20261017.json`. This remains an M1z
+implementation checkpoint with wider acceptance open.
+
+#### Export-name traversal follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit `GetExportedNames` traversal/result backing before allocation;
+borrow existing canonical module keys and export names; replace native recursion
+with explicit frames; retain result ownership through namespace construction.
+Preserve sorted distinct names, explicit export forms, star-default exclusion,
+cycles, request qualification and the first source-ordered host error.
+
+- [x] Reproduce three tiny namespace failures before implementation: **0/3
+      passed**. Empty/local/star cases attempt 6/8/13 allocations where only
+      the four already-admitted cache preparations are permitted.
+- [x] Implement admitted module/name visited sets, iterative traversal frames,
+      qualified star-request buffers and a retained borrowed-name result vector.
+- [x] Pass new finite contracts, fixed offline controls, formatting and Clippy;
+      complete source/artifact audits and a detailed English commit.
+
+The collector shares the existing admitted walk-storage primitives. Each growth
+leases a complete coexisting replacement and adjusts to its reported capacity;
+the lease outlives its data. Distinct-module and distinct-name sets borrow existing
+String buffers. Explicit frames walk star exports in source order, resolving each
+request under its own native owner before borrowing a canonical registry key.
+Repeated modules are visited once. Local/indirect/namespace/deferred/source names
+are collected without resolving their bindings or following non-star requests.
+
+Only the root's explicit default is included; defaults reached through stars
+remain excluded. The result sorts borrowed names in place without a BTreeSet,
+returns only its vector owner, and releases all other traversal scratch. Deferred
+namespace filtering preserves and charges retained vector backing. Namespace
+construction keeps that independent owner alive while allocating/rooting cells
+and recursively building namespace exports. A Rust-held result remains charged
+after VM destruction and refunds when dropped.
+
+Nineteen finite groups cover the three allocation observations, explicit forms,
+star/default rules, cyclic diamonds and duplicate names, first missing-star and
+invalid/root errors, numerical partial-refusal refunds, retained pointer-vector
+ownership, borrowed source pointers, VM-drop lifetime, deferred-name filtering,
+empty-result refunds, terminal refusal, typed host keys, small vector growth,
+Unicode ordering, and real cyclic namespace values. Sixteen functional groups
+are exposed through the ordinary-library entry point; allocation observations
+remain unit-only. Fixtures contain a few modules and at most ten export names.
+
+Validation: **1678 distinct cases passed, zero failed/ignored**, across 47
+executables and 152 fixed selections: nineteen new groups and all 1659 prior
+selected controls. The first expanded run passes **19/19**. Formatting, diff
+checks and offline workspace/all-target Clippy with warnings denied pass. Eight
+frozen Rust inputs remain unchanged through these runs. The source/artifact
+receipt records ten final source files, Cargo inputs, runner, distinct test
+identities, executables/logs, red-phase source copies and detailed English
+message; staged and committed audits bind them to this checkpoint.
+
+Validation uses only fixed finite in-memory cases, numerical admission peers and
+the shared workspace target, with incremental/dev/test debug artifact growth
+disabled. The same nine explicit resource/infinite-loop skips and finite public
+filters remain. No resource-exhaustion probe, network/service/listener/Core/MCP
+replay, privileged validation, process killing, fresh full Test262, coverage or
+integrated acceptance is claimed. The rejected push is not retried.
+`ResolveExport` visited pairs/results, namespace export binding-list and
+import-alias staging, namespace/module-body recursion, other module/source
+caches, allocator/error-message overhead, shared programs and integrated
+acceptance remain open. M1u remains the latest accepted milestone.
+
+Evidence paths: `/private/tmp/blueice-export-name-storage-controls-20261017.py`,
+`/private/tmp/blueice-export-name-storage-rust-inputs-20261017.json`,
+`/private/tmp/blueice-export-name-storage-commit-20261017.txt`,
+`/private/tmp/blueice-export-name-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-export-name-storage-*-20261017.log`, preserved red-phase
+sources in `/private/tmp/blueice-export-name-storage-red-source-20261017/`, and
+`target/export-name-storage-source-20261017.json`. This remains an M1z
 implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)

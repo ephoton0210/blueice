@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_export_name_storage_contracts() {
+    blueice_bluejs::Vm::verify_export_name_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_namespace_cache_storage_contracts() {
     blueice_bluejs::Vm::verify_namespace_cache_storage_contracts();
 }

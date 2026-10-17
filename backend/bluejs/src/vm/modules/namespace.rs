@@ -117,48 +117,12 @@ impl Vm {
         result
     }
 
-    pub(in super::super) fn exported_names(
-        modules: &HashMap<String, Bytecode>,
+    pub(in super::super) fn exported_names<'a>(
+        modules: &'a HashMap<String, Bytecode>,
         module: &str,
-        star_set: &mut HashSet<String>,
-    ) -> Result<BTreeSet<String>, RuntimeError> {
-        if !star_set.insert(module.to_string()) {
-            return Ok(BTreeSet::new());
-        }
-        let result = (|| {
-            let code = modules.get(module).ok_or_else(|| {
-                RuntimeError::ModuleResolution(format!(
-                    "module {module} was not supplied by the host"
-                ))
-            })?;
-            let mut names = BTreeSet::new();
-            for export in &code.module_exports {
-                match export {
-                    ModuleExport::Local { export_name, .. }
-                    | ModuleExport::Indirect { export_name, .. }
-                    | ModuleExport::Namespace { export_name, .. }
-                    | ModuleExport::DeferredNamespace { export_name, .. }
-                    | ModuleExport::Source { export_name, .. } => {
-                        names.insert(export_name.clone());
-                    }
-                    ModuleExport::Star {
-                        module_request,
-                        module_type,
-                    } => {
-                        let target =
-                            Self::resolve_module_target(module, module_request, *module_type)?;
-                        names.extend(
-                            Self::exported_names(modules, &target, star_set)?
-                                .into_iter()
-                                .filter(|name| name != "default"),
-                        );
-                    }
-                }
-            }
-            Ok(names)
-        })();
-        star_set.remove(module);
-        result
+        scope: Option<&SchedulingScope>,
+    ) -> Result<module_export_names::ExportNames<'a>, RuntimeError> {
+        module_export_names::ExportNames::collect(modules, module, scope)
     }
 
     /// GetModuleNamespace(module, phase): the module's namespace object, made
@@ -209,9 +173,9 @@ impl Vm {
                     .map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail)
             })?;
         let outcome = (|| {
-            let mut names = Self::exported_names(modules, module, &mut HashSet::new())?;
+            let mut names = Self::exported_names(modules, module, self.host_scheduling.as_ref())?;
             if deferred {
-                names.remove("then");
+                names.exclude("then");
             }
             // Publish an identity-stable placeholder before resolving namespace
             // exports. A module may re-export its own namespace, directly or
@@ -231,8 +195,8 @@ impl Vm {
             self.preserve_promise_table_capacity = saved_capacity;
             let namespace = placeholder?;
             let mut exports = Vec::with_capacity(names.len());
-            for name in names {
-                let resolution = Self::resolve_export(modules, module, &name, &mut Vec::new())?;
+            for &name in names.iter() {
+                let resolution = Self::resolve_export(modules, module, name, &mut Vec::new())?;
                 let deferred_target =
                     matches!(resolution, ExportResolution::DeferredNamespace { .. });
                 let cell = match resolution {

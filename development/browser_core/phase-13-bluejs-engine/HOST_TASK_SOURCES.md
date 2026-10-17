@@ -601,6 +601,18 @@ refund while nonempty backing remains owned; empty maps release without allocati
 even after terminal failure. Optional sparse reclamation separately admits full
 candidates and refunds each adopted reduction before funding the next map.
 
+`GetExportedNames` borrows canonical registry keys and existing export-name
+buffers. Native owners admit complete visited-set, explicit-frame and result-vector
+replacements before allocation; star requests use independently owned qualified
+name buffers. The iterative walk follows star declarations in source order,
+collects explicit forms without resolving their bindings, excludes star defaults
+and visits repeated modules once. It sorts distinct names in place and releases
+traversal sets/frames before returning the still-owned pointer vector. Deferred
+filtering retains its backing charge. Namespace construction retains that result
+owner across managed allocation, GC and recursive namespace construction; a
+Rust-held result remains charged after its VM dies. `ResolveExport` and binding/
+alias staging remain separate open producers.
+
 The graph's retained table/set/vector allocations and UTF-8 names share the document
 native-byte budget. Registration first admits the incoming vector, original
 name capacities and complete deduplication set. It then independently leases

@@ -77,12 +77,10 @@ fn namespace_and_deferred_walks_reject_invalid_requests_and_missing_execution_co
             "failed export resolution retained its cycle marker"
         );
         if source.starts_with("export * from") {
-            let mut stars = HashSet::new();
             assert!(matches!(
-                Vm::exported_names(&modules, "main.mjs", &mut stars),
+                Vm::exported_names(&modules, "main.mjs", None),
                 Err(RuntimeError::ModuleResolution(_))
             ));
-            assert!(stars.is_empty());
         }
     }
     let absent = HashMap::new();
@@ -824,7 +822,7 @@ fn export_resolution_reports_missing_default_and_missing_host_dependencies() {
         assert!(resolving.is_empty());
         if star {
             assert!(matches!(
-                Vm::exported_names(&modules, "t/main.mjs", &mut HashSet::new()),
+                Vm::exported_names(&modules, "t/main.mjs", None),
                 Err(RuntimeError::ModuleResolution(_))
             ));
             assert!(matches!(

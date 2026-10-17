@@ -18,8 +18,8 @@ fn live(scope: Option<&SchedulingScope>) -> Result<(), RuntimeError> {
     Ok(())
 }
 
-struct Storage<T> {
-    data: Vec<T>,
+pub(super) struct Storage<T> {
+    pub(super) data: Vec<T>,
     charge: Option<SharedSchedulingCharge>,
 }
 impl<T> Default for Storage<T> {
@@ -31,7 +31,7 @@ impl<T> Default for Storage<T> {
     }
 }
 impl<T> Storage<T> {
-    fn reserve(
+    pub(super) fn reserve(
         &mut self,
         additional: usize,
         scope: Option<&SchedulingScope>,
@@ -44,24 +44,28 @@ impl<T> Storage<T> {
         }
         Ok(())
     }
-    fn push(&mut self, value: T, scope: Option<&SchedulingScope>) -> Result<(), RuntimeError> {
+    pub(super) fn push(
+        &mut self,
+        value: T,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<(), RuntimeError> {
         self.reserve(1, scope)?;
         self.data.push(value);
         Ok(())
     }
     #[cfg(any(test, coverage))]
-    fn bytes(&self) -> usize {
+    pub(super) fn bytes(&self) -> usize {
         host_scheduling::slots(&self.data)
     }
 }
 
 #[derive(Default)]
-struct Visited<'a> {
+pub(super) struct Visited<'a> {
     data: HashSet<&'a str>,
     charge: Option<SharedSchedulingCharge>,
 }
 impl<'a> Visited<'a> {
-    fn insert(
+    pub(super) fn insert(
         &mut self,
         name: &'a str,
         scope: Option<&SchedulingScope>,
