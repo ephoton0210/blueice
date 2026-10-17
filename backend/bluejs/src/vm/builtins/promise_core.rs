@@ -89,24 +89,7 @@ impl Vm {
         &mut self,
         prototype: ObjectId,
     ) -> Result<ObjectId, RuntimeError> {
-        let growth =
-            SchedulingMapCapacity::for_insert(&self.promises, self.host_scheduling.as_ref())?;
-        self.admit_scheduling_work(HostSchedulingUsage::default().with_map_growth(&growth))?;
-        growth.commit(&mut self.promises);
-        self.synchronize_scheduling_usage()?;
-        let promise = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        self.promises.insert(
-            promise,
-            PromiseRecord {
-                status: PromiseStatus::Pending,
-                rejection_origin: ThrowOrigin::default(),
-                reactions: Vec::new(),
-                handled: false,
-                rejection_notified: false,
-            },
-        );
-        self.synchronize_scheduling_usage()?;
-        Ok(promise)
+        self.allocate_promise_record(prototype)
     }
 
     /// A built-in function object with no name: `length`, then `name` (both

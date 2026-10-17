@@ -192,6 +192,7 @@ impl Vm {
             dispose_marks: Default::default(),
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
+            preserve_promise_table_capacity: false,
             promise_jobs: VecDeque::new(),
             bounded_host_microtask_checkpoints: false,
             host_event_microtask_jobs: None,

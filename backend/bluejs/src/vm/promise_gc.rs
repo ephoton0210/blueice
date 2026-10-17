@@ -215,7 +215,9 @@ impl Vm {
         self.prune_disposal_state();
         self.promises
             .retain(|promise, _| self.heap.contains(*promise));
-        if self.promises.len().saturating_mul(4) < self.promises.capacity() {
+        if !self.preserve_promise_table_capacity
+            && self.promises.len().saturating_mul(4) < self.promises.capacity()
+        {
             self.promises.shrink_to_fit();
         }
         self.promise_thunk_origins

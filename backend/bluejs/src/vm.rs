@@ -88,6 +88,7 @@ mod host_promises;
 mod host_rejections;
 mod host_task_storage;
 mod promise_queue_storage;
+mod promise_record_storage;
 mod timer_entry;
 mod timer_registration;
 mod window_aliases;
@@ -1222,6 +1223,7 @@ pub struct Vm {
     /// boundary and registered by every allocation safepoint.
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
+    preserve_promise_table_capacity: bool,
     promise_jobs: VecDeque<PromiseJob>,
     /// Page realms bound even the implicit drains used by module evaluation.
     bounded_host_microtask_checkpoints: bool,

@@ -216,10 +216,21 @@ fallible queue admission. Error exits reconcile only after the rejected frame
 has dropped its execution leases, so sibling realms see those refunds too.
 Preparation and commit run no JavaScript or collection.
 
-Promise-record and other wait/control tables still use their separate measured
-replacement/delta protocol. Their preallocation, retained hash-allocation
-ownership, producer-side clones in other Promise algorithms, allocator overhead
-and broader native control/service storage remain open.
+Promise record creation leases a complete detached table candidate before
+managed object/trace admission and publishes it only after object creation
+succeeds. Collection may remove dead records during that operation; sparse-table
+shrinkage is deferred so an admitted spare slot survives. Commitment reuses any
+available slot, discarding a now-unnecessary candidate, or moves surviving
+records into the admitted replacement. No JavaScript runs during this handoff.
+Failure refunds detached storage and restores the ordinary reclamation policy.
+An existing empty cache survives a trace refusal without collection; a real
+collection may reclaim it without another allocation. Returned objects retain
+their requested prototype and normal Promise/GC ownership.
+
+Host-wait and other control tables still use their separate measured replacement/
+delta protocol. Their preallocation, retained hash-allocation ownership,
+producer-side clones in other Promise algorithms, allocator overhead and broader
+native control/service storage remain open.
 
 Ordinary and deferred dynamic-import waiters consume the same document
 reaction/request count. Ordinary registration checks table/vector growth and a

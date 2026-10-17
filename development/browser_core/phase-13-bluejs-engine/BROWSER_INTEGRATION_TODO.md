@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The Promise record checkpoint (2026-10-17) now keeps complete native table
+candidates detached through managed/trace admission and publishes them only
+after object creation. GC pruning preserves reusable slots; failure refunds
+candidates and restores cache reclamation policy. Twenty-three new finite cases
+and all 1129 prior controls pass: **1152 total**, with formatting and offline
+workspace/all-target Clippy. Host-wait/other table preallocation, retained-map
+ownership, producer clones, other buffers, shared programs and integrated gates
+remain open; M1u stays the latest accepted milestone.
+
 The Promise queue checkpoint (2026-10-17) now admits complete job/reaction
 replacements and incoming payload before publication. Async/module await stages
 queue and continuation-map storage together, preserves capacities/serials on
@@ -802,9 +811,11 @@ work and exposes its retained payload ledger.
       now have bounded checkpoints. Timer callback preparation, interval GC
       protection and argument handoff now join complete timer registration/root-
       batch staging plus admitted Promise job/reaction replacements and atomic
-      await queue/map publication; all 1129 selected controls pass. Shared
-      programs, other managed-container and scheduling backing buffers, wider
-      native storage and integrated acceptance remain open.
+      await queue/map publication. Detached Promise record creation now preserves
+      admitted slots through GC and refusal; all 1152 selected controls pass.
+      Shared programs, other managed-container and scheduling backing buffers,
+      retained-map ownership, wider native storage and integrated acceptance
+      remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -3971,6 +3982,75 @@ and staged/committed blob checks. Ordinary-library entry points expose the same
 fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
 tables/buffers, retained-map ownership, shared programs and integrated acceptance
 remain open.
+
+#### Promise record allocation follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit complete native replacement before managed allocation, keep
+candidate capacity unpublished until successful object creation and refund
+detached storage on trace/managed refusal. Support GC pruning during allocation
+without invalidating the prepared table or reallocating an admitted spare slot.
+Reuse slots freed by collection and keep old live records traced. Restore table
+reclamation on every exit; preserve normal Promise/GC behavior.
+
+- [x] Reproduce net-only growth and premature capacity publication on managed/
+      trace refusal with tiny finite cases.
+      All three original cases failed, then passed after detached creation.
+- [x] Implement detached record creation and GC-aware commitment; verify exact
+      allowances, GC/reuse, refusal/refunds and shared-owner lifetimes.
+      All twenty-three finite record creation cases pass, including cache
+      preservation without GC and reclamation after actual collection.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Host-wait/other table allocation, retained-map
+      ownership, other buffers and integrated acceptance remain open.
+
+Creation admits a complete detached native table before the managed allocation
+or its trace can run. The original table stays installed until a new object
+exists. During allocation, GC still removes dead records, while sparse-table
+shrinkage is deferred so an already-admitted spare slot remains usable.
+Commitment checks the pruned table: an available slot reuses its original
+backing and drops any unnecessary candidate; a still-full table moves surviving
+records into admitted storage. A final terminal-state check precedes publication.
+No JavaScript runs during this handoff.
+
+All exits restore the ordinary reclamation policy and reconcile ownership after
+detached candidates drop. An empty cache is reclaimed only if collection really
+ran, so trace refusal without GC preserves its previous capacity. The added
+cache control initially exposed overly eager empty-table release (capacity three
+became zero); collection-counter-aware cleanup closes that failure. Empty
+release performs no allocation and remains valid after failure.
+
+The three original cases failed, then passed. Twenty-three finite cases cover
+exact/full/reported-capacity refusal before heap allocation, spare-slot reuse at
+full scalar allowance, managed/trace refusal and sibling refunds, preserved
+status/reactions, GC-created spare slots and discarded candidates, live result
+edges through committed replacement, cache preservation/reclamation, empty
+refusal/retry, normal post-creation collection, VM destruction, document isolation,
+host-neutral policy attachment and custom-prototype protection. Fixtures use at
+most four small Promise records and scalar peers without represented large
+allocations. Host-wait/other table preallocation, retained hash-allocation
+ownership, producer clones, other buffers and integrated acceptance remain open.
+
+Validation: **1152 passed, zero failed/ignored**, across 41 executables and 97
+fixed selections: twenty-three new record-creation cases and all 1129 prior
+selected controls. Existing finite Promise, timer, GC, cancellation and navigation
+cases retain their behavior. Formatting, diff checks and offline workspace/all-
+target Clippy with warnings denied pass. Cargo reuses the workspace target with
+incremental compilation and dev/test debug artifact growth disabled. The same
+nine earlier resource/infinite-loop skips remain. Public timer/finalization
+selection names only finite cases; their large/resource/infinite cases and JSON
+resource sweeps remain unselected. No network/service replay, physical exhaustion
+probe, fresh full Test262, real Core/MCP replay, coverage result or integrated
+acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-promise-records-controls-20261017.py`,
+`/private/tmp/blueice-promise-records-commit-20261017.txt`,
+`/private/tmp/blueice-promise-records-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-promise-records-{red,first,expanded-first,cache-red,expanded,record-storage,fmt,clippy}-20261017.log`.
+`target/promise-records-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint.
+Host-wait/other tables, retained-map ownership, other buffers, shared programs and
+integrated acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
