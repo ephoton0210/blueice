@@ -56,6 +56,8 @@ use managed_bytes::ManagedBytes;
 mod realm_roots;
 pub(crate) use realm_roots::RealmRoot;
 mod object_storage;
+mod root_table;
+use root_table::RootTable;
 #[cfg(test)]
 mod tests;
 mod web_abort;
@@ -128,6 +130,7 @@ pub enum HeapError {
     ReadOnlyProperty,
     HeapLimitExceeded { limit: usize },
     CollectorStorageLimit,
+    RootStorageLimit,
     IdExhausted,
 }
 
@@ -158,6 +161,7 @@ impl fmt::Display for HeapError {
                 write!(f, "BlueJS managed heap limit exceeded ({limit} bytes)")
             }
             Self::IdExhausted => write!(f, "BlueJS heap identity counter exhausted"),
+            Self::RootStorageLimit => write!(f, "BlueJS root table native storage limit exceeded"),
             Self::CollectorStorageLimit => {
                 write!(f, "BlueJS collector native storage limit exceeded")
             }
@@ -1787,7 +1791,7 @@ pub struct Heap {
     closure_metadata: HashMap<ObjectId, ClosureMetadata>,
     nursery: Vec<ObjectId>,
     remembered: HashSet<ObjectId>,
-    roots: HashMap<RootId, ObjectId>,
+    roots: RootTable,
     released_realm_roots: Rc<std::cell::RefCell<Vec<RootId>>>,
     /// Heap operations run no JS and cannot reenter the VM. One admitted
     /// safepoint batch supplies roots and conditional VM side-table edges.

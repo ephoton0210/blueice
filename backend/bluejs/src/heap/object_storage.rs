@@ -502,6 +502,7 @@ impl Heap {
             .next_root
             .checked_add(1)
             .ok_or(HeapError::IdExhausted)?;
+        self.roots.prepare_registration()?;
         let id = RootId {
             heap: self.identity,
             serial: self.next_root,

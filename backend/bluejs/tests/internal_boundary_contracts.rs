@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_root_table_storage_contracts() {
+    blueice_bluejs::Vm::verify_root_table_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_module_error_reporting_contracts() {
     blueice_bluejs::Vm::verify_module_error_reporting_contracts();
 }

@@ -28,11 +28,9 @@ impl Vm {
             .expect("validated heap configuration reserves the first object");
         // Permanent root, released with the heap. Builtin properties and
         // callable methods are installed lazily by string_intrinsics.
-        heap.root(object_prototype)
-            .expect("a newly allocated object can be rooted");
+        heap.root(object_prototype)?;
         let array_prototype = heap.alloc_array(0, Some(object_prototype))?;
-        heap.root(array_prototype)
-            .expect("a newly allocated array can be rooted");
+        heap.root(array_prototype)?;
         Ok(Self {
             config,
             heap,

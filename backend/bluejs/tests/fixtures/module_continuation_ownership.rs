@@ -221,6 +221,7 @@ fn module_continuation_ownership_loader_replacement_resumes_the_original_program
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
             + latest
@@ -231,6 +232,7 @@ fn module_continuation_ownership_loader_replacement_resumes_the_original_program
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
             + latest
@@ -278,6 +280,7 @@ fn module_continuation_ownership_late_activation_attaches_a_displaced_snapshot()
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
             + retained
@@ -291,6 +294,7 @@ fn module_continuation_ownership_late_activation_attaches_a_displaced_snapshot()
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
     );
@@ -313,6 +317,7 @@ fn module_continuation_ownership_late_debugger_activation_retains_and_refunds_th
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
             + retained
@@ -325,6 +330,7 @@ fn module_continuation_ownership_late_debugger_activation_retains_and_refunds_th
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
     );
@@ -348,6 +354,7 @@ fn module_continuation_ownership_rejected_await_refunds_the_old_snapshot() {
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
     );
@@ -376,6 +383,7 @@ fn module_continuation_ownership_registration_refusal_releases_code_and_name_wit
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
     );
@@ -397,6 +405,7 @@ fn module_continuation_ownership_terminal_debugger_cleanup_refunds_the_old_snaps
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
     );

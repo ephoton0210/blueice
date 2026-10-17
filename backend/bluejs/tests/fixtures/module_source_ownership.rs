@@ -229,7 +229,7 @@ fn module_source_ownership_preloaded_sources_attach_once_when_bounded_mode_start
     vm.use_bounded_host_microtask_checkpoints().unwrap();
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + bytes
+        vm.own_scheduling_usage().payload_bytes + vm.heap.root_storage_bytes() + bytes
     );
     let before = vm.host_scheduling_snapshot();
     vm.use_bounded_host_microtask_checkpoints().unwrap();
@@ -244,7 +244,7 @@ fn module_source_ownership_source_names_deduplicate_without_charging_removed_nam
     assert!(vm.module_source_registry.contains("a") && vm.module_source_registry.contains("b"));
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.module_source_registry.retained_bytes()
+        vm.module_source_registry.retained_bytes() + vm.heap.root_storage_bytes()
     );
 }
 
@@ -257,7 +257,10 @@ fn module_source_ownership_cleanup_refunds_sources_after_terminal_failure() {
     assert!(vm.host_scheduling_snapshot().payload_bytes > 0);
     vm.host_scheduling.as_ref().unwrap().fail();
     clear(&mut vm);
-    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, 0);
+    assert_eq!(
+        vm.host_scheduling_snapshot().payload_bytes,
+        vm.heap.root_storage_bytes()
+    );
     assert_eq!(
         vm.check_scheduling_failure(),
         Err(RuntimeError::SchedulingLimit)
@@ -374,7 +377,9 @@ fn module_source_ownership_discarded_last_realm_releases_its_source_snapshot() {
     assert!(vm.shadow_realms.is_empty());
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes()
+        vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
     );
 }
 
@@ -390,9 +395,15 @@ fn module_source_ownership_empty_reserved_tables_stay_charged_until_the_last_own
         &*vm.text_module_sources as *const HashMap<String, String>
     );
     vm.set_text_module_sources(HashMap::new());
-    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, bytes);
+    assert_eq!(
+        vm.host_scheduling_snapshot().payload_bytes,
+        bytes + vm.heap.root_storage_bytes()
+    );
     drop(copy);
-    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, 0);
+    assert_eq!(
+        vm.host_scheduling_snapshot().payload_bytes,
+        vm.heap.root_storage_bytes()
+    );
 }
 
 #[cfg_attr(test, test)]

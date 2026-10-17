@@ -744,6 +744,24 @@ programs and integrated acceptance remain open.
 
 ### Document managed heaps
 
+Persistent root registries retain a separate native owner for their backing
+hash-table slots. Bootstrap roots and collector caches attach to the same
+document together; a failed attachment preserves live registrations and refunds
+candidate charges. Root growth prepares a complete replacement while old storage
+remains charged, checks reported capacity, then moves entries before publishing
+the next root ID. Refusal preserves entries, counters and the next identifier.
+
+An append that fits current reported spare capacity needs no new native storage.
+Deletion can change reported hash capacity without freeing its allocation, so
+the retained charge follows the allocation's original admitted capacity until
+replacement or release. Removing the final root drops the empty table and
+refunds its storage; released realm pins use the same removal path. These
+releases remain available after terminal failure. Native root-storage refusal
+becomes a noncatchable scheduling error; infallible rejection tracking latches
+the document failure instead of panicking or publishing an unrooted notification.
+Other heap tables, deferred-pin queues, shared programs and wider native/
+integrated acceptance remain open.
+
 Document scopes share one managed-storage envelope across the root VM and all
 ShadowRealms, including nested realms. The immutable root heap limit also
 bounds the document total. Each heap's storage counter joins that account once;

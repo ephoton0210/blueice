@@ -214,6 +214,9 @@ fn assert_refused(producer: Producer) {
 
 fn assert_existing_slot(producer: Producer) {
     let mut fixture = Fixture::new(producer, 5);
+    // This case exercises queue-slot reuse with one spare root-table slot.
+    let root = fixture.vm.heap.root(fixture.callback).unwrap();
+    fixture.vm.heap.unroot(root).unwrap();
     let capacity = fixture.vm.browser_tasks.capacity();
     assert!(capacity > fixture.vm.browser_tasks.len());
     let _owner = leave_room(&mut fixture.vm, Fixture::extra_payload(producer));

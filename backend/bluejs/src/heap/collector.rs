@@ -5,7 +5,7 @@
 //! Admitted reusable marking storage and owner-carrying mark results.
 
 use super::*;
-use crate::vm::{CollectorBudget, CollectorCharge};
+use crate::vm::{HeapNativeBudget, HeapNativeCharge};
 use std::ops::Deref;
 
 const NO_WAITER: usize = usize::MAX;
@@ -34,8 +34,8 @@ impl ProtectedRoots<'_> {
 pub(crate) struct CollectorMarks {
     heap: u64,
     marked: HashSet<ObjectId>,
-    charge: Option<CollectorCharge>,
-    budget: Option<CollectorBudget>,
+    charge: Option<HeapNativeCharge>,
+    budget: Option<HeapNativeBudget>,
 }
 impl Deref for CollectorMarks {
     type Target = HashSet<ObjectId>;
@@ -50,8 +50,8 @@ pub(super) struct CollectorWorkspace {
     waiters: Vec<Waiter>,
     heads: HashMap<ObjectId, usize>,
     marked: HashSet<ObjectId>,
-    budget: Option<CollectorBudget>,
-    charge: Option<CollectorCharge>,
+    budget: Option<HeapNativeBudget>,
+    charge: Option<HeapNativeCharge>,
 }
 fn vec_bytes<T>(values: &Vec<T>) -> usize {
     values.capacity().saturating_mul(size_of::<T>())
@@ -105,9 +105,10 @@ impl CollectorWorkspace {
             .saturating_add(self.marked.capacity().saturating_mul(size_of::<ObjectId>()))
     }
     fn fail(&self) -> HeapError {
-        self.budget
-            .as_ref()
-            .map_or(HeapError::CollectorStorageLimit, CollectorBudget::fail)
+        if let Some(budget) = &self.budget {
+            let _ = budget.fail();
+        }
+        HeapError::CollectorStorageLimit
     }
     fn clear(&mut self) {
         self.work.clear();
@@ -137,7 +138,11 @@ impl CollectorWorkspace {
         let mut staged = self
             .budget
             .as_ref()
-            .map(|budget| budget.reserve(forecast))
+            .map(|budget| {
+                budget
+                    .reserve(forecast)
+                    .map_err(|_| HeapError::CollectorStorageLimit)
+            })
             .transpose()?;
         let replacements = (|| {
             Ok::<_, HeapError>((
@@ -278,7 +283,11 @@ impl CollectorWorkspace {
             }
         }
         if let (Some(budget), None) = (&self.budget, &marks.charge) {
-            marks.charge = Some(budget.reserve(marks.marked.capacity() * size_of::<ObjectId>())?);
+            marks.charge = Some(
+                budget
+                    .reserve(marks.marked.capacity() * size_of::<ObjectId>())
+                    .map_err(|_| HeapError::CollectorStorageLimit)?,
+            );
         }
         marks.marked.clear();
         if let (Some(charge), Some(incoming)) = (&mut self.charge, marks.charge.take()) {
@@ -296,28 +305,40 @@ impl CollectorWorkspace {
 }
 
 impl Heap {
-    pub(crate) fn bind_collector_budget(
-        &mut self,
-        budget: CollectorBudget,
-    ) -> Result<(), HeapError> {
-        if let Some(current) = &self.collector.budget {
-            return if current.same_document(&budget) {
-                Ok(())
-            } else {
-                Err(HeapError::InvalidConfig)
-            };
+    pub(crate) fn bind_native_budget(&mut self, budget: HeapNativeBudget) -> Result<(), HeapError> {
+        match (self.roots.budget(), self.collector.budget.as_ref()) {
+            (Some(roots), Some(collector)) => {
+                return if roots.same_document(&budget) && collector.same_document(&budget) {
+                    Ok(())
+                } else {
+                    Err(HeapError::InvalidConfig)
+                };
+            }
+            (None, None) => {}
+            _ => return Err(HeapError::InvalidConfig),
         }
-        let charge = match budget.reserve(self.collector.retained_bytes()) {
+        // Neither owner is installed until both cached allocations fit. Root
+        // entries remain valid even if activation must discard collector scratch.
+        let root_charge = match budget.reserve(self.roots.retained_bytes()) {
             Ok(charge) => charge,
-            Err(error) => {
+            Err(_) => {
                 self.collector = CollectorWorkspace::default();
-                return Err(error);
+                return Err(HeapError::RootStorageLimit);
             }
         };
-        self.collector.charge = Some(charge);
+        let collector_charge = match budget.reserve(self.collector.retained_bytes()) {
+            Ok(charge) => charge,
+            Err(_) => {
+                self.collector = CollectorWorkspace::default();
+                return Err(HeapError::CollectorStorageLimit);
+            }
+        };
+        self.roots.bind_admitted(budget.clone(), root_charge);
+        self.collector.charge = Some(collector_charge);
         self.collector.budget = Some(budget);
         Ok(())
     }
+
     pub(crate) fn take_collection_error(&mut self) -> Option<HeapError> {
         self.collection_error.take()
     }
@@ -370,7 +391,7 @@ impl Heap {
         workspace.clear();
         let mut released = self.released_realm_roots.borrow_mut();
         released.sort_unstable_by_key(|root| (root.heap, root.serial));
-        for (root, id) in &self.roots {
+        for (root, id) in self.roots.iter() {
             if !ignored.contains(root)
                 && released
                     .binary_search_by_key(&(root.heap, root.serial), |root| {

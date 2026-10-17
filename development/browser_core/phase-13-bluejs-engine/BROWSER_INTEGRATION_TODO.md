@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The persistent root-table checkpoint (2026-10-17) now admits replacement hash
+capacity before root-ID publication and keeps bootstrap/Rust-held heaps charged.
+Root and collector caches bind together; refusal preserves registrations and
+terminal cleanup refunds released storage. Twenty-two new finite cases and all
+908 prior controls pass: **930 total**, with formatting and offline workspace/
+all-target Clippy. Other heap tables, deferred pin queues, broader report/event
+scratch, shared programs and wider gates remain open. M1u stays the latest
+accepted milestone.
+
 The pending module error reporting checkpoint (2026-10-17) now admits snapshot
 slots/names and roots every object value before consuming flags. Batches survive
 graph release and callback GC; interrupted delivery restores only unattempted
@@ -3238,6 +3247,78 @@ Evidence: `/private/tmp/blueice-module-reporting-controls-20261017.py`,
 and staged/committed blob checks. This is an M1z checkpoint. Broader report/event
 scratch, shared programs, managed-container backing buffers and wider native/
 integrated acceptance remain open.
+
+#### Persistent root table follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: retain admitted native ownership for the root registry's backing
+capacity, including bootstrap roots, Rust-held heaps and retained spare storage.
+Prepare complete replacement capacity while the old table is still owned;
+refusal preserves IDs, registrations and old entries. Attach existing root and
+collector storage to the same document once. Removal/released realm pins and heap
+destruction refund the right allocation without new admission during cleanup.
+
+- [x] Reproduce unowned capacity and registration before native refusal with
+      tiny offline cases through heap/VM root boundaries. Both original cases
+      failed, then passed after admission.
+- [x] Implement admitted root-table storage and native heap binding; twenty-two
+      finite cases cover growth, spare reuse, cleanup, activation, failure and GC.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Other heap/native buffers, shared programs and
+      wider integrated acceptance remain open.
+
+The root registry now owns its reported hash-table slot capacity in the document
+native account. Growth first admits the complete candidate allocation while the
+old allocation remains charged, reserves a detached table, checks reported
+capacity and transfers entries. The next root ID and registration counter advance
+only after preparation succeeds. Refusal refunds candidate storage and preserves
+all old entries, counters and the next identifier. Existing spare slots require
+no extra native admission; released identifiers remain unavailable for reuse.
+
+Removal can decrease reported hash capacity without freeing its allocation.
+The owner therefore retains the original admitted allocation size until a real
+replacement or final removal. Removing the last root drops the empty table and
+refunds storage, including released realm pins and cleanup after terminal abort.
+A Rust-held heap keeps the account alive after its original VM drops and refunds
+its allocation when the heap is destroyed.
+
+Generalize the collector budget bridge into a heap-native budget. Existing root
+and collector caches bind to one document together and only once. A refusal
+installs neither owner, preserves root registrations and discards only unadmitted
+collector scratch. A different document cannot adopt either owner. Root-storage
+refusal maps to the noncatchable scheduling limit. Infallible Promise rejection
+tracking latches that failure and reconciles storage before returning, with no
+panic or unrooted pending notification. Fallible bootstrap/foreign-realm callers
+propagate root refusal rather than assuming it cannot occur.
+
+The first two tiny cases failed before implementation. Expanding the selection
+exposed two rejection-producer panics (native admission and injected root-ID
+refusal); all twenty-two cases now pass. The first inherited run exposed 49
+failures across 21 selections. Exact aggregate assertions now include heap root
+storage, heap-drop assertions account for its refund, and tests isolating other
+container boundaries prewarm only a few reusable root slots. These changes keep
+the original boundary assertions while adding the new independent native owner.
+
+Validation: **930 passed, zero failed/ignored**, across 39 executables and 77
+fixed selections: twenty-two new root-table cases and all 908 prior selected
+controls. Formatting, diff checks and offline workspace/all-target Clippy with
+warnings denied pass. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled. The same nine legacy
+resource/infinite-loop cases remain excluded and JSON resource sweeps are not
+selected. Execution cases are offline, fixed and finite. No network/service
+replay, physical exhaustion probe, fresh full Test262, real Core/MCP replay,
+coverage result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-root-table-controls-20261017.py`,
+`/private/tmp/blueice-root-table-commit-20261017.txt`,
+`/private/tmp/blueice-root-table-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-root-table-{red,expanded,root-table,fmt,clippy}-20261017.log`.
+Initial inherited failures are preserved in
+`/private/tmp/blueice-root-table-*-baseline-red-20261017.log`.
+`target/root-table-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
+heap tables, deferred pin queues, broader report/event scratch, shared programs
+and wider native/integrated acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

@@ -2271,9 +2271,7 @@ impl Vm {
             let foreign_global = *realm.globals.get("globalThis").expect(
                 "install_test262_harness initialized and retained this fresh realm's global",
             );
-            let target_root = realm.heap.root(foreign_global).expect(
-                "the unexposed fresh realm has consumed only the finite harness root registrations",
-            );
+            let target_root = realm.heap.root(foreign_global)?;
 
             let record = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
             self.stack.push(Value::Object(record));

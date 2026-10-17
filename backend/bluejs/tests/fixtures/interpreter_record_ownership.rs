@@ -324,7 +324,9 @@ fn interpreter_records_reconcile_direct_interpreter_exit() {
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes()
+        vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
     );
     assert_eq!(
         peer.host_scheduling_snapshot().payload_bytes,

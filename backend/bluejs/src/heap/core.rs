@@ -73,7 +73,7 @@ impl Heap {
             closure_metadata: HashMap::new(),
             nursery: Vec::new(),
             remembered: HashSet::new(),
-            roots: HashMap::new(),
+            roots: RootTable::default(),
             released_realm_roots: Rc::default(),
             scoped_trace: None,
             collector: CollectorWorkspace::default(),

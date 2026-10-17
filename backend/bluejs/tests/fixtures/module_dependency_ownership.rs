@@ -487,6 +487,7 @@ fn module_dependency_resource_abort_refunds_walk_leases() {
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_registry.retained_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()

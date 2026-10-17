@@ -113,10 +113,18 @@ impl Vm {
         if self.admit_scheduling_work(extra).is_err() {
             return;
         }
-        let root = self
-            .heap
-            .root(promise)
-            .expect("a newly rejected tracked Promise is live");
+        let root = match self.heap.root(promise) {
+            Ok(root) => root,
+            Err(_) => {
+                // This producer is infallible. Root admission/identifier
+                // refusal must latch the document abort before publication.
+                if let Some(scope) = &self.host_scheduling {
+                    let _ = scope.fail();
+                }
+                self.reconcile_scheduling_ownership();
+                return;
+            }
+        };
         self.host_rejections
             .as_mut()
             .unwrap()

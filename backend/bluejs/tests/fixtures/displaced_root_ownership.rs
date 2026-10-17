@@ -142,10 +142,11 @@ fn displaced_root_ownership_saved_edges_survive_collection_and_release() {
     vm.stack.truncate(1);
     let execution = vm.suspend_module_execution();
     let before = vm.host_scheduling_usage().unwrap().payload_bytes;
+    let root_bytes = vm.heap.root_storage_bytes();
     let mut roots = vm.root_suspended_module_execution(&execution).unwrap();
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes - before,
-        roots.retained_bytes()
+        roots.retained_bytes() + vm.heap.root_storage_bytes() - root_bytes
     );
     collect(&mut vm);
     assert!(objects.iter().all(|&id| vm.heap.contains(id)));

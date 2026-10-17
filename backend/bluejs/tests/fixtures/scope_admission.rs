@@ -83,6 +83,13 @@ fn scope_admission_spare_record_slots_charge_only_the_new_slot_list() {
             "var first=1,second=2;"
         });
         vm.prepare_root_execution(&code, false).unwrap();
+        // Lexical cells use spare heap root slots independently of scope lists.
+        let warm: Vec<_> = (0..4)
+            .map(|_| vm.heap.root(vm.object_prototype).unwrap())
+            .collect();
+        for root in warm {
+            vm.heap.unroot(root).unwrap();
+        }
         vm.active_scopes.reserve(4);
         vm.active_scope_slots.reserve(4);
         let before = vm.host_scheduling_usage().unwrap().payload_bytes;
@@ -113,7 +120,10 @@ fn scope_admission_spare_record_slots_charge_only_the_new_slot_list() {
             );
         }
         assert_eq!(
-            vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes() - before,
+            vm.own_scheduling_usage().payload_bytes
+                + vm.heap.collector_storage_bytes()
+                + vm.heap.root_storage_bytes()
+                - before,
             bytes
         );
         assert_eq!(vm.displaced_execution_control_bytes.get(), 0);

@@ -49,6 +49,7 @@ fn module_graph_ownership_retained_records_and_names_have_a_native_owner() {
             - vm.own_scheduling_usage().payload_bytes
             - vm.module_value_storage_bytes()
             - vm.heap.collector_storage_bytes()
+            - vm.heap.root_storage_bytes()
             - vm.module_registry.retained_bytes()
             - vm.module_root_storage_bytes(),
         bytes
@@ -72,6 +73,7 @@ fn module_graph_ownership_rust_held_table_retains_and_then_refunds_its_owner() {
             - vm.own_scheduling_usage().payload_bytes
             - vm.module_value_storage_bytes()
             - vm.heap.collector_storage_bytes()
+            - vm.heap.root_storage_bytes()
             - vm.module_registry.retained_bytes(),
         bytes + graph.roots.retained_bytes() + values
     );
@@ -85,6 +87,7 @@ fn module_graph_ownership_rust_held_table_retains_and_then_refunds_its_owner() {
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_registry.retained_bytes()
     );
 }
@@ -284,6 +287,7 @@ fn module_graph_ownership_late_activation_attaches_metadata_once() {
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_registry.retained_bytes()
             + bytes
             + vm.module_root_storage_bytes()
@@ -349,6 +353,7 @@ fn module_graph_ownership_linking_rollback_refunds_new_names_and_preserves_old_r
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_registry.retained_bytes()
             + snapshot.retained_bytes()
             + bytes
@@ -385,6 +390,7 @@ fn module_graph_ownership_fresh_link_failure_releases_all_record_owners() {
         observer.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + snapshot.retained_bytes()
     );
 }

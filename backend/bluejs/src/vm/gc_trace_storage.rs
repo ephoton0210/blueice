@@ -91,7 +91,7 @@ impl Vm {
     /// Retained capacity is reusable even during terminal cleanup. Growth
     /// admits both full replacements while the old allocations coexist.
     pub(super) fn prepare_gc_trace(&mut self) -> Result<PreparedGcTrace, RuntimeError> {
-        self.bind_collector_budget()?;
+        self.bind_native_budget()?;
         let terminal_cleanup = self.check_scheduling_failure().is_err();
         let mut roots = 0usize;
         let mut edges = 0usize;

@@ -2,14 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Bind heap collector storage to the document native account.
+//! Bind collector and persistent-root storage to the document native account.
 
 use super::*;
 
 impl Vm {
-    pub(super) fn bind_collector_budget(&mut self) -> Result<(), RuntimeError> {
+    pub(super) fn bind_native_budget(&mut self) -> Result<(), RuntimeError> {
         if let Some(scope) = &self.host_scheduling {
-            self.heap.bind_collector_budget(scope.collector_budget())?;
+            self.heap.bind_native_budget(scope.heap_native_budget())?;
         }
         Ok(())
     }

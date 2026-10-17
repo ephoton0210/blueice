@@ -139,6 +139,7 @@ fn synthetic_value_ownership_preloaded_values_attach_once_and_refused_activation
     unbounded.set_module_loader_context("entry", modules);
     unbounded.use_bounded_host_microtask_checkpoints().unwrap();
     let expected = unbounded.own_scheduling_usage().payload_bytes
+        + unbounded.heap.root_storage_bytes()
         + unbounded.text_module_sources.retained_bytes()
         + unbounded.module_registry.retained_bytes()
         + bytes;
@@ -316,6 +317,7 @@ fn synthetic_value_ownership_json_retains_only_the_derived_owner_and_refunds_ref
         let mut roots = ModuleRoots::default();
         let result = synthesize_json(&mut vm, source, &mut roots);
         let before = vm.own_scheduling_usage().payload_bytes
+            + vm.heap.root_storage_bytes()
             + vm.text_module_sources.retained_bytes()
             + vm.json_module_sources.retained_bytes();
         if source == "{" {
@@ -433,6 +435,7 @@ fn synthetic_value_ownership_shadow_import_shares_primitives_filters_objects_and
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.text_module_sources.retained_bytes()
             + vm.json_module_sources.retained_bytes()
     );

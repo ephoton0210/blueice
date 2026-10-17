@@ -139,6 +139,11 @@ fn module_root_ownership_reservation_exact_budget_refusal_and_drop_are_accounted
 fn module_root_ownership_spare_slots_need_no_extra_capacity_at_full_scalar_quota() {
     let mut vm = bounded_vm();
     let id = object(&mut vm);
+    // Reuse both the segment slot and the independently owned heap root slot.
+    let warm: Vec<_> = (0..4).map(|_| vm.heap.root(id).unwrap()).collect();
+    for root in warm {
+        vm.heap.unroot(root).unwrap();
+    }
     let mut roots = ModuleRoots::default();
     roots
         .root_object(&mut vm.heap, vm.host_scheduling.as_ref(), id)
@@ -265,6 +270,7 @@ fn module_root_ownership_late_activation_attaches_root_segments_once() {
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
             + vm.module_registry.retained_bytes()
             + vm.module_record_storage_bytes()
             + bytes

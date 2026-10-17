@@ -337,28 +337,26 @@ impl SharedSchedulingCharge {
     }
 }
 
-/// Opaque access to the document native account for collector storage.
+/// Opaque access to the document native account for heap native storage.
 #[derive(Clone)]
-pub(crate) struct CollectorBudget {
+pub(crate) struct HeapNativeBudget {
     account: Rc<RefCell<Account>>,
 }
-impl CollectorBudget {
-    pub(crate) fn reserve(&self, bytes: usize) -> Result<SharedSchedulingCharge, crate::HeapError> {
+impl HeapNativeBudget {
+    pub(crate) fn reserve(&self, bytes: usize) -> Result<SharedSchedulingCharge, RuntimeError> {
         let mut charge = SharedSchedulingCharge {
             account: self.account.clone(),
             bytes: 0,
         };
-        charge
-            .resize(bytes)
-            .map_err(|_| crate::HeapError::CollectorStorageLimit)?;
+        charge.resize(bytes)?;
         Ok(charge)
     }
     pub(crate) fn same_document(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.account, &other.account)
     }
-    pub(crate) fn fail(&self) -> crate::HeapError {
+    pub(crate) fn fail(&self) -> RuntimeError {
         self.account.borrow_mut().failed = true;
-        crate::HeapError::CollectorStorageLimit
+        RuntimeError::SchedulingLimit
     }
 }
 
@@ -369,8 +367,8 @@ impl Drop for SharedSchedulingCharge {
 }
 
 impl SchedulingScope {
-    pub(super) fn collector_budget(&self) -> CollectorBudget {
-        CollectorBudget {
+    pub(super) fn heap_native_budget(&self) -> HeapNativeBudget {
+        HeapNativeBudget {
             account: self.account.clone(),
         }
     }
@@ -1044,7 +1042,7 @@ impl Vm {
         if self.host_scheduling.is_none() {
             return Ok(());
         }
-        self.bind_collector_budget()?;
+        self.bind_native_budget()?;
         self.check_scheduling_failure()?;
         let own = self.own_scheduling_usage();
         self.last_execution_payload_bytes = self.owned_execution_payload_bytes();

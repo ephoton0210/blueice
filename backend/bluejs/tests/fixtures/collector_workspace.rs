@@ -62,7 +62,7 @@ fn collector_workspace_minor_refusal_preserves_the_nursery() {
 
 fn bounded_heap(vm: &Vm, config: crate::HeapConfig) -> Heap {
     let mut heap = Heap::new(config).unwrap();
-    heap.bind_collector_budget(vm.host_scheduling.as_ref().unwrap().collector_budget())
+    heap.bind_native_budget(vm.host_scheduling.as_ref().unwrap().heap_native_budget())
         .unwrap();
     heap
 }
@@ -134,6 +134,7 @@ fn collector_workspace_cache_has_one_native_owner_and_reuses_at_full_quota() {
     let mut heap = bounded_heap(&vm, crate::HeapConfig::default());
     let object = heap.alloc_object(None).unwrap();
     heap.root(object).unwrap();
+    let roots = heap.root_storage_bytes();
     let before = vm.host_scheduling_snapshot().payload_bytes;
     heap.try_collect_major().unwrap();
     let bytes = heap.collector_storage_bytes();
@@ -149,7 +150,7 @@ fn collector_workspace_cache_has_one_native_owner_and_reuses_at_full_quota() {
     );
     drop(peer);
     drop(heap);
-    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
+    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before - roots);
 }
 
 #[cfg_attr(test, test)]
@@ -158,6 +159,7 @@ fn collector_workspace_returned_marks_outlive_the_heap_without_early_refund() {
     let mut heap = bounded_heap(&vm, crate::HeapConfig::default());
     let object = heap.alloc_object(None).unwrap();
     heap.root(object).unwrap();
+    let roots = heap.root_storage_bytes();
     let before = vm.host_scheduling_snapshot().payload_bytes;
     let marks = heap.realm_reachable(&HashSet::new(), &[]).unwrap();
     assert!(marks.contains(&object));
@@ -170,10 +172,10 @@ fn collector_workspace_returned_marks_outlive_the_heap_without_early_refund() {
     drop(heap);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        before + marks_bytes
+        before - roots + marks_bytes
     );
     drop(marks);
-    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
+    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before - roots);
     assert!(vm.check_scheduling_failure().is_ok());
 }
 
@@ -270,12 +272,12 @@ fn collector_workspace_late_binding_admits_existing_capacity() {
     let object = heap.alloc_object(None).unwrap();
     heap.root(object).unwrap();
     heap.try_collect_major().unwrap();
-    let bytes = heap.collector_storage_bytes();
+    let bytes = heap.collector_storage_bytes() + heap.root_storage_bytes();
     let before = vm.host_scheduling_snapshot().payload_bytes;
-    heap.bind_collector_budget(vm.host_scheduling.as_ref().unwrap().collector_budget())
+    heap.bind_native_budget(vm.host_scheduling.as_ref().unwrap().heap_native_budget())
         .unwrap();
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before + bytes);
-    heap.bind_collector_budget(vm.host_scheduling.as_ref().unwrap().collector_budget())
+    heap.bind_native_budget(vm.host_scheduling.as_ref().unwrap().heap_native_budget())
         .unwrap();
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before + bytes);
 }
@@ -289,9 +291,10 @@ fn collector_workspace_late_binding_refusal_drops_only_unadmitted_cache() {
     heap.try_collect_major().unwrap();
     assert!(heap.collector_storage_bytes() > 0);
     let before = heap.stats();
-    let _peer = leave_room(&mut vm, 0);
+    let roots = heap.root_storage_bytes();
+    let _peer = leave_room(&mut vm, roots);
     assert_eq!(
-        heap.bind_collector_budget(vm.host_scheduling.as_ref().unwrap().collector_budget()),
+        heap.bind_native_budget(vm.host_scheduling.as_ref().unwrap().heap_native_budget()),
         Err(HeapError::CollectorStorageLimit)
     );
     assert_eq!(heap.stats(), before);
@@ -299,7 +302,7 @@ fn collector_workspace_late_binding_refusal_drops_only_unadmitted_cache() {
     assert_eq!(heap.collector_storage_bytes(), 0);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        MAX_HOST_SCHEDULING_BYTES
+        MAX_HOST_SCHEDULING_BYTES - roots
     );
 }
 

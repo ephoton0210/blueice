@@ -213,7 +213,9 @@ fn host_wait_root_refusal_refunds_argument_leases_and_reconciles_capacity() {
             .borrow()
             .usage
             .payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes()
+        vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
     );
 }
 

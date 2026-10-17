@@ -200,9 +200,15 @@ fn module_registry_ownership_full_budget_snapshots_refund_only_after_the_last_ow
     );
     drop(peer);
     vm.host_scheduling.as_ref().unwrap().fail();
-    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, bytes);
+    assert_eq!(
+        vm.host_scheduling_snapshot().payload_bytes,
+        bytes + vm.heap.root_storage_bytes()
+    );
     drop(snapshot);
-    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, 0);
+    assert_eq!(
+        vm.host_scheduling_snapshot().payload_bytes,
+        vm.heap.root_storage_bytes()
+    );
     assert_eq!(
         vm.check_scheduling_failure(),
         Err(RuntimeError::SchedulingLimit)
@@ -213,7 +219,7 @@ fn module_registry_ownership_full_budget_snapshots_refund_only_after_the_last_ow
 fn module_registry_ownership_empty_reserved_tables_retain_their_charge() {
     let mut vm = bounded_vm();
     let data = HashMap::with_capacity(4);
-    let expected = header_bytes() + map_slots(&data);
+    let expected = header_bytes() + map_slots(&data) + vm.heap.root_storage_bytes();
     vm.set_module_loader_context("", data);
     let snapshot = vm.module_registry.clone();
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, expected);
@@ -221,7 +227,10 @@ fn module_registry_ownership_empty_reserved_tables_retain_their_charge() {
     vm.set_module_loader_context("", HashMap::new());
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, expected);
     drop(snapshot);
-    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, 0);
+    assert_eq!(
+        vm.host_scheduling_snapshot().payload_bytes,
+        vm.heap.root_storage_bytes()
+    );
 }
 
 #[cfg_attr(test, test)]
@@ -442,7 +451,9 @@ fn module_registry_ownership_shadow_import_shares_unchanged_code_until_the_last_
     assert!(vm.shadow_realms.is_empty());
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes()
+        vm.own_scheduling_usage().payload_bytes
+            + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
     );
 }
 

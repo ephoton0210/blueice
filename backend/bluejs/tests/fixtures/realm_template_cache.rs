@@ -199,7 +199,12 @@ fn realm_template_cache_spare_entry_uses_no_fictitious_growth_charge() {
     let second = vm.template_object(&code.templates[1]).unwrap();
     assert_ne!(first, second);
     assert_eq!(vm.templates.capacity(), capacity);
-    assert_eq!(vm.own_scheduling_usage().payload_bytes, before);
+    assert_eq!(
+        vm.own_scheduling_usage().payload_bytes
+            + vm.heap.root_storage_bytes()
+            + vm.heap.collector_storage_bytes(),
+        before
+    );
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
 }
 

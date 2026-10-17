@@ -141,6 +141,13 @@ fn global_binding_admission_exact_budget_and_one_byte_refusal() {
                 };
                 vm.prepare_root_execution(&code, false).unwrap();
                 vm.global("globalThis").unwrap();
+                // Isolate declaration admission from heap root-table growth.
+                let warm: Vec<_> = (0..4)
+                    .map(|_| vm.heap.root(vm.object_prototype).unwrap())
+                    .collect();
+                for root in warm {
+                    vm.heap.unroot(root).unwrap();
+                }
                 if spare {
                     vm.global_bindings.reserve(7);
                     vm.script_global_slots.reserve(7);
@@ -273,7 +280,10 @@ fn global_binding_admission_persistent_capacity_survives_frames_and_releases_wit
     assert!(bytes > 0);
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
-        bytes + vm.gc_trace_cache.retained_bytes() + vm.heap.collector_storage_bytes()
+        bytes
+            + vm.gc_trace_cache.retained_bytes()
+            + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
     );
     let before = vm.host_scheduling_usage().unwrap().payload_bytes;
     let (name, binding) = vm.global_bindings.remove_entry("retained").unwrap();
@@ -297,7 +307,9 @@ fn global_binding_admission_persistent_capacity_survives_frames_and_releases_wit
     assert_eq!(vm.global_binding_storage_bytes(), 0);
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
-        vm.gc_trace_cache.retained_bytes() + vm.heap.collector_storage_bytes()
+        vm.gc_trace_cache.retained_bytes()
+            + vm.heap.collector_storage_bytes()
+            + vm.heap.root_storage_bytes()
     );
 }
 
@@ -537,7 +549,9 @@ fn global_binding_admission_eval_restoration_reconciles_alias_storage_to_peers()
         }
         assert_eq!(
             peer.host_scheduling_snapshot().payload_bytes,
-            vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes()
+            vm.own_scheduling_usage().payload_bytes
+                + vm.heap.collector_storage_bytes()
+                + vm.heap.root_storage_bytes()
         );
         assert_eq!(
             vm.global_binding_value("child").unwrap(),

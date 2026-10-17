@@ -21,6 +21,7 @@ fn extra_native_bytes(vm: &Vm) -> usize {
         - vm.module_record_storage_bytes()
         - vm.module_root_storage_bytes()
         - vm.heap.collector_storage_bytes()
+        - vm.heap.root_storage_bytes()
 }
 
 #[cfg_attr(test, test)]
@@ -360,7 +361,10 @@ fn module_value_ownership_error_payload_releases_before_weak_header_pruning() {
     assert_eq!(vm.module_error_origins[0].lease.bytes.get(), header);
     vm.prune_module_error_origins();
     vm.reconcile_scheduling_ownership();
-    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, 0);
+    assert_eq!(
+        vm.host_scheduling_snapshot().payload_bytes,
+        vm.heap.root_storage_bytes()
+    );
 }
 
 #[cfg_attr(test, test)]
