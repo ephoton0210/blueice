@@ -438,6 +438,27 @@ remain open.
 The superseded direct reaction append helpers are compiled only for test/coverage
 fixtures; production await/Then registration uses the prepared work boundary.
 
+After heap collection removes dead Promise records, continuation liveness is
+marked in the already-admitted frame entries. Surviving Promise reactions and
+queued ModuleAwait/AsyncAwait jobs mark their matching module/function frame;
+the two serial namespaces remain independent. Unknown serials create no entries,
+and duplicate owners mark the same entry. Retention consumes each mark, so a
+removed last reaction/job releases its frame on the next pruning pass. New and
+re-suspended frames initialize their marks empty, including generator and debugger
+paths. These bits are native record storage accounted through the existing map
+allocation ledger, rather than separate native buffers.
+
+This replaces two temporary HashSets allocated at every post-heap pruning pass.
+The owner walk and map retention remain linear in their traversed storage; no
+per-collection set, additional native admission or scan of all owners for each
+frame is required. The marks introduce no heap roots and leave the existing
+Promise/continuation ownership edges unchanged. Queued work continues to keep its
+frame/local values live; orphaned frames and their captured values can collect.
+Terminal cleanup can discard unowned frames without new headroom while the
+staging guard retains old table backing. Optional map reclamation remains a
+separate guarded/admitted producer. Other pruning paths, including disposal-map
+compaction, and wider native-buffer ownership remain open.
+
 Finally-thunk provenance uses a weak retained-allocation map too. Pruning returns
 dead filename buffers without refunding retained hash backing. Guarded scheduling
 reclamation skips staged maps, funds optional smaller replacements under native

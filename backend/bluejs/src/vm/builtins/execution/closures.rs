@@ -512,6 +512,7 @@ impl Vm {
                         suspension.take().expect("await prepared its stack buffer"),
                     );
                     let state = AsyncContinuation {
+                        gc_live: false,
                         generator: None,
                         target: async_promise.expect("async function has a promise"),
                         code: code.clone(),

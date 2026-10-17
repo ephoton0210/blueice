@@ -6,6 +6,14 @@
 
 use super::*;
 
+#[cfg(test)]
+#[path = "../../tests/fixtures/allocation_observer.rs"]
+mod allocation_observer;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/continuation_pruning.rs"]
+mod continuation_pruning_tests;
+
 impl Vm {
     pub(super) fn visit_await_continuation_references(
         &self,
@@ -217,36 +225,42 @@ impl Vm {
             .retain(|promise, _| self.heap.contains(*promise));
         self.promise_thunk_origins
             .retain(|state, _| self.heap.contains(*state));
-        let mut modules = HashSet::new();
-        let mut functions = HashSet::new();
-        for record in self.promises.values() {
-            for reaction in &record.reactions {
-                match reaction {
-                    PromiseReaction::ModuleAwait { continuation } => {
-                        modules.insert(*continuation);
+        // The surviving records and queued jobs are the only resumption owners.
+        // Mark the already-admitted frame slots directly: post-heap cleanup
+        // must not allocate temporary sets or acquire native headroom.
+        {
+            let mut mark = |module, serial: &u64| {
+                if module {
+                    if let Some(frame) = self.module_continuations.get_mut(serial) {
+                        frame.gc_live = true;
                     }
-                    PromiseReaction::AsyncAwait { continuation } => {
-                        functions.insert(*continuation);
+                } else if let Some(frame) = self.async_continuations.get_mut(serial) {
+                    frame.gc_live = true;
+                }
+            };
+            for record in self.promises.values() {
+                for reaction in &record.reactions {
+                    match reaction {
+                        PromiseReaction::ModuleAwait { continuation } => mark(true, continuation),
+                        PromiseReaction::AsyncAwait { continuation } => mark(false, continuation),
+                        _ => {}
                     }
+                }
+            }
+            for job in &self.promise_jobs {
+                match job {
+                    PromiseJob::ModuleAwait { continuation, .. } => mark(true, continuation),
+                    PromiseJob::AsyncAwait { continuation, .. } => mark(false, continuation),
                     _ => {}
                 }
             }
         }
-        for job in &self.promise_jobs {
-            match job {
-                PromiseJob::ModuleAwait { continuation, .. } => {
-                    modules.insert(*continuation);
-                }
-                PromiseJob::AsyncAwait { continuation, .. } => {
-                    functions.insert(*continuation);
-                }
-                _ => {}
-            }
-        }
+        // Consuming marks makes each collection independent. Duplicate owners
+        // retain one frame, and removing the last owner drops it next time.
         self.module_continuations
-            .retain(|serial, _| modules.contains(serial));
+            .retain(|_, frame| std::mem::take(&mut frame.gc_live));
         self.async_continuations
-            .retain(|serial, _| functions.contains(serial));
+            .retain(|_, frame| std::mem::take(&mut frame.gc_live));
         self.reclaim_scheduling_maps();
     }
 }

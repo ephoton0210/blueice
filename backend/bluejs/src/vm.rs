@@ -496,6 +496,8 @@ struct ModuleGraphState {
 /// carries the live lexical cells, stack and realm state; `pc` points just
 /// after the Await opcode, where its settlement value is pushed on resume.
 struct ModuleContinuation {
+    /// Post-heap pruning marks live owners in place, then consumes the bit.
+    gc_live: bool,
     module: String,
     module_charge: execution_payload::ExecutionPayloadCharge,
     code: ModuleCode,
@@ -510,6 +512,8 @@ struct ModuleContinuation {
 /// module continuation: later async generators and async iteration must be
 /// able to reuse the same frame, rooting, and completion machinery.
 struct AsyncContinuation {
+    /// Post-heap pruning marks live owners in place, then consumes the bit.
+    gc_live: bool,
     /// `Some` makes this an async-generator request frame rather than an
     /// ordinary async-function frame. The request Promise remains `target`.
     generator: Option<ObjectId>,

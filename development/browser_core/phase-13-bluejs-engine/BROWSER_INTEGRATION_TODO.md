@@ -64,6 +64,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The continuation-pruning scratch follow-up (2026-10-17) now marks stored frames
+in place instead of allocating two unadmitted serial-ID HashSets after heap GC.
+Three tiny old-code observations failed with 1/1/2 allocation attempts and now
+pass without scratch. Sixteen new groups and all 1513 prior selected controls
+pass: **1529 total**, across 47 executables and 137 fixed selections. Formatting
+and offline workspace/all-target Clippy pass. Other input/origin producers,
+retained maps, heap/host buffers, shared programs and integrated acceptance
+remain open; M1u stays the latest accepted milestone.
+
 The module-referrer retained-storage follow-up (2026-10-17) now retains weak
 hash backing and independently leases closure/call preparations after VM
 destruction. Finite cases reproduced lost detached charges, missing reclamation,
@@ -5513,6 +5522,82 @@ manifest at `/private/tmp/blueice-referrer-storage-capacity-attempt-20261017.jso
 The ordinary-library entry point exposes the same fixtures; no fresh coverage
 result is claimed. This remains an M1z implementation checkpoint with wider
 acceptance open.
+
+#### Continuation-pruning scratch follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: remove temporary native serial-ID sets from post-heap continuation
+liveness pruning. Keep pending-reaction and queued-job ownership semantics, with
+separate module/function serial namespaces. Each pass must consume its marks so
+removing the last owner releases its frame. Preserve local-object/generator
+reachability, native refunds and terminal cleanup without requiring new scratch
+headroom. Optional table reclamation remains a separate guarded producer.
+
+- [x] Reproduce unadmitted scratch with one pending async frame, one pending
+      module frame and both queued frame kinds: **0/3 passed** before the fix,
+      observing respectively **1, 1 and 2** allocation attempts.
+- [x] Replace the two temporary HashSets with in-place frame-owner marks;
+      original finite allocation observations pass **3/3** after implementation.
+- [x] Complete expanded finite ownership cases, fixed offline controls/static
+      checks, evidence audit and the detailed English commit.
+
+Surviving Promise records and queued await jobs mark their corresponding stored
+continuations directly. Unknown serials create no frame, duplicate owners retain
+one frame and module/function serials remain independent. Retention consumes each
+mark instead of carrying it into the next pass. Every creation/re-suspension and
+debugger/generator path initializes the bit empty. The existing retained map
+ledger accounts for the native record layout, including this scalar metadata.
+The owner traversal and map retention keep their linear traversal shape without
+replacing the old sets with repeated scans of all owners for each frame.
+
+No new heap root or Promise/continuation edge is introduced. Real collection and
+resumption preserve local objects held by live pending/queued frames; removing
+all external owners lets orphan frames and their local objects collect. Mark
+reset also releases frames when their last native reaction/job disappears.
+Terminal cleanup can drop frame payloads at a full numerical quota while the
+shared guard preserves old backing, then release empty backing once the guard
+ends. Other post-heap pruning paths, including disposal-map compaction, remain
+outside this scratch-removal checkpoint.
+
+The allocation observer exists only in the unit-test binary. It forwards every
+allocation/reallocation unchanged to System, never refuses or resizes a request,
+and counts only the current test thread during the fixed operation. Its scalar
+counter saturates rather than overflowing. A scalar
+peer leaves zero native admission headroom without representing a large payload.
+The three tiny cases observe the actual post-heap pruning boundary with optional
+map replacement guarded off; allocator behavior and production builds are
+unchanged. Thirteen functional cases are also exposed through the ordinary-library
+fixture entry point. No fresh coverage result is claimed.
+
+The first expanded run was **13/16 passed**. Three collection fixtures changed
+only global object properties while declared var bindings still retained the
+values. They now use normal JavaScript assignment to clear both owners and verify
+that the binding reads null before collection. The failed fixture/log snapshot
+remains separate evidence; the production marking implementation is unchanged by
+that refinement.
+
+Validation: **1529 passed, zero failed/ignored**, across 47 executables and 137
+fixed selections: sixteen new groups and all 1513 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass on the final source. Source, staged and post-commit audits bind that
+source to the runner, executables, logs, earlier fixture evidence and detailed
+English commit message. Cargo reuses the workspace target with
+incremental compilation and dev/test debug artifact growth disabled. Other input/
+origin producers, retained maps, heap/host buffers, shared programs and integrated
+gates remain open; M1u stays the latest accepted milestone. The same nine explicit
+resource/infinite-loop skips and other finite-public-case exclusions remain.
+No represented large allocation, exhaustion/infinite probe, network/service/
+listener/Core/MCP replay, privileged validation, process killing, fresh full
+Test262, coverage or integrated acceptance is claimed.
+
+Evidence paths: `/private/tmp/blueice-continuation-pruning-controls-20261017.py`,
+`/private/tmp/blueice-continuation-pruning-commit-20261017.txt`,
+`/private/tmp/blueice-continuation-pruning-audit-20261017.py`, logs matching
+`/private/tmp/blueice-continuation-pruning-*-20261017.log`, and
+`target/continuation-pruning-source-20261017.json`. The first expanded attempt is
+preserved under `/private/tmp/blueice-continuation-pruning-expanded-attempt-20261017/`,
+with its hashed manifest at
+`/private/tmp/blueice-continuation-pruning-expanded-attempt-20261017.json`.
+This remains an M1z implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

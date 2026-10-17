@@ -847,6 +847,7 @@ impl Vm {
                     );
                     suspended_async = Some((
                         AsyncContinuation {
+                            gc_live: false,
                             generator: Some(*generator),
                             target,
                             code: code.clone(),

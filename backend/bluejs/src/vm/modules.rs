@@ -1047,6 +1047,7 @@ impl Vm {
                 record.suspended = true;
                 match self.suspend_module_await(
                     ModuleContinuation {
+                        gc_live: false,
                         module: next_module,
                         module_charge: next_module_charge,
                         code,
@@ -1656,6 +1657,7 @@ impl Vm {
             self.module_continuations.release_empty();
         }
         let ModuleContinuation {
+            gc_live: _,
             module,
             mut module_charge,
             code,
@@ -1736,6 +1738,7 @@ impl Vm {
                 record.suspended = true;
                 self.suspend_module_await(
                     ModuleContinuation {
+                        gc_live: false,
                         module: next_module,
                         module_charge: next_module_charge,
                         code,
@@ -2095,6 +2098,7 @@ impl Vm {
             self.async_continuations.release_empty();
         }
         let AsyncContinuation {
+            gc_live: _,
             generator,
             target,
             code,
@@ -2163,6 +2167,7 @@ impl Vm {
                 }) => {
                     let execution = self.suspend_module_execution();
                     let state = AsyncContinuation {
+                        gc_live: false,
                         generator,
                         target,
                         code,
@@ -2338,6 +2343,7 @@ impl Vm {
                         .take()
                         .expect("each async generator turn restores its displaced frame once");
                     let state = AsyncContinuation {
+                        gc_live: false,
                         generator: Some(generator),
                         target,
                         code,
@@ -2723,6 +2729,7 @@ impl Vm {
                     record.suspended = true;
                     self.suspend_module_await(
                         ModuleContinuation {
+                            gc_live: false,
                             module,
                             module_charge,
                             code: code.clone(),
