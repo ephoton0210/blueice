@@ -726,6 +726,22 @@ cleanup remains possible after terminal scheduling failure. Shared programs,
 other native values, managed-container backing buffers and wider service/native
 acceptance remain open.
 
+Pending page-module reports prepare a detached snapshot before clearing any
+delivery flags. Snapshot slots and copied canonical names retain a native lease;
+all object values have independent registered roots before the first report can
+enter user code. Reentrant reporting therefore skips the already-selected batch,
+and releasing the original graph during a report cannot reclaim later values.
+
+Preparation refusal preserves pending flags and original roots, rolls back any
+new registrations and refunds snapshot storage. Once reporting begins, an
+attempted report remains consumed. A failure restores only the unattempted
+suffix whose canonical name and immutable error owner still match the current
+record; removed or replaced errors are not revived. Newly pending work remains
+pending for a later pass. Success and failure both release the batch's roots and
+storage, including after terminal document failure. Empty/disabled reporting
+needs no snapshot allocation. Broader report/event scratch buffers, shared
+programs and integrated acceptance remain open.
+
 ### Document managed heaps
 
 Document scopes share one managed-storage envelope across the root VM and all

@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The pending module error reporting checkpoint (2026-10-17) now admits snapshot
+slots/names and roots every object value before consuming flags. Batches survive
+graph release and callback GC; interrupted delivery restores only unattempted
+records with matching names/error owners. Twenty-one new cases, twelve public
+error-reporting controls and all 875 prior selected cases pass: **908 total**,
+with formatting and offline workspace/all-target Clippy. Broader report/event
+scratch, shared programs, managed-container buffers and wider gates remain open;
+M1u stays the latest accepted milestone.
+
 The cached module value checkpoint (2026-10-17) now admits completion/error
 primitive copies before publication and keeps native ownership across installed,
 parked and Rust-held records. Async parents share one immutable error value and
@@ -3159,6 +3168,76 @@ and staged/committed blob checks. Ordinary-library entry points expose the same
 fixtures; no new coverage result is claimed. This is an M1z checkpoint. Shared
 programs, other native values, managed-container backing buffers and wider
 native/integrated acceptance remain open.
+
+#### Pending module error reporting follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit snapshot slots/name buffers and register every object value
+before consuming pending flags or dispatching any report. Preserve cached values
+and origins while records are replaced or Rust-held. Preparation refusal restores
+flags, roots and native ownership; interrupted delivery preserves unattempted
+records only when their name and immutable error owner still match. Keep reentrant
+reporting, cleanup and ordinary public error semantics intact.
+
+- [x] Reproduce missing admission, batch roots and registration rollback with
+      tiny offline cases through the real module reporting boundary. All three
+      original cases failed, then passed after admitted snapshots/rooting.
+- [x] Implement admitted snapshots, batch rooting and pending-work restoration;
+      twenty-one finite callback/replacement/reentrancy/failure cases pass.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Shared programs, other native buffers and wider
+      integrated acceptance remain open.
+
+
+Reporting now prepares detached canonical-name/error snapshots. The vector's
+requested and reported slot capacity and every copied name buffer retain one
+native lease before any pending flag changes. Shared immutable errors keep their
+existing value/origin owner. Object-valued errors receive independent admitted
+registered roots before the first report can enter user code. Preparation
+refusal rolls back the new root suffix and drops all staged storage while
+preserving the original pending flags, record owners and roots.
+
+A report may release the original graph and embedding result root, then collect,
+without reclaiming the batch's later values. The test models those independent
+owners explicitly: the last public thrown result normally remains rooted until
+the embedding starts another execution or discards its context. Batch cleanup
+releases its own registrations on success and failure, including terminal abort,
+and prunes expired weak error discovery after dropping the snapshot.
+
+The selected flags clear together before callbacks, preventing reentrant delivery
+of that batch. An attempted report remains consumed even if it fails. Only its
+unattempted suffix can regain pending flags, and only when canonical name,
+evaluated state and immutable error-owner identity still match. Removed/replaced
+errors are not resurrected; newly pending work survives the old snapshot. Empty
+or disabled reporting acquires no snapshot storage, successful records clear
+stale flags without allocation and unevaluated records keep their pending work.
+
+Twenty-one finite cases cover original refusal/GC/rollback failures, public
+checkpoint/event behavior, exact native allowances, callback-held ownership,
+reentrancy, partial delivery/retry, record removal/replacement, newly pending
+work, terminal release, empty/disabled/successful/deferred records, primitive
+sharing, repeat suppression and independent document failure. Ordinary-library
+entry points expose the same fixtures; no new coverage result is claimed.
+
+
+Validation: **908 passed, zero failed/ignored**, across 39 executables and 76
+fixed selections: twenty-one new cases, twelve existing public host-error cases
+and all 875 prior selected controls. Formatting, diff checks and offline
+workspace/all-target Clippy with warnings denied pass. Cargo reuses the workspace
+target with incremental compilation and dev/test debug artifact growth disabled.
+The seven earlier pressure cases remain excluded; the added host-error selection
+skips its two legacy cases containing infinite loops. JSON resource sweeps are
+not selected. Execution cases are offline, fixed and finite. No network/service
+replay, physical exhaustion probe, fresh full Test262, real Core/MCP replay,
+coverage result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-module-reporting-controls-20261017.py`,
+`/private/tmp/blueice-module-reporting-commit-20261017.txt`,
+`/private/tmp/blueice-module-reporting-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-module-reporting-{red,first,focused,reporting,host-errors,fmt,clippy}-20261017.log`.
+`target/module-reporting-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. This is an M1z checkpoint. Broader report/event
+scratch, shared programs, managed-container backing buffers and wider native/
+integrated acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

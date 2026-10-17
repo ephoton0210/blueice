@@ -16,23 +16,9 @@ impl Vm {
         if self.host_error_reporting.is_none() {
             return Ok(());
         }
-        // Existing module records own these error values and their GC roots.
-        // Clear the delivery flag before entering user code.
-        let mut errors = Vec::new();
-        if let Some(graph) = &mut self.module_graph {
-            for record in graph.linked.values_mut() {
-                if record.host_error_pending && record.evaluated {
-                    record.host_error_pending = false;
-                    if let Some(error) = &record.error {
-                        errors.push(error.clone());
-                    }
-                }
-            }
-        }
-        for error in errors {
-            self.report_host_error_value(error.value.clone(), error.origin.source.clone())?;
-        }
-        Ok(())
+        self.dispatch_pending_host_module_errors(|vm, error| {
+            vm.report_host_error_value(error.value.clone(), error.origin.source.clone())
+        })
     }
 
     pub fn install_host_error_reporting(&mut self) -> Result<(), RuntimeError> {

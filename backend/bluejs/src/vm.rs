@@ -45,6 +45,7 @@ mod global_bindings;
 mod module_cell_storage;
 mod module_context;
 mod module_continuation_storage;
+mod module_error_reporting;
 mod module_graph_storage;
 mod module_value_storage;
 mod realm_collection;
