@@ -1092,9 +1092,42 @@ preparation return their resource error if a copy cannot be admitted. This is
 storage ownership work; M1q's coordinate refinements remain parked.
 
 Admission here covers returned code before publication and coexisting metadata
-copies. Other script/eval/Function programs, compiler producer preallocation,
+copies. Other script/eval programs, compiler producer preallocation,
 host-precompiled shared program storage, diagnostic map/registry storage,
 allocator/Rc-control overhead and integrated acceptance remain open.
+
+All four CreateDynamicFunction kinds now use the same retained AST/source/code
+ownership as runtime module compilation. Encoded parameter and body strings own
+their reported capacities across later ToString calls. Encoding measures UTF-8
+lexer bytes before growing the output, with a separate owner for the temporary
+coerced UTF-16 string. Growing strings admit complete coexisting replacements.
+HTML parameter filtering writes into an admitted output without a character
+vector. It preserves UTF-8 boundaries, comment behavior and the specification's
+original unfiltered source for Function.prototype.toString.
+
+Parameter-only, body-only and joined grammar checks each retain their returned
+AST through validation; no Function AST is cloned out of the parsed Program.
+Script and module inputs share source deduplication and structural accounting.
+Repricing retains previous admission while deduplication scratch exists, then
+reconciles the returned payload. Renaming the internal binding and restoring
+unfiltered source reserve replacement payload first. A source visitor keeps
+distinct original, filtered and template-fragment allocations independent.
+
+Compiled child code receives its durable native owners. Temporary root buffers
+are admitted while the input and child coexist, capture-slot provenance is
+checked, and root/input/text storage drops before constructor prototype getters
+can call user code. Capture IDs use admitted scratch, then move into the managed
+closure without a second vector; already rooted operand slots supply subsequent
+binding updates. Syntax, prototype-getter and admission errors unwind these
+owners. Live closures, generators, suspended async frames and timer/Promise
+callbacks retain generated code after the constructor returns. Previously
+unbounded generated functions attach when document accounting starts.
+
+This covers constructor input/retained ownership and the returned AST/code
+handoff. Full tokenizer/parser/compiler/coercion producer preallocation, ordinary
+script/eval and host-precompiled shared ownership, diagnostic map/registry
+storage, allocator/BigInt-spare/Rc-control exclusions and integrated acceptance
+remain open. M1q coordinate refinements stay parked.
 
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit

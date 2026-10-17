@@ -69,6 +69,23 @@ pub(crate) fn lone_surrogate(character: char) -> Option<u16> {
 pub(crate) fn encode(source: &JsString) -> String {
     let units = source.as_code_units();
     let mut text = String::with_capacity(units.len());
+    append_encoded(source, &mut text);
+    text
+}
+
+pub(crate) fn encoded_bytes(source: &JsString) -> Option<usize> {
+    char::decode_utf16(source.as_code_units().iter().copied()).try_fold(0usize, |bytes, decoded| {
+        let count = match decoded {
+            Ok(character) if is_reserved(character) => ESCAPE.len_utf8() + character.len_utf8(),
+            Ok(character) => character.len_utf8(),
+            Err(_) => 4,
+        };
+        bytes.checked_add(count)
+    })
+}
+
+pub(crate) fn append_encoded(source: &JsString, text: &mut String) {
+    let units = source.as_code_units();
     for decoded in char::decode_utf16(units.iter().copied()) {
         match decoded {
             Ok(character) if is_reserved(character) => {
@@ -79,7 +96,6 @@ pub(crate) fn encode(source: &JsString) -> String {
             Err(error) => text.push(encode_lone_surrogate(error.unpaired_surrogate())),
         }
     }
-    text
 }
 
 /// Turns host text (valid Unicode, so no lone surrogate) into lexer text by

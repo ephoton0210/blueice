@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::vm::dynamic_function_storage::{NativeCaptures, NativeText, ParsedFunctionInput};
 
 /// Internal name of the wrapper declaration `dynamic_function_constructor`
 /// compiles; it is not a valid identifier, so no source can refer to it.
@@ -11,6 +12,10 @@ const DYNAMIC_FUNCTION_BINDING: &str = "*anonymous*";
 #[cfg(any(test, coverage))]
 #[path = "../../../tests/fixtures/dynamic_function_boundaries.rs"]
 mod boundary_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/dynamic_function_storage.rs"]
+mod storage_tests;
 
 /// The four CreateDynamicFunction kinds.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -100,78 +105,76 @@ impl Vm {
             kind,
             DynamicFunctionKind::Generator | DynamicFunctionKind::AsyncGenerator
         );
-        let mut parameters = String::new();
-        for (index, argument) in args.iter().take(args.len().saturating_sub(1)).enumerate() {
-            if index != 0 {
-                parameters.push(',');
+        self.synchronize_scheduling_usage()?;
+        let child = {
+            let mut parameters = NativeText::empty();
+            for (index, argument) in args.iter().take(args.len().saturating_sub(1)).enumerate() {
+                if index != 0 {
+                    parameters.append(",", self.host_scheduling.as_ref())?;
+                }
+                let value = self.coerce_string(argument)?;
+                parameters.append_encoded(value, self.host_scheduling.as_ref())?;
             }
-            parameters.push_str(&crate::source_encoding::encode(
-                &self.coerce_string(argument)?,
-            ));
-        }
-        let prefix = match kind {
-            DynamicFunctionKind::Normal => "function anonymous(",
-            DynamicFunctionKind::Async => "async function anonymous(",
-            DynamicFunctionKind::Generator => "function* anonymous(",
-            DynamicFunctionKind::AsyncGenerator => "async function* anonymous(",
-        };
-        let body = match args.last() {
-            Some(body) => crate::source_encoding::encode(&self.coerce_string(body)?),
-            None => String::new(),
-        };
-        // Dynamic parameter text is parsed as its own grammar production.
-        // Preserve that boundary in the generated wrapper: a trailing
-        // single-line comment belongs to the parameters, not to the closing
-        // parenthesis that follows them.
-        let wrapper =
-            |parameters: &str, body: &str| format!("{prefix}{parameters}\n) {{\n{body}\n}}");
-        // Annex B HTML-like comments are removed from the parameters for
-        // parsing; the text of the function keeps them (see below).
-        let parsed_parameters = strip_dynamic_function_html_comments(&parameters);
-        // The parameters must parse as FormalParameters and the body as a
-        // FunctionBody, each on its own. Only the joined wrapper is compiled,
-        // but text that leaves a comment, template or bracket open across the
-        // boundary can still make the joined source parse (`Function("/*",
-        // "*/) {")`), so each side is also checked against an empty other side.
-        let parse_wrapper = |source: &str| -> Result<crate::ast::Function, RuntimeError> {
-            let program = crate::parser::parse_encoded(source)
-                .map_err(|error| RuntimeError::SyntaxError(error.message))?;
-            // Anything but the one wrapper declaration means the text closed
-            // the function early (`Function("} function f() {")`).
-            match program.body.as_slice() {
-                [crate::ast::Stmt::FunctionDecl(function)] => Ok(function.clone()),
-                _ => Err(RuntimeError::SyntaxError(
-                    "Function source must be exactly one function".into(),
-                )),
+            let prefix = match kind {
+                DynamicFunctionKind::Normal => "function anonymous(",
+                DynamicFunctionKind::Async => "async function anonymous(",
+                DynamicFunctionKind::Generator => "function* anonymous(",
+                DynamicFunctionKind::AsyncGenerator => "async function* anonymous(",
+            };
+            let mut body = NativeText::empty();
+            if let Some(argument) = args.last() {
+                let value = self.coerce_string(argument)?;
+                body.append_encoded(value, self.host_scheduling.as_ref())?;
             }
+            let parsed_parameters = NativeText::filtered(
+                &parameters,
+                strip_dynamic_function_html_comments,
+                self.host_scheduling.as_ref(),
+            )?;
+            // Validate each grammar production before the joined wrapper. The
+            // newline keeps a trailing parameter comment out of the body.
+            {
+                let wrapper = NativeText::parts(
+                    &[prefix, &parsed_parameters, "\n) {\n", "\n}"],
+                    self.host_scheduling.as_ref(),
+                )?;
+                ParsedFunctionInput::parse_wrapper(&wrapper, self.host_scheduling.as_ref())?;
+            }
+            if !parsed_parameters.is_empty() {
+                let wrapper = NativeText::parts(
+                    &[prefix, "\n) {\n", &body, "\n}"],
+                    self.host_scheduling.as_ref(),
+                )?;
+                ParsedFunctionInput::parse_wrapper(&wrapper, self.host_scheduling.as_ref())?;
+            }
+            let mut input = {
+                let wrapper = NativeText::parts(
+                    &[prefix, &parsed_parameters, "\n) {\n", &body, "\n}"],
+                    self.host_scheduling.as_ref(),
+                )?;
+                ParsedFunctionInput::parse_wrapper(&wrapper, self.host_scheduling.as_ref())?
+            };
+            // The internal binding cannot capture a caller's `anonymous` name.
+            // Preserve unfiltered Annex B parameter text in the source owner.
+            let original = if parameters.as_ref() != parsed_parameters.as_ref() {
+                Some(NativeText::parts(
+                    &[prefix, &parameters, "\n) {\n", &body, "\n}"],
+                    self.host_scheduling.as_ref(),
+                )?)
+            } else {
+                None
+            };
+            input.configure(
+                DYNAMIC_FUNCTION_BINDING,
+                original.as_ref().map(AsRef::as_ref),
+                self.host_scheduling.as_ref(),
+            )?;
+            drop(original);
+            drop(parameters);
+            drop(parsed_parameters);
+            drop(body);
+            input.compile_function(DYNAMIC_FUNCTION_BINDING, self.host_scheduling.as_ref())?
         };
-        parse_wrapper(&wrapper(&parsed_parameters, ""))?;
-        if !parsed_parameters.is_empty() {
-            parse_wrapper(&wrapper("", &body))?;
-        }
-        let mut function = parse_wrapper(&wrapper(&parsed_parameters, &body))?;
-        // The wrapper declaration only gives the function its `name`
-        // property. CreateDynamicFunction binds no such name in the
-        // function's scope, so rename the declaration to an internal
-        // identifier no source can spell: `anonymous` in the body then
-        // resolves like any free identifier.
-        function.name = Some(DYNAMIC_FUNCTION_BINDING.into());
-        // The wrapper is exactly the source text CreateDynamicFunction
-        // prescribes, except that the parsed parameters had their Annex B
-        // HTML-like comments removed: the function's text keeps them.
-        if parsed_parameters != parameters {
-            function.source_text = crate::ast::SourceText::whole(wrapper(&parameters, &body));
-        }
-        let program = crate::ast::Program {
-            body: vec![crate::ast::Stmt::FunctionDecl(function)],
-        };
-        let code = crate::compile(&program)
-            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
-        let child = code
-            .functions
-            .first()
-            .cloned()
-            .expect("Function wrapper compiles one function declaration");
 
         debug_assert_eq!(child.async_function, async_function);
         debug_assert_eq!(child.generator, generator);
@@ -195,26 +198,30 @@ impl Vm {
         // ordinary compiler, not a capture of the Function caller.
         let stack_base = self.stack.len();
         let function: Result<ObjectId, RuntimeError> = (|| {
-            let mut captures = Vec::with_capacity(child.captures.len());
+            let mut captures =
+                NativeCaptures::new(child.captures.len(), self.host_scheduling.as_ref())?;
             for _ in &child.captures {
                 let cell = self.with_roots(|heap| heap.alloc_object(None))?;
                 self.stack.push(Value::Object(cell));
-                captures.push(cell);
+                captures.values.push(cell);
             }
             let function = self.with_roots(|heap| {
                 heap.alloc_closure(
                     child.clone(),
-                    captures.clone(),
+                    std::mem::take(&mut captures.values),
                     Value::Undefined,
                     function_prototype,
                 )
             })?;
+            drop(captures);
             self.stack.push(Value::Object(function));
-            for (&slot, &cell) in child.captures.iter().zip(&captures) {
+            for index in 0..child.captures.len() {
+                let cell = self.stack[stack_base + index]
+                    .object_id()
+                    .expect("the capture cell stays rooted");
                 // The wrapper has exactly one root declaration and no
                 // executable root body. Every captured root binding is its
                 // internal declaration name, never a caller's local binding.
-                assert_eq!(code.bindings[slot as usize].name, DYNAMIC_FUNCTION_BINDING);
                 let value = Value::Object(function);
                 self.with_roots(|heap| heap.set(cell, "value", value))?;
             }

@@ -68,6 +68,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The dynamic Function storage follow-up (2026-10-18) is active. Extend native
+input/source/code ownership to all four Function constructor kinds, including
+coercion-time string buffers, independent grammar checks and code retained by
+timer/Promise callbacks. Preserve exact synthesized source and global scope;
+three original failures and 22 passing new cases are recorded. Final related
+controls pass **132 distinct selected tests** across eight executable targets and
+twenty-six fixed selections. Formatting, diff checks and offline workspace/
+all-target Clippy pass, with source/artifact and local commit audits. Broader
+acceptance remains open under the existing cybersecurity constraint.
+
 The shared child-code storage follow-up (2026-10-18) is active. Dynamic modules'
 source leases and child-code headers/buffers now have independent owners.
 Metadata edits admit coexisting copies while preserving nested sharing and
@@ -7494,6 +7504,75 @@ Evidence: `target/shared-code-storage-source-20261018.json` and prefix
 `/private/tmp/blueice-shared-code-storage-` (2026-10-18), with original red
 inputs/log, preserved adapter compile findings, initial green inputs/logs and
 final frozen Rust sources, fixed controls and commit message.
+
+#### Dynamic Function input/code follow-up (implementation checkpoint, 2026-10-18)
+
+Acceptance: extend retained native ownership to normal, async, generator and
+async-generator Function constructors. Keep converted input buffers charged
+across later coercion callbacks, own parsed grammar checks without cloning their
+function AST, and transfer source/child-code storage through the final closure,
+generator, saved frame or timer/Promise callback. Preserve global scope,
+independent grammar validation, exact source text and prototype-getter behavior.
+
+- [x] Preserve three old-code failures with fixed tiny inputs and scalar peers.
+- [x] Own constructor text, returned ASTs and shared code; remove the cloned
+      function AST and capture-vector copy and preserve source identities.
+- [x] Complete fixed related controls, source/artifact audits, final documents
+      and a detailed English commit.
+
+The original **0/3 passed** run shows absent generated-code source owners,
+premature native refunds after VM destruction, and **234 allocations** before
+an empty constructor refuses a zero-headroom document. The first corrected
+three cases and twenty-two existing module input controls pass.
+
+Module and constructor Programs now share a retained AST carrier and source
+visitor. Parser source/EOF minimums precede parsing; returned native structure,
+source payloads and deduplication backing stay charged. Repricing keeps existing
+admission until scratch is gone. Configuration validates document identity and
+admits replacement binding/source payloads before copying. The three constructor
+grammar parses keep their Program owner and validate its shape without cloning
+the Function. Resource parse errors preserve their resource type.
+
+Constructor parameters/body/filter/wrappers own reported String capacities.
+UTF-16 coercion results have a scoped owner before measured lexer encoding;
+growing outputs retain complete admitted candidates beside old backing. The HTML
+filter uses UTF-8 byte boundaries and an admitted output instead of Vec<char>.
+Original HTML-comment source and nested filtered/template sources keep separate
+source owners. Returned children acquire independent code headers/buffers, while
+temporary root code has its own admitted lease. Captured slots are checked before
+root destruction. AST/root/text temporaries drop before prototype getters run.
+Capture scratch moves into the managed closure and existing operand roots supply
+binding IDs, removing the second capture vector.
+
+The expanded **22/22** pass: one allocation observation stays unit-only and
+twenty-one functional contracts have an ordinary-library entry. Cases cover all
+four kinds and their execution, AST/text/capture/code lifetimes, source identity
+and nested reclamation, Unicode/surrogate/reserved encoding, exact/one-short
+string and constructor peaks, foreign/terminal refusal, malformed source and
+prototype-getter cleanup, late bounded activation, GC refunds and public timer/
+Promise retention through delivery.
+
+Final validation passes **132 distinct selected tests** in twenty-six fixed
+selections across eight executable targets: the new twenty-two, the previous
+103 controls, three global-scope cases, two independent-grammar cases, one exact
+synthesized-source case and one lone-surrogate case. Formatting, diff checks and
+offline workspace/all-target Clippy pass. Source/artifact and staged/committed
+content audits bind eleven frozen Rust inputs, thirteen source/document files,
+the eight executables and the detailed English commit. Public AST metrics,
+compiler lowering, shared source/code owner implementations and later builtin
+dispatch remain unchanged. These checks do not renew broader acceptance.
+
+Full tokenizer/parser/compiler/coercion producer preallocation, ordinary script/
+eval and host-precompiled shared ownership, diagnostic map/registry storage,
+allocator/BigInt-spare/Rc-control exclusions and integrated acceptance remain
+open. M1u remains the latest accepted milestone. No broad, exhaustion,
+infinite-execution or network/Core/MCP replay is resumed; the rejected push is
+not retried.
+
+Evidence: `target/dynamic-function-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-dynamic-function-storage-` (2026-10-18), including original
+red input/log, initial three/module controls, expanded frozen inputs, fixed
+controls and commit message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

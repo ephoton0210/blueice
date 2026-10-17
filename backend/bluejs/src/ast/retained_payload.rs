@@ -127,6 +127,21 @@ impl Program {
     pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
         self.body.heap_payload(&mut CountContext::default())
     }
+    pub(crate) fn payload_without_source_text(&self) -> Option<usize> {
+        self.body.heap_payload(&mut CountContext {
+            skip_shared_source_text: true,
+            ..Default::default()
+        })
+    }
+    pub(crate) fn payload_with_source_admission(
+        &self,
+        admit: SourceAdmission<'_>,
+    ) -> Option<usize> {
+        self.body.heap_payload(&mut CountContext {
+            source_admission: Some(admit),
+            ..Default::default()
+        })
+    }
 }
 
 impl Module {

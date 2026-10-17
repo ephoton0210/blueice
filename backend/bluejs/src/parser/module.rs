@@ -4,7 +4,7 @@
 
 use super::*;
 
-/// Every module parse allocates its copied source, an EOF token and a position,
+/// Script and module parses allocate their copied source, an EOF token and a position,
 /// even for empty input. This is a lower bound, not a complete parser budget.
 pub(crate) fn module_parse_input_bytes(source: &str) -> Option<usize> {
     source

@@ -375,7 +375,7 @@ fn data_view_bytes(
 /// intentionally keeps the main grammar strict, so normalize only this
 /// legacy, Script-goal input before compiling the generated wrapper.  Strings,
 /// templates, and ordinary comments retain their source verbatim.
-fn strip_dynamic_function_html_comments(source: &str) -> String {
+fn strip_dynamic_function_html_comments(source: &str, result: &mut String) {
     #[derive(Clone, Copy)]
     enum Mode {
         Code,
@@ -387,8 +387,6 @@ fn strip_dynamic_function_html_comments(source: &str) -> String {
         HtmlComment,
     }
 
-    let source = source.chars().collect::<Vec<_>>();
-    let mut result = String::new();
     let mut mode = Mode::Code;
     // Parameter text follows the opening parenthesis in the generated source,
     // so it is not initially at a line start. `-->` becomes an Annex B HTML
@@ -397,16 +395,20 @@ fn strip_dynamic_function_html_comments(source: &str) -> String {
     let mut escaped = false;
     let mut index = 0;
     while index < source.len() {
-        let character = source[index];
-        let next = source.get(index + 1).copied();
-        let follows = |text: &[char]| source[index..].starts_with(text);
+        let character = source[index..]
+            .chars()
+            .next()
+            .expect("a character boundary");
+        let width = character.len_utf8();
+        let next = source[index + width..].chars().next();
+        let follows = |text: &str| source[index..].starts_with(text);
         match mode {
-            Mode::Code if follows(&['<', '!', '-', '-']) => {
+            Mode::Code if follows("<!--") => {
                 mode = Mode::HtmlComment;
                 index += 4;
                 continue;
             }
-            Mode::Code if line_start && follows(&['-', '-', '>']) => {
+            Mode::Code if line_start && follows("-->") => {
                 mode = Mode::HtmlComment;
                 index += 3;
                 continue;
@@ -449,11 +451,11 @@ fn strip_dynamic_function_html_comments(source: &str) -> String {
                 mode = Mode::Code;
                 line_start = true;
                 result.push(character);
-                index += 1;
+                index += width;
                 continue;
             }
             Mode::HtmlComment => {
-                index += 1;
+                index += width;
                 continue;
             }
             _ => {}
@@ -466,9 +468,8 @@ fn strip_dynamic_function_html_comments(source: &str) -> String {
         } else {
             false
         };
-        index += 1;
+        index += width;
     }
-    result
 }
 
 #[cfg(test)]
