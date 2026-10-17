@@ -136,7 +136,11 @@ fn realm_template_cache_joint_exact_capacity_and_one_byte_refusal() {
                     0
                 };
                 let bytes = table_bytes
-                    + 3usize.saturating_sub(vm.stack.capacity()) * std::mem::size_of::<Value>();
+                    + if spare_stack {
+                        0
+                    } else {
+                        3 * std::mem::size_of::<Value>()
+                    };
                 if bytes == 0 && !accepts {
                     continue;
                 }
@@ -147,7 +151,16 @@ fn realm_template_cache_joint_exact_capacity_and_one_byte_refusal() {
                 let prepared = vm.prepare_template_cache_insert();
                 if accepts {
                     let prepared = prepared.unwrap();
-                    assert_eq!(vm.displaced_execution_control_bytes.get(), table_bytes);
+                    assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
+                    assert_eq!(
+                        vm.host_scheduling_snapshot().payload_bytes - before,
+                        table_bytes
+                            + if spare_stack {
+                                0
+                            } else {
+                                2 * std::mem::size_of::<Value>()
+                            }
+                    );
                     assert!(vm.stack.capacity() >= 3);
                     drop(prepared);
                 } else {

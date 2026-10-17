@@ -991,16 +991,31 @@ accounting counts its capacity once as realm storage, independently of active
 or displaced execution fields. The realm traces cached objects directly;
 template construction creates no additional permanent root registrations.
 
-A cache miss jointly admits the full detached replacement table and two operand
-root slots before allocation; reported capacities are checked before heap
-effects. Existing slots and cache hits require no fictitious table-growth charge.
-The staged table stays leased until successful publication; refusal leaves its
-prior entries intact. Raw/cooked arrays are built directly with their final
-frozen data/length descriptors, avoiding temporary value vectors and property-
-key enumeration buffers. Both arrays stay on the admitted stack suffix until
-the realm cache adopts the cooked array and its raw edge. Array creation errors
-restore the operand prefix and release staging ownership. Async work resumed
-from an older frame observes sites cached later in the same realm.
+A cache miss leases both the full detached replacement table and the complete
+operand-vector replacement needed for two additional root slots. Both old
+allocations coexist with staging. Requested minima are admitted before fallible
+allocation; reported table capacity is checked before operand allocation, and
+reported operand capacity before active backing changes. Preparation refusal
+preserves both old table entries and operand backing. Spare capacity and cache
+hits require no fictitious growth charge.
+
+The independent document lease follows a Rust-held table after VM destruction.
+Once all native storage fits, existing operands move into their prepared buffer
+without cloning primitive payloads; the VM adopts it, staging refunds its portion
+and a synchronous ownership update follows without intervening allocation or
+callbacks. The detached table retains the remaining lease until publication/drop.
+Native array construction runs no page code and collection keeps cache entries
+strongly owned, so table length/capacity remain stable through that construction.
+Publication verifies that shape, moves entries and refunds staging immediately
+before reconciliation, avoiding transient duplicate charges at exact allowance.
+
+Raw/cooked arrays are built directly with final frozen data/length descriptors,
+avoiding temporary value/key enumeration buffers. Both arrays remain on the
+admitted suffix until the cache adopts the cooked array and its raw edge. Later
+string/heap errors restore the operand prefix and release table staging; already
+adopted operand capacity remains an accounted VM cache. Async work resumed from
+an older frame observes sites cached later in the same realm. Wider string/input
+producers, shared site/program ownership and other native storage remain open.
 
 Outgoing generator, async and nested-debugger snapshots jointly admit stack
 suffix slots and generator-completion target slots before allocating either

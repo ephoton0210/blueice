@@ -64,6 +64,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The template-control preparation follow-up (2026-10-17) now independently leases
+the full table and operand candidates before active stack backing changes. Three
+finite old-code cases failed and now pass. Sixteen new groups and all 1551 prior
+selected controls pass: **1567 total**, across 47 executables and 139 fixed
+selections. Formatting and offline workspace/all-target Clippy pass. Earlier
+template results retain their historical scope. Wider string/input/origin
+producers, shared site/program ownership, other native buffers and integrated
+acceptance remain open; M1u stays the latest accepted milestone.
+
 The disposal-map retained-storage follow-up (2026-10-17) now retains both weak
 brand tables' native backing and prepares complete constructor/move replacement
 storage before managed instance allocation. Four tiny old-code cases failed and
@@ -2289,6 +2298,12 @@ prior entries on refusal and trace cached objects without permanent root pins.
 - [ ] Complete module-association/code copies, wider native/container/module-
       cache/service storage and integrated acceptance. M1u remains the latest
       accepted milestone.
+
+A later finite audit found narrower staging gaps: the detached table used a
+VM-local counter and operand growth admitted only its net delta. The
+[template-control preparation follow-up](#template-control-preparation-follow-up-implementation-checkpoint-2026-10-17)
+records their independent full-candidate correction. The 605-case result below
+is historical evidence and does not prove that stronger boundary.
 
 Initial red log: `/private/tmp/blueice-realm-template-red-20261017.log`
 (zero passed, three failed). The public async function/generator cases suspend
@@ -5682,6 +5697,83 @@ Evidence paths: `/private/tmp/blueice-disposal-map-controls-20261017.py`,
 `/private/tmp/blueice-disposal-map-*-20261017.log`, and
 `target/disposal-map-source-20261017.json`. The ordinary-library entry point
 exposes all twenty-two groups; no fresh coverage result is claimed. This remains
+an M1z implementation checkpoint with wider acceptance open.
+
+#### Template-control preparation follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: independently lease the complete detached template table and operand
+replacement while old buffers remain owned. Admit minimum and reported capacities
+before active stack backing changes. Move existing operands without cloning their
+payloads; transfer only the adopted buffer's charge, keeping detached table
+ownership alive after VM destruction. Publish cache entries without further
+fallible admission and retain identity, frozen descriptors and GC behavior.
+
+- [x] Reproduce lost table ownership after VM destruction, operand growth funded
+      only by its net delta and a one-byte-short joint candidate budget being
+      accepted: **0/3 passed** before implementation, **3/3 passed** afterwards.
+- [x] Implement independent candidate leases and reported-capacity checks before
+      stack adoption; expanded finite groups pass **16/16** on their first run.
+- [x] Complete fixed offline controls/static checks, evidence audit and detailed
+      English commit.
+
+Preparation first synchronizes active ownership, then admits the full requested
+table/operand candidates under one independent document lease. Fallible table
+allocation is followed by its actual capacity check before the operand allocation;
+the operand's reported capacity is checked before either active backing changes.
+A refusal drops detached data before refund and preserves prior table entries,
+operand pointer/capacity/values, managed heap and fuel at the native boundary.
+
+Once all native storage fits, existing operands move into the new vector without
+cloning primitive buffers. VM adoption refunds that portion of staging immediately
+before synchronous reconciliation; the detached table retains its independent
+lease until publication/drop, including after VM destruction. Cache publication
+verifies its original table shape, moves existing entries and refunds staging
+before the VM ownership update. Neither handoff checks a transient duplicate
+charge against an exact allowance. Final operand sizing keeps the requested
+prefix-plus-two-slots shape; stronger admission covers the full coexisting buffer.
+
+The cache remains strong realm storage across frames and managed collection;
+building fresh raw/cooked arrays runs no page code. Temporary array roots use the
+admitted suffix until the cache owns the cooked array/raw edge. Native preparation
+refusal preserves old backing. Later string/heap failure restores the operand
+prefix and refunds the table while already adopted operand capacity remains an
+accounted VM cache. No permanent root registration is introduced.
+
+The existing joint template control now budgets the full operand candidate and
+checks its independent table contribution, while preserving final capacity/refund
+assertions. The earlier 605-case checkpoint is explicitly historical evidence
+for its original scope, rather than proof of this stronger staging boundary.
+
+Sixteen finite groups cover initial refusals, primitive-buffer move identity,
+partial charge adoption before VM destruction, exact/spare publication, preserved
+entries, abandoned staging and reported table refusal, host-neutral behavior,
+managed/string failure cleanup, allocation-triggered major GC, public-boundary
+heap/fuel preservation, terminal refusal and multiple independent preparations.
+GC uses four small in-memory garbage events and a numerical heap ceiling after
+finite priming. Native peers allocate no represented large payload and no external
+operation starts. Earlier async/generator/module template and resource controls
+remain selected.
+
+Validation: **1567 passed, zero failed/ignored**, across 47 executables and 139
+fixed selections: sixteen new groups and all 1551 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Source, staged and post-commit audits bind final source/build inputs,
+runner, executables, logs and detailed English commit text. Cargo reuses the
+workspace target with incremental compilation and dev/test debug artifact growth
+disabled. The same nine explicit resource/infinite-
+loop skips and other finite-public-case exclusions remain. Wider string/input/
+origin producers, shared site/program ownership, other native buffers and
+integrated gates remain open; M1u stays the latest accepted milestone. No
+represented large allocation, resource/infinite probe, network/service/listener/
+Core/MCP replay, privileged validation, process killing, fresh full Test262,
+coverage or integrated acceptance is claimed.
+
+Evidence paths: `/private/tmp/blueice-template-storage-controls-20261017.py`,
+`/private/tmp/blueice-template-storage-commit-20261017.txt`,
+`/private/tmp/blueice-template-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-template-storage-*-20261017.log`, and
+`target/template-storage-source-20261017.json`. The ordinary-library entry point
+exposes all sixteen groups; no fresh coverage result is claimed. This remains
 an M1z implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
