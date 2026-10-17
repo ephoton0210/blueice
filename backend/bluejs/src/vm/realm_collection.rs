@@ -7,7 +7,7 @@
 use super::host_scheduling::SharedSchedulingCharge;
 use super::*;
 
-struct MetadataStorage {
+pub(super) struct MetadataStorage {
     scope: Option<SchedulingScope>,
     charge: Option<SharedSchedulingCharge>,
     bytes: usize,
@@ -16,7 +16,7 @@ struct MetadataStorage {
 }
 
 impl MetadataStorage {
-    fn new(scope: Option<&SchedulingScope>) -> Result<Self, RuntimeError> {
+    pub(super) fn new(scope: Option<&SchedulingScope>) -> Result<Self, RuntimeError> {
         Ok(Self {
             scope: scope.map(SchedulingScope::child),
             charge: scope.map(|scope| scope.shared_charge(0)).transpose()?,
@@ -51,7 +51,7 @@ impl MetadataStorage {
         }
         Ok(())
     }
-    fn reserve_vec<T>(
+    pub(super) fn reserve_vec<T>(
         &mut self,
         values: &mut Vec<T>,
         additional: usize,
@@ -79,7 +79,7 @@ impl MetadataStorage {
         *values = replacement;
         self.adopt(staged, old, actual)
     }
-    fn reserve_set<T: Eq + std::hash::Hash>(
+    pub(super) fn reserve_set<T: Eq + std::hash::Hash>(
         &mut self,
         values: &mut HashSet<T>,
         additional: usize,

@@ -50,6 +50,20 @@ deadline and enqueue serial after its callback and checkpoint, unless cleared.
 A late interval does not replay missed periods. Canceling a snapshotted timer
 does not spend another delivery.
 
+Host-turn snapshots own admitted native storage until their Rust-held lifetime
+ends. Due callback timers use one sorted deadline/ID vector, preserving its lease
+through standalone delivery as well as document turns. Runnable abort serials
+use an admitted flat vector; per-realm timer snapshots use an admitted sorted
+array with no allocation during lookup. Empty snapshots reserve no backing slots.
+
+Document realm discovery admits its weak-handle queue, seen IDs and returned
+weak snapshot before filling each container. Requested and reported capacity
+are checked while old/new replacements coexist. Temporary discovery storage
+refunds on every exit, while the returned weak slots stay charged throughout
+child checkpoints and callbacks. They retain no strong VM owner, so traversal
+does not keep discarded realms alive. Wake and task-turn callers propagate
+native refusal through the existing noncatchable scheduling error.
+
 The public turn still admits at most 64 total deliveries. The production child
 selects one, completes its checkpoint and returns to Core. Rendering stays in
 its separate entry. Ready tasks request an immediate wake; future deadlines

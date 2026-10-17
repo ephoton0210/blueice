@@ -5,6 +5,7 @@
 //! One host task turn arbitrates timers and document browser work. Rendering
 //! remains a separate entry; Core can offer it after each selected task.
 
+use super::host_task_storage::{TaskVector, TimerSnapshot, TimerSnapshots};
 use super::*;
 
 #[cfg(any(test, coverage))]
@@ -58,12 +59,6 @@ struct Candidate {
     delivery: Delivery,
 }
 
-#[derive(Default)]
-struct TimerSnapshot {
-    callbacks: Vec<u32>,
-    aborts: HashSet<u64>,
-}
-
 impl Vm {
     pub(super) fn next_host_task_serial(&mut self) -> Result<u64, RuntimeError> {
         if let Some(scope) = &self.host_scheduling {
@@ -75,12 +70,13 @@ impl Vm {
         Ok(serial)
     }
 
-    fn document_browser_wake(&mut self) -> Option<u64> {
+    fn document_browser_wake(&mut self) -> Result<Option<u64>, RuntimeError> {
         let mut wake = self.next_own_browser_task_wake();
         if !self.host_finalization_tasks.is_empty() {
             wake = Some(0);
         }
-        for record in self.host_shadow_realms() {
+        let realms = self.host_shadow_realms()?;
+        for record in realms.iter() {
             let Some(realm) = record.upgrade() else {
                 continue;
             };
@@ -100,12 +96,13 @@ impl Vm {
                 vm.next_host_timer_due().map(|due| due.saturating_sub(now)),
             );
         }
-        wake
+        Ok(wake)
     }
 
     fn checkpoint_document_task_entry(&mut self) -> Result<(), RuntimeError> {
         self.run_host_microtask_checkpoint()?;
-        for record in self.host_shadow_realms() {
+        let realms = self.host_shadow_realms()?;
+        for record in realms.iter() {
             let Some(realm) = record.upgrade() else {
                 continue;
             };
@@ -128,29 +125,29 @@ impl Vm {
         let timers = self
             .next_host_timer_due()
             .map(|due| due.saturating_sub(now));
-        Ok(earliest_wake(self.document_browser_wake(), timers))
+        Ok(earliest_wake(self.document_browser_wake()?, timers))
     }
 
-    fn snapshot_task_timers(&mut self, include_callbacks: bool) -> TimerSnapshot {
+    pub(super) fn snapshot_task_timers(
+        &mut self,
+        include_callbacks: bool,
+    ) -> Result<TimerSnapshot, RuntimeError> {
         let now = self.sample_host_timer_clock();
-        TimerSnapshot {
-            callbacks: if include_callbacks {
-                self.snapshot_due_host_timers(now)
-            } else {
-                Vec::new()
-            },
-            aborts: self
-                .browser_tasks
-                .iter()
-                .filter_map(|task| {
-                    if task.source() == TaskSource::Timer && self.browser_task_wake(task) == 0 {
-                        Some(task.order().1)
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
+        let callbacks = if include_callbacks {
+            self.snapshot_due_host_timers(now)?
+        } else {
+            TaskVector::new(self.host_scheduling.as_ref())?
+        };
+        let mut aborts = TaskVector::new(self.host_scheduling.as_ref())?;
+        for task in &self.browser_tasks {
+            if task.source() == TaskSource::Timer && self.browser_task_wake(task) == 0 {
+                let serial = task.order().1;
+                if !aborts.contains(&serial) {
+                    aborts.push(serial)?;
+                }
+            }
         }
+        Ok(TimerSnapshot { callbacks, aborts })
     }
 
     fn own_task_candidate(
@@ -189,7 +186,7 @@ impl Vm {
         if source == TaskSource::Timer {
             if let Some(snapshot) = timers {
                 for timer in &self.host_timers {
-                    if snapshot.callbacks.contains(&timer.id) {
+                    if snapshot.callbacks.iter().any(|(_, id)| *id == timer.id) {
                         let order = (timer.due_ms, timer.serial);
                         if candidate
                             .as_ref()
@@ -236,27 +233,30 @@ impl Vm {
         self.host_timer_clock_ms = self.host_timer_clock_ms.max(now_ms);
         self.sample_host_timer_clock();
         self.checkpoint_document_task_entry()?;
-        let mut snapshots = HashMap::new();
+        let mut snapshots = TimerSnapshots::new(self.host_scheduling.as_ref())?;
         snapshots.insert(
             self.object_prototype.heap,
-            self.snapshot_task_timers(include_timer_callbacks),
-        );
-        for record in self.host_shadow_realms() {
+            self.snapshot_task_timers(include_timer_callbacks)?,
+        )?;
+        let realms = self.host_shadow_realms()?;
+        for record in realms.iter() {
             let Some(realm) = record.upgrade() else {
                 continue;
             };
             let mut vm = realm.borrow_mut();
             if vm.ensure_no_debugger_continuation().is_ok() {
                 let heap = vm.object_prototype.heap;
-                snapshots.insert(heap, vm.snapshot_task_timers(include_timer_callbacks));
+                snapshots.insert(heap, vm.snapshot_task_timers(include_timer_callbacks)?)?;
             }
         }
+        drop(realms);
+        snapshots.sort();
         let mut turn = BlueJsTaskTurn::default();
         while (turn.tasks_run as usize) < max_tasks.min(MAX_DOCUMENT_TASKS_PER_TURN) {
-            let realms = self.host_shadow_realms();
+            let realms = self.host_shadow_realms()?;
             // A callback can create a realm or queue work through a wrapped
             // function. Finish those child jobs before selecting another task.
-            for record in &realms {
+            for record in realms.iter() {
                 let Some(realm) = record.upgrade() else {
                     continue;
                 };
@@ -313,7 +313,7 @@ impl Vm {
             };
             if let Delivery::Timer(id) = delivery {
                 if let Some(snapshot) = snapshots.get_mut(&heap) {
-                    snapshot.callbacks.retain(|timer| *timer != id);
+                    snapshot.callbacks.retain(|(_, timer)| *timer != id);
                 }
             }
             self.next_host_task_source = (source + 1) % TASK_SOURCES.len();

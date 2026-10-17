@@ -215,25 +215,32 @@ impl Vm {
         if self.ensure_no_debugger_continuation().is_err() {
             return Ok(BlueJsTimerRun::default());
         }
-        let due = self.snapshot_due_host_timers(now_ms);
+        let due = self.snapshot_due_host_timers(now_ms)?;
         let mut run = BlueJsTimerRun::default();
-        for id in due.into_iter().take(MAX_HOST_TIMER_TASKS_PER_TURN) {
+        for &(_, id) in due.iter().take(MAX_HOST_TIMER_TASKS_PER_TURN) {
             self.run_host_timer_entry(id, &mut run)?;
         }
         Ok(run)
     }
 
-    pub(super) fn snapshot_due_host_timers(&mut self, now_ms: u64) -> Vec<u32> {
+    pub(super) fn snapshot_due_host_timers(
+        &mut self,
+        now_ms: u64,
+    ) -> Result<host_task_storage::TaskVector<(u64, u32)>, RuntimeError> {
         self.host_timer_clock_ms = self.host_timer_clock_ms.max(now_ms);
         let now = self.sample_host_timer_clock();
-        let mut due: Vec<_> = self
-            .host_timers
-            .iter()
-            .filter(|timer| timer.due_ms <= now)
-            .map(|timer| (timer.due_ms, timer.id))
-            .collect();
+        let mut due = host_task_storage::TaskVector::new(self.host_scheduling.as_ref())?;
+        due.reserve(
+            self.host_timers
+                .iter()
+                .filter(|timer| timer.due_ms <= now)
+                .count(),
+        )?;
+        for timer in self.host_timers.iter().filter(|timer| timer.due_ms <= now) {
+            due.push((timer.due_ms, timer.id))?;
+        }
         due.sort_unstable();
-        due.into_iter().map(|(_, id)| id).collect()
+        Ok(due)
     }
 
     pub(super) fn run_host_timer_entry(

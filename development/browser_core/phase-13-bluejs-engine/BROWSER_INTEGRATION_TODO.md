@@ -57,6 +57,14 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The host-turn snapshot checkpoint (2026-10-17) now admits realm discovery and
+due callback/abort/per-realm snapshot storage. Native leases survive callbacks
+and Rust-held lifetimes while weak handles allow discarded realms to disappear.
+Twenty-two new finite cases and all 950 prior controls pass: **972 total**,
+with formatting and offline workspace/all-target Clippy. Finalization cleanup
+index/job snapshots, other heap buffers, broader report/event scratch, shared
+programs and wider gates remain open; M1u stays the latest accepted milestone.
+
 The foreign callable pin checkpoint (2026-10-17) now admits shared native
 headers and registry slots before root publication. Dropping handles performs
 no allocation; safepoints reclaim released registrations and native ownership,
@@ -734,9 +742,10 @@ work and exposes its retained payload ledger.
       now joins module records, sources, roots, safepoint batches, realm metadata
       and collector workspace ownership. Cached completion/error values, admitted
       error-reporting batches, persistent root tables and foreign callable pins
-      now have bounded checkpoints; all 950 selected controls pass. Shared
-      programs, managed-container backing buffers, wider native storage and
-      integrated acceptance remain open.
+      and host-turn realm/timer/abort snapshots now have bounded checkpoints;
+      all 972 selected controls pass. Finalization cleanup index/job snapshots,
+      shared programs, managed-container backing buffers, wider native storage
+      and integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -3400,6 +3409,74 @@ and staged/committed blob checks. Ordinary-library entry points expose the same
 fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
 heap buffers, broader report/event scratch, shared programs and wider native/
 integrated acceptance remain open.
+
+#### Host-turn snapshot storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit realm discovery and due callback/abort/realm snapshot backing
+storage before filling it, retain ownership across callbacks and Rust-held
+snapshots, and refund every temporary on refusal and terminal exits. Traversal
+snapshots must keep only weak realm handles. Preserve document filtering,
+cycles/borrowed realms, wake queries, timer/source order, interval/abort turn
+snapshots, cancellation, debugger behavior and standalone policy.
+
+- [x] Reproduce missing native ownership/admission with tiny offline cases.
+      All three original realm/timer/public-wake cases failed before admission.
+- [x] Implement admitted snapshot storage; twenty-two finite cases cover
+      lifecycle, refusal, timer ordering, weak discovery and nested ownership.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Finalization cleanup index/snapshot storage,
+      other heap buffers, shared programs and wider integrated gates remain open.
+
+A leased task vector reuses transactional metadata-capacity admission: reserve
+complete detached replacement storage while the old allocation remains charged,
+check reported capacity, then move the prefix. Callers receive borrowed slices
+and explicit admitted append/reserve operations. Spare slots need no extra
+native charge; refusal preserves the original prefix, pointer and ownership.
+Nested snapshot fields drop before their enclosing slot lease refunds.
+
+Realm discovery owns its weak-handle queue and seen-ID set during preparation.
+Each unique same-document realm is visited once; duplicate/cyclic references,
+foreign documents and borrowed descendants preserve their existing treatment.
+The returned sorted weak vector retains a native lease across child checkpoints
+and callbacks without adding strong VM owners. Preparation failure refunds all
+queue/set/result storage; dead realms can disappear while a returned snapshot
+still exists in Rust.
+
+Due callbacks now use one admitted deadline/ID vector, retaining the original
+standalone ordering without a second unowned ID-vector conversion. Both timer
+APIs borrow their snapshot throughout delivery. Runnable abort serials use a
+bounded flat vector, and per-realm timer plans use an admitted sorted array
+with allocation-free lookup. Outer-plan refusal refunds incoming nested buffers.
+Empty snapshots reserve no slots, including at a full scalar quota; callback-
+excluded turns still snapshot abort work. Existing clock sampling, interval
+rearming, cancellation and per-turn eligibility semantics remain intact.
+
+All three initial cases failed before admission and now pass. Twenty-two finite
+cases cover exact/refused replacement and spare reuse, Rust-held/native/terminal
+lifetimes, weak discovery, cycles/deduplication/document filtering, borrowed
+children, partial-discovery rollback, public wake/timer refusal, callback
+cancellation/replacement, standalone intervals, abort ownership/refusal,
+outer/nested plan lifetime/refusal, empty snapshots and callback inclusion.
+
+Validation: **972 passed, zero failed/ignored**, across 39 executables and 79
+fixed selections: twenty-two new host-snapshot cases and all 950 prior selected
+controls. Formatting, diff checks and offline workspace/all-target Clippy with
+warnings denied pass. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled. The same nine legacy
+resource/infinite-loop cases remain excluded and JSON resource sweeps are not
+selected. Execution cases are offline, fixed and finite. No network/service
+replay, physical exhaustion probe, fresh full Test262, real Core/MCP replay,
+coverage result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-task-snapshots-controls-20261017.py`,
+`/private/tmp/blueice-task-snapshots-commit-20261017.txt`,
+`/private/tmp/blueice-task-snapshots-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-task-snapshots-{red,first,expanded,task-storage,fmt,clippy}-20261017.log`.
+`target/task-snapshots-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint.
+Finalization cleanup index/job snapshots, other heap buffers, broader report/
+event scratch, shared programs and wider native/integrated gates remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

@@ -125,34 +125,63 @@ impl Vm {
         Ok(())
     }
 
-    pub(super) fn host_shadow_realms(&self) -> Vec<std::rc::Weak<RefCell<Vm>>> {
-        let mut queue: VecDeque<_> = self.shadow_realms.values().cloned().collect();
-        let mut seen = HashSet::from([self.object_prototype.heap]);
-        let mut realms = Vec::new();
-        while let Some(record) = queue.pop_front() {
-            let Ok(vm) = record.vm.try_borrow() else {
+    pub(super) fn host_shadow_realms(
+        &self,
+    ) -> Result<host_task_storage::TaskVector<std::rc::Weak<RefCell<Vm>>>, RuntimeError> {
+        let mut realms = host_task_storage::TaskVector::new(self.host_scheduling.as_ref())?;
+        let Some(owner) = &self.host_scheduling else {
+            return Ok(realms);
+        };
+        if self.shadow_realms.is_empty() {
+            return Ok(realms);
+        }
+        let mut seen_storage = realm_collection::MetadataStorage::new(Some(owner))?;
+        let mut seen = HashSet::new();
+        seen_storage.reserve_set(&mut seen, 1)?;
+        seen.insert(self.object_prototype.heap);
+        let mut queue = host_task_storage::TaskVector::new(Some(owner))?;
+        queue.reserve(self.shadow_realms.len())?;
+        for record in self.shadow_realms.values() {
+            queue.push(Rc::downgrade(&record.vm))?;
+        }
+        let mut index = 0;
+        while index < queue.len() {
+            let record = queue[index].clone();
+            index += 1;
+            let Some(realm) = record.upgrade() else {
                 continue;
             };
-            let same_document = self
+            let Ok(vm) = realm.try_borrow() else {
+                continue;
+            };
+            let same_document = vm
                 .host_scheduling
                 .as_ref()
-                .zip(vm.host_scheduling.as_ref())
-                .is_some_and(|(owner, child)| owner.same_document(child));
-            if !same_document || !seen.insert(vm.object_prototype.heap) {
+                .is_some_and(|child| owner.same_document(child));
+            let heap = vm.object_prototype.heap;
+            if !same_document || seen.contains(&heap) {
                 continue;
             }
-            queue.extend(vm.shadow_realms.values().cloned());
+            seen_storage.reserve_set(&mut seen, 1)?;
+            seen.insert(heap);
+            queue.reserve(vm.shadow_realms.len())?;
+            for child in vm.shadow_realms.values() {
+                queue.push(Rc::downgrade(&child.vm))?;
+            }
             drop(vm);
-            realms.push(record);
+            realms.push(record)?;
         }
-        realms.sort_by_key(|record| record.vm.borrow().object_prototype.heap);
-        // A traversal snapshot is not a document-work owner. Holding every
-        // VM strongly across callbacks inflates the native-pressure watermark
-        // after agent collection has already removed its actual owners.
-        realms
-            .into_iter()
-            .map(|record| Rc::downgrade(&record.vm))
-            .collect()
+        realms.sort_unstable_by_key(|record| {
+            record
+                .upgrade()
+                .expect("discovered realms remain owned during preparation")
+                .borrow()
+                .object_prototype
+                .heap
+        });
+        // Only weak handles survive preparation. The snapshot's slots retain
+        // their native lease across callbacks without keeping dead VMs alive.
+        Ok(realms)
     }
 
     pub(super) fn run_document_browser_task_turn(
