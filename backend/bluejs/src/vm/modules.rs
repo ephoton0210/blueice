@@ -48,6 +48,10 @@ mod evaluation_stack_tests;
 #[path = "../../tests/fixtures/module_notification_storage.rs"]
 mod notification_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/import_call_storage.rs"]
+mod import_call_storage_tests;
+
 struct EvaluationFrame<'a> {
     name: &'a str,
     code: ModuleCode,
@@ -1396,33 +1400,39 @@ impl Vm {
         options: Value,
         phase: ImportPhase,
     ) -> Result<Value, RuntimeError> {
-        // The operands (already popped by the caller) and the promise are
-        // otherwise only in Rust locals while the promise is allocated and the
-        // arguments are coerced (user code that allocates): keep them on the
-        // operand stack, a GC root, until the import is queued or settled.
-        let base = self.stack.len();
-        self.stack.extend([specifier.clone(), options.clone()]);
+        // Move the popped operands without copies. Independent native ownership
+        // and prepared temporary roots cover them while coercion runs user code.
+        let base = self.async_frame_roots.len();
         let result = (|| {
+            let input_charge = self.prepare_import_call_inputs(&specifier, &options)?;
+            self.async_frame_roots.extend(
+                [specifier.object_id(), options.object_id()]
+                    .into_iter()
+                    .flatten(),
+            );
             let promise = self.new_promise()?;
-            self.stack.push(Value::Object(promise));
+            self.async_frame_roots.push(promise);
             let argument_epoch = self.throw_epoch;
-            match self.evaluate_import_call_arguments(specifier, options) {
+            let arguments = self.evaluate_import_call_arguments(specifier, options);
+            drop(input_charge);
+            match arguments {
                 Ok((specifier, module_type)) if phase == ImportPhase::Source => {
                     self.dynamic_import_source(promise, &specifier, module_type)?;
                 }
                 Ok((specifier, module_type)) => {
-                    let referrer = self
-                        .active_module_name
-                        .clone()
-                        .unwrap_or_else(|| "<script>".to_string());
-                    self.enqueue_promise_job(PromiseJob::DynamicImport {
+                    let referrer = ModuleName::copy(
+                        self.active_module_name.as_deref().unwrap_or("<script>"),
+                        self.host_scheduling.as_ref(),
+                    )?;
+                    self.publish_promise_job(PromiseJob::DynamicImport {
                         target: promise,
-                        referrer,
-                        specifier,
+                        referrer: referrer.into_unleased(),
+                        specifier: specifier.into_unleased(),
                         module_type,
                         phase,
-                    });
+                    })?;
                 }
+                Err(error) if !error.is_catchable() => return Err(error),
                 Err(error) => {
                     let origin = self.caught_rejection_origin(argument_epoch);
                     let error = self.error_value(error)?;
@@ -1431,7 +1441,8 @@ impl Vm {
             }
             Ok(Value::Object(promise))
         })();
-        self.stack.truncate(base);
+        self.async_frame_roots.truncate(base);
+        self.reconcile_scheduling_ownership();
         result
     }
 
@@ -1448,56 +1459,70 @@ impl Vm {
         &mut self,
         specifier: Value,
         options: Value,
-    ) -> Result<(String, ModuleType), RuntimeError> {
-        let specifier = self.coerce_string(&specifier)?;
-        let specifier = specifier.to_utf8().map_err(|_| {
-            RuntimeError::TypeError("module specifier is not a Unicode string".into())
-        })?;
+    ) -> Result<(ModuleName, ModuleType), RuntimeError> {
+        let specifier = self.import_specifier_name(&specifier)?;
         let mut module_type = ModuleType::JavaScript;
-        if options != Value::Undefined {
-            if !matches!(options, Value::Object(_)) {
-                return Err(RuntimeError::TypeError(
-                    "import() options argument must be an object".into(),
-                ));
-            }
-            let attributes = self.get_property(&options, &"with".into())?;
-            if attributes != Value::Undefined {
-                let Value::Object(attributes_id) = attributes else {
+        let root_base = self.async_frame_roots.len();
+        let result = (|| {
+            if options != Value::Undefined {
+                if !matches!(options, Value::Object(_)) {
                     return Err(RuntimeError::TypeError(
-                        "import() attributes value must be an object".into(),
+                        "import() options argument must be an object".into(),
                     ));
-                };
-                // EnumerableOwnPropertyNames(attributesObj, KEY): own,
-                // String-keyed (never Symbol), and enumerable per a
-                // re-checked [[GetOwnProperty]] -- the same algorithm as
-                // Object.keys, including Proxy ownKeys/getOwnPropertyDescriptor
-                // trap observance.
-                let keys = self.object_own_property_keys(attributes_id)?;
-                for key in keys {
-                    if !matches!(key, PropertyName::String(_)) {
-                        continue;
-                    }
-                    let Some(descriptor) = self.object_get_own_property(attributes_id, &key)?
-                    else {
-                        continue;
-                    };
-                    if descriptor.enumerable != Some(true) {
-                        continue;
-                    }
-                    let Value::String(value) = self.get_property(&attributes, &key)? else {
+                }
+                let attributes = self.get_property(&options, &"with".into())?;
+                if attributes != Value::Undefined {
+                    let Value::Object(attributes_id) = attributes else {
                         return Err(RuntimeError::TypeError(
-                            "import attribute values must be strings".into(),
+                            "import() attributes value must be an object".into(),
                         ));
                     };
-                    if key == "type" {
-                        module_type = value.to_utf8().map_or(ModuleType::JavaScript, |value| {
-                            ModuleType::from_attribute_value(&value)
-                        });
+                    self.extend_async_frame_roots(std::iter::once(attributes_id))?;
+                    // EnumerableOwnPropertyNames(attributesObj, KEY): own,
+                    // String-keyed (never Symbol), and enumerable per a
+                    // re-checked [[GetOwnProperty]] -- the same algorithm as
+                    // Object.keys, including Proxy ownKeys/getOwnPropertyDescriptor
+                    // trap observance.
+                    let keys = self.object_own_property_keys(attributes_id)?;
+                    let keys = import_call_storage::ImportAttributeKeys::new(
+                        keys,
+                        self.host_scheduling.as_ref(),
+                    )?;
+                    for key in keys.iter() {
+                        if !matches!(key, PropertyName::String(_)) {
+                            continue;
+                        }
+                        let Some(descriptor) = self.object_get_own_property(attributes_id, key)?
+                        else {
+                            continue;
+                        };
+                        if descriptor.enumerable != Some(true) {
+                            continue;
+                        }
+                        let Value::String(value) = self.get_property(&attributes, key)? else {
+                            return Err(RuntimeError::TypeError(
+                                "import attribute values must be strings".into(),
+                            ));
+                        };
+                        if key == "type" {
+                            module_type = if value == "json" {
+                                ModuleType::Json
+                            } else if value == "text" {
+                                ModuleType::Text
+                            } else if value == "bytes" {
+                                ModuleType::Bytes
+                            } else {
+                                ModuleType::JavaScript
+                            };
+                        }
                     }
                 }
             }
-        }
-        Ok((specifier, module_type))
+            Ok(())
+        })();
+        self.async_frame_roots.truncate(root_base);
+        self.reconcile_scheduling_ownership();
+        result.map(|()| (specifier, module_type))
     }
 
     pub(super) fn dynamic_import_job(

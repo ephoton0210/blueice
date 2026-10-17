@@ -68,6 +68,18 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The ImportCall argument-storage follow-up (2026-10-17) now admits incoming native
+payloads and temporary-root capacity before Promise creation, moves input values
+without operand copies, and retains converted UTF-8 specifiers and attribute-key
+snapshots across option getters and Proxy traps. Three old-code cases reproduce
+two pre-refusal allocations, changed stack capacity and five missing callback
+bytes. The first expanded run passes **14/14**; focused related controls pass
+**137 distinct tests**, across five executable targets and 14 selections.
+Formatting, diff checks and offline workspace/all-target Clippy pass, with
+source/artifact and commit audits. No broad control replay is claimed. Dynamic
+compilation, generic coercion/own-key producer preallocation and integrated
+acceptance remain open; M1u remains the latest accepted milestone.
+
 The module completion/rejection notification-storage follow-up (2026-10-17) now
 owns independently admitted notification work. Four old-code cases reproduce one
 queue allocation at zero native headroom and dependency-edge removal before
@@ -7104,6 +7116,71 @@ Evidence: `target/module-notification-storage-source-20261017.json` and prefix
 `/private/tmp/blueice-module-notification-storage-`, including original red/first
 source copies, full control/observer attempt archives, frozen Rust inputs,
 retained fixed controls and the focused observation log.
+
+#### ImportCall argument-storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: refuse entry storage before operand copies, root-vector growth or
+Promise creation; move input values with independent native ownership and retain
+their object edges through conversion callbacks. Admit UTF-8 specifier storage
+before allocation and retain it across option getters. Keep the attribute-key
+snapshot charged through descriptor/value traps, preserve phase/type routing and
+language-error rejection, and refund temporary owners/root entries on every exit.
+
+- [x] Preserve old-code entry-allocation/capacity and callback-accounting failures.
+- [x] Implement admitted input/root preparation and independently owned argument
+      validation storage, preserving ordinary import/defer/source behavior.
+- [x] Run focused offline finite cases and relevant public controls, formatting
+      and Clippy; bind source/artifact evidence to a detailed English commit.
+
+All three original cases fail (**0/3 passed**): zero native headroom still permits
+two allocations, refusal changes operand-stack capacity from zero to four, and
+changing a two-byte specifier to a seven-byte Unicode specifier changes callback
+accounting by zero rather than five. The red source archive retains the original
+ImportCall production body unchanged from the parent checkpoint.
+
+Inputs now move without copies, retaining independent native ownership while
+their object references and the Promise capability occupy prepared temporary
+root storage. A UTF-16 module-name producer validates and computes exact UTF-8
+length without allocating, then admits its complete output before encoding.
+Existing string inputs are borrowed. Generic coercion's returned UTF-16 buffer
+attaches an owner before UTF-8 output preparation. The converted name stays
+charged during options validation; the input lease drops after values are
+consumed. Temporary attributes remain rooted through all traps.
+
+Returned own-key snapshots retain actual vector/name capacities, including
+symbol descriptions, through descriptor/value callbacks. Recognized attribute
+types compare directly as UTF-16 strings. Ordinary import/defer jobs prepare
+referrer copies through the owned name producer and return publication refusal
+directly. Language errors still reject with their original identity; uncatchable
+errors remain aborts. All exits release temporary owners/root entries while
+reusable root capacity stays charged to its VM.
+
+Fourteen fixed groups cover the three original failures, padded input capacity,
+prepared root-slot reuse at full quota, exact/one-short UTF-8 admission, empty and
+ill-formed strings, VM-drop ownership, complete attribute-key capacity/refusal,
+public callback order and roots through explicit GC, thrown identity, callback
+abort cleanup and numerical job-count refusal. Thirteen functional cases have an
+ordinary-library entry point; one allocation observation remains unit-only.
+The first expanded run passes **14/14**. Five related library selections cover
+Promise queues (28), temporary roots (17), import delivery (19), dependency
+ownership (16) and notifications (26). Ten existing dynamic-import cases and
+seven exact attribute/type/defer controls also pass: **137 distinct selected
+tests**, across five executable targets and 14 contributing selections. Formatting,
+diff checks and offline workspace/all-target Clippy with warnings denied pass.
+Source/artifact and commit audits bind six frozen Rust inputs and eight source/
+document files, preserve red/first evidence and confirm the evaluation controller
+and body remain unchanged. This focused evidence does not renew the earlier
+broad inventory.
+
+Generic coercion and own-key producers can still allocate before returning to
+this boundary. Their preallocation work, dynamic source compilation, shared
+programs and integrated acceptance remain open. Do not replay the broad control
+runner, pressure/infinite-execution cases or network/Core/MCP services. M1u remains
+the latest accepted milestone; the previously rejected push is not retried.
+
+Evidence: `target/import-call-storage-source-20261017.json` and prefix
+`/private/tmp/blueice-import-call-storage-`, including red/first source archives,
+frozen Rust inputs, explicit focused selections and logs.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

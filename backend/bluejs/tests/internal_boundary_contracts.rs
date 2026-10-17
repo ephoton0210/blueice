@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_import_call_storage_contracts() {
+    blueice_bluejs::Vm::verify_import_call_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_module_notification_storage_contracts() {
     blueice_bluejs::Vm::verify_module_notification_storage_contracts();
 }

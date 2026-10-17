@@ -672,6 +672,20 @@ throw identity and origin. Error-retention/allocation refusal also clears an
 unsuspended record's active flag. JavaScript-driven deferred-property reentry
 starts a separate controller through the existing context mechanism.
 
+ImportCall prepares native input ownership and the complete temporary-root
+capacity before creating its Promise capability. Popped input values move without
+operand-stack copies; argument objects, the capability and temporary attributes
+remain traced through coercion and option/Proxy callbacks. A validated UTF-16
+specifier computes its exact UTF-8 length without allocation, then admits one
+owned output buffer that remains charged across options validation. Returned
+own-key snapshots retain actual vector/name capacity through descriptor/value
+traps. Generic coercion and own-key producers still need their own preallocation
+boundaries. Attribute types compare directly as UTF-16 strings; no extra UTF-8
+attribute-value buffer is needed. Job publication returns admission errors to
+the caller, while language errors retain Promise rejection and original identity.
+Temporary owners/root entries release on every exit; reusable root capacity
+remains in the VM's native account.
+
 Module completion/rejection notifications own complete admitted queue backing
 and independent module-name leases. Whole parent batches precede reverse-row
 detachment; seed copies are admitted before graph mutation. Detaching a reverse

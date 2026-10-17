@@ -73,6 +73,25 @@ impl ModuleName {
         value.name.push_str(name);
         Ok(value)
     }
+    pub(super) fn from_utf16(
+        text: &JsString,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<Self, RuntimeError> {
+        let invalid = || RuntimeError::TypeError("module specifier is not a Unicode string".into());
+        let length = std::char::decode_utf16(text.as_code_units().iter().copied()).try_fold(
+            0usize,
+            |bytes, ch| {
+                bytes
+                    .checked_add(ch.map_err(|_| invalid())?.len_utf8())
+                    .ok_or_else(|| fail(scope))
+            },
+        )?;
+        let mut value = Self::buffer(length, scope)?;
+        for ch in std::char::decode_utf16(text.as_code_units().iter().copied()) {
+            value.name.push(ch.expect("validated module specifier"));
+        }
+        Ok(value)
+    }
     pub(super) fn resolve(
         referrer: &str,
         request: &str,
