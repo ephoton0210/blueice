@@ -64,6 +64,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The browser-task entry checkpoint (2026-10-17) now peeks queued work and prepares
+starting fuel/drag argument capacity before removal. Twenty-eight finite
+groups pass: active refusal preserves queued state/context, stale cleanup needs
+no host instruction, and future timeouts keep their deadline/serial. Public turn
+reproductions also pass. Four exact finite public cases and all 1268 prior
+selected controls pass: **1300 total**, with formatting and offline workspace/
+all-target Clippy. Per-event/batch staging, retained-map ownership, other heap/
+host buffers, shared programs and integrated acceptance remain open; M1u stays
+the latest accepted milestone.
+
 The animation-frame entry checkpoint (2026-10-17) now admits render handle
 snapshots and timestamp argument storage to the document budget before
 callback removal. Starting-fuel/native refusal preserves the registration,
@@ -871,7 +881,9 @@ work and exposes its retained payload ledger.
       payload/root preparation and staged FileReader state now join those
       checkpoints. Render handle snapshots and animation-frame argument/fuel
       preparation now preserve unattempted callbacks and clean up committed
-      dispatch/report failures; all 1268 selected controls pass.
+      dispatch/report failures. Browser-task activity classification, starting
+      fuel and drag argument admission now precede task consumption, with stale
+      cleanup and future deferral preserved; all 1300 selected controls pass.
       Shared programs, other managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -4454,6 +4466,90 @@ fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
 browser-task/event entry scratch, retained-map ownership, heap/host buffers,
 shared programs and integrated acceptance remain open; M1u stays the latest
 accepted milestone.
+
+#### Browser-task entry follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: classify live, stale and not-yet-due work without consuming it.
+Active drag, FileReader, timeout, host-completion and rejection tasks must
+validate starting fuel before removal; drag callback vector capacity must be
+admitted while the queued text/root remain installed. Charge the first host
+instruction before committing an active attempt. Preserve queued state on
+preparation refusal; move drag text into dispatch once. Release roots and active
+ownership on all committed outcomes, including failed successor publication.
+Keep stale cleanup, future deadline/serial preservation and existing checkpoints.
+
+- [x] Reproduce drag task loss on fuel/argument refusal and unbudgeted completion
+      delivery using tiny finite operations. All three initial cases failed.
+- [x] Verify a failing public turn and implement prepared entry/classification;
+      cover refusal/refunds, no-op cleanup, payload handoff and GC/lifetimes.
+      The public drag turn initially failed too; all twenty-eight finite entry
+      groups now pass, including public drag/completion refusal.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Per-event/batch staging, retained-map ownership,
+      other heap/host buffers and integrated acceptance remain open.
+
+Entry now borrows task identity/state to distinguish active work, stale cleanup
+and future deadlines. Active tasks validate starting fuel before native
+preparation or removal. Drag allocates an admitted empty one-slot argument vector
+while queued text and its root retain their owners; it checks requested/actual
+capacity under an independent document lease. Other task kinds add no argument
+storage. The first host instruction commits an active attempt, then drag moves
+the queued string into dispatch once without cloning or retaining a second
+payload/vector charge through the Promise checkpoint.
+
+Preparation refusal leaves active task/root/wait/notification state and ambient
+fuel intact. A future timeout keeps its original queue position, deadline and
+serial without sampling an external clock or starting an instruction segment.
+Dead/aborted timeouts, stale reads/completions and already-handled rejection
+notifications release their owned roots/buffers without event delivery or a
+host instruction. Their established checkpoint remains, with ambient fuel
+restored afterward. Active settlement/event/batch internals still follow the
+committed-attempt failure contract; finer per-event/batch preparation stays open.
+
+The outer entry boundary restores the caller's active-byte context and reconciles
+ownership on every result, including reporting and successor-admission refusal.
+An actually empty deque releases backing on errors too. Committed task effects
+remain; failed dispatch consumes only that attempt, and its root/payload cleanup
+still runs. Shared rejection-entry cleanup serves both delivered and stale
+notification vectors.
+
+Twenty-eight finite groups cover all five active task kinds, zero-fuel refusal
+and native precedence, terminal refusal, exact/one-byte-short drag argument
+admission, queued text before commitment, dropped preparations, Rust-held leases
+after VM destruction, direct-call ownership comparison, no input charge at
+checkpoints, retry and one-instruction settlement, committed failure cleanup,
+future/dead/aborted timeouts, stale read/completion and handled-notification
+cleanup, public turn refusal, caller context, reporting abort and real callback/
+text GC lifetime after queue removal. Fixtures use one task at a time, tiny
+primitive inputs, four small garbage objects and numerical peers without
+represented large allocations.
+
+Validation: **1300 passed, zero failed/ignored**, across 47 executables and 122
+fixed selections: twenty-eight new task-entry groups, four exact finite public
+cases and all 1268 prior selected controls. Public cases verify getAsString
+ordering/snapshots, handled-notification suppression, microtask read abort and
+future timeouts not blocking ready reads. Existing finite frame, timer,
+finalization, read, rejection and Promise controls retain their behavior.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled.
+
+The same nine earlier resource/infinite-loop skips remain. Public selection
+names only finite cases; large/resource/infinite cases and JSON resource sweeps
+remain unselected. No network/service replay, physical exhaustion probe,
+privileged validation, process killing, fresh full Test262, real Core/MCP replay,
+coverage result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-browser-entry-controls-20261017.py`,
+`/private/tmp/blueice-browser-entry-commit-20261017.txt`,
+`/private/tmp/blueice-browser-entry-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-browser-entry-{red,public-red,first,expanded,browser-entry,fmt,clippy}-20261017.log`.
+`target/browser-entry-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint.
+Per-event/batch staging, retained-map ownership, other heap/host buffers, shared
+programs and integrated acceptance remain open; M1u stays the latest accepted
+milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

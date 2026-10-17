@@ -284,11 +284,15 @@ impl Vm {
             }
             Ok(())
         });
-        for entry in entries {
-            self.release_root(entry.root);
-        }
+        self.discard_host_rejection_entries(entries);
         self.host_rejections.as_mut().unwrap().active -= count;
         self.synchronize_scheduling_usage()?;
         result
+    }
+
+    pub(super) fn discard_host_rejection_entries(&mut self, entries: Vec<PendingRejection>) {
+        for entry in entries {
+            self.release_root(entry.root);
+        }
     }
 }

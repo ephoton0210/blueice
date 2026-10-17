@@ -261,6 +261,24 @@ terminal failure and Rust-held preparation lifetimes beyond VM destruction.
 Callback-entry scratch, retained-map allocation ownership, other heap/host
 buffers and broader native/integrated acceptance remain open work.
 
+Browser-task entry now classifies queued state before removal. Active drag,
+FileReader, timeout, host-completion and rejection work validates starting fuel;
+drag admits a one-slot callback vector while the queued text/root stay installed.
+The first host instruction commits an active attempt. Its string then moves
+directly into ordinary dispatch, transferring payload and vector capacity once;
+neither owner remains charged through the following checkpoint. Preparation
+refusal preserves queued roots, wait/notification flags and ambient fuel.
+
+Future deadlines stay queued with their old position and serial, without clock
+callback invocation or instruction reset. Dead/aborted timeouts, stale reads/
+completions and already-handled rejection notifications release their roots and
+buffers without an event/host instruction. Cleanup retains its post-task
+checkpoint while restoring ambient fuel. All entry outcomes restore caller
+active-byte ownership and reconcile refunds; empty deque storage also releases
+after failure. Event/settlement/batch internals retain their committed-attempt
+cleanup behavior, and finer event/batch staging remains open alongside retained
+maps, other heap/host buffers, shared programs and integrated acceptance.
+
 Async/module await admits counts and settled value/origin ownership before
 copying its status, then leases unowned frame payload, complete queue growth and
 complete continuation-map replacement together. Refusal leaves live queue/map

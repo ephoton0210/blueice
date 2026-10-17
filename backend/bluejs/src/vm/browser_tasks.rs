@@ -4,6 +4,7 @@
 
 //! Browser task delivery is separate from Promise microtask checkpoints.
 
+use super::browser_task_entry::BrowserEntryAction;
 use super::*;
 
 #[derive(Clone, Copy)]
@@ -227,6 +228,44 @@ impl Vm {
     }
 
     pub(super) fn run_own_browser_task(&mut self, index: usize) -> Result<(), RuntimeError> {
+        let previous_active = self.active_scheduling_bytes;
+        let result = self.run_own_browser_task_inner(index);
+        self.active_scheduling_bytes = previous_active;
+        if self.browser_tasks.is_empty() {
+            self.browser_tasks.shrink_to_fit();
+        }
+        self.reconcile_scheduling_ownership();
+        if result.is_ok() {
+            self.synchronize_scheduling_usage()?;
+        }
+        result
+    }
+
+    fn run_own_browser_task_inner(&mut self, index: usize) -> Result<(), RuntimeError> {
+        let mut prepared = self.prepare_browser_task_entry(index)?;
+        if prepared.action == BrowserEntryAction::Deferred {
+            return Ok(());
+        }
+        if prepared.action == BrowserEntryAction::Cleanup {
+            let task = self
+                .browser_tasks
+                .remove(index)
+                .expect("prepared task remains queued");
+            self.discard_inactive_browser_task(task);
+            self.reconcile_scheduling_ownership();
+            // Cleanup does not start a new task instruction segment. Keep the
+            // established post-task checkpoint while restoring ambient fuel.
+            let fuel = self.remaining_instructions;
+            let result = self.run_host_microtask_checkpoint().map(|_| ());
+            self.remaining_instructions = fuel;
+            return result;
+        }
+        let previous_fuel = self.remaining_instructions;
+        self.remaining_instructions = self.config.instruction_budget;
+        if let Err(error) = self.charge_step() {
+            self.remaining_instructions = previous_fuel;
+            return Err(error);
+        }
         let task = self
             .browser_tasks
             .remove(index)
@@ -245,8 +284,7 @@ impl Vm {
             _ => 0,
         });
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
-        self.synchronize_scheduling_usage()?;
-        self.remaining_instructions = self.config.instruction_budget;
+        self.reconcile_scheduling_ownership();
         let (result, root, next, report_page_exception) = match task {
             BrowserTask::PromiseRejections {
                 entries, handled, ..
@@ -291,14 +329,12 @@ impl Vm {
             } => {
                 // The callback receives the text by move; dispatch takes
                 // the next lease instead of adding a second payload owner.
+                let mut arguments = prepared.arguments.take().expect("prepared drag arguments");
+                arguments.values.push(Value::String(text));
                 drop(moved_payload);
+                let arguments = arguments.into_arguments();
                 let result = self
-                    .call_native(
-                        Value::Object(callback),
-                        Value::Undefined,
-                        vec![Value::String(text)],
-                        false,
-                    )
+                    .call_native(Value::Object(callback), Value::Undefined, arguments, false)
                     .map(|_| ());
                 (result, Some(root), None, true)
             }
