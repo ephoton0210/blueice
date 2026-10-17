@@ -33,6 +33,7 @@ impl Vm {
             .reclaim(self.host_scheduling.as_ref());
         self.reconcile_scheduling_ownership();
         drop(charge);
+        self.reclaim_import_waiter_storage();
     }
 }
 

@@ -24,18 +24,19 @@ fn serial(vm: &Vm) -> u64 {
     vm.host_scheduling.as_ref().unwrap().task_serial_state()
 }
 fn fill_roots(vm: &mut Vm, free: usize) {
-    let (mut len, mut capacity, _) = vm.heap.root_storage_state();
-    assert!(capacity <= 63);
-    if capacity - len < free {
-        for _ in 0..=capacity - len {
-            vm.heap.root(vm.object_prototype).unwrap();
+    assert!(vm.heap.root_storage_state().1 <= 63);
+    // Reusing a tombstone can increase reported insertion capacity without a
+    // new allocation. Shape against each current value, with a fixed small cap.
+    for _ in 0..128 {
+        let (len, capacity, _) = vm.heap.root_storage_state();
+        assert!(capacity <= 127);
+        if capacity - len == free {
+            vm.synchronize_scheduling_usage().unwrap();
+            return;
         }
-        (len, capacity, _) = vm.heap.root_storage_state();
-    }
-    for _ in len..capacity - free {
         vm.heap.root(vm.object_prototype).unwrap();
     }
-    vm.synchronize_scheduling_usage().unwrap();
+    panic!("bounded root fixture did not reach its required insertion headroom");
 }
 fn frame_fixture(count: usize) -> (Vm, Value) {
     let mut vm = page_vm();

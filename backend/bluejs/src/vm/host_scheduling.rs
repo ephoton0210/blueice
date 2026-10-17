@@ -975,8 +975,8 @@ impl Vm {
             .saturating_add(self.promises.retained_bytes())
             .saturating_add(self.async_continuations.retained_bytes())
             .saturating_add(self.module_continuations.retained_bytes())
-            .saturating_add(map_slots(&self.module_import_waiters));
-        for (name, waiters) in &self.module_import_waiters {
+            .saturating_add(self.module_import_waiters.retained_bytes());
+        for (name, waiters) in self.module_import_waiters.iter() {
             usage.pending_reactions = usage.pending_reactions.saturating_add(waiters.len());
             usage.payload_bytes = usage
                 .payload_bytes
@@ -988,15 +988,9 @@ impl Vm {
             .saturating_add(slots(&self.deferred_import_waiters));
         for waiter in &self.deferred_import_waiters {
             usage.pending_reactions = usage.pending_reactions.saturating_add(1);
-            usage.payload_bytes = usage.payload_bytes.saturating_add(
-                waiter
-                    .pending
-                    .capacity()
-                    .saturating_mul(std::mem::size_of::<String>()),
-            );
-            for name in &waiter.pending {
-                usage.payload_bytes = usage.payload_bytes.saturating_add(name.capacity());
-            }
+            usage.payload_bytes = usage
+                .payload_bytes
+                .saturating_add(waiter.pending.retained_bytes());
         }
         usage.payload_bytes = usage
             .payload_bytes

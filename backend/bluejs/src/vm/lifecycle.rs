@@ -106,7 +106,7 @@ impl Vm {
             next_async_continuation: 0,
             module_pending_dependencies: HashMap::new(),
             module_async_parents: HashMap::new(),
-            module_import_waiters: HashMap::new(),
+            module_import_waiters: Default::default(),
             active_module_name: None,
             module_closure_referrers: HashMap::new(),
             pending_module_referrers: Rc::new(std::cell::Cell::new(0)),

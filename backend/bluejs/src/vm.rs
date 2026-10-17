@@ -110,6 +110,7 @@ mod host_registration;
 mod host_scheduling;
 mod host_task_turns;
 mod host_timers;
+mod import_waiter_storage;
 mod import_waiters;
 mod interpreter_records;
 mod module_dependencies;
@@ -534,7 +535,7 @@ enum ExportResolution {
 struct DeferredImportWaiter {
     promise: ObjectId,
     namespace: ObjectId,
-    pending: HashSet<String>,
+    pending: import_waiter_storage::ImportDependencies,
 }
 
 enum PromiseStatus {
@@ -1063,7 +1064,7 @@ pub struct Vm {
     next_async_continuation: u64,
     module_pending_dependencies: HashMap<String, HashSet<String>>,
     module_async_parents: HashMap<String, Vec<String>>,
-    module_import_waiters: HashMap<String, Vec<ObjectId>>,
+    module_import_waiters: retained_control_map::RetainedControlMap<String, Vec<ObjectId>>,
     /// The defining source-text module for currently executing code. A
     /// closure receives the same association at creation time.
     active_module_name: Option<String>,

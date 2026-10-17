@@ -64,6 +64,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The import-registration storage follow-up (2026-10-17) now prepares complete
+eager/deferred native storage before publication. Two finite cases reproduced
+net-only vector/table admission; all twenty new finite groups pass. Import maps
+and dependency sets retain their allocation cost and use admitted optional
+compaction. Twenty groups and all 1359 prior selected controls pass: **1379 total**,
+across 47 executables and 130 fixed selections. Formatting and offline workspace/
+all-target Clippy pass. Import
+delivery batch rooting/scratch, provenance/other maps, heap/host buffers, shared
+programs and integrated acceptance remain open.
+
 The host-wait/continuation map follow-up (2026-10-17) now extends allocation
 ledgers to external waits and async/module continuations. Last resumption and
 orphan collection release empty backing; a shared guard protects all four staged
@@ -4807,6 +4817,89 @@ Evidence paths: `/private/tmp/blueice-retained-awaits-controls-20261017.py`,
 `target/retained-awaits-source-20261017.json`. Ordinary-library entry points expose
 the same fixtures; no fresh coverage result is claimed. This remains an M1z
 checkpoint; M1u stays the latest accepted milestone.
+
+#### Import-registration storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit complete coexisting eager waiter vectors and new-key tables
+before publication. Deferred dependencies must admit their input vector/name
+buffers and full set backing before moving/deduplicating names; publish their
+waiter vector only after complete replacement preparation. Refusal must preserve
+live keys, targets, capacities and counts. Retain table/set allocations across
+deletion, fund optional compaction and release empty backing without admission.
+Keep existing root/namespace and count-limit behavior.
+
+- [x] Reproduce net-only vector/table admission using tiny registrations and
+      numerical peers: **0/2 passed** before implementation.
+- [x] Prepare complete registration owners and add retained import/dependency
+      ledgers with optional leased compaction. The first two cases and all
+      twenty expanded finite groups pass.
+- [x] Complete fixed offline controls/static checks, evidence and a detailed
+      English commit. Import delivery batches remain a separate open dependency,
+      including temporary rooting and scratch storage.
+
+An existing eager key drops its temporary lookup string before preparing a
+complete vector replacement. A new key independently leases its name, complete
+table candidate and target-vector backing before committing the table/entry.
+No fallible work or JavaScript runs between commit and publication. Deferred
+registration leases the complete incoming vector/name payload and requested/
+reported set capacity before moving names once; duplicates release their buffers.
+After freeing input metadata, the prepared set keeps its independent lease while
+the complete outer waiter-vector replacement is prepared. Publication adopts
+the dependency owner and refunds staging without another admission.
+
+Import map and dependency-set ledgers retain allocation cost when deletions
+reduce reported insertion headroom. Reclamation reconciles removed payload,
+prepares smaller map/set/vector candidates under independent leases, moves live
+entries, reconciles their new owner, then refunds staging. Missing temporary
+headroom skips optional compaction without poisoning the document. Empty backing
+releases directly, including after terminal failure. Scheduling-map GC
+reclamation includes import storage while preserving managed-preparation guards.
+
+The older deferred spare-slot allowance now inspects one fixed loader result
+before applying the numerical peer and funds input-vector metadata plus the
+complete set peak. Its queued import still runs through ordinary job entry,
+with the same target/count/capacity assertions. Raw import-map comparisons
+borrow the controlled map without changing their equality checks.
+
+The first fixed run exposed one older rooted-storage fixture assumption:
+**23/24 passed**. Reusing a root-table tombstone can increase reported insertion
+capacity, so filling once against an initial capacity left the table short of
+its intended full shape. The fixture now rechecks current headroom within a
+fixed 128-step/127-slot cap. Its full-table, exact and one-byte-short root
+admission/refund assertions are unchanged; all twenty-four controls now pass,
+with no production root behavior changes.
+
+Twenty finite groups cover complete/exact/short eager candidates, spare-key
+reuse, dependency input/set peaks, deduplication, refunds and Rust-held leases,
+deferred-vector replacement, shared-count precedence, optional set/vector/map
+compaction and retry, terminal empty cleanup, and actual eager/deferred target
+and namespace collectibility. Inputs use a few keys/dependencies, eight tiny
+registrations at most and numerical peers without represented large allocations.
+
+Validation: **1379 passed, zero failed/ignored**, across 47 executables and 130
+fixed selections: twenty new groups and all 1359 prior selected controls. The
+existing eager/deferred job, namespace-root refusal, fulfillment/rejection and
+collectibility controls pass with the complete staging allowance. All rooted,
+Promise, await, host-wait, timer, finalization and browser controls retain their
+behavior. Formatting, diff checks and offline workspace/all-target Clippy with
+warnings denied pass. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled.
+
+The same nine explicit resource/infinite-loop skips and all other finite-public-
+case exclusions remain. No large/resource/infinite cases or JSON resource sweeps,
+network/service replay, privileged validation, process killing, fresh full
+Test262, coverage result or integrated acceptance is claimed.
+Delivery batches and their temporary rooting/scratch, Promise provenance and
+other retained maps, heap/host buffers, shared programs and integrated gates
+remain open. M1u stays the latest accepted milestone.
+
+Evidence paths: `/private/tmp/blueice-import-storage-controls-20261017.py`,
+`/private/tmp/blueice-import-storage-commit-20261017.txt`,
+`/private/tmp/blueice-import-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-import-storage-*-20261017.log`, and
+`target/import-storage-source-20261017.json`. Ordinary-library entry points expose
+the same fixtures; no fresh coverage result is claimed. This remains an M1z
+checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

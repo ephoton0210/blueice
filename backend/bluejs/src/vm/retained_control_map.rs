@@ -45,10 +45,16 @@ impl<K: Eq + Hash, V, S: BuildHasher + Clone> RetainedControlMap<K, V, S> {
             .saturating_mul(std::mem::size_of::<(K, V)>())
             < self.allocation_bytes
     }
-    pub(super) fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+    pub(super) fn get_mut<Q: Eq + Hash + ?Sized>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: std::borrow::Borrow<Q>,
+    {
         self.data.get_mut(key)
     }
-    pub(super) fn remove(&mut self, key: &K) -> Option<V> {
+    pub(super) fn remove<Q: Eq + Hash + ?Sized>(&mut self, key: &Q) -> Option<V>
+    where
+        K: std::borrow::Borrow<Q>,
+    {
         self.data.remove(key)
     }
     pub(super) fn insert(&mut self, key: K, value: V) {

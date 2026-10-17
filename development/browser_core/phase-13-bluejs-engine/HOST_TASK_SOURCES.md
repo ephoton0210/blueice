@@ -348,6 +348,21 @@ existing caches. Optional compaction never clears terminal failure; empty-table
 cleanup needs no admission. Cancellation retains committed token/root semantics
 and still runs once for each unfinished wait while live backing is charged.
 
+Import registration now prepares complete eager map/vector replacements before
+publication. Existing keys discard temporary lookup strings before vector
+preparation; new keys retain an independent name lease. Deferred dependencies
+lease both input-vector/name storage and complete set backing before moving or
+deduplicating names, then retain the prepared set lease through outer-vector
+preparation and publication. Admission refusal leaves live storage unchanged.
+
+Import maps and dependency sets retain their allocation ledger across deletion.
+Optional map/set/vector compaction admits a complete coexisting candidate, moves
+survivors, reconciles live ownership, then refunds staging. Missing headroom
+keeps backing charged without poisoning collection; empty cleanup needs no
+admission. GC uses the guarded scheduling reclamation boundary for this storage.
+Import delivery-batch scratch and temporary rooting remain open, alongside
+Promise provenance/other maps and wider heap/host buffers.
+
 Host-wait registration first admits its shared pending count and preflights
 root-ID space. Converted primitive inputs and actual argument-vector slots have
 an independent document lease. Unsupported input retains a deferred language

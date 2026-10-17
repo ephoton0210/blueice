@@ -134,7 +134,7 @@ fn assert_refused(vm: &mut Vm) {
     );
     assert_eq!(vm.deferred_import_waiters.capacity(), deferred_capacity);
     assert_eq!(vm.host_scheduling_snapshot().pending_reactions, count);
-    assert_eq!(vm.module_import_waiters, references);
+    assert_eq!(&*vm.module_import_waiters, &references);
     assert_eq!(
         vm.deferred_import_waiters
             .iter()
@@ -220,13 +220,28 @@ fn deferred_waiter_growth_is_refused_before_dependencies_or_entries_are_retained
 }
 
 #[cfg_attr(test, test)]
-fn deferred_waiter_existing_slots_charge_only_owned_dependency_storage() {
+fn deferred_waiter_existing_slots_charge_complete_dependency_staging() {
     let mut vm = fixture(Mode::Deferred, 5, false);
     let capacity = vm.deferred_import_waiters.capacity();
     assert!(capacity > 5);
-    let pending = &vm.deferred_import_waiters[0].pending;
-    let bytes = pending.capacity() * std::mem::size_of::<String>()
-        + pending.iter().map(String::capacity).sum::<usize>();
+    // Inspect one fixed loader result before applying the scalar allowance.
+    // The queued import still runs through the ordinary job entry below.
+    let DynamicImportResult::WaitingDeferred { modules, .. } = vm
+        .dynamic_import_job(
+            "test/main.js",
+            "./entry.mjs",
+            ModuleType::JavaScript,
+            ImportPhase::Defer,
+        )
+        .unwrap()
+    else {
+        unreachable!()
+    };
+    let bytes = host_scheduling::slots(&modules)
+        + modules.iter().map(String::capacity).sum::<usize>()
+        + HashSet::<String>::with_capacity(modules.len()).capacity()
+            * std::mem::size_of::<String>();
+    drop(modules);
     let _owner = leave_room(&mut vm, bytes);
     assert_eq!(vm.run_next_promise_job(), Ok(true));
     assert_eq!(vm.deferred_import_waiters.len(), 6);
@@ -360,7 +375,7 @@ fn namespace_root_refusal_preserves_pending_import_owners() {
         vm.run_next_promise_job(),
         Err(RuntimeError::Heap(HeapError::IdExhausted))
     );
-    assert_eq!(vm.module_import_waiters, references);
+    assert_eq!(&*vm.module_import_waiters, &references);
     assert_eq!(vm.module_import_waiters.capacity(), capacity);
 }
 
@@ -375,7 +390,7 @@ impl crate::Vm {
         import_waiter_shared_count_refusal_precedes_publication();
         deferred_waiter_shared_count_refusal_precedes_publication();
         deferred_waiter_growth_is_refused_before_dependencies_or_entries_are_retained();
-        deferred_waiter_existing_slots_charge_only_owned_dependency_storage();
+        deferred_waiter_existing_slots_charge_complete_dependency_staging();
         completed_and_rejected_imports_release_wait_storage_and_unreferenced_promises();
         completed_and_rejected_deferred_imports_release_wait_storage_and_unreferenced_promises();
         deferred_partial_completion_releases_obsolete_dependency_storage();

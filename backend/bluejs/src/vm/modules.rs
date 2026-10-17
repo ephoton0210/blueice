@@ -1988,9 +1988,6 @@ impl Vm {
         let mut finished = Vec::new();
         for waiter in &mut self.deferred_import_waiters {
             waiter.pending.remove(module);
-            if waiter.pending.len().saturating_mul(4) < waiter.pending.capacity() {
-                waiter.pending.shrink_to_fit();
-            }
         }
         self.deferred_import_waiters.retain(|waiter| {
             if waiter.pending.is_empty() {

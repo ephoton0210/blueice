@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_import_waiter_storage_contracts() {
+    blueice_bluejs::Vm::verify_import_waiter_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_retained_async_maps_contracts() {
     blueice_bluejs::Vm::verify_retained_async_maps_contracts();
 }
