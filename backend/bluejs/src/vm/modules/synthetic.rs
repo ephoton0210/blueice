@@ -9,6 +9,12 @@
 
 use super::*;
 
+mod request_storage;
+
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/synthetic_request_storage.rs"]
+mod request_storage_tests;
+
 #[cfg(any(test, coverage))]
 #[path = "../../../tests/fixtures/synthetic_module_boundary.rs"]
 mod boundary_tests;
@@ -64,8 +70,8 @@ impl Vm {
     /// resource the required object identity
     /// (`language/import/import-attributes/json-idempotency.js`).
     ///
-    /// `key` must already be the *resolved* module key
-    /// ([`ModuleType::module_key`]). `roots` roots a freshly built object
+    /// `key` must already be the *resolved*, type-qualified module key.
+    /// `roots` roots a freshly built object
     /// value immediately: it is not yet reachable from any GC root until a
     /// later step attaches it to a module's cell, and this function may run
     /// before that step's own major collection.
@@ -196,65 +202,9 @@ impl Vm {
         modules: &mut ModuleRegistryDraft,
         roots: &mut ModuleRoots,
     ) -> Result<(), RuntimeError> {
-        let mut targets = Vec::new();
-        // `modules` is host-supplied, so its HashMap iteration order must not
-        // choose which resolution error a cyclic graph reports first. Keep
-        // each module's request order below (that is source order), while
-        // visiting independent module records in canonical key order.
-        let mut names: Vec<_> = modules.keys().collect();
-        names.sort_unstable();
-        for name in names {
-            let code = modules
-                .get(name)
-                .expect("module key was collected from this map");
-            for import in &code.module_imports {
-                if let Some(synthetic_type) =
-                    SyntheticModuleType::from_module_type(import.module_type)
-                {
-                    if !matches!(import.import_name, ModuleImportName::Source) {
-                        targets.push((
-                            Self::resolve_module_target(
-                                name,
-                                &import.module_request,
-                                import.module_type,
-                            )?,
-                            synthetic_type,
-                        ));
-                    }
-                }
-            }
-            for export in &code.module_exports {
-                let (module_request, module_type) = match export {
-                    ModuleExport::Indirect {
-                        module_request,
-                        module_type,
-                        ..
-                    }
-                    | ModuleExport::Star {
-                        module_request,
-                        module_type,
-                    }
-                    | ModuleExport::Namespace {
-                        module_request,
-                        module_type,
-                        ..
-                    }
-                    | ModuleExport::DeferredNamespace {
-                        module_request,
-                        module_type,
-                        ..
-                    } => (module_request, *module_type),
-                    ModuleExport::Local { .. } | ModuleExport::Source { .. } => continue,
-                };
-                if let Some(synthetic_type) = SyntheticModuleType::from_module_type(module_type) {
-                    targets.push((
-                        Self::resolve_module_target(name, module_request, module_type)?,
-                        synthetic_type,
-                    ));
-                }
-            }
-        }
-        for (target, synthetic_type) in targets {
+        let mut targets =
+            request_storage::Requests::collect(modules, self.host_scheduling.as_ref())?;
+        for (target, synthetic_type) in targets.drain() {
             self.ensure_synthetic_module(&target, synthetic_type, modules, roots)?;
         }
         Ok(())

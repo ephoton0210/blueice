@@ -68,6 +68,20 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The static synthetic-request preparation follow-up (2026-10-17) now owns the
+complete request batch through registration.
+Four old-code cases reproduce 1/6 allocations before zero-headroom admission,
+154 unreported retained target bytes and the same missing ownership after VM
+destruction. Canonical module-name scratch, complete target backing and resolved
+keys now retain native owners through record registration. The completed focused
+run passes **22/22**. Twenty-two new groups, one additional finite public rollback
+case and all 1773 prior selected controls pass: **1796 total**, across 50
+executables and 167 fixed selections. Formatting, diff checks and offline
+workspace/all-target Clippy pass; source/artifact and commit audits record the
+checkpoint. Synthetic Bytecode metadata construction, other request/cache/native
+buffers, recursion and integrated acceptance remain open. M1u remains the latest
+accepted milestone.
+
 The source/import-meta identity-cache follow-up (2026-10-17) now owns retained
 cache storage and prepares complete publication.
 Four old-code cases reproduce one allocation on an import-meta hit, four on a
@@ -6665,6 +6679,84 @@ the separate compile attempt at
 `/private/tmp/blueice-module-identity-cache-audit-20261017.py`,
 `/private/tmp/blueice-module-identity-cache-commit-20261017.txt` and
 `target/module-identity-cache-source-20261017.json`.
+
+#### Static synthetic-request preparation follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit canonical name-sorting scratch and complete static synthetic
+target backing before producing target keys. Each resolved key retains its own
+native owner through registration. Keep canonical module order, import-then-
+export order, duplicate occurrences, source-phase exclusion and resolution-error
+ordering. Resolve the complete batch before any synthetic record is published.
+
+- [x] Preserve four old-code failures: **0/4 passed**. A scan with no synthetic
+      targets still allocates once at zero headroom; a text request allocates
+      six times. Retained target buffers report zero instead of 154 bytes both
+      before and after destruction of the originating VM.
+- [x] Own complete scratch/target backing and each resolved key, retaining
+      charges through ordinary registration, yielded keys and abandoned drains.
+- [x] Pass expanded finite cases, inherited controls, formatting and Clippy;
+      complete source/artifact and commit audits with detailed English text.
+
+The red run extracts the original collecting expressions into a read-only
+preparation seam without adding budget checks; source copies retain those exact
+producer expressions. The implementation uses admitted borrowed-key sorting
+scratch, a complete target-vector candidate and the existing admitted module-
+name resolver. Imports, indirect/star/namespace/deferred namespace exports and
+their type suffixes follow the old ordering. Ordinary JavaScript requests and
+source imports/exports remain excluded. Duplicate targets retain distinct
+occurrences; existing record construction still provides idempotency.
+
+The batch holds vector backing while its drain is live. Each yielded key keeps
+its independent document charge through host record registration, and may outlive
+the batch or VM. Abandoned iteration destroys remaining names before releasing
+their leases; backing survives until batch destruction. Complete resolution
+failure precedes graph mutation and refunds all partial preparation. Native
+admission failure keeps its existing terminal document policy.
+
+Twenty-two finite groups cover original observations, empty/terminal documents,
+ordinary/source exclusions, canonical/request/type order, four re-export routes,
+duplicate targets, exact and one-short peak room, target backing before invalid
+specifier resolution, partial failure refunds, no-target scratch refunds,
+yielded/abandoned ownership, unchanged graph/heap state, canonical errors,
+complete resolution before publication, missing host sources, host-neutral
+idempotency and real mixed JSON/text/bytes module imports. Twenty functional
+groups are exposed through the ordinary-library entry point; two allocation
+observations remain unit-only. The completed focused run passes **22/22**.
+Final validation passes **1796 distinct selected tests**, across 50 executables
+and 167 fixed selections: twenty-two new groups, one inspected finite public
+synthesis-rollback case and all 1773 prior selected controls. The nine explicit
+resource/infinite-execution skips and finite public filters remain unchanged.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Six frozen Rust inputs and eight final source/document inputs tie
+source/artifact, staged and committed audits to the executable/log hashes, Cargo
+inputs and detailed English commit message.
+The first expanded run passed **20/22**. Its separately archived source and log
+retain two measurement mistakes: subtraction used key length instead of retained
+capacity, and heap stats preceded the test's own ceiling setup. Both measurements
+are corrected while keeping exact ownership and full heap-state assertions.
+The first fixed-control run passes **1796 distinct cases**, while offline Clippy
+identifies the two allocation-based key helpers whose last production caller
+moved to the admitted resolver. They now remain only in test/coverage builds as
+finite fixture oracles. Their source/log archive is preserved before that change;
+no dead-code warning suppression is used. The same fixed selections pass against
+the final frozen Rust inputs, and final Clippy passes.
+
+Synthetic Bytecode binding/scope/export metadata is still constructed without
+its own producer lease; the registry admits that input later. Dynamic source
+compilation, other module/source caches and native/heap buffers, namespace and
+module-body recursion, allocator/error-message overhead, shared programs and
+integrated acceptance remain open. M1u remains the latest accepted milestone.
+The prior rejected push is not retried.
+
+Evidence: `/private/tmp/blueice-synthetic-request-storage-controls-20261017.py`,
+`/private/tmp/blueice-synthetic-request-storage-rust-inputs-20261017.json`, logs
+matching `/private/tmp/blueice-synthetic-request-storage-*-20261017.log`, source
+archives at `/private/tmp/blueice-synthetic-request-storage-red-source-20261017/`,
+`/private/tmp/blueice-synthetic-request-storage-first-source-20261017/` and
+`/private/tmp/blueice-synthetic-request-storage-clippy-attempt-20261017/`,
+`/private/tmp/blueice-synthetic-request-storage-audit-20261017.py`,
+`/private/tmp/blueice-synthetic-request-storage-commit-20261017.txt` and
+`target/synthetic-request-storage-source-20261017.json`.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

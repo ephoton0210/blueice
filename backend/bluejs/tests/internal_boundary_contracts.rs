@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_synthetic_request_storage_contracts() {
+    blueice_bluejs::Vm::verify_synthetic_request_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_module_identity_cache_contracts() {
     blueice_bluejs::Vm::verify_module_identity_cache_contracts();
 }

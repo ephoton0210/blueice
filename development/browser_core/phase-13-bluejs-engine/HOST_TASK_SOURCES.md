@@ -667,8 +667,18 @@ an operand-stack temporary during cold construction.
 Optional sparse identity-map reclamation admits full coexisting replacements
 and refunds each adopted reduction before the next table. Refusal stays
 nonterminal, while name buffers and root IDs move unchanged. Deleted key payload
-refunds independently of retained table backing. Synthetic request preparation,
-other module/source caches and broader native/heap buffers remain open.
+refunds independently of retained table backing. Other synthetic request
+preparation, module/source caches and broader native/heap buffers remain open.
+
+Static synthetic requests own admitted canonical-name scratch and complete
+target-vector backing before resolving keys. Resolved keys keep independent
+native owners through registration; yielded keys may outlive their batch or VM.
+The drain destroys remaining names before releasing their leases, while backing
+remains owned until batch destruction. Canonical module order, per-module import-
+then-export order, duplicate occurrences and source-phase exclusions are
+preserved. All resolution completes before record publication. Synthetic
+Bytecode metadata construction still awaits a separate producer owner; later
+registry admission does not close that preparation gap.
 
 The graph's retained table/set/vector allocations and UTF-8 names share the document
 native-byte budget. Registration first admits the incoming vector, original

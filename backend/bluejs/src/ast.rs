@@ -96,6 +96,8 @@ impl ModuleType {
     /// Source Text Module keeps its plain resolved path; every synthetic
     /// module gets a distinct key, so one resource imported under two types
     /// (or a module importing itself as text) yields two module records.
+    /// Retained as a fixture helper; runtime producers use admitted buffers.
+    #[cfg(any(test, coverage))]
     pub(crate) fn module_key(self, resolved_path: &str) -> String {
         match self.key_suffix() {
             None => resolved_path.to_string(),
@@ -103,8 +105,8 @@ impl ModuleType {
         }
     }
 
-    /// Splits a registry key made by [`Self::module_key`] back into the
-    /// resource path the host knows it by and its module type.
+    /// Splits a type-qualified registry key into the resource path the host
+    /// knows it by and its module type.
     pub(crate) fn split_module_key(key: &str) -> (&str, ModuleType) {
         for module_type in [ModuleType::Json, ModuleType::Text, ModuleType::Bytes] {
             let suffix = module_type

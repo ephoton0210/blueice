@@ -1264,6 +1264,8 @@ impl Vm {
 
     /// The module-registry key a request names: its specifier resolved
     /// against `referrer`, qualified by the request's module type.
+    /// Allocation-based reference for the admitted resolver's finite fixtures.
+    #[cfg(any(test, coverage))]
     pub(super) fn resolve_module_target(
         referrer: &str,
         request: &str,
