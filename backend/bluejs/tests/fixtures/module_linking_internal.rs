@@ -67,15 +67,10 @@ fn namespace_and_deferred_walks_reject_invalid_requests_and_missing_execution_co
     ] {
         let code = crate::compile_module(&crate::parse_module(source).unwrap()).unwrap();
         let modules = HashMap::from([("main.mjs".into(), code)]);
-        let mut resolving = Vec::new();
         assert!(matches!(
-            Vm::resolve_export(&modules, "main.mjs", name, &mut resolving),
+            Vm::resolve_export(&modules, "main.mjs", name, None),
             Err(RuntimeError::ModuleResolution(_))
         ));
-        assert!(
-            resolving.is_empty(),
-            "failed export resolution retained its cycle marker"
-        );
         if source.starts_with("export * from") {
             assert!(matches!(
                 Vm::exported_names(&modules, "main.mjs", None),
@@ -814,19 +809,17 @@ fn export_resolution_reports_missing_default_and_missing_host_dependencies() {
         ("export * from './missing.mjs';", true),
     ] {
         let modules = HashMap::from([("t/main.mjs".to_string(), compiled_module(source))]);
-        let mut resolving = Vec::new();
         assert!(matches!(
-            Vm::resolve_export(&modules, "t/main.mjs", "answer", &mut resolving),
+            Vm::resolve_export(&modules, "t/main.mjs", "answer", None),
             Err(RuntimeError::ModuleResolution(_))
         ));
-        assert!(resolving.is_empty());
         if star {
             assert!(matches!(
                 Vm::exported_names(&modules, "t/main.mjs", None),
                 Err(RuntimeError::ModuleResolution(_))
             ));
             assert!(matches!(
-                Vm::resolve_export(&modules, "t/main.mjs", "default", &mut Vec::new()),
+                Vm::resolve_export(&modules, "t/main.mjs", "default", None),
                 Ok(ExportResolution::Missing)
             ));
         } else {

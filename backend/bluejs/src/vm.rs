@@ -117,6 +117,7 @@ mod import_waiters;
 mod interpreter_records;
 mod module_dependencies;
 mod module_export_names;
+mod module_export_resolution;
 mod module_name_storage;
 mod module_walk_storage;
 mod namespace_cache_storage;
@@ -538,15 +539,7 @@ struct AsyncContinuation {
     call_depth: usize,
 }
 
-#[derive(Clone, PartialEq, Eq)]
-enum ExportResolution {
-    Binding { module: String, slot: usize },
-    Missing,
-    Ambiguous,
-    Namespace { module: String },
-    DeferredNamespace { module: String },
-    Source { module: String },
-}
+use module_export_resolution::{ExportResolution, ResolvedModule};
 
 /// A pending `import.defer()` promise. It resolves with the deferred
 /// namespace once every asynchronous dependency the import had to evaluate

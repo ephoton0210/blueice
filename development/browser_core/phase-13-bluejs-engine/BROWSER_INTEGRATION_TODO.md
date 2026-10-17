@@ -68,6 +68,20 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The export-resolution storage follow-up (2026-10-17) now owns iterative query
+and result storage. Five old-code cases reproduce four local-query allocations,
+eight indirect-query
+allocations before zero-headroom refusal, and uncharged namespace/deferred/source
+result names. `ResolveExport` now borrows canonical keys or retains admitted
+target ownership, with explicit traversal frames and query-wide cycle markers.
+The first expanded run passes **25/25**. Twenty-five new groups, four additional
+finite public cases and all 1678 prior controls pass: **1707 total**, across 49
+executables and 157 fixed selections. Formatting, diff checks and offline
+workspace/all-target Clippy pass; source/artifact and commit audits record the
+checkpoint. Binding-list/import-alias staging, namespace/module-body recursion,
+other synthetic/source request producers and wider acceptance remain open. M1u
+remains the latest accepted milestone.
+
 The export-name traversal follow-up (2026-10-17) now admits iterative name
 collection. Three tiny namespace cases reproduce 2/4/9 extra allocations after
 cache preparation uses
@@ -6288,6 +6302,90 @@ Evidence paths: `/private/tmp/blueice-export-name-storage-controls-20261017.py`,
 `/private/tmp/blueice-export-name-storage-*-20261017.log`, preserved red-phase
 sources in `/private/tmp/blueice-export-name-storage-red-source-20261017/`, and
 `target/export-name-storage-source-20261017.json`. This remains an M1z
+implementation checkpoint with wider acceptance open.
+
+#### Export-resolution storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit `ResolveExport` traversal and result allocations before native
+storage changes; borrow canonical host keys for bindings and known targets;
+retain independent ownership for qualified target names outside the supplied
+bytecode registry. Replace native recursion and preserve explicit/default rules,
+renaming, cycles, star ambiguity, result-kind identity and host error order.
+
+- [x] Preserve five old-code failures: **0/5 passed**. Local binding lookup
+      allocates four times instead of zero; a refused indirect query allocates
+      eight times before the first admission boundary. Namespace/deferred/source
+      results keep native String buffers without a document charge.
+- [x] Implement iterative admitted traversal, borrowed fast results and owned
+      namespace/source results; pass **25/25** on the first expanded run.
+- [x] Pass fixed offline controls, formatting and Clippy; complete source/
+      artifact, staged and committed audits with a detailed English message.
+
+The private resolution type distinguishes borrowed canonical module keys from
+independently owned `ModuleName` targets. Local binding and nontraversing missing/
+default results need no allocation at full healthy quota. Terminal failure is
+checked even before those fast results. Namespace/deferred/source qualification
+admits its work buffer, borrows a supplied registry key when possible and keeps
+the complete target owner otherwise. Result identity compares kind, module name
+and binding slot rather than storage form. Direct namespace/source imports move
+their prepared target instead of cloning its String.
+
+Traversal borrows module/query names, owns complete coexisting vector candidates
+for query-wide cycle markers and explicit frames, and releases scratch before
+returning. Markers distinguish different names in the same module. Indirect
+results propagate through waiting parents; stars merge candidates in declaration
+order, suppress missing/cyclic paths and propagate ambiguity. Equal owned
+namespace candidates refund duplicate names; ambiguity and later host failure
+refund discarded candidates. Qualified request buffers stay independently
+charged until replaced by canonical borrowed keys or adopted by a result.
+
+All linking/namespace resolver callers now supply the document scope. Indirect
+export validation and linking-phase source/import target preparation use admitted request
+names. Source-phase resolution intentionally remains unqualified by the resource
+type. Runtime binding-cell lookup and live alias semantics remain intact.
+
+Twenty-five finite groups cover the five original failures, allocation-free full
+quota results, canonical pointers after input destruction, renamed reentry,
+indirect/star cycles, same-binding diamonds, different slots/modules and result
+kinds, explicit/default precedence, owned candidate equality/refunds, source and
+typed requests, source-ordered/invalid host errors, numerical partial-refusal
+refunds, terminal checks, exact/one-byte-short result ownership, VM-drop lifetime,
+known target borrowing, real named-import live updates and pre-evaluation
+ambiguity rejection, and later-error candidate cleanup. Twenty-three functional
+groups are exposed through the ordinary-library entry point; two allocation
+observations remain unit-only.
+
+Validation: **1707 distinct cases passed, zero failed/ignored**, across 49
+executables and 157 fixed selections: twenty-five new groups, four additional
+finite public cases and all 1678 prior selected controls. The four added cases
+cover live/default/namespace bindings, cyclic hoisted functions, namespace identity/
+ambiguity under normal and small nurseries, and intermediate star ambiguity.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. All seven frozen Rust inputs remain unchanged through the runs.
+The source/artifact receipt records nine final source files, Cargo inputs,
+runner, distinct test identities, executables/logs, original red-phase source
+copies and detailed English message. Staged and committed audits bind those
+inputs to this checkpoint.
+
+The same nine explicit resource/infinite-loop skips and finite public filters
+remain. Tests use short in-memory fixtures and numerical admission peers, reuse
+the workspace target, and disable incremental/dev/test debug artifact growth.
+No resource-exhaustion probe, external network/service/listener/Core/MCP replay,
+privileged validation, process killing, fresh full Test262, coverage or integrated
+acceptance is claimed. The rejected push is not retried. Binding-list/import-
+alias staging, namespace/module-body recursion, other synthetic/source request
+producers and module/source caches, allocator/error-message overhead, shared
+programs and integrated acceptance remain open. M1u remains the latest accepted
+milestone.
+
+Evidence paths: `/private/tmp/blueice-export-resolution-storage-controls-20261017.py`,
+`/private/tmp/blueice-export-resolution-storage-rust-inputs-20261017.json`,
+`/private/tmp/blueice-export-resolution-storage-commit-20261017.txt`,
+`/private/tmp/blueice-export-resolution-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-export-resolution-storage-*-20261017.log`, preserved
+red-phase sources in
+`/private/tmp/blueice-export-resolution-storage-red-source-20261017/`, and
+`target/export-resolution-storage-source-20261017.json`. This remains an M1z
 implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)

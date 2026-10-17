@@ -8,113 +8,13 @@
 use super::*;
 
 impl Vm {
-    pub(in super::super) fn resolve_export(
-        modules: &HashMap<String, Bytecode>,
+    pub(in super::super) fn resolve_export<'a>(
+        modules: &'a HashMap<String, Bytecode>,
         module: &str,
         export_name: &str,
-        resolve_set: &mut Vec<(String, String)>,
-    ) -> Result<ExportResolution, RuntimeError> {
-        let pair = (module.to_string(), export_name.to_string());
-        if resolve_set.contains(&pair) {
-            return Ok(ExportResolution::Missing);
-        }
-        resolve_set.push(pair);
-        let result = (|| {
-            let code = modules.get(module).ok_or_else(|| {
-                RuntimeError::ModuleResolution(format!(
-                    "module {module} was not supplied by the host"
-                ))
-            })?;
-            for export in &code.module_exports {
-                match export {
-                    ModuleExport::Local {
-                        export_name: name,
-                        local_slot,
-                    } if name == export_name => {
-                        return Ok(ExportResolution::Binding {
-                            module: module.to_string(),
-                            slot: *local_slot as usize,
-                        });
-                    }
-                    ModuleExport::Indirect {
-                        export_name: name,
-                        module_request,
-                        import_name,
-                        module_type,
-                    } if name == export_name => {
-                        let target =
-                            Self::resolve_module_target(module, module_request, *module_type)?;
-                        return Self::resolve_export(modules, &target, import_name, resolve_set);
-                    }
-                    ModuleExport::Namespace {
-                        export_name: name,
-                        module_request,
-                        module_type,
-                    } if name == export_name => {
-                        return Ok(ExportResolution::Namespace {
-                            module: Self::resolve_module_target(
-                                module,
-                                module_request,
-                                *module_type,
-                            )?,
-                        });
-                    }
-                    ModuleExport::DeferredNamespace {
-                        export_name: name,
-                        module_request,
-                        module_type,
-                    } if name == export_name => {
-                        return Ok(ExportResolution::DeferredNamespace {
-                            module: Self::resolve_module_target(
-                                module,
-                                module_request,
-                                *module_type,
-                            )?,
-                        });
-                    }
-                    ModuleExport::Source {
-                        export_name: name,
-                        module_request,
-                    } if name == export_name => {
-                        return Ok(ExportResolution::Source {
-                            module: Self::resolve_module_request(module, module_request)?,
-                        });
-                    }
-                    _ => {}
-                }
-            }
-            if export_name == "default" {
-                return Ok(ExportResolution::Missing);
-            }
-            let mut candidate = ExportResolution::Missing;
-            for export in &code.module_exports {
-                let ModuleExport::Star {
-                    module_request,
-                    module_type,
-                } = export
-                else {
-                    continue;
-                };
-                let target = Self::resolve_module_target(module, module_request, *module_type)?;
-                match Self::resolve_export(modules, &target, export_name, resolve_set)? {
-                    ExportResolution::Missing => {}
-                    ExportResolution::Ambiguous => return Ok(ExportResolution::Ambiguous),
-                    found @ (ExportResolution::Binding { .. }
-                    | ExportResolution::Namespace { .. }
-                    | ExportResolution::DeferredNamespace { .. }
-                    | ExportResolution::Source { .. }) => {
-                        if candidate == ExportResolution::Missing {
-                            candidate = found;
-                        } else if candidate != found {
-                            return Ok(ExportResolution::Ambiguous);
-                        }
-                    }
-                }
-            }
-            Ok(candidate)
-        })();
-        resolve_set.pop();
-        result
+        scope: Option<&SchedulingScope>,
+    ) -> Result<ExportResolution<'a>, RuntimeError> {
+        module_export_resolution::resolve(modules, module, export_name, scope)
     }
 
     pub(in super::super) fn exported_names<'a>(
@@ -196,7 +96,8 @@ impl Vm {
             let namespace = placeholder?;
             let mut exports = Vec::with_capacity(names.len());
             for &name in names.iter() {
-                let resolution = Self::resolve_export(modules, module, name, &mut Vec::new())?;
+                let resolution =
+                    Self::resolve_export(modules, module, name, self.host_scheduling.as_ref())?;
                 let deferred_target =
                     matches!(resolution, ExportResolution::DeferredNamespace { .. });
                 let cell = match resolution {
@@ -205,7 +106,7 @@ impl Vm {
                         slot,
                     } => {
                         let cell = linked
-                            .get(&exporter)
+                            .get(exporter.as_str())
                             .and_then(|record| record.cells.get(&slot))
                             .copied()
                             .ok_or_else(|| {

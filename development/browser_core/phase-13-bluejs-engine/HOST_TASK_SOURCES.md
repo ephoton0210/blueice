@@ -610,8 +610,26 @@ and visits repeated modules once. It sorts distinct names in place and releases
 traversal sets/frames before returning the still-owned pointer vector. Deferred
 filtering retains its backing charge. Namespace construction retains that result
 owner across managed allocation, GC and recursive namespace construction; a
-Rust-held result remains charged after its VM dies. `ResolveExport` and binding/
-alias staging remain separate open producers.
+Rust-held result remains charged after its VM dies.
+
+`ResolveExport` uses admitted query-wide module/name markers and explicit frame
+vectors instead of native recursion and copied input pairs. Local binding and
+nontraversing missing/default results borrow canonical registry keys without
+allocation at full healthy quota; terminal refusal still takes precedence.
+Traversal admits complete coexisting replacements and borrows query names while
+propagating indirect results or merging star candidates in declaration order.
+Cycle markers distinguish different export names within one module.
+
+Resolved targets borrow canonical registry keys when supplied, or retain an
+independent qualified `ModuleName` owner for namespace/deferred/source results
+outside that registry. Equality compares result kind, module name and binding
+slot, including owned names. Duplicate/discarded candidates and failed walks
+refund their owners; a retained result outlives its VM without losing its charge.
+Linking and namespace callers supply the document scope for resolver and request
+preparation, and direct namespace/source imports move prepared targets instead
+of cloning Strings. Source-phase requests remain unqualified by resource type.
+Binding-list and import-alias staging, other synthetic/source request producers
+and module/source caches remain open.
 
 The graph's retained table/set/vector allocations and UTF-8 names share the document
 native-byte budget. Registration first admits the incoming vector, original

@@ -28,6 +28,10 @@ mod namespace_cache_storage_tests;
 #[path = "../../tests/fixtures/export_name_storage.rs"]
 mod export_name_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/export_resolution_storage.rs"]
+mod export_resolution_storage_tests;
+
 /// How code that is not a generator -- a module body, an async function body
 /// -- finishes a run: it returns, or it awaits. It never yields, and no
 /// running code suspends at a generator's entry.
@@ -594,10 +598,19 @@ impl Vm {
                         else {
                             continue;
                         };
-                        let target =
-                            Self::resolve_module_target(name, module_request, *module_type)?;
-                        match Self::resolve_export(modules, &target, import_name, &mut Vec::new())?
-                        {
+                        let target = ResolvedModule::resolve(
+                            modules,
+                            name,
+                            module_request,
+                            *module_type,
+                            self.host_scheduling.as_ref(),
+                        )?;
+                        match Self::resolve_export(
+                            modules,
+                            &target,
+                            import_name,
+                            self.host_scheduling.as_ref(),
+                        )? {
                             ExportResolution::Binding { .. }
                             | ExportResolution::Namespace { .. }
                             | ExportResolution::DeferredNamespace { .. }
@@ -613,7 +626,13 @@ impl Vm {
                         let ModuleExport::Source { module_request, .. } = export else {
                             continue;
                         };
-                        let target = Self::resolve_module_request(name, module_request)?;
+                        let target = ResolvedModule::resolve(
+                            modules,
+                            name,
+                            module_request,
+                            ModuleType::JavaScript,
+                            self.host_scheduling.as_ref(),
+                        )?;
                         self.module_source_object(&target, modules)?;
                     }
                     // Source-phase requests are resolved while loading the graph,
@@ -625,7 +644,13 @@ impl Vm {
                         if !matches!(import.import_name, ModuleImportName::Source) {
                             continue;
                         }
-                        let target = Self::resolve_module_request(name, &import.module_request)?;
+                        let target = ResolvedModule::resolve(
+                            modules,
+                            name,
+                            &import.module_request,
+                            ModuleType::JavaScript,
+                            self.host_scheduling.as_ref(),
+                        )?;
                         self.module_source_object(&target, modules)?;
                     }
                 }
@@ -644,35 +669,32 @@ impl Vm {
                         };
                         // A source-phase import names the host's source record
                         // for the resource itself, whatever its `type` says.
-                        let target = if matches!(import.import_name, ModuleImportName::Source) {
-                            // The loop above already resolved this request.
-                            Self::resolve_module_request(name, &import.module_request)
-                                .expect("a source-phase request was resolved while it was loaded")
+                        let kind = if matches!(import.import_name, ModuleImportName::Source) {
+                            ModuleType::JavaScript
                         } else {
-                            Self::resolve_module_target(
-                                name,
-                                &import.module_request,
-                                import.module_type,
-                            )?
+                            import.module_type
                         };
+                        let target = ResolvedModule::resolve(
+                            modules,
+                            name,
+                            &import.module_request,
+                            kind,
+                            self.host_scheduling.as_ref(),
+                        )?;
                         let resolution = match &import.import_name {
                             ModuleImportName::Named(import_name) => Self::resolve_export(
                                 modules,
                                 &target,
                                 import_name,
-                                &mut Vec::new(),
+                                self.host_scheduling.as_ref(),
                             )?,
-                            ModuleImportName::Namespace => ExportResolution::Namespace {
-                                module: target.clone(),
-                            },
-                            ModuleImportName::DeferredNamespace => {
-                                ExportResolution::DeferredNamespace {
-                                    module: target.clone(),
-                                }
+                            ModuleImportName::Namespace => {
+                                ExportResolution::Namespace { module: target }
                             }
-                            ModuleImportName::Source => ExportResolution::Source {
-                                module: target.clone(),
-                            },
+                            ModuleImportName::DeferredNamespace => {
+                                ExportResolution::DeferredNamespace { module: target }
+                            }
+                            ModuleImportName::Source => ExportResolution::Source { module: target },
                         };
                         let deferred_target =
                             matches!(resolution, ExportResolution::DeferredNamespace { .. });
@@ -681,7 +703,7 @@ impl Vm {
                                 module: exporter,
                                 slot,
                             } => linked
-                                .get(&exporter)
+                                .get(exporter.as_str())
                                 .and_then(|record| record.cells.get(&slot))
                                 .copied()
                                 // Every module of the graph made a cell for
