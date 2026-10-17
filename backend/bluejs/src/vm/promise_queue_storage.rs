@@ -109,6 +109,27 @@ impl<T> PreparedVec<T> {
     }
 }
 
+impl<T> PreparedDeque<T> {
+    /// A detached queue adopts the complete candidate lease with its backing.
+    pub(super) fn commit_owned(
+        mut self,
+        values: &mut VecDeque<T>,
+    ) -> Option<SharedSchedulingCharge> {
+        assert_eq!((values.len(), values.capacity()), self.previous);
+        if let Some(mut replacement) = self.replacement.take() {
+            replacement.append(values);
+            *values = replacement;
+        }
+        assert!(self.additional <= values.capacity() - values.len());
+        self.charge.take()
+    }
+    pub(super) fn staging_bytes(&self) -> usize {
+        self.replacement.as_ref().map_or(0, |values| {
+            values.capacity().saturating_mul(std::mem::size_of::<T>())
+        })
+    }
+}
+
 pub(super) struct PreparedMap<K, V> {
     replacement: Option<HashMap<K, V>>,
     charge: Option<SharedSchedulingCharge>,

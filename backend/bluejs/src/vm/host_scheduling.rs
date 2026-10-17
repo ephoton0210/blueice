@@ -370,6 +370,19 @@ impl SchedulingScope {
         self.own.payload_bytes -= bytes;
         self.account.borrow_mut().usage.payload_bytes -= bytes;
     }
+    /// Move published VM storage to an independent Rust owner. The physical
+    /// data and aggregate account do not change, so no admission is repeated.
+    pub(super) fn detach_owned_payload(&mut self, bytes: usize) -> SharedSchedulingCharge {
+        assert!(
+            bytes <= self.own.payload_bytes,
+            "detach published VM ownership"
+        );
+        self.own.payload_bytes -= bytes;
+        SharedSchedulingCharge {
+            account: self.account.clone(),
+            bytes,
+        }
+    }
     #[cfg(any(test, coverage))]
     pub(super) fn task_serial_state(&self) -> u64 {
         self.account.borrow().next_task_serial

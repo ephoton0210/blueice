@@ -68,6 +68,23 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The module completion/rejection notification-storage follow-up (2026-10-17) now
+owns independently admitted notification work. Four old-code cases reproduce one
+queue allocation at zero native headroom and dependency-edge removal before
+refusal. Notification queues now
+admit complete parent batches; detached reverse vectors transfer their existing
+VM charge to independent name/iterator owners. The first focused run passes
+**26/26**. The initial fixed controls pass 1892 cases and fail one legacy
+observation of the obsolete ambient counter. The corrected observation passes
+**16/16**, preserving its 153-byte minimum. Reusing 170 unaffected passing
+selections with nine unchanged Rust-input hashes yields evidence for **1893
+distinct selected tests**, across 50 executable targets and 171 selections.
+Formatting, diff checks and offline workspace/all-target Clippy pass. Both
+failed observations and their source/artifact provenance are preserved; the
+broad runner is not replayed after the cybersecurity warning. Dynamic source
+compilation, other task/native/heap buffers and wider integrated acceptance
+remain open. M1u remains the latest accepted milestone.
+
 The iterative module-dependency evaluation follow-up (2026-10-17) now owns
 explicit dependency evaluation frames.
 Three fixed public graphs reproduce 3/4/3 simultaneously active dependency
@@ -7009,6 +7026,84 @@ the first passed attempt at
 `/private/tmp/blueice-module-evaluation-stack-audit-20261017.py`,
 `/private/tmp/blueice-module-evaluation-stack-commit-20261017.txt` and
 `target/module-evaluation-stack-source-20261017.json`.
+
+#### Module notification storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit completion/rejection queue backing and seed names before graph
+mutation. Admit a complete possible parent batch before reverse-row detachment,
+retain detached vectors/names independently across JavaScript and VM destruction,
+and keep sibling/BFS notification order and shared error identity.
+
+- [x] Preserve four old-code failures: **0/4 passed**. Completion and rejection
+      each allocate a queue at zero native headroom; refusal consumes the reverse
+      parent row or the rejecting module's dependency edges.
+- [x] Own queue/name storage, pre-admit complete batches and transfer detached
+      parent-vector ownership without checking or charging its bytes twice.
+- [x] Pass expanded finite cases and corrected observation; retain unaffected
+      controls with unchanged Rust/Cargo inputs. Pass formatting and Clippy;
+      complete source/artifact and commit audits with detailed English text.
+
+Queue inputs now borrow the caller's module name and copy it through the admitted
+name producer, removing upstream unadmitted String clones. The queue owns a
+complete admitted VecDeque allocation and independent ModuleName entries. A
+prepared parent batch can enqueue without backing growth; popping a name leaves
+its own charge live through callbacks or later queue destruction.
+
+Reverse-row detachment first synchronizes VM ownership, then moves its reported
+vector capacity and actual key capacities into an independent shared charge.
+The aggregate account stays unchanged during that allocation-free handoff;
+reconciliation refunds the removed map key. The iterator retains backing and
+remaining names, splitting each yielded name's charge without copying. VM death
+therefore cannot erase charges for Rust-held detached work.
+
+Completion reserves all potential parent slots before detachment and preserves
+source/BFS order. A ready parent's language failure immediately runs rejection
+before the next sibling, moving its owned name into that work queue. Rejection
+prepares queue capacity before dependency removal and rechecks the parent batch
+after waiter settlement. Error rooting precedes a newly rejected parent's flag/
+error publication. Existing completed work and callback effects retain their
+normal ordering; subsequent resource failures remain aborts.
+
+Twenty-six finite groups cover original observations, retained/detached/exact/
+short/wrapped/spare/growing queues, prepared publication at full quota, document
+handoff rules, unbounded input attachment, full-quota parent transfer, VM-drop
+iterator ownership, padded-buffer pointer preservation, whole-batch refusal,
+public BFS and failed-sibling order, rejection identity through GC, error-root
+refusal, missing rows, host-neutral notifications, terminal scopes and moved
+seed identity. Twenty-four functional groups are exposed through the ordinary-
+library entry point; two allocation observations remain unit-only. The first
+focused run passes **26/26**.
+
+The initial 171-selection control run passes **1892** cases and fails one legacy
+observation: independent notification leases no longer contribute to the ambient
+displaced-frame subtotal. Preserve that entire run, all ten then-current Rust
+inputs and its executable hashes. A first conversion to a pre-checkpoint account
+delta also fails (**15/16**): the completed await/dependency owners are released
+before callbacks. Preserve that attempt separately. Observe the real document
+account during callbacks and compare it with post-checkpoint retained ownership;
+the original **153-byte minimum** remains unchanged. The corrected focused run
+passes **16/16**.
+
+After the cybersecurity warning, reuse the other **170 passing selections**;
+do not replay the broad runner. All nine original Rust-input hashes and Cargo
+inputs are unchanged; only the legacy observation fixture differs. Replacing its
+failed selection with the focused result provides evidence for **1893 distinct
+selected tests**, across 50 executable targets and 171 contributing selections,
+including all 1867 prior selected controls. Keep the nine explicit skips and
+finite public filters. Formatting, diff checks and offline workspace/all-target
+Clippy with warnings denied pass. Source/artifact and commit audits distinguish
+retained executable hashes from the focused rerun, bind ten final Rust inputs and
+twelve source/document files, and confirm the module evaluation controller/body
+are unchanged from the parent checkpoint.
+
+Dynamic source parsing/compilation, other task/native/heap buffers, allocator/
+error-message overhead, shared programs and integrated acceptance remain open.
+M1u remains the latest accepted milestone; the prior rejected push is not retried.
+
+Evidence: `target/module-notification-storage-source-20261017.json` and prefix
+`/private/tmp/blueice-module-notification-storage-`, including original red/first
+source copies, full control/observer attempt archives, frozen Rust inputs,
+retained fixed controls and the focused observation log.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

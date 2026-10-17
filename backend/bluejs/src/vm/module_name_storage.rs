@@ -50,6 +50,10 @@ impl std::ops::Deref for ModuleName {
     }
 }
 impl ModuleName {
+    pub(super) fn attach(&mut self, scope: Option<&SchedulingScope>) -> Result<(), RuntimeError> {
+        let bytes = self.bytes();
+        attach(&mut self.charge, bytes, scope)
+    }
     fn buffer(bytes: usize, scope: Option<&SchedulingScope>) -> Result<Self, RuntimeError> {
         let mut value = Self {
             name: String::new(),
@@ -157,6 +161,24 @@ impl std::ops::Deref for ModuleNames {
     }
 }
 impl ModuleNames {
+    /// Adopt an already-published vector after its VM ownership is detached.
+    pub(super) fn from_admitted(
+        names: Vec<String>,
+        charge: Option<SharedSchedulingCharge>,
+    ) -> Self {
+        let name_bytes = names.iter().map(String::capacity).sum::<usize>();
+        if let Some(owner) = &charge {
+            assert_eq!(
+                owner.bytes(),
+                host_scheduling::slots(&names).saturating_add(name_bytes)
+            );
+        }
+        Self {
+            names,
+            charge,
+            name_bytes,
+        }
+    }
     pub(super) fn bytes(&self) -> usize {
         host_scheduling::slots(&self.names).saturating_add(self.name_bytes)
     }

@@ -44,6 +44,10 @@ mod module_identity_cache_tests;
 #[path = "../../tests/fixtures/module_evaluation_stack.rs"]
 mod evaluation_stack_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_notification_storage.rs"]
+mod notification_storage_tests;
+
 struct EvaluationFrame<'a> {
     name: &'a str,
     code: ModuleCode,
@@ -1810,7 +1814,7 @@ impl Vm {
                 }
                 let modules = self.module_registry.clone();
                 self.settle_dynamic_import_waiters(&module, &mut graph.linked)?;
-                self.settle_module_parents(module.clone(), &modules, &mut graph.linked)?;
+                self.settle_module_parents(&module, &modules, &mut graph.linked)?;
                 Ok(value)
             }
             Ok(StraightLineExit::Await {
@@ -1860,7 +1864,7 @@ impl Vm {
                 record.evaluated = true;
                 record.completion = None;
                 record.error = Some(error.clone());
-                self.reject_module_and_parents(module.clone(), error, &mut graph.linked)?;
+                self.reject_module_and_parents(&module, error, &mut graph.linked)?;
                 Ok(Value::Undefined)
             }
         })();
@@ -1887,47 +1891,43 @@ impl Vm {
     /// considered only after its direct siblings have had their turn.
     pub(super) fn settle_module_parents(
         &mut self,
-        completed: String,
+        completed: &str,
         modules: &ModuleRegistry,
         linked: &mut ModuleRecords,
     ) -> Result<(), RuntimeError> {
-        let result = self.settle_module_parents_owned(completed, modules, linked);
+        let result = (|| {
+            self.synchronize_scheduling_usage()?;
+            let completed = module_notification_storage::NotificationQueue::singleton_copy(
+                completed,
+                self.host_scheduling.as_ref(),
+            )?;
+            self.settle_module_parents_owned(completed, modules, linked)
+        })();
         self.reconcile_scheduling_ownership();
         result
     }
 
     fn settle_module_parents_owned(
         &mut self,
-        completed: String,
+        mut completed: module_notification_storage::NotificationQueue,
         modules: &ModuleRegistry,
         linked: &mut ModuleRecords,
     ) -> Result<(), RuntimeError> {
-        let mut completed = std::collections::VecDeque::from([completed]);
         while let Some(child) = completed.pop_front() {
-            let mut work_payload = self.charge_execution_payload(
-                module_dependencies::string_queue_bytes(&completed)
-                    .saturating_add(child.capacity()),
-            );
-            let parents = self.module_async_parents.remove(&child).unwrap_or_default();
-            let capacity = parents.capacity();
-            let mut parents = parents.into_iter();
-            let mut parents_payload = self.charge_execution_payload(
-                module_dependencies::string_iterator_bytes(capacity, parents.as_slice()),
-            );
+            let count = self
+                .module_async_parents
+                .get(child.as_str())
+                .map_or(0, Vec::len);
+            completed.reserve(count, self.host_scheduling.as_ref())?;
+            let mut parents = self.take_notification_parents(&child)?;
             self.reclaim_module_dependency_storage();
             self.synchronize_scheduling_usage()?;
-            while let Some(parent) = parents.next() {
-                let parent_payload = self.charge_execution_payload(parent.capacity());
-                drop(parents_payload);
-                parents_payload = self.charge_execution_payload(
-                    module_dependencies::string_iterator_bytes(capacity, parents.as_slice()),
-                );
-                self.synchronize_scheduling_usage()?;
+            for parent in parents.by_ref() {
                 let ready = self
                     .module_pending_dependencies
-                    .get_mut(&parent)
+                    .get_mut(parent.as_str())
                     .is_some_and(|dependencies| {
-                        dependencies.remove(&child);
+                        dependencies.remove(child.as_str());
                         dependencies.is_empty()
                     });
                 if !ready {
@@ -1936,118 +1936,128 @@ impl Vm {
                 self.remove_module_dependency_parent(&parent);
                 self.synchronize_scheduling_usage()?;
                 let record = linked
-                    .get_mut(&parent)
+                    .get_mut(parent.as_str())
                     .expect("async parent remains linked");
                 record.evaluating = false;
                 record.suspended = false;
                 if let Err(error) = self.evaluate_module_record(&parent, modules, linked) {
                     let retained = if error.is_catchable() {
-                        linked.get(&parent).and_then(|record| record.error.clone())
+                        linked
+                            .get(parent.as_str())
+                            .and_then(|record| record.error.clone())
                     } else {
                         None
                     };
                     let Some(retained) = retained else {
                         return Err(error);
                     };
-                    // A ready parent's language failure is a module rejection,
-                    // not a second exception from this dependency's Promise
-                    // job. Settle its waiters/ancestors and continue the ready
-                    // siblings. Resource aborts still escape unchanged.
-                    drop(parent_payload);
-                    self.reject_module_and_parents(parent, retained, linked)?;
+                    // A language failure rejects this parent's waiters and
+                    // ancestors before processing the remaining ready siblings.
+                    self.reject_module_parents_from_name(parent, retained, linked)?;
                     continue;
                 }
-                if linked.get(&parent).is_some_and(|record| record.evaluated) {
+                if linked
+                    .get(parent.as_str())
+                    .is_some_and(|record| record.evaluated)
+                {
                     self.settle_dynamic_import_waiters(&parent, linked)?;
-                    completed.push_back(parent);
-                    drop(parent_payload);
-                    drop(work_payload);
-                    work_payload = self.charge_execution_payload(
-                        module_dependencies::string_queue_bytes(&completed)
-                            .saturating_add(child.capacity()),
-                    );
-                    self.synchronize_scheduling_usage()?;
+                    completed.push_prepared(parent, self.host_scheduling.as_ref())?;
                 }
             }
             drop(parents);
-            drop(parents_payload);
         }
         drop(completed);
         self.reclaim_module_dependency_storage();
         self.synchronize_scheduling_usage()
     }
 
-    /// Propagate an async module evaluation error through its static parents.
-    /// Dynamic imports observe rejection from each affected module, while the
-    /// surrounding promise checkpoint continues processing independent jobs.
+    /// Propagate a module error in breadth-first order, preserving the ready
+    /// sibling and Promise-notification order of the completion path.
     pub(super) fn reject_module_and_parents(
         &mut self,
-        module: String,
+        module: &str,
         error: ModuleEvaluationError,
         linked: &mut HashMap<String, LinkedModule>,
     ) -> Result<(), RuntimeError> {
-        let result = self.reject_module_and_parents_owned(module, error, linked);
+        let result = (|| {
+            self.synchronize_scheduling_usage()?;
+            let rejected = module_notification_storage::NotificationQueue::singleton_copy(
+                module,
+                self.host_scheduling.as_ref(),
+            )?;
+            self.reject_module_parents_queue(rejected, error, linked)
+        })();
         self.reconcile_scheduling_ownership();
         result
     }
 
-    fn reject_module_and_parents_owned(
+    fn reject_module_parents_from_name(
         &mut self,
-        module: String,
+        module: ModuleName,
         error: ModuleEvaluationError,
         linked: &mut HashMap<String, LinkedModule>,
     ) -> Result<(), RuntimeError> {
-        let mut rejected = std::collections::VecDeque::from([module]);
+        let result = (|| {
+            self.synchronize_scheduling_usage()?;
+            let rejected = module_notification_storage::NotificationQueue::singleton_owned(
+                module,
+                self.host_scheduling.as_ref(),
+            )?;
+            self.reject_module_parents_queue(rejected, error, linked)
+        })();
+        self.reconcile_scheduling_ownership();
+        result
+    }
+
+    fn reject_module_parents_queue(
+        &mut self,
+        mut rejected: module_notification_storage::NotificationQueue,
+        error: ModuleEvaluationError,
+        linked: &mut HashMap<String, LinkedModule>,
+    ) -> Result<(), RuntimeError> {
         while let Some(module) = rejected.pop_front() {
-            let mut work_payload = self.charge_execution_payload(
-                module_dependencies::string_queue_bytes(&rejected)
-                    .saturating_add(module.capacity()),
-            );
+            let count = self
+                .module_async_parents
+                .get(module.as_str())
+                .map_or(0, Vec::len);
+            rejected.reserve(count, self.host_scheduling.as_ref())?;
             self.remove_module_dependency_parent(&module);
             self.synchronize_scheduling_usage()?;
             self.reject_dynamic_import_waiters(&module, error.clone())?;
-            let parents = self
+            // Waiter settlement may discover more work. Recheck the complete
+            // batch before detaching its owned reverse-row allocation.
+            let count = self
                 .module_async_parents
-                .remove(&module)
-                .unwrap_or_default();
-            let capacity = parents.capacity();
-            let mut parents = parents.into_iter();
-            let mut parents_payload = self.charge_execution_payload(
-                module_dependencies::string_iterator_bytes(capacity, parents.as_slice()),
-            );
+                .get(module.as_str())
+                .map_or(0, Vec::len);
+            rejected.reserve(count, self.host_scheduling.as_ref())?;
+            let parents = self.take_notification_parents(&module)?;
             self.reclaim_module_dependency_storage();
             self.synchronize_scheduling_usage()?;
-            while let Some(parent) = parents.next() {
-                let parent_payload = self.charge_execution_payload(parent.capacity());
-                drop(parents_payload);
-                parents_payload = self.charge_execution_payload(
-                    module_dependencies::string_iterator_bytes(capacity, parents.as_slice()),
-                );
+            for parent in parents {
+                let already_rejected = linked
+                    .get(parent.as_str())
+                    .expect("async parent remains linked")
+                    .error
+                    .is_some();
+                if !already_rejected {
+                    self.keep_module_value_alive(&error.value)?;
+                }
                 self.remove_module_dependency_parent(&parent);
                 self.synchronize_scheduling_usage()?;
-                let record = linked
-                    .get_mut(&parent)
-                    .expect("async parent remains linked");
-                if record.error.is_some() {
+                if already_rejected {
                     continue;
                 }
+                let record = linked
+                    .get_mut(parent.as_str())
+                    .expect("async parent remains linked");
                 record.evaluating = false;
                 record.suspended = false;
                 record.evaluated = true;
                 record.completion = None;
-                self.keep_module_value_alive(&error.value)?;
                 record.error = Some(error.clone());
-                rejected.push_back(parent);
-                drop(parent_payload);
-                drop(work_payload);
-                work_payload = self.charge_execution_payload(
-                    module_dependencies::string_queue_bytes(&rejected)
-                        .saturating_add(module.capacity()),
-                );
-                self.synchronize_scheduling_usage()?;
+                rejected.push_prepared(parent, self.host_scheduling.as_ref())?;
             }
-            drop(parents);
-            drop(parents_payload);
         }
         drop(rejected);
         self.reclaim_module_dependency_storage();

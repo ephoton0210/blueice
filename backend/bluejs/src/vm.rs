@@ -122,6 +122,7 @@ mod module_export_names;
 mod module_export_resolution;
 mod module_identity_cache;
 mod module_name_storage;
+mod module_notification_storage;
 mod module_walk_storage;
 mod namespace_cache_storage;
 

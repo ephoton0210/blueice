@@ -28,9 +28,14 @@ impl Fixture {
         vm.use_bounded_host_microtask_checkpoints().unwrap();
         let observed = Rc::new(RefCell::new(Vec::new()));
         let output = observed.clone();
-        let counter = vm.displaced_execution_bytes.clone();
+        let view = Vm {
+            host_scheduling: Some(vm.host_scheduling.as_ref().unwrap().child()),
+            ..Vm::default()
+        };
         vm.install_host_function("observe", 0, move |_args: &[HostValue]| {
-            output.borrow_mut().push(counter.get());
+            output
+                .borrow_mut()
+                .push(view.host_scheduling_snapshot().payload_bytes);
             Ok(HostValue::Undefined)
         })
         .unwrap();
@@ -337,7 +342,12 @@ fn module_dependency_rejection_removes_obsolete_links_from_a_live_sibling() {
 fn module_dependency_walk_storage_is_charged_during_parent_callbacks() {
     let mut fixture = Fixture::new(2, false);
     execute(&mut fixture.vm, "gates[0].resolve(); 0;");
+    // Notification names, detached parents and queue backing now retain
+    // independent document leases outside the displaced-frame subtotal.
+    // The completed await and dependency rows release pre-checkpoint owners.
+    // Compare callback ownership with the post-checkpoint retained baseline.
     fixture.vm.run_promise_jobs_bounded(32).unwrap();
+    let retained = fixture.vm.host_scheduling_usage().unwrap().payload_bytes;
     let observed = fixture.observed.borrow();
     assert_eq!(observed.len(), 2);
     let minimum = 5 * std::mem::size_of::<String>()
@@ -345,8 +355,8 @@ fn module_dependency_walk_storage_is_charged_during_parent_callbacks() {
         + "test/p0.mjs".len()
         + "test/p1.mjs".len();
     assert!(
-        observed[0] >= minimum,
-        "observed={observed:?}, minimum={minimum}"
+        observed[0].saturating_sub(retained) >= minimum,
+        "observed={observed:?}, retained={retained}, minimum={minimum}"
     );
     assert_eq!(fixture.vm.displaced_execution_bytes.get(), 0);
 }

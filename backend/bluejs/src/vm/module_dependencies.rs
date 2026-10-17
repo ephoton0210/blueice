@@ -202,22 +202,6 @@ pub(super) fn string_vector_bytes(values: &Vec<String>) -> usize {
     )
 }
 
-pub(super) fn string_queue_bytes(values: &VecDeque<String>) -> usize {
-    values.iter().fold(
-        values
-            .capacity()
-            .saturating_mul(std::mem::size_of::<String>()),
-        |bytes, value| bytes.saturating_add(value.capacity()),
-    )
-}
-
-pub(super) fn string_iterator_bytes(capacity: usize, values: &[String]) -> usize {
-    values.iter().fold(
-        capacity.saturating_mul(std::mem::size_of::<String>()),
-        |bytes, value| bytes.saturating_add(value.capacity()),
-    )
-}
-
 impl Vm {
     pub(super) fn module_dependency_bytes(&self) -> usize {
         let mut bytes = self

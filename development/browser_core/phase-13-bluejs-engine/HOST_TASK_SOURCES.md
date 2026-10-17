@@ -672,6 +672,17 @@ throw identity and origin. Error-retention/allocation refusal also clears an
 unsuspended record's active flag. JavaScript-driven deferred-property reentry
 starts a separate controller through the existing context mechanism.
 
+Module completion/rejection notifications own complete admitted queue backing
+and independent module-name leases. Whole parent batches precede reverse-row
+detachment; seed copies are admitted before graph mutation. Detaching a reverse
+vector transfers published VM bytes into a shared charge without changing the
+aggregate account. Iterator backing and yielded names remain charged after VM
+destruction, with original buffers moved unchanged. Completion retains source/
+BFS order; ready language failures reject ancestors before the next sibling.
+Rejection rechecks capacity after waiter settlement, and roots an error before
+publishing a newly rejected parent's flags/value. Removed keys and optional map
+backing reclamation refund independently of detached work.
+
 Import-slot lookup uses admitted sorted/deduplicated backing during own-cell
 creation. Import aliases reserve a complete native batch before request/cell
 construction, publish into already-prepared linked cell tables without growth,
