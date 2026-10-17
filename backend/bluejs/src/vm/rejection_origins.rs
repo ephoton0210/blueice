@@ -59,7 +59,17 @@ impl Vm {
         origin: Option<ThrowOrigin>,
         callback: impl FnOnce(&mut Self) -> Result<T, RuntimeError>,
     ) -> Result<T, RuntimeError> {
+        self.with_leased_rejection_origin(origin, None, callback)
+    }
+
+    pub(super) fn with_leased_rejection_origin<T>(
+        &mut self,
+        origin: Option<ThrowOrigin>,
+        charge: Option<host_scheduling::SharedSchedulingCharge>,
+        callback: impl FnOnce(&mut Self) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
         let previous = std::mem::replace(&mut self.promise_origin_override, origin);
+        drop(charge);
         let bytes = previous.as_ref().map_or(0, ThrowOrigin::payload_bytes);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(bytes);
         let added_bytes = self

@@ -110,6 +110,7 @@ mod host_registration;
 mod host_scheduling;
 mod host_task_turns;
 mod host_timers;
+mod import_delivery;
 mod import_waiter_storage;
 mod import_waiters;
 mod interpreter_records;

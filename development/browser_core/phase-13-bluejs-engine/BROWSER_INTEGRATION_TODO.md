@@ -64,15 +64,26 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The import-delivery ownership follow-up (2026-10-17) prepares complete native
+snapshots and target/namespace/reason roots before consuming waiters or advancing
+dependencies. Three finite refusal cases reproduced the old behavior. All
+nineteen focused groups now pass, including collection during a namespace getter
+and preservation of unattempted targets after a committed error. These groups
+and all 1379 prior selected controls pass: **1398 total**, across 47 executables
+and 131 fixed selections. Formatting and offline workspace/all-target Clippy
+pass. Common Promise settlement/reaction
+scratch, provenance/other maps, heap/host buffers, shared programs and integrated
+acceptance remain open; M1u stays the latest accepted milestone.
+
 The import-registration storage follow-up (2026-10-17) now prepares complete
 eager/deferred native storage before publication. Two finite cases reproduced
 net-only vector/table admission; all twenty new finite groups pass. Import maps
 and dependency sets retain their allocation cost and use admitted optional
 compaction. Twenty groups and all 1359 prior selected controls pass: **1379 total**,
 across 47 executables and 130 fixed selections. Formatting and offline workspace/
-all-target Clippy pass. Import
-delivery batch rooting/scratch, provenance/other maps, heap/host buffers, shared
-programs and integrated acceptance remain open.
+all-target Clippy pass. That checkpoint left import-delivery rooting/scratch for
+the follow-up above; provenance/other maps, heap/host buffers, shared programs
+and integrated acceptance remain open.
 
 The host-wait/continuation map follow-up (2026-10-17) now extends allocation
 ledgers to external waits and async/module continuations. Last resumption and
@@ -919,7 +930,11 @@ work and exposes its retained payload ledger.
       dispatch/report failures. Browser-task activity classification, starting
       fuel and drag argument admission now precede task consumption, with stale
       cleanup and future deferral preserved; all 1300 selected controls pass.
-      Shared programs, other managed-container and scheduling backing buffers,
+      Import delivery now prepares native snapshots and a complete temporary
+      root batch before dependency progress or consumption, retaining queued
+      targets after an earlier committed attempt fails. Common Promise
+      settlement/reaction scratch remains open. Shared programs, other
+      managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
@@ -4900,6 +4915,85 @@ Evidence paths: `/private/tmp/blueice-import-storage-controls-20261017.py`,
 `target/import-storage-source-20261017.json`. Ordinary-library entry points expose
 the same fixtures; no fresh coverage result is claimed. This remains an M1z
 checkpoint with wider acceptance open.
+
+#### Import-delivery ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: prepare complete native delivery entries, reference/root vectors,
+copied rejection payload/source and all temporary roots before changing waiter
+membership or dependency progress. Native/root refusal preserves both eager and
+deferred queues. Keep every target and namespace/reason alive across callbacks;
+consume only the current attempted entry, preserving the unattempted suffix on
+failure. Release temporary roots and storage on every result and transfer leased
+rejection inputs to retained Promise/origin ownership without charging them twice.
+
+- [x] Reproduce native fulfillment/rejection and root-ID refusal with tiny
+      fixtures: **0/3 passed** before implementation.
+- [x] Prepare complete delivery ownership and replace the old fulfillment panic
+      with runtime error propagation. All nineteen finite groups pass.
+- [x] Finish the fixed offline controls/static checks, evidence and detailed
+      English commit. Common settlement/reaction clone scratch stays open.
+
+Preparation counts ready deferred targets and eager targets in their existing
+delivery order, admits all entry/reference/root backing plus rejection value/
+filename copies, checks actual capacities, then prepares and publishes the whole
+root batch. Root-ID/storage refusal publishes no prefix or consumed ID. Eager
+namespace construction keeps its independent module roots through preparation
+and dispatch. No JavaScript, collection or dependency mutation occurs during
+native snapshot preparation.
+
+After preparation, partial dependency completion releases obsolete names using
+the existing optional reclamation policy, including when no target is ready.
+Each ready waiter remains queued until its own resolution/rejection attempt
+begins. A getter, instruction refusal or reaction admission error consumes that
+attempt only; subsequent targets retain their original queue edges and pending
+dependency marker. All prepared targets and namespace/reason objects stay rooted
+across earlier callbacks and collection. Callable namespace exports transfer
+ownership to ordinary thenable jobs. Dispatch propagates runtime errors, checks
+latched scheduling failure, preserves ambient fuel and always releases temporary
+roots and native snapshots after dispatch stops.
+
+Each rejection entry splits independently leased value and filename ownership
+from the batch. The origin override and Promise record adopt those inputs before
+their staging leases release. This handoff does not complete the broader common
+settlement/reaction clone and origin-scratch accounting work.
+
+The first implementation run was **2/3 passed**: the root-refusal fixture took
+its expected counter snapshot before its test-only ID-limit setter changed that
+counter. Capturing the baseline after the setter fixes that assertion. An
+expanded-fixture compile also caught a helper/local-name collision; the helper
+was renamed before the successful nineteen-group run.
+
+Nineteen finite groups cover native/exact-short and atomic root refusal with
+retry, partial/unrelated completion, abandoned preparation, Rust-held snapshots
+after VM destruction, rejection input/source transfer, direct-rejection ownership
+comparison, committed native/instruction/reaction errors with retained suffixes,
+real getter-triggered GC, explicit root ownership after original queues clear,
+eager exports, callable `then` job handoff and object-reason collectibility.
+Fixtures use a few targets, four small garbage objects at most and numerical
+admission peers; they start no external operation or service.
+
+Validation: **1398 passed, zero failed/ignored**, across 47 executables and 131
+fixed selections: nineteen new groups and all 1379 prior selected controls.
+Existing eager/deferred imports, Promise/await, host-wait, timer, finalization,
+browser and ownership controls retain their behavior. Formatting, diff checks
+and offline workspace/all-target Clippy with warnings denied pass. Cargo reuses
+the workspace target with incremental compilation and dev/test debug artifact
+growth disabled.
+
+The same nine explicit resource/infinite-loop skips and other finite-public-case
+exclusions remain. No large/resource/infinite cases, JSON resource sweeps,
+network/service replay, privileged validation, process killing, fresh full
+Test262, coverage result or integrated acceptance is claimed. Common Promise
+settlement/reaction scratch, provenance/other maps, heap/host buffers, shared
+programs and integrated gates remain open. M1u stays the latest accepted milestone.
+
+Evidence paths: `/private/tmp/blueice-import-delivery-controls-20261017.py`,
+`/private/tmp/blueice-import-delivery-commit-20261017.txt`,
+`/private/tmp/blueice-import-delivery-audit-20261017.py`, logs matching
+`/private/tmp/blueice-import-delivery-*-20261017.log`, and
+`target/import-delivery-source-20261017.json`. Ordinary-library entry points
+expose the same fixtures; no fresh coverage result is claimed. This remains an
+M1z implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

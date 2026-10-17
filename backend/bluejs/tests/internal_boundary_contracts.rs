@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_import_delivery_contracts() {
+    blueice_bluejs::Vm::verify_import_delivery_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_import_waiter_storage_contracts() {
     blueice_bluejs::Vm::verify_import_waiter_storage_contracts();
 }

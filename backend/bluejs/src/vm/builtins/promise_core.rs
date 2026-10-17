@@ -559,6 +559,15 @@ impl Vm {
         promise: ObjectId,
         status: PromiseStatus,
     ) -> Result<(), RuntimeError> {
+        self.settle_promise_with_input_charge(promise, status, None)
+    }
+
+    pub(in super::super) fn settle_promise_with_input_charge(
+        &mut self,
+        promise: ObjectId,
+        status: PromiseStatus,
+        input_charge: Option<crate::vm::host_scheduling::SharedSchedulingCharge>,
+    ) -> Result<(), RuntimeError> {
         let origin = if matches!(status, PromiseStatus::Rejected(_)) {
             self.current_rejection_origin()
         } else {
@@ -582,6 +591,7 @@ impl Vm {
         };
         let reactions = std::mem::take(&mut record.reactions);
         record.status = status;
+        drop(input_charge);
         record.rejection_origin = origin.clone();
         if !fulfilled && !record.handled {
             self.track_host_rejection(promise);

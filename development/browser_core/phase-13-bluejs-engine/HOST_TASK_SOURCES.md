@@ -332,7 +332,7 @@ Insufficient headroom skips optional compaction without poisoning collection;
 later GC may retry. Empty backing releases without a candidate, and managed
 Promise preparation still preserves admitted spare slots. Mandatory admission
 continues to latch an abort; reclamation never clears a prior abort.
-Provenance/import and other control maps still need retained-allocation ownership.
+Provenance and other control maps still need retained-allocation ownership.
 
 Host waits and async/module continuations now keep allocation ledgers too.
 Prepared growth commits through those owners; partial removal retains backing
@@ -360,8 +360,23 @@ Optional map/set/vector compaction admits a complete coexisting candidate, moves
 survivors, reconciles live ownership, then refunds staging. Missing headroom
 keeps backing charged without poisoning collection; empty cleanup needs no
 admission. GC uses the guarded scheduling reclamation boundary for this storage.
-Import delivery-batch scratch and temporary rooting remain open, alongside
-Promise provenance/other maps and wider heap/host buffers.
+Import delivery prepares a complete native batch before consuming any waiter or
+advancing dependency membership. Entry/reference/root vectors and copied
+rejection values/source filenames have independent document leases checked
+against actual capacity. The complete root batch registers atomically; refusal
+leaves queues, dependency markers and root IDs unchanged. Eager namespace roots
+remain installed through native preparation and dispatch.
+
+Partial dependency completion then reclaims obsolete names. Each ready entry
+stays queued until its own attempt begins. Prepared roots protect every target
+and namespace/reason across earlier getters and collection; an error consumes
+only the current attempt and leaves the unattempted suffix queued. Fulfillment
+propagates runtime errors, including the caller's instruction limit. Rejection
+transfers its leased value/origin to the Promise record/override before refunding
+staging. Callable namespace exports hand roots to ordinary thenable jobs. Every
+result releases batch roots and scratch and reconciles usage; ambient fuel is
+preserved. Common Promise settlement/reaction clone scratch, provenance/other
+maps and wider heap/host buffers remain open.
 
 Host-wait registration first admits its shared pending count and preflights
 root-ID space. Converted primitive inputs and actual argument-vector slots have
