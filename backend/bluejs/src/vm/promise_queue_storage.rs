@@ -123,7 +123,10 @@ impl<K: Eq + std::hash::Hash, V> PreparedMap<K, V> {
     /// Heap-only allocation may prune records while retaining their backing.
     /// Reuse a slot freed by collection, or move survivors into the admitted
     /// candidate. Preparation's caller prevents intervening table shrinkage.
-    pub(super) fn commit_after_pruning(mut self, values: &mut HashMap<K, V>) {
+    pub(super) fn commit_after_pruning(
+        mut self,
+        values: &mut retained_control_map::RetainedControlMap<K, V>,
+    ) {
         assert!(
             values.len() <= self.previous.0,
             "collection only removes old records"
@@ -131,12 +134,11 @@ impl<K: Eq + std::hash::Hash, V> PreparedMap<K, V> {
         if values.len() < values.capacity() {
             return;
         }
-        let mut replacement = self
+        let replacement = self
             .replacement
             .take()
             .expect("full table has an admitted candidate");
-        replacement.extend(values.drain());
-        *values = replacement;
+        values.replace_prepared(replacement);
         assert!(
             values.len() < values.capacity(),
             "record slot admitted before publication"

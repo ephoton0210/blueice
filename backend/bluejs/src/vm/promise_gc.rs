@@ -122,7 +122,7 @@ impl Vm {
     pub(super) fn visit_promise_owned_edges(&self, mut visit: impl FnMut(ObjectId, ObjectId)) {
         self.disposal_owned_edges()
             .for_each(|(owner, reference)| visit(owner, reference));
-        for (&promise, record) in &self.promises {
+        for (&promise, record) in self.promises.iter() {
             match &record.status {
                 PromiseStatus::Fulfilled(value) | PromiseStatus::Rejected(value) => {
                     if let Some(reference) = value.object_id() {
@@ -189,7 +189,7 @@ impl Vm {
     }
 
     pub(super) fn visit_pending_module_and_import_roots(&self, visit: &mut impl FnMut(ObjectId)) {
-        for (&promise, record) in &self.promises {
+        for (&promise, record) in self.promises.iter() {
             if record
                 .reactions
                 .iter()
@@ -215,10 +215,22 @@ impl Vm {
         self.prune_disposal_state();
         self.promises
             .retain(|promise, _| self.heap.contains(*promise));
-        if !self.preserve_promise_table_capacity
-            && self.promises.len().saturating_mul(4) < self.promises.capacity()
-        {
-            self.promises.shrink_to_fit();
+        if !self.preserve_promise_table_capacity {
+            if self.promises.is_empty() {
+                self.promises.release_empty();
+            } else if self.promises.has_sparse_backing() {
+                // Refund dead payload before admitting a complete coexisting
+                // replacement. Refusal leaves retained backing charged.
+                self.reconcile_scheduling_ownership();
+                if let Some(prepared) = self
+                    .promises
+                    .prepare_compaction(self.host_scheduling.as_ref())
+                {
+                    let charge = self.promises.commit_compaction(prepared);
+                    self.reconcile_scheduling_ownership();
+                    drop(charge);
+                }
+            }
         }
         self.promise_thunk_origins
             .retain(|state, _| self.heap.contains(*state));

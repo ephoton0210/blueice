@@ -320,6 +320,20 @@ An existing empty cache survives a trace refusal without collection; a real
 collection may reclaim it without another allocation. Returned objects retain
 their requested prototype and normal Promise/GC ownership.
 
+Live Promise records keep a separate allocation ledger owned by the VM. Removing
+records changes insertion headroom without refunding retained hash backing;
+prepared replacement or explicit empty-table release updates the ledger.
+GC reconciles dead payload before preparing a complete smaller replacement
+under an independent native lease. Sparsity uses retained allocation so a
+tombstone-reduced capacity cannot suppress reclamation. It checks requested/
+reported capacity, moves survivors, reconciles the new live allocation, then
+refunds the candidate lease.
+Insufficient headroom skips optional compaction without poisoning collection;
+later GC may retry. Empty backing releases without a candidate, and managed
+Promise preparation still preserves admitted spare slots. Mandatory admission
+continues to latch an abort; reclamation never clears a prior abort. Other
+control maps still need retained-allocation ownership.
+
 Host-wait registration first admits its shared pending count and preflights
 root-ID space. Converted primitive inputs and actual argument-vector slots have
 an independent document lease. Unsupported input retains a deferred language

@@ -64,6 +64,14 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The Promise retained-allocation follow-up (2026-10-17) now retains allocation
+cost across deletion and prepares optional GC compaction under a native lease.
+Its initial finite reproduction failed before the fix. Eighteen finite groups
+and all 1321 prior selected controls pass: **1339 total**, across 47 executables
+and 128 fixed selections. Formatting and offline workspace/all-target Clippy
+pass. Other retained maps, event/dispatch scratch,
+heap/host buffers, shared programs and integrated acceptance remain open.
+
 The rejection-batch entry follow-up (2026-10-17) prepares native notification
 snapshots before removing their rooted task. The two original refusal cases
 failed before the fix; seventeen focused finite groups, four additional exact
@@ -4640,6 +4648,87 @@ Evidence paths: `/private/tmp/blueice-rejection-batch-controls-20261017.py`,
 managed event allocation and other event/dispatch scratch, retained-map ownership,
 other heap/host buffers, shared programs and integrated acceptance remain open.
 M1u remains the latest accepted milestone.
+
+#### Promise retained-allocation follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: Promise deletion must not refund a hash allocation merely because
+reported insertion capacity falls. Record growth/replacement must retain the
+old allocation until admitted storage takes over. GC must admit a complete
+coexisting replacement before sparse-table compaction; refusal must keep the old
+backing charged without poisoning successful collection. Empty backing must
+release without replacement headroom. Preserve record/root collectibility,
+managed preparation's capacity guard and mandatory admission's terminal abort.
+
+- [x] Reproduce unadmitted GC compaction with fifteen tiny pending Promises and
+      a numerical native peer: **0/1 passed** before implementation.
+- [x] Introduce controlled Promise table allocation ownership and independently
+      leased optional compaction with requested/reported capacity checks.
+- [x] Complete fixed finite controls/static checks, update evidence and commit
+      a detailed English message. Other maps and integrated gates stay open.
+
+The live Promise map now records allocation bytes separately from HashMap's
+reported insertion headroom. Reads borrow the map; controlled insert/retain/
+replacement methods prevent ordinary producers from bypassing the allocation
+ledger. Deleting records leaves the original allocation charged. Prepared record
+publication updates the ledger only when the admitted candidate replaces it;
+reusing a GC-freed slot keeps the old allocation owner. Existing capacity guards
+still preserve cached backing through managed allocation and release a collected
+empty table after failed creation.
+
+GC drops dead payload, reconciles its refund, then prepares a complete smaller
+table under an independent native lease. Sparsity uses retained allocation,
+so tombstones cannot hide mostly empty backing by reducing reported headroom.
+It checks requested/reported capacity,
+moves survivors without cloning or further allocation, reconciles the smaller
+live owner, then refunds the temporary lease. Missing headroom or candidate
+allocation failure skips this optional compaction while keeping backing charged.
+Candidates that do not reduce backing are discarded. Later GC can retry after
+other owners release storage. Empty maps release directly, including when no
+replacement headroom exists. Mandatory admission still latches a document abort;
+optional reclamation never clears an existing abort.
+
+Initial expanded controls reported **15/16 passed**. The remaining fixture
+assumed a fully erased table still reported positive capacity; the fixed
+28-scalar collision layout actually reports zero despite retaining its old
+allocation. The corrected assertion checks precisely that distinction. Tests
+use bounded scalar tables or fifteen tiny Promise objects, never represented
+large allocations or resource-exhaustion execution.
+
+Seventeen focused groups passed before final review found that the sparse-table
+decision also needed the retained allocation ledger. A further fixed scalar case
+proves low reported headroom cannot suppress reclamation of mostly empty backing.
+All final-source checks below include that correction.
+
+Eighteen finite groups cover tombstone capacity loss, repeated deletion,
+retained empty backing, replacement/refund ownership, requested/reported native
+refusal without poisoning collection, exact candidate transfer, already-terminal
+and mandatory-failure behavior, real GC with no/exact/one-byte-short headroom,
+empty backing release, retry after peer release, managed preparation's capacity
+guard, disposal of unhelpful candidates and allocation-based sparsity selection.
+
+Validation: **1339 passed, zero failed/ignored**, across 47 executables and 128
+fixed selections: eighteen new groups and all 1321 prior selected controls.
+Existing Promise record/queue, host-wait, await, timer, finalization and browser
+controls retain their behavior. Formatting, diff checks and offline workspace/
+all-target Clippy with warnings denied pass. Cargo reuses the workspace target
+with incremental compilation and dev/test debug artifact growth disabled.
+
+The fixed offline selection preserves the same nine explicit resource/infinite-
+loop skips and all other finite-public-case exclusions. No large/resource/
+infinite cases, JSON resource sweeps, network/service replay, privileged
+validation, process killing, fresh full Test262, coverage result or integrated
+acceptance is claimed. Other retained maps (host waits, async/module
+continuations and provenance tables), event/dispatch scratch, other heap/host
+buffers, shared programs and integrated gates remain open. M1u remains the
+latest accepted milestone.
+
+Evidence paths: `/private/tmp/blueice-retained-promises-controls-20261017.py`,
+`/private/tmp/blueice-retained-promises-commit-20261017.txt`,
+`/private/tmp/blueice-retained-promises-audit-20261017.py`, logs matching
+`/private/tmp/blueice-retained-promises-*-20261017.log`, and
+`target/retained-promises-source-20261017.json`. Ordinary-library entry points
+expose the same fixtures; no fresh coverage result is claimed. This remains
+an M1z checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

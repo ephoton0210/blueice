@@ -262,6 +262,15 @@ impl SharedSchedulingCharge {
     }
 
     pub(crate) fn resize(&mut self, bytes: usize) -> Result<(), RuntimeError> {
+        if self.try_resize_for_reclamation(bytes) {
+            Ok(())
+        } else {
+            Err(self.fail())
+        }
+    }
+
+    /// Optional GC compaction may decline allocation without poisoning work.
+    pub(super) fn try_resize_for_reclamation(&mut self, bytes: usize) -> bool {
         let mut account = self.account.borrow_mut();
         let next = account
             .usage
@@ -274,12 +283,11 @@ impl SharedSchedulingCharge {
                 ..HostSchedulingUsage::default()
             });
         if account.failed || !next.fits() {
-            account.failed = true;
-            return Err(RuntimeError::SchedulingLimit);
+            return false;
         }
         account.usage = next;
         self.bytes = bytes;
-        Ok(())
+        true
     }
 
     pub(super) fn fail(&self) -> RuntimeError {
@@ -347,6 +355,13 @@ impl SchedulingScope {
         };
         charge.resize(bytes)?;
         Ok(charge)
+    }
+    pub(super) fn try_reclamation_charge(&self, bytes: usize) -> Option<SharedSchedulingCharge> {
+        let mut charge = SharedSchedulingCharge {
+            account: self.account.clone(),
+            bytes: 0,
+        };
+        charge.try_resize_for_reclamation(bytes).then_some(charge)
     }
     pub(super) fn same_document(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.account, &other.account)
@@ -476,7 +491,7 @@ pub(super) fn values_bytes(values: &[Value]) -> usize {
 pub(super) fn slots<T>(values: &Vec<T>) -> usize {
     values.capacity().saturating_mul(std::mem::size_of::<T>())
 }
-pub(super) fn map_slots<K, V>(values: &HashMap<K, V>) -> usize {
+pub(super) fn map_slots<K, V, S: std::hash::BuildHasher>(values: &HashMap<K, V, S>) -> usize {
     values
         .capacity()
         .saturating_mul(std::mem::size_of::<(K, V)>())
@@ -963,7 +978,7 @@ impl Vm {
         }
         usage.payload_bytes = usage
             .payload_bytes
-            .saturating_add(map_slots(&self.promises))
+            .saturating_add(self.promises.retained_bytes())
             .saturating_add(map_slots(&self.async_continuations))
             .saturating_add(map_slots(&self.module_continuations))
             .saturating_add(map_slots(&self.module_import_waiters));

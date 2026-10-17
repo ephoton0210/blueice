@@ -52,7 +52,7 @@ impl Vm {
         // Releasing an actually collected empty table requires no allocation.
         if failed && collected && !self.preserve_promise_table_capacity && self.promises.is_empty()
         {
-            self.promises = HashMap::new();
+            self.promises.release_empty();
         }
         self.reconcile_scheduling_ownership();
     }

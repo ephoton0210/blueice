@@ -95,6 +95,7 @@ mod host_wait_storage;
 mod promise_queue_storage;
 mod promise_record_storage;
 mod rejection_batch_entry;
+mod retained_control_map;
 mod timer_entry;
 mod timer_registration;
 mod window_aliases;
@@ -1228,7 +1229,7 @@ pub struct Vm {
     /// current ECMAScript job. The list is cleared at the outer execution
     /// boundary and registered by every allocation safepoint.
     kept_weak_objects: Vec<ObjectId>,
-    promises: HashMap<ObjectId, PromiseRecord>,
+    promises: retained_control_map::RetainedControlMap<ObjectId, PromiseRecord>,
     preserve_promise_table_capacity: bool,
     promise_jobs: VecDeque<PromiseJob>,
     /// Page realms bound even the implicit drains used by module evaluation.
