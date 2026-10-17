@@ -399,6 +399,23 @@ publication as its own committed attempt. Native preparation changes neither
 ambient fuel nor root IDs. Already-settled reaction/origin producers, provenance
 maps and other native-buffer ownership remain open.
 
+Then registration validates the source and admits its new reaction/job count
+before cloning any retained status. Pending work leases both incoming handlers
+and capability payload; settled work drops the unused handler and leases its
+selected fields plus the record's value/source copies. The existing prepared
+work boundary checks actual cloned storage and prepares complete vector/deque
+growth with no JavaScript or managed collection.
+
+Only queue publication commits handled state. Preparation refusal preserves
+notification bits, pending rejection entries/roots and all original queue storage,
+latching the document abort without panicking valid internal callers. Generic
+pending-reaction publication uses the same ordering. Successful handling releases
+a still-pending notification root; an already-notified source uses the existing
+follow-up task producer after its job commits. Follow-up refusal retains that
+committed job/handled state and its notification bit. Invalid receiver errors and
+ambient fuel are preserved. Other await/generator handled-state producers and
+wider input/origin/provenance/native-buffer ownership remain open.
+
 Host-wait registration first admits its shared pending count and preflights
 root-ID space. Converted primitive inputs and actual argument-vector slots have
 an independent document lease. Unsupported input retains a deferred language

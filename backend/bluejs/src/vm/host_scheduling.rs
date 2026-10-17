@@ -1079,7 +1079,8 @@ impl Vm {
         promise: ObjectId,
         reaction: PromiseReaction,
     ) {
-        self.mark_promise_handled(promise);
-        let _ = self.publish_promise_reaction(promise, reaction);
+        if self.publish_promise_reaction(promise, reaction).is_ok() {
+            self.mark_promise_handled(promise);
+        }
     }
 }
