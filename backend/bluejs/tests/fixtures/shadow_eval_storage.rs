@@ -165,8 +165,8 @@ fn shadow_eval_storage_active_child_account_refuses_before_parsing() {
     let mut child = record.vm.borrow_mut();
     child.use_bounded_host_microtask_checkpoints().unwrap();
     execute(&mut child, "let preserved=7;0;");
+    let guard = register_active(&mut child).unwrap();
     let peer = leave_room(&mut child, 0);
-    let guard = register_active(&mut child);
     let source = Value::String("globalThis.ran=1;0;".into());
     let (result, allocations) =
         allocation_observer::count(|| caller.shadow_realm_evaluate(realm, &source));
@@ -252,8 +252,8 @@ fn shadow_eval_storage_active_account_views_follow_guard_nesting() {
     let mut second = page();
     let second_tag = second.object_prototype.heap;
     let second_scope = second.host_scheduling.as_ref().unwrap().child();
-    let outer = register_active(&mut first);
-    let inner = register_active(&mut second);
+    let outer = register_active(&mut first).unwrap();
+    let inner = register_active(&mut second).unwrap();
     assert!(active_scheduling_scope(first_tag)
         .unwrap()
         .same_document(&first_scope));

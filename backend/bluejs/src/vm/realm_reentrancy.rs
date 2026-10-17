@@ -8,13 +8,60 @@
 //! membrane ([`super::test262::reverse`]) both need two independently-owned
 //! `Vm`s to call back into each other without violating Rust's aliasing
 //! rules, including multi-hop chains and proper GC rooting. This module is a
-//! pure extraction of what was originally `shadow_realm.rs`'s own
-//! private machinery -- moved here, unchanged, so a second boundary
-//! (Test262's reverse facades) can reuse it rather than reimplementing it.
+//! shared primitive. Each registration owns its admitted metadata; preparation
+//! precedes publication so the original VM-pointer validity window stays exact.
 
 use super::*;
+use std::cell::{Cell, OnceCell};
 
-type ActiveVm = (u64, *mut Vm, Option<SchedulingScope>);
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/active_realm_storage.rs"]
+mod storage_tests;
+
+struct ActiveVm {
+    tag: u64,
+    ptr: Cell<*mut Vm>,
+    scope: Option<SchedulingScope>,
+    previous: OnceCell<Option<Rc<ActiveVm>>>,
+    _storage: Option<host_scheduling::SharedSchedulingCharge>,
+}
+
+pub(super) struct ActiveRegistration {
+    node: Rc<ActiveVm>,
+}
+
+impl ActiveRegistration {
+    /// Publish only at the original cross-VM call boundary. Allocation and
+    /// admission have already finished without capturing a VM pointer.
+    pub(super) fn publish(self, vm: &mut Vm) -> ActiveGuard {
+        debug_assert_eq!(self.node.tag, vm.object_prototype.heap);
+        self.node.ptr.set(vm as *mut Vm);
+        ACTIVE.with(|active| {
+            let mut active = active.borrow_mut();
+            let previous = active.take();
+            assert!(
+                self.node.previous.set(previous).is_ok(),
+                "one prepared active registration publishes once"
+            );
+            *active = Some(self.node.clone());
+        });
+        ActiveGuard { node: self.node }
+    }
+}
+
+#[cfg(any(test, coverage))]
+fn active_backing_bytes() -> usize {
+    ACTIVE.with(|active| {
+        let active = active.borrow();
+        let mut node = active.as_deref();
+        let mut bytes = 0usize;
+        while let Some(current) = node {
+            bytes += std::mem::size_of::<ActiveVm>();
+            node = current.previous.get().and_then(Option::as_deref);
+        }
+        bytes
+    })
+}
 
 thread_local! {
     /// A stack of `Vm`s currently mid-call as part of one synchronous
@@ -36,42 +83,90 @@ thread_local! {
     /// for its home realm) simply fails [`resolve_active`] and reports a
     /// catchable error, rather than dereferencing memory whose lifetime has
     /// already ended.
-    static ACTIVE: RefCell<Vec<ActiveVm>> = const { RefCell::new(Vec::new()) };
+    static ACTIVE: RefCell<Option<Rc<ActiveVm>>> = const { RefCell::new(None) };
 }
 
 pub(super) struct ActiveGuard {
-    tag: u64,
+    node: Rc<ActiveVm>,
 }
 
 impl Drop for ActiveGuard {
     fn drop(&mut self) {
         ACTIVE.with(|active| {
-            let popped = active.borrow_mut().pop();
+            let mut active = active.borrow_mut();
             debug_assert!(
-                popped.is_some_and(|(tag, _, _)| tag == self.tag),
+                active
+                    .as_ref()
+                    .is_some_and(|node| Rc::ptr_eq(node, &self.node)),
                 "cross-realm active-Vm registrations must nest with the Rust call stack"
             );
+            *active = self.node.previous.get().and_then(Option::as_ref).cloned();
         });
     }
 }
 
-/// Registers `vm` as reachable by its own heap tag for the dynamic extent of
-/// the returned guard. Call this immediately before `vm` calls into another
-/// realm, and keep the guard alive across exactly that call.
-pub(super) fn register_active(vm: &mut Vm) -> ActiveGuard {
+/// Admit and allocate metadata before changing either realm's execution state.
+/// This preparation captures its tag and policy, but no VM pointer; publish the
+/// result only at the original cross-realm call boundary.
+pub(super) fn prepare_active_registration(
+    vm: &mut Vm,
+    owner_hint: Option<&SchedulingScope>,
+) -> Result<ActiveRegistration, RuntimeError> {
+    vm.synchronize_scheduling_usage()?;
     let tag = vm.object_prototype.heap;
     // Host policy cannot change while this synchronous call owns the VM.
     // Keep a zero-owning account view for reentrant compilation without
     // dereferencing the active VM merely to inspect its scheduling policy.
     let scope = vm.host_scheduling.as_ref().map(SchedulingScope::child);
-    ACTIVE.with(|active| active.borrow_mut().push((tag, vm as *mut Vm, scope)));
-    ActiveGuard { tag }
+    let bytes = std::mem::size_of::<ActiveVm>();
+    let storage = if let Some(owner) = scope.as_ref().or(owner_hint) {
+        Some(owner.shared_charge(bytes)?)
+    } else {
+        // A neutral membrane nested inside bounded work still allocates
+        // metadata for that call chain. Borrow its nearest owner's budget
+        // without changing the neutral VM's captured policy.
+        ACTIVE.with(|active| {
+            let active = active.borrow();
+            let mut node = active.as_deref();
+            while let Some(current) = node {
+                if let Some(owner) = &current._storage {
+                    return owner.reserve_peer(bytes).map(Some);
+                }
+                node = current.previous.get().and_then(Option::as_deref);
+            }
+            Ok(None)
+        })?
+    };
+    Ok(ActiveRegistration {
+        node: Rc::new(ActiveVm {
+            tag,
+            ptr: Cell::new(std::ptr::null_mut()),
+            scope,
+            previous: OnceCell::new(),
+            _storage: storage,
+        }),
+    })
+}
+
+pub(super) fn register_active(vm: &mut Vm) -> Result<ActiveGuard, RuntimeError> {
+    let prepared = prepare_active_registration(vm, None)?;
+    Ok(prepared.publish(vm))
 }
 
 /// Whether this call is nested inside a different Realm's suspended call.
 /// Only inspect heap tags; no registered VM pointer is dereferenced.
 pub(super) fn has_foreign_caller(tag: u64) -> bool {
-    ACTIVE.with(|active| active.borrow().iter().any(|(caller, _, _)| *caller != tag))
+    ACTIVE.with(|active| {
+        let active = active.borrow();
+        let mut node = active.as_deref();
+        while let Some(current) = node {
+            if current.tag != tag {
+                return true;
+            }
+            node = current.previous.get().and_then(Option::as_deref);
+        }
+        false
+    })
 }
 
 /// Finds the most recently registered `Vm` for `tag`, if one is currently
@@ -80,23 +175,29 @@ pub(super) fn has_foreign_caller(tag: u64) -> bool {
 /// caller of this function.
 pub(super) fn resolve_active(tag: u64) -> Option<*mut Vm> {
     ACTIVE.with(|active| {
-        active
-            .borrow()
-            .iter()
-            .rev()
-            .find(|(t, _, _)| *t == tag)
-            .map(|(_, ptr, _)| *ptr)
+        let active = active.borrow();
+        let mut node = active.as_deref();
+        while let Some(current) = node {
+            if current.tag == tag {
+                return Some(current.ptr.get());
+            }
+            node = current.previous.get().and_then(Option::as_deref);
+        }
+        None
     })
 }
 
 /// Read only the account view captured by the active call's guard.
 pub(super) fn active_scheduling_scope(tag: u64) -> Option<SchedulingScope> {
     ACTIVE.with(|active| {
-        active
-            .borrow()
-            .iter()
-            .rev()
-            .find(|(t, _, _)| *t == tag)
-            .and_then(|(_, _, scope)| scope.as_ref().map(SchedulingScope::child))
+        let active = active.borrow();
+        let mut node = active.as_deref();
+        while let Some(current) = node {
+            if current.tag == tag {
+                return current.scope.as_ref().map(SchedulingScope::child);
+            }
+            node = current.previous.get().and_then(Option::as_deref);
+        }
+        None
     })
 }

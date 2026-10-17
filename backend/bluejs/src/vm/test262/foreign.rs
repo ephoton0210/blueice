@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::super::realm_reentrancy::register_active;
+use super::super::realm_reentrancy::{prepare_active_registration, ActiveRegistration};
 use super::*;
 use crate::heap::TypedArrayKind;
 
@@ -825,6 +825,21 @@ impl Vm {
         ))
     }
 
+    fn prepare_foreign_active_registration(
+        &mut self,
+        realm_id: ObjectId,
+    ) -> Result<ActiveRegistration, RuntimeError> {
+        let owner = self
+            .test262_realms
+            .get(&realm_id)
+            .expect("foreign realm remains live")
+            .vm
+            .host_scheduling
+            .as_ref()
+            .map(SchedulingScope::child);
+        prepare_active_registration(self, owner.as_ref())
+    }
+
     /// Internal methods can execute accessors, coercions and Proxy traps.
     /// Keep the parent reachable through the reverse membrane for their
     /// complete dynamic extent, without retaining a borrow of the realm map.
@@ -833,12 +848,13 @@ impl Vm {
         realm_id: ObjectId,
         operation: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
     ) -> Result<T, RuntimeError> {
+        let registration = self.prepare_foreign_active_registration(realm_id)?;
         let child: *mut Vm = &mut *self
             .test262_realms
             .get_mut(&realm_id)
             .expect("foreign realm remains live")
             .vm;
-        let guard = register_active(self);
+        let guard = registration.publish(self);
         // SAFETY: the map borrow ended when `child` was obtained. The boxed
         // VM remains live during the call; parent callbacks are nested inside
         // it, following test262_foreign_call's reentrancy discipline. Nothing
@@ -1067,6 +1083,7 @@ impl Vm {
             .heap
             .typed_array_info(target)?
             .0;
+        let registration = self.prepare_foreign_active_registration(realm_id)?;
         self.test262_sync_foreign_buffer_mirrors(realm_id);
         let args = args
             .iter()
@@ -1086,7 +1103,7 @@ impl Vm {
                 .expect("foreign realm remains live");
             &mut *realm.vm
         };
-        let _guard = register_active(self);
+        let _guard = registration.publish(self);
         // SAFETY: `child` was derived from a `&mut` borrow of
         // `self.test262_realms` whose only use was to produce this pointer
         // (the block above); that borrow has already ended, and nothing
@@ -1136,6 +1153,7 @@ impl Vm {
         let (realm_id, target, _, _) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign ArrayBuffer receiver has a membrane record");
+        let registration = self.prepare_foreign_active_registration(realm_id)?;
         // A local TypedArray may have been constructed over this same
         // ArrayBuffer's mirror (`test262_foreign_buffer_clone`); flush any
         // bytes written through it before `slice` reads from the owning
@@ -1157,7 +1175,7 @@ impl Vm {
                 .expect("foreign realm remains live");
             &mut *realm.vm
         };
-        let _guard = register_active(self);
+        let _guard = registration.publish(self);
         // SAFETY: see `test262_foreign_typed_array_native_call`'s identical
         // reasoning above.
         let result = unsafe {
@@ -2055,6 +2073,7 @@ impl Vm {
                 self.test262_import_foreign_value(realm_id, error)?,
             ));
         }
+        let registration = self.prepare_foreign_active_registration(realm_id)?;
         // Any foreign function can mutate or transfer a mirrored buffer,
         // including closures and Function.prototype.call/apply. Flush before
         // entry rather than relying on the outer function's native identity.
@@ -2087,7 +2106,7 @@ impl Vm {
                 .expect("foreign realm remains live");
             &mut *realm.vm
         };
-        let _guard = register_active(self);
+        let _guard = registration.publish(self);
         // SAFETY: `child` was derived from a `&mut` borrow of
         // `self.test262_realms` whose only use was to produce this pointer
         // (the block above); that borrow has already ended, and nothing
@@ -2209,6 +2228,7 @@ impl Vm {
         let (realm_id, target, _, _) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign next has a membrane record");
+        let registration = self.prepare_foreign_active_registration(realm_id)?;
         let args = args
             .iter()
             .map(|value| self.test262_export_foreign_value(realm_id, value))
@@ -2227,7 +2247,7 @@ impl Vm {
                 .expect("foreign realm remains live");
             &mut *realm.vm
         };
-        let _guard = register_active(self);
+        let _guard = registration.publish(self);
         // SAFETY: `child` was derived from a `&mut` borrow of
         // `self.test262_realms` whose only use was to produce this pointer
         // (the block above); that borrow has already ended, and nothing

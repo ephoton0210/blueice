@@ -1983,7 +1983,7 @@ fn shadow_ancestor_resolution_rejects_absent_and_self_contexts_before_reborrowin
     );
     let expected = &mut parent as *mut Vm;
     {
-        let guard = register_active(&mut parent);
+        let guard = register_active(&mut parent).unwrap();
         assert_eq!(
             child.resolve_shadow_ancestor(Some(parent_heap)),
             Ok(expected)
@@ -1991,7 +1991,7 @@ fn shadow_ancestor_resolution_rejects_absent_and_self_contexts_before_reborrowin
         drop(guard);
     }
     let child_heap = child.object_prototype.heap;
-    let guard = register_active(&mut child);
+    let guard = register_active(&mut child).unwrap();
     assert_eq!(
         child.resolve_shadow_ancestor(Some(child_heap)),
         Err(RuntimeError::TypeError(

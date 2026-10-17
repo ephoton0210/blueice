@@ -21,7 +21,11 @@
 
 use super::compilation_text_storage::NativeText;
 use super::eval_compilation_storage::{ParsedEvalInput, PreparedEvalCode};
-use super::realm_reentrancy::{active_scheduling_scope, register_active, resolve_active};
+#[cfg(any(test, coverage))]
+use super::realm_reentrancy::register_active;
+use super::realm_reentrancy::{
+    active_scheduling_scope, prepare_active_registration, resolve_active,
+};
 use super::*;
 
 #[cfg(any(test, coverage))]
@@ -218,7 +222,8 @@ impl Vm {
         // transported into another realm.
         return match record.vm.try_borrow_mut() {
             Ok(mut child) => {
-                let child_guard = register_active(&mut child);
+                let child_registration = prepare_active_registration(&mut child, scope.as_ref())?;
+                let child_guard = child_registration.publish(&mut child);
                 let outcome = Self::run_prepared_evaluate(self, &mut child, &mut code, false);
                 drop(child_guard);
                 match outcome {
@@ -295,9 +300,10 @@ impl Vm {
         code: EvaluationCode<'_>,
         reentrant: bool,
     ) -> Result<Value, RuntimeError> {
+        let registration = prepare_active_registration(caller, child.host_scheduling.as_ref())?;
         if !reentrant {
             child.reset_lexical_global_bindings();
-            let _guard = register_active(caller);
+            let _guard = registration.publish(caller);
             let value = code.execute(child)?;
             child.run_promise_jobs()?;
             // Metadata traps execute after this function returns. Retain the
@@ -362,7 +368,7 @@ impl Vm {
         // already provides.
         let outcome = (|| {
             child.reset_lexical_global_bindings();
-            let _guard = register_active(caller);
+            let _guard = registration.publish(caller);
             let value = code.execute(child)?;
             // Promise reactions belong to this evaluation context too.
             child.run_promise_jobs()?;
@@ -575,7 +581,9 @@ impl Vm {
                     // chain that loops back through it (reaching it only
                     // through `ACTIVE`, below) finds it there instead of
                     // trying to borrow it a second time.
-                    let child_guard = register_active(&mut other);
+                    let child_registration =
+                        prepare_active_registration(&mut other, self.host_scheduling.as_ref())?;
+                    let child_guard = child_registration.publish(&mut other);
                     let result = self.shadow_call_across(&mut other, target, this_arg, args);
                     drop(child_guard);
                     return result;
@@ -639,7 +647,8 @@ impl Vm {
         this_arg: Value,
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        let _guard = register_active(self);
+        let registration = prepare_active_registration(self, other.host_scheduling.as_ref())?;
+        let _guard = registration.publish(self);
         // Each facade is a fresh object of `other`'s heap that nothing there
         // references yet, and building the next one allocates (and may
         // collect) in that same heap: keep every finished facade on `other`'s

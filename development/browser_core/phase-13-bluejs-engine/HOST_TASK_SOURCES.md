@@ -1275,6 +1275,36 @@ native/integrated gates remain open. M1u remains the latest accepted milestone;
 M1z's integrated gates remain open. Evidence:
 `target/retained-frame-storage-source-20261018.json`.
 
+Active cross-realm registrations now admit individual metadata nodes before
+allocation. Each node owns native document credit; an empty thread registry has
+no retained allocation. Preparation synchronizes current ownership and captures
+the heap tag/policy without a VM pointer. Publication stays at each original
+synchronous call boundary and performs no allocation or admission. Forward
+Test262 preparation precedes raw-child pointer extraction; reentrant ShadowRealm
+preparation precedes lexical/frame displacement. Existing unsafe call sites and
+their pointer validity windows remain unchanged.
+
+The VM's bounded account pays first. Neutral calls may use an explicit peer or
+the nearest active metadata owner's budget without adopting that owner's host
+policy. Zero-owning account snapshots and newest matching-tag resolution retain
+their behavior; safe linked traversal adds no VM-pointer dereference. Independent
+bounded documents preserve separate admission/failure state. Nodes drop policy
+and predecessor references before their native credit; published guards retain
+the original synchronous stack discipline. Unpublished metadata captures no
+pointer and can outlive its VM. The node payload follows the existing native
+model's allocator/Rc-control exclusions.
+
+The active-registry checkpoint passes eighteen new finite contracts, including
+one Promise and one manually delivered timer callback across GC, eighteen
+retained-frame contracts and forty-nine exact related semantic controls: eighty-
+five distinct tests across three executable targets. Formatting, diff checks and
+offline workspace/all-target Clippy pass; frozen source/artifact and Git content
+audits bind the result. Ordinary-library hooks make no fresh coverage claim.
+Request/inspection producers, complete neutral-tree adoption and wider native/
+integrated gates remain open. M1u remains the latest accepted milestone; M1z's
+integrated gates stay open. Evidence:
+`target/active-realm-storage-source-20261018.json`.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

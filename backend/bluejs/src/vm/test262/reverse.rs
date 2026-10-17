@@ -184,7 +184,7 @@ impl Vm {
             .expect("reverse get has a membrane record");
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: see `realm_reentrancy::ACTIVE`'s documentation and this
         // module's own top-level "Soundness" note. `ptr` was just confirmed
         // distinct from `self`, and `self` is not dereferenced again for
@@ -216,7 +216,7 @@ impl Vm {
         debug_assert!(override_prototype.is_none());
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: see this module's top-level "Soundness" note.
         let parent = unsafe { &mut *ptr };
         let child_realm_id = reverse_child_realm_id(parent, self_heap);
@@ -244,7 +244,7 @@ impl Vm {
             .expect("reverse set-prototype has a membrane record");
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: see this module's top-level "Soundness" note.
         let parent = unsafe { &mut *ptr };
         let child_realm_id = reverse_child_realm_id(parent, self_heap);
@@ -277,7 +277,7 @@ impl Vm {
             .expect("reverse ownKeys has a membrane record");
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: see this module's top-level "Soundness" note.
         let parent = unsafe { &mut *ptr };
         let child_realm_id = reverse_child_realm_id(parent, self_heap);
@@ -299,7 +299,7 @@ impl Vm {
             .expect("reverse own-property has a membrane record");
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: see this module's top-level "Soundness" note.
         let parent = unsafe { &mut *ptr };
         let child_realm_id = reverse_child_realm_id(parent, self_heap);
@@ -343,7 +343,7 @@ impl Vm {
             .expect("reverse defineOwnProperty has a membrane record");
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: the child is suspended before borrowing its active parent;
         // no access to self occurs below. See this module's Soundness note.
         let parent = unsafe { &mut *ptr };
@@ -380,7 +380,7 @@ impl Vm {
             .expect("reverse delete has a membrane record");
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: no child access overlaps this nested active-parent call.
         let parent = unsafe { &mut *ptr };
         let child_realm_id = reverse_child_realm_id(parent, self_heap);
@@ -404,7 +404,7 @@ impl Vm {
             .expect("reverse set has a membrane record");
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: see this module's top-level "Soundness" note.
         let parent = unsafe { &mut *ptr };
         let child_realm_id = reverse_child_realm_id(parent, self_heap);
@@ -433,7 +433,7 @@ impl Vm {
             .expect("reverse set has a membrane record");
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: see this module's top-level "Soundness" note.
         let parent = unsafe { &mut *ptr };
         let child_realm_id = reverse_child_realm_id(parent, self_heap);
@@ -465,7 +465,7 @@ impl Vm {
             .expect("reverse call has a membrane record");
         let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self);
+        let _guard = register_active(self)?;
         // SAFETY: see this module's top-level "Soundness" note. `parent`'s
         // own nested calls (`call_native` below, and everything it in turn
         // invokes) manage their own reentrancy discipline; this function
@@ -917,7 +917,7 @@ mod tests {
                 "the Test262 realm this value belongs to is no longer reachable".into()
             ))
         );
-        let guard = register_active(&mut parent);
+        let guard = register_active(&mut parent).unwrap();
         // A wrapper that is no reverse facade has no parent to write into.
         assert_eq!(
             child.test262_reverse_write_into_real_construction_result(snapshot, snapshot, 0, &[9]),
@@ -946,7 +946,7 @@ mod tests {
         parent
             .execute(&compile(&parse("$262.detachArrayBuffer(ta.buffer)").unwrap()).unwrap())
             .unwrap();
-        let _guard = register_active(&mut parent);
+        let _guard = register_active(&mut parent).unwrap();
         assert_eq!(
             child.test262_reverse_write_into_real_construction_result(facade, snapshot, 0, &[9]),
             Err(RuntimeError::TypeError(
@@ -968,7 +968,7 @@ mod tests {
             ))
         );
         // Once it has, the facade reaches it.
-        let guard = register_active(&mut parent);
+        let guard = register_active(&mut parent).unwrap();
         assert_eq!(
             child.resolve_reverse_parent(parent_heap),
             Ok(&mut parent as *mut Vm)
@@ -976,7 +976,7 @@ mod tests {
         drop(guard);
         // A facade whose home is the realm asking would alias it.
         let own_heap = child.object_prototype.heap;
-        let _guard = register_active(&mut child);
+        let _guard = register_active(&mut child).unwrap();
         assert_eq!(
             child.resolve_reverse_parent(own_heap),
             Err(RuntimeError::TypeError(

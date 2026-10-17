@@ -68,6 +68,19 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The active cross-realm registry storage follow-up (2026-10-18) has an
+implementation checkpoint. Individual nodes acquire document credit before
+allocation; preparation precedes state changes while pointer publication stays
+at the original call boundaries. Returning from the synchronous chain releases
+all registry backing. Neutral policy views stay neutral and independent bounded
+documents retain separate ownership/failure state. All eighteen new contracts,
+eighteen retained-frame contracts and forty-nine exact finite semantic controls
+pass: **85 distinct selected tests** across three executable targets. Formatting,
+diff checks and offline workspace/all-target Clippy pass. Frozen source/artifact
+and Git content audits bind the checkpoint. Debugger request/inspection producers,
+complete neutral-tree adoption and wider native/integrated gates remain open.
+M1u remains the latest accepted milestone; M1z's integrated gates remain open.
+
 The retained debugger-frame storage follow-up (2026-10-18) has an implementation
 checkpoint. Iterator/handler buffers and origins, captured execution, module
 identifiers and controller headers now retain native owners independently of
@@ -1354,7 +1367,9 @@ work and exposes its retained payload ledger.
       Borrowed outer/debugger code buffers now have an implementation checkpoint
       validated by 39 selected cases. Retained debugger state now joins those
       checkpoints with eighteen new lifecycle/conservation contracts and 63
-      selected cases. Debugger request/inspection producers, shared programs'
+      selected cases. Active cross-realm registry metadata now has an independent
+      ownership checkpoint with eighteen new contracts and 85 selected cases.
+      Debugger request/inspection producers, shared programs'
       remaining storage, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
@@ -8126,6 +8141,76 @@ Evidence: `target/retained-frame-storage-source-20261018.json` and prefix
 `/private/tmp/blueice-retained-frame-storage-` (2026-10-18), including all failing/
 corrected source archives, peak/peer/module-throw counterexamples, final frozen
 inputs, static checks, exact controls and the detailed English checkpoint message.
+
+#### Active cross-realm registry storage (implementation checkpoint, 2026-10-18)
+
+Acceptance: shared ShadowRealm/Test262 active-call metadata must enter its
+document's native account before allocation. Preserve synchronous VM-pointer
+publication windows, zero-owning policy views and newest-tag lookup. Returning
+from the chain must release empty registry backing; another document's metadata
+must neither consume nor inherit a failed document's policy.
+
+- [x] Preserve the three original tiny failures and first passing correction.
+- [x] Replace retained TLS vector backing with individually admitted nodes.
+- [x] Prepare metadata before execution changes and foreign-child pointer
+      extraction; publish pointers at the existing call boundaries.
+- [x] Add eighteen finite lifecycle, policy, terminal-cleanup and callback
+      contracts, plus the ordinary-library contract hook.
+- [x] Pass frozen-source contracts, exact semantic controls and static gates.
+- [x] Finish source/artifact and Git content audits, documents and the detailed
+      English checkpoint commit; record its identity in the receipt.
+
+The original **0/3** run shows missing document credit and **256 bytes** retained
+by an empty thread registry. The first correction passes **3/3**. The expanded
+**17/18** run exposes a fixture configuration collision: Test262 and the browser
+timer installer both define `setTimeout`. The corrected queued-callback fixture
+uses the browser timer installation alone and still performs GC before delivery
+and after completion. A separate synchronous callback performs GC while the
+cross-realm call chain is active.
+
+An admitted `Rc` node holds one heap tag, the pointer published at the call
+boundary, the original zero-owning policy view and the preceding node. Metadata
+admission precedes `Rc::new`. Pointer publication performs no allocation or
+admission; safe linked traversal introduces no new unsafe block or VM-pointer
+dereference. Policy and previous-node references drop before their node's charge.
+The existing native model covers the node payload; allocator and `Rc` control
+overheads retain their existing exclusions.
+
+Preparation captures no VM pointer and can be discarded after its VM drops.
+Published guards retain the original synchronous lifetime discipline. The VM's
+own bounded scope takes precedence; otherwise an explicit peer or the nearest
+active metadata owner pays for a neutral registration. This ownership hint
+does not adopt host policy or relabel the neutral VM's captured account view.
+Independent bounded documents retain their own admission and failure state.
+
+The eighteen contracts use tiny fixed data and at most three explicit repeated
+registrations. They cover preparation/publication, retained unpublished metadata,
+LIFO and duplicate tags, neutral/independent ownership, synthetic terminal-state
+refusal/cleanup, synchronous throw cleanup and one Promise/one manually delivered
+timer callback retaining a wrapped realm across GC. No quota-boundary, exhaustion,
+infinite-input, network/listener/service/Core/MCP or privileged runtime replay is
+scheduled. Rejected push and process inspection are not retried.
+
+All **18/18** final contracts pass, alongside eighteen retained-frame contracts
+and forty-nine exact reviewed semantic controls. The controls cover retained
+code/records, module/debugger restoration and forward/reverse ShadowRealm/Test262
+transport without replaying resource-boundary probes. These are **85 distinct
+tests**, three executable targets and fifty-one selections. Formatting, diff
+checks and offline workspace/all-target Clippy with warnings denied pass. Frozen
+source/artifact and Git content audits bind nine Rust inputs, eleven changed
+source/document files, twenty-two related control inputs, three executables and
+the detailed English checkpoint message.
+
+Debugger request/inspection producers, remaining program/diagnostic/native
+storage, full compiler/parser/coercion producers, complete neutral-tree adoption
+and integrated acceptance remain open. M1u remains the latest accepted milestone;
+M1z's integrated gates remain open. The ordinary-library hook does not establish
+fresh coverage. Earlier checkpoint counts remain historical evidence.
+
+Evidence: `target/active-realm-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-active-realm-storage-` (2026-10-18), including original
+failing/first/expanded/final source archives, the fixture correction, frozen
+inputs, exact-control results, static checks and the English checkpoint message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

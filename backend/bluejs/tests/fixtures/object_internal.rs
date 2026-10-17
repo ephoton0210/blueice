@@ -260,15 +260,15 @@ fn object_callbacks_materialize_errors_only_while_another_realm_is_active() {
     let root = vm.heap.root(getter.object_id().unwrap()).unwrap();
     let tag = vm.object_prototype.heap;
     assert!(!has_foreign_caller(tag));
-    let own_guard = register_active(&mut vm);
+    let own_guard = register_active(&mut vm).unwrap();
     assert!(!has_foreign_caller(tag));
     assert!(matches!(
         vm.call_object_callback(getter.clone(), Value::Undefined, Vec::new()),
         Err(RuntimeError::TypeError(_))
     ));
     let mut caller = Vm::default();
-    let caller_guard = register_active(&mut caller);
-    let nested_guard = register_active(&mut vm);
+    let caller_guard = register_active(&mut caller).unwrap();
+    let nested_guard = register_active(&mut vm).unwrap();
     assert!(has_foreign_caller(tag));
     vm.remaining_instructions = 0;
     assert_eq!(
