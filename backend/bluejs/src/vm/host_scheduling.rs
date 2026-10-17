@@ -311,6 +311,9 @@ pub(crate) struct HeapNativeBudget {
     account: Rc<RefCell<Account>>,
 }
 impl HeapNativeBudget {
+    pub(crate) fn owns(&self, charge: &SharedSchedulingCharge) -> bool {
+        Rc::ptr_eq(&self.account, &charge.account)
+    }
     pub(crate) fn reserve(&self, bytes: usize) -> Result<SharedSchedulingCharge, RuntimeError> {
         let mut charge = SharedSchedulingCharge {
             account: self.account.clone(),

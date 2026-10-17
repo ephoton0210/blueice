@@ -274,15 +274,16 @@ impl Vm {
         })
     }
 
-    pub(super) fn attach_synthetic_values(
+    pub(super) fn attach_compiled_module_values(
         modules: &HashMap<String, Bytecode>,
         scope: &SchedulingScope,
     ) -> Result<(), RuntimeError> {
-        for value in modules
-            .values()
-            .filter_map(|code| code.synthetic_default_export.as_ref())
-        {
-            value.attach(scope)?;
+        let budget = scope.heap_native_budget();
+        for code in modules.values() {
+            if let Some(value) = &code.synthetic_default_export {
+                value.attach(scope)?;
+            }
+            code.attach_runtime_sources(&budget)?;
         }
         Ok(())
     }

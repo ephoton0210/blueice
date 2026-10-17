@@ -121,6 +121,24 @@ pub(super) struct IntermediateDebuggerContinuation {
     pub(super) handlers: HandlerRecords,
 }
 
+impl Vm {
+    pub(super) fn attach_debugger_runtime_sources(
+        &self,
+        budget: &HeapNativeBudget,
+    ) -> Result<(), RuntimeError> {
+        if let Some(frame) = &self.debugger_continuation {
+            frame.code.attach_runtime_sources(budget)?;
+        }
+        if let Some(frame) = &self.debugger_nested_continuation {
+            frame.code.attach_runtime_sources(budget)?;
+        }
+        if let Some(frame) = &self.debugger_nested_intermediate_continuation {
+            frame.code.attach_runtime_sources(budget)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmDebuggerNestedExecutionState {
     Paused {

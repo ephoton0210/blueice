@@ -694,6 +694,8 @@ pub struct Bytecode {
     /// Bytecode snapshots; object values remain realm-local and are filtered
     /// before a ShadowRealm inherits the compiled registry.
     pub(crate) synthetic_default_export: Option<crate::vm::SyntheticModuleValue>,
+    // Drop SourceText and child code before releasing shared source leases.
+    pub(crate) runtime_sources: crate::vm::RuntimeCodeSources,
 }
 
 impl Bytecode {
@@ -752,6 +754,7 @@ impl Bytecode {
             module_exports: Vec::new(),
             module_requests: Vec::new(),
             synthetic_default_export: None,
+            runtime_sources: crate::vm::RuntimeCodeSources::default(),
         }
     }
 

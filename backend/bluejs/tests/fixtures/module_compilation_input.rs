@@ -109,7 +109,9 @@ fn module_compilation_input_metric_uses_supplied_source_scratch() {
     let expected = module.owned_heap_payload_bytes();
     let mut sources = HashSet::with_capacity(4);
     let (actual, allocations) = allocation_observer::count(|| {
-        module.payload_with_source_admission(&mut |identity, _| Some(sources.insert(identity)))
+        module.payload_with_source_admission(&mut |source| {
+            Some(sources.insert(source.as_ptr() as usize))
+        })
     });
     assert_eq!(actual, expected);
     assert_eq!(allocations, 0);
@@ -125,7 +127,9 @@ fn module_compilation_input_admitted_metric_preserves_all_payload_kinds() {
         let module = crate::parse_module(source).unwrap();
         let mut sources = HashSet::new();
         assert_eq!(
-            module.payload_with_source_admission(&mut |identity, _| Some(sources.insert(identity))),
+            module.payload_with_source_admission(&mut |source| Some(
+                sources.insert(source.as_ptr() as usize)
+            )),
             module.owned_heap_payload_bytes()
         );
     }
@@ -139,7 +143,9 @@ fn module_compilation_input_mixed_source_metric_counts_both_allocations() {
     assert!(module.owned_heap_payload_bytes().unwrap() > 0);
     let mut sources = HashSet::new();
     assert_eq!(
-        module.payload_with_source_admission(&mut |identity, _| Some(sources.insert(identity))),
+        module.payload_with_source_admission(&mut |source| Some(
+            sources.insert(source.as_ptr() as usize)
+        )),
         module.owned_heap_payload_bytes()
     );
     assert_eq!(sources.len(), 2);

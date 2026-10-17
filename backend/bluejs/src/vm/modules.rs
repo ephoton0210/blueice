@@ -56,6 +56,10 @@ mod import_call_storage_tests;
 #[path = "../../tests/fixtures/module_compilation_input.rs"]
 mod compilation_input_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/compiled_source_ownership.rs"]
+mod compiled_source_ownership_tests;
+
 struct EvaluationFrame<'a> {
     name: &'a str,
     code: ModuleCode,

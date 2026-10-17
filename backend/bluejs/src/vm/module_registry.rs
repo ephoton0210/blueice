@@ -128,7 +128,7 @@ impl ModuleRegistry {
         scope: Option<&SchedulingScope>,
     ) -> Result<Self, RuntimeError> {
         if let Some(scope) = scope {
-            Vm::attach_synthetic_values(&data, scope)?;
+            Vm::attach_compiled_module_values(&data, scope)?;
         }
         if data.capacity() == 0 {
             return Ok(Self::default());
@@ -161,14 +161,14 @@ impl ModuleRegistry {
                 *charge = Some(scope.shared_charge(self.retained_bytes())?);
             }
         }
-        Vm::attach_synthetic_values(self, scope)
+        Vm::attach_compiled_module_values(self, scope)
     }
     pub(super) fn copy_host(
         data: &HashMap<String, Bytecode>,
         scope: Option<&SchedulingScope>,
     ) -> Result<Self, RuntimeError> {
         if let Some(scope) = scope {
-            Vm::attach_synthetic_values(data, scope)?;
+            Vm::attach_compiled_module_values(data, scope)?;
         }
         Ok(RegistryBuilder::copy(data, scope, false)?.finish())
     }

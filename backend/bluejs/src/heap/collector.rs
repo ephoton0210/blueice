@@ -310,6 +310,14 @@ impl CollectorWorkspace {
 }
 
 impl Heap {
+    pub(super) fn attach_code_sources(&self, code: &crate::Bytecode) -> Result<(), HeapError> {
+        if let Some(budget) = &self.collector.budget {
+            code.attach_runtime_sources(budget)
+                .map_err(|_| HeapError::CodeSourceStorageLimit)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn bind_native_budget(&mut self, budget: HeapNativeBudget) -> Result<(), HeapError> {
         match (
             self.roots.budget(),
@@ -330,6 +338,24 @@ impl Heap {
             }
             (None, None, None, None) => {}
             _ => return Err(HeapError::InvalidConfig),
+        }
+        // Closures/generators can outlive an unbounded registry. Bind their code
+        // before admitting execution in a newly bounded document.
+        for object in self.objects.values() {
+            let code = match &object.kind {
+                ObjectKind::Closure { code, .. } => Some(code),
+                ObjectKind::Generator { state, .. } => match &**state {
+                    GeneratorState::Start { code, .. } | GeneratorState::Suspended { code, .. } => {
+                        Some(code)
+                    }
+                    GeneratorState::Running | GeneratorState::Done => None,
+                },
+                _ => None,
+            };
+            if let Some(code) = code {
+                code.attach_runtime_sources(&budget)
+                    .map_err(|_| HeapError::CodeSourceStorageLimit)?;
+            }
         }
         // Install no owner until root, collector, pin and ready-index storage fit. Root
         // registrations and handles survive refused activation; only unadmitted

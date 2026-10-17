@@ -255,6 +255,10 @@ pub struct SourceText {
 }
 
 impl SourceText {
+    pub(crate) fn allocation(&self) -> Option<&Arc<str>> {
+        self.text.as_ref()
+    }
+
     pub(crate) fn same_source_range(&self, other: &Self) -> bool {
         self.start == other.start
             && self.end == other.end

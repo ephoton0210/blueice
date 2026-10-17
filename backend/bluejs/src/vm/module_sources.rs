@@ -208,6 +208,11 @@ impl Vm {
             linked.attach(scope)?;
         }
         self.nested_module_roots.attach(scope)?;
+        let budget = scope.heap_native_budget();
+        for frame in self.async_continuations.values() {
+            frame.code.attach_runtime_sources(&budget)?;
+        }
+        self.attach_debugger_runtime_sources(&budget)?;
         for frame in self.module_continuations.values() {
             frame.code.attach(scope)?;
         }

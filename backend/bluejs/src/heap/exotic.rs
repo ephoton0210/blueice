@@ -154,6 +154,7 @@ impl Heap {
         this: Value,
         prototype: ObjectId,
     ) -> Result<ObjectId, HeapError> {
+        self.attach_code_sources(&code)?;
         self.alloc(
             ObjectKind::Closure {
                 code,
@@ -169,6 +170,10 @@ impl Heap {
         state: GeneratorState,
         prototype: ObjectId,
     ) -> Result<ObjectId, HeapError> {
+        if let GeneratorState::Start { code, .. } | GeneratorState::Suspended { code, .. } = &state
+        {
+            self.attach_code_sources(code)?;
+        }
         let state_bytes = state.managed_bytes();
         self.alloc(
             ObjectKind::Generator {

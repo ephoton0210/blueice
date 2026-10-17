@@ -1046,12 +1046,36 @@ before registry copying/publication. Parser resource errors remain resource
 errors. Full token/AST/compiler producer preallocation and compiled shared child/
 source/diagnostic storage remain separate open gates.
 
+Runtime-parsed dynamic modules transfer each distinct SourceText payload out of
+the AST lease into a shared source owner before compiling. Source-owner headers
+and a compilation-only identity lookup are admitted separately; growing lookup
+tables charge the complete replacement while the old backing still exists.
+Fresh compiler output receives those owners before publication without copying
+code. Each code unit retains its own source owner, while nested functions share
+the owner for the same allocation. Distinct template-fragment sources release
+independently. Dropping the parsed input releases its AST and lookup backing;
+dropping a registry/root code does not refund sources still held by closures,
+timer/Promise callbacks, generators or suspended execution frames. The final code
+user releases the source data before its lease.
+
+Unbounded runtime sources retain uncharged owners for later document activation.
+Binding a heap visits existing closures and generator states; new closure and
+generator allocation validates source ownership before allocating the object.
+Registry adoption and saved async/debugger/module frames also bind their code.
+Same-document attachment shares the lease, foreign-document attachment fails,
+and a cached identity cannot bypass terminal failure. Ordinary host-compiled
+programs receive no runtime source owner and keep their cross-VM reuse contract.
+This source transfer covers runtime-parsed dynamic modules only: host-precompiled
+sources, shared child-code buffers/headers and diagnostic maps remain open, as
+do compiler producer preallocation and allocator/control-block exclusions.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads
 use the existing Value charge model. Shared child code, SourceText and
-diagnostic maps are excluded from this root-owner count and remain a separate
-program-ownership gate. Snapshot references share buffers and final drop
+diagnostic maps are excluded from this root-owner count. Runtime-parsed module
+sources use the separate owners above; the remaining program storage is a
+separate program-ownership gate. Snapshot references share buffers and final drop
 refunds them, including empty reserved tables and terminal cleanup.
 
 Host loader replacement admits its incoming registry/referrer while old owners

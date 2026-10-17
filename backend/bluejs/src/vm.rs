@@ -105,6 +105,7 @@ pub use host_promises::{
     HostAsyncFunction, HostAsyncObjectMethod, HostPromiseCompletion, HostPromiseToken,
     HostTaskSource,
 };
+mod compiled_source_storage;
 mod disposal_ownership;
 mod dynamic_bindings;
 mod host_registration;
@@ -132,6 +133,7 @@ mod namespace_cache_storage;
 #[path = "../tests/fixtures/allocation_observer.rs"]
 mod allocation_observer;
 use agent_registry::AgentSymbolRegistry;
+pub(crate) use compiled_source_storage::RuntimeCodeSources;
 use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::{
     AwaitRegistration, SchedulingCapacity, SchedulingMapCapacity, SchedulingScope,
@@ -395,7 +397,9 @@ impl std::error::Error for RuntimeError {
 impl From<HeapError> for RuntimeError {
     fn from(error: HeapError) -> Self {
         match error {
-            HeapError::CollectorStorageLimit | HeapError::RootStorageLimit => Self::SchedulingLimit,
+            HeapError::CollectorStorageLimit
+            | HeapError::RootStorageLimit
+            | HeapError::CodeSourceStorageLimit => Self::SchedulingLimit,
             HeapError::InvalidArrayLength => Self::RangeError("invalid array length".into()),
             HeapError::InvalidBufferRange => {
                 Self::RangeError("invalid ArrayBuffer view range".into())

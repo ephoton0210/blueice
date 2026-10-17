@@ -486,7 +486,7 @@ fn synthetic_value_ownership_borrowed_graph_inputs_attach_before_publication() {
         export_pointer(&vm.module_registry)
     );
     let before = vm.host_scheduling_snapshot().payload_bytes;
-    Vm::attach_synthetic_values(&modules, vm.host_scheduling.as_ref().unwrap()).unwrap();
+    Vm::attach_compiled_module_values(&modules, vm.host_scheduling.as_ref().unwrap()).unwrap();
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
     let mut other = bounded_vm();
     assert!(matches!(

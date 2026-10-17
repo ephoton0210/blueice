@@ -136,6 +136,7 @@ pub enum HeapError {
     HeapLimitExceeded { limit: usize },
     CollectorStorageLimit,
     RootStorageLimit,
+    CodeSourceStorageLimit,
     IdExhausted,
 }
 
@@ -167,6 +168,9 @@ impl fmt::Display for HeapError {
             }
             Self::IdExhausted => write!(f, "BlueJS heap identity counter exhausted"),
             Self::RootStorageLimit => write!(f, "BlueJS root table native storage limit exceeded"),
+            Self::CodeSourceStorageLimit => {
+                write!(f, "BlueJS code source native storage limit exceeded")
+            }
             Self::CollectorStorageLimit => {
                 write!(f, "BlueJS collector native storage limit exceeded")
             }

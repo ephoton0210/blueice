@@ -10,6 +10,7 @@ use super::*;
 
 pub(super) struct ParsedModuleInput {
     module: crate::Module,
+    sources: super::compiled_source_storage::SourceOwners,
     bytes: usize,
     charge: Option<SharedSchedulingCharge>,
 }
@@ -83,7 +84,9 @@ impl ParsedModuleInput {
         let mut sources = SourceScratch::default();
         let mut failure = None;
         let bytes = module
-            .payload_with_source_admission(&mut |identity, length| {
+            .payload_with_source_admission(&mut |source| {
+                let identity = source.as_ptr() as usize;
+                let length = source.len();
                 if sources.ids.contains(&identity) {
                     return Some(false);
                 }
@@ -109,6 +112,7 @@ impl ParsedModuleInput {
         drop(sources);
         Ok(Self {
             module,
+            sources: super::compiled_source_storage::SourceOwners::default(),
             bytes,
             charge,
         })
@@ -130,13 +134,28 @@ impl ParsedModuleInput {
         if let Some(scope) = scope {
             scope.shared_charge(0)?;
         }
-        let code = crate::compile_module_with_limit(&self.module, u32::MAX)
+        let mut failure = None;
+        self.module
+            .payload_with_source_admission(&mut |source| match self.sources.insert(
+                source,
+                &mut self.charge,
+                scope,
+            ) {
+                Ok(unique) => Some(unique),
+                Err(error) => {
+                    failure = Some(error);
+                    None
+                }
+            })
+            .ok_or_else(|| failure.unwrap_or_else(|| fail(scope)))?;
+        let mut code = crate::compile_module_with_limit(&self.module, u32::MAX)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        self.sources.install(&mut code, scope)?;
         let mut code = PreparedModuleCode::input(code);
         code.attach(scope)?;
-        // Both owners coexist until root buffers are admitted. Drop the AST
-        // before any registry copy or publication; shared program data is a
-        // separate ownership boundary from these root buffers.
+        // The AST, source lookup and root buffers coexist through admission.
+        // Source leases have moved into shared code; dropping the AST and lookup
+        // before publication refunds only their own backing.
         drop(self);
         Ok(code)
     }

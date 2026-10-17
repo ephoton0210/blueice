@@ -46,7 +46,7 @@ acceptance. M1q's diagnostic refinements remain parked until these architectural
 dependencies are closed. Its interrupted 191-target replay is incomplete and
 does not constitute a milestone or a new acceptance gate.
 
-**Validation constraint — reaffirmed 2026-10-17.** Continue architecture work
+**Validation constraint — reaffirmed 2026-10-18.** Continue architecture work
 with offline static checks and fixed, finite unit/functional cases. Use tiny
 in-memory fixtures and numerical admission controls rather than represented
 large allocations. Do not resume resource-exhaustion/infinite-execution probes,
@@ -68,6 +68,18 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The compiled dynamic-module source follow-up (2026-10-18) transfers source
+leases from parsed ASTs into independently shared runtime code. Child code and
+queued timer/Promise callbacks retain their source after root-code/VM teardown;
+distinct template-fragment sources release independently. Nineteen fixed tiny
+cases pass. Final related controls pass **80 distinct selected tests** in
+fourteen selections across five executable targets. A callback type alias
+addresses the archived pre-lint finding; final formatting and offline workspace/
+all-target Clippy pass. Source/artifact and local commit audits record the
+checkpoint. Broader compiled-program storage and integrated acceptance remain
+open. The cybersecurity constraint above continues to apply, and the rejected
+push is not retried.
+
 The dynamic module compilation-input follow-up (2026-10-18) now borrows module
 bodies and owns returned AST buffers through root-code preparation. Parser input
 minimums and source-deduplication scratch are admitted, including separate
@@ -7350,6 +7362,61 @@ MCP replay remain prohibited; the rejected push is not retried.
 Evidence: `target/module-compilation-input-source-20261018.json` and prefix
 `/private/tmp/blueice-module-compilation-input-`, including 2026-10-17 red and
 single-source/template archives plus 2026-10-18 final inputs, controls and logs.
+
+#### Compiled dynamic-module source follow-up (implementation checkpoint, 2026-10-18)
+
+Acceptance: transfer independently shared source allocations from parsed inputs
+into runtime code before publication. Keep the source charged while any child
+code, closure, timer/Promise callback, generator or saved frame retains it, even
+after root-code/VM destruction. Release distinct template-fragment sources
+independently and preserve ordinary host-compiled code's cross-VM reuse.
+
+- [x] Reproduce premature refunds using three fixed tiny source-lifetime cases.
+- [x] Transfer source payload leases and admit owner/lookup metadata separately;
+      bind existing and incoming runtime code on document activation.
+- [x] Finish fixed related controls, offline formatting/Clippy, source/artifact
+      audits and a detailed English commit.
+
+The original three cases fail (**0/3 passed**): child code still retains source
+text after the native account has refunded it. Per-source owners now receive
+existing AST payload charges by transfer, without admitting that payload twice.
+Owner headers and complete coexisting lookup candidates have independent native
+charges. AST and lookup data drop before their leases; compiled source owners
+survive in shared code until the final holder drops. No Rc native owner is added
+to the Send/Sync AST source type. Fresh code is traversed before publication
+without copying bytecode or allocating traversal storage.
+
+Unbounded runtime code keeps attachable source owners. Activation visits retained
+heap closures/generators and saved async/debugger/module execution code;
+allocation/adoption checks incoming code before publication. Same-document
+attachment is idempotent; foreign/terminal attachment refuses. Ordinary
+host-compiled programs remain reusable across independent VMs.
+
+The initial expanded run passes **16/16**. Nineteen new cases now pass, including
+one unit-only allocation observation and eighteen functional contracts with an
+ordinary-library entry point. They cover source sharing/reclamation, late
+attachment, foreign refusal, quota header preflight, exact/one-short compile
+peaks, a rooted closure's final GC refund, lookup growth and public timer/Promise
+delivery. The pre-lint selection passes **80 distinct selected tests** in fourteen
+selections across five executable targets: the new nineteen, the earlier sixty
+compiler/module controls and one exact synthetic-value attachment case. Preserve
+those inputs and their callback type-complexity finding before the type-alias
+cleanup. The same final control selection also passes **80/80** on the twenty
+frozen Rust inputs. Final formatting, diff checks and offline workspace/all-target
+Clippy pass. Source/artifact and staged/committed content audits bind twenty-two
+source/document files, five test executables and the detailed English commit.
+These focused checks do not renew any earlier broad acceptance inventory.
+
+Scope is runtime-parsed dynamic-module SourceText ownership. Host-precompiled
+sources, shared child-code buffers/headers, diagnostic maps, parser/compiler
+producer preallocation and integrated acceptance remain open. M1u remains the
+latest accepted milestone. No broad, exhaustion, infinite-execution or network/
+Core/MCP replay is authorized; the rejected push is not retried.
+
+Evidence: `target/compiled-source-ownership-source-20261018.json` and prefix
+`/private/tmp/blueice-compiled-source-ownership-` (2026-10-18), including the red
+input archive, initial 16-pass log, pre-lint 80-pass source/log archive and final
+frozen inputs, controls and commit message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

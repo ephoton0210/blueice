@@ -107,6 +107,10 @@ impl PreparedModuleCode {
         if let (Some(value), Some(scope)) = (&self.code.synthetic_default_export, scope) {
             value.attach(scope)?;
         }
+        if let Some(scope) = scope {
+            self.code
+                .attach_runtime_sources(&scope.heap_native_budget())?;
+        }
         Ok(())
     }
     pub(super) fn prepare_key(

@@ -12,11 +12,13 @@
 use super::*;
 use std::collections::HashSet;
 
+type SourceAdmission<'a> = &'a mut dyn FnMut(&Arc<str>) -> Option<bool>;
+
 #[derive(Default)]
 struct CountContext<'a> {
     source_texts: HashSet<usize>,
     skip_shared_source_text: bool,
-    source_admission: Option<&'a mut dyn FnMut(usize, usize) -> Option<bool>>,
+    source_admission: Option<SourceAdmission<'a>>,
 }
 
 trait HeapPayload {
@@ -101,11 +103,7 @@ impl HeapPayload for SourceText {
             return Some(0);
         };
         if let Some(admit) = &mut context.source_admission {
-            return Some(if admit(text.as_ptr() as usize, text.len())? {
-                text.len()
-            } else {
-                0
-            });
+            return Some(if admit(text)? { text.len() } else { 0 });
         }
         Some(if context.source_texts.insert(text.as_ptr() as usize) {
             text.len()
@@ -145,7 +143,7 @@ impl Module {
     /// new identity. Template placeholders may own distinct source allocations.
     pub(crate) fn payload_with_source_admission(
         &self,
-        admit: &mut dyn FnMut(usize, usize) -> Option<bool>,
+        admit: SourceAdmission<'_>,
     ) -> Option<usize> {
         self.heap_payload(&mut CountContext {
             source_admission: Some(admit),
