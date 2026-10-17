@@ -6,10 +6,6 @@
 
 use super::*;
 
-#[cfg(test)]
-#[path = "../../tests/fixtures/allocation_observer.rs"]
-mod allocation_observer;
-
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/continuation_pruning.rs"]
 mod continuation_pruning_tests;

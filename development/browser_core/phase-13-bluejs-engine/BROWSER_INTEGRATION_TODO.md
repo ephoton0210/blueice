@@ -64,6 +64,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The module-dependency batch-storage follow-up (2026-10-17) now prepares
+deduplication/input/name storage and complete forward/reverse/set/vector
+candidates before either graph direction changes. Three tiny old-code cases
+failed and now pass. Twenty new groups and all 1567 prior selected controls
+pass: **1587 total**, across 47 executables and 140 fixed selections. Retained
+allocation ownership across deletion and admitted optional reclamation are
+implemented. Formatting and offline workspace/all-target Clippy pass. Wider
+pending-name/frontier/DFS/walk producers, full module caches, shared programs,
+other native/host buffers and integrated acceptance stay open; M1u stays the
+latest accepted milestone.
+
 The template-control preparation follow-up (2026-10-17) now independently leases
 the full table and operand candidates before active stack backing changes. Three
 finite old-code cases failed and now pass. Sixteen new groups and all 1551 prior
@@ -5776,7 +5787,97 @@ Evidence paths: `/private/tmp/blueice-template-storage-controls-20261017.py`,
 exposes all sixteen groups; no fresh coverage result is claimed. This remains
 an M1z implementation checkpoint with wider acceptance open.
 
+#### Module-dependency batch-storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: independently admit input/deduplication/name storage and complete
+forward/reverse map, dependency-set and parent-vector candidates while every
+old graph buffer remains owned. Refuse before either direction changes. Keep
+allocation ledgers across deletion; admit optional sparse reclamation without
+making an otherwise live document terminal. Preserve parent/source/BFS order
+and the existing import/defer/await/GC boundaries.
+
+- [x] Reproduce allocation before zero-headroom refusal, reverse growth funded
+      only by its live/net delta, and unadmitted sparse-map reclamation:
+      **0/3 passed** on the exact old-code namespace, **3/3 passed** afterwards.
+      The earlier broad filter also ran one old deferred-completion control;
+      its **1 passed / 3 failed** log is retained separately.
+- [x] Implement complete batch preparation, retained map/set allocation owners
+      and optional admitted reclamation; expanded finite groups pass **20/20**
+      on their first run. The sixteen earlier dependency controls also pass.
+- [x] Finish existing fixed offline controls, formatting/Clippy, evidence audit
+      and detailed English commit.
+
+Registration first admits the incoming vector's reported capacity, all original
+name capacities and the complete deduplication set. Redundant existing names
+drop before subsequent staging. A wholly redundant batch takes an allocation-
+free path, including at a full quota. Remaining dependency names move once;
+copied parent/reverse keys, edge metadata, all required reverse vectors and
+complete forward/reverse/set candidates carry independent native leases.
+Minimum and allocator-reported capacities must fit before publication. Preparing
+an existing map with zero additional keys works even when that map is full.
+
+Preparation preserves both graph directions, all live capacities and managed
+heap state. Every abandoned or refused batch drops its data before refund;
+detached ownership survives VM destruction. Publication checks prepared table/
+vector shapes, moves old owners without cloning their name buffers, appends
+each parent's reverse edge in registration order, then refunds staging directly
+before synchronous ownership reconciliation. No callback, managed collection
+or new fallible allocation occurs during that graph handoff. Scalar peak
+tracking follows preparation phases without a per-edge graph rescan.
+
+Forward sets and both outer maps retain their allocation ledgers after deletion,
+so removed names refund without pretending that backing has disappeared. Sparse
+sets, reverse vectors and outer maps use optional complete replacement leases.
+Refusal leaves old storage and document failure state unchanged; releasing a
+numerical peer permits a later retry. Reclamation refunds each actual published
+reduction before its candidate lease drops and before funding the next layer.
+A single initial reconciliation plus scalar reductions avoids rescanning the
+whole graph per row. Empty graph storage frees without allocation, including
+after a terminal admission failure.
+
+Twenty finite groups cover zero-headroom allocation counts, complete reverse
+growth, preserved preparation snapshots, abandonment and detached lifetimes,
+exact/one-byte-short peaks, full-quota duplicates, mixed duplicate order,
+inner/outer sparse reclamation, stable name-buffer pointers, reported-capacity
+refusal, retry after peer release, terminal empty cleanup, retained backing on
+deletion, host-neutral behavior, forward-set growth, incoming excess capacity
+and full maps needing zero new keys. Fixtures contain at most a few short names;
+numeric peer leases represent quota usage without allocating that payload.
+
+The original M1y spare-slot and duplicate controls now budget the full coexisting
+preparation peak, then assert the final retained delta/refund and original parent
+order. Their earlier 193-case receipt remains historical evidence for its
+original callback/graph scope; it does not establish the stronger native staging
+boundary added here. Wider pending-name/frontier/DFS/walk producers, full module
+caches, shared programs, other native/host buffers and integrated acceptance
+remain open. M1u stays the latest accepted milestone.
+
+Validation: **1587 passed, zero failed/ignored**, across 47 executables and 140
+fixed selections: twenty new groups and all 1567 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Source, staged and post-commit audits bind final source/build inputs,
+the unchanged fourteen Rust inputs, runner, executables, initial/final logs and
+detailed English commit text. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled. The same nine explicit
+resource/infinite-loop skips and finite-public-case exclusions remain. No
+resource-exhaustion probe, network/service/listener/Core/MCP replay, privileged
+validation, process killing, fresh full Test262, coverage result or integrated
+acceptance is claimed.
+
+Evidence paths: `/private/tmp/blueice-dependency-storage-controls-20261017.py`,
+`/private/tmp/blueice-dependency-storage-commit-20261017.txt`,
+`/private/tmp/blueice-dependency-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-dependency-storage-*-20261017.log`, and
+`target/dependency-storage-source-20261017.json`. The ordinary-library entry point
+exposes nineteen functional groups; unit-only allocation observations use the
+shared fixture observer. No fresh coverage result is claimed. This remains an
+M1z implementation checkpoint with wider acceptance open.
+
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
+
+The following acceptance/results retain their original historical scope. The
+2026-10-17 module-dependency batch-storage follow-up above strengthens native
+preparation and retained allocation ownership with a separate source receipt.
 
 Acceptance: account for both dependency maps' table capacity, keys, dependency
 set slots/names and reverse vector slots/names. Register one parent's unique

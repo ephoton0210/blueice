@@ -19,6 +19,41 @@ impl std::ops::Deref for ImportDependencies {
     }
 }
 impl ImportDependencies {
+    pub(super) fn backing_bytes(&self) -> usize {
+        self.allocation_bytes
+    }
+    pub(super) fn retain(&mut self, keep: impl FnMut(&String) -> bool) {
+        self.data.retain(keep);
+    }
+    pub(super) fn insert(&mut self, name: String) {
+        assert!(!self.data.contains(&name), "dependency identity is new");
+        assert!(
+            self.data.len() < self.data.capacity(),
+            "dependency slot is prepared"
+        );
+        self.data.insert(name);
+    }
+    pub(super) fn replace_prepared(&mut self, mut data: HashSet<String>) {
+        assert!(data.is_empty());
+        assert!(data.capacity() >= self.data.len());
+        let bytes = data
+            .capacity()
+            .saturating_mul(std::mem::size_of::<String>());
+        data.extend(self.data.drain());
+        self.data = data;
+        self.allocation_bytes = bytes;
+    }
+    #[cfg(any(test, coverage))]
+    pub(super) fn reserve(&mut self, additional: usize) {
+        self.data.reserve(additional);
+        self.allocation_bytes = self
+            .allocation_bytes
+            .max(self.data.capacity() * std::mem::size_of::<String>());
+    }
+    #[cfg(any(test, coverage))]
+    pub(super) fn take(&mut self, name: &str) -> Option<String> {
+        self.data.take(name)
+    }
     pub(super) fn retained_bytes(&self) -> usize {
         self.data.iter().fold(self.allocation_bytes, |bytes, name| {
             bytes.saturating_add(name.capacity())
@@ -64,6 +99,14 @@ impl ImportDependencies {
         self.data = replacement;
         self.allocation_bytes = actual;
         charge
+    }
+}
+
+impl IntoIterator for ImportDependencies {
+    type Item = String;
+    type IntoIter = std::collections::hash_set::IntoIter<String>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.into_iter()
     }
 }
 

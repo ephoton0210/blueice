@@ -51,6 +51,16 @@ impl<K: Eq + Hash, V, S: BuildHasher + Clone> RetainedControlMap<K, V, S> {
     {
         self.data.get_mut(key)
     }
+    pub(super) fn values_mut(&mut self) -> std::collections::hash_map::ValuesMut<'_, K, V> {
+        self.data.values_mut()
+    }
+    #[cfg(any(test, coverage))]
+    pub(super) fn remove_entry<Q: Eq + Hash + ?Sized>(&mut self, key: &Q) -> Option<(K, V)>
+    where
+        K: std::borrow::Borrow<Q>,
+    {
+        self.data.remove_entry(key)
+    }
     pub(super) fn remove<Q: Eq + Hash + ?Sized>(&mut self, key: &Q) -> Option<V>
     where
         K: std::borrow::Borrow<Q>,

@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_dependency_storage_contracts() {
+    blueice_bluejs::Vm::verify_dependency_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_template_storage_contracts() {
     blueice_bluejs::Vm::verify_template_storage_contracts();
 }

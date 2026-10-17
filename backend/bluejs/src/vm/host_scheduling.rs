@@ -218,6 +218,9 @@ pub(crate) struct SharedSchedulingCharge {
 }
 
 impl SharedSchedulingCharge {
+    pub(super) fn bytes(&self) -> usize {
+        self.bytes
+    }
     pub(crate) fn split_off(&mut self, bytes: usize) -> Self {
         assert!(bytes <= self.bytes, "split existing native ownership");
         self.bytes -= bytes;
@@ -319,6 +322,16 @@ impl Drop for SharedSchedulingCharge {
 }
 
 impl SchedulingScope {
+    /// Cleanup has already freed this part of the VM's published allocation.
+    /// Refund it before releasing a candidate lease or preparing the next one.
+    pub(super) fn release_owned_payload(&mut self, bytes: usize) {
+        assert!(
+            bytes <= self.own.payload_bytes,
+            "release only published VM ownership"
+        );
+        self.own.payload_bytes -= bytes;
+        self.account.borrow_mut().usage.payload_bytes -= bytes;
+    }
     #[cfg(any(test, coverage))]
     pub(super) fn task_serial_state(&self) -> u64 {
         self.account.borrow().next_task_serial

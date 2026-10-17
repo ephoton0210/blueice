@@ -445,6 +445,7 @@ fn the_cycle_root_of_a_dependency_is_the_waiting_parent_it_reaches() {
         ),
     ]);
     let mut vm = Vm::default();
+    vm.module_async_parents.reserve(2);
     vm.module_async_parents.insert(
         "t/dep.js".to_string(),
         vec![

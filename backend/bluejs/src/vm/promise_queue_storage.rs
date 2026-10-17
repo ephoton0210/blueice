@@ -91,25 +91,45 @@ macro_rules! prepared_sequence {
 prepared_sequence!(PreparedVec, Vec);
 prepared_sequence!(PreparedDeque, VecDeque);
 
+impl<T> PreparedVec<T> {
+    pub(super) fn staging_bytes(&self) -> usize {
+        self.replacement.as_ref().map_or(0, |values| {
+            values.capacity().saturating_mul(std::mem::size_of::<T>())
+        })
+    }
+}
+
 pub(super) struct PreparedMap<K, V> {
     replacement: Option<HashMap<K, V>>,
     charge: Option<SharedSchedulingCharge>,
     previous: (usize, usize),
+    additional: usize,
 }
 impl<K: Eq + std::hash::Hash, V> PreparedMap<K, V> {
     pub(super) fn for_insert(
         values: &HashMap<K, V>,
         scope: Option<&SchedulingScope>,
     ) -> Result<Self, RuntimeError> {
+        Self::for_additional(values, 1, scope)
+    }
+    pub(super) fn for_additional(
+        values: &HashMap<K, V>,
+        additional: usize,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<Self, RuntimeError> {
         let mut prepared = Self {
             replacement: None,
             charge: None,
             previous: (values.len(), values.capacity()),
+            additional,
         };
-        if values.len() < values.capacity() {
+        if additional <= values.capacity() - values.len() {
             return Ok(prepared);
         }
-        let requested = values.len().saturating_add(1);
+        let requested = values
+            .len()
+            .checked_add(additional)
+            .ok_or_else(|| fail(scope))?;
         prepared.charge = charge(
             scope,
             requested.saturating_mul(std::mem::size_of::<(K, V)>()),
@@ -124,14 +144,19 @@ impl<K: Eq + std::hash::Hash, V> PreparedMap<K, V> {
         prepared.replacement = Some(replacement);
         Ok(prepared)
     }
+    pub(super) fn staging_bytes(&self) -> usize {
+        self.replacement
+            .as_ref()
+            .map_or(0, host_scheduling::map_slots)
+    }
     pub(super) fn commit(mut self, values: &mut retained_control_map::RetainedControlMap<K, V>) {
         assert_eq!((values.len(), values.capacity()), self.previous);
         if let Some(replacement) = self.replacement.take() {
             values.replace_prepared(replacement);
         }
         assert!(
-            values.len() < values.capacity(),
-            "continuation slot admitted before publication"
+            self.additional <= values.capacity() - values.len(),
+            "record slots admitted before publication"
         );
     }
 
@@ -146,7 +171,7 @@ impl<K: Eq + std::hash::Hash, V> PreparedMap<K, V> {
             values.len() <= self.previous.0,
             "collection only removes old records"
         );
-        if values.len() < values.capacity() {
+        if self.additional <= values.capacity() - values.len() {
             return;
         }
         let replacement = self
@@ -155,8 +180,8 @@ impl<K: Eq + std::hash::Hash, V> PreparedMap<K, V> {
             .expect("full table has an admitted candidate");
         values.replace_prepared(replacement);
         assert!(
-            values.len() < values.capacity(),
-            "record slot admitted before publication"
+            self.additional <= values.capacity() - values.len(),
+            "record slots admitted before publication"
         );
     }
 }

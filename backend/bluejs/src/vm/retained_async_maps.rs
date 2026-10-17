@@ -50,6 +50,7 @@ impl Vm {
         self.reconcile_scheduling_ownership();
         drop(charge);
         self.reclaim_import_waiter_storage();
+        self.reclaim_module_dependency_storage();
     }
 }
 

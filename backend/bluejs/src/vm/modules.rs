@@ -1835,9 +1835,6 @@ impl Vm {
                     .get_mut(&parent)
                     .is_some_and(|dependencies| {
                         dependencies.remove(&child);
-                        if dependencies.len().saturating_mul(4) < dependencies.capacity() {
-                            dependencies.shrink_to_fit();
-                        }
                         dependencies.is_empty()
                     });
                 if !ready {

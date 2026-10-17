@@ -116,6 +116,10 @@ mod import_waiter_storage;
 mod import_waiters;
 mod interpreter_records;
 mod module_dependencies;
+
+#[cfg(test)]
+#[path = "../tests/fixtures/allocation_observer.rs"]
+mod allocation_observer;
 use agent_registry::AgentSymbolRegistry;
 use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::{
@@ -1069,8 +1073,8 @@ pub struct Vm {
     next_module_continuation: u64,
     async_continuations: retained_control_map::RetainedControlMap<u64, AsyncContinuation>,
     next_async_continuation: u64,
-    module_pending_dependencies: HashMap<String, HashSet<String>>,
-    module_async_parents: HashMap<String, Vec<String>>,
+    module_pending_dependencies: module_dependencies::PendingDependencyMap,
+    module_async_parents: module_dependencies::AsyncParentMap,
     module_import_waiters: retained_control_map::RetainedControlMap<String, Vec<ObjectId>>,
     /// The defining source-text module for currently executing code. A
     /// closure receives the same association at creation time.

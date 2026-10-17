@@ -86,15 +86,15 @@ impl Fixture {
     }
 
     fn assert_refused(&mut self, parent: &str) {
-        let forward = self.vm.module_pending_dependencies.clone();
+        let forward = snapshot_forward(&self.vm);
         let reverse = self.vm.module_async_parents.clone();
         let capacities = (
             self.vm.module_pending_dependencies.capacity(),
             self.vm.module_async_parents.capacity(),
         );
         assert_eq!(self.evaluate(parent), Err(RuntimeError::SchedulingLimit));
-        assert_eq!(self.vm.module_pending_dependencies, forward);
-        assert_eq!(self.vm.module_async_parents, reverse);
+        assert_eq!(snapshot_forward(&self.vm), forward);
+        assert_eq!(&*self.vm.module_async_parents, &reverse);
         assert_eq!(
             (
                 self.vm.module_pending_dependencies.capacity(),
@@ -126,7 +126,11 @@ fn module_dependency_forward_storage_tracks_tables_sets_and_names() {
             0 => {
                 let capacity = map.capacity();
                 map.reserve(capacity + 1);
-                (map.capacity() - capacity) * std::mem::size_of::<(String, HashSet<String>)>()
+                (map.capacity() - capacity)
+                    * std::mem::size_of::<(
+                        String,
+                        crate::vm::import_waiter_storage::ImportDependencies,
+                    )>()
             }
             1 => {
                 let set = map.get_mut("test/p0.mjs").unwrap();
@@ -234,6 +238,25 @@ fn module_dependency_reverse_vector_growth_refuses_before_publication() {
     fixture.assert_refused("test/p8.mjs");
 }
 
+fn snapshot_forward(vm: &Vm) -> HashMap<String, HashSet<String>> {
+    vm.module_pending_dependencies
+        .iter()
+        .map(|(key, set)| (key.clone(), set.iter().cloned().collect()))
+        .collect()
+}
+fn batch_budget(vm: &mut Vm, parent: &str, names: &[&str]) -> usize {
+    // Evaluation's pending-name Vec uses its ordinary four-slot first growth.
+    let mut input = Vec::with_capacity(4);
+    input.extend(names.iter().map(|name| (*name).to_owned()));
+    let prepared = vm
+        .prepare_async_module_dependencies(parent, input)
+        .unwrap()
+        .unwrap();
+    let bytes = prepared._peak_bytes;
+    drop(prepared);
+    bytes
+}
+
 fn one_edge_bytes(parent: &str) -> usize {
     2 * parent.len()
         + "test/m0.mjs".len()
@@ -250,13 +273,14 @@ fn module_dependency_batch_refusal_does_not_publish_a_partial_first_edge() {
 #[cfg_attr(test, test)]
 fn module_dependency_spare_slots_admit_only_new_set_and_name_storage() {
     let mut fixture = Fixture::new(1, false);
-    let bytes = one_edge_bytes("test/p1.mjs");
-    let before = fixture.vm.host_scheduling_usage().unwrap().payload_bytes;
+    let bytes = batch_budget(&mut fixture.vm, "test/p1.mjs", &["test/m0.mjs"]);
+    let before = fixture.vm.module_dependency_bytes();
     let _owner = leave_room(&mut fixture.vm, bytes);
     assert_eq!(fixture.evaluate("test/p1.mjs"), Ok(Value::Undefined));
-    let remaining = fixture.vm.host_scheduling_snapshot().payload_bytes;
-    assert_eq!(remaining, MAX_HOST_SCHEDULING_BYTES);
-    assert!(before < remaining);
+    assert_eq!(
+        fixture.vm.host_scheduling_snapshot().payload_bytes,
+        MAX_HOST_SCHEDULING_BYTES - bytes + fixture.vm.module_dependency_bytes() - before
+    );
     assert_eq!(
         fixture.vm.module_async_parents["test/m0.mjs"],
         vec!["test/p0.mjs", "test/p1.mjs"]
@@ -370,34 +394,41 @@ fn module_deferred_frontier_storage_is_charged_before_dependency_code_runs() {
 #[cfg_attr(test, test)]
 fn module_dependency_duplicate_batches_do_not_recharge_or_reorder_edges() {
     let mut fixture = Fixture::new(0, false);
-    let mut bytes =
-        one_edge_bytes("test/p0.mjs") + "test/m0.mjs".len() + 4 * std::mem::size_of::<String>();
-    bytes += HashMap::<String, HashSet<String>>::with_capacity(1).capacity()
-        * std::mem::size_of::<(String, HashSet<String>)>();
-    bytes += HashMap::<String, Vec<String>>::with_capacity(1).capacity()
-        * std::mem::size_of::<(String, Vec<String>)>();
+    let bytes = batch_budget(
+        &mut fixture.vm,
+        "test/p0.mjs",
+        &["test/m0.mjs", "test/m0.mjs"],
+    );
+    let before = fixture.vm.module_dependency_bytes();
     let _owner = leave_room(&mut fixture.vm, bytes);
-    for dependencies in [
-        vec!["test/m0.mjs".into(), "test/m0.mjs".into()],
-        vec!["test/m0.mjs".into()],
-    ] {
-        fixture
-            .vm
-            .register_async_module_dependencies("test/p0.mjs", dependencies)
-            .unwrap();
-        assert_eq!(
-            fixture.vm.module_pending_dependencies["test/p0.mjs"].len(),
-            1
-        );
-        assert_eq!(
-            fixture.vm.module_async_parents["test/m0.mjs"],
-            vec!["test/p0.mjs"]
-        );
-        assert_eq!(
-            fixture.vm.host_scheduling_snapshot().payload_bytes,
-            MAX_HOST_SCHEDULING_BYTES
-        );
-    }
+    fixture
+        .vm
+        .register_async_module_dependencies(
+            "test/p0.mjs",
+            vec!["test/m0.mjs".into(), "test/m0.mjs".into()],
+        )
+        .unwrap();
+    assert_eq!(
+        fixture.vm.host_scheduling_snapshot().payload_bytes,
+        MAX_HOST_SCHEDULING_BYTES - bytes + fixture.vm.module_dependency_bytes() - before
+    );
+    let _remaining = leave_room(&mut fixture.vm, 0);
+    fixture
+        .vm
+        .register_async_module_dependencies("test/p0.mjs", vec!["test/m0.mjs".into()])
+        .unwrap();
+    assert_eq!(
+        fixture.vm.module_pending_dependencies["test/p0.mjs"].len(),
+        1
+    );
+    assert_eq!(
+        fixture.vm.module_async_parents["test/m0.mjs"],
+        vec!["test/p0.mjs"]
+    );
+    assert_eq!(
+        fixture.vm.host_scheduling_snapshot().payload_bytes,
+        MAX_HOST_SCHEDULING_BYTES
+    );
 }
 
 fn ordering_graph(failing_parent: bool) -> (Vm, HashMap<String, Bytecode>) {

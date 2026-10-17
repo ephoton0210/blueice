@@ -548,10 +548,22 @@ when delivery has finished and no other owner retains them.
 
 Static asynchronous module evaluation owns a forward dependency set for each
 waiting parent and an ordered reverse-parent vector for each dependency.
-Their table/set/vector capacities and retained UTF-8 names share the document
-native-byte budget. A parent's unique edge batch is admitted before either
-direction or the parent's suspended state is published. Existing names move
-without cloning; duplicate edges add no allocation or ordering change.
+Their retained table/set/vector allocations and UTF-8 names share the document
+native-byte budget. Registration first admits the incoming vector, original
+name capacities and complete deduplication set. It then independently leases
+all edge metadata, copied names and complete replacement forward/reverse maps,
+dependency set and parent vectors while the old graph remains owned. Requested
+and reported capacities must fit before either direction changes. Existing
+names move without cloning; wholly redundant batches discard incoming buffers
+without scratch allocation, including at a full document quota. Registration
+into available slots still funds the full preparation that precedes publication.
+
+Deletion returns obsolete names while hash allocation ledgers retain their
+backing charge. Optional sparse reclamation admits complete coexisting
+candidates; a refusal retains old storage without making the document terminal.
+Each adopted reduction refunds published ownership before its candidate lease
+drops and before the next candidate is funded. No full graph rescan is needed
+per reclaimed row. Empty storage releases even after terminal admission failure.
 
 Completion returns obsolete names and unused capacity. Rejection removes the
 parent from every remaining dependency, including siblings that keep running.
@@ -561,8 +573,11 @@ all exits reconcile their released ownership. Deferred graph evaluation hands
 its frontier back to its caller without a realm cache and charges it across
 dependency JavaScript. Collected pending dependency names and the remaining
 evaluation-list buffer also retain scoped charges while a later dependency
-executes. Wholly native staging, full module caches and active execution control
-containers remain in the broader native-accounting work.
+executes. Earlier traversal/frontier evidence covers ownership across callbacks;
+producer-side pending-name/frontier/DFS/walk allocation, full module caches,
+shared programs and broader native/integrated acceptance remain open. The
+module-dependency batch follow-up is an M1z implementation checkpoint, separate
+from the original M1y evidence and final integration acceptance.
 
 ### Native execution ownership
 
