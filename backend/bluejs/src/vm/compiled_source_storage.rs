@@ -4,17 +4,53 @@
 
 //! Transfer parsed source leases into independently shared runtime code.
 
-use super::host_scheduling::SharedSchedulingCharge;
+use super::host_scheduling::{SharedNativeHeader, SharedSchedulingCharge};
 use super::*;
 use std::sync::Arc;
 
-struct SourceOwner {
+pub(super) struct SourceOwner {
     // Release the actual source before refunding its lease.
     _text: Arc<str>,
     bytes: usize,
     charge: RefCell<Option<SharedSchedulingCharge>>,
+    header: Option<Rc<SharedNativeHeader>>,
+}
+pub(super) struct WeakSource {
+    source: std::rc::Weak<SourceOwner>,
+    _header: Option<Rc<SharedNativeHeader>>,
+}
+impl WeakSource {
+    pub(super) fn upgrade(&self) -> Option<Rc<SourceOwner>> {
+        self.source.upgrade()
+    }
+    pub(super) fn live(&self) -> bool {
+        self.source.strong_count() != 0
+    }
 }
 impl SourceOwner {
+    pub(super) fn weak(self: &Rc<Self>) -> WeakSource {
+        WeakSource {
+            source: Rc::downgrade(self),
+            _header: self.header.clone(),
+        }
+    }
+    pub(super) fn host(
+        text: &Arc<str>,
+        budget: &HeapNativeBudget,
+    ) -> Result<Rc<Self>, RuntimeError> {
+        let header = std::mem::size_of::<Self>() + std::mem::size_of::<SharedNativeHeader>();
+        let bytes = header
+            .checked_add(text.len())
+            .ok_or_else(|| budget.fail())?;
+        let mut charge = budget.reserve(bytes)?;
+        let header = SharedNativeHeader::new(charge.split_off(header));
+        Ok(Rc::new(Self {
+            _text: text.clone(),
+            bytes,
+            charge: RefCell::new(Some(charge)),
+            header: Some(header),
+        }))
+    }
     fn attach(&self, budget: &HeapNativeBudget) -> Result<(), RuntimeError> {
         let mut charge = self.charge.borrow_mut();
         if let Some(owner) = charge.as_ref() {
@@ -38,6 +74,20 @@ pub(crate) struct RuntimeCodeSources {
 }
 
 impl Bytecode {
+    pub(super) fn has_runtime_sources(&self) -> bool {
+        self.runtime_sources.present
+    }
+    pub(super) fn install_host_source(
+        &mut self,
+        source: Option<Rc<SourceOwner>>,
+        budget: &HeapNativeBudget,
+    ) {
+        self.runtime_sources = RuntimeCodeSources {
+            source,
+            present: true,
+            document: RefCell::new(Some(budget.clone())),
+        };
+    }
     #[cfg(any(test, coverage))]
     pub(crate) fn runtime_source_bytes(&self) -> usize {
         self.runtime_sources
@@ -128,6 +178,7 @@ impl SourceOwners {
                 _text: source.clone(),
                 bytes,
                 charge: RefCell::new(charge),
+                header: None,
             }),
         );
         Ok(true)

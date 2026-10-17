@@ -310,12 +310,36 @@ impl CollectorWorkspace {
 }
 
 impl Heap {
-    pub(super) fn attach_code_sources(&self, code: &SharedBytecode) -> Result<(), HeapError> {
-        if let Some(budget) = &self.collector.budget {
-            code.attach_runtime_sources(budget)
+    pub(super) fn prepare_code_sources(
+        &mut self,
+        code: SharedBytecode,
+    ) -> Result<SharedBytecode, HeapError> {
+        let Some(budget) = self.collector.budget.clone() else {
+            return Ok(code);
+        };
+        if code.is_runtime() {
+            code.attach_runtime_sources(&budget)
                 .map_err(|_| HeapError::CodeSourceStorageLimit)?;
+            return Ok(code);
         }
-        Ok(())
+        let cache = if let Some(cache) = &self.host_code_cache {
+            cache.clone()
+        } else {
+            crate::vm::HostCodeCache::shared(&budget)
+                .map_err(|_| HeapError::CodeSourceStorageLimit)?
+        };
+        self.host_code_cache = Some(cache.clone());
+        crate::vm::HostCodeCache::prepare(&cache, &code, &budget)
+            .map_err(|_| HeapError::CodeSourceStorageLimit)
+    }
+    pub(super) fn prune_host_code_cache(&mut self) {
+        if let Some(cache) = &self.host_code_cache {
+            cache.borrow_mut().prune();
+            let empty = cache.borrow().is_empty();
+            if empty {
+                self.host_code_cache = None;
+            }
+        }
     }
 
     pub(crate) fn bind_native_budget(&mut self, budget: HeapNativeBudget) -> Result<(), HeapError> {
@@ -341,10 +365,11 @@ impl Heap {
         }
         // Closures/generators can outlive an unbounded registry. Bind their code
         // before admitting execution in a newly bounded document.
-        for object in self.objects.values() {
-            let code = match &object.kind {
+        let mut cache = self.host_code_cache.clone();
+        for object in self.objects.values_mut() {
+            let code = match &mut object.kind {
                 ObjectKind::Closure { code, .. } => Some(code),
-                ObjectKind::Generator { state, .. } => match &**state {
+                ObjectKind::Generator { state, .. } => match &mut **state {
                     GeneratorState::Start { code, .. } | GeneratorState::Suspended { code, .. } => {
                         Some(code)
                     }
@@ -353,10 +378,23 @@ impl Heap {
                 _ => None,
             };
             if let Some(code) = code {
-                code.attach_runtime_sources(&budget)
-                    .map_err(|_| HeapError::CodeSourceStorageLimit)?;
+                if code.is_runtime() {
+                    code.attach_runtime_sources(&budget)
+                        .map_err(|_| HeapError::CodeSourceStorageLimit)?;
+                } else {
+                    if cache.is_none() {
+                        cache = Some(
+                            crate::vm::HostCodeCache::shared(&budget)
+                                .map_err(|_| HeapError::CodeSourceStorageLimit)?,
+                        );
+                    }
+                    *code =
+                        crate::vm::HostCodeCache::prepare(cache.as_ref().unwrap(), code, &budget)
+                            .map_err(|_| HeapError::CodeSourceStorageLimit)?;
+                }
             }
         }
+        self.host_code_cache = cache;
         // Install no owner until root, collector, pin and ready-index storage fit. Root
         // registrations and handles survive refused activation; only unadmitted
         // collector scratch may be discarded.

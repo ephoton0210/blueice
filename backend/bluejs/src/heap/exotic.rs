@@ -154,7 +154,7 @@ impl Heap {
         this: Value,
         prototype: ObjectId,
     ) -> Result<ObjectId, HeapError> {
-        self.attach_code_sources(&code)?;
+        let code = self.prepare_code_sources(code)?;
         self.alloc(
             ObjectKind::Closure {
                 code,
@@ -167,12 +167,13 @@ impl Heap {
 
     pub(crate) fn alloc_generator(
         &mut self,
-        state: GeneratorState,
+        mut state: GeneratorState,
         prototype: ObjectId,
     ) -> Result<ObjectId, HeapError> {
-        if let GeneratorState::Start { code, .. } | GeneratorState::Suspended { code, .. } = &state
+        if let GeneratorState::Start { code, .. } | GeneratorState::Suspended { code, .. } =
+            &mut state
         {
-            self.attach_code_sources(code)?;
+            *code = self.prepare_code_sources(code.clone())?;
         }
         let state_bytes = state.managed_bytes();
         self.alloc(
@@ -315,15 +316,20 @@ impl Heap {
     pub(crate) fn set_generator_state(
         &mut self,
         object: ObjectId,
-        state: GeneratorState,
+        mut state: GeneratorState,
     ) -> Result<(), HeapError> {
         // A generator may have been promoted while it was running. Restoring
         // a suspended frame can then install young bindings/cells into an old
         // generator object, so this internal-slot write needs the same
         // remembered-set barrier as an ordinary property write.
+        let old_state_bytes = *self.generator_state_slots_mut(object)?.1;
+        if let GeneratorState::Start { code, .. } | GeneratorState::Suspended { code, .. } =
+            &mut state
+        {
+            *code = self.prepare_code_sources(code.clone())?;
+        }
         let references = state.references();
         let state_bytes = state.managed_bytes();
-        let old_state_bytes = *self.generator_state_slots_mut(object)?.1;
         // Collection may be needed before a suspended frame is restored.
         // Keep both the generator and its incoming references alive across it.
         let protected: Vec<_> = std::iter::once(object)

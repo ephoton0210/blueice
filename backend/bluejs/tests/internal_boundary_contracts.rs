@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_host_code_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_code_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_shadow_eval_storage_contracts() {
     blueice_bluejs::Vm::verify_shadow_eval_storage_contracts();
 }

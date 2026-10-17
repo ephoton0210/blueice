@@ -140,6 +140,7 @@ mod shared_code_storage;
 mod allocation_observer;
 use agent_registry::AgentSymbolRegistry;
 pub(crate) use compiled_source_storage::RuntimeCodeSources;
+pub(crate) use host_code_storage::HostCodeCache;
 use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::{
     AwaitRegistration, SchedulingCapacity, SchedulingMapCapacity, SchedulingScope,
@@ -155,6 +156,7 @@ use module_walk_storage::ModuleQueries;
 use promise_queue_storage::AwaitContinuation;
 pub(crate) use shared_code_storage::SharedBytecode;
 mod agent_registry;
+mod host_code_storage;
 mod interpreter;
 mod intl;
 mod intrinsics;

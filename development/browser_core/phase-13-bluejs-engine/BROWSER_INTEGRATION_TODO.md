@@ -68,6 +68,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The host-compiled child-code storage follow-up (2026-10-18) has an implementation
+checkpoint. Closure/generator handoff and late activation now acquire document
+code/source owners without binding the reusable host program. Weak caches share
+live copies within one document, retain header charges through weak lifetime and
+reclaim backing through GC. All twenty-four new cases pass. Final validation
+passes **251 distinct selected tests** across thirteen executable targets and
+forty-four fixed selections. Formatting, diff checks and offline workspace/
+all-target Clippy pass, with source/artifact and local commit audits. Borrowed
+root/debugger-only buffers remain required work in the wider program gate.
+
 The ShadowRealm evaluation storage follow-up (2026-10-18) has an implementation
 checkpoint. Lexer/AST/root/source/child-code ownership now follows the selected
 caller/child account, including reentrant evaluation and wrapper metadata
@@ -1312,7 +1322,10 @@ work and exposes its retained payload ledger.
       fixed semantics/lifetime/refusal cases pass. ShadowRealm evaluation now
       selects caller/child account ownership before runtime compilation and
       keeps root/source/code leases through wrapping and timer/Promise GC;
-      twenty-two fixed cases pass. Shared programs, other
+      twenty-two fixed cases pass. Host-compiled children now have document
+      copies shared through weak code/source caches, with complete weak-header
+      retention and optional backing reclamation; twenty-four new cases pass.
+      Borrowed outer/debugger buffers, shared programs' remaining storage, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -7838,6 +7851,90 @@ Evidence: `target/shadow-eval-storage-source-20261018.json` and prefix
 inputs/log, the first three-of-four GC-allocation finding, expanded twenty-case
 inputs/log, final frozen inputs, fixed controls and the detailed English commit
 message.
+
+#### Host-compiled child-code storage follow-up (implementation checkpoint, 2026-10-18)
+
+Acceptance: preserve cross-document host program reuse while admitting each
+document's retained child-code buffers/headers and source owners before closure
+or generator publication. Share live copies across related heaps, keep code and
+source charged through saved frames and queued callbacks, and release weak
+header/table backing only after its final holder drops. Late activation uses the
+same handoff. Scope is retained children; borrowed outer/debugger-only buffers
+remain a separate required program-ownership layer.
+
+- [x] Reproduce four public/native-boundary failures with fixed tiny programs.
+- [x] Implement per-document copied-code/source sharing, incoming/restored
+      generator handoff and late activation, with weak-cache reclamation.
+- [x] Preserve a further weak-header counterexample, charge complete weak
+      lifetime and pass expanded finite contracts and fixed related controls.
+- [x] Complete static/source/artifact audits, final documents and a detailed
+      English commit.
+
+The original **0/4 passed** run records missing source ownership, premature
+refunds after input/VM destruction, the same unowned code used by independent
+documents, and a zero-headroom heap accepting a new host-code closure. The
+initial **4/4** pass. A separate **0/1** counterexample then exposes the code
+allocation header retained by a dead weak entry after its charge was refunded.
+The header correction passes **5/5** before the expanded **24/24** run.
+
+Heap adoption now copies ordinary host child bytecode into independently owned
+document code before storing a closure or generator state. Existing runtime
+owners validate their document and retain their original shared code. The host
+input remains unchanged and reusable in another document. A document-wide weak
+discovery pointer finds the cache held by its actual heaps; it creates no strong
+account/cache cycle and clears when the cache drops. Related heaps reuse one live
+copy. Source owners share the original immutable Arc text and count its payload
+once within that document. Existing runtime source ownership is preserved rather
+than replaced, including rejection of foreign provenance hidden by a new wrapper.
+
+Each node's complete candidate header/buffers are admitted before cloning and
+reconciled to reported capacities. Both cache maps admit full coexisting backing
+before growth. Host identities use weak zero-sized tokens, preserving allocation
+identity without retaining the original code allocation; editing a cached host
+input replaces that identity before mutation. Cached document edits admit a
+complete coexisting copy and preserve the original cached version.
+
+Weak code/source entries carry independent native header leases. Destroying
+buffers returns their credit while allocation headers remain charged until the
+last strong or weak holder releases them. Weak pointers drop before their header
+leases. Minor/major GC removes dead entries, releases empty backing and drops
+unused caches. Sparse replacement is optional, admits its full coexisting
+capacity, and can decline without latching a document failure; old backing stays
+charged. Terminal cleanup still refunds destroyed metadata and headers.
+
+The twenty-four finite cases include one unit-only allocation observation and
+twenty-three ordinary-library contracts. They cover source/code and weak-header
+lifetimes, unchanged host input, independent documents, same-document and
+cross-heap sharing, nested-source deduplication, exact/one-short copy and cached
+edit peaks, full-quota cache hits, foreign/terminal refusal, host identity
+invalidation, sparse reclamation refusal/retry, late activation, generator
+creation/restoration, saved async code, template/source-text semantics and
+timer/Promise retention followed by final GC. Fixtures use at most four tiny
+programs, two VMs, one callback and scalar native quota peers.
+
+Final validation passes **251 distinct selected tests** in forty-four fixed
+selections across thirteen executable targets: the new twenty-four and all 227
+preceding eval/Function/ShadowRealm/module/GC controls. Formatting, diff checks
+and offline workspace/all-target Clippy with warnings denied pass. Frozen
+source/artifact and staged/committed content audits bind twelve Rust inputs,
+fourteen source/document files, thirteen executables and the detailed English
+commit. Public parser/compiler/encoding and AST metrics, normal root/debugger
+controllers and ShadowRealm execution remain unchanged. Ordinary-library entry
+points expose the functional contracts without claiming fresh coverage.
+
+Borrowed outer code-unit buffers, debugger-only root clones, host-side program
+registries, full parser/compiler/coercion producer preallocation, active-call
+backing, complete neutral-tree policy adoption, other native host buffers,
+diagnostic maps/registries and allocator/BigInt-spare/Rc-control exclusions remain
+open with integrated acceptance. M1u remains the latest accepted milestone.
+No broad, exhaustion, infinite-execution or network/Core/MCP replay is resumed;
+the rejected push is not retried.
+
+Evidence: `target/host-code-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-host-code-storage-` (2026-10-18), including original four-case
+red inputs/log, first green inputs/log, the separate weak-header red/fixed
+inputs/logs, expanded/final frozen inputs, fixed controls and the detailed
+English commit message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

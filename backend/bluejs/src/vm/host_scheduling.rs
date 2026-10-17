@@ -206,6 +206,7 @@ struct Account {
     failed: bool,
     next_task_serial: u64,
     clock_ms: u64,
+    host_code_cache: std::rc::Weak<RefCell<super::HostCodeCache>>,
 }
 
 #[cfg(any(test, coverage))]
@@ -228,7 +229,20 @@ pub(crate) struct SharedSchedulingCharge {
     bytes: usize,
 }
 
+/// Keep a weak-retained allocation header charged after its data is destroyed.
+pub(super) struct SharedNativeHeader {
+    _charge: SharedSchedulingCharge,
+}
+impl SharedNativeHeader {
+    pub(super) fn new(charge: SharedSchedulingCharge) -> Rc<Self> {
+        Rc::new(Self { _charge: charge })
+    }
+}
+
 impl SharedSchedulingCharge {
+    pub(super) fn clear_host_code_cache(&self) {
+        self.account.borrow_mut().host_code_cache = std::rc::Weak::new();
+    }
     pub(crate) fn reserve_peer(&self, bytes: usize) -> Result<Self, RuntimeError> {
         let mut charge = Self {
             account: self.account.clone(),
@@ -319,6 +333,12 @@ pub(crate) struct HeapNativeBudget {
     account: Rc<RefCell<Account>>,
 }
 impl HeapNativeBudget {
+    pub(crate) fn host_code_cache(&self) -> Option<Rc<RefCell<super::HostCodeCache>>> {
+        self.account.borrow().host_code_cache.upgrade()
+    }
+    pub(crate) fn install_host_code_cache(&self, cache: &Rc<RefCell<super::HostCodeCache>>) {
+        self.account.borrow_mut().host_code_cache = Rc::downgrade(cache);
+    }
     pub(crate) fn owns(&self, charge: &SharedSchedulingCharge) -> bool {
         Rc::ptr_eq(&self.account, &charge.account)
     }

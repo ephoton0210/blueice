@@ -1188,6 +1188,32 @@ candidate pins. Complete neutral-tree policy adoption and thread-local active-
 call backing remain separate open control-storage work, alongside the wider
 native/integrated gates above.
 
+Ordinary host-compiled children acquire document-owned bytecode copies at heap
+closure/generator creation, generator-state restoration and late document
+activation. The host input keeps its neutral identity and cross-document reuse.
+A shared weak cache lets related heaps reuse one live copy and one source owner
+per immutable source allocation. Already owned runtime code keeps its original
+owner, and foreign runtime provenance refuses before publication.
+
+Candidate headers/buffers and full coexisting cache growth acquire admission
+before cloning/allocation, with reported capacities reconciled before storage.
+Weak zero-sized host tokens prevent identity reuse without retaining original
+code allocations; edits replace an observed host identity before mutation.
+Cached document metadata edits admit complete coexisting copies.
+
+Code/source allocation headers retain separate native leases while weak entries
+outlive their data. Weak pointers drop before their header credit is returned.
+Caches hold no strong code/source roots and cannot keep a closure or realm alive.
+GC removes dead entries, releases empty backing and optionally replaces sparse
+backing through nonterminal coexisting admission. Failed optional compaction
+keeps old backing charged. Actual heaps hold cache ownership; the account's weak
+discovery pointer creates no strong cycle and clears when that cache drops.
+
+Returned code, generator/async frames and timer/Promise callbacks retain their
+document code/source owners through final use. This covers retained host child
+code, not borrowed outer/debugger-only buffers or host-side program registries;
+those remain required program-storage work alongside the wider native gates.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

@@ -77,6 +77,7 @@ impl Heap {
             realm_pins: realm_roots::RealmPins::default(),
             scoped_trace: None,
             collector: CollectorWorkspace::default(),
+            host_code_cache: None,
             collection_error: None,
             managed_bytes: ManagedBytes::default(),
             next_major_bytes: config.major_threshold_bytes,

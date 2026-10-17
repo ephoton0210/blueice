@@ -1806,6 +1806,7 @@ pub struct Heap {
     /// safepoint batch supplies roots and conditional VM side-table edges.
     scoped_trace: Option<GcTraceBatch>,
     collector: CollectorWorkspace,
+    host_code_cache: Option<Rc<std::cell::RefCell<crate::vm::HostCodeCache>>>,
     collection_error: Option<HeapError>,
     managed_bytes: ManagedBytes,
     next_major_bytes: usize,

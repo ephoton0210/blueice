@@ -240,6 +240,7 @@ impl Heap {
         self.remembered.clear();
         self.clean_abort_weak_edges();
         self.prune_finalization_cleanup_index();
+        self.prune_host_code_cache();
         self.minor_collections += 1;
         self.recycle_collector_marks(marked)
     }
@@ -322,6 +323,7 @@ impl Heap {
             .min(self.config.max_heap_bytes);
         self.clean_abort_weak_edges();
         self.prune_finalization_cleanup_index();
+        self.prune_host_code_cache();
         self.major_collections += 1;
         self.recycle_collector_marks(marked)
     }
