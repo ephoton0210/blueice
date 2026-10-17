@@ -95,17 +95,17 @@ impl Aliases {
     }
 }
 
-pub(super) struct NamespaceExports<'a> {
-    source: &'a [&'a str],
+pub(super) struct NamespaceExports {
+    expected: usize,
     names: Vec<JsString>,
     exports: Vec<(JsString, ObjectId)>,
     name_bytes: usize,
     next: usize,
     charge: Option<SharedSchedulingCharge>,
 }
-impl<'a> NamespaceExports<'a> {
+impl NamespaceExports {
     pub(super) fn prepare(
-        source: &'a [&'a str],
+        source: &[&str],
         scope: Option<&SchedulingScope>,
     ) -> Result<Self, RuntimeError> {
         let mut pending = source.iter().try_fold(0usize, |bytes, name| {
@@ -126,7 +126,7 @@ impl<'a> NamespaceExports<'a> {
             .and_then(|bytes| bytes.checked_add(pending))
             .ok_or_else(|| fail(scope))?;
         let mut prepared = Self {
-            source,
+            expected: source.len(),
             names: Vec::new(),
             exports: Vec::new(),
             name_bytes: 0,
@@ -173,7 +173,7 @@ impl<'a> NamespaceExports<'a> {
         Ok(())
     }
     fn next_name(&mut self) -> JsString {
-        assert!(self.next < self.source.len());
+        assert!(self.next < self.expected);
         let name = std::mem::take(&mut self.names[self.next]);
         self.next += 1;
         name
@@ -194,7 +194,7 @@ impl<'a> NamespaceExports<'a> {
         }
     }
     pub(super) fn publish(self, vm: &mut Vm, namespace: ObjectId) -> Result<(), RuntimeError> {
-        assert_eq!(self.next, self.source.len());
+        assert_eq!(self.next, self.expected);
         let Self {
             names,
             exports,

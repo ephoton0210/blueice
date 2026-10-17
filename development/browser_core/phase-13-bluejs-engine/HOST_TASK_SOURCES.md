@@ -609,7 +609,7 @@ collects explicit forms without resolving their bindings, excludes star defaults
 and visits repeated modules once. It sorts distinct names in place and releases
 traversal sets/frames before returning the still-owned pointer vector. Deferred
 filtering retains its backing charge. Namespace construction retains that result
-owner across managed allocation, GC and recursive namespace construction; a
+owner across managed allocation, GC and nested namespace construction; a
 Rust-held result remains charged after its VM dies.
 
 `ResolveExport` uses admitted query-wide module/name markers and explicit frame
@@ -641,13 +641,24 @@ their current accounting scope.
 
 Native preparation precedes namespace placeholder publication: complete output
 backing and UTF-16 names retain independent native ownership while cells and
-recursive namespaces are resolved. Kept names move without copying; skipped names
+nested namespaces are resolved. Kept names move without copying; skipped names
 refund payload while retaining vector backing. Consumed name headers are freed
 before the ready payload crosses the heap boundary. Its owner remains captured
 through trace preparation, then refunds immediately after heap adoption/error,
 before VM trace completion. Native and managed handoff use the same payload-size
 calculation. Late document attachment admits unbounded input; existing owners
 must retain their document identity. Data drops before the owner on every exit.
+
+Namespace construction uses an explicit admitted frame vector. Complete
+coexisting replacements precede child placeholder publication; each frame keeps
+its name-result and UTF-16/output owners independently of vector movement.
+Export output retains a count rather than a borrowed frame slice, avoiding
+self-reference. Child completion resumes the parent's alias-cell construction;
+cached self/cyclic edges reuse stable placeholders. One outer transaction owns
+new epochs and temporary roots, restores inherited capacity policy and rolls
+back on failure. Invalid initial epochs refuse before controller allocation, and cache
+hits retain their allocation-free fast path. Namespace-call depth stays constant;
+module-body evaluation recursion remains a separate open gate.
 
 Import-slot lookup uses admitted sorted/deduplicated backing during own-cell
 creation. Import aliases reserve a complete native batch before request/cell

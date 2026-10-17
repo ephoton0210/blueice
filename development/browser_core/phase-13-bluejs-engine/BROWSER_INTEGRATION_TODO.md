@@ -68,6 +68,19 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The iterative namespace-construction follow-up (2026-10-17) now owns explicit
+construction frames and removes recursive namespace calls.
+Three fixed public module graphs reproduce 3/4/2 simultaneous namespace host
+calls rather than one. Construction now uses admitted movable frames and
+independently owned export payloads, preserving DFS order, placeholders and
+transactional rollback. The first focused run passes **21/21**. Twenty-one new
+groups and all 1822 prior selected controls pass: **1843 total**, across 50
+executables and 169 fixed selections. Formatting, diff checks and offline
+workspace/all-target Clippy pass; source/artifact and commit audits record the
+checkpoint. Module-body evaluation recursion, dynamic source compilation, other
+native/heap buffers and integrated acceptance remain open. M1u remains the latest
+accepted milestone.
+
 The synthetic Bytecode preparation follow-up (2026-10-17) now owns metadata
 through registry adoption.
 Four old-code cases reproduce six metadata allocations and seven allocations
@@ -6845,6 +6858,74 @@ expanded attempt at `/private/tmp/blueice-module-code-storage-first-source-20261
 `/private/tmp/blueice-module-code-storage-audit-20261017.py`,
 `/private/tmp/blueice-module-code-storage-commit-20261017.txt` and
 `target/module-code-storage-source-20261017.json`.
+
+#### Iterative namespace construction follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: build nested namespace re-exports with constant namespace host-call
+depth and admitted explicit frames. Keep name/result payloads owned independently
+of frame movement, maintain eager/deferred identities and live/source bindings,
+and preserve outer transaction rollback, temporary roots and capacity policy.
+
+- [x] Preserve three old-code failures through public `execute_module_graph`:
+      **0/3 passed**, with 3/4/2 simultaneous namespace calls for a three-module
+      chain, a three-module cycle and a deferred chain. The cases observe actual
+      call nesting without overflowing or exhausting a stack.
+- [x] Use an admitted explicit DFS controller with movable payload owners,
+      cached placeholders, child-result continuations and outer rollback.
+- [x] Pass fixed finite controls, formatting and Clippy; complete source/artifact
+      and commit audits with detailed English text.
+
+Each frame retains canonical borrowed module/export names, independently owned
+UTF-16/output buffers, progress and a pending child identity. Complete coexisting
+frame replacements are admitted before allocating or publishing another child.
+Export preparation retains an expected count rather than borrowing the frame's
+own name vector, so moving/growing the frame array creates no self-reference.
+Input-name storage may be destroyed before publishing the already-owned output.
+
+The controller preserves sorted export traversal and depth-first completion:
+publish/root a placeholder, finish a cold child, then construct the parent's
+immutable alias cell. Cached cyclic/self edges reuse that placeholder immediately.
+Eager/deferred objects remain distinct, deferred `then` filtering precedes target
+resolution, and source aliases retain the host's stable opaque identity. Local
+cells move unchanged; missing/ambiguous exports remain omitted.
+
+The outer call keeps one namespace transaction depth increment. Every error
+drops frame payloads before rolling back new cache epochs and temporary roots;
+existing namespaces and inherited outer transaction/capacity policy survive.
+Invalid initial publication epochs refuse before allocating the controller, retaining
+the existing allocation-free rejection. The export-name refusal fixture now
+previews both the controller and cache preparation, preserving its exact
+allocation-count assertion at the original name-traversal boundary.
+
+The first focused run passes **21/21**. Eighteen functional groups cover detached,
+exact/short/spare/growing frame storage, independently owned name input, payload
+validity after frame movement, cyclic identities through GC, eager/deferred
+self-aliases, source/local/ambiguous exports, late failure after frame growth,
+cache hits at full quota, inherited policy, root refusal and host-neutral cycles.
+Three unit-only observations measure actual active namespace calls. Functional
+groups are exposed through the ordinary-library entry point. The first passed
+source/log archive precedes the explicit initial invalid-epoch preflight restored
+during review. Final validation passes **1843 distinct selected tests**, across
+50 executables and 169 fixed selections: twenty-one new groups and all 1822 prior
+selected controls. The nine explicit resource/infinite-execution skips and finite
+public filters remain unchanged. Formatting, diff checks and offline workspace/
+all-target Clippy with warnings denied pass. Five frozen Rust inputs and seven
+final source/document inputs tie source/artifact, staged and committed audits to
+executable/log hashes, Cargo inputs and detailed English commit text.
+
+Module-body evaluation recursion, dynamic source parsing/compilation, other
+module/source caches and native/heap buffers, allocator/error-message overhead,
+shared programs and integrated acceptance remain open. M1u remains the latest
+accepted milestone; the prior rejected push is not retried.
+
+Evidence: `/private/tmp/blueice-namespace-build-stack-controls-20261017.py`,
+`/private/tmp/blueice-namespace-build-stack-rust-inputs-20261017.json`, logs matching
+`/private/tmp/blueice-namespace-build-stack-*-20261017.log`, original source copies
+at `/private/tmp/blueice-namespace-build-stack-red-source-20261017/`, the first
+passed attempt at `/private/tmp/blueice-namespace-build-stack-first-source-20261017/`,
+`/private/tmp/blueice-namespace-build-stack-audit-20261017.py`,
+`/private/tmp/blueice-namespace-build-stack-commit-20261017.txt` and
+`target/namespace-build-stack-source-20261017.json`.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

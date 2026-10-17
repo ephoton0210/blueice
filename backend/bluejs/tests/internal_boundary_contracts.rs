@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_namespace_build_stack_contracts() {
+    blueice_bluejs::Vm::verify_namespace_build_stack_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_module_code_storage_contracts() {
     blueice_bluejs::Vm::verify_module_code_storage_contracts();
 }

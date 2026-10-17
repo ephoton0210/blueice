@@ -41,7 +41,13 @@ fn refused_names(source: &str) {
     let mut roots = ModuleRoots::default();
     let before = vm.host_scheduling_usage().unwrap().payload_bytes;
     let (preview, preparation_allocations) = allocation_observer::count(|| {
-        namespace_cache_storage::PreparedNamespaceEntry::prepare(&vm, "t/root.mjs", false)
+        // Preserve the same export-name boundary after the iterative controller
+        // adds an independently admitted frame buffer before cache preparation.
+        let mut frames = module_walk_storage::Storage::<namespace::NamespaceFrame<'_>>::default();
+        frames.reserve(1, vm.host_scheduling.as_ref())?;
+        let cache =
+            namespace_cache_storage::PreparedNamespaceEntry::prepare(&vm, "t/root.mjs", false)?;
+        Ok::<_, RuntimeError>((frames, cache))
     });
     let preview = preview.unwrap();
     let staging = vm.host_scheduling_snapshot().payload_bytes - before;
