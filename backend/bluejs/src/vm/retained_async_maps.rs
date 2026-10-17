@@ -24,6 +24,16 @@ impl Vm {
         drop(charge);
         self.reclaim_module_referrer_storage();
         let charge = self
+            .disposable_stacks
+            .reclaim(self.host_scheduling.as_ref());
+        self.reconcile_scheduling_ownership();
+        drop(charge);
+        let charge = self
+            .async_disposable_stacks
+            .reclaim(self.host_scheduling.as_ref());
+        self.reconcile_scheduling_ownership();
+        drop(charge);
+        let charge = self
             .host_promises
             .pending
             .reclaim(self.host_scheduling.as_ref());

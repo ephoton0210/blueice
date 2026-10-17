@@ -456,8 +456,34 @@ Promise/continuation ownership edges unchanged. Queued work continues to keep it
 frame/local values live; orphaned frames and their captured values can collect.
 Terminal cleanup can discard unowned frames without new headroom while the
 staging guard retains old table backing. Optional map reclamation remains a
-separate guarded/admitted producer. Other pruning paths, including disposal-map
-compaction, and wider native-buffer ownership remain open.
+separate guarded/admitted producer. Disposal brand maps now share the guarded
+reclamation boundary described below; other pruning/native-buffer ownership
+remains open.
+
+DisposableStack and AsyncDisposableStack brand records also use weak retained
+control maps. Record deletion releases resource buffers but keeps hash backing
+charged independently of reported insertion capacity. GC only prunes dead keys;
+the shared guarded reclamation boundary funds optional complete replacements,
+moves survivors and reconciles ownership before refund. Unavailable headroom
+stays nonterminal and retryable. Empty backing releases without admission,
+including after terminal failure. Both brand namespaces stay independent.
+
+After observable prototype resolution, constructor/move preparation leases the
+complete table candidate before managed instance allocation. Move also admits
+temporary root-vector capacity and protects its source/resource edges. The shared
+guard preserves old table capacity while managed GC prunes dead records. Commit
+reuses freed slots or adopts prepared backing, then initializes a fresh record
+or moves the source resource buffer and marks the old record disposed. Publication
+performs no further fallible table admission and preserves the moved buffer's
+existing native owner. Refusal before commitment preserves source resources and
+disposed state; root length and nested guard restore on every result. Native root
+cache capacity already prepared may remain as an owned cache.
+
+All candidates commit/drop before the shared post-GC finisher performs deferred
+optional reclamation. No GC runs in that finisher, so the returned fresh instance
+can leave the helper unrooted for its immediate caller to adopt. Constructor
+prototype getters and other earlier language effects stay committed. Wider
+resource/argument producers, other maps and native buffers remain open.
 
 Finally-thunk provenance uses a weak retained-allocation map too. Pruning returns
 dead filename buffers without refunding retained hash backing. Guarded scheduling

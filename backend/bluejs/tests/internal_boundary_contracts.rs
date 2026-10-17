@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_disposal_map_storage_contracts() {
+    blueice_bluejs::Vm::verify_disposal_map_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_continuation_pruning_contracts() {
     blueice_bluejs::Vm::verify_continuation_pruning_contracts();
 }

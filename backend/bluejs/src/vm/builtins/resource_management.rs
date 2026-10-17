@@ -16,6 +16,10 @@
 use super::*;
 
 #[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/disposal_map_storage.rs"]
+mod map_storage_tests;
+
+#[cfg(any(test, coverage))]
 #[path = "../../../tests/fixtures/disposal_ownership.rs"]
 mod ownership_tests;
 
@@ -513,8 +517,7 @@ impl Vm {
         }
         let default = self.disposable_stack_prototype(is_async)?;
         let prototype = self.constructor_prototype(default)?;
-        let id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        self.insert_disposal_state(id, DisposeCapabilityState::default(), is_async)?;
+        let id = self.allocate_disposal_capability(prototype, is_async, None)?;
         Ok(Value::Object(id))
     }
 
@@ -653,31 +656,7 @@ impl Vm {
         let prototype = self
             .disposable_stack_prototype(is_async)
             .expect("a branded stack was produced with its initialized intrinsic prototype");
-        let new_id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        let map = if is_async {
-            &self.async_disposable_stacks
-        } else {
-            &self.disposable_stacks
-        };
-        let growth = SchedulingMapCapacity::for_insert(map, self.host_scheduling.as_ref())?;
-        self.admit_scheduling_work(HostSchedulingUsage::default().with_map_growth(&growth))?;
-        let map = if is_async {
-            &mut self.async_disposable_stacks
-        } else {
-            &mut self.disposable_stacks
-        };
-        growth.commit(map);
-        let state = map.get_mut(&id).expect("validated disposal capability");
-        let moved = std::mem::take(&mut state.resources);
-        state.disposed = true;
-        map.insert(
-            new_id,
-            DisposeCapabilityState {
-                resources: moved,
-                disposed: false,
-            },
-        );
-        self.synchronize_scheduling_usage()?;
+        let new_id = self.allocate_disposal_capability(prototype, is_async, Some(id))?;
         Ok(Value::Object(new_id))
     }
 

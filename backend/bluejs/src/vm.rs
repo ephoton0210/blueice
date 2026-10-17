@@ -1224,12 +1224,13 @@ pub struct Vm {
     async_dispose_helper: Option<Value>,
     /// `[[DisposeCapability]]` state for each live `DisposableStack`
     /// instance, keyed by its object identity.
-    disposable_stacks: HashMap<ObjectId, DisposeCapabilityState>,
+    disposable_stacks: retained_control_map::RetainedControlMap<ObjectId, DisposeCapabilityState>,
     /// Same, for `AsyncDisposableStack`. Kept separate from
     /// `disposable_stacks` because the two constructors are distinct
     /// brands: a `DisposableStack` method called on an `AsyncDisposableStack`
     /// instance (or vice versa) must observe a missing internal slot.
-    async_disposable_stacks: HashMap<ObjectId, DisposeCapabilityState>,
+    async_disposable_stacks:
+        retained_control_map::RetainedControlMap<ObjectId, DisposeCapabilityState>,
     /// The active frame owns its declarations and disposal scope marks.
     /// Suspended contexts and generator states carry their own resources.
     disposables: ResourceRecords,

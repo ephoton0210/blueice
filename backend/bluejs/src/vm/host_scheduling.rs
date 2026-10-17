@@ -84,13 +84,6 @@ pub(super) struct SchedulingMapCapacity<K, V> {
 }
 
 impl<K: Eq + std::hash::Hash, V> SchedulingMapCapacity<K, V> {
-    pub(super) fn for_insert(
-        values: &HashMap<K, V>,
-        scope: Option<&SchedulingScope>,
-    ) -> Result<Self, RuntimeError> {
-        Self::for_additional(values, 1, scope)
-    }
-
     pub(super) fn for_additional(
         values: &HashMap<K, V>,
         additional: usize,

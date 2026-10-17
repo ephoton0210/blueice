@@ -64,6 +64,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The disposal-map retained-storage follow-up (2026-10-17) now retains both weak
+brand tables' native backing and prepares complete constructor/move replacement
+storage before managed instance allocation. Four tiny old-code cases failed and
+now pass. Twenty-two new groups and all 1529 prior selected controls pass:
+**1551 total**, across 47 executables and 138 fixed selections. Formatting and
+offline workspace/all-target Clippy pass. Other input/origin producers, retained
+maps, heap/host buffers, shared programs and integrated acceptance remain open;
+M1u stays the latest accepted milestone.
+
 The continuation-pruning scratch follow-up (2026-10-17) now marks stored frames
 in place instead of allocating two unadmitted serial-ID HashSets after heap GC.
 Three tiny old-code observations failed with 1/1/2 allocation attempts and now
@@ -5598,6 +5607,82 @@ preserved under `/private/tmp/blueice-continuation-pruning-expanded-attempt-2026
 with its hashed manifest at
 `/private/tmp/blueice-continuation-pruning-expanded-attempt-20261017.json`.
 This remains an M1z implementation checkpoint with wider acceptance open.
+
+#### Disposal-map retained storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: retain native backing for both weak DisposableStack brand tables
+across deletion and respect staged capacity during GC. Prepare complete native
+replacement storage before managed instance allocation or move-source mutation.
+Preserve source/resource edges through collection and transfer existing resource
+buffers without cloning or another table admission. Fund optional compaction
+while old backing coexists; insufficient headroom stays nonterminal and empty
+backing releases after terminal failure.
+
+- [x] Reproduce both brands shrinking seven slots to three during guarded GC,
+      plus constructor/move accepting only net growth headroom: **0/4 passed**
+      before implementation, **4/4 passed** after it.
+- [x] Implement retained allocation ownership, admitted optional reclamation and
+      prepared constructor/move publication; expanded finite groups pass **22/22**
+      on their first run.
+- [x] Complete fixed offline controls/static checks, evidence audit and detailed
+      English commit.
+
+Both brand maps now retain an allocation ledger independent of deletion-related
+insertion capacity. Removing dead keys releases resource buffers while backing
+stays charged. GC does no direct shrink allocation; the existing shared guarded
+reclamation boundary admits a complete smaller table, moves survivors, reconciles
+its owner and refunds staging. No/short candidate headroom remains nonterminal
+and retryable. Empty backing releases without admission after terminal failure.
+The maps keep their separate brands and weak ownership edges.
+
+After prototype resolution and its observable effects, constructor/move native
+preparation independently leases the full table candidate. Move also pre-admits
+root-vector capacity and protects its source/resource edges through managed
+allocation. Guarded GC can prune old keys without replacing staged backing.
+Commit reuses freed slots or adopts the candidate, then initializes an empty
+record or transfers the source's existing resource buffer and disposed state.
+There is no fallible table admission after source mutation/publication.
+
+Every result restores the temporary root length and previous guard. Already
+prepared root-cache capacity remains owned if needed; it is not an untracked
+rollback. All candidates commit/drop before the shared post-GC finisher can run
+deferred optional reclamation. That finisher performs no managed GC, so the fresh
+instance remains safe until its immediate caller adopts the returned value.
+Earlier prototype-getter/language effects stay committed. Retire the now-unused
+old single-insert net-growth wrapper; wider batch producers remain open.
+
+The twenty-two groups cover original refusals/guards, retained deletion and
+resource refunds, optional no/short/exact compaction and retry, terminal empty
+cleanup, sequential refunds across both brands, exact full-candidate and spare
+slot construction/move, root preparation refusal, managed creation failure,
+source/resource survival through allocation-triggered major GC, freed-slot reuse,
+nested guard restoration and public synchronous/asynchronous move cleanup order.
+Fixtures use at most seven old records per brand, one fresh instance and one
+small resource object/string. GC cases use numerical heap ceilings after finite
+priming; budget peers allocate no represented large payload and no external
+operation starts. Earlier disposal/GC semantics remain selected.
+
+Validation: **1551 passed, zero failed/ignored**, across 47 executables and 138
+fixed selections: twenty-two new groups and all 1529 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Source, staged and post-commit audits bind the final source to build
+inputs, runner, executables, logs and detailed English commit text. Cargo reuses
+the workspace target with incremental compilation and dev/test debug artifact
+growth disabled. The same nine explicit resource/infinite-
+loop skips and other finite-public-case exclusions remain. Other input/origin
+producers, retained maps, heap/host buffers, shared programs and integrated gates
+stay open; M1u remains the latest accepted milestone. No represented large
+allocation, resource/infinite probe, network/service/listener/Core/MCP replay,
+privileged validation, process killing, fresh full Test262, coverage or integrated
+acceptance is claimed.
+
+Evidence paths: `/private/tmp/blueice-disposal-map-controls-20261017.py`,
+`/private/tmp/blueice-disposal-map-commit-20261017.txt`,
+`/private/tmp/blueice-disposal-map-audit-20261017.py`, logs matching
+`/private/tmp/blueice-disposal-map-*-20261017.log`, and
+`target/disposal-map-source-20261017.json`. The ordinary-library entry point
+exposes all twenty-two groups; no fresh coverage result is claimed. This remains
+an M1z implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
