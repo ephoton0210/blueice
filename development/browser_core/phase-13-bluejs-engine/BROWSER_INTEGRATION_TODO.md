@@ -68,6 +68,20 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The namespace managed-payload follow-up (2026-10-17) now retains payload
+capacity and protects incoming cells. Five tiny
+old-code cases reproduce 42 rather than 384 retained bytes, 42 residual bytes
+after namespace collection, incorrect empty-backing replacement, and a panic
+when completion GC reclaims incoming unrooted binding cells. Heap adoption now
+charges namespace vector/name capacity, updates per-object and aggregate bytes,
+and protects incoming cells. The first expanded run passes **13/13**. Thirteen
+new groups, three additional finite heap cases and all 1707 prior selected
+controls pass: **1723 total**, across 49 executables and 161 fixed selections.
+Formatting, diff checks and offline workspace/all-target Clippy pass; source/
+artifact and commit audits record the checkpoint. Native binding-list/import-
+alias staging and wider acceptance remain open. M1u is the latest accepted
+milestone.
+
 The export-resolution storage follow-up (2026-10-17) now owns iterative query
 and result storage. Five old-code cases reproduce four local-query allocations,
 eight indirect-query
@@ -6386,6 +6400,81 @@ Evidence paths: `/private/tmp/blueice-export-resolution-storage-controls-2026101
 red-phase sources in
 `/private/tmp/blueice-export-resolution-storage-red-source-20261017/`, and
 `target/export-resolution-storage-source-20261017.json`. This remains an M1z
+implementation checkpoint with wider acceptance open.
+
+#### Namespace managed-payload follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: heap-owned namespace payloads retain their vector and UTF-16 name
+capacity charge, including empty reserved lists. Completing a placeholder moves
+that ownership into both its object counter and the local/shared managed-byte
+counter. Collection must refund every byte. Completion safepoints must protect
+the namespace and all incoming binding cells before their edges are published.
+
+- [x] Preserve five old-code failures: **0/5 passed**. Allocation and completion
+      charge 42 rather than 384 retained bytes; collection leaves 42 phantom
+      bytes; replacing empty backing miscounts ownership; forced completion GC
+      reclaims an unrooted incoming cell and panics in the write barrier.
+- [x] Use retained namespace payload capacity at allocation/completion, update
+      object and aggregate counters together, and trace incoming cells during GC.
+- [x] Pass expanded finite cases, fixed offline controls, formatting and Clippy;
+      complete source/artifact audits and a detailed English checkpoint commit.
+
+One namespace payload calculation covers the export vector's reported capacity
+and every owned UTF-16 name capacity. `HeapConfig` now documents this namespace
+exception explicitly; other heap kinds keep their current accounting scope.
+Allocation and placeholder completion share the same calculation. Replacing an
+empty reserved vector admits only positive growth and refunds released backing
+at adoption. The object's byte field changes with the local/document managed
+counter so minor/major collection removes the entire adopted payload.
+
+Completion validates incoming cells and the target before its safepoint, and
+uses a borrowed namespace/input-cell root view without allocating a temporary
+root vector. In-place unstable UTF-16 sorting
+avoids extra native sort scratch for valid unique export names. Existing
+old-to-young barriers publish live binding edges after collection. Invalid
+completion leaves an existing payload intact, and a short managed budget leaves
+the placeholder unfilled.
+
+Thirteen finite groups cover retained capacity at allocation/completion, exact
+major/minor collection refunds, forced completion GC, replacement backing,
+old-to-young edges, exact/one-byte-short local/shared managed limits, invalid
+completion, UTF-16 ordering with name-buffer identity, shared-document collection
+and heap-drop refunds, and charged empty reserved lists. All thirteen functional
+groups are exposed through the ordinary-library entry point. Fixtures use one
+namespace, a few cells, an eight-entry vector and thirty-two-unit name buffers;
+managed refusal tests use only numerical limits around those small payloads.
+
+Validation: **1723 distinct cases passed, zero failed/ignored**, across 49
+executables and 161 fixed selections: thirteen new groups, three additional
+finite heap contracts and all 1707 prior selected controls. The first expanded
+run passes **13/13**. Added heap contracts cover namespace ordering/error
+validation, mapped/live export cells and nonempty completion rejection.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Six frozen Rust inputs remain unchanged through these runs. The
+source/artifact receipt records eight final source files, Cargo inputs, runner,
+distinct case identities, executables/logs, original regression source copies
+and detailed English message; staged and committed audits bind them to the
+checkpoint.
+
+The same nine explicit resource/infinite-loop skips and finite public filters
+remain. Fixed offline tests reuse the workspace target with incremental and
+dev/test debug artifact growth disabled.
+Native export binding-list/import-alias/import-slot staging, namespace/module-body
+recursion, other synthetic/source request producers and module/source caches,
+other heap/native buffers, allocator/error-message overhead, shared programs and
+integrated acceptance remain open. M1u remains the latest accepted milestone.
+No resource-exhaustion probe, external network/service/listener/Core/MCP replay,
+privileged validation, process killing, fresh full Test262, coverage or integrated
+acceptance is claimed. The rejected push is not retried.
+
+Evidence paths: `/private/tmp/blueice-namespace-payload-storage-controls-20261017.py`,
+`/private/tmp/blueice-namespace-payload-storage-rust-inputs-20261017.json`,
+`/private/tmp/blueice-namespace-payload-storage-commit-20261017.txt`,
+`/private/tmp/blueice-namespace-payload-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-namespace-payload-storage-*-20261017.log`, preserved
+red-phase sources in
+`/private/tmp/blueice-namespace-payload-storage-red-source-20261017/`, and
+`target/namespace-payload-storage-source-20261017.json`. This remains an M1z
 implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)

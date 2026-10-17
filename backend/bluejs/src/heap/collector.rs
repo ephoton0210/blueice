@@ -18,6 +18,7 @@ struct Waiter {
 pub(super) enum ProtectedRoots<'a> {
     Slice(&'a [ObjectId]),
     Allocation(&'a ObjectKind, Option<ObjectId>),
+    Namespace(ObjectId, &'a [(JsString, ObjectId)]),
 }
 impl ProtectedRoots<'_> {
     fn visit(self, visit: &mut dyn FnMut(ObjectId)) {
@@ -26,6 +27,10 @@ impl ProtectedRoots<'_> {
             Self::Allocation(kind, prototype) => {
                 prototype.into_iter().for_each(&mut *visit);
                 visit_kind_references(kind, visit);
+            }
+            Self::Namespace(namespace, exports) => {
+                visit(namespace);
+                exports.iter().map(|(_, cell)| *cell).for_each(visit);
             }
         }
     }

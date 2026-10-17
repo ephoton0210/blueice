@@ -59,6 +59,9 @@ mod object_storage;
 mod root_table;
 use root_table::RootTable;
 mod finalization_storage;
+#[cfg(any(test, coverage))]
+#[path = "../tests/fixtures/namespace_payload_storage.rs"]
+mod namespace_payload_storage_tests;
 #[cfg(test)]
 mod tests;
 mod web_abort;
@@ -88,7 +91,8 @@ pub struct RootId {
 /// Collector tuning for the managed object store. Byte accounting
 /// charges object records, property records, both stored copies of
 /// each key, and string value payloads (two bytes per UTF-16 code unit).
-/// Hash-table/vector spare capacity,
+/// Namespace export lists and their UTF-16 names use retained capacity.
+/// Other hash-table/vector spare capacity,
 /// allocator overhead, GC/root bookkeeping, and Rust-caller-owned
 /// values are outside this budget; it is explicitly not an RSS limit.
 #[derive(Debug, Clone, Copy)]
@@ -1850,4 +1854,15 @@ fn attribute_bytes(key: &PropertyName, descriptor: &PropertyDescriptor) -> usize
             .chain(descriptor.set.iter())
             .map(Value::payload_bytes)
             .sum::<usize>()
+}
+
+fn namespace_export_bytes(exports: &Vec<(JsString, ObjectId)>) -> usize {
+    exports.iter().fold(
+        exports
+            .capacity()
+            .saturating_mul(size_of::<(JsString, ObjectId)>()),
+        |bytes, (name, _)| {
+            bytes.saturating_add(name.owned_heap_payload_bytes().unwrap_or(usize::MAX))
+        },
+    )
 }

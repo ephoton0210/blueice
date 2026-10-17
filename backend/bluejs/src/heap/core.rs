@@ -974,7 +974,9 @@ impl Heap {
         for (_, cell) in &exports {
             self.object(*cell)?;
         }
-        exports.sort_by(|(left, _), (right, _)| left.as_code_units().cmp(right.as_code_units()));
+        exports.sort_unstable_by(|(left, _), (right, _)| {
+            left.as_code_units().cmp(right.as_code_units())
+        });
         let namespace = self.alloc(ObjectKind::ModuleNamespace { exports }, None)?;
         self.define_own_property(
             namespace,
@@ -1013,12 +1015,20 @@ impl Heap {
         for (_, cell) in &exports {
             self.object(*cell)?;
         }
-        exports.sort_by(|(left, _), (right, _)| left.as_code_units().cmp(right.as_code_units()));
-        let additional = exports
-            .iter()
-            .map(|(name, _)| name.byte_len() + size_of::<(JsString, ObjectId)>())
-            .sum();
-        self.ensure_room(additional, &[namespace])?;
+        let old_bytes = match &self.object(namespace)?.kind {
+            ObjectKind::ModuleNamespace { exports: existing } if existing.is_empty() => {
+                namespace_export_bytes(existing)
+            }
+            _ => return Err(HeapError::InvalidObject(namespace)),
+        };
+        exports.sort_unstable_by(|(left, _), (right, _)| {
+            left.as_code_units().cmp(right.as_code_units())
+        });
+        let new_bytes = namespace_export_bytes(&exports);
+        self.ensure_room_protected(
+            new_bytes.saturating_sub(old_bytes),
+            ProtectedRoots::Namespace(namespace, &exports),
+        )?;
         for (_, cell) in &exports {
             self.write_barrier(namespace, Some(*cell));
         }
@@ -1029,11 +1039,10 @@ impl Heap {
         let ObjectKind::ModuleNamespace { exports: existing } = &mut object.kind else {
             return Err(HeapError::InvalidObject(namespace));
         };
-        if !existing.is_empty() {
-            return Err(HeapError::InvalidObject(namespace));
-        }
         *existing = exports;
-        self.managed_bytes.add(additional);
+        object.bytes = object.bytes - old_bytes + new_bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - old_bytes + new_bytes);
         Ok(())
     }
 

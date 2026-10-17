@@ -628,6 +628,17 @@ refund their owners; a retained result outlives its VM without losing its charge
 Linking and namespace callers supply the document scope for resolver and request
 preparation, and direct namespace/source imports move prepared targets instead
 of cloning Strings. Source-phase requests remain unqualified by resource type.
+
+After namespace export payloads enter the heap, managed ownership includes the
+export vector's reported capacity and each UTF-16 name's retained capacity.
+Placeholder completion updates both the namespace object's bytes and the local/
+shared document counter, refunding any replaced empty backing. Minor and major
+collection therefore remove the full adopted charge. The completion safepoint
+borrows the namespace/input-cell roots directly, preserving unrooted incoming
+cells before their edges are published. In-place UTF-16 sorting preserves valid
+unique export ordering without native sort scratch. Other heap kinds retain
+their current accounting scope; native list preparation before this adoption
+remains open.
 Binding-list and import-alias staging, other synthetic/source request producers
 and module/source caches remain open.
 

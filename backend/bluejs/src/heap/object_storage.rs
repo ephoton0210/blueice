@@ -444,13 +444,7 @@ impl Heap {
                 ObjectKind::Arguments { parameter_map } => {
                     parameter_map.len() * size_of::<(PropertyName, ObjectId)>()
                 }
-                ObjectKind::ModuleNamespace { exports } => {
-                    let mut bytes = 0;
-                    for (name, _) in exports {
-                        bytes += name.byte_len() + size_of::<(JsString, ObjectId)>();
-                    }
-                    bytes
-                }
+                ObjectKind::ModuleNamespace { exports } => namespace_export_bytes(exports),
                 _ => 0,
             };
         // Below the major-collection trigger (which never exceeds the heap
