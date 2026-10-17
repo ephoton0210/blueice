@@ -64,6 +64,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The rooted scheduling registration checkpoint (2026-10-17) now admits
+animation-frame, cleanup-task and pending-rejection producers'
+complete coexisting replacements and root storage before publishing capacity,
+handles, roots or enqueue serials. Twenty-four finite groups pass, covering
+preparation refusal, shared-owner refunds and existing GC/cancellation behavior.
+Seven exact finite public frame/rejection cases and all 1176 prior controls also
+pass: **1207 total**, with formatting and offline workspace/all-target Clippy.
+Complete browser-task queue/root/state preparation, callback-entry scratch,
+retained-map ownership, other buffers, shared programs and integrated acceptance
+remain open; M1u stays the latest accepted milestone.
+
 The host-wait registration checkpoint (2026-10-17) now admits complete detached
 wait/Promise table candidates and leased argument buffers before capability
 publication. Root IDs are preflighted before managed allocation; root storage
@@ -832,7 +843,9 @@ work and exposes its retained payload ledger.
       await queue/map publication. Detached Promise record creation now preserves
       admitted slots through GC and refusal. Host waits now prepare arguments,
       joint tables and root storage before token/capability publication; all
-      1176 selected controls pass.
+      1176 selected controls passed that checkpoint. Rooted frame/cleanup/
+      rejection registration now prepares complete queue and root storage
+      before capacity/handle/serial publication; all 1207 selected controls pass.
       Shared programs, other managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -4151,6 +4164,83 @@ staged/committed blob checks. Ordinary-library entry points expose the same
 fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
 control tables/buffers, retained-map ownership, producer clones, shared programs
 and integrated acceptance remain open; M1u stays the latest accepted milestone.
+
+#### Rooted scheduling registration follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit complete animation-frame, finalization-task and pending-
+rejection replacement storage while old allocations remain charged. Prepare
+the entry's root before publishing a queue/handle/serial. Root or native refusal
+must preserve old capacities, roots and identities; infallible rejection
+tracking must still latch terminal resource failure. Preserve registration order,
+duplicate cleanup suppression, cancellation and GC lifetime.
+
+- [x] Reproduce net-only growth and premature queue/serial publication with
+      tiny finite fixtures at the actual producers.
+      All three initial cases failed, then passed after detached preparation.
+- [x] Implement detached queue/root preparation and verify exact allowances,
+      refusal/refunds, GC, cancellation and shared ownership.
+      All twenty-four finite registration groups pass.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Browser-task storage, callback-entry scratch,
+      retained-map ownership, other buffers and integrated acceptance stay open.
+
+The three producers reuse complete detached vector/deque preparation while their
+original allocations stay charged. Admission checks shared counts and root-ID
+space, prepares requested/actual queue storage and then prepares the single
+root's table storage. Cleanup acquires its document serial as the final fallible
+step. Root and queue/handle publication then commit without allocation,
+collection or JavaScript; spare slots require no fictitious growth fee.
+
+Native/root refusal leaves original queue capacities, entries, roots, handles
+and serials intact. Detached preparations refund on all exits, including terminal
+failure. Infallible rejection tracking still latches document failure, after
+the preparations have dropped and ownership can be reconciled. Cleanup keeps
+its independently admitted registry snapshot through registration and continues
+to skip queued or active registries in deterministic order.
+
+Twenty-four finite groups cover complete versus net-only replacements, exact
+and one-byte-short queue/root allowances, existing spare slots, shared scalar
+count limits, root/serial/handle/foreign-ID refusal, terminal refusal, sibling
+refunds and VM destruction. Lifecycle groups clear a callback's other owner,
+verify the queued root across GC, then verify collection after dispatch or
+cancellation. Cleanup roots likewise retain a ready registry through collection
+and release after delivery. Rejection handling releases the pending root while
+retaining its admitted empty cache; notification moves its existing vector and
+reaction ownership once. New fixtures use at most five small registry/Promise
+owners or frame callbacks and numerical peers without represented large buffers.
+
+The first expanded run passed twenty-two groups and exposed two fixture setup
+failures: installed host functions are globalThis properties rather than lexical
+bindings. Clearing the actual callback property retains the original GC lifetime
+assertions and makes both groups pass. All three original regressions also fail
+before the change and pass after detached preparation.
+
+Validation: **1207 passed, zero failed/ignored**, across 43 executables and 106
+fixed selections: twenty-four new registration groups, seven exact finite
+public frame/rejection cases and all 1176 prior selected controls. Public cases
+verify frame ordering/nested registration, checkpoint cancellation/navigation
+and rejection task/late-handler/navigation behavior. Existing finite timer,
+finalization and Promise controls retain their behavior. Formatting, diff checks
+and offline workspace/all-target Clippy with warnings denied pass.
+
+Cargo reuses the workspace target with incremental compilation and dev/test
+debug artifact growth disabled. The same nine earlier resource/infinite-loop
+skips remain. Public timer/finalization/frame/rejection selection names only
+finite cases; their large/resource/infinite cases and JSON resource sweeps remain
+unselected. No network/service replay, physical exhaustion probe, privileged
+validation, process killing, fresh full Test262, real Core/MCP replay, coverage
+result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-rooted-tasks-controls-20261017.py`,
+`/private/tmp/blueice-rooted-tasks-commit-20261017.txt`,
+`/private/tmp/blueice-rooted-tasks-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-rooted-tasks-{red,first,expanded-first,expanded,rooted-storage,fmt,clippy}-20261017.log`.
+`target/rooted-tasks-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint. Complete
+browser-task queue/root/state preparation, callback-entry scratch, retained-map
+ownership, other buffers, shared programs and integrated acceptance remain open;
+M1u stays the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

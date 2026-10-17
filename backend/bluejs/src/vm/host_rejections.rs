@@ -97,40 +97,33 @@ impl Vm {
         if self.host_rejections.is_none() {
             return;
         }
-        let extra = HostSchedulingUsage {
-            pending_reactions: 1,
-            ..Default::default()
-        };
-        let growth =
-            SchedulingCapacity::for_vec_push(&self.host_rejections.as_ref().unwrap().pending);
-        if self
-            .admit_scheduling_work(extra.with_growth(growth))
-            .is_err()
-        {
-            return;
-        }
-        growth.reserve_vec(&mut self.host_rejections.as_mut().unwrap().pending);
-        if self.admit_scheduling_work(extra).is_err() {
-            return;
-        }
-        let root = match self.heap.root(promise) {
-            Ok(root) => root,
-            Err(_) => {
-                // This producer is infallible. Root admission/identifier
-                // refusal must latch the document abort before publication.
-                if let Some(scope) = &self.host_scheduling {
-                    let _ = scope.fail();
-                }
-                self.reconcile_scheduling_ownership();
-                return;
+        let result = (|| {
+            self.admit_scheduling_work(HostSchedulingUsage {
+                pending_reactions: 1,
+                ..Default::default()
+            })?;
+            self.heap.check_root_registration_count(1)?;
+            let growth = promise_queue_storage::PreparedVec::for_push(
+                &self.host_rejections.as_ref().unwrap().pending,
+                self.host_scheduling.as_ref(),
+            )?;
+            let objects = [promise];
+            let roots = self.heap.prepare_root_batch(&objects)?;
+            self.check_scheduling_failure()?;
+            let root = self.heap.commit_single_root(roots);
+            let pending = &mut self.host_rejections.as_mut().unwrap().pending;
+            growth.commit(pending);
+            pending.push(PendingRejection { promise, root });
+            Ok::<(), RuntimeError>(())
+        })();
+        if result.is_err() {
+            // This producer is infallible. Root or native refusal must latch
+            // the document abort after detached owners have refunded.
+            if let Some(scope) = &self.host_scheduling {
+                let _ = scope.fail();
             }
-        };
-        self.host_rejections
-            .as_mut()
-            .unwrap()
-            .pending
-            .push(PendingRejection { promise, root });
-        let _ = self.synchronize_scheduling_usage();
+        }
+        self.reconcile_scheduling_ownership();
     }
 
     pub(super) fn mark_promise_handled(&mut self, promise: ObjectId) {

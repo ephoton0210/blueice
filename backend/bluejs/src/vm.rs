@@ -51,6 +51,7 @@ mod module_value_storage;
 mod realm_collection;
 mod realm_pin_storage;
 mod root_table_storage;
+mod rooted_task_storage;
 use module_graph_storage::ModuleRecords;
 mod displaced_roots;
 mod module_referrers;

@@ -187,14 +187,27 @@ FIFO order. Publication transfers ownership once into the live queue, and
 discarded candidates refund through terminal failure. Rust-held candidates keep
 independent document leases without retaining a VM or JavaScript object roots.
 
-Animation-frame vectors, browser/cleanup deques and the pending rejection-
-notification vector admit
-the slot-capacity delta needed for an append before publishing it. Growth
-explicitly requests at least four slots, doubling an existing full capacity.
-Available slots add no storage charge. If reservation reports more capacity
-than requested, admission checks that actual storage again before publishing;
-a refused frame releases its temporary roots. Timer argument storage excludes
-the callback and delay and uses the complete preparation protocol above.
+Animation-frame vectors, page cleanup deques and pending rejection-notification
+vectors now lease complete detached replacements while old allocations remain
+charged. Shared counts and root-ID space are checked before replacement
+preparation. Growth requests at least four slots, doubling a full capacity, and
+checks actual reported capacity before preparing the entry's root-table storage.
+Cleanup acquires its task serial as the final fallible step. Root and queue then
+commit without allocation, collection or JavaScript before publishing the new
+handle/entry. Available queue/root slots add no new native storage charge.
+
+Refusal preserves existing capacities, roots, handles and serials, and detached
+owners refund after terminal failure. Infallible rejection tracking still
+latches document failure when root or native admission fails, after refunding
+its preparations. Cleanup snapshots keep their independent lease throughout
+registration and continue to suppress already-queued/active registries.
+Cancellation, notification handoff and callback/cleanup completion retain the
+existing root and GC lifecycle. Timer argument storage excludes the callback
+and delay and uses the complete preparation protocol above.
+
+Browser-task deque growth still admits its slot-capacity delta before append.
+Complete coexisting replacement/root/state preparation for that queue, broader
+callback-entry scratch and retained-map allocation ownership remain open work.
 
 All browser-task producers reserve one entry before publishing task roots,
 completion-queued flags or FileReader state. The ledger records actual reserved

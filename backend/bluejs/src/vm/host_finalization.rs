@@ -47,16 +47,23 @@ impl Vm {
                 pending_browser_tasks: 1,
                 ..HostSchedulingUsage::default()
             };
-            let growth = SchedulingCapacity::for_deque_push(&self.host_finalization_tasks);
-            self.admit_scheduling_work(extra.with_growth(growth))?;
-            growth.reserve_deque(&mut self.host_finalization_tasks);
             self.admit_scheduling_work(extra)?;
+            self.heap.check_root_registration_count(1)?;
+            let growth = promise_queue_storage::PreparedDeque::for_push(
+                &self.host_finalization_tasks,
+                self.host_scheduling.as_ref(),
+            )?;
+            let objects = [registry];
+            let roots = self.heap.prepare_root_batch(&objects)?;
+            self.check_scheduling_failure()?;
+            // Acquire the serial only after both native owners are prepared.
             let serial = self
                 .host_scheduling
                 .as_ref()
                 .expect("page cleanup has an owner")
                 .next_task_serial()?;
-            let root = self.heap.root(registry)?;
+            let root = self.heap.commit_single_root(roots);
+            growth.commit(&mut self.host_finalization_tasks);
             self.host_finalization_tasks
                 .push_back(HostFinalizationTask {
                     registry,
