@@ -68,6 +68,19 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The synthetic Bytecode preparation follow-up (2026-10-17) now owns metadata
+through registry adoption.
+Four old-code cases reproduce six metadata allocations and seven allocations
+for a full record with only value-owner headroom, plus 562 unreported retained
+metadata bytes both before and after VM destruction. Metadata now owns complete
+binding/scope/export storage before value conversion and transfers its native
+owner into the registry. The completed focused run passes **26/26**. Twenty-six
+new groups and all 1796 prior selected controls pass: **1822 total**, across 50
+executables and 168 fixed selections. Formatting, diff checks and offline
+workspace/all-target Clippy pass; source/artifact and commit audits record the
+checkpoint. Dynamic source compilation, other native/heap buffers, recursion and
+integrated acceptance remain open. M1u remains the latest accepted milestone.
+
 The static synthetic-request preparation follow-up (2026-10-17) now owns the
 complete request batch through registration.
 Four old-code cases reproduce 1/6 allocations before zero-headroom admission,
@@ -6757,6 +6770,81 @@ archives at `/private/tmp/blueice-synthetic-request-storage-red-source-20261017/
 `/private/tmp/blueice-synthetic-request-storage-audit-20261017.py`,
 `/private/tmp/blueice-synthetic-request-storage-commit-20261017.txt` and
 `target/synthetic-request-storage-source-20261017.json`.
+
+#### Synthetic Bytecode preparation follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit and retain binding, scope, export and name buffers before
+synthetic value conversion. Keep complete code charged while Rust retains it,
+including after VM destruction. Transfer the same owner into registry admission
+without charging code twice, preserve existing data on failure, and reject
+foreign-document or bounded-to-unbounded transfers.
+
+- [x] Preserve four old-code failures: **0/4 passed**. Metadata allocates six
+      times at zero headroom; a full record allocates seven times with only the
+      export-owner allowance. Retained metadata reports zero instead of 562
+      bytes both before and after destruction of its VM.
+- [x] Retain prepared metadata and registry input storage through complete
+      admission and publication, with data destroyed before allocation refunds.
+- [x] Pass expanded finite cases, inherited controls, formatting and Clippy;
+      complete source/artifact and commit audits with detailed English text.
+
+The red phase extracts the original metadata expressions without adding native
+admission. Prepared code now owns its Bytecode/key fields before its document
+charge. A complete minimum reservation precedes allocation; each actual backing
+capacity replaces its outstanding minimum before subsequent construction. Exact
+one-element vectors and both default names keep the same immutable default
+binding, strict/module flags, scope slot and empty evaluation stream.
+
+Missing host sources preserve their existing type error before metadata work.
+Complete metadata precedes value conversion and root preparation. Value
+conversion remains a separately callable internal boundary: existing value/JSON/
+root ownership fixtures retain all numerical allowances and assertions while
+providing their metadata as explicit host input. New complete-code fixtures
+exercise the VM producer and registry handoff together.
+
+Registry insertion accepts the prepared owner, checks its document, admits key/
+header storage and any coexisting source copy or replacement table before moving
+live data. Complete preparation precedes mutation. Publication moves code and
+key buffers without allocation, merges same-document leases and releases surplus
+backing/replaced payload without a new admission check. The ordinary host-code
+entry point uses the same data-before-lease guard.
+
+Twenty-six finite groups cover the four original observations, metadata shape,
+exact/short room, terminal scopes, unchanged managed state, separate value/code
+ownership and VM destruction, missing-source precedence, exact registry adoption,
+full-quota spare publication, six-buffer pointer preservation, foreign/unbounded
+owner rules, source-copy and table-growth failure, replaced-buffer refunds,
+registry snapshots after VM destruction, root/managed/instruction failure and
+retry, host-neutral values and actual rooted object collection. Twenty-four
+functional groups are exposed through the ordinary-library entry point; two
+allocation observations remain unit-only. The completed focused run passes
+**26/26**. Final validation passes **1822 distinct selected tests**, across 50
+executables and 168 fixed selections: twenty-six new groups and all 1796 prior
+selected controls. The nine explicit resource/infinite-execution skips and finite
+public filters remain unchanged. Formatting, diff checks and offline workspace/
+all-target Clippy with warnings denied pass. Nine frozen Rust inputs and eleven
+final source/document inputs tie source/artifact, staged and committed audits to
+executable/log hashes, Cargo inputs and detailed English commit text.
+The first expanded run passed **24/26**. Its separate source/log archive preserves
+two fixture assumptions: primitive JSON does not consume a per-node instruction
+charge, and object construction retains an admitted operand slot. The corrected
+cases use one fixed object property for instruction refusal and include the
+operand scratch before measuring refunds, retaining exact ownership and error
+assertions.
+
+Dynamic source parsing/compilation, other module/source caches and native/heap
+buffers, namespace/module-body recursion, allocator/error-message overhead,
+shared programs and integrated acceptance remain open. M1u remains the latest
+accepted milestone; the prior rejected push is not retried.
+
+Evidence: `/private/tmp/blueice-module-code-storage-controls-20261017.py`,
+`/private/tmp/blueice-module-code-storage-rust-inputs-20261017.json`, logs matching
+`/private/tmp/blueice-module-code-storage-*-20261017.log`, original source copies
+at `/private/tmp/blueice-module-code-storage-red-source-20261017/`, the first
+expanded attempt at `/private/tmp/blueice-module-code-storage-first-source-20261017/`,
+`/private/tmp/blueice-module-code-storage-audit-20261017.py`,
+`/private/tmp/blueice-module-code-storage-commit-20261017.txt` and
+`target/module-code-storage-source-20261017.json`.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

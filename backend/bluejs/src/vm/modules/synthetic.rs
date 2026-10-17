@@ -12,6 +12,10 @@ use super::*;
 mod request_storage;
 
 #[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/module_code_storage.rs"]
+mod code_storage_tests;
+
+#[cfg(any(test, coverage))]
 #[path = "../../../tests/fixtures/synthetic_request_storage.rs"]
 mod request_storage_tests;
 
@@ -26,6 +30,16 @@ mod ownership_tests;
 #[cfg(any(test, coverage))]
 #[path = "../../../tests/fixtures/json_module_ownership.rs"]
 mod json_ownership_tests;
+
+// Value-only fixtures provide their Bytecode as host input. Their assertions
+// continue to measure conversion/root budgets independently of VM code storage.
+#[cfg(any(test, coverage))]
+fn value_fixture_code(value: SyntheticModuleValue) -> Bytecode {
+    let mut code = super::super::module_code_storage::PreparedModuleCode::synthetic(None)
+        .expect("fixed host fixture metadata fits");
+    code.code.synthetic_default_export = Some(value);
+    code.into_unleased()
+}
 
 /// A module whose record is synthesized from host data rather than parsed as
 /// JavaScript. Keeping this separate from `ModuleType` makes the source-text
@@ -91,17 +105,45 @@ impl Vm {
             return Ok(());
         }
         let code = self.create_synthetic_module_code(key, module_type, roots)?;
-        modules.insert(key, code, self.host_scheduling.as_ref())
+        modules.insert_prepared(key, code, self.host_scheduling.as_ref())
     }
 
-    /// Constructs a host-owned record. The graph draft separately admits its
-    /// compiled table/key/root buffers before retaining this record.
+    /// Prepare metadata before value conversion, retaining its native owner
+    /// until the registry adopts the complete record.
     pub(super) fn create_synthetic_module_code(
         &mut self,
         key: &str,
         module_type: SyntheticModuleType,
         roots: &mut ModuleRoots,
-    ) -> Result<Bytecode, RuntimeError> {
+    ) -> Result<super::super::module_code_storage::PreparedModuleCode, RuntimeError> {
+        let (path, _) = ModuleType::split_module_key(key);
+        let (kind, present) = match module_type {
+            SyntheticModuleType::Json => ("JSON", self.json_module_sources.contains_key(path)),
+            SyntheticModuleType::Text => ("text", self.text_module_sources.contains_key(path)),
+            SyntheticModuleType::Bytes => ("bytes", self.bytes_module_sources.contains_key(path)),
+        };
+        if !present {
+            return Err(RuntimeError::TypeError(format!(
+                "host did not provide a {kind} module source for {path}"
+            )));
+        }
+        self.synchronize_scheduling_usage()?;
+        let mut code = super::super::module_code_storage::PreparedModuleCode::synthetic(
+            self.host_scheduling.as_ref(),
+        )?;
+        code.code.synthetic_default_export =
+            Some(self.create_synthetic_module_value(key, module_type, roots)?);
+        Ok(code)
+    }
+
+    /// Value conversion and root ownership have an independent boundary from
+    /// native Bytecode metadata preparation.
+    pub(super) fn create_synthetic_module_value(
+        &mut self,
+        key: &str,
+        module_type: SyntheticModuleType,
+        roots: &mut ModuleRoots,
+    ) -> Result<SyntheticModuleValue, RuntimeError> {
         let (path, _) = ModuleType::split_module_key(key);
         let mut root_slot = None;
         let value = match module_type {
@@ -164,30 +206,7 @@ impl Vm {
                 .expect("object module values reserve a root slot")
                 .root_into(roots, &mut self.heap, id)?;
         }
-        let mut code = Bytecode::empty();
-        code.module = true;
-        code.strict = true;
-        code.bindings.push(Binding {
-            name: "default".to_string(),
-            mutable: false,
-            strict_immutable: true,
-            lexical: false,
-            catch_parameter: false,
-            eval_var: false,
-        });
-        code.scopes.push(vec![0]);
-        // No function-declaration prefix exists to hoist, so the whole
-        // (empty) instruction stream is the "evaluate" phase; nothing ever
-        // actually runs it, since the module is linked pre-`evaluated`
-        // below (see `execute_module_graph_inner`'s per-`order` pass and its
-        // single-entry counterpart above).
-        code.module_evaluate_entry = Some(0);
-        code.module_exports.push(ModuleExport::Local {
-            export_name: "default".to_string(),
-            local_slot: 0,
-        });
-        code.synthetic_default_export = Some(value);
-        Ok(code)
+        Ok(value)
     }
 
     /// Scans a fresh static module graph's own requests for a `with`
@@ -231,7 +250,7 @@ mod tests {
         let result = vm
             .create_synthetic_module_code(key, synthetic_type, &mut roots)
             .map(|code| {
-                modules.insert(key.to_string(), code);
+                modules.insert(key.to_string(), code.into_unleased());
             });
         (result, modules, roots.len())
     }

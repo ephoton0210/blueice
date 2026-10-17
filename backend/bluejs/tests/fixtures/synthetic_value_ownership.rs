@@ -16,12 +16,12 @@ fn bounded_vm() -> Vm {
 
 fn synthesize(vm: &mut Vm) -> Result<HashMap<String, Bytecode>, RuntimeError> {
     let mut modules = HashMap::new();
-    let code = vm.create_synthetic_module_code(
+    let code = vm.create_synthetic_module_value(
         "value\0text",
         SyntheticModuleType::Text,
         &mut ModuleRoots::default(),
     )?;
-    modules.insert("value\0text".into(), code);
+    modules.insert("value\0text".into(), value_fixture_code(code));
     Ok(modules)
 }
 
@@ -305,8 +305,8 @@ fn synthesize_json(
     vm.set_json_module_sources(HashMap::from([("json".into(), source.into())]));
     vm.remaining_instructions = 100;
     let mut modules = HashMap::new();
-    let code = vm.create_synthetic_module_code("json\0json", SyntheticModuleType::Json, roots)?;
-    modules.insert("json\0json".into(), code);
+    let code = vm.create_synthetic_module_value("json\0json", SyntheticModuleType::Json, roots)?;
+    modules.insert("json\0json".into(), value_fixture_code(code));
     Ok(modules)
 }
 
@@ -372,7 +372,7 @@ fn synthetic_value_ownership_json_ast_and_returned_value_coexistence_is_admitted
     let before = vm.host_scheduling_snapshot().payload_bytes;
     let managed = vm.heap.stats().managed_bytes;
     assert_eq!(
-        vm.create_synthetic_module_code(
+        vm.create_synthetic_module_value(
             "json\0json",
             SyntheticModuleType::Json,
             &mut ModuleRoots::default()

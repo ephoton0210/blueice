@@ -116,6 +116,7 @@ mod import_waiter_storage;
 mod import_waiters;
 mod interpreter_records;
 mod module_binding_storage;
+mod module_code_storage;
 mod module_dependencies;
 mod module_export_names;
 mod module_export_resolution;

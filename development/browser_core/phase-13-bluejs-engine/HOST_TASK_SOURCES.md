@@ -676,9 +676,18 @@ native owners through registration; yielded keys may outlive their batch or VM.
 The drain destroys remaining names before releasing their leases, while backing
 remains owned until batch destruction. Canonical module order, per-module import-
 then-export order, duplicate occurrences and source-phase exclusions are
-preserved. All resolution completes before record publication. Synthetic
-Bytecode metadata construction still awaits a separate producer owner; later
-registry admission does not close that preparation gap.
+preserved. All resolution completes before record publication.
+
+Synthetic Bytecode binding/scope/export vectors and default names own admitted
+native storage before value conversion. Missing-source validation still precedes
+metadata admission. Prepared code keeps its document lease across Rust retention
+and VM destruction. Registry insertion retains that same owner while admitting
+keys, headers, source copies and complete replacement tables; publication moves
+buffers, merges leases and releases replaced/surplus storage without charging
+code twice. Foreign-document and bounded-to-unbounded handoff is rejected.
+Value conversion/root ownership remains a separate internal boundary. Dynamic
+source compilation, other module/source caches and broader native/heap buffers
+remain open.
 
 The graph's retained table/set/vector allocations and UTF-8 names share the document
 native-byte budget. Registration first admits the incoming vector, original

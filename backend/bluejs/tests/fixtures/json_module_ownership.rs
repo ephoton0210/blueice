@@ -30,8 +30,8 @@ fn synthesize(
     roots: &mut ModuleRoots,
 ) -> Result<HashMap<String, Bytecode>, RuntimeError> {
     let mut modules = HashMap::new();
-    let code = vm.create_synthetic_module_code("json\0json", SyntheticModuleType::Json, roots)?;
-    modules.insert("json\0json".into(), code);
+    let code = vm.create_synthetic_module_value("json\0json", SyntheticModuleType::Json, roots)?;
+    modules.insert("json\0json".into(), value_fixture_code(code));
     Ok(modules)
 }
 

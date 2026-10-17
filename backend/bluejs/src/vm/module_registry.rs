@@ -7,6 +7,7 @@
 use super::host_scheduling::{
     cloned_code_bytes, map_slots, owned_code_bytes, SharedSchedulingCharge,
 };
+use super::module_code_storage::PreparedModuleCode;
 use super::*;
 
 #[cfg(any(test, coverage))]
@@ -267,18 +268,17 @@ impl RegistryBuilder {
         }
         Ok(result)
     }
-    fn insert(
+    fn insert_prepared(
         &mut self,
-        key: String,
-        code: Bytecode,
+        incoming: PreparedModuleCode,
         scope: Option<&SchedulingScope>,
-        incoming: Option<SharedSchedulingCharge>,
     ) -> Result<(), RuntimeError> {
-        let code_bytes = owned_code_bytes(&code);
-        let key_bytes = key.capacity();
-        let old = self.data.get(&key).map(owned_code_bytes);
+        let code_bytes = owned_code_bytes(&incoming.code);
+        let key_bytes = incoming.key.capacity();
+        let old = self.data.get(&incoming.key).map(owned_code_bytes);
         let required = self.data.len().saturating_add(usize::from(old.is_none()));
         let mut replacement_charge = None;
+        let mut replacement = None;
         if required > self.data.capacity() {
             let minimum = required.saturating_mul(std::mem::size_of::<(String, Bytecode)>());
             replacement_charge = scope
@@ -287,6 +287,11 @@ impl RegistryBuilder {
             let mut table = HashMap::new();
             table.try_reserve(required).map_err(|_| fail(scope))?;
             resize(&mut replacement_charge, map_slots(&table))?;
+            replacement = Some(table);
+        }
+        // All fallible admission precedes mutation. Input data stays with its
+        // lease until both old data and new code can move without allocation.
+        if let Some(mut table) = replacement.take() {
             table.extend(self.data.drain());
             self.data = table;
         }
@@ -295,10 +300,15 @@ impl RegistryBuilder {
             .saturating_sub(old.unwrap_or(0))
             .saturating_add(code_bytes)
             .saturating_add(if old.is_none() { key_bytes } else { 0 });
+        let PreparedModuleCode { code, key, charge } = incoming;
         drop(self.data.insert(key, code));
-        merge(&mut self.charge, incoming)?;
-        merge(&mut self.charge, replacement_charge)?;
-        resize(&mut self.charge, retained_bytes(&self.data, self.payload))
+        merge(&mut self.charge, charge).expect("prepared code has the registry document owner");
+        merge(&mut self.charge, replacement_charge)
+            .expect("prepared backing has the registry document owner");
+        if let Some(charge) = &mut self.charge {
+            charge.release_to(retained_bytes(&self.data, self.payload));
+        }
+        Ok(())
     }
     fn finish(self) -> ModuleRegistry {
         if self.data.capacity() == 0 {
@@ -337,6 +347,15 @@ impl ModuleRegistryDraft {
         code: Bytecode,
         scope: Option<&SchedulingScope>,
     ) -> Result<(), RuntimeError> {
+        self.insert_prepared(key, PreparedModuleCode::input(code), scope)
+    }
+    pub(super) fn insert_prepared(
+        &mut self,
+        key: &str,
+        mut code: PreparedModuleCode,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<(), RuntimeError> {
+        code.attach(scope)?;
         if let Some(scope) = scope {
             self.source.attach(scope)?;
             if let Some(builder) = &mut self.builder {
@@ -362,20 +381,11 @@ impl ModuleRegistryDraft {
             .map_or(!self.source.is_empty(), |builder| {
                 builder.data.capacity() != 0
             });
-        let overhead =
-            owned_code_bytes(&code).saturating_add(if has_header { 0 } else { header_bytes() });
-        let mut incoming = scope
-            .map(|scope| scope.shared_charge(key.len().saturating_add(overhead)))
-            .transpose()?;
-        let key = module_referrers::copy_referrer(key, scope)?;
-        resize(&mut incoming, key.capacity().saturating_add(overhead))?;
+        code.prepare_key(key, if has_header { 0 } else { header_bytes() }, scope)?;
         if self.builder.is_none() {
             self.builder = Some(RegistryBuilder::copy(&self.source, scope, false)?);
         }
-        self.builder
-            .as_mut()
-            .unwrap()
-            .insert(key, code, scope, incoming)
+        self.builder.as_mut().unwrap().insert_prepared(code, scope)
     }
     pub(super) fn finish(self) -> ModuleRegistry {
         self.builder.map_or(self.source, RegistryBuilder::finish)

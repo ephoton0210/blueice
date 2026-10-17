@@ -357,12 +357,9 @@ fn module_root_ownership_primitive_json_needs_no_root_reservation() {
         .unwrap();
     let mut roots = ModuleRoots::default();
     let code = vm
-        .create_synthetic_module_code("value\0json", SyntheticModuleType::Json, &mut roots)
+        .create_synthetic_module_value("value\0json", SyntheticModuleType::Json, &mut roots)
         .unwrap();
-    assert_eq!(
-        code.synthetic_default_export.as_ref().unwrap().value(),
-        &Value::Number(1.0)
-    );
+    assert_eq!(code.value(), &Value::Number(1.0));
     assert!(roots.is_empty());
     assert_eq!(roots.retained_bytes(), 0);
 }
@@ -387,7 +384,7 @@ fn module_root_ownership_synthetic_object_refusal_precedes_managed_construction(
     vm.heap.allow_only(0);
     let mut roots = ModuleRoots::default();
     assert!(matches!(
-        vm.create_synthetic_module_code("value\0json", SyntheticModuleType::Json, &mut roots),
+        vm.create_synthetic_module_value("value\0json", SyntheticModuleType::Json, &mut roots),
         Err(RuntimeError::SchedulingLimit)
     ));
     assert!(roots.is_empty());
