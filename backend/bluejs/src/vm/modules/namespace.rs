@@ -192,16 +192,22 @@ impl Vm {
             return Ok(namespace);
         }
         // Cycles need an early placeholder, but a failed allocation must
-        // not publish that incomplete namespace to a later importer. Include
-        // recursively-created namespaces in the transaction: they may hold
-        // an edge back to this placeholder.
-        let retained_namespaces = self
-            .module_namespace_cache
-            .values()
-            .chain(self.module_deferred_namespace_cache.values())
-            .copied()
-            .collect::<HashSet<_>>();
+        // not publish that incomplete namespace to a later importer. One
+        // outer transaction owns every recursively published placeholder.
+        self.synchronize_scheduling_usage()?;
+        let prepared =
+            namespace_cache_storage::PreparedNamespaceEntry::prepare(self, module, deferred)?;
         let roots_checkpoint = roots.len();
+        let namespace_checkpoint = self.next_namespace_epoch;
+        let outer_transaction = self.namespace_transaction_depth == 0;
+        self.namespace_transaction_depth = self
+            .namespace_transaction_depth
+            .checked_add(1)
+            .ok_or_else(|| {
+                self.host_scheduling
+                    .as_ref()
+                    .map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail)
+            })?;
         let outcome = (|| {
             let mut names = Self::exported_names(modules, module, &mut HashSet::new())?;
             if deferred {
@@ -211,33 +217,19 @@ impl Vm {
             // exports. A module may re-export its own namespace, directly or
             // through a cycle; waiting until after recursive resolution would
             // recurse indefinitely and overflow the host stack.
-            let root_slot = roots.prepare_slot(self.host_scheduling.as_ref())?;
-            let namespace =
-                self.with_roots(|heap| heap.alloc_module_namespace(Vec::new(), deferred))?;
-            root_slot.root_into(roots, &mut self.heap, namespace)?;
-            // Register both owners before exposing the placeholder. A cache
-            // root failure must not leave a linked record outside the
-            // transaction's rollback cache.
-            let cache_root = self.heap.root(namespace)?;
-            let record = linked.get_mut(module).expect("linked module record exists");
-            if deferred {
-                record.deferred_namespace = Some(namespace);
-            } else {
-                record.namespace = Some(namespace);
-            }
-            if deferred {
-                self.deferred_namespaces
-                    .insert(namespace, module.to_string());
-                self.module_deferred_namespace_cache
-                    .insert(module.to_string(), namespace);
-                self.module_deferred_namespace_roots
-                    .insert(module.to_string(), cache_root);
-            } else {
-                self.module_namespace_cache
-                    .insert(module.to_string(), namespace);
-                self.module_namespace_roots
-                    .insert(module.to_string(), cache_root);
-            }
+            let saved_capacity = self.preserve_promise_table_capacity;
+            self.preserve_promise_table_capacity = true;
+            let placeholder = (|| {
+                let root_slot = roots.prepare_slot(self.host_scheduling.as_ref())?;
+                let namespace =
+                    self.with_roots(|heap| heap.alloc_module_namespace(Vec::new(), deferred))?;
+                root_slot.root_into(roots, &mut self.heap, namespace)?;
+                let cache_root = self.heap.root(namespace)?;
+                prepared.publish(self, module, linked, namespace, cache_root);
+                Ok::<_, RuntimeError>(namespace)
+            })();
+            self.preserve_promise_table_capacity = saved_capacity;
+            let namespace = placeholder?;
             let mut exports = Vec::with_capacity(names.len());
             for name in names {
                 let resolution = Self::resolve_export(modules, module, &name, &mut Vec::new())?;
@@ -292,51 +284,12 @@ impl Vm {
             self.with_roots(|heap| heap.initialize_module_namespace(namespace, exports))?;
             Ok(namespace)
         })();
-        if outcome.is_err() {
-            for deferred in [false, true] {
-                let cache = if deferred {
-                    &self.module_deferred_namespace_cache
-                } else {
-                    &self.module_namespace_cache
-                };
-                let created = cache
-                    .iter()
-                    .filter(|(_, id)| !retained_namespaces.contains(id))
-                    .map(|(name, id)| (name.clone(), *id))
-                    .collect::<Vec<_>>();
-                for (name, namespace) in created {
-                    if deferred {
-                        self.module_deferred_namespace_cache.remove(&name);
-                        self.deferred_namespaces.remove(&namespace);
-                        let root = self
-                            .module_deferred_namespace_roots
-                            .remove(&name)
-                            .expect("published deferred namespace owns its cache root");
-                        self.heap
-                            .unroot(root)
-                            .expect("namespace transaction owns its cache root");
-                    } else {
-                        self.module_namespace_cache.remove(&name);
-                        let root = self
-                            .module_namespace_roots
-                            .remove(&name)
-                            .expect("published namespace owns its cache root");
-                        self.heap
-                            .unroot(root)
-                            .expect("namespace transaction owns its cache root");
-                    }
-                    let record = linked
-                        .get_mut(&name)
-                        .expect("namespace transaction retains every published module record");
-                    if deferred {
-                        record.deferred_namespace = None;
-                    } else {
-                        record.namespace = None;
-                    }
-                }
-            }
+        self.namespace_transaction_depth -= 1;
+        if outer_transaction && outcome.is_err() {
+            self.rollback_namespace_cache_from(namespace_checkpoint, linked);
             self.release_module_roots_from(roots, roots_checkpoint);
         }
+        self.reconcile_scheduling_ownership();
         outcome
     }
 }

@@ -21,6 +21,7 @@ fn record(evaluating: bool) -> LinkedModule {
         cells_charge: Vm::default().charge_module_cells(0),
         namespace: None,
         deferred_namespace: None,
+        namespace_epochs: [0; 2],
         evaluated: false,
         evaluating,
         suspended: evaluating,

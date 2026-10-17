@@ -115,6 +115,7 @@ fn record(vm: &Vm) -> LinkedModule {
         cells_charge: vm.charge_module_cells(0),
         namespace: None,
         deferred_namespace: None,
+        namespace_epochs: [0; 2],
         evaluated: false,
         evaluating: false,
         suspended: false,

@@ -52,6 +52,10 @@ in-memory fixtures and numerical admission controls rather than represented
 large allocations. Do not resume resource-exhaustion/infinite-execution probes,
 network/service/listener/Core/MCP replay, privileged validation or process
 killing. Broader acceptance items below stay open under this constraint.
+After a cybersecurity warning or automatic approval rejection, inspect existing
+local evidence first. Do not rephrase, reroute or repeat the affected operation
+to bypass review. Record affected checks and publication as pending while the
+operation is being identified.
 
 M1s began with this public ownership failure:
 discarded ShadowRealm instances become unreachable (`WeakRef.deref()` returns
@@ -64,6 +68,19 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The namespace-cache ownership follow-up (2026-10-17) now retains allocation
+ledgers for five persistent cache/root/reverse-map layers and pre-admits complete
+publication storage. Three old-code cases failed and now pass.
+Publication marks replace allocation during rollback, including rollback across
+the full linking transaction. Twenty-two new groups, four additional legacy
+boundaries and all 1633 prior selected controls pass: **1659 total**, across 47
+executables and 151 fixed selections. Formatting, diff checks and offline
+workspace/all-target Clippy pass. Source/artifact, staged and committed audits
+tie the checkpoint to the twelve unchanged Rust inputs and final documentation.
+The cybersecurity constraint remains in force; rejected push stays pending.
+Export traversal/staging and wider
+integrated acceptance remain open; M1u stays the latest accepted milestone.
+
 The module-walk storage follow-up (2026-10-17) now admits complete
 visited tables, explicit DFS/loading stacks and ordered SCC candidate storage.
 It borrows canonical registry keys and reuses scratch within one operation,
@@ -6095,6 +6112,99 @@ Evidence paths: `/private/tmp/blueice-module-walk-storage-controls-20261017.py`,
 `/private/tmp/blueice-module-walk-storage-*-20261017.log`, and
 `target/module-walk-storage-source-20261017.json`. The intermediate Clippy log
 identifies the obsolete append helper before its removal. This remains an M1z
+implementation checkpoint with wider acceptance open.
+
+#### Namespace-cache ownership follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: retain all five eager/deferred namespace cache/root/reverse-map
+allocations and owned name capacities in the document budget. Admit complete
+publication storage before managed allocation, preserve identity/rooting across
+GC and reject before native scratch when headroom is absent. Roll back recursive
+namespace creation and earlier successful namespace creation in a failed linking
+transaction without allocating cleanup sets, copied keys or vectors.
+
+- [x] Reproduce two allocations before zero-headroom refusal and missing table/
+      name charges: **0/3 passed** before implementation, **3/3 passed** after.
+      The first table layer previously reported zero rather than 120 bytes and
+      the first padded name reported zero rather than 64 bytes.
+- [x] Implement retained cache storage, complete publication preparation and
+      marked rollback; expanded finite contracts pass **22/22** on their first
+      run, including the real failed-link/retry boundary.
+- [x] Pass the 151 fixed offline selections: **1659 distinct cases**, zero
+      failed/ignored, across 47 executables; pass offline workspace/all-target
+      Clippy. These runs completed before the owner's cybersecurity warning.
+- [x] Pass final formatting and diff checks; audit source/artifact, staged and
+      committed contents with a detailed English checkpoint commit.
+
+All namespace identity/root maps and the deferred-object reverse map use retained
+allocation ledgers. The VM owns their backing and each key/value String capacity
+even after deletion lowers reported hash capacity. Publication stages two eager
+or three deferred name copies and complete replacement maps, checking requested
+and reported capacities before managed allocation. The prepared native owner
+survives VM destruction if retained by Rust, and abandonment drops data before
+refund. Exact staging handoff refunds the independent lease directly before
+synchronous VM reconciliation, avoiding a transient duplicate admission.
+
+Capacity preservation protects prepared table shapes during placeholder
+allocation/GC. Temporary and cache roots must both succeed before cache adoption
+and linked-record publication. Each namespace kind receives a monotonic mark;
+serial refusal occurs before allocation/publication. Cached identities remain
+available without new allocation at full healthy quota. Eager and deferred
+objects remain distinct and collectible only after their owning realm/cache
+lifetime has ended; normal collection preserves the rooted identity.
+
+One outer namespace transaction scans linked-record marks to retract every new
+recursive placeholder and its cache root. A failed graph link also retracts all
+namespaces created since that linking call began, including earlier successful
+namespace builds whose cells belonged to the failed graph. Existing entries
+remain intact. A fixed real runtime case first creates a namespace import and
+then fails a named import; retry with corrected modules observes the new value
+through new binding cells rather than reusing the failed graph's namespace.
+
+Rollback removes marked entries, clears record flags/marks, releases cache pins
+and the caller's root delta, and frees empty tables without allocating, including
+after terminal failure. Nonempty backing stays charged. Optional sparse table
+reclamation is separate and independently admits full coexisting replacements;
+refusal stays nonterminal. Each adopted reduction refunds VM ownership before
+the candidate lease drops and before funding the next table. Live name buffers
+and roots move unchanged. Linking-record marker storage joins the existing
+record-table accounting.
+
+Twenty-two finite groups cover all five backing/name layers, zero-headroom
+refusal, eager/deferred identity, untouched preparation snapshots, abandonment
+and detached ownership, exact/short staging/publication, allocation-free terminal
+and empty rollback, retained deletion backing, refused/exact/retried reclamation,
+serial guards, recursive failure, numeric root-registration failure, small managed
+ceilings and retry, graph-wide rollback/new-cell retry, collection and VM-drop
+refund, and host-neutral behavior. Twenty-one functional groups are exposed
+through the ordinary-library entry point; allocation observations stay unit-only.
+Fixtures use only short names, a few modules/objects and numerical peers.
+
+Existing validation: **1659 passed, zero failed/ignored**, across 47 executables
+and 151 fixed selections: twenty-two new groups, four additional finite namespace/
+root/source/resolution boundaries and all 1633 prior selected controls. Offline
+workspace/all-target Clippy passes. These runs completed before the owner's
+cybersecurity warning. Subsequent local checks confirmed the completed runner,
+distinct case count, unchanged hashes for all twelve Rust inputs and formatting.
+The source/artifact receipt records all fourteen final source files, Cargo inputs,
+runner, executables, logs, original regression evidence and detailed English
+message; staged and committed audits bind that evidence to the checkpoint.
+No test replay or network operation follows that warning for this checkpoint.
+The prior rejected push remains pending and is not retried. The same nine explicit
+resource/infinite-loop skips and finite public filters remain.
+Export traversal/staging, namespace/module-body
+construction recursion, other module/source caches, allocator/error-message
+overhead, shared programs and integrated acceptance remain open; M1u stays the
+latest accepted milestone. No resource-exhaustion probe, external network/service/
+Core/MCP replay, privileged validation, process killing, full Test262, fresh
+coverage result or integrated acceptance is claimed.
+
+Evidence paths: `/private/tmp/blueice-namespace-cache-storage-controls-20261017.py`,
+`/private/tmp/blueice-namespace-cache-storage-rust-inputs-20261017.json`,
+`/private/tmp/blueice-namespace-cache-storage-commit-20261017.txt`,
+`/private/tmp/blueice-namespace-cache-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-namespace-cache-storage-*-20261017.log`, and
+`target/namespace-cache-storage-source-20261017.json`. This remains an M1z
 implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)

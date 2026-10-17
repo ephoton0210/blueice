@@ -583,6 +583,24 @@ names until their error is selected. Unreachable registry entries remain outside
 that loading walk. Resource refusals propagate from cycle/readiness/frontier
 queries without the previous resolution-only panic assumptions.
 
+Eager/deferred namespace identity caches, both root maps and the deferred-object
+reverse map retain reported allocation backing and all owned name capacities in
+the document budget. Publication prepares every copied key/value name and full
+replacement table before managed allocation. Capacity preservation protects the
+prepared table shapes across placeholder allocation/GC. Both temporary and cache
+roots must succeed before the placeholder adopts native cache storage; staging
+refunds directly before synchronous ownership reconciliation.
+
+Linked records carry monotonic marks for each namespace kind. One outer namespace
+transaction retracts all new recursive placeholders and cache roots by scanning
+those marks, without snapshot sets, cloned rollback keys or a cleanup vector.
+The surrounding linking transaction also retracts namespaces successfully built
+by earlier imports if a later link fails before evaluation starts. Existing
+identities remain retained, and retry binds newly created cells. Removed names
+refund while nonempty backing remains owned; empty maps release without allocation
+even after terminal failure. Optional sparse reclamation separately admits full
+candidates and refunds each adopted reduction before funding the next map.
+
 The graph's retained table/set/vector allocations and UTF-8 names share the document
 native-byte budget. Registration first admits the incoming vector, original
 name capacities and complete deduplication set. It then independently leases

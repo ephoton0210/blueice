@@ -118,6 +118,7 @@ mod interpreter_records;
 mod module_dependencies;
 mod module_name_storage;
 mod module_walk_storage;
+mod namespace_cache_storage;
 
 #[cfg(test)]
 #[path = "../tests/fixtures/allocation_observer.rs"]
@@ -476,6 +477,8 @@ struct LinkedModule {
     /// The module's *deferred* namespace object (import-defer proposal), kept
     /// apart from `namespace`: the two are distinct objects.
     deferred_namespace: Option<ObjectId>,
+    /// Monotonic publication marks for allocation-free namespace rollback.
+    namespace_epochs: [u64; 2],
     evaluated: bool,
     evaluating: bool,
     suspended: bool,
@@ -1050,16 +1053,18 @@ pub struct Vm {
     /// Per-realm Module Record namespace cache. Dynamic import is required to
     /// return this same object for repeated requests, including a namespace
     /// already made visible through a static `import * as` binding.
-    module_namespace_cache: HashMap<String, ObjectId>,
-    module_namespace_roots: HashMap<String, RootId>,
+    module_namespace_cache: namespace_cache_storage::NamespaceMap,
+    module_namespace_roots: namespace_cache_storage::NamespaceRoots,
     /// Deferred module namespace objects (import-defer proposal) and the
     /// module each one evaluates when a string-keyed internal method other
     /// than `"then"` first observes it. The per-module cache gives every
     /// module a single deferred namespace and, through its roots, keeps that
     /// object (and so this map's keys) alive.
-    deferred_namespaces: HashMap<ObjectId, String>,
-    module_deferred_namespace_cache: HashMap<String, ObjectId>,
-    module_deferred_namespace_roots: HashMap<String, RootId>,
+    deferred_namespaces: namespace_cache_storage::DeferredNames,
+    module_deferred_namespace_cache: namespace_cache_storage::NamespaceMap,
+    module_deferred_namespace_roots: namespace_cache_storage::NamespaceRoots,
+    next_namespace_epoch: u64,
+    namespace_transaction_depth: usize,
     module_graph: Option<ModuleGraphState>,
     /// The module records of the graph whose module code is running right
     /// now. Module evaluation holds them in a local; while user code runs

@@ -20,6 +20,10 @@ mod module_name_storage_tests;
 #[path = "../../tests/fixtures/module_walk_storage.rs"]
 mod module_walk_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/namespace_cache_storage.rs"]
+mod namespace_cache_storage_tests;
+
 /// How code that is not a generator -- a module body, an async function body
 /// -- finishes a run: it returns, or it awaits. It never yields, and no
 /// running code suspends at a generator's entry.
@@ -432,6 +436,7 @@ impl Vm {
         // Once a module body has started running, its evaluation error (or
         // completion) belongs to the module record and is observed again by
         // every later importer, so the graph is kept rather than rolled back.
+        let namespace_checkpoint = self.next_namespace_epoch;
         let mut evaluation_started = false;
         let mut previous_registry = None;
         let mut result = (|| {
@@ -498,6 +503,7 @@ impl Vm {
                         error: None,
                         host_error_pending: false,
                         deferred_namespace: None,
+                        namespace_epochs: [0; 2],
                     };
                     prepared.install(&mut record);
                     linked.insert_new(name, record, self.host_scheduling.as_ref())?;
@@ -802,6 +808,7 @@ impl Vm {
         if result.is_err() && evaluation_started {
             self.store_module_graph(ModuleGraphState { linked, roots }, nested_in_evaluation);
         } else if result.is_err() {
+            self.rollback_namespace_cache_from(namespace_checkpoint, &mut linked);
             if let Some(previous) = previous_registry.take() {
                 self.module_registry = previous;
             }

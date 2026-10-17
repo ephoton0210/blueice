@@ -51,6 +51,7 @@ impl Vm {
         drop(charge);
         self.reclaim_import_waiter_storage();
         self.reclaim_module_dependency_storage();
+        self.reclaim_namespace_cache_storage();
     }
 }
 
