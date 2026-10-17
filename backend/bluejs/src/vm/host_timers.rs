@@ -23,7 +23,7 @@ use super::*;
 pub const MAX_HOST_TIMERS_PER_REALM: usize = 1_024;
 
 /// Jobs one host microtask checkpoint may run before it reports a limit.
-const MAX_HOST_CHECKPOINT_JOBS: usize = 1_024;
+pub(super) const MAX_HOST_CHECKPOINT_JOBS: usize = 1_024;
 
 /// A turn yields with pending timers intact, independent of the realm cap.
 const MAX_HOST_TIMER_TASKS_PER_TURN: usize = 64;

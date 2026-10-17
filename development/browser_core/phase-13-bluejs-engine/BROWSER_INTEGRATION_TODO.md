@@ -68,6 +68,27 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The mixed-realm host-turn follow-up (2026-10-18) has an implementation checkpoint.
+Owned Test262 and shared ShadowRealm members now contribute document wakes,
+Promise checkpoints, timer eligibility and task-source selection. Admitted scalar
+identity paths retain no VM and revalidate each route at use. Ancestors on that
+route stay registered only through entry; existing membrane entry preserves host
+lookup fuel. Fixed-point document passes share one job counter and revisit earlier
+ancestor work after every task, including the turn's final delivery. Browser-only
+turns preserve callback-timer deferral; conformance timer checks inspect its native
+tag without invoking its background-thread API.
+
+All twenty new contracts, the previous 156 finite controls and seventeen selected
+snapshot/task-source/finalization controls pass: **193 distinct selected tests**,
+six executable targets and seventy-five selections. Formatting, diff checks and
+offline workspace/all-target Clippy pass. Frozen source/artifact and Git audits
+bind the local checkpoint. Alternative alias-route callback reachability and
+agent-wide WeakRef/notification boundaries remain unverified; wider native,
+transport and integrated gates remain open. M1u remains latest accepted; M1z's
+integrated gates remain open. No service, quota-boundary or exhaustion replay was
+run, and rejected external push/process inspection was not retried. Evidence:
+`target/host-realm-tasks-source-20261018.json`.
+
 The document realm-policy adoption follow-up (2026-10-18) has an implementation
 checkpoint. Late activation joins existing neutral ShadowRealm/Test262 descendants
 to one native and managed document account before callbacks resume. An admitted
@@ -1421,7 +1442,12 @@ work and exposes its retained payload ledger.
       BlueJS inspection/request producers now have an immutable output/name
       checkpoint with twenty-two new contracts and 111 selected cases. Runtime
       reply projection/framing now adds twenty-six contracts and 137 selected
-      cases. Other metadata/control/error replies, incoming decode buffers,
+      cases. Document policy adoption now adds nineteen contracts and 156
+      selected cases. Mixed owned/shared host-turn routing now adds twenty
+      contracts and 193 selected cases, including admitted nonretaining paths,
+      ancestor entry, fixed-point Promise passes and unchanged timer eligibility.
+      Alternative alias-route callbacks and agent-wide WeakRef/notification
+      boundaries remain unverified. Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance

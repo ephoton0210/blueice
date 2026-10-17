@@ -27,6 +27,9 @@ impl<T> TaskVector<T> {
         self.values.push(value);
         Ok(())
     }
+    pub(super) fn pop(&mut self) -> Option<T> {
+        self.values.pop()
+    }
     pub(super) fn retain(&mut self, keep: impl FnMut(&T) -> bool) {
         self.values.retain(keep);
     }

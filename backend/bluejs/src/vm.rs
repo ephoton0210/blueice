@@ -90,6 +90,7 @@ mod host_event_checkpoints;
 mod host_finalization;
 mod host_objects;
 mod host_promises;
+mod host_realm_tasks;
 mod host_rejections;
 mod host_task_storage;
 mod host_wait_storage;

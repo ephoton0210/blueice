@@ -34,7 +34,7 @@ fn leave_room(vm: &mut Vm, room: usize) -> SharedSchedulingCharge {
 fn host_task_storage_realm_discovery_has_a_native_owner() {
     let vm = with_child();
     let before = vm.host_scheduling_snapshot().payload_bytes;
-    let snapshot = vm.host_shadow_realms().unwrap();
+    let snapshot = vm.host_task_realms().unwrap();
     assert_eq!(snapshot.len(), 1);
     assert!(vm.host_scheduling_snapshot().payload_bytes > before);
 }
@@ -168,12 +168,16 @@ fn host_task_storage_snapshot_drop_refunds_after_terminal_failure() {
 fn host_task_storage_discovery_snapshot_does_not_keep_realms_alive() {
     let mut vm = with_child();
     let weak = Rc::downgrade(&vm.shadow_realms.values().next().unwrap().vm);
-    let snapshot = vm.host_shadow_realms().unwrap();
+    let snapshot = vm.host_task_realms().unwrap();
     assert_eq!(weak.strong_count(), 1);
-    let bytes = snapshot.retained_bytes();
+    let bytes = snapshot.retained_bytes()
+        + snapshot
+            .iter()
+            .map(|realm| realm.retained_bytes())
+            .sum::<usize>();
     vm.shadow_realms.clear();
     assert!(weak.upgrade().is_none());
-    assert!(snapshot[0].upgrade().is_none());
+    assert!(snapshot[0].read(&vm, |_| Ok(())).unwrap().is_none());
     let before = vm.host_scheduling_snapshot().payload_bytes;
     drop(snapshot);
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before - bytes);
@@ -206,11 +210,8 @@ fn host_task_storage_discovery_filters_documents_deduplicates_cycles_and_sorts()
     let alias = vm.heap.alloc_object(None).unwrap();
     vm.shadow_realms.insert(alias, foreign.clone());
     let references = Rc::strong_count(&child.vm);
-    let snapshot = vm.host_shadow_realms().unwrap();
-    let ids: Vec<_> = snapshot
-        .iter()
-        .map(|record| record.upgrade().unwrap().borrow().object_prototype.heap)
-        .collect();
+    let snapshot = vm.host_task_realms().unwrap();
+    let ids: Vec<_> = snapshot.iter().map(|record| record.heap).collect();
     assert_eq!(ids, [child.heap, grandchild.heap]);
     assert_eq!(Rc::strong_count(&child.vm), references);
     grandchild.vm.borrow_mut().shadow_realms.clear();
@@ -223,7 +224,7 @@ fn host_task_storage_borrowed_descendant_is_skipped_and_scratch_is_refunded() {
     let record = vm.shadow_realms.values().next().unwrap().clone();
     let _borrow = record.vm.borrow_mut();
     let before = vm.host_scheduling_snapshot().payload_bytes;
-    let snapshot = vm.host_shadow_realms().unwrap();
+    let snapshot = vm.host_task_realms().unwrap();
     assert!(snapshot.is_empty());
     assert_eq!(snapshot.retained_bytes(), 0);
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
@@ -238,7 +239,7 @@ fn host_task_storage_partial_discovery_refunds_queue_and_seen_storage() {
     let references = Rc::strong_count(&vm.shadow_realms.values().next().unwrap().vm);
     let _peer = leave_room(&mut vm, room);
     assert!(matches!(
-        vm.host_shadow_realms(),
+        vm.host_task_realms(),
         Err(RuntimeError::SchedulingLimit)
     ));
     assert_eq!(
@@ -392,7 +393,7 @@ fn host_task_storage_nested_plan_outlives_the_document_vm() {
 fn host_task_storage_empty_snapshots_need_no_capacity_at_full_scalar_quota() {
     let mut vm = bounded_vm();
     let _peer = leave_room(&mut vm, 0);
-    assert!(vm.host_shadow_realms().unwrap().is_empty());
+    assert!(vm.host_task_realms().unwrap().is_empty());
     assert!(vm.snapshot_due_host_timers(0).unwrap().is_empty());
     let snapshot = vm.snapshot_task_timers(true).unwrap();
     let mut plan = TimerSnapshots::new(vm.host_scheduling.as_ref()).unwrap();

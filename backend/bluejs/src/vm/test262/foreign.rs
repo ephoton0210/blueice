@@ -848,6 +848,24 @@ impl Vm {
         realm_id: ObjectId,
         operation: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
     ) -> Result<T, RuntimeError> {
+        self.test262_with_foreign_vm_mode(realm_id, true, operation)
+    }
+
+    /// Host task delivery establishes ancestor reentrancy without changing fuel.
+    pub(in super::super) fn test262_with_host_realm<T>(
+        &mut self,
+        realm_id: ObjectId,
+        operation: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        self.test262_with_foreign_vm_mode(realm_id, false, operation)
+    }
+
+    fn test262_with_foreign_vm_mode<T>(
+        &mut self,
+        realm_id: ObjectId,
+        reset_fuel: bool,
+        operation: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
         let registration = self.prepare_foreign_active_registration(realm_id)?;
         let child: *mut Vm = &mut *self
             .test262_realms
@@ -860,7 +878,9 @@ impl Vm {
         // it, following test262_foreign_call's reentrancy discipline. Nothing
         // here accesses the parent again until the operation returns.
         let result = unsafe {
-            (*child).remaining_instructions = (*child).config.instruction_budget;
+            if reset_fuel {
+                (*child).remaining_instructions = (*child).config.instruction_budget;
+            }
             operation(&mut *child)
         };
         drop(guard);

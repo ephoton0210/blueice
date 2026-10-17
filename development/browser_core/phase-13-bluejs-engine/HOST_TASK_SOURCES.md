@@ -1421,6 +1421,51 @@ open; M1u remains latest accepted and M1z integrated gates stay open. Publicatio
 remains local; rejected external push/process inspection is not retried. Evidence:
 `target/document-policy-source-20261018.json`.
 
+Document host turns now follow both owned Test262 and shared ShadowRealm edges.
+An iterative discovery admits queue/set/result/path backing before allocation,
+visits each heap once and sorts the resulting identities. Each snapshot stores
+only scalar ownership steps and heap identities, retaining no VM or raw VM
+pointer. Route replay revalidates member identity and document scope, skipping
+removed, active, foreign or borrowed members. Nested path credit survives the
+snapshot and is released with its buffers; owning maps and runtime reachability
+continue to determine VM lifetime.
+
+Shared entry registers its suspended ancestor for the callback's dynamic extent;
+owned entry reuses the existing Test262 reverse-membrane helper. Its ordinary
+foreign-operation mode still resets child fuel, while the host-routing mode does
+not. Registry metadata is admitted before leaf work and released on every exit.
+Route replay uses the existing native-stack reserve check. No new unsafe block or
+VM-pointer dereference is introduced; pure wake inspection preserves realm fuel.
+Reentrancy here covers ancestors on the selected ownership route. Callback
+reachability through alternative alias routes and agent-wide WeakRef/notification
+boundaries remain unverified and are separate agent-level gates.
+
+Document checkpoints revisit root and reachable members until a pass runs no
+Promise job, sharing one remaining-job counter across passes. Rediscovery catches
+new children and jobs queued back into an earlier ancestor. Every selected task
+finishes a document checkpoint, including the final task in its allowed turn.
+Existing callback-local checkpoints are preserved. Logical-source FIFO and source
+arbitration remain document-wide; initial timer/abort snapshots preserve interval
+and newly queued timer deferral. Browser-only turns still exclude callback timers.
+Conformance timers remain a separate harness mechanism: verification reads their
+installed native tag without invoking their background-thread scheduling API.
+
+The mixed-realm checkpoint passes twenty fixed tiny contracts, the previous 156
+finite controls and seventeen selected snapshot/task-source/finalization controls:
+one hundred ninety-three distinct cases, six executable targets and seventy-five
+selections. Formatting, diff checks and offline workspace/all-target Clippy pass,
+with frozen source/artifact and Git audits. The new contracts cover direct/nested
+ownership, parent callbacks, ancestor Promise jobs,
+alias/cycle discovery, busy retry, foreign boundaries, task-source order, interval
+eligibility, abort-only delivery, finalization, nonretaining snapshots, terminal
+entry and unchanged wake fuel. No quota/resource-boundary, exhaustion, infinite-
+input, network/service/listener/Core/MCP or privileged runtime replay is resumed.
+No fresh coverage or integrated acceptance is claimed. Wider native/transport
+ownership and integrated gates remain open; M1u remains latest accepted and M1z
+integrated gates remain open. Publication remains local, with no retry of rejected
+external push/process inspection. Evidence:
+`target/host-realm-tasks-source-20261018.json`.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

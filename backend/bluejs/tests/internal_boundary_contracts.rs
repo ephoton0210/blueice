@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_host_realm_task_contracts() {
+    blueice_bluejs::Vm::verify_host_realm_task_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_document_policy_contracts() {
     blueice_bluejs::Vm::verify_document_policy_contracts();
 }

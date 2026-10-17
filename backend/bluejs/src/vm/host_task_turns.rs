@@ -12,6 +12,10 @@ use super::*;
 #[path = "../../tests/fixtures/host_task_source_boundaries.rs"]
 mod boundary_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/host_realm_tasks.rs"]
+mod realm_tests;
+
 const MAX_DOCUMENT_TASKS_PER_TURN: usize = 64;
 
 /// Result of a bounded page task turn, without callbacks or source text.
@@ -75,44 +79,51 @@ impl Vm {
         if !self.host_finalization_tasks.is_empty() {
             wake = Some(0);
         }
-        let realms = self.host_shadow_realms()?;
-        for record in realms.iter() {
-            let Some(realm) = record.upgrade() else {
-                continue;
-            };
-            let mut vm = realm.borrow_mut();
-            if vm.ensure_no_debugger_continuation().is_err() {
-                continue;
-            }
-            let now = vm.sample_host_timer_clock();
-            let child = if vm.host_finalization_tasks.is_empty() {
-                vm.next_own_browser_task_wake()
-            } else {
-                Some(0)
-            };
+        let realms = self.host_task_realms()?;
+        for realm in realms.iter() {
+            let child = realm
+                .enter(self, |vm| {
+                    if vm.ensure_no_debugger_continuation().is_err() {
+                        return Ok(None);
+                    }
+                    let now = vm.sample_host_timer_clock();
+                    let browser = if vm.host_finalization_tasks.is_empty() {
+                        vm.next_own_browser_task_wake()
+                    } else {
+                        Some(0)
+                    };
+                    Ok(earliest_wake(
+                        browser,
+                        vm.next_host_timer_due().map(|due| due.saturating_sub(now)),
+                    ))
+                })?
+                .flatten();
             wake = earliest_wake(wake, child);
-            wake = earliest_wake(
-                wake,
-                vm.next_host_timer_due().map(|due| due.saturating_sub(now)),
-            );
         }
         Ok(wake)
     }
 
     fn checkpoint_document_task_entry(&mut self) -> Result<(), RuntimeError> {
-        self.run_host_microtask_checkpoint()?;
-        let realms = self.host_shadow_realms()?;
-        for record in realms.iter() {
-            let Some(realm) = record.upgrade() else {
-                continue;
-            };
-            let mut vm = realm.borrow_mut();
-            if vm.ensure_no_debugger_continuation().is_ok() {
-                vm.sample_host_timer_clock();
-                vm.run_host_microtask_checkpoint()?;
+        let mut remaining = host_timers::MAX_HOST_CHECKPOINT_JOBS;
+        loop {
+            let before = remaining;
+            self.run_host_microtask_checkpoint_with_budget(&mut remaining)?;
+            let realms = self.host_task_realms()?;
+            for realm in realms.iter() {
+                realm.enter(self, |vm| {
+                    if vm.ensure_no_debugger_continuation().is_ok() {
+                        vm.sample_host_timer_clock();
+                        vm.run_host_microtask_checkpoint_with_budget(&mut remaining)?;
+                    }
+                    Ok(())
+                })?;
+            }
+            // A child can queue work in an earlier ancestor, or create another
+            // child. Repeat discovery until quiescent using the same job budget.
+            if before == remaining {
+                return Ok(());
             }
         }
-        Ok(())
     }
 
     pub(crate) fn next_host_task_wake(&mut self, now_ms: u64) -> Result<Option<u64>, RuntimeError> {
@@ -238,34 +249,28 @@ impl Vm {
             self.object_prototype.heap,
             self.snapshot_task_timers(include_timer_callbacks)?,
         )?;
-        let realms = self.host_shadow_realms()?;
-        for record in realms.iter() {
-            let Some(realm) = record.upgrade() else {
-                continue;
-            };
-            let mut vm = realm.borrow_mut();
-            if vm.ensure_no_debugger_continuation().is_ok() {
-                let heap = vm.object_prototype.heap;
-                snapshots.insert(heap, vm.snapshot_task_timers(include_timer_callbacks)?)?;
+        let realms = self.host_task_realms()?;
+        for realm in realms.iter() {
+            if let Some((heap, snapshot)) = realm
+                .enter(self, |vm| {
+                    if vm.ensure_no_debugger_continuation().is_err() {
+                        return Ok(None);
+                    }
+                    Ok(Some((
+                        vm.object_prototype.heap,
+                        vm.snapshot_task_timers(include_timer_callbacks)?,
+                    )))
+                })?
+                .flatten()
+            {
+                snapshots.insert(heap, snapshot)?;
             }
         }
         drop(realms);
         snapshots.sort();
         let mut turn = BlueJsTaskTurn::default();
         while (turn.tasks_run as usize) < max_tasks.min(MAX_DOCUMENT_TASKS_PER_TURN) {
-            let realms = self.host_shadow_realms()?;
-            // A callback can create a realm or queue work through a wrapped
-            // function. Finish those child jobs before selecting another task.
-            for record in realms.iter() {
-                let Some(realm) = record.upgrade() else {
-                    continue;
-                };
-                let mut vm = realm.borrow_mut();
-                if vm.ensure_no_debugger_continuation().is_ok() {
-                    vm.sample_host_timer_clock();
-                    vm.run_host_microtask_checkpoint()?;
-                }
-            }
+            let realms = self.host_task_realms()?;
             let mut selected = None;
             for offset in 0..TASK_SOURCES.len() {
                 let source_index = (self.next_host_task_source + offset) % TASK_SOURCES.len();
@@ -273,16 +278,18 @@ impl Vm {
                 let mut candidate = self
                     .own_task_candidate(source, snapshots.get(&self.object_prototype.heap))
                     .map(|task| (0, task));
-                for (index, record) in realms.iter().enumerate() {
-                    let Some(realm) = record.upgrade() else {
-                        continue;
-                    };
-                    let vm = realm.borrow();
-                    if vm.ensure_no_debugger_continuation().is_err() {
-                        continue;
-                    }
-                    if let Some(task) =
-                        vm.own_task_candidate(source, snapshots.get(&vm.object_prototype.heap))
+                for (index, realm) in realms.iter().enumerate() {
+                    if let Some(task) = realm
+                        .read(self, |vm| {
+                            if vm.ensure_no_debugger_continuation().is_err() {
+                                return Ok(None);
+                            }
+                            Ok(vm.own_task_candidate(
+                                source,
+                                snapshots.get(&vm.object_prototype.heap),
+                            ))
+                        })?
+                        .flatten()
                     {
                         if candidate
                             .as_ref()
@@ -300,33 +307,32 @@ impl Vm {
             let Some((source, owner, delivery)) = selected else {
                 break;
             };
-            // Timers keep their turn snapshot even after an interval rearms.
             let heap = if owner == 0 {
                 self.object_prototype.heap
             } else {
-                realms[owner - 1]
-                    .upgrade()
-                    .expect("selected task owns its realm")
-                    .borrow()
-                    .object_prototype
-                    .heap
+                realms[owner - 1].heap
             };
+            let delivered = if owner == 0 {
+                self.deliver_host_task(delivery)?;
+                true
+            } else {
+                realms[owner - 1]
+                    .enter(self, |vm| vm.deliver_host_task(delivery))?
+                    .is_some()
+            };
+            if !delivered {
+                continue;
+            }
+            // Keep initial timer eligibility even when an interval rearms or a
+            // callback creates another realm. Remove only an attempted timer.
             if let Delivery::Timer(id) = delivery {
                 if let Some(snapshot) = snapshots.get_mut(&heap) {
                     snapshot.callbacks.retain(|(_, timer)| *timer != id);
                 }
             }
             self.next_host_task_source = (source + 1) % TASK_SOURCES.len();
-            if owner == 0 {
-                self.deliver_host_task(delivery)?;
-            } else {
-                realms[owner - 1]
-                    .upgrade()
-                    .expect("selected task owns its realm")
-                    .borrow_mut()
-                    .deliver_host_task(delivery)?;
-            }
             turn.tasks_run += 1;
+            self.checkpoint_document_task_entry()?;
         }
         turn.next_wake_in_ms = self.next_host_task_wake(now_ms)?;
         Ok(turn)
