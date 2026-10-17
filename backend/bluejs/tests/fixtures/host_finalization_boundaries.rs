@@ -19,7 +19,7 @@ fn document_task_delivery_does_not_enter_an_adopted_foreign_document() {
         &mut foreign,
         "var cleaned=0,registry=new FinalizationRegistry(()=>cleaned++);registry.register({},0);",
     );
-    let record = ShadowRealmRecord::new(foreign);
+    let record = ShadowRealmRecord::new(foreign).unwrap();
     owner
         .shadow_realms
         .insert(owner.object_prototype, record.clone());
@@ -82,9 +82,10 @@ fn cleanup_file_reading_and_drag_sources_each_get_a_turn() {
         &mut child,
         "var reader=new FileReader();reader.onloadstart=()=>record('file');reader.readAsText(new Blob(['payload']));",
     );
-    owner
-        .shadow_realms
-        .insert(owner.object_prototype, ShadowRealmRecord::new(child));
+    owner.shadow_realms.insert(
+        owner.object_prototype,
+        ShadowRealmRecord::new(child).unwrap(),
+    );
     assert!(!owner.run_browser_task_turn(2).unwrap());
     assert_eq!(*log.borrow(), [HostValue::String("file".into())]);
     assert!(!owner.run_browser_task_turn(1).unwrap());

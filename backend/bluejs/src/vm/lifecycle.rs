@@ -233,6 +233,7 @@ impl Vm {
             active_generator_delegations: HashSet::new(),
             inherited_with_depth: 0,
             joining: Vec::new(),
+            realm_home: None,
         })
     }
 

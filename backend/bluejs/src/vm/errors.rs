@@ -373,14 +373,11 @@ impl Vm {
     /// error owned by another Test262 realm behind a facade.
     fn has_error_data(&self, object: ObjectId) -> Result<bool, RuntimeError> {
         if let Some((realm, target, _, _)) = self.test262_foreign_reference(object) {
-            let realm = self.test262_realms.get(&realm).ok_or_else(|| {
-                RuntimeError::TypeError("foreign Test262 realm is no longer available".into())
-            })?;
-            return Ok(realm
-                .vm
-                .heap
-                .is_error(target)
-                .expect("a published foreign facade retains its target's permanent root"));
+            return self
+                .test262_realm_handle(realm)?
+                .read(self.object_prototype.heap, |vm| {
+                    vm.heap.is_error(target).map_err(Into::into)
+                });
         }
         Ok(self.heap.is_error(object)?)
     }

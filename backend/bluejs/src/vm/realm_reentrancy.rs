@@ -220,3 +220,22 @@ pub(super) fn active_scheduling_scope(tag: u64) -> Option<SchedulingScope> {
         None
     })
 }
+
+/// Reborrow only a live suspended ancestor, with a distinct caller identity.
+pub(super) fn with_active_vm<T>(
+    caller: u64,
+    target: u64,
+    operation: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
+) -> Result<T, RuntimeError> {
+    if caller == target {
+        return Err(RuntimeError::TypeError(
+            "a realm membrane cannot resolve to itself".into(),
+        ));
+    }
+    let ptr = resolve_active(target).ok_or_else(|| {
+        RuntimeError::TypeError("the callable home realm is not available".into())
+    })?;
+    // SAFETY: ACTIVE owns this tag only for a suspended call's dynamic extent.
+    // Its existing guard keeps the VM alive, and caller != target excludes self.
+    unsafe { operation(&mut *ptr) }
+}

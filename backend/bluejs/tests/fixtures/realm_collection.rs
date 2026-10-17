@@ -54,7 +54,7 @@ fn realm_collection_metadata_refusal_precedes_heap_collection() {
 fn realm_collection_metadata_refusal_preserves_unreachable_realm_owners() {
     let (mut vm, id) = fixture();
     vm.realm_collection_cache = None;
-    let weak = Rc::downgrade(&vm.shadow_realms[&id].vm);
+    let weak = vm.shadow_realms[&id].vm.downgrade();
     let global = vm.global("globalThis").unwrap().object_id().unwrap();
     vm.heap.set(global, "realm", Value::Null).unwrap();
     let _peer = leave_room(&mut vm, 0);
@@ -103,7 +103,7 @@ fn realm_collection_metadata_cached_and_rust_held_storage_has_one_owner() {
     assert_eq!(plan.storage.bytes, bytes);
     assert!(vm.realm_collection_cache.is_none());
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
-    assert_eq!(Rc::strong_count(&vm.shadow_realms[&id].vm), 2);
+    assert_eq!(vm.shadow_realms[&id].vm.strong_count(), 2);
     vm.recycle_realm_collection(plan);
     let cache = vm.realm_collection_cache.as_ref().unwrap();
     assert_eq!(cache.len, 0);
@@ -111,7 +111,7 @@ fn realm_collection_metadata_cached_and_rust_held_storage_has_one_owner() {
         .nodes
         .iter()
         .all(|node| node.record.is_none() && node.live.is_none()));
-    assert_eq!(Rc::strong_count(&vm.shadow_realms[&id].vm), 1);
+    assert_eq!(vm.shadow_realms[&id].vm.strong_count(), 1);
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
     vm.realm_collection_cache = None;
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before - bytes);
@@ -173,14 +173,14 @@ fn realm_collection_metadata_partial_discovery_refunds_records_and_buffers() {
     let room =
         4 * std::mem::size_of::<CollectionRealm>() + probe.capacity() * std::mem::size_of::<u64>();
     drop(probe);
-    let references = Rc::strong_count(&vm.shadow_realms[&id].vm);
+    let references = vm.shadow_realms[&id].vm.strong_count();
     let before = vm.heap.stats();
     let _peer = leave_room(&mut vm, room);
     assert!(matches!(
         vm.prepare_realm_collection(),
         Err(RuntimeError::SchedulingLimit)
     ));
-    assert_eq!(Rc::strong_count(&vm.shadow_realms[&id].vm), references);
+    assert_eq!(vm.shadow_realms[&id].vm.strong_count(), references);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         MAX_HOST_SCHEDULING_BYTES - room
@@ -287,7 +287,7 @@ fn realm_collection_metadata_duplicate_wrapper_targets_use_reserved_slots_once()
 fn realm_collection_metadata_external_owner_keeps_the_shared_realm_live() {
     let (mut vm, id) = fixture();
     let record = vm.shadow_realms[&id].clone();
-    let weak = Rc::downgrade(&record.vm);
+    let weak = record.vm.downgrade();
     let mut external = Vm::default();
     let alias = external
         .execute_script(&script("new ShadowRealm();"))
@@ -308,7 +308,7 @@ fn realm_collection_metadata_external_owner_keeps_the_shared_realm_live() {
 fn realm_collection_metadata_pending_job_keeps_its_realm_until_completion() {
     let (mut vm, id) = fixture();
     let record = vm.shadow_realms[&id].clone();
-    let weak = Rc::downgrade(&record.vm);
+    let weak = record.vm.downgrade();
     record
         .vm
         .borrow_mut()
@@ -337,7 +337,7 @@ fn realm_collection_metadata_unreachable_cross_heap_wrapper_cycle_is_collectible
 #[cfg_attr(test, test)]
 fn realm_collection_metadata_terminal_warm_plan_reclaims_without_new_work() {
     let (mut vm, id) = fixture();
-    let weak = Rc::downgrade(&vm.shadow_realms[&id].vm);
+    let weak = vm.shadow_realms[&id].vm.downgrade();
     let _peer = leave_room(&mut vm, 0);
     assert_eq!(
         vm.admit_scheduling_work(HostSchedulingUsage {

@@ -40,6 +40,10 @@ mod boundary_tests;
 #[path = "../../tests/fixtures/shadow_displaced_roots.rs"]
 mod displaced_root_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/realm_alias_home.rs"]
+mod alias_home_tests;
+
 enum EvaluationCode<'a> {
     #[cfg(any(test, coverage))]
     Borrowed(&'a Bytecode),
@@ -85,11 +89,11 @@ impl Vm {
         // agent-wide even though every Realm keeps its own globals).
         child.symbol_registry = Rc::clone(&self.symbol_registry);
         child.inherit_document_policy(self)?;
-        let heap_tag = child.object_prototype.heap;
+        let record = ShadowRealmRecord::new(child)?;
+        let heap_tag = record.heap;
         let instance = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.shadow_realm_by_heap.insert(heap_tag, instance);
-        self.shadow_realms
-            .insert(instance, ShadowRealmRecord::new(child));
+        self.shadow_realms.insert(instance, record);
         Ok(Value::Object(instance))
     }
 
@@ -614,19 +618,23 @@ impl Vm {
                 }
             };
         }
-        // Otherwise this facade points to a realm not directly reachable
-        // from `self`'s own map: either an ancestor `Vm` that is not
-        // itself a `ShadowRealm` child (e.g. the embedder's own top-level
-        // `Vm`), or -- per the fallback above -- one that is, but is
-        // already checked out further up this very call stack. Either way
-        // it is reachable only through `ACTIVE` (see its own documentation
-        // for why that is sound here).
-        let ptr = self.resolve_shadow_ancestor(Some(home_heap))?;
-        // SAFETY: `ptr` is only present in `ACTIVE` for the dynamic extent
-        // of a suspended ancestor call. The shared resolver rejects `self`
-        // before this reborrow, so the two mutable references do not overlap.
-        let other = unsafe { &mut *ptr };
-        self.shadow_call_across(other, target, this_arg, args)
+        // A short alias need not activate the callable's original owner.
+        // Its weak handle preserves allocation credit without keeping a VM alive.
+        let home = self.shadow_wrapped_functions[&wrapper].home.clone();
+        if let Some(home) = home.and_then(|home| home.upgrade()) {
+            if let Ok(mut other) = home.try_borrow_mut() {
+                let registration =
+                    prepare_active_registration(&mut other, self.host_scheduling.as_ref())?;
+                let guard = registration.publish(&mut other);
+                let result = self.shadow_call_across(&mut other, target, this_arg, args);
+                drop(guard);
+                return result;
+            }
+        }
+        let caller = self.object_prototype.heap;
+        realm_reentrancy::with_active_vm(caller, home_heap, |other| {
+            self.shadow_call_across(other, target, this_arg, args)
+        })
     }
 
     /// Validate the active ancestor before either reentrant boundary reborrows
@@ -760,6 +768,7 @@ impl Vm {
                     home_heap: target.heap,
                     target,
                     target_root: target_root.clone(),
+                    home: source.realm_home.clone(),
                 },
             );
             Ok(Value::Object(wrapper))

@@ -1703,12 +1703,16 @@ fn root_identifier_exhaustion_propagates_without_invalidating_existing_heaps() {
         vm.execute_script(&compile(&parse("$262.createRealm();").unwrap()).unwrap())
             .unwrap();
         let realm = *vm.test262_realms.keys().next().unwrap();
-        let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
-        let target = child.heap.alloc_object(None).unwrap();
-        let root = child.heap.root(target).unwrap();
-        if exhaust_child {
-            child.heap.allow_root_registrations(0);
-        } else {
+        let (target, root) = {
+            let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
+            let target = child.heap.alloc_object(None).unwrap();
+            let root = child.heap.root(target).unwrap();
+            if exhaust_child {
+                child.heap.allow_root_registrations(0);
+            }
+            (target, root)
+        };
+        if !exhaust_child {
             vm.heap.allow_root_registrations(0);
         }
         assert_eq!(
@@ -1721,6 +1725,7 @@ fn root_identifier_exhaustion_propagates_without_invalidating_existing_heaps() {
             .get_mut(&realm)
             .unwrap()
             .vm
+            .borrow_mut()
             .heap
             .unroot(root)
             .unwrap();
@@ -1754,7 +1759,7 @@ fn failed_reverse_facade_root_registration_releases_every_unpublished_owner() {
             .object_id()
             .unwrap();
         {
-            let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
+            let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
             child
                 .with_roots(|heap| {
                     heap.collect_major();
@@ -1762,7 +1767,7 @@ fn failed_reverse_facade_root_registration_releases_every_unpublished_owner() {
                 })
                 .unwrap();
         }
-        let before = vm.test262_realms[&realm].vm.heap.stats();
+        let before = vm.test262_realms[&realm].vm.borrow_mut().heap.stats();
         let source = vm
             .execute_script(&compile(&parse("({answer:42})").unwrap()).unwrap())
             .unwrap();
@@ -1772,6 +1777,7 @@ fn failed_reverse_facade_root_registration_releases_every_unpublished_owner() {
                 .get_mut(&realm)
                 .unwrap()
                 .vm
+                .borrow_mut()
                 .heap
                 .allow_root_registrations(1);
         } else {
@@ -1786,6 +1792,7 @@ fn failed_reverse_facade_root_registration_releases_every_unpublished_owner() {
             .contains_key(&source_id));
         assert!(vm.test262_realms[&realm]
             .vm
+            .borrow_mut()
             .test262_reverse_values
             .is_empty());
         assert_eq!(
@@ -1796,7 +1803,7 @@ fn failed_reverse_facade_root_registration_releases_every_unpublished_owner() {
             !vm.heap.contains(source_id),
             "failed reverse construction retained its parent target root"
         );
-        let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
+        let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
         child
             .with_roots(|heap| {
                 heap.collect_major();
@@ -2079,29 +2086,36 @@ fn reverse_definition_and_deletion_reject_an_inactive_parent() {
         .unwrap()
         .object_id()
         .unwrap();
-    let child = &mut parent.test262_realms.get_mut(&realm).unwrap().vm;
-    assert_eq!(
-        child.test262_reverse_reference(wrapper).unwrap().1,
-        original.object_id().unwrap()
-    );
-    let unavailable = RuntimeError::TypeError(
-        "the Test262 realm this value belongs to is no longer reachable".into(),
-    );
-    assert_eq!(
-        child.test262_reverse_define_own_property(
-            wrapper,
-            "answer".into(),
-            PropertyDescriptor {
-                value: Some(Value::Number(0.0)),
-                ..PropertyDescriptor::default()
-            },
-        ),
-        Err(unavailable.clone())
-    );
-    assert_eq!(
-        child.test262_reverse_delete(wrapper, &"answer".into()),
-        Err(unavailable)
-    );
+    {
+        let child = &mut parent
+            .test262_realms
+            .get_mut(&realm)
+            .unwrap()
+            .vm
+            .borrow_mut();
+        assert_eq!(
+            child.test262_reverse_reference(wrapper).unwrap().1,
+            original.object_id().unwrap()
+        );
+        let unavailable = RuntimeError::TypeError(
+            "the Test262 realm this value belongs to is no longer reachable".into(),
+        );
+        assert_eq!(
+            child.test262_reverse_define_own_property(
+                wrapper,
+                "answer".into(),
+                PropertyDescriptor {
+                    value: Some(Value::Number(0.0)),
+                    ..PropertyDescriptor::default()
+                },
+            ),
+            Err(unavailable.clone())
+        );
+        assert_eq!(
+            child.test262_reverse_delete(wrapper, &"answer".into()),
+            Err(unavailable)
+        );
+    }
     assert_eq!(
         parent.execute_script(&compile(&parse("retainedParent.answer").unwrap()).unwrap()),
         Ok(Value::Number(42.0))
@@ -2873,25 +2887,28 @@ fn foreign_snapshot_allocation_failures_preserve_both_realms_and_source_identity
             vm.install_test262_harness().unwrap();
             vm.execute_script(&setup).unwrap();
             let realm = *vm.test262_realms.keys().next().unwrap();
-            let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
-            child.with_roots(|heap| {heap.collect_major(); Ok(())}).unwrap();
+            let child_limit = {
+                let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
+                child.with_roots(|heap| {heap.collect_major(); Ok(())}).unwrap();
+                if limit_parent { None } else { Some(child.heap.allow_only(extra)) }
+            };
             let limit = if limit_parent {
                 vm.with_roots(|heap| {heap.collect_major(); Ok(())}).unwrap();
                 vm.heap.allow_only(extra)
-            } else {
-                child.heap.allow_only(extra)
-            };
+            } else { child_limit.unwrap() };
             match vm.execute_script(&operation) {
                 Ok(answer) => {assert_eq!(answer, Value::Number(42.0), "{source}"); completed = true;}
                 Err(RuntimeError::Heap(HeapError::HeapLimitExceeded {limit: actual})) => {assert_eq!(actual, limit); failures += 1;}
                 Err(error) => panic!("{setup_source}; {source}, parent={limit_parent}, headroom {extra}: {error:?}"),
             }
             assert!(vm.stack.is_empty());
-            let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
+            {
+            let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
             assert!(child.stack.is_empty());
             if !completed && !limit_parent { next_extra = child.heap.next_allocation_headroom(extra); }
             child.heap.allow_only(16 * 1024 * 1024);
             assert_eq!(child.execute_script(&reuse), Ok(Value::Number(42.0)));
+            }
             if !completed && limit_parent { next_extra = vm.heap.next_allocation_headroom(extra); }
             vm.heap.allow_only(16 * 1024 * 1024);
             assert_eq!(vm.execute_script(&reuse), Ok(Value::Number(42.0)));
@@ -4106,6 +4123,7 @@ fn foreign_proxy_import_root_refusals_preserve_both_heaps_and_partial_facades() 
                     .get_mut(&realm)
                     .unwrap()
                     .vm
+                    .borrow_mut()
                     .execute_script(&script(source))
                     .unwrap();
                 if limit_parent {
@@ -4115,6 +4133,7 @@ fn foreign_proxy_import_root_refusals_preserve_both_heaps_and_partial_facades() 
                         .get_mut(&realm)
                         .unwrap()
                         .vm
+                        .borrow_mut()
                         .heap
                         .allow_root_registrations(registrations);
                 }
@@ -4129,9 +4148,13 @@ fn foreign_proxy_import_root_refusals_preserve_both_heaps_and_partial_facades() 
                     ),
                 }
                 assert!(vm.stack.is_empty());
-                let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
-                assert!(child.stack.is_empty() && child.heap.contains(target.object_id().unwrap()));
-                assert_eq!(child.execute_script(&reuse), Ok(Value::Number(42.0)));
+                {
+                    let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
+                    assert!(
+                        child.stack.is_empty() && child.heap.contains(target.object_id().unwrap())
+                    );
+                    assert_eq!(child.execute_script(&reuse), Ok(Value::Number(42.0)));
+                }
                 assert_eq!(vm.execute_script(&reuse), Ok(Value::Number(42.0)));
                 if completed {
                     break;

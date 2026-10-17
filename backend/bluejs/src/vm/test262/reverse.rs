@@ -505,7 +505,7 @@ fn reverse_child_realm_id(parent: &Vm, child_heap: u64) -> ObjectId {
     parent
         .test262_realms
         .iter()
-        .find_map(|(&id, realm)| (realm.vm.object_prototype.heap == child_heap).then_some(id))
+        .find_map(|(&id, realm)| (realm.vm.heap() == child_heap).then_some(id))
         .expect("a reverse facade's home realm always owns this child directly")
 }
 
@@ -561,12 +561,17 @@ mod tests {
         vm.install_test262_harness().unwrap();
         vm.execute(&compile(&parse(setup).unwrap()).unwrap())
             .unwrap();
-        let realm = match limited {
-            Limited::Parent => &mut vm,
-            Limited::Child => &mut *vm.test262_realms.values_mut().next().unwrap().vm,
-        };
-        realm.heap.collect_major();
-        realm.heap().stats().managed_bytes
+        match limited {
+            Limited::Parent => {
+                vm.heap.collect_major();
+                vm.heap().stats().managed_bytes
+            }
+            Limited::Child => {
+                let mut realm = vm.test262_realms.values().next().unwrap().vm.borrow_mut();
+                realm.heap.collect_major();
+                realm.heap().stats().managed_bytes
+            }
+        }
     }
 
     /// Runs `operation` after `setup` on hosts where one realm's heap
@@ -612,7 +617,13 @@ mod tests {
                             let _ = parent.heap.alloc_object(None);
                         }
                         Limited::Child => {
-                            let child = &mut *parent.test262_realms.values_mut().next().unwrap().vm;
+                            let child = &mut *parent
+                                .test262_realms
+                                .values_mut()
+                                .next()
+                                .unwrap()
+                                .vm
+                                .borrow_mut();
                             let _ = child.heap.alloc_object(None);
                         }
                     }
@@ -763,13 +774,15 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        parent
+        let result = parent
             .test262_realms
-            .values_mut()
+            .values()
             .next()
             .unwrap()
             .vm
-            .execute(&code)
+            .borrow_mut()
+            .execute(&code);
+        result
     }
 
     #[test]
@@ -894,9 +907,13 @@ mod tests {
             })
             .expect("the typed array crossed as a snapshot")
             .0;
-        let child: *const Vm = &*realm.vm;
+        let child = {
+            let vm = realm.vm.borrow();
+            &*vm as *const Vm
+        };
         let facade = *realm
             .vm
+            .borrow_mut()
             .test262_reverse_values
             .iter()
             .find(|(_, value)| value.constructible)

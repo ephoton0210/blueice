@@ -68,6 +68,32 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The aliased callable-home follow-up (2026-10-18) has an implementation
+checkpoint. Three tiny regressions reproduced lost owned/shared callback homes
+when a shorter alias replaced the selected host route. Wrapped callables now
+retain weak, borrowable home handles independently of that route. Owned Test262
+and shared ShadowRealm VMs use admitted cells; weak tokens retain allocation
+credit without retaining VM data. Late document activation attaches once and
+foreign rebinding fails without changing the original owner. Inactive homes use
+checked borrows; busy homes resolve only existing synchronous active registrations.
+Foreign entry retains preparation/publication order and host-routing fuel policy.
+
+The collector now discovers owned descendants as well as shared records. Admitted
+owned lifetime edges preserve their owning VM while incoming wrappers or pending
+work keep a child live. Live wrapped functions retain their original home and
+target across GC; dead wrappers no longer bootstrap shared cycles into liveness.
+Fourteen new contracts and 114 relevant finite controls pass: **128 distinct
+selected tests**, five executable targets and 96 selections. Formatting, diff
+checks and offline workspace/all-target Clippy pass. Frozen source/artifact and
+Git audits bind this local checkpoint. The previous 245-case result remains
+historical evidence; this revision does not claim that complete replay.
+
+No quota-boundary, exhaustion, service, conformance timer thread or privileged
+replay was run; rejected push/process inspection was not retried. Wider native,
+transport, program and retained-map ownership and integrated acceptance remain
+open. M1u remains latest accepted; M1z integrated gates remain open. Evidence:
+`target/realm-alias-home-source-20261018.json`.
+
 The document checkpoint/WeakRef follow-up (2026-10-18) has an implementation
 checkpoint. Five tiny regressions reproduced early script/child/ancestor/timer
 target loss and a spurious rejection wake; three further error-handler cases
@@ -1470,7 +1496,10 @@ work and exposes its retained payload ledger.
       Document checkpoint/kept-target ownership now adds twenty-five contracts
       and 245 selected cases, including document quiescence, deferred rejection
       publication, kept-buffer admission/lifetime, busy retry and native/error
-      producer wakes. Alternative alias-route callbacks remain unverified.
+      producer wakes. Aliased callable homes now add fourteen contracts and
+      128 relevant selected cases, including borrowable owned/shared cells,
+      weak allocation ownership and mixed-tree GC reachability. This targeted
+      replay is separate from the preceding historical 245-case checkpoint.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

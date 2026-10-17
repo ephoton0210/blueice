@@ -90,7 +90,7 @@ fn membrane_argument_exports_reject_handles_owned_by_another_live_heap() {
         ),
         Err(RuntimeError::from(HeapError::InvalidInternalSlot(target)))
     );
-    assert!(vm.stack.is_empty() && vm.test262_realms[&realm].vm.stack.is_empty());
+    assert!(vm.stack.is_empty() && vm.test262_realms[&realm].vm.borrow_mut().stack.is_empty());
     assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
     vm.heap.unroot(buffer_root).unwrap();
     vm.heap.unroot(array_root).unwrap();
@@ -253,6 +253,7 @@ fn foreign_mirror_growth_refusal_keeps_the_original_backing_and_metadata() {
         .get_mut(&realm)
         .unwrap()
         .vm
+        .borrow_mut()
         .heap
         .resize_array_buffer(target, 4096)
         .unwrap();
@@ -295,12 +296,14 @@ fn cold_destination_buffer_transport_keeps_lazy_prototype_refusals() {
                 .get_mut(&realm)
                 .unwrap()
                 .vm
+                .borrow_mut()
                 .heap
                 .allow_only(extra);
             match vm.test262_transport_value(realm, value) {
                 Ok(value) => {
                     assert!(vm.test262_realms[&realm]
                         .vm
+                        .borrow_mut()
                         .heap
                         .contains(value.object_id().unwrap()));
                     complete = true;
@@ -311,15 +314,18 @@ fn cold_destination_buffer_transport_keeps_lazy_prototype_refusals() {
                     refused += 1;
                     extra = vm.test262_realms[&realm]
                         .vm
+                        .borrow_mut()
                         .heap
                         .next_allocation_headroom(extra);
                 }
                 result => panic!("cold destination {source}, headroom={extra}: {result:?}"),
             }
-            let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
-            assert!(child.stack.is_empty());
-            child.heap.allow_only(16 * 1024 * 1024);
-            assert_eq!(execute(child, "21 + 21"), Value::Number(42.0));
+            {
+                let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
+                assert!(child.stack.is_empty());
+                child.heap.allow_only(16 * 1024 * 1024);
+                assert_eq!(execute(child, "21 + 21"), Value::Number(42.0));
+            }
             assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
             vm.heap.unroot(root).unwrap();
             if complete {
@@ -393,6 +399,7 @@ fn detached_local_mirrors_and_other_realm_host_hooks_preserve_buffer_ownership()
     assert!(vm.heap.buffer_is_detached(mirror).unwrap());
     assert!(!vm.test262_realms[&realm]
         .vm
+        .borrow_mut()
         .heap
         .buffer_is_detached(target)
         .unwrap());
@@ -406,6 +413,7 @@ fn detached_local_mirrors_and_other_realm_host_hooks_preserve_buffer_ownership()
     );
     assert!(vm.test262_realms[&realm]
         .vm
+        .borrow_mut()
         .heap
         .buffer_is_detached(target)
         .unwrap());
@@ -558,18 +566,20 @@ fn owned_membrane_prototypes_and_detachment_preserve_real_exceptions() {
         .get_mut(&realm)
         .unwrap()
         .vm
+        .borrow_mut()
         .heap
         .resize_array_buffer(imported, 16)
         .unwrap();
-    vm.test262_sync_foreign_buffer_mirrors(realm);
+    vm.test262_sync_foreign_buffer_mirrors(realm).unwrap();
     vm.heap.detach_array_buffer(buffer).unwrap();
-    vm.test262_sync_foreign_buffer_mirrors(realm);
+    vm.test262_sync_foreign_buffer_mirrors(realm).unwrap();
     vm.test262_refresh_foreign_buffer_mirrors(realm, imported)
         .unwrap();
     vm.test262_realms
         .get_mut(&realm)
         .unwrap()
         .vm
+        .borrow_mut()
         .heap
         .detach_array_buffer(imported)
         .unwrap();
@@ -624,6 +634,7 @@ fn foreign_error_materialization_and_snapshot_roots_preserve_refusals() {
             .get_mut(&realm)
             .unwrap()
             .vm
+            .borrow_mut()
             .global("TypeError")
             .unwrap();
         let limit = if child_limit {
@@ -631,6 +642,7 @@ fn foreign_error_materialization_and_snapshot_roots_preserve_refusals() {
                 .get_mut(&realm)
                 .unwrap()
                 .vm
+                .borrow_mut()
                 .heap
                 .allow_only(0)
         } else {
@@ -648,6 +660,7 @@ fn foreign_error_materialization_and_snapshot_roots_preserve_refusals() {
             .get_mut(&realm)
             .unwrap()
             .vm
+            .borrow_mut()
             .heap
             .allow_only(16 * 1024 * 1024);
         assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
@@ -657,7 +670,7 @@ fn foreign_error_materialization_and_snapshot_roots_preserve_refusals() {
     execute(&mut vm, "globalThis.child = $262.createRealm().global;");
     let realm = *vm.test262_realms.keys().next().unwrap();
     let thrown = execute(
-        &mut vm.test262_realms.get_mut(&realm).unwrap().vm,
+        &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut(),
         "({answer:42})",
     );
     let limit = vm.heap.allow_only(0);
@@ -677,12 +690,14 @@ fn foreign_error_materialization_and_snapshot_roots_preserve_refusals() {
         .get_mut(&realm)
         .unwrap()
         .vm
+        .borrow_mut()
         .buffer_prototype("ArrayBuffer")
         .unwrap();
     vm.test262_realms
         .get_mut(&realm)
         .unwrap()
         .vm
+        .borrow_mut()
         .heap
         .allow_root_registrations(0);
     assert_eq!(
@@ -714,6 +729,7 @@ fn shadow_reexports_and_foreign_apply_preserve_destination_refusals() {
                 .get_mut(&destination)
                 .unwrap()
                 .vm
+                .borrow_mut()
                 .shadow_realm_prototype()
                 .unwrap();
         }
@@ -722,6 +738,7 @@ fn shadow_reexports_and_foreign_apply_preserve_destination_refusals() {
             .get_mut(&destination)
             .unwrap()
             .vm
+            .borrow_mut()
             .heap
             .allow_only(0);
         assert_eq!(
@@ -735,6 +752,7 @@ fn shadow_reexports_and_foreign_apply_preserve_destination_refusals() {
             .get_mut(&destination)
             .unwrap()
             .vm
+            .borrow_mut()
             .heap
             .allow_only(16 * 1024 * 1024);
         let exported = vm
@@ -760,6 +778,7 @@ fn shadow_reexports_and_foreign_apply_preserve_destination_refusals() {
             .get_mut(&realm)
             .unwrap()
             .vm
+            .borrow_mut()
             .global("TypeError")
             .unwrap();
         let limit = if child_limit {
@@ -767,6 +786,7 @@ fn shadow_reexports_and_foreign_apply_preserve_destination_refusals() {
                 .get_mut(&realm)
                 .unwrap()
                 .vm
+                .borrow_mut()
                 .heap
                 .allow_only(0)
         } else {
@@ -781,9 +801,10 @@ fn shadow_reexports_and_foreign_apply_preserve_destination_refusals() {
             .get_mut(&realm)
             .unwrap()
             .vm
+            .borrow_mut()
             .heap
             .allow_only(16 * 1024 * 1024);
-        assert!(vm.stack.is_empty() && vm.test262_realms[&realm].vm.stack.is_empty());
+        assert!(vm.stack.is_empty() && vm.test262_realms[&realm].vm.borrow_mut().stack.is_empty());
         assert_eq!(execute(&mut vm, "21 + 21"), Value::Number(42.0));
     }
 }
@@ -804,7 +825,11 @@ fn buffer_transport_records_retain_both_heaps_across_collection_and_flush() {
         .unwrap();
     assert_eq!(
         value.object_id().unwrap().heap,
-        vm.test262_realms[&realm].vm.object_prototype.heap
+        vm.test262_realms[&realm]
+            .vm
+            .borrow_mut()
+            .object_prototype
+            .heap
     );
     assert!(vm
         .test262_foreign_buffer_mirrors
@@ -818,17 +843,19 @@ fn buffer_transport_records_retain_both_heaps_across_collection_and_flush() {
     assert!(vm.heap.contains(buffer));
     let target = value.object_id().unwrap();
     vm.heap.array_buffer_write(buffer, 0, &[7]).unwrap();
-    vm.test262_sync_foreign_buffer_mirrors(realm);
-    let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
-    child
-        .with_roots(|heap| {
-            heap.collect_major();
-            Ok(())
-        })
-        .unwrap();
-    assert!(child.heap.contains(target));
-    assert_eq!(child.heap.array_buffer_copy(target, 0, 1).unwrap(), vec![7]);
-    child.heap.array_buffer_write(target, 0, &[42]).unwrap();
+    vm.test262_sync_foreign_buffer_mirrors(realm).unwrap();
+    {
+        let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
+        child
+            .with_roots(|heap| {
+                heap.collect_major();
+                Ok(())
+            })
+            .unwrap();
+        assert!(child.heap.contains(target));
+        assert_eq!(child.heap.array_buffer_copy(target, 0, 1).unwrap(), vec![7]);
+        child.heap.array_buffer_write(target, 0, &[42]).unwrap();
+    }
     vm.test262_refresh_foreign_buffer_mirrors(realm, target)
         .unwrap();
     assert_eq!(vm.heap.array_buffer_copy(buffer, 0, 1).unwrap(), vec![42]);
@@ -846,7 +873,7 @@ fn foreign_completion_and_detachment_preserve_real_resource_boundaries() {
     execute(&mut vm, "globalThis.child = $262.createRealm().global;");
     let realm = *vm.test262_realms.keys().next().unwrap();
     let limit = {
-        let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm;
+        let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
         child
             .with_roots(|heap| {
                 heap.collect_major();
@@ -869,6 +896,7 @@ fn foreign_completion_and_detachment_preserve_real_resource_boundaries() {
         .get_mut(&realm)
         .unwrap()
         .vm
+        .borrow_mut()
         .heap
         .allow_only(16 * 1024 * 1024);
     for source in [
@@ -918,6 +946,7 @@ fn foreign_native_fill_preserves_post_callback_mirror_growth_refusal() {
     assert_eq!(
         vm.test262_realms[&realm]
             .vm
+            .borrow_mut()
             .heap
             .buffer_byte_length(target)
             .unwrap(),

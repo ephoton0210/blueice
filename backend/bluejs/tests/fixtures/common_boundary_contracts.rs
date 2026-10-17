@@ -1031,6 +1031,7 @@ fn shared_foreign_array_prototype_refusal_restores_operands() {
         .get_mut(&realm)
         .unwrap()
         .vm
+        .borrow_mut()
         .heap
         .allow_only(0);
     assert_eq!(
@@ -1042,6 +1043,7 @@ fn shared_foreign_array_prototype_refusal_restores_operands() {
         .get_mut(&realm)
         .unwrap()
         .vm
+        .borrow_mut()
         .heap
         .allow_only(16 * 1024 * 1024);
     assert!(vm.array_flat(&receiver, &Value::Undefined).is_ok());

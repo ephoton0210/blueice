@@ -441,7 +441,7 @@ fn gc_trace_storage_discarded_child_releases_its_cached_native_capacity() {
         .object_id()
         .unwrap();
     let record = vm.shadow_realms.get(&realm).unwrap().clone();
-    let weak = Rc::downgrade(&record.vm);
+    let weak = record.vm.downgrade();
     let child_bytes = {
         let mut child = record.vm.borrow_mut();
         root_batch(&mut child);

@@ -44,7 +44,7 @@ fn work(vm: &mut Vm) {
 fn host_realm_tasks_owned_child_contributes_its_next_wake() {
     let mut root = page();
     let id = owned(&mut root);
-    work(&mut root.test262_realms.get_mut(&id).unwrap().vm);
+    work(&mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut());
     assert_eq!(root.next_host_task_wake(0).unwrap(), Some(1));
 }
 
@@ -52,10 +52,13 @@ fn host_realm_tasks_owned_child_contributes_its_next_wake() {
 fn host_realm_tasks_owned_child_timer_and_promise_complete_in_document_turn() {
     let mut root = page();
     let id = owned(&mut root);
-    work(&mut root.test262_realms.get_mut(&id).unwrap().vm);
+    work(&mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut());
     assert_eq!(root.run_host_task_turn(1, 1).unwrap().tasks_run, 1);
     assert_eq!(
-        run(&mut root.test262_realms.get_mut(&id).unwrap().vm, "seen;"),
+        run(
+            &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut(),
+            "seen;"
+        ),
         Value::Number(3.0)
     );
 }
@@ -64,7 +67,7 @@ fn host_realm_tasks_owned_child_timer_and_promise_complete_in_document_turn() {
 fn host_realm_tasks_shadow_below_owned_child_receives_its_turn() {
     let mut root = page();
     let id = owned(&mut root);
-    let record = shadow(&mut root.test262_realms.get_mut(&id).unwrap().vm);
+    let record = shadow(&mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut());
     work(&mut record.vm.borrow_mut());
     assert_eq!(root.run_host_task_turn(1, 1).unwrap().tasks_run, 1);
     assert_eq!(
@@ -85,7 +88,8 @@ fn host_realm_tasks_owned_child_below_shadow_receives_its_turn() {
             .test262_realms
             .get_mut(&id)
             .unwrap()
-            .vm,
+            .vm
+            .borrow_mut(),
     );
     assert_eq!(root.run_host_task_turn(1, 1).unwrap().tasks_run, 1);
     assert_eq!(
@@ -96,7 +100,8 @@ fn host_realm_tasks_owned_child_below_shadow_receives_its_turn() {
                 .test262_realms
                 .get_mut(&id)
                 .unwrap()
-                .vm,
+                .vm
+                .borrow_mut(),
             "seen;"
         ),
         Value::Number(3.0)
@@ -108,12 +113,15 @@ fn host_realm_tasks_owned_microtasks_drain_without_a_task_delivery() {
     let mut root = page();
     let id = owned(&mut root);
     run(
-        &mut root.test262_realms.get_mut(&id).unwrap().vm,
+        &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut(),
         "var seen=0;Promise.resolve().then(()=>seen=7);0;",
     );
     assert_eq!(root.run_host_task_turn(0, 0).unwrap().tasks_run, 0);
     assert_eq!(
-        run(&mut root.test262_realms.get_mut(&id).unwrap().vm, "seen;"),
+        run(
+            &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut(),
+            "seen;"
+        ),
         Value::Number(7.0)
     );
 }
@@ -123,9 +131,11 @@ fn host_realm_tasks_owned_timer_can_return_to_its_parent() {
     let mut root = page();
     let id = owned(&mut root);
     run(&mut root,"var events=[];realm.global.parentCallback=()=>{events.push('parent');Promise.resolve().then(()=>events.push('job'));};0;");
-    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm;
-    browser_timers(child);
-    run(child, "setTimeout(()=>parentCallback(),1);0;");
+    {
+        let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
+        browser_timers(child);
+        run(child, "setTimeout(()=>parentCallback(),1);0;");
+    }
     assert_eq!(root.run_host_task_turn(1, 1).unwrap().tasks_run, 1);
     assert_eq!(
         run(&mut root, "events.join(',');"),
@@ -148,6 +158,7 @@ fn host_realm_tasks_mixed_path_keeps_each_callback_ancestor_active() {
         .get(&id)
         .unwrap()
         .vm
+        .borrow_mut()
         .shadow_realms
         .values()
         .next()
@@ -171,7 +182,7 @@ fn host_realm_tasks_checkpoint_revisits_ancestor_jobs_until_quiescent() {
     let id = owned(&mut root);
     run(&mut root,"var events=[];realm.global.parentCallback=()=>{events.push('child');Promise.resolve().then(()=>events.push('parent-job'));};0;");
     run(
-        &mut root.test262_realms.get_mut(&id).unwrap().vm,
+        &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut(),
         "globalThis.trigger=()=>{Promise.resolve().then(()=>parentCallback());return 0;};0;",
     );
     run(
@@ -230,14 +241,17 @@ fn host_realm_tasks_foreign_owned_member_stays_outside_document_delivery() {
     let mut root = page();
     let mut foreign = page();
     let id = owned(&mut foreign);
-    work(&mut foreign.test262_realms.get_mut(&id).unwrap().vm);
+    work(&mut foreign.test262_realms.get_mut(&id).unwrap().vm.borrow_mut());
     let child = foreign.test262_realms.remove(&id).unwrap();
     let key = root.object_prototype;
     root.test262_realms.insert(key, child);
     assert_eq!(root.next_host_task_wake(0).unwrap(), None);
     assert_eq!(root.run_host_task_turn(1, 1).unwrap().tasks_run, 0);
     assert_eq!(
-        run(&mut root.test262_realms.get_mut(&key).unwrap().vm, "seen;"),
+        run(
+            &mut root.test262_realms.get_mut(&key).unwrap().vm.borrow_mut(),
+            "seen;"
+        ),
         Value::Number(0.0)
     );
 }
@@ -260,17 +274,19 @@ fn host_realm_tasks_timer_source_order_spans_root_owned_and_shared_members() {
     browser_timers(&mut root);
     record(&mut root, &log);
     {
-        let child = &mut root.test262_realms.get_mut(&id).unwrap().vm;
-        browser_timers(child);
-        record(child, &log);
-        run(child, "setTimeout(()=>record('owned'),0);0;");
-    }
-    run(&mut root, "setTimeout(()=>record('root'),0);0;");
-    {
-        let mut child = shadow.vm.borrow_mut();
-        browser_timers(&mut child);
-        record(&mut child, &log);
-        run(&mut child, "setTimeout(()=>record('shared'),0);0;");
+        {
+            let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
+            browser_timers(child);
+            record(child, &log);
+            run(child, "setTimeout(()=>record('owned'),0);0;");
+        }
+        run(&mut root, "setTimeout(()=>record('root'),0);0;");
+        {
+            let mut child = shadow.vm.borrow_mut();
+            browser_timers(&mut child);
+            record(&mut child, &log);
+            run(&mut child, "setTimeout(()=>record('shared'),0);0;");
+        }
     }
     assert_eq!(root.run_host_task_turn(0, 3).unwrap().tasks_run, 3);
     assert_eq!(
@@ -287,21 +303,26 @@ fn host_realm_tasks_timer_source_order_spans_root_owned_and_shared_members() {
 fn host_realm_tasks_interval_and_new_timer_keep_initial_turn_eligibility() {
     let mut root = page();
     let id = owned(&mut root);
-    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm;
-    browser_timers(child);
-    run(
-        child,
-        "var seen=0;var interval=setInterval(()=>{seen++;setTimeout(()=>seen+=10,0);},1);0;",
-    );
+    {
+        let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
+        browser_timers(child);
+        run(
+            child,
+            "var seen=0;var interval=setInterval(()=>{seen++;setTimeout(()=>seen+=10,0);},1);0;",
+        );
+    }
     assert_eq!(root.run_host_task_turn(1, 3).unwrap().tasks_run, 1);
     assert_eq!(
-        run(&mut root.test262_realms.get_mut(&id).unwrap().vm, "seen;"),
+        run(
+            &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut(),
+            "seen;"
+        ),
         Value::Number(1.0)
     );
     assert_eq!(root.run_host_task_turn(1, 3).unwrap().tasks_run, 1);
     assert_eq!(
         run(
-            &mut root.test262_realms.get_mut(&id).unwrap().vm,
+            &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut(),
             "clearInterval(interval);seen;"
         ),
         Value::Number(11.0)
@@ -312,10 +333,12 @@ fn host_realm_tasks_interval_and_new_timer_keep_initial_turn_eligibility() {
 fn host_realm_tasks_browser_only_turn_defers_owned_callback_timers() {
     let mut root = page();
     let id = owned(&mut root);
-    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm;
-    browser_timers(child);
-    child.install_web_file_api().unwrap();
-    run(child,"var seen=0;var signal=AbortSignal.timeout(1);signal.onabort=()=>seen++;setTimeout(()=>seen+=10,1);0;");
+    {
+        let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
+        browser_timers(child);
+        child.install_web_file_api().unwrap();
+        run(child,"var seen=0;var signal=AbortSignal.timeout(1);signal.onabort=()=>seen++;setTimeout(()=>seen+=10,1);0;");
+    }
     assert_eq!(
         root.run_host_task_turn_inner(1, 3, false)
             .unwrap()
@@ -323,12 +346,18 @@ fn host_realm_tasks_browser_only_turn_defers_owned_callback_timers() {
         1
     );
     assert_eq!(
-        run(&mut root.test262_realms.get_mut(&id).unwrap().vm, "seen;"),
+        run(
+            &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut(),
+            "seen;"
+        ),
         Value::Number(1.0)
     );
     assert_eq!(root.run_host_task_turn(1, 3).unwrap().tasks_run, 1);
     assert_eq!(
-        run(&mut root.test262_realms.get_mut(&id).unwrap().vm, "seen;"),
+        run(
+            &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut(),
+            "seen;"
+        ),
         Value::Number(11.0)
     );
 }
@@ -337,12 +366,17 @@ fn host_realm_tasks_browser_only_turn_defers_owned_callback_timers() {
 fn host_realm_tasks_owned_finalization_cleanup_is_document_work() {
     let mut root = page();
     let id = owned(&mut root);
-    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm;
-    run(child,"var seen=0;var registry=new FinalizationRegistry(()=>seen++);(()=>{var object={};registry.register(object,0);})();0;");
-    child.collect_realm_garbage().unwrap();
+    {
+        let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
+        run(child,"var seen=0;var registry=new FinalizationRegistry(()=>seen++);(()=>{var object={};registry.register(object,0);})();0;");
+        child.collect_realm_garbage().unwrap();
+    }
     assert_eq!(root.run_host_task_turn(0, 1).unwrap().tasks_run, 1);
     assert_eq!(
-        run(&mut root.test262_realms.get_mut(&id).unwrap().vm, "seen;"),
+        run(
+            &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut(),
+            "seen;"
+        ),
         Value::Number(1.0)
     );
 }
@@ -351,21 +385,24 @@ fn host_realm_tasks_owned_finalization_cleanup_is_document_work() {
 fn host_realm_tasks_conformance_timers_remain_independent() {
     let mut root = page();
     let id = owned(&mut root);
-    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm;
-    let global = child.global("globalThis").unwrap().object_id().unwrap();
-    let timer = child
-        .heap
-        .get_own(global, "setTimeout")
-        .unwrap()
-        .unwrap()
-        .object_id()
-        .unwrap();
-    assert_eq!(
-        child.heap.native_function(timer).unwrap(),
-        Some(NativeFunction::Test262("setTimeout"))
-    );
+    let timer;
+    {
+        let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
+        let global = child.global("globalThis").unwrap().object_id().unwrap();
+        timer = child
+            .heap
+            .get_own(global, "setTimeout")
+            .unwrap()
+            .unwrap()
+            .object_id()
+            .unwrap();
+        assert_eq!(
+            child.heap.native_function(timer).unwrap(),
+            Some(NativeFunction::Test262("setTimeout"))
+        );
+    }
     assert_eq!(root.run_host_task_turn(0, 1).unwrap().tasks_run, 0);
-    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm;
+    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
     assert_eq!(
         child.heap.native_function(timer).unwrap(),
         Some(NativeFunction::Test262("setTimeout"))
@@ -377,7 +414,12 @@ fn host_realm_tasks_conformance_timers_remain_independent() {
 fn host_realm_tasks_snapshot_releases_owned_vm_and_all_path_credit() {
     let mut root = page();
     let id = owned(&mut root);
-    let child_bytes = root.test262_realms[&id].vm.heap.stats().managed_bytes;
+    let child_bytes = root.test262_realms[&id]
+        .vm
+        .borrow_mut()
+        .heap
+        .stats()
+        .managed_bytes;
     let managed = root.heap.document_heap_budget().unwrap().0;
     let snapshot = root.host_task_realms().unwrap();
     let bytes = snapshot.retained_bytes()
@@ -403,16 +445,28 @@ fn host_realm_tasks_snapshot_releases_owned_vm_and_all_path_credit() {
 fn host_realm_tasks_terminal_path_entry_preserves_queued_work() {
     let mut root = page();
     let id = owned(&mut root);
-    work(&mut root.test262_realms.get_mut(&id).unwrap().vm);
+    work(&mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut());
     let snapshot = root.host_task_realms().unwrap();
-    let fuel = root.test262_realms[&id].vm.remaining_instructions;
+    let fuel = root.test262_realms[&id]
+        .vm
+        .borrow_mut()
+        .remaining_instructions;
     root.host_scheduling.as_ref().unwrap().fail();
     assert!(matches!(
         snapshot[0].enter(&mut root, |_| Ok(())),
         Err(RuntimeError::SchedulingLimit)
     ));
-    assert_eq!(root.test262_realms[&id].vm.host_timers.len(), 1);
-    assert_eq!(root.test262_realms[&id].vm.remaining_instructions, fuel);
+    assert_eq!(
+        root.test262_realms[&id].vm.borrow_mut().host_timers.len(),
+        1
+    );
+    assert_eq!(
+        root.test262_realms[&id]
+            .vm
+            .borrow_mut()
+            .remaining_instructions,
+        fuel
+    );
     drop(snapshot);
     let mut healthy = page();
     assert_eq!(healthy.run_host_task_turn(0, 1).unwrap().tasks_run, 0);
@@ -422,22 +476,33 @@ fn host_realm_tasks_terminal_path_entry_preserves_queued_work() {
 fn host_realm_tasks_wake_lookup_preserves_fuel_and_releases_registrations() {
     let mut root = page();
     let id = owned(&mut root);
-    work(&mut root.test262_realms.get_mut(&id).unwrap().vm);
+    work(&mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut());
     root.remaining_instructions = 7;
     root.test262_realms
         .get_mut(&id)
         .unwrap()
         .vm
+        .borrow_mut()
         .remaining_instructions = 11;
     let before = root.host_scheduling_usage().unwrap();
     assert_eq!(root.next_host_task_wake(0).unwrap(), Some(1));
     assert_eq!(root.remaining_instructions, 7);
-    assert_eq!(root.test262_realms[&id].vm.remaining_instructions, 11);
-    assert!(realm_reentrancy::resolve_active(root.object_prototype.heap).is_none());
-    assert!(
-        realm_reentrancy::resolve_active(root.test262_realms[&id].vm.object_prototype.heap)
-            .is_none()
+    assert_eq!(
+        root.test262_realms[&id]
+            .vm
+            .borrow_mut()
+            .remaining_instructions,
+        11
     );
+    assert!(realm_reentrancy::resolve_active(root.object_prototype.heap).is_none());
+    assert!(realm_reentrancy::resolve_active(
+        root.test262_realms[&id]
+            .vm
+            .borrow_mut()
+            .object_prototype
+            .heap
+    )
+    .is_none());
     assert_eq!(root.host_scheduling_usage().unwrap(), before);
 }
 
@@ -445,15 +510,30 @@ fn host_realm_tasks_wake_lookup_preserves_fuel_and_releases_registrations() {
 fn host_realm_tasks_nested_owned_path_delivers_and_releases_each_registration() {
     let mut root = page();
     let id = owned(&mut root);
-    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm;
-    run(child, "$262.createRealm();0;");
-    let leaf_id = *child.test262_realms.keys().next().unwrap();
-    work(&mut child.test262_realms.get_mut(&leaf_id).unwrap().vm);
+    let leaf_id;
+    {
+        let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
+        run(child, "$262.createRealm();0;");
+        leaf_id = *child.test262_realms.keys().next().unwrap();
+        work(
+            &mut child
+                .test262_realms
+                .get_mut(&leaf_id)
+                .unwrap()
+                .vm
+                .borrow_mut(),
+        );
+    }
     assert_eq!(root.run_host_task_turn(1, 1).unwrap().tasks_run, 1);
-    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm;
+    let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
     assert_eq!(
         run(
-            &mut child.test262_realms.get_mut(&leaf_id).unwrap().vm,
+            &mut child
+                .test262_realms
+                .get_mut(&leaf_id)
+                .unwrap()
+                .vm
+                .borrow_mut(),
             "seen;"
         ),
         Value::Number(3.0)

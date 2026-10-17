@@ -621,7 +621,7 @@ impl Vm {
             .array_buffer_write(result_buffer, 0, &bytes)
             .expect("the species buffer is live, mutable and large enough for this checked write");
         if let Some(realm_id) = foreign_realm {
-            self.test262_sync_foreign_buffer_mirrors(realm_id);
+            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
         }
         Ok(result)
     }

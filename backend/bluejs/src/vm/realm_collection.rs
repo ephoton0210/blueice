@@ -125,6 +125,8 @@ pub(super) struct RealmWrapper {
 pub(super) struct CollectionRealm {
     pub(super) heap: u64,
     pub(super) record: Option<ShadowRealmRecord>,
+    pub(super) owned_vm: Option<realm_cells::RealmHandle>,
+    pub(super) owned_children: Vec<u64>,
     pub(super) instances: Vec<RealmInstance>,
     pub(super) wrappers: Vec<RealmWrapper>,
     pub(super) ignored: HashSet<RootId>,
@@ -136,10 +138,19 @@ pub(super) struct CollectionRealm {
     pub(super) live: Option<crate::heap::CollectorMarks>,
 }
 impl CollectionRealm {
+    pub(super) fn handle(&self) -> Option<&realm_cells::RealmHandle> {
+        self.record
+            .as_ref()
+            .map(|record| &record.vm)
+            .or(self.owned_vm.as_ref())
+    }
+
     fn new(heap: u64, record: Option<ShadowRealmRecord>) -> Self {
         Self {
             heap,
             record,
+            owned_vm: None,
+            owned_children: Vec::new(),
             instances: Vec::new(),
             wrappers: Vec::new(),
             ignored: HashSet::new(),
@@ -178,6 +189,8 @@ impl RealmCollection {
     fn clear(&mut self) {
         for node in &mut self.nodes {
             node.record = None;
+            node.owned_vm = None;
+            node.owned_children.clear();
             node.instances.clear();
             node.wrappers.clear();
             node.ignored.clear();
@@ -222,8 +235,23 @@ impl RealmCollection {
         self.seen.insert(record.heap);
         Ok(())
     }
+    fn add_owned(&mut self, handle: &realm_cells::RealmHandle) -> Result<(), RuntimeError> {
+        let heap = handle.heap();
+        if self.seen.contains(&heap) {
+            return Ok(());
+        }
+        self.storage.reserve_set(&mut self.seen, 1)?;
+        self.push_node(heap, None)?;
+        self.nodes[self.len - 1].owned_vm = Some(handle.clone());
+        self.seen.insert(heap);
+        Ok(())
+    }
     fn snapshot(&mut self, index: usize, vm: &Vm) -> Result<(), RuntimeError> {
         let node = &mut self.nodes[index];
+        self.storage
+            .reserve_vec(&mut node.owned_children, vm.test262_realms.len())?;
+        node.owned_children
+            .extend(vm.test262_realms.values().map(|realm| realm.vm.heap()));
         self.storage
             .reserve_vec(&mut node.instances, vm.shadow_realms.len())?;
         self.storage
@@ -327,18 +355,23 @@ impl Vm {
         for record in self.shadow_realms.values() {
             plan.add_record(record)?;
         }
+        for realm in self.test262_realms.values() {
+            plan.add_owned(&realm.vm)?;
+        }
         let mut index = 1;
         while index < plan.len {
-            let record = plan.nodes[index]
-                .record
-                .as_ref()
-                .expect("discovered child record")
+            let handle = plan.nodes[index]
+                .handle()
+                .expect("discovered child handle")
                 .clone();
-            let Ok(vm) = record.vm.try_borrow_mut() else {
+            let Ok(vm) = handle.try_borrow_mut() else {
                 return Ok(false);
             };
             for child in vm.shadow_realms.values() {
                 plan.add_record(child)?;
+            }
+            for child in vm.test262_realms.values() {
+                plan.add_owned(&child.vm)?;
             }
             plan.snapshot(index, &vm)?;
             index += 1;
@@ -352,7 +385,9 @@ impl Vm {
         plan.clear();
         // Empty graphs and host-neutral contexts release discovery storage.
         if self.host_scheduling.is_some()
-            && (!self.shadow_realms.is_empty() || !self.shadow_wrapped_functions.is_empty())
+            && (!self.shadow_realms.is_empty()
+                || !self.shadow_wrapped_functions.is_empty()
+                || !self.test262_realms.is_empty())
         {
             self.realm_collection_cache = Some(plan);
         }
@@ -366,6 +401,10 @@ impl Vm {
             .values()
             .filter(|record| record.heap != self.object_prototype.heap)
             .any(|record| record.vm.try_borrow_mut().is_err())
+            || self
+                .test262_realms
+                .values()
+                .any(|realm| realm.vm.try_borrow_mut().is_err())
         {
             return Ok(None);
         }

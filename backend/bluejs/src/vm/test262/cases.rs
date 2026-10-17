@@ -58,7 +58,9 @@ impl Vm {
                         .test262_realms
                         .get_mut(&realm_id)
                         .expect("foreign realm remains live");
-                    realm.vm.heap.detach_array_buffer(target)?;
+                    realm.vm.edit(self.object_prototype.heap, |vm| {
+                        vm.heap.detach_array_buffer(target).map_err(Into::into)
+                    })?;
                 }
                 self.test262_detach_foreign_buffer_mirrors(realm_id, target)
                     .expect("the mirrored buffers are live");

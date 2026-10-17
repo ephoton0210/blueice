@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_realm_alias_home_contracts() {
+    blueice_bluejs::Vm::verify_realm_alias_home_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_document_checkpoint_contracts() {
     blueice_bluejs::Vm::verify_document_checkpoint_contracts();
 }

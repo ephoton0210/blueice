@@ -86,7 +86,7 @@ fn document_policy_fresh_test262_realms_inherit_the_document() {
     root.use_bounded_host_microtask_checkpoints().unwrap();
     root.install_test262_harness().unwrap();
     run(&mut root, "$262.createRealm();0;");
-    let child = &root.test262_realms.values().next().unwrap().vm;
+    let child = &root.test262_realms.values().next().unwrap().vm.borrow_mut();
     assert!(
         child.host_scheduling.as_ref().is_some_and(|child| root
             .host_scheduling
@@ -126,12 +126,21 @@ fn document_policy_mixed_owned_and_shared_descendants_join_once() {
     root.install_test262_harness().unwrap();
     run(&mut root, "$262.createRealm();0;");
     let owned = root.test262_realms.values_mut().next().unwrap();
-    let middle = shadow(&mut owned.vm);
+    let middle = shadow(&mut owned.vm.borrow_mut());
     let leaf = {
         let mut vm = middle.vm.borrow_mut();
         vm.install_test262_harness().unwrap();
         run(&mut vm, "$262.createRealm();0;");
-        shadow(&mut vm.test262_realms.values_mut().next().unwrap().vm)
+        let leaf = shadow(
+            &mut vm
+                .test262_realms
+                .values_mut()
+                .next()
+                .unwrap()
+                .vm
+                .borrow_mut(),
+        );
+        leaf
     };
     root.use_bounded_host_microtask_checkpoints().unwrap();
     let expected = root.heap.stats().managed_bytes
@@ -141,6 +150,7 @@ fn document_policy_mixed_owned_and_shared_descendants_join_once() {
             .next()
             .unwrap()
             .vm
+            .borrow_mut()
             .heap
             .stats()
             .managed_bytes
@@ -153,6 +163,7 @@ fn document_policy_mixed_owned_and_shared_descendants_join_once() {
             .next()
             .unwrap()
             .vm
+            .borrow_mut()
             .heap
             .stats()
             .managed_bytes
@@ -165,6 +176,7 @@ fn document_policy_mixed_owned_and_shared_descendants_join_once() {
         .next()
         .unwrap()
         .vm
+        .borrow_mut()
         .host_scheduling
         .as_ref()
         .unwrap()
@@ -177,6 +189,7 @@ fn document_policy_mixed_owned_and_shared_descendants_join_once() {
         .next()
         .unwrap()
         .vm
+        .borrow_mut()
         .host_scheduling
         .as_ref()
         .unwrap()
@@ -280,6 +293,7 @@ fn document_policy_foreign_owned_document_is_refused_without_rebinding() {
         .next()
         .unwrap()
         .vm
+        .borrow_mut()
         .use_bounded_host_microtask_checkpoints()
         .unwrap();
     assert!(matches!(
@@ -295,6 +309,7 @@ fn document_policy_foreign_owned_document_is_refused_without_rebinding() {
         .next()
         .unwrap()
         .vm
+        .borrow_mut()
         .check_scheduling_failure()
         .unwrap();
 }

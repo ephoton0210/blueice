@@ -55,7 +55,7 @@ fn document_checkpoint_child_target_survives_later_ancestor_job() {
 fn document_checkpoint_timer_keeps_target_through_ancestor_jobs() {
     let mut root = page();
     let id = child(&mut root);
-    browser_timers(&mut root.test262_realms.get_mut(&id).unwrap().vm);
+    browser_timers(&mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut());
     run(&mut root,"var seen=false;realm.global.queueParent=()=>{Promise.resolve().then(()=>seen=realm.global.probe());return 0;};realm.evalScript('var reference;globalThis.probe=()=>{$262.gc();return reference.deref()!==undefined;};setTimeout(()=>{reference=new WeakRef({});queueParent();},1);0;');0;");
     assert_eq!(root.run_host_task_turn(1, 1).unwrap().tasks_run, 1);
     assert_eq!(run(&mut root, "seen;"), Value::Bool(true));
@@ -238,11 +238,15 @@ fn document_checkpoint_counts_catchable_errors_across_members_and_cleans_up() {
     let mut root = page();
     let id = child(&mut root);
     browser_timers(&mut root);
-    browser_timers(&mut root.test262_realms.get_mut(&id).unwrap().vm);
+    browser_timers(&mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut());
     run(&mut root,"realm.evalScript('globalThis.queueError=()=>{queueMicrotask(()=>{new WeakRef({});throw 2;});return 0;};');queueMicrotask(()=>{new WeakRef({});throw 1;});realm.global.queueError();0;");
     assert_eq!(root.run_host_microtask_checkpoint().unwrap(), 2);
     assert!(root.kept_weak_objects.is_empty());
-    assert!(root.test262_realms[&id].vm.kept_weak_objects.is_empty());
+    assert!(root.test262_realms[&id]
+        .vm
+        .borrow_mut()
+        .kept_weak_objects
+        .is_empty());
     assert!(!root.checkpoint_completion_pending());
 }
 

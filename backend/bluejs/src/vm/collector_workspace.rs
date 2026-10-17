@@ -10,6 +10,9 @@ impl Vm {
     pub(super) fn bind_native_budget(&mut self) -> Result<(), RuntimeError> {
         if let Some(scope) = &self.host_scheduling {
             let budget = scope.heap_native_budget();
+            if let Some(home) = &self.realm_home {
+                home.attach(scope)?;
+            }
             self.heap.bind_native_budget(budget)?;
             self.kept_weak_objects.attach(scope)?;
         }

@@ -60,7 +60,10 @@ impl Vm {
     /// facade supplies an edge to its target; an inactive realm's globals do
     /// not bootstrap it into liveness. This collects cycles across heaps.
     pub(super) fn collect_realm_garbage(&mut self) -> Result<(), RuntimeError> {
-        if self.shadow_realms.is_empty() && self.shadow_wrapped_functions.is_empty() {
+        if self.shadow_realms.is_empty()
+            && self.shadow_wrapped_functions.is_empty()
+            && self.test262_realms.is_empty()
+        {
             return self.collect_local_realm();
         }
         let Some(mut plan) = self.prepare_realm_collection()? else {
@@ -79,8 +82,8 @@ impl Vm {
     fn recycle_realm_marks(&mut self, plan: &mut RealmCollection) -> Result<(), RuntimeError> {
         for node in &mut plan.nodes[..plan.len] {
             if let Some(marks) = node.live.take() {
-                if let Some(record) = &node.record {
-                    record.vm.borrow_mut().heap.recycle_collector_marks(marks)?;
+                if let Some(handle) = node.handle() {
+                    handle.borrow_mut().heap.recycle_collector_marks(marks)?;
                 } else {
                     self.heap.recycle_collector_marks(marks)?;
                 }
@@ -106,15 +109,29 @@ impl Vm {
         }
         loop {
             let mut changed = false;
+            // An owned child shares the lifetime of its owning VM. Pending
+            // child work or a live incoming wrapper must retain that owner;
+            // the owner's activation in turn retains every owned child.
+            for index in 0..plan.len {
+                for edge in 0..plan.nodes[index].owned_children.len() {
+                    let heap = plan.nodes[index].owned_children[edge];
+                    if let Some(child) = plan.index_of(heap) {
+                        if plan.nodes[index].active || plan.nodes[child].active {
+                            changed |= !plan.nodes[index].active || !plan.nodes[child].active;
+                            plan.nodes[index].active = true;
+                            plan.nodes[child].active = true;
+                        }
+                    }
+                }
+            }
             for index in 0..plan.len {
                 if !plan.nodes[index].active {
                     continue;
                 }
                 let previous = plan.nodes[index].live.take();
                 let node = &plan.nodes[index];
-                let live = if let Some(record) = &node.record {
-                    record
-                        .vm
+                let live = if let Some(handle) = node.handle() {
+                    handle
                         .borrow_mut()
                         .shadow_mark(&node.ignored, &node.extra, previous)?
                 } else {
@@ -161,8 +178,7 @@ impl Vm {
                 .expect("the root realm is active"),
         );
         for node in &plan.nodes[1..plan.len] {
-            let record = node.record.as_ref().expect("a discovered child");
-            let mut vm = record.vm.borrow_mut();
+            let mut vm = node.handle().expect("a discovered child").borrow_mut();
             if let Some(live) = &node.live {
                 vm.prune_shadow_owners(plan, live);
             } else {
@@ -170,17 +186,13 @@ impl Vm {
                 vm.shadow_wrapped_functions.clear();
                 vm.shadow_realms.clear();
                 vm.shadow_realm_by_heap.clear();
+                vm.test262_realms.clear();
             }
         }
         self.recycle_realm_marks(plan)?;
         for node in &plan.nodes[1..plan.len] {
             if node.active {
-                let mut vm = node
-                    .record
-                    .as_ref()
-                    .expect("a discovered child")
-                    .vm
-                    .borrow_mut();
+                let mut vm = node.handle().expect("a discovered child").borrow_mut();
                 vm.collect_local_realm()?;
                 if terminal_cleanup {
                     vm.reconcile_scheduling_ownership();

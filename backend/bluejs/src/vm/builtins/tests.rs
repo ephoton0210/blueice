@@ -190,7 +190,12 @@ fn creating_an_array_in_another_realm_propagates_heap_limits() {
     probe.acting_realm = Some(realm);
     probe.array_create_exact(1.0).unwrap();
     let baseline = probe.heap.stats().managed_bytes;
-    let child_baseline = probe.test262_realms[&realm].vm.heap.stats().managed_bytes;
+    let child_baseline = probe.test262_realms[&realm]
+        .vm
+        .borrow_mut()
+        .heap
+        .stats()
+        .managed_bytes;
     let mut completed = 0;
     let mut exhausted = 0;
     let mut ready = 0;

@@ -167,7 +167,7 @@ fn host_task_storage_snapshot_drop_refunds_after_terminal_failure() {
 #[cfg_attr(test, test)]
 fn host_task_storage_discovery_snapshot_does_not_keep_realms_alive() {
     let mut vm = with_child();
-    let weak = Rc::downgrade(&vm.shadow_realms.values().next().unwrap().vm);
+    let weak = vm.shadow_realms.values().next().unwrap().vm.downgrade();
     let snapshot = vm.host_task_realms().unwrap();
     assert_eq!(weak.strong_count(), 1);
     let bytes = snapshot.retained_bytes()
@@ -192,9 +192,9 @@ fn attached_child(owner: &Vm) -> Vm {
 #[cfg_attr(test, test)]
 fn host_task_storage_discovery_filters_documents_deduplicates_cycles_and_sorts() {
     let mut vm = bounded_vm();
-    let child = ShadowRealmRecord::new(attached_child(&vm));
-    let grandchild = ShadowRealmRecord::new(attached_child(&vm));
-    let foreign = ShadowRealmRecord::new(bounded_vm());
+    let child = ShadowRealmRecord::new(attached_child(&vm)).unwrap();
+    let grandchild = ShadowRealmRecord::new(attached_child(&vm)).unwrap();
+    let foreign = ShadowRealmRecord::new(bounded_vm()).unwrap();
     child
         .vm
         .borrow_mut()
@@ -209,11 +209,11 @@ fn host_task_storage_discovery_filters_documents_deduplicates_cycles_and_sorts()
     vm.shadow_realms.insert(vm.array_prototype, child.clone());
     let alias = vm.heap.alloc_object(None).unwrap();
     vm.shadow_realms.insert(alias, foreign.clone());
-    let references = Rc::strong_count(&child.vm);
+    let references = child.vm.strong_count();
     let snapshot = vm.host_task_realms().unwrap();
     let ids: Vec<_> = snapshot.iter().map(|record| record.heap).collect();
     assert_eq!(ids, [child.heap, grandchild.heap]);
-    assert_eq!(Rc::strong_count(&child.vm), references);
+    assert_eq!(child.vm.strong_count(), references);
     grandchild.vm.borrow_mut().shadow_realms.clear();
     child.vm.borrow_mut().shadow_realms.clear();
 }
@@ -236,7 +236,7 @@ fn host_task_storage_partial_discovery_refunds_queue_and_seen_storage() {
     let room = HashSet::<u64>::with_capacity(1).capacity() * std::mem::size_of::<u64>()
         + 4 * std::mem::size_of::<std::rc::Weak<RefCell<Vm>>>();
     let before = vm.heap.stats();
-    let references = Rc::strong_count(&vm.shadow_realms.values().next().unwrap().vm);
+    let references = vm.shadow_realms.values().next().unwrap().vm.strong_count();
     let _peer = leave_room(&mut vm, room);
     assert!(matches!(
         vm.host_task_realms(),
@@ -248,7 +248,7 @@ fn host_task_storage_partial_discovery_refunds_queue_and_seen_storage() {
     );
     assert_eq!(vm.heap.stats(), before);
     assert_eq!(
-        Rc::strong_count(&vm.shadow_realms.values().next().unwrap().vm),
+        vm.shadow_realms.values().next().unwrap().vm.strong_count(),
         references
     );
 }

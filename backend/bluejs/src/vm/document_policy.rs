@@ -16,49 +16,56 @@ struct Node {
 }
 
 impl Node {
+    fn handle(&self, root: &Vm) -> Result<Option<realm_cells::RealmHandle>, RuntimeError> {
+        let mut handle = self.anchor.as_ref().map(|record| record.vm.clone());
+        for id in &self.path {
+            let next = if let Some(current) = &handle {
+                let vm = current
+                    .try_borrow()
+                    .map_err(|_| RuntimeError::Unsupported(BUSY))?;
+                vm.test262_realms
+                    .get(id)
+                    .expect("discovered owned realm")
+                    .vm
+                    .clone()
+            } else {
+                root.test262_realms
+                    .get(id)
+                    .expect("discovered owned realm")
+                    .vm
+                    .clone()
+            };
+            handle = Some(next);
+        }
+        Ok(handle)
+    }
     fn read<T>(
         &self,
         root: &Vm,
         action: impl FnOnce(&Vm) -> Result<T, RuntimeError>,
     ) -> Result<T, RuntimeError> {
-        // Check exclusive availability now; publication performs no callbacks.
-        let borrowed = self
-            .anchor
-            .as_ref()
-            .map(|record| record.vm.try_borrow_mut())
-            .transpose()
-            .map_err(|_| RuntimeError::Unsupported(BUSY))?;
-        let mut vm = borrowed.as_deref().unwrap_or(root);
-        for id in &self.path {
-            vm = &vm
-                .test262_realms
-                .get(id)
-                .expect("discovered owned realm")
-                .vm;
+        if let Some(handle) = self.handle(root)? {
+            let vm = handle
+                .try_borrow_mut()
+                .map_err(|_| RuntimeError::Unsupported(BUSY))?;
+            action(&vm)
+        } else {
+            action(root)
         }
-        action(vm)
     }
-
     fn edit<T>(
         &self,
         root: &mut Vm,
         action: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
     ) -> Result<T, RuntimeError> {
-        let mut borrowed = self
-            .anchor
-            .as_ref()
-            .map(|record| record.vm.try_borrow_mut())
-            .transpose()
-            .map_err(|_| RuntimeError::Unsupported(BUSY))?;
-        let mut vm = borrowed.as_deref_mut().unwrap_or(root);
-        for id in &self.path {
-            vm = &mut vm
-                .test262_realms
-                .get_mut(id)
-                .expect("discovered owned realm")
-                .vm;
+        if let Some(handle) = self.handle(root)? {
+            let mut vm = handle
+                .try_borrow_mut()
+                .map_err(|_| RuntimeError::Unsupported(BUSY))?;
+            action(&mut vm)
+        } else {
+            action(root)
         }
-        action(vm)
     }
 }
 
@@ -124,7 +131,7 @@ impl Plan {
                     .as_ref()
                     .is_some_and(|current| !current.same_document(scope))
                 {
-                    // Shared records may refer to another document. Owned boxes cannot.
+                    // Shared records may refer to another document. Owned children must join.
                     return if node.anchor.is_some() && node.path.is_empty() {
                         Ok(false)
                     } else {
@@ -188,7 +195,7 @@ impl Plan {
                     self.queue.push(Node {
                         anchor: node.anchor.clone(),
                         path,
-                        heap: child.vm.object_prototype.heap,
+                        heap: child.vm.heap(),
                     });
                 }
                 for record in vm.shadow_realms.values() {

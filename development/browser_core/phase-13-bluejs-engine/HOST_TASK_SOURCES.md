@@ -1518,6 +1518,52 @@ inspection or killing is resumed. Publication remains local; rejected external
 push/process inspection is not retried. Evidence:
 `target/document-checkpoint-source-20261018.json`.
 
+The aliased callable-home checkpoint (2026-10-18) closes the reproduced
+alternative-route callback failure. A wrapped function records its original
+home's weak cell handle; finding it no longer requires that home to lie on the
+selected host-task path. Owned Test262 children and shared ShadowRealm records
+both hold borrowable cells. Cell creation admits the VM header, borrow state,
+allocation headers and retained-credit holder before publication. Strong and
+weak clones share one charge. Each token drops its allocation reference before
+its storage owner, so the final weak token keeps the allocation charged after
+VM data teardown. Neutral cells attach exactly once during document activation;
+a different document cannot adopt that original allocation owner.
+
+Inactive home entry uses checked cell access. Busy inactive homes and self
+identities fail catchably before entering guest code. Synchronous reentry uses
+only the existing active registry and its suspended-call validity window.
+Foreign membrane operations clone their cell handle before guest work, end all
+owning-map borrows, and retain the original admission/preparation/publication
+boundaries. Host task entry still preserves fuel; ordinary foreign calls still
+reset it. The common active resolver replaces repeated raw child-pointer entry.
+
+Collection discovery now includes owned descendants and admits their lifetime
+edges before heap effects. Owned children and their owning VM stay active
+together: a child with pending work or a live incoming wrapper retains its
+owner; that owner's activation retains its owned children. Live wrapped
+functions contribute their original home and target edges across both kinds
+of member. Their home links own no VM. Once those functions die, shared
+record cycles can be pruned; inactive snapshots release their owned children
+before discovery metadata is recycled. Task-routing snapshots remain scalar
+identity paths and retain no cell or VM.
+
+Fourteen new contracts plus 114 selected callback, policy, snapshot, membrane,
+timer and rejection controls pass: 128 distinct finite cases, five executable
+targets and 96 selections. Formatting, diff checks and offline workspace/all-
+target Clippy pass. The three initial regressions failed before the fix. An
+expanded run passed thirteen of fourteen; its remaining fixture compared the
+owner after a separate script created a cache, so that comparison now precedes
+the script. The final frozen run passes all fourteen contracts. The previous
+245-case checkpoint remains historical evidence, rather than a claim of its
+complete replay on this revision. An ordinary-library coverage hook is present;
+no fresh coverage result is claimed. Wider native/transport/program/retained-map
+ownership and integrated acceptance remain open, with M1u latest accepted and
+M1z integrated gates open. No quota/resource-boundary, exhaustion, infinite-input,
+network/service/listener/Core/MCP, privileged replay, conformance timer thread,
+process inspection or killing was resumed. Rejected external push/process
+inspection was not retried. Evidence:
+`target/realm-alias-home-source-20261018.json`.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

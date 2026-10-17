@@ -174,6 +174,7 @@ mod operations;
 mod promise_gc;
 mod promise_reactions;
 mod properties;
+mod realm_cells;
 mod realm_reentrancy;
 mod regexp;
 mod rejection_origins;
@@ -770,7 +771,7 @@ enum DynamicImportResult {
 /// internal slots without ever leaking a child-heap `ObjectId` into a parent
 /// value.
 struct Test262Realm {
-    vm: Box<Vm>,
+    vm: realm_cells::RealmHandle,
     wrappers: HashMap<ObjectId, ObjectId>,
     /// Parent-heap values temporarily represented by an ordinary object in
     /// this child heap. The reverse map preserves identity when child code
@@ -811,29 +812,27 @@ struct Test262ImportedValue {
 /// third realm (see `test262.rs`'s `test262_transport_value` and its
 /// ShadowRealm-specific branch) -- both the original creating realm and the
 /// realm it was transported into need the exact same live child, not two
-/// independent copies. `RefCell` borrows are held only for the dynamic
-/// extent of one call into this child (see `shadow_realm.rs`), never
-/// nested on the same `Rc` clone, so its runtime borrow check is not
-/// expected to ever actually deny an access; `Rc<RefCell<_>>` is used here
-/// (over an `unsafe` aliasing scheme) precisely so a bug in that assumption
-/// panics loudly instead of aliasing `&mut Vm`.
+/// independent copies. Realm cells reject unavailable inactive borrows with a
+/// catchable error. Synchronous ancestor calls resolve only existing active
+/// registrations, whose guards retain the original call-boundary validity window.
+/// Weak callable homes retain allocation credit without owning VM data.
 #[derive(Clone)]
 struct ShadowRealmRecord {
     heap: u64,
-    vm: Rc<RefCell<Vm>>,
+    vm: realm_cells::RealmHandle,
     owner: Rc<()>,
     owners: Rc<RefCell<Vec<std::rc::Weak<()>>>>,
 }
 
 impl ShadowRealmRecord {
-    fn new(vm: Vm) -> Self {
+    fn new(vm: Vm) -> Result<Self, RuntimeError> {
         let owner = Rc::new(());
-        Self {
+        Ok(Self {
             heap: vm.object_prototype.heap,
-            vm: Rc::new(RefCell::new(vm)),
+            vm: realm_cells::RealmHandle::new(vm)?,
             owners: Rc::new(RefCell::new(vec![Rc::downgrade(&owner)])),
             owner,
-        }
+        })
     }
 }
 
@@ -854,6 +853,7 @@ struct ShadowWrappedFunction {
     home_heap: u64,
     target: ObjectId,
     target_root: Rc<crate::heap::RealmRoot>,
+    home: Option<realm_cells::RealmWeak>,
 }
 
 struct Test262ForeignValue {
@@ -1357,6 +1357,7 @@ pub struct Vm {
     /// scope it was created in (the rest were entered by its own `with`).
     inherited_with_depth: usize,
     joining: Vec<ObjectId>,
+    realm_home: Option<realm_cells::RealmWeak>,
 }
 
 impl Vm {

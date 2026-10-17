@@ -207,11 +207,10 @@ impl Vm {
                 let (realm_id, foreign_target, _, _) = self
                     .test262_foreign_reference(target_id)
                     .expect("the pure shape check validated this retained foreign facade");
-                self.test262_realms
-                    .get(&realm_id)
-                    .expect("the retained facade owns its realm")
-                    .vm
-                    .reject_immutable_typed_array(&Value::Object(foreign_target))?;
+                self.test262_realm_handle(realm_id)?
+                    .read(self.object_prototype.heap, |vm| {
+                        vm.reject_immutable_typed_array(&Value::Object(foreign_target))
+                    })?;
                 actual
             }
             None => {
@@ -718,7 +717,7 @@ impl Vm {
                 let (realm_id, _, _, _) = self
                     .test262_foreign_reference(constructed_id)
                     .expect("foreign TypedArray construction retains its realm");
-                self.test262_sync_foreign_buffer_mirrors(realm_id);
+                self.test262_sync_foreign_buffer_mirrors(realm_id)?;
             } else {
                 let values = self.typed_array_read_values(object, start, copy_count)
                     .expect("slice revalidated this source range after species construction; no callback intervened");

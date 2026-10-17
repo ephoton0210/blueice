@@ -59,14 +59,17 @@ fn read_path<T>(
             let Some(child) = vm.test262_realms.get(&step.instance) else {
                 return Ok(None);
             };
-            if child.vm.object_prototype.heap != step.heap || !same_document(vm, &child.vm) {
+            if child.vm.heap() != step.heap {
                 return Ok(None);
             }
-            if realm_reentrancy::resolve_active(step.heap).is_some() {
+            let Ok(child) = child.vm.try_borrow_mut() else {
                 *blocked = true;
                 return Ok(None);
+            };
+            if !same_document(vm, &child) {
+                return Ok(None);
             }
-            read_path(&child.vm, rest, blocked, action)
+            read_path(&child, rest, blocked, action)
         }
         Kind::Shared => {
             let Some(record) = vm
@@ -109,14 +112,17 @@ fn enter_path<T>(
             let Some(child) = vm.test262_realms.get(&step.instance) else {
                 return Ok(None);
             };
-            if child.vm.object_prototype.heap != step.heap
-                || !same_document(vm, &child.vm)
-                || realm_reentrancy::resolve_active(step.heap).is_some()
+            if child.vm.heap() != step.heap || realm_reentrancy::resolve_active(step.heap).is_some()
             {
                 return Ok(None);
             }
-            // Reuse the existing reverse-membrane entry; every ancestor stays
-            // registered and no map borrow is held across guest execution.
+            let Ok(child) = child.vm.try_borrow() else {
+                return Ok(None);
+            };
+            if !same_document(vm, &child) {
+                return Ok(None);
+            }
+            drop(child);
             vm.test262_with_host_realm(step.instance, |child| enter_path(child, rest, action))
         }
         Kind::Shared => {
@@ -200,7 +206,7 @@ impl HostRealm {
                 Step {
                     kind: Kind::Owned,
                     instance,
-                    heap: child.vm.object_prototype.heap,
+                    heap: child.vm.heap(),
                 },
                 owner,
             )?)?;
