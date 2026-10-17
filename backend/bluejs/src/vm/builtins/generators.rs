@@ -8,6 +8,10 @@ use super::*;
 #[path = "../../../tests/fixtures/generator_delegation_boundaries.rs"]
 mod boundary_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/await_registration.rs"]
+mod await_registration_tests;
+
 /// How a synchronous `yield*` delegate answered `next`, `throw` or `return`.
 enum SyncDelegateStep {
     /// The delegate is not finished: its own result object is yielded as is.
@@ -1321,6 +1325,14 @@ impl Vm {
                             AsyncGeneratorDelegateKind::CloseMissingThrow,
                             result,
                         ) {
+                            if matches!(
+                                &error,
+                                RuntimeError::SchedulingLimit
+                                    | RuntimeError::Heap(_)
+                                    | RuntimeError::InstructionLimit
+                            ) {
+                                return Err(error);
+                            }
                             let origin = self.caught_rejection_origin(await_epoch);
                             let error = self.error_value(error)?;
                             self.with_rejection_origin(Some(origin), |vm| {
@@ -1362,6 +1374,11 @@ impl Vm {
                 value,
             ) {
                 Ok(()) => Ok(Some(Value::Undefined)),
+                Err(
+                    error @ (RuntimeError::SchedulingLimit
+                    | RuntimeError::Heap(_)
+                    | RuntimeError::InstructionLimit),
+                ) => Err(error),
                 // PromiseResolve threw: the throw is raised at the `yield*`
                 // at once, with no turn in between.
                 Err(error) => {
@@ -1418,44 +1435,16 @@ impl Vm {
                 return Ok(Some(Value::Undefined));
             }
         };
-        self.mark_promise_handled(promise);
-        match self
-            .promises
-            .get(&promise)
-            .expect("Promise.resolve registers its Promise")
-            .clone_for_await()
-        {
-            PromiseAwaitStatus::Pending => self.enqueue_promise_reaction(
-                promise,
-                PromiseReaction::AsyncGeneratorDelegate {
-                    generator,
-                    target,
-                    kind,
-                },
-            ),
-            // Await always crosses a job boundary, including for an answer
-            // that is not a promise or is already settled.
-            PromiseAwaitStatus::Fulfilled(value) => {
-                self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
-                    generator,
-                    target,
-                    kind,
-                    value,
-                    fulfilled: true,
-                    origin: ThrowOrigin::default(),
-                });
-            }
-            PromiseAwaitStatus::Rejected(value, origin) => {
-                self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
-                    generator,
-                    target,
-                    kind,
-                    value,
-                    fulfilled: false,
-                    origin,
-                });
-            }
-        }
+        let work = self.prepare_continuation_await(
+            promise,
+            AwaitContinuation::GeneratorDelegate {
+                generator,
+                target,
+                kind,
+            },
+            0,
+        )?;
+        work.publish_and_handle(self, promise)?;
         Ok(Some(Value::Undefined))
     }
 
@@ -1635,6 +1624,18 @@ impl Vm {
                             .set_async_generator_status(generator, AsyncGeneratorStatus::Awaiting)
                             .map(|()| false);
                     }
+                    Err(
+                        error @ (RuntimeError::SchedulingLimit
+                        | RuntimeError::Heap(_)
+                        | RuntimeError::InstructionLimit),
+                    ) => {
+                        self.set_async_generator_status(
+                            generator,
+                            AsyncGeneratorStatus::SuspendedYield,
+                        )
+                        .expect("restoring the retained scheduler status cannot allocate");
+                        return Err(error);
+                    }
                     Err(error) => {
                         self.set_async_generator_status(
                             generator,
@@ -1741,6 +1742,11 @@ impl Vm {
                     .finish_async_generator_run(generator, request.target, result)
                     .map(|()| false);
             }
+            Err(
+                error @ (RuntimeError::SchedulingLimit
+                | RuntimeError::Heap(_)
+                | RuntimeError::InstructionLimit),
+            ) => return Err(error),
             Err(error) => {
                 let origin = self.caught_rejection_origin(resume_epoch);
                 let value = self.error_value(error)?;
@@ -1799,8 +1805,9 @@ impl Vm {
 
     /// Await(value) on behalf of the request at the head of the queue:
     /// PromiseResolve, then a continuation that always runs in a later job
-    /// (the promise is never inspected synchronously). `Err` means
-    /// PromiseResolve itself threw, before anything was scheduled.
+    /// (delivery never resumes the generator synchronously). Errors propagate a
+    /// PromiseResolve failure, native preparation refusal or committed
+    /// notification failure; resource failures stay uncatchable.
     fn start_async_generator_await(
         &mut self,
         generator: ObjectId,
@@ -1820,43 +1827,16 @@ impl Vm {
             let promise = promise
                 .object_id()
                 .expect("Promise.resolve always returns a Promise");
-            self.mark_promise_handled(promise);
-            match self
-                .promises
-                .get(&promise)
-                .expect("Promise.resolve registers its Promise")
-                .clone_for_await()
-            {
-                PromiseAwaitStatus::Pending => self.enqueue_promise_reaction(
-                    promise,
-                    PromiseReaction::AsyncGeneratorDelegate {
-                        generator,
-                        target,
-                        kind,
-                    },
-                ),
-                PromiseAwaitStatus::Fulfilled(value) => {
-                    self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
-                        generator,
-                        target,
-                        kind,
-                        value,
-                        fulfilled: true,
-                        origin: ThrowOrigin::default(),
-                    });
-                }
-                PromiseAwaitStatus::Rejected(value, origin) => {
-                    self.enqueue_promise_job(PromiseJob::AsyncGeneratorDelegate {
-                        generator,
-                        target,
-                        kind,
-                        value,
-                        fulfilled: false,
-                        origin,
-                    });
-                }
-            }
-            Ok(())
+            let work = self.prepare_continuation_await(
+                promise,
+                AwaitContinuation::GeneratorDelegate {
+                    generator,
+                    target,
+                    kind,
+                },
+                0,
+            )?;
+            work.publish_and_handle(self, promise)
         })();
         self.stack.truncate(base);
         outcome
@@ -2026,45 +2006,16 @@ impl Vm {
             let awaited = awaited
                 .object_id()
                 .expect("Promise.resolve always returns a Promise");
-            self.mark_promise_handled(awaited);
-            let status = self
-                .promises
-                .get(&awaited)
-                .expect("Promise.resolve registers its Promise")
-                .clone_for_await();
-            match status {
-                PromiseAwaitStatus::Pending => self.enqueue_promise_reaction(
-                    awaited,
-                    PromiseReaction::AsyncGeneratorYield {
-                        generator,
-                        target,
-                        result,
-                    },
-                ),
-                PromiseAwaitStatus::Fulfilled(value) => {
-                    // Await always crosses a Promise job boundary, including
-                    // for a value that Promise.resolve fulfilled immediately.
-                    self.enqueue_promise_job(PromiseJob::AsyncGeneratorYield {
-                        generator,
-                        target,
-                        result,
-                        value,
-                        fulfilled: true,
-                        origin: ThrowOrigin::default(),
-                    });
-                }
-                PromiseAwaitStatus::Rejected(value, origin) => {
-                    self.enqueue_promise_job(PromiseJob::AsyncGeneratorYield {
-                        generator,
-                        target,
-                        result,
-                        value,
-                        fulfilled: false,
-                        origin,
-                    });
-                }
-            }
-            Ok(())
+            let work = self.prepare_continuation_await(
+                awaited,
+                AwaitContinuation::GeneratorYield {
+                    generator,
+                    target,
+                    result,
+                },
+                0,
+            )?;
+            work.publish_and_handle(self, awaited)
         })();
         self.stack.truncate(base);
         outcome

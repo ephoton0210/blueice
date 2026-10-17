@@ -127,6 +127,7 @@ pub use host_scheduling::{
     MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS, MAX_PENDING_HOST_TIMERS,
 };
 use interpreter_records::{DisposeMarks, HandlerRecords, IteratorRecords, ResourceRecords};
+use promise_queue_storage::AwaitContinuation;
 mod agent_registry;
 mod interpreter;
 mod intl;

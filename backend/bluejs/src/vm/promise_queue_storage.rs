@@ -165,6 +165,95 @@ enum AwaitQueue {
     Reaction(PreparedVec<PromiseReaction>),
     Job(PreparedDeque<PromiseJob>),
 }
+
+/// Scalar continuation metadata; the caller retains its existing frame/control
+/// until both the saved owner and its prepared resumption work can publish.
+#[derive(Clone, Copy)]
+pub(super) enum AwaitContinuation {
+    Module {
+        continuation: u64,
+    },
+    Async {
+        continuation: u64,
+    },
+    GeneratorYield {
+        generator: ObjectId,
+        target: ObjectId,
+        result: ObjectId,
+    },
+    GeneratorDelegate {
+        generator: ObjectId,
+        target: ObjectId,
+        kind: AsyncGeneratorDelegateKind,
+    },
+}
+impl AwaitContinuation {
+    fn reaction(self) -> PromiseReaction {
+        match self {
+            Self::Module { continuation } => PromiseReaction::ModuleAwait { continuation },
+            Self::Async { continuation } => PromiseReaction::AsyncAwait { continuation },
+            Self::GeneratorYield {
+                generator,
+                target,
+                result,
+            } => PromiseReaction::AsyncGeneratorYield {
+                generator,
+                target,
+                result,
+            },
+            Self::GeneratorDelegate {
+                generator,
+                target,
+                kind,
+            } => PromiseReaction::AsyncGeneratorDelegate {
+                generator,
+                target,
+                kind,
+            },
+        }
+    }
+    fn job(self, value: Value, fulfilled: bool, origin: ThrowOrigin) -> PromiseJob {
+        match self {
+            Self::Module { continuation } => PromiseJob::ModuleAwait {
+                continuation,
+                value,
+                fulfilled,
+                origin,
+            },
+            Self::Async { continuation } => PromiseJob::AsyncAwait {
+                continuation,
+                value,
+                fulfilled,
+                origin,
+            },
+            Self::GeneratorYield {
+                generator,
+                target,
+                result,
+            } => PromiseJob::AsyncGeneratorYield {
+                generator,
+                target,
+                result,
+                value,
+                fulfilled,
+                origin,
+            },
+            Self::GeneratorDelegate {
+                generator,
+                target,
+                kind,
+            } => PromiseJob::AsyncGeneratorDelegate {
+                generator,
+                target,
+                kind,
+                value,
+                fulfilled,
+                origin,
+            },
+        }
+    }
+}
+
 pub(super) struct PreparedAwaitRegistration {
     work: AwaitRegistration,
     queue: AwaitQueue,
@@ -218,6 +307,19 @@ impl AwaitRegistration {
     }
 }
 impl PreparedAwaitRegistration {
+    pub(super) fn publish_and_handle(
+        self,
+        vm: &mut Vm,
+        promise: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        let result = self.publish(vm);
+        // The queue is already committed even if its final budget check failed.
+        // Notification cleanup/follow-up is a separate committed producer.
+        vm.mark_promise_handled(promise);
+        result?;
+        vm.check_scheduling_failure()
+    }
+
     pub(super) fn publish(self, vm: &mut Vm) -> Result<(), RuntimeError> {
         let Self {
             work,
@@ -249,6 +351,29 @@ impl PreparedAwaitRegistration {
 }
 
 impl Vm {
+    pub(super) fn prepare_continuation_await(
+        &mut self,
+        promise: ObjectId,
+        continuation: AwaitContinuation,
+        frame_bytes: usize,
+    ) -> Result<PreparedAwaitRegistration, RuntimeError> {
+        // Count and copy admission happen before the retained value/source clone.
+        let (status, input) = self.prepare_promise_await_status(promise)?;
+        let work = match status {
+            PromiseAwaitStatus::Pending => AwaitRegistration::Reaction {
+                promise,
+                reaction: continuation.reaction(),
+            },
+            PromiseAwaitStatus::Fulfilled(value) => {
+                AwaitRegistration::Job(continuation.job(value, true, ThrowOrigin::default()))
+            }
+            PromiseAwaitStatus::Rejected(value, origin) => {
+                AwaitRegistration::Job(continuation.job(value, false, origin))
+            }
+        };
+        work.prepare(self, frame_bytes, input)
+    }
+
     pub(super) fn prepare_promise_await_status(
         &mut self,
         promise: ObjectId,
@@ -302,6 +427,7 @@ impl Vm {
         self.reconcile_scheduling_ownership();
         Ok(())
     }
+    #[cfg(any(test, coverage))]
     pub(super) fn publish_promise_reaction(
         &mut self,
         promise: ObjectId,

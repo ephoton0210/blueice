@@ -1983,7 +1983,6 @@ impl Vm {
         continuation_state: ModuleContinuation,
         promise: ObjectId,
     ) -> Result<(), RuntimeError> {
-        self.mark_promise_handled(promise);
         // Validate before publishing a frame or consuming its serial.
         if !self.promises.contains_key(&promise) {
             return Err(RuntimeError::TypeError("invalid await Promise".into()));
@@ -1993,30 +1992,11 @@ impl Vm {
             .next_module_continuation
             .checked_add(1)
             .ok_or(RuntimeError::InstructionLimit)?;
-        let (status, input) = self.prepare_promise_await_status(promise)?;
-        let work = match status {
-            PromiseAwaitStatus::Pending => AwaitRegistration::Reaction {
-                promise,
-                reaction: PromiseReaction::ModuleAwait { continuation },
-            },
-            PromiseAwaitStatus::Fulfilled(value) => {
-                AwaitRegistration::Job(PromiseJob::ModuleAwait {
-                    continuation,
-                    value,
-                    fulfilled: true,
-                    origin: ThrowOrigin::default(),
-                })
-            }
-            PromiseAwaitStatus::Rejected(value, origin) => {
-                AwaitRegistration::Job(PromiseJob::ModuleAwait {
-                    continuation,
-                    value,
-                    fulfilled: false,
-                    origin,
-                })
-            }
-        };
-        let work = work.prepare(self, continuation_state.scheduling_payload_bytes(), input)?;
+        let work = self.prepare_continuation_await(
+            promise,
+            AwaitContinuation::Module { continuation },
+            continuation_state.scheduling_payload_bytes(),
+        )?;
         let growth = promise_queue_storage::PreparedMap::for_insert(
             &self.module_continuations,
             self.host_scheduling.as_ref(),
@@ -2025,7 +2005,7 @@ impl Vm {
         self.next_module_continuation = next;
         self.module_continuations
             .insert(continuation, continuation_state);
-        work.publish(self)
+        work.publish_and_handle(self, promise)
     }
 
     /// Registers an ordinary async-function frame on the Promise it awaits
@@ -2059,7 +2039,6 @@ impl Vm {
         continuation_state: AsyncContinuation,
         promise: ObjectId,
     ) -> Result<(), RuntimeError> {
-        self.mark_promise_handled(promise);
         // Validate before publishing a frame or consuming its serial.
         if !self.promises.contains_key(&promise) {
             return Err(RuntimeError::TypeError("invalid await Promise".into()));
@@ -2069,30 +2048,11 @@ impl Vm {
             .next_async_continuation
             .checked_add(1)
             .ok_or(RuntimeError::InstructionLimit)?;
-        let (status, input) = self.prepare_promise_await_status(promise)?;
-        let work = match status {
-            PromiseAwaitStatus::Pending => AwaitRegistration::Reaction {
-                promise,
-                reaction: PromiseReaction::AsyncAwait { continuation },
-            },
-            PromiseAwaitStatus::Fulfilled(value) => {
-                AwaitRegistration::Job(PromiseJob::AsyncAwait {
-                    continuation,
-                    value,
-                    fulfilled: true,
-                    origin: ThrowOrigin::default(),
-                })
-            }
-            PromiseAwaitStatus::Rejected(value, origin) => {
-                AwaitRegistration::Job(PromiseJob::AsyncAwait {
-                    continuation,
-                    value,
-                    fulfilled: false,
-                    origin,
-                })
-            }
-        };
-        let work = work.prepare(self, continuation_state.scheduling_payload_bytes(), input)?;
+        let work = self.prepare_continuation_await(
+            promise,
+            AwaitContinuation::Async { continuation },
+            continuation_state.scheduling_payload_bytes(),
+        )?;
         let growth = promise_queue_storage::PreparedMap::for_insert(
             &self.async_continuations,
             self.host_scheduling.as_ref(),
@@ -2101,7 +2061,7 @@ impl Vm {
         self.next_async_continuation = next;
         self.async_continuations
             .insert(continuation, continuation_state);
-        work.publish(self)
+        work.publish_and_handle(self, promise)
     }
 
     /// Continues a suspended ordinary async function in its own Promise job

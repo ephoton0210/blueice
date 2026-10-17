@@ -1068,12 +1068,15 @@ impl Vm {
             scope.account.borrow().usage.sub(scope.own).add(own)
         })
     }
-    /// All Promise/await/thenable/finalizer and host producers use this gate.
+    /// Infallible Promise/thenable/finalizer and host job producers use this
+    /// gate. Prepared awaits/Then registrations publish admitted work directly.
     /// Failure latches an uncatchable document abort before any later JS work;
     /// infallible internal settlement paths must never panic or report success.
     pub(super) fn enqueue_promise_job(&mut self, job: PromiseJob) {
         let _ = self.publish_promise_job(job);
     }
+    /// Finite fixtures also exercise direct reaction append admission.
+    #[cfg(any(test, coverage))]
     pub(super) fn enqueue_promise_reaction(
         &mut self,
         promise: ObjectId,

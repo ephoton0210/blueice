@@ -408,13 +408,35 @@ growth with no JavaScript or managed collection.
 
 Only queue publication commits handled state. Preparation refusal preserves
 notification bits, pending rejection entries/roots and all original queue storage,
-latching the document abort without panicking valid internal callers. Generic
-pending-reaction publication uses the same ordering. Successful handling releases
+latching the document abort without panicking valid internal callers. Fixture
+direct reaction appends retain this ordering; production Then/await paths publish
+prepared work. Successful handling releases
 a still-pending notification root; an already-notified source uses the existing
 follow-up task producer after its job commits. Follow-up refusal retains that
 committed job/handled state and its notification bit. Invalid receiver errors and
-ambient fuel are preserved. Other await/generator handled-state producers and
-wider input/origin/provenance/native-buffer ownership remain open.
+ambient fuel are preserved. Wider input/origin/provenance/native-buffer ownership
+remains open.
+
+Module/async-function frame awaits and generator delegate/return/yield awaits now
+share a scalar continuation descriptor and prepared status/work boundary. Counts
+and copied value/source ownership are admitted before cloning; conversion moves
+those copies into the prepared work. Frame storage and complete queue growth
+coexist under independent leases; module/async serial and map preparation precede
+joint frame/work publication. Generator PromiseResolve and any language callbacks
+finish before native preparation begins.
+
+After publication, a common completion step marks the source handled and checks
+notification cleanup/follow-up. Refusal during preparation preserves the source
+notification/root and uncommitted serial/map/queue state; late notification failure
+retains committed owners while surfacing the abort. Native/heap/fuel errors pass
+through generator scheduling without capturing language throw metadata or
+replacing a refused original return request with a throw. Language exceptions
+keep their existing catch/finally behavior. Preparation runs no JavaScript or
+managed collection and does not roll back earlier request/control transitions
+or user callbacks. Other input/origin producers and wider native-buffer ownership
+remain open.
+The superseded direct reaction append helpers are compiled only for test/coverage
+fixtures; production await/Then registration uses the prepared work boundary.
 
 Host-wait registration first admits its shared pending count and preflights
 root-ID space. Converted primitive inputs and actual argument-vector slots have

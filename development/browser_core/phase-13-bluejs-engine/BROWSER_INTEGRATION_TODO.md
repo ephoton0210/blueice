@@ -64,6 +64,19 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The continuation await preparation follow-up (2026-10-17) now prepares module,
+async-function and generator await work before changing handled state. Three
+corrected finite refusal cases failed before implementation and now pass.
+Generator status/source clones use the same pre-admitted input path as frame
+awaits. Frame/queue commitment precedes handled updates and checked notification
+cleanup; native/heap/fuel refusals propagate without conversion to page throws.
+Twenty-four new groups and all 1442 prior selected controls pass: **1466 total**,
+across 47 executables and 134 fixed selections. Formatting and offline
+workspace/all-target Clippy pass.
+Other input/origin producers, provenance/other maps, heap/host buffers, shared
+programs and integrated acceptance remain open; M1u stays the latest accepted
+milestone.
+
 The Promise Then registration follow-up (2026-10-17) now admits pending and
 settled work before changing handled state or rejection-notification ownership.
 Three tiny refusal reproductions failed before the fix and now pass. Selected
@@ -958,7 +971,9 @@ work and exposes its retained payload ledger.
       targets after an earlier committed attempt fails. Common settlement fan-out
       now stages complete copies/queue growth before status publication.
       Then registration prepares native input/queues before handled-state changes.
-      Other await/generator input/origin producers remain open. Shared programs, other
+      Continuation awaits now share admitted status/queue preparation and publish
+      handled state after frame/work ownership. Other input/origin producers
+      remain open. Shared programs, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -5187,10 +5202,11 @@ controls retain their behavior. Formatting, diff checks and offline workspace/
 all-target Clippy with warnings denied pass. Cargo reuses the workspace target with incremental
 compilation and dev/test debug artifact growth disabled.
 
-Other await/generator producers still mark handled before their own broader
-frame/request preparation; their boundaries remain open, alongside other input/
-origin producers, provenance/other maps, heap/host buffers, shared programs and
-integrated gates. The same nine explicit resource/infinite-loop skips and other
+At that checkpoint, other await/generator producers still marked handled before
+frame/request preparation. The following continuation await checkpoint addresses
+that separate boundary. Other input/origin producers, provenance/other maps,
+heap/host buffers, shared programs and integrated gates remain open. The same
+nine explicit resource/infinite-loop skips and other
 finite-public-case exclusions remain. No represented large allocations,
 resource/infinite probes, JSON resource sweeps, network/service replay,
 privileged validation, process killing, fresh full Test262, coverage result or
@@ -5203,6 +5219,99 @@ Evidence paths: `/private/tmp/blueice-promise-reaction-controls-20261017.py`,
 `target/promise-reaction-source-20261017.json`. Ordinary-library entry points
 expose the same fixtures; no fresh coverage result is claimed. This remains an
 M1z implementation checkpoint with wider acceptance open.
+
+#### Continuation await preparation follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: pre-admit retained status/source copies and complete work storage for
+module/async-function awaits and generator delegate/return/yield awaits. Publish
+the frame/control resumption owner and queue entry before handled state changes.
+Preparation refusal preserves notification bits, pending rejection entries/roots,
+queue/map storage and serials. Committed notification failure retains published
+owners and surfaces the terminal error. Keep language exceptions, asynchronous
+job ordering, original request completions and ordinary cleanup behavior.
+
+- [x] Refine real generator fixtures and reproduce frame/generator notification
+      loss under tiny refusal controls: **0/3 passed** on corrected old code.
+- [x] Share typed continuation metadata and status/queue preparation across all
+      five remaining await producers. All three initial cases pass.
+- [x] Complete expanded finite groups, fixed offline controls/static checks,
+      evidence and the detailed English commit.
+
+A scalar continuation descriptor distinguishes module, async-function, generator
+yield and generator delegate work. Count/value/source admission precedes status
+cloning; conversion moves the prepared value/origin into its reaction/job without
+copying again. The existing work preparation boundary admits complete queue
+growth and unowned frame storage. No JavaScript or managed collection runs during
+native preparation. Module/async frames prepare serial and map storage before
+publishing their saved frame and work; generators enter this boundary after
+PromiseResolve and any language callbacks have completed.
+
+Queue publication precedes handling. The shared completion method checks both
+the queue handoff and notification cleanup/follow-up, surfacing late terminal
+failure while retaining committed work. Native/heap/fuel errors from generator
+await registration propagate before capturing language throw metadata. A refused
+return operand restores the scheduler status without converting the original
+queued return request into a throw. Language PromiseResolve failures still follow
+the existing catch/finally path. Earlier request/control changes and user callback
+side effects remain committed; this checkpoint does not roll back PromiseResolve.
+
+The first red fixture attempt had two ownership reproductions and one setup
+failure: ordinary async `yield` first enters the compiler's await continuation.
+The corrected generator fixture enters AsyncGeneratorYield through completed-
+generator `return`, and operand return-await through a generator suspended at
+yield. Those three corrected cases all reproduce early handled publication before
+the fix and all pass afterward. The initial setup log is preserved separately.
+
+The first expanded run was **22/23 passed**, including actual generator-job and
+notification-root GC. Its delegate fixture omitted `return` before `yield*`:
+normal delegate completion was correctly discarded by the expression statement.
+The fixture now explicitly returns the delegate's value. A further committed-
+notification refusal case checks that frame, work and consumed serial survive
+the late abort while the notification bit/root-ID state remains unpublished.
+
+The first fixed run passed all **1466** selected cases. Its subsequent Clippy
+check found two now-unused release reaction append helpers: every production
+Then/await path publishes prepared work. Those direct append helpers are now
+limited to test/coverage builds for the existing fixtures; the remaining job-gate
+contract distinguishes prepared publication. The complete first run, failed
+static log and exact source snapshots are archived before revalidation.
+
+Twenty-four finite groups cover the corrected entry reproductions, frame serial/
+map/count preparation and positive pending/settled publication, every descriptor/
+status, exact/short copy admission, scalar quotas, spare slots, independent native
+ownership after VM destruction, abandoned preparation and original return request
+preservation. Public cases exercise async/module ordering, delegate return/throw,
+rejected yield/return through catch/finally, and committed notification refusal.
+Actual major collections prove generator/target/result/reason survival through
+job delivery and final collectibility after the one suppressed notification task
+releases its root. Fixtures use a few frames/promises/objects and numerical peers;
+no external operation starts.
+
+Validation: **1466 passed, zero failed/ignored**, across 47 executables and 134
+fixed selections: twenty-four new groups and all 1442 prior selected controls.
+Existing Promise/await, import, host-wait, timer, finalization, browser and ownership
+controls retain their behavior. Formatting, diff checks and offline workspace/
+all-target Clippy with warnings denied pass. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled.
+
+Other input/origin producers, retained provenance/other maps, wider heap/host
+buffers, shared programs and integrated gates remain open. The same nine explicit
+resource/infinite-loop skips and other finite-public-case exclusions remain.
+No represented large allocations, resource/infinite probes, JSON resource sweeps,
+network/service replay, privileged validation, process killing, fresh full
+Test262, coverage result or integrated acceptance is claimed. M1u stays the latest
+accepted milestone.
+
+Evidence paths: `/private/tmp/blueice-continuation-await-controls-20261017.py`,
+`/private/tmp/blueice-continuation-await-commit-20261017.txt`,
+`/private/tmp/blueice-continuation-await-audit-20261017.py`, logs matching
+`/private/tmp/blueice-continuation-await-*-20261017.log`, and
+`target/continuation-await-source-20261017.json`. Ordinary-library entry points
+expose the same fixtures; no fresh coverage result is claimed. This remains an
+M1z implementation checkpoint with wider acceptance open.
+The initial fixed-run/static logs and source snapshots are retained under
+`/private/tmp/blueice-continuation-await-static-attempt-20261017/`, with the summary
+in `/private/tmp/blueice-continuation-await-initial-static-attempt-20261017.json`.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
