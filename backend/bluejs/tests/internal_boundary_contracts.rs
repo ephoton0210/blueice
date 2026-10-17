@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_finalization_entry_contracts() {
+    blueice_bluejs::Vm::verify_finalization_entry_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_finalization_storage_contracts() {
     blueice_bluejs::Vm::verify_finalization_storage_contracts();
 }

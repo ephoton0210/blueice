@@ -69,34 +69,47 @@ impl Vm {
     }
 
     pub(super) fn run_next_host_finalization_task(&mut self) -> Result<(), RuntimeError> {
-        let Some(task) = self.host_finalization_tasks.pop_front() else {
+        let Some(registry) = self
+            .host_finalization_tasks
+            .front()
+            .map(|task| task.registry)
+        else {
             return Ok(());
         };
-        let previous = self.active_finalization_registry.replace(task.registry);
+        let prepared = self.prepare_finalization_entry(registry)?;
+        let previous_fuel = self.remaining_instructions;
         self.remaining_instructions = self.config.instruction_budget;
+        if prepared.is_some() {
+            if let Err(error) = self.charge_step() {
+                self.remaining_instructions = previous_fuel;
+                drop(prepared);
+                self.reconcile_scheduling_ownership();
+                return Err(error);
+            }
+        }
+        // No JavaScript or heap collection ran during preparation. Commit the
+        // queued task and one ready cell only after its native owners and fuel fit.
+        let task = self
+            .host_finalization_tasks
+            .pop_front()
+            .expect("prepared task remains queued");
+        let previous = self.active_finalization_registry.replace(task.registry);
+        let root_base = self.async_frame_roots.len();
         let result = (|| {
-            self.synchronize_scheduling_usage()?;
-            // CleanupFinalizationRegistry permits choosing how many cleared
-            // cells to consume. One per task gives the document turn's task
-            // budget a bound on cleanup callbacks too, without dropping cells.
-            if let Some((callback, holdings)) = self
-                .heap
-                .take_finalization_registry_cleanup_cell(task.registry)?
-            {
-                let root_base = self.async_frame_roots.len();
-                self.extend_async_frame_roots(
-                    callback.object_id().into_iter().chain(holdings.object_id()),
-                )?;
-                let bytes = host_scheduling::value_payload_bytes(&holdings);
-                let holdings_payload = self.charge_execution_payload(bytes);
-                let called = (|| {
-                    self.charge_step()?;
-                    self.synchronize_scheduling_usage()?;
-                    drop(holdings_payload);
-                    // Cleanup ignores a normal return. Drop it before the
-                    // checkpoint rather than retaining an unused buffer.
+            if let Some(mut prepared) = prepared {
+                self.async_frame_roots
+                    .extend(prepared.references.into_iter().flatten());
+                if let Some((callback, holdings)) = self
+                    .heap
+                    .take_finalization_registry_cleanup_cell(task.registry)?
+                {
+                    prepared.arguments.push(holdings);
+                    self.reconcile_scheduling_ownership();
+                    // An attempted call owns the consumed cell, even if dispatch
+                    // throws or fails. Native entry takes over the staged leases.
+                    let arguments = prepared.into_arguments();
                     let called = self
-                        .call_native(callback, Value::Undefined, vec![holdings], false)
+                        .call_native(callback, Value::Undefined, arguments, false)
                         .map(|_| ());
                     if let Err(error) = called {
                         if !host_timers::is_page_exception(&error) {
@@ -107,34 +120,27 @@ impl Vm {
                         }
                         self.report_host_exception(&error)?;
                     }
-                    // The callback has left the execution stack. Each call
-                    // cleans up microtasks before the next cleared cell.
-                    // Its separate job budget must not refill this task's fuel.
                     let fuel = self.remaining_instructions;
                     let checkpoint = self.run_host_microtask_checkpoint();
                     self.remaining_instructions = fuel;
                     checkpoint?;
-                    Ok(())
-                })();
-                self.async_frame_roots.truncate(root_base);
-                self.synchronize_scheduling_usage()?;
-                called?;
+                }
             }
             Ok(())
         })();
+        self.async_frame_roots.truncate(root_base);
         self.active_finalization_registry = previous;
         self.release_root(task.root);
         if self.host_finalization_tasks.is_empty() {
             self.host_finalization_tasks.shrink_to_fit();
         }
+        self.reconcile_scheduling_ownership();
         self.synchronize_scheduling_usage()?;
         if let Err(error) = result {
             if !host_timers::is_page_exception(&error) {
                 return Err(error);
             }
         }
-        // A throw consumes only its own cell. Remaining cleared cells are
-        // still cancellable and can be scheduled in a later cleanup task.
         self.run_host_microtask_checkpoint()?;
         Ok(())
     }

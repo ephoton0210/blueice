@@ -446,8 +446,30 @@ impl Heap {
         self.pending_finalization.keys().copied()
     }
 
-    /// Remove one cleared cell only when its cleanup task actually invokes
-    /// the callback. Until then unregister can still cancel its holdings.
+    /// Borrow the next cleared cell while its registry keeps the callback and
+    /// holdings owned. Entry preparation must not consume pending cleanup.
+    pub(crate) fn peek_finalization_registry_cleanup_cell(
+        &self,
+        registry: ObjectId,
+    ) -> Result<Option<(&Value, &Value)>, HeapError> {
+        let ObjectKind::FinalizationRegistry {
+            cleanup_callback,
+            cells,
+        } = &self.object(registry)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(registry));
+        };
+        let Some(&index) = self.pending_finalization.get(&registry) else {
+            return Ok(None);
+        };
+        let cell = cells
+            .get(index)
+            .ok_or(HeapError::InvalidInternalSlot(registry))?;
+        Ok(Some((cleanup_callback, &cell.holdings)))
+    }
+
+    /// Commit one prepared cleanup attempt. The callback and holdings move to
+    /// the caller's admitted argument/root owners before JavaScript can run.
     pub(crate) fn take_finalization_registry_cleanup_cell(
         &mut self,
         registry: ObjectId,

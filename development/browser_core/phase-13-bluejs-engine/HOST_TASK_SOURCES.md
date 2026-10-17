@@ -47,9 +47,25 @@ before publishing tasks. Its native lease follows the complete Rust-held
 snapshot lifetime. Host-neutral cleanup instead compacts cells in place and
 moves cleared holdings directly into the traced Promise-job queue, preserving
 per-registry cell order without bulk jobs/live-cell scratch vectors. Empty cell
-storage is dropped; nonempty backing and callback-entry preparation remain
-within the wider managed-container/host-buffer gate. Registration protects its
+storage is dropped; nonempty backing remains within the wider managed-container/
+host-buffer gate. Registration protects its
 at-most-four object references in a fixed stack array.
+
+Cleanup callback entry first borrows the ready cell without consuming it.
+Primitive callback/holdings ownership, a one-argument vector and required async
+root capacity are admitted while the queued registry root and cell retain their
+original owners. Starting fuel is validated before allocation, and the first
+host instruction is charged before committing the task/cell. Preparation refusal
+keeps queued work, roots, active context and ambient fuel; partial leases refund
+through failure-aware ownership reconciliation.
+
+A committed call receives admitted arguments and roots exactly once. Dispatch
+adopts staged payload/slot ownership before its first fallible step. An attempted
+call consumes its cell even if dispatch or the callback fails; unattempted cells
+remain ready. Every exit restores the previous root prefix and active registry,
+releases the committed task root and reconciles counters. Empty/cancelled tasks
+need no callback argument storage or host instruction. Existing exception
+reporting, callback/microtask ordering and post-task requeue behavior continue.
 
 Existing ready-index storage joins root-table, collector and foreign-pin native
 binding as one transaction. Refusal installs no partial owners, preserves live

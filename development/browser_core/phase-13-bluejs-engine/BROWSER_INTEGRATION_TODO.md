@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The finalization callback-entry checkpoint (2026-10-17) now prepares roots,
+payload, argument storage and starting fuel before consuming its queued task or
+cell. Refusal preserves cleanup ownership and ambient context; committed calls
+hand ownership into dispatch once. Twenty-two new finite cases, four finite
+public cleanup cases and all 1000 prior controls pass: **1026 total**, with
+formatting and offline workspace/all-target Clippy. Cell backing, other heap/
+host buffers, broader report/event scratch, shared programs and wider gates
+remain open; M1u stays the latest accepted milestone.
+
 The finalization storage checkpoint (2026-10-17) now admits ready-index growth
 before weak clearing/sweeping and page registry snapshots before task publication.
 Standalone cleanup moves holdings directly into traced jobs without bulk scratch
@@ -752,9 +761,10 @@ work and exposes its retained payload ledger.
       and collector workspace ownership. Cached completion/error values, admitted
       error-reporting batches, persistent root tables, foreign callable pins,
       host-turn realm/timer/abort snapshots and finalization index/snapshot/direct
-      cleanup now have bounded checkpoints; all 1000 selected controls pass.
-      Cell backing/callback-entry preparation, shared programs, managed-container
-      backing buffers, wider native storage and integrated acceptance remain open.
+      cleanup plus callback-entry preparation now have bounded checkpoints;
+      all 1026 selected controls pass. Cell backing, shared programs, managed-
+      container backing buffers, wider native storage and integrated acceptance
+      remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -3565,6 +3575,74 @@ hashes and staged/committed blob checks. Ordinary-library entry points expose
 the same fixtures; no new coverage result is claimed. This is an M1z checkpoint.
 Cell backing/callback-entry preparation, other heap buffers, broader report/event
 scratch, shared programs and wider native/integrated gates remain open.
+
+#### Finalization callback-entry follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: prepare callback/holdings roots, primitive ownership, argument slots
+and initial host instruction fuel while the ready cell and its queued task keep
+their original owners. Refusal preserves cells, queued task/root, ambient fuel
+and active-registry context. Committed attempts consume one cell, hand ownership
+into call dispatch once, and restore roots/context on every exit. Preserve
+uncaught-reporting, microtask checkpoints, reentrancy and cancellation semantics.
+
+- [x] Reproduce entry refusal losing cleanup cells with tiny offline cases.
+      All three original root/payload/zero-fuel cases failed, then passed.
+- [x] Implement prepared entry; twenty-two finite cases cover resource/fuel
+      refusal, ownership handoff, callback GC, context and repeated delivery.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Cell backing, other heap/host buffers, shared
+      programs and wider integrated acceptance remain open.
+
+Cleanup now borrows callback/holdings data from the ready cell while its queued
+registry root keeps the original owner. Preparation checks document failure and
+starting fuel, admits primitive ownership and a one-argument vector, checks its
+reported capacity and prepares callback/holdings root slots. The initial host
+instruction runs before dequeue/cell consumption. Preparation errors reconcile
+partial ownership and preserve the queued task, cell, root registration, active
+registry and ambient fuel. No JavaScript or heap collection runs during staging.
+
+Committing an attempt appends admitted roots, moves one cell into its argument
+vector and publishes the task-count change. Dispatch takes over argument/payload
+ownership before its first fallible step. The staged guards release directly at
+that infallible handoff, so ordinary call-entry ownership acquires the same
+buffers once. An attempted dispatch consumes its cell even if the call fails;
+unattempted cells retain readiness. Every exit restores the original root prefix
+and active-registry context, releases the committed task root and reconciles
+ownership before propagating an error. Empty/cancelled tasks require no callback
+argument storage or initial host instruction.
+
+The original three cases failed before preparation and now pass. Twenty-two
+finite cases cover argument/root/payload refusal, full replacement/exact
+allowances, partial/terminal refunds observed through the shared account,
+zero-fuel precedence/retry, active context, once-only delivery, ownership handoff,
+root-prefix restoration, callback GC, ignored object returns, attempted-dispatch
+failure, empty tasks and borrowed-peek validation. The initial expanded selection
+exposed an assertion that omitted the existing HostValue conversion buffer;
+comparison with an ordinary single-argument call now verifies equal ownership
+without treating that independent conversion buffer as an extra argument owner.
+
+Validation: **1026 passed, zero failed/ignored**, across 40 executables and 86
+fixed selections: twenty-two new entry cases, four finite public cleanup cases
+and all 1000 prior selected controls. Public cases cover cleanup/microtask order,
+unregister cancellation, throwing callbacks, error reporting and navigation
+handler cleanup. Formatting, diff checks and offline workspace/all-target Clippy
+with warnings denied pass. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled. The same nine earlier
+resource/infinite-loop skips remain. Public finalization selection names only
+four finite cases; its large/resource/infinite cases and JSON resource sweeps
+remain unselected. No network/service replay, physical exhaustion probe, fresh
+full Test262, real Core/MCP replay, coverage result or integrated acceptance is
+claimed.
+
+Evidence: `/private/tmp/blueice-finalization-entry-controls-20261017.py`,
+`/private/tmp/blueice-finalization-entry-commit-20261017.txt`,
+`/private/tmp/blueice-finalization-entry-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-finalization-entry-{red,first,expanded-red,entry-finalization,public-cleanup-*,fmt,clippy}-20261017.log`.
+`target/finalization-entry-source-20261017.json` records source/log/executable
+hashes and staged/committed blob checks. Ordinary-library entry points expose
+the same fixtures; no new coverage result is claimed. This is an M1z checkpoint.
+Cell backing, other heap/host buffers, broader report/event scratch, shared
+programs and wider native/integrated acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
