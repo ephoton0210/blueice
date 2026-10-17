@@ -57,6 +57,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The Promise queue checkpoint (2026-10-17) now admits complete job/reaction
+replacements and incoming payload before publication. Async/module await stages
+queue and continuation-map storage together, preserves capacities/serials on
+refusal and reconciles rejected-frame refunds for sibling realms. Twenty-eight
+new finite cases and all 1101 prior controls pass: **1129 total**, with formatting
+and offline workspace/all-target Clippy. Other Promise-record/wait-table and
+retained hash-allocation ownership, producer clones, other buffers, shared
+programs and wider integrated gates remain open; M1u stays the latest accepted
+milestone.
+
 The timer registration checkpoint (2026-10-17) now admits complete coexisting
 table replacement, argument/root vectors and root-table batch storage before
 publishing timer/root IDs or task serials. Refusal preserves old registrations,
@@ -791,9 +801,10 @@ work and exposes its retained payload ledger.
       cleanup plus callback-entry preparation and managed cell-vector backing
       now have bounded checkpoints. Timer callback preparation, interval GC
       protection and argument handoff now join complete timer registration/root-
-      batch staging; all 1101 selected controls pass. Shared programs, other
-      managed-container and scheduling backing buffers, wider native storage and
-      integrated acceptance remain open.
+      batch staging plus admitted Promise job/reaction replacements and atomic
+      await queue/map publication; all 1129 selected controls pass. Shared
+      programs, other managed-container and scheduling backing buffers, wider
+      native storage and integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -3886,6 +3897,80 @@ hashes and staged/committed blob checks. Ordinary-library entry points expose
 the same fixtures; no new coverage result is claimed. This is an M1z checkpoint.
 Other managed/native scheduling and heap/host buffers, shared programs and wider
 integrated acceptance remain open.
+
+#### Promise queue storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: job deques and reaction vectors admit a complete detached candidate
+while old capacity remains charged; incoming primitive copies have an owner.
+Check actual reported capacity before publication. Stage await continuation maps,
+frames and queue growth as one transaction, preserving old capacities, records
+and serials on refusal. Commit without a second fallible queue admission. Keep
+slot reuse, ordering, shared-document refunds and GC reachability intact.
+
+- [x] Reproduce missing coexisting job/reaction/await admission with tiny cases.
+      All three original cases accepted only the net-growth allowance and failed
+      before implementation; all three now pass.
+- [x] Implement owned replacements and atomic await staging; verify exact
+      allowance, reuse/refusal, cleanup, shared owners and Promise GC behavior.
+      All twenty-eight finite cases pass, including post-frame-drop refunds.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Other buffers, shared programs and integrated
+      acceptance remain open.
+
+Job/reaction admission checks counts, leases the already-formed incoming payload
+and prepares a complete detached replacement while the original container stays
+charged. Reported capacity is admitted before publication. Spare slots need no
+growth fee, wrapped deques preserve FIFO order and commitment moves existing
+owners rather than cloning them. Independent document leases follow Rust-held
+candidates and refund on rollback or destruction without keeping a VM/object
+alive. Failure in infallible producers still latches the document abort before
+later JavaScript work.
+
+Async/module await validates its frame serial, admits counts and settled input/
+origin ownership before cloning status. It then leases unowned frame payload,
+complete queue replacement and complete continuation-map replacement together.
+Only after every candidate fits are frame/map/queue entries and the serial
+committed, with no second fallible queue admission. Refusal preserves old
+capacities, entries and serials. Error wrappers reconcile after the rejected
+frame drops its execution leases, making released bytes visible to sibling
+realms even after terminal failure. Preparation/commit run no JavaScript or GC.
+
+The three original net-only admission cases now pass. The expanded selection
+exposed a rejected module frame leaving 437 bytes in another realm's account;
+both async/module error exits now reconcile after frame destruction. All
+twenty-eight finite groups pass. They cover initial/exact/one-byte-short/full
+growth, payload-only reuse/refusal, wrapped FIFO order, partial/empty refunds,
+Rust-held deque/map candidates, real queued-callback/reaction GC ownership,
+async/module pending/fulfilled/rejected await, queue/map rollback and reported
+capacity, joint exact allowance, spare slots, pre-copy/serial refusal, scalar
+counts and failure-aware sibling observations. Fixtures use at most eight real
+await frames with tiny values; represented scalar peers allocate no large buffer.
+
+Other Promise-record/wait-table preallocation, retained hash-allocation ownership,
+producer-side clones in other Promise algorithms, other host/scheduling buffers,
+shared programs and integrated acceptance remain open.
+
+Validation: **1129 passed, zero failed/ignored**, across 41 executables and 96
+fixed selections: twenty-eight new queue/await groups and all 1101 prior selected
+controls. Existing finite public Promise, timer, GC, cancellation and navigation
+cases retain their behavior. Formatting, diff checks and offline workspace/all-
+target Clippy with warnings denied pass. Cargo reuses the workspace target with
+incremental compilation and dev/test debug artifact growth disabled. The same
+nine earlier resource/infinite-loop skips remain. Public timer/finalization
+selection names only finite cases; their large/resource/infinite cases and JSON
+resource sweeps remain unselected. No network/service replay, physical exhaustion
+probe, fresh full Test262, real Core/MCP replay, coverage result or integrated
+acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-promise-queues-controls-20261017.py`,
+`/private/tmp/blueice-promise-queues-commit-20261017.txt`,
+`/private/tmp/blueice-promise-queues-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-promise-queues-{red,first,expanded-red,expanded,queue-storage,fmt,clippy}-20261017.log`.
+`target/promise-queues-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
+tables/buffers, retained-map ownership, shared programs and integrated acceptance
+remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

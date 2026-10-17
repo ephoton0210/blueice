@@ -2052,18 +2052,31 @@ impl Vm {
         continuation_state: ModuleContinuation,
         promise: ObjectId,
     ) -> Result<(), RuntimeError> {
+        let result = self.suspend_module_await_inner(continuation_state, promise);
+        if result.is_err() {
+            // The rejected frame has already dropped its execution leases.
+            // Publish those refunds for other realms even after terminal failure.
+            self.reconcile_scheduling_ownership();
+        }
+        result
+    }
+
+    fn suspend_module_await_inner(
+        &mut self,
+        continuation_state: ModuleContinuation,
+        promise: ObjectId,
+    ) -> Result<(), RuntimeError> {
         self.mark_promise_handled(promise);
         // Validate before publishing a frame or consuming its serial.
-        let status = self
-            .promises
-            .get(&promise)
-            .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
-            .clone_for_await();
+        if !self.promises.contains_key(&promise) {
+            return Err(RuntimeError::TypeError("invalid await Promise".into()));
+        }
         let continuation = self.next_module_continuation;
         let next = self
             .next_module_continuation
             .checked_add(1)
             .ok_or(RuntimeError::InstructionLimit)?;
+        let (status, input) = self.prepare_promise_await_status(promise)?;
         let work = match status {
             PromiseAwaitStatus::Pending => AwaitRegistration::Reaction {
                 promise,
@@ -2086,17 +2099,10 @@ impl Vm {
                 })
             }
         };
-        let growth = SchedulingMapCapacity::for_insert(
+        let work = work.prepare(self, continuation_state.scheduling_payload_bytes(), input)?;
+        let growth = promise_queue_storage::PreparedMap::for_insert(
             &self.module_continuations,
             self.host_scheduling.as_ref(),
-        )?;
-        work.admit(
-            self,
-            HostSchedulingUsage {
-                payload_bytes: continuation_state.scheduling_payload_bytes(),
-                ..HostSchedulingUsage::default()
-            }
-            .with_map_growth(&growth),
         )?;
         growth.commit(&mut self.module_continuations);
         self.next_module_continuation = next;
@@ -2124,18 +2130,29 @@ impl Vm {
         continuation_state: AsyncContinuation,
         promise: ObjectId,
     ) -> Result<(), RuntimeError> {
+        let result = self.suspend_async_frame_inner(continuation_state, promise);
+        if result.is_err() {
+            self.reconcile_scheduling_ownership();
+        }
+        result
+    }
+
+    fn suspend_async_frame_inner(
+        &mut self,
+        continuation_state: AsyncContinuation,
+        promise: ObjectId,
+    ) -> Result<(), RuntimeError> {
         self.mark_promise_handled(promise);
         // Validate before publishing a frame or consuming its serial.
-        let status = self
-            .promises
-            .get(&promise)
-            .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
-            .clone_for_await();
+        if !self.promises.contains_key(&promise) {
+            return Err(RuntimeError::TypeError("invalid await Promise".into()));
+        }
         let continuation = self.next_async_continuation;
         let next = self
             .next_async_continuation
             .checked_add(1)
             .ok_or(RuntimeError::InstructionLimit)?;
+        let (status, input) = self.prepare_promise_await_status(promise)?;
         let work = match status {
             PromiseAwaitStatus::Pending => AwaitRegistration::Reaction {
                 promise,
@@ -2158,17 +2175,10 @@ impl Vm {
                 })
             }
         };
-        let growth = SchedulingMapCapacity::for_insert(
+        let work = work.prepare(self, continuation_state.scheduling_payload_bytes(), input)?;
+        let growth = promise_queue_storage::PreparedMap::for_insert(
             &self.async_continuations,
             self.host_scheduling.as_ref(),
-        )?;
-        work.admit(
-            self,
-            HostSchedulingUsage {
-                payload_bytes: continuation_state.scheduling_payload_bytes(),
-                ..HostSchedulingUsage::default()
-            }
-            .with_map_growth(&growth),
         )?;
         growth.commit(&mut self.async_continuations);
         self.next_async_continuation = next;

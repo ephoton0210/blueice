@@ -178,8 +178,17 @@ are unchanged. Replacement and close drop the owning queues and reset source
 selection with the realm. These Rust count snapshots do not change the
 private transport's existing byte totals or layout.
 
-Animation-frame vectors, Promise-job/browser/cleanup deques, each Promise's
-pending reaction vector and the pending rejection-notification vector admit
+Promise-job deques and reaction vectors admit complete detached replacements
+while their original capacity stays charged. Already-formed incoming work first
+acquires its payload lease; candidate storage reserves at least four slots,
+doubling a full capacity, and checks actual reported capacity before publication.
+Spare slots need only new payload/count allowance. Moving a wrapped deque keeps
+FIFO order. Publication transfers ownership once into the live queue, and
+discarded candidates refund through terminal failure. Rust-held candidates keep
+independent document leases without retaining a VM or JavaScript object roots.
+
+Animation-frame vectors, browser/cleanup deques and the pending rejection-
+notification vector admit
 the slot-capacity delta needed for an append before publishing it. Growth
 explicitly requests at least four slots, doubling an existing full capacity.
 Available slots add no storage charge. If reservation reports more capacity
@@ -198,14 +207,19 @@ refusal. FileReader cancellation removes matching entries in place, preserving
 other queued work and its storage without a replacement allocation.
 The broader native control/service-buffer gate remains open.
 
-Promise-record and async/module continuation tables prepare empty replacement
-storage to measure actual reported capacity before moving live entries. An
-await admits its continuation payload/table delta and the matching reaction or
-job count, payload and slot growth together. Work slots are reserved and
-checked before the frame and serial are published; failed work admission cannot
-leave an orphan frame while returning success. Existing owners move without
-cloning after admission. Staging allocations, allocator overhead and broader
-native control/service storage remain outside this logical capacity policy.
+Async/module await admits counts and settled value/origin ownership before
+copying its status, then leases unowned frame payload, complete queue growth and
+complete continuation-map replacement together. Refusal leaves live queue/map
+capacities, records and frame serials unchanged. Publication moves admitted
+storage and installs both the frame and its reaction/job without another
+fallible queue admission. Error exits reconcile only after the rejected frame
+has dropped its execution leases, so sibling realms see those refunds too.
+Preparation and commit run no JavaScript or collection.
+
+Promise-record and other wait/control tables still use their separate measured
+replacement/delta protocol. Their preallocation, retained hash-allocation
+ownership, producer-side clones in other Promise algorithms, allocator overhead
+and broader native control/service storage remain open.
 
 Ordinary and deferred dynamic-import waiters consume the same document
 reaction/request count. Ordinary registration checks table/vector growth and a

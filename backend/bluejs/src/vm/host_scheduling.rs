@@ -150,44 +150,6 @@ pub(super) enum AwaitRegistration {
     Job(PromiseJob),
 }
 
-impl AwaitRegistration {
-    pub(super) fn admit(
-        &self,
-        vm: &mut Vm,
-        mut extra: HostSchedulingUsage,
-    ) -> Result<(), RuntimeError> {
-        match self {
-            Self::Reaction { promise, reaction } => {
-                extra.pending_reactions = extra.pending_reactions.saturating_add(1);
-                extra.payload_bytes = extra.payload_bytes.saturating_add(reaction_bytes(reaction));
-                let growth = SchedulingCapacity::for_vec_push(&vm.promises[promise].reactions);
-                vm.admit_scheduling_work(extra.with_growth(growth))?;
-                growth.reserve_vec(&mut vm.promises.get_mut(promise).unwrap().reactions);
-            }
-            Self::Job(job) => {
-                extra.pending_microtasks = extra.pending_microtasks.saturating_add(1);
-                extra.payload_bytes = extra
-                    .payload_bytes
-                    .saturating_add(job.scheduling_payload_bytes());
-                let growth = SchedulingCapacity::for_deque_push(&vm.promise_jobs);
-                vm.admit_scheduling_work(extra.with_growth(growth))?;
-                growth.reserve_deque(&mut vm.promise_jobs);
-            }
-        }
-        // Account for actual work slots before the frame table or its serial
-        // changes. `extra` still includes the uncommitted frame/table storage.
-        vm.admit_scheduling_work(extra)
-    }
-
-    pub(super) fn publish(self, vm: &mut Vm) -> Result<(), RuntimeError> {
-        match self {
-            Self::Reaction { promise, reaction } => vm.enqueue_promise_reaction(promise, reaction),
-            Self::Job(job) => vm.enqueue_promise_job(job),
-        }
-        vm.check_scheduling_failure()
-    }
-}
-
 /// Owned scheduling slot capacities and native payloads (including the
 /// bounded console buffer, execution payloads and shared agent registries), separate from managed heap
 /// and shared installed bytecode. Allocator/control-table overhead, spare
@@ -509,7 +471,7 @@ impl PromiseJob {
         )
     }
 }
-fn reaction_bytes(reaction: &PromiseReaction) -> usize {
+pub(super) fn reaction_bytes(reaction: &PromiseReaction) -> usize {
     match reaction {
         PromiseReaction::Then(reaction) => capability_bytes(&reaction.target)
             .saturating_add(value_payload_bytes(&reaction.on_fulfilled))
@@ -1118,25 +1080,7 @@ impl Vm {
     /// Failure latches an uncatchable document abort before any later JS work;
     /// infallible internal settlement paths must never panic or report success.
     pub(super) fn enqueue_promise_job(&mut self, job: PromiseJob) {
-        let extra = HostSchedulingUsage {
-            pending_microtasks: 1,
-            payload_bytes: job.scheduling_payload_bytes(),
-            ..HostSchedulingUsage::default()
-        };
-        let growth = SchedulingCapacity::for_deque_push(&self.promise_jobs);
-        if self
-            .admit_scheduling_work(extra.with_growth(growth))
-            .is_err()
-        {
-            return;
-        }
-        if growth.reserve_deque(&mut self.promise_jobs)
-            && self.admit_scheduling_work(extra).is_err()
-        {
-            return;
-        }
-        self.promise_jobs.push_back(job);
-        let _ = self.synchronize_scheduling_usage();
+        let _ = self.publish_promise_job(job);
     }
     pub(super) fn enqueue_promise_reaction(
         &mut self,
@@ -1144,33 +1088,6 @@ impl Vm {
         reaction: PromiseReaction,
     ) {
         self.mark_promise_handled(promise);
-        let extra = HostSchedulingUsage {
-            pending_reactions: 1,
-            payload_bytes: reaction_bytes(&reaction),
-            ..HostSchedulingUsage::default()
-        };
-        let growth = SchedulingCapacity::for_vec_push(
-            &self
-                .promises
-                .get(&promise)
-                .expect("reaction owner was validated")
-                .reactions,
-        );
-        if self
-            .admit_scheduling_work(extra.with_growth(growth))
-            .is_err()
-        {
-            return;
-        }
-        let exceeded = growth.reserve_vec(&mut self.promises.get_mut(&promise).unwrap().reactions);
-        if exceeded && self.admit_scheduling_work(extra).is_err() {
-            return;
-        }
-        self.promises
-            .get_mut(&promise)
-            .expect("reaction owner was validated")
-            .reactions
-            .push(reaction);
-        let _ = self.synchronize_scheduling_usage();
+        let _ = self.publish_promise_reaction(promise, reaction);
     }
 }
