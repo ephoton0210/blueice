@@ -68,6 +68,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The direct/indirect eval storage follow-up (2026-10-18) is active. Apply retained
+input/source/code ownership to eval, including its compiler environment snapshots
+and capture handoff. Preserve strictness, lexical/global variable environments,
+super/private-name access and non-string fast paths. Four corrected old-code
+cases fail; twenty expanded cases pass. Final related controls pass **162 distinct
+selected tests** in thirty-seven fixed selections across twelve executable
+targets. Formatting, diff checks and offline workspace/all-target Clippy pass,
+with source/artifact and local commit audits. Broader acceptance remains open.
+
 The dynamic Function storage follow-up (2026-10-18) is active. Extend native
 input/source/code ownership to all four Function constructor kinds, including
 coercion-time string buffers, independent grammar checks and code retained by
@@ -7573,6 +7582,78 @@ Evidence: `target/dynamic-function-storage-source-20261018.json` and prefix
 `/private/tmp/blueice-dynamic-function-storage-` (2026-10-18), including original
 red input/log, initial three/module controls, expanded frozen inputs, fixed
 controls and commit message.
+
+#### Direct/indirect eval input/code follow-up (implementation checkpoint, 2026-10-18)
+
+Acceptance: retain direct/indirect eval lexer text, returned AST and compiler
+environment snapshots through preparation, then own root buffers for execution
+and shared source/child code through final users. Capture storage must transfer
+to frame maps before guest code, preserving lexical/global environments,
+strictness, with/private/super contexts and non-string fast paths.
+
+- [x] Preserve corrected missing-owner and parse-before-refusal failures using
+      fixed tiny sources and scalar peers.
+- [x] Own returned eval inputs, compiler snapshots and root/child code; release
+      capture scratch at frame adoption and preserve caller restoration.
+- [x] Finish fixed related controls, source/artifact audits and a detailed
+      English commit.
+
+The initial fixture omitted internal-entry fuel and cold global setup; its
+InstructionLimit/panic findings are retained separately. After finite fuel and
+global setup, **0/4 passed** reproduce the intended contracts: returned closures
+lose all native code/source ownership after VM destruction, and each empty eval
+path performs **9 allocations** before refusing a zero-headroom document.
+
+Direct/indirect eval now borrow the original UTF-16 argument and own measured
+lexer encoding, returned Program structure and distinct source allocations.
+Direct eval retains its inherited parse strictness, while indirect eval uses a
+fresh Script context. Non-string input keeps its no-code path. Root lowering and
+scope resolution remain unchanged; parser resource failures keep their type.
+
+Returned compiler snapshots own visible vectors, duplicate binding-name buffers,
+dynamic-capture table capacity and variable/conflict name vectors until captures
+are prepared. AST/root/child owners coexist during compilation; input AST and
+snapshots release before guest code. Root buffers retain a separate lease for
+declaration setup, getters, execution and restoration. Shared child/source owners
+survive returned closures, generators, async continuations and queued callbacks.
+Global lookup failure uses error propagation rather than an unchecked assumption.
+
+Capture scratch is admitted before gathering IDs and moves into frame maps with
+its lease. Adoption destroys the temporary vector and releases its credit before
+guest callbacks. Existing internal eval adapters use this same path. Lexical
+conflict checks inspect closure code without copying captures or the receiver.
+Normal/throw/refusal/terminal cleanup keeps existing restoration behavior.
+
+The initial four cases and expanded **20/20** pass. Two allocation observations
+stay unit-only; eighteen functional contracts have an ordinary-library entry.
+Cases cover AST/root/source lifetimes, foreign/unbounded inputs, non-string
+headroom, template-source independence, compiler snapshot capacities, exact/
+one-short admission, scope/private/super preservation, syntax/throw cleanup,
+timer/Promise delivery, final GC refunds and late activation. A paired one/four-
+slot scratch test observes identical native usage inside guest code, proving
+that freed capture capacity is not retained through execution.
+
+Final validation passes **162 distinct selected tests** in thirty-seven fixed
+selections across twelve executable targets: the new twenty, the previous 132
+controls, eight exact eval/parameter/with semantics cases and two exact frame/
+global-admission controls. Formatting, diff checks and offline workspace/all-
+target Clippy pass. Source/artifact and staged/committed content audits bind eight
+frozen Rust inputs, ten source/document files, twelve test executables and the
+detailed English commit. Compiler lowering, AST metrics, parser/encoding and
+shared source/code owner implementations remain unchanged. These checks do not
+renew earlier broad acceptance inventories.
+
+Temporary BTree snapshot builders, complete parser/compiler producer
+preallocation, ShadowRealm.evaluate account handoff, ordinary host-precompiled
+shared script ownership, diagnostic map/registry storage and allocator/BigInt-
+spare/Rc-control exclusions remain open with integrated acceptance. M1u stays the
+latest accepted milestone. No broad, exhaustion, infinite-execution or network/
+Core/MCP replay is resumed, and the rejected push is not retried.
+
+Evidence: `target/eval-source-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-eval-source-storage-` (2026-10-18), including initial fixture
+findings, corrected red input/log, initial green input/log, expanded frozen
+inputs, fixed controls and commit message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

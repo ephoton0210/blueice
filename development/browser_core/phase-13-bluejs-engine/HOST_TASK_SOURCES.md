@@ -1129,6 +1129,36 @@ script/eval and host-precompiled shared ownership, diagnostic map/registry
 storage, allocator/BigInt-spare/Rc-control exclusions and integrated acceptance
 remain open. M1q coordinate refinements stay parked.
 
+Direct and indirect eval now encode their borrowed UTF-16 argument into an
+independently admitted lexer-text buffer. Non-string inputs retain their no-code
+fast path. The returned Program uses the shared AST/source carrier, preserving
+inherited strictness for direct eval and fresh Script grammar for indirect eval.
+Parser resource errors remain resource errors. Encoded text drops after AST
+admission; compiler lowering stays unchanged.
+
+The direct-eval compiler snapshot owns returned visible-binding vectors, both
+copies of binding names, dynamic-capture map capacity, variable names and lexical
+conflicts through compilation/capture preparation. Root code has a separate owner
+for its own buffers while shared children and sources retain theirs. The AST
+drops before execution and compiler snapshots drop before guest code. Root code
+stays charged throughout declaration setup, getters, execution and caller
+restoration. Global-object lookup errors propagate through the fallible path.
+
+Capture scratch is admitted before gathering IDs. Frame maps take the values and
+release the scratch lease immediately after adoption, before guest callbacks.
+Legacy internal eval entries use the same handoff. Lexical conflict inspection
+reads only closure code, avoiding a copied capture vector and receiver. Normal
+returns, throws, admission refusal and VM destruction release the appropriate
+owners while keeping terminal failure latched. Returned/queued closures,
+generators and saved async code retain independently shared source/code storage;
+unbounded eval code attaches when document accounting begins.
+
+This covers direct/indirect eval returned inputs, compiler snapshots and durable
+code. Temporary BTree snapshot builders and full parser/compiler producer
+preallocation remain open, together with ShadowRealm.evaluate account handoff,
+ordinary host-precompiled shared script ownership, diagnostic map/registry
+storage, allocator/BigInt-spare/Rc-control exclusions and integrated acceptance.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

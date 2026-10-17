@@ -106,6 +106,9 @@ pub use host_promises::{
     HostTaskSource,
 };
 mod compilation_input_storage;
+mod compilation_text_storage;
+mod eval_compilation_storage;
+use compilation_text_storage::NativeCaptures;
 mod compiled_source_storage;
 mod disposal_ownership;
 mod dynamic_bindings;

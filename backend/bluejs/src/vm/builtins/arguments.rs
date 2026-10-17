@@ -3,6 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::vm::compilation_text_storage::NativeText;
+use crate::vm::eval_compilation_storage::{EvalCompileEnvironment, ParsedEvalInput};
+
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/eval_source_storage.rs"]
+mod eval_storage_tests;
 
 /// The number an internal list's `length` holds; every array's does.
 pub(super) fn number_or_zero(value: &Value) -> f64 {
@@ -287,9 +293,11 @@ impl Vm {
         let Value::String(source) = value else {
             return Ok(value.clone());
         };
-        let source = crate::source_encoding::encode(source);
-        let program = crate::parse_eval(&source, self.strict)
-            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        self.synchronize_scheduling_usage()?;
+        let source = NativeText::encoded(source, self.host_scheduling.as_ref())?;
+        let program =
+            ParsedEvalInput::parse_eval(&source, self.strict, self.host_scheduling.as_ref())?;
+        drop(source);
         let mut visible = self.eval_visible_bindings();
         let mut dynamic_captures = HashMap::new();
         if self.parameter_eval_env.is_some() {
@@ -361,43 +369,50 @@ impl Vm {
                     .map(|(name, _)| name.clone()),
             );
         }
-        let code = crate::compiler::compile_eval(
-            &program,
-            &visible,
-            &variable_environment_names,
-            &lexical_conflicts,
-            crate::compiler::EvalContext {
-                strict: self.strict,
-                new_target_allowed: self.new_target_allowed,
-                class_field_initializer: self.class_field_initializer,
-                with_scopes: crate::compiler::EvalWithScopes {
-                    depth: self.with_objects.len(),
-                    inherited: self.inherited_with_depth,
+        let environment = EvalCompileEnvironment::adopt(
+            visible,
+            dynamic_captures,
+            variable_environment_names,
+            lexical_conflicts,
+            self.host_scheduling.as_ref(),
+        )?;
+        let code = program.compile_with(self.host_scheduling.as_ref(), |program| {
+            crate::compiler::compile_eval(
+                program,
+                &environment.visible,
+                &environment.variables,
+                &environment.lexical,
+                crate::compiler::EvalContext {
+                    strict: self.strict,
+                    new_target_allowed: self.new_target_allowed,
+                    class_field_initializer: self.class_field_initializer,
+                    with_scopes: crate::compiler::EvalWithScopes {
+                        depth: self.with_objects.len(),
+                        inherited: self.inherited_with_depth,
+                    },
                 },
-            },
-            self.config.eval_compile_limits,
-        )
-        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
-        let captures = code
-            .captures
-            .iter()
-            .map(|slot| match dynamic_captures.get(slot) {
-                Some(&cell) => Ok(cell),
-                None => self.capture(*slot as usize),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+                self.config.eval_compile_limits,
+            )
+        })?;
+        let mut captures = NativeCaptures::new(code.captures.len(), self.host_scheduling.as_ref())?;
+        for slot in &code.captures {
+            let cell = match environment.dynamic_captures.get(slot) {
+                Some(&cell) => cell,
+                None => self.capture(*slot as usize)?,
+            };
+            captures.values.push(cell);
+        }
+        drop(environment);
         // A sloppy direct eval inherits the caller's VariableEnvironment.
         // The absence of a current function identifies the realm's global
         // execution context. Give eval the global `this` even when the outer
         // script has not observed it yet, and publish `var` bindings there.
         // Strict eval always receives its own VariableEnvironment.
         if global_execution && self.this == Value::Undefined {
-            self.this = self
-                .global("globalThis")
-                .expect("the global object exists once code is running");
+            self.this = self.global("globalThis")?;
         }
         let global_var_environment = !code.strict && global_execution;
-        self.execute_eval(&code, captures, global_var_environment)
+        self.execute_eval_owned(&code, captures, global_var_environment)
     }
 
     /// Indirect eval starts from the realm global environment. It never
@@ -406,25 +421,26 @@ impl Vm {
         let Value::String(source) = value else {
             return Ok(value.clone());
         };
-        let source = crate::source_encoding::encode(source);
-        let program = crate::parser::parse_encoded(&source)
-            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(
-            &program,
-            &[],
-            &[],
-            &[],
-            crate::compiler::EvalContext::default(),
-            self.config.eval_compile_limits,
-        )
-        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
-        let global_this = self
-            .global("globalThis")
-            .expect("the global object exists once code is running");
+        self.synchronize_scheduling_usage()?;
+        let source = NativeText::encoded(source, self.host_scheduling.as_ref())?;
+        let program = ParsedEvalInput::parse_script(&source, self.host_scheduling.as_ref())?;
+        drop(source);
+        let code = program.compile_with(self.host_scheduling.as_ref(), |program| {
+            crate::compiler::compile_eval(
+                program,
+                &[],
+                &[],
+                &[],
+                crate::compiler::EvalContext::default(),
+                self.config.eval_compile_limits,
+            )
+        })?;
+        let captures = NativeCaptures::new(0, self.host_scheduling.as_ref())?;
+        let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
         let dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
-        let result = self.execute_eval(&code, Vec::new(), !code.strict);
+        let result = self.execute_eval_owned(&code, captures, !code.strict);
         debug_assert!(self.dynamic_eval_bindings.is_empty());
         debug_assert!(self.dynamic_eval_outer_bindings.is_empty());
         self.dynamic_eval_bindings = dynamic_eval_bindings;

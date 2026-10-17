@@ -1409,6 +1409,16 @@ impl Vm {
         captures: Vec<ObjectId>,
         global_var_environment: bool,
     ) -> Result<Value, RuntimeError> {
+        let captures = NativeCaptures::adopt(captures, self.host_scheduling.as_ref())?;
+        self.execute_eval_owned(code, captures, global_var_environment)
+    }
+
+    pub(super) fn execute_eval_owned(
+        &mut self,
+        code: &Bytecode,
+        captures: NativeCaptures,
+        global_var_environment: bool,
+    ) -> Result<Value, RuntimeError> {
         let result = self.execute_eval_inner(code, captures, global_var_environment);
         self.reconcile_scheduling_ownership();
         result
@@ -1417,11 +1427,11 @@ impl Vm {
     fn execute_eval_inner(
         &mut self,
         code: &Bytecode,
-        captures: Vec<ObjectId>,
+        captures: NativeCaptures,
         global_var_environment: bool,
     ) -> Result<Value, RuntimeError> {
         let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
-        let mut prepared_maps = self.prepare_frame_maps(captures.len(), 0, 0)?;
+        let mut prepared_maps = self.prepare_frame_maps(captures.values.len(), 0, 0)?;
         let _caller_payload = self.charge_execution_payload(self.bindings.iter().flatten().fold(
             host_scheduling::value_payload_bytes(&self.completion),
             |bytes, value| bytes.saturating_add(host_scheduling::value_payload_bytes(value)),
@@ -1468,7 +1478,9 @@ impl Vm {
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
         drop(prepared);
+        let (captures, capture_charge) = captures.into_parts();
         prepared_maps.adopt_captures(captures);
+        drop(capture_charge);
         let cells = std::mem::replace(&mut self.cells, prepared_maps.take_cells());
         drop(prepared_maps);
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
@@ -1829,8 +1841,8 @@ impl Vm {
         let ordinary_function = self
             .callee
             .object_id()
-            .and_then(|callee| self.heap.closure(callee).ok().flatten())
-            .is_some_and(|(code, _, _, _)| !code.arrow);
+            .and_then(|callee| self.heap.closure_code(callee).ok().flatten())
+            .is_some_and(|code| !code.arrow);
         if variable_scope_position.is_none() && ordinary_function {
             conflicts.extend(self.variable_scope_lexicals.iter().cloned());
         }

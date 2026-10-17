@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_eval_source_storage_contracts() {
+    blueice_bluejs::Vm::verify_eval_source_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_dynamic_function_storage_contracts() {
     blueice_bluejs::Vm::verify_dynamic_function_storage_contracts();
 }
