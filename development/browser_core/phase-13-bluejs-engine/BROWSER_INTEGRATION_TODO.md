@@ -68,6 +68,26 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The document realm-policy adoption follow-up (2026-10-18) has an implementation
+checkpoint. Late activation joins existing neutral ShadowRealm/Test262 descendants
+to one native and managed document account before callbacks resume. An admitted
+iterative plan visits shared aliases/cycles once, checks exclusive availability
+before publication, preserves foreign shared documents and refuses conflicting
+owned members. Fresh children inherit policy and local storage before publication.
+Neutral pending tasks receive unique document serials while retaining handles,
+deadlines and within-realm order. Managed terminal state reaches detached native
+owners through the shared account without creating an ownership cycle.
+
+All nineteen new contracts and the previous 137 finite controls pass: **156
+distinct selected tests**, six executable targets and sixty selections. Formatting,
+diff checks and offline workspace/all-target Clippy pass. Frozen source/artifact
+and Git audits bind this local checkpoint. No resource-boundary or service replay
+was run; previously rejected external push/process inspection were not retried.
+Owned Test262 host-turn traversal, wider native producers, other metadata/control/
+error replies, incoming decode and integrated acceptance remain open. M1u remains
+the latest accepted milestone; M1z's integrated gates remain open. Evidence:
+`target/document-policy-source-20261018.json`.
+
 The debugger reply projection/framing follow-up (2026-10-18) has an
 implementation checkpoint. Launcher runtime-inspection copies and complete
 encoded frames now retain document ownership through final write/flush.

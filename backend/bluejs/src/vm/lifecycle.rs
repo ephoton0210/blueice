@@ -197,6 +197,7 @@ impl Vm {
             preserve_promise_table_capacity: false,
             promise_jobs: VecDeque::new(),
             bounded_host_microtask_checkpoints: false,
+            document_policy_ready: false,
             host_event_microtask_jobs: None,
             host_scheduling: None,
             active_scheduling_bytes: 0,

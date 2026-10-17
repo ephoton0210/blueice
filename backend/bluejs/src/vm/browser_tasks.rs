@@ -97,7 +97,7 @@ impl BrowserTask {
         }
     }
 
-    fn set_serial(&mut self, next: u64) {
+    pub(super) fn set_serial(&mut self, next: u64) {
         match self {
             Self::AbortTimeout { serial, .. }
             | Self::DragString { serial, .. }

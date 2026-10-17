@@ -79,14 +79,12 @@ impl Vm {
         let prototype = self.constructor_prototype(default)?;
         let mut child = Vm::new(self.config)
             .map_err(|_| RuntimeError::RangeError("could not create a ShadowRealm".into()))?;
-        child.bounded_host_microtask_checkpoints = self.bounded_host_microtask_checkpoints;
-        child.host_scheduling = self.host_scheduling.as_ref().map(SchedulingScope::child);
-        child.heap.inherit_document_heap_budget(&self.heap)?;
         // Realms created within one ShadowRealm agent share the
         // GlobalSymbolRegistry, matching `$262.createRealm()`'s identical
         // choice for the same spec-mandated reason (`Symbol.for` is
         // agent-wide even though every Realm keeps its own globals).
         child.symbol_registry = Rc::clone(&self.symbol_registry);
+        child.inherit_document_policy(self)?;
         let heap_tag = child.object_prototype.heap;
         let instance = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.shadow_realm_by_heap.insert(heap_tag, instance);

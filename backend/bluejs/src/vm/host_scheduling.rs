@@ -207,6 +207,16 @@ struct Account {
     next_task_serial: u64,
     clock_ms: u64,
     host_code_cache: std::rc::Weak<RefCell<super::HostCodeCache>>,
+    document_heap: Option<crate::heap::DocumentHeapBudget>,
+}
+
+impl Account {
+    fn refresh_managed_failure(&mut self) {
+        self.failed |= self
+            .document_heap
+            .as_ref()
+            .is_some_and(crate::heap::DocumentHeapBudget::is_failed);
+    }
 }
 
 #[cfg(any(test, coverage))]
@@ -311,6 +321,7 @@ impl SharedSchedulingCharge {
     /// Optional GC compaction may decline allocation without poisoning work.
     pub(super) fn try_resize_for_reclamation(&mut self, bytes: usize) -> bool {
         let mut account = self.account.borrow_mut();
+        account.refresh_managed_failure();
         let next = account
             .usage
             .sub(HostSchedulingUsage {
@@ -337,12 +348,26 @@ impl SharedSchedulingCharge {
     }
 }
 
+/// Weak association avoids a native/managed account ownership cycle.
+#[derive(Clone)]
+pub(crate) struct NativeDocumentIdentity {
+    account: std::rc::Weak<RefCell<Account>>,
+}
+
 /// Opaque access to the document native account for heap native storage.
 #[derive(Clone)]
 pub(crate) struct HeapNativeBudget {
     account: Rc<RefCell<Account>>,
 }
 impl HeapNativeBudget {
+    pub(crate) fn identity(&self) -> NativeDocumentIdentity {
+        NativeDocumentIdentity {
+            account: Rc::downgrade(&self.account),
+        }
+    }
+    pub(crate) fn has_identity(&self, identity: &NativeDocumentIdentity) -> bool {
+        std::rc::Weak::ptr_eq(&identity.account, &Rc::downgrade(&self.account))
+    }
     pub(crate) fn host_code_cache(&self) -> Option<Rc<RefCell<super::HostCodeCache>>> {
         self.account.borrow().host_code_cache.upgrade()
     }
@@ -473,6 +498,10 @@ impl SchedulingScope {
 
     pub(super) fn next_task_serial(&self) -> Result<u64, RuntimeError> {
         let mut account = self.account.borrow_mut();
+        account.refresh_managed_failure();
+        if account.failed {
+            return Err(RuntimeError::SchedulingLimit);
+        }
         let serial = account.next_task_serial;
         let Some(next) = serial.checked_add(1) else {
             account.failed = true;
@@ -481,6 +510,43 @@ impl SchedulingScope {
         account.next_task_serial = next;
         Ok(serial)
     }
+    pub(super) fn document_heap_budget(&self) -> Option<crate::heap::DocumentHeapBudget> {
+        self.account.borrow().document_heap.clone()
+    }
+    pub(super) fn bind_document_heap_budget(
+        &self,
+        budget: &crate::heap::DocumentHeapBudget,
+    ) -> Result<(), RuntimeError> {
+        let compatible = self
+            .account
+            .borrow()
+            .document_heap
+            .as_ref()
+            .is_none_or(|existing| existing.same_document(budget));
+        if !compatible || !budget.accepts_native(&self.heap_native_budget()) {
+            return Err(self.fail());
+        }
+        budget
+            .bind_native(&self.heap_native_budget())
+            .map_err(|_| self.fail())?;
+        self.account.borrow_mut().document_heap = Some(budget.clone());
+        Ok(())
+    }
+    pub(super) fn reserve_task_serials(&self, count: usize) -> Result<u64, RuntimeError> {
+        let mut account = self.account.borrow_mut();
+        account.refresh_managed_failure();
+        let next = u64::try_from(count)
+            .ok()
+            .and_then(|count| account.next_task_serial.checked_add(count));
+        if account.failed || next.is_none() {
+            account.failed = true;
+            return Err(RuntimeError::SchedulingLimit);
+        }
+        let start = account.next_task_serial;
+        account.next_task_serial = next.unwrap();
+        Ok(start)
+    }
+
     pub(super) fn new() -> Self {
         Self {
             account: Rc::new(RefCell::new(Account::default())),
@@ -499,6 +565,7 @@ impl SchedulingScope {
         extra: HostSchedulingUsage,
     ) -> Result<(), RuntimeError> {
         let mut account = self.account.borrow_mut();
+        account.refresh_managed_failure();
         account.usage = account.usage.sub(self.own).add(own);
         #[cfg(any(test, coverage))]
         account.observe_payload_peak();
@@ -1137,11 +1204,11 @@ impl Vm {
             .check(own, HostSchedulingUsage::default());
     }
     pub(super) fn check_scheduling_failure(&self) -> Result<(), RuntimeError> {
-        if self
-            .host_scheduling
-            .as_ref()
-            .is_some_and(|scope| scope.account.borrow().failed)
-        {
+        if self.host_scheduling.as_ref().is_some_and(|scope| {
+            let mut account = scope.account.borrow_mut();
+            account.refresh_managed_failure();
+            account.failed
+        }) {
             Err(RuntimeError::SchedulingLimit)
         } else {
             self.heap

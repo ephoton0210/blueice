@@ -363,6 +363,10 @@ impl Heap {
     }
 
     pub(crate) fn bind_native_budget(&mut self, budget: HeapNativeBudget) -> Result<(), HeapError> {
+        if let Some(managed) = self.document_heap_budget_handle() {
+            managed.bind_native(&budget)?;
+        }
+
         match (
             self.roots.budget(),
             self.collector.budget.as_ref(),

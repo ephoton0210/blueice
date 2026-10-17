@@ -53,6 +53,7 @@ mod lifecycle;
 pub(crate) use collector::CollectorMarks;
 use collector::{CollectorWorkspace, ProtectedRoots};
 mod managed_bytes;
+pub(crate) use managed_bytes::DocumentHeapBudget;
 use managed_bytes::ManagedBytes;
 mod realm_roots;
 pub(crate) use realm_roots::RealmRoot;

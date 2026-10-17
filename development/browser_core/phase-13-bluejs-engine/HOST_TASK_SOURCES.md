@@ -1378,6 +1378,49 @@ native and complete neutral-tree gates stay open; M1u remains latest accepted an
 M1z's integrated gates remain open. Evidence:
 `target/debugger-reply-storage-source-20261018.json`.
 
+Late bounded activation now adopts an existing mixed realm graph before work
+resumes. A paid iterative discovery uses shared ShadowRealm anchors and paths
+through exclusively owned Test262 children; it introduces no VM-pointer access
+or recursive graph walk. Queue/member/path/set/task storage is admitted before
+allocation. Each heap joins once across aliases and cycles. Discovery checks
+exclusive availability, so an immutable or mutable member borrow refuses before
+policy publication and can be retried. Active neutral roots also refuse. Shared
+records from another document are skipped, including active foreign records with
+a captured independent scope; conflicting owned members refuse without changing
+the foreign account.
+
+One native account retains an opaque managed budget whose native identity is
+weak, avoiding an ownership cycle. Activation publishes a common terminal owner
+to all prepared members, preflights their aggregate existing managed storage,
+then joins each heap and attaches local code/debugger/collector/symbol/module
+storage. A managed terminal failure stops shared native admission, including
+retained native owners; releasing old credit stays permitted. Existing same-
+document scopes keep their own usage, and repeated activation reuses the ready
+policy. Fresh ShadowRealm and Test262 children inherit and attach before
+publication; Test262 harness storage is reconciled before publishing its facade.
+
+Neutral pending timer/browser/finalization serials migrate into one reserved
+shared range. Old serial plus heap identity gives a deterministic tie order where
+independent neutral realms had no document-wide enqueue order. Within-realm order,
+timer handles and deadlines survive; already-bound serials are preserved. Stored
+clocks merge without invoking an embedding callback during activation. Existing
+ShadowRealm task delivery can now see adopted child timers and Promise work.
+Owned Test262 host-turn traversal remains a separate open mechanism; accounting
+adoption does not claim that its conformance timers become browser task sources.
+
+The realm-policy checkpoint passes nineteen fixed tiny contracts and the previous
+137 finite controls: one hundred fifty-six distinct tests, six executable targets
+and sixty selections. Mixed ownership, alias/cycle conservation, borrow/refusal/
+retry, active/foreign boundaries, fresh inheritance, idempotence, timer identity/
+serial/deadline conservation and timer/Promise completion through GC are covered.
+Synthetic terminal-state checks use no exhaustion or represented large payload.
+Formatting, diff checks and offline workspace/all-target Clippy pass, with frozen
+source/artifact and Git audits. No fresh coverage, service/runtime sweep or
+integrated acceptance is claimed. Wider native and transport ownership gates stay
+open; M1u remains latest accepted and M1z integrated gates stay open. Publication
+remains local; rejected external push/process inspection is not retried. Evidence:
+`target/document-policy-source-20261018.json`.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_document_policy_contracts() {
+    blueice_bluejs::Vm::verify_document_policy_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_debugger_projection_storage_contracts() {
     blueice_bluejs::Vm::verify_debugger_projection_storage_contracts();
 }

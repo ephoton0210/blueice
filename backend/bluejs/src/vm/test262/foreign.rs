@@ -2278,10 +2278,12 @@ impl Vm {
         // GlobalSymbolRegistry is agent-wide even though every Realm keeps
         // its own global object and intrinsics.
         realm.symbol_registry = Rc::clone(&self.symbol_registry);
+        realm.inherit_document_policy(self)?;
         // A Test262 realm exposes the same host interface as its creator.
         // In particular, the record returned by createRealm must provide an
         // evalScript function that evaluates in this child Realm.
         realm.install_test262_harness()?;
+        realm.synchronize_scheduling_usage()?;
         let prototype = self.object_prototype;
         let base = self.stack.len();
         let mut published_realm = None;

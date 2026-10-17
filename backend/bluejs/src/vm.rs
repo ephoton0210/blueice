@@ -34,6 +34,7 @@ mod collector_workspace;
 mod completion;
 mod debugger;
 mod diagnostic_accounting;
+mod document_policy;
 mod errors;
 mod execution;
 mod execution_payload;
@@ -146,7 +147,9 @@ use host_registration::{host_function_index, host_registration_index};
 use host_scheduling::{
     AwaitRegistration, SchedulingCapacity, SchedulingMapCapacity, SchedulingScope,
 };
-pub(crate) use host_scheduling::{HeapNativeBudget, SharedSchedulingCharge as HeapNativeCharge};
+pub(crate) use host_scheduling::{
+    HeapNativeBudget, NativeDocumentIdentity, SharedSchedulingCharge as HeapNativeCharge,
+};
 pub use host_scheduling::{
     HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_BROWSER_TASKS,
     MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS, MAX_PENDING_HOST_TIMERS,
@@ -1274,6 +1277,7 @@ pub struct Vm {
     promise_jobs: VecDeque<PromiseJob>,
     /// Page realms bound even the implicit drains used by module evaluation.
     bounded_host_microtask_checkpoints: bool,
+    document_policy_ready: bool,
     /// All callback cleanups in one native dispatch share this job budget.
     host_event_microtask_jobs: Option<usize>,
     host_scheduling: Option<SchedulingScope>,

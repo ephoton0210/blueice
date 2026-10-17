@@ -93,33 +93,11 @@ fn nested_delay(delay: u64, nesting: u32) -> u64 {
     }
 }
 
-impl Vm {
-    pub(crate) fn use_bounded_host_microtask_checkpoints(&mut self) -> Result<(), RuntimeError> {
-        if self.host_scheduling.is_some() {
-            self.bounded_host_microtask_checkpoints = true;
-            self.attach_linked_module_cells();
-            self.attach_cached_module_values(self.host_scheduling.as_ref().unwrap())?;
-            self.synchronize_scheduling_usage()?;
-            let scope = self.host_scheduling.as_ref().unwrap();
-            self.symbol_registry.borrow_mut().attach(scope)?;
-            self.attach_module_sources(scope)?;
-            return Ok(());
-        }
-        // Enable accounting before measuring existing execution fields, and
-        // retain a failed scope so activation cannot bypass a terminal abort.
-        self.bounded_host_microtask_checkpoints = true;
-        self.host_scheduling = Some(SchedulingScope::new());
-        self.attach_linked_module_cells();
-        self.attach_cached_module_values(self.host_scheduling.as_ref().unwrap())?;
-        self.synchronize_scheduling_usage()?;
-        self.symbol_registry
-            .borrow_mut()
-            .attach(self.host_scheduling.as_ref().unwrap())?;
-        self.heap.begin_document_heap_budget();
-        self.attach_module_sources(self.host_scheduling.as_ref().unwrap())?;
-        Ok(())
-    }
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/document_policy.rs"]
+mod policy_tests;
 
+impl Vm {
     /// Installs `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`
     /// and `queueMicrotask` as globals. Installation is all-or-nothing and is
     /// refused when any of those names already exists.
