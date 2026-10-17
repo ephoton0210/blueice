@@ -876,13 +876,9 @@ impl Vm {
         usage.payload_bytes = usage
             .payload_bytes
             .saturating_add(slots(&self.module_error_origins));
-        for origin in &self.module_error_origins {
-            usage.payload_bytes = usage
-                .payload_bytes
-                .saturating_add(std::mem::size_of::<ThrowOrigin>())
-                .saturating_add(2 * std::mem::size_of::<usize>())
-                .saturating_add(origin.upgrade().map_or(0, |origin| origin.payload_bytes()));
-        }
+        usage.payload_bytes = usage
+            .payload_bytes
+            .saturating_add(self.host_neutral_module_value_bytes());
         usage.payload_bytes = usage.payload_bytes.saturating_add(
             self.host_console
                 .as_ref()

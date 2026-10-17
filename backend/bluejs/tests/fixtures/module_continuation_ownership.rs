@@ -219,6 +219,7 @@ fn module_continuation_ownership_loader_replacement_resumes_the_original_program
     assert_eq!(
         observer.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
@@ -228,6 +229,7 @@ fn module_continuation_ownership_loader_replacement_resumes_the_original_program
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
@@ -274,6 +276,7 @@ fn module_continuation_ownership_late_activation_attaches_a_displaced_snapshot()
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
@@ -286,6 +289,7 @@ fn module_continuation_ownership_late_activation_attaches_a_displaced_snapshot()
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
@@ -307,6 +311,7 @@ fn module_continuation_ownership_late_debugger_activation_retains_and_refunds_th
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
@@ -318,6 +323,7 @@ fn module_continuation_ownership_late_debugger_activation_retains_and_refunds_th
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()
@@ -340,6 +346,7 @@ fn module_continuation_ownership_rejected_await_refunds_the_old_snapshot() {
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_record_storage_bytes()
             + vm.module_root_storage_bytes()

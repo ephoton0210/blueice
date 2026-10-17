@@ -868,7 +868,7 @@ impl Vm {
                 .linked_record(entry)
                 .and_then(|record| record.completion.clone())
             {
-                result = Ok(value);
+                result = Ok(value.value.clone());
             }
         }
         self.finish_module_graph_execution(result)
@@ -1077,10 +1077,13 @@ impl Vm {
             record.suspended = false;
             record.evaluating = false;
             match &result {
-                Ok(value) => match self.keep_module_value_alive(value) {
-                    Ok(()) => {
+                Ok(value) => match self.retain_module_completion(value).and_then(|completion| {
+                    self.keep_module_value_alive(value)?;
+                    Ok(completion)
+                }) {
+                    Ok(completion) => {
                         record.evaluated = true;
-                        record.completion = Some(value.clone());
+                        record.completion = Some(completion);
                     }
                     Err(error) => result = Err(error),
                 },
@@ -1093,12 +1096,10 @@ impl Vm {
                                     debugger_site: self.pending_throw_site,
                                     epoch: self.throw_epoch,
                                 };
-                                match self.retain_module_error(value.clone(), origin).and_then(
-                                    |error| {
-                                        self.keep_module_value_alive(&value)?;
-                                        Ok(error)
-                                    },
-                                ) {
+                                match self.retain_module_error(&value, origin).and_then(|error| {
+                                    self.keep_module_value_alive(&value)?;
+                                    Ok(error)
+                                }) {
                                     Ok(error) => {
                                         record.evaluated = true;
                                         record.error = Some(error);
@@ -1159,7 +1160,7 @@ impl Vm {
                 .linked_record(&module)
                 .and_then(|record| record.completion.clone())
             {
-                result = Ok(value);
+                result = Ok(value.value.clone());
             }
         }
         match &result {
@@ -1695,6 +1696,7 @@ impl Vm {
         // or continuation registration refuses this turn.
         let result = (|| match outcome {
             Ok(StraightLineExit::Return(value)) => {
+                let completion = self.retain_module_completion(&value)?;
                 self.keep_module_value_alive(&value)?;
                 {
                     let record = graph
@@ -1706,7 +1708,7 @@ impl Vm {
                     record.evaluating = false;
                     record.suspended = false;
                     record.evaluated = true;
-                    record.completion = Some(value.clone());
+                    record.completion = Some(completion);
                 }
                 let modules = self.module_registry.clone();
                 self.settle_dynamic_import_waiters(&module, &mut graph.linked)?;
@@ -1746,7 +1748,7 @@ impl Vm {
             Err(error) => {
                 let origin = self.caught_rejection_origin(resume_epoch);
                 let value = self.error_value(error)?;
-                let error = self.retain_module_error(value, origin)?;
+                let error = self.retain_module_error(&value, origin)?;
                 self.keep_module_value_alive(&error.value)?;
                 let record = graph
                     .linked
@@ -2029,11 +2031,7 @@ impl Vm {
         self.reclaim_import_waiter_storage();
         self.synchronize_scheduling_usage()?;
         for promise in failed {
-            self.reject_promise_with_origin(
-                promise,
-                error.value.clone(),
-                error.origin.as_ref().clone(),
-            )?;
+            self.reject_promise_with_origin(promise, error.value.clone(), error.origin.clone())?;
         }
         let Some(waiters) = self.module_import_waiters.remove(module) else {
             return self.synchronize_scheduling_usage();
@@ -2041,11 +2039,7 @@ impl Vm {
         self.reclaim_import_waiter_storage();
         self.synchronize_scheduling_usage()?;
         for promise in waiters {
-            self.reject_promise_with_origin(
-                promise,
-                error.value.clone(),
-                error.origin.as_ref().clone(),
-            )?;
+            self.reject_promise_with_origin(promise, error.value.clone(), error.origin.clone())?;
         }
         self.synchronize_scheduling_usage()
     }
@@ -2801,8 +2795,9 @@ impl Vm {
                     let record = linked.get_mut(name).expect("checked module record exists");
                     record.cells = cells;
                     record.refresh_cells_charge();
+                    let completion = self.retain_module_completion(&value)?;
                     self.keep_module_value_alive(&value)?;
-                    record.completion = Some(value.clone());
+                    record.completion = Some(completion);
                     Ok(value)
                 }
                 ModuleRun::Completed(Ok(StraightLineExit::Await {
@@ -2912,7 +2907,7 @@ impl Vm {
             {
                 let origin = self.caught_rejection_origin(evaluation_epoch);
                 let value = self.error_value(error)?;
-                let retained = self.retain_module_error(value.clone(), origin)?;
+                let retained = self.retain_module_error(&value, origin)?;
                 let record = linked.get_mut(name).expect("checked module record exists");
                 record.evaluating = false;
                 self.keep_module_value_alive(&value)?;

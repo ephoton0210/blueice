@@ -124,6 +124,9 @@ pub(super) struct ModuleValueCopy {
 }
 
 impl ModuleValueCopy {
+    pub(super) fn into_retained(self) -> (Value, Option<SharedSchedulingCharge>) {
+        (self.value, self.charge)
+    }
     pub(super) fn copy(
         value: &Value,
         scope: Option<&SchedulingScope>,

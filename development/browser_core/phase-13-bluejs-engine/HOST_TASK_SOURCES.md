@@ -708,6 +708,24 @@ their signature and report failures at the VM safepoint. Warm capacity remains
 reusable during terminal cleanup. Remaining managed-container backing buffers,
 retained native values, shared programs and service buffers remain open work.
 
+Cached module completions and evaluation errors now retain separate native
+owners after their execution frame ends. Retention admits the owner headers and
+primitive copy before publication, checks reported copied capacity, and moves
+the copy's existing lease into immutable storage. Async parents share the same
+error value and owned origin buffers. Cloning that cached error adds no value
+copy or native charge; delivering an ordinary JavaScript value keeps the usual
+root and scheduling rules.
+
+An error's weak discovery record does not root its JavaScript value. Once its
+last strong owner drops, primitive and origin buffers are released before their
+native charge. The discovery record keeps the remaining allocation headers
+charged until pruning. Values held by Rust can outlive their VM without an early
+refund. Existing host-neutral caches attach to a document once on activation;
+foreign-document attachment fails before replacing the original owner. Full
+cleanup remains possible after terminal scheduling failure. Shared programs,
+other native values, managed-container backing buffers and wider service/native
+acceptance remain open.
+
 ### Document managed heaps
 
 Document scopes share one managed-storage envelope across the root VM and all

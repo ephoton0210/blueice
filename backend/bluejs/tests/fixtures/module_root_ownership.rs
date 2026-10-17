@@ -263,6 +263,7 @@ fn module_root_ownership_late_activation_attaches_root_segments_once() {
     assert_eq!(
         before,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
             + vm.module_record_storage_bytes()
@@ -300,7 +301,7 @@ fn module_root_ownership_debugger_and_await_completions_remain_alive_through_gc(
             .completion
             .clone()
             .unwrap();
-        let id = value.object_id().unwrap();
+        let id = value.value.object_id().unwrap();
         vm.execute_script(&script("0;")).unwrap();
         vm.with_roots(|heap| {
             heap.collect_major();
@@ -309,7 +310,7 @@ fn module_root_ownership_debugger_and_await_completions_remain_alive_through_gc(
         .unwrap();
         assert!(vm.heap.contains(id));
         assert_eq!(
-            vm.get_property(&value, &"answer".into()),
+            vm.get_property(&value.value, &"answer".into()),
             Ok(Value::Number(42.0))
         );
     }

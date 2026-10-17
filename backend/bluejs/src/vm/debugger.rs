@@ -1108,18 +1108,16 @@ impl Vm {
             epoch: self.throw_epoch,
         };
         let retained = match &result {
-            Ok(RuntimeError::Thrown(value)) => {
-                match self.retain_module_error(value.clone(), origin) {
-                    Ok(error) => Some(error),
-                    Err(error) => {
-                        if let Some((_slot, root)) = error_root.take() {
-                            self.release_root(root);
-                        }
-                        result = Err(error);
-                        None
+            Ok(RuntimeError::Thrown(value)) => match self.retain_module_error(value, origin) {
+                Ok(error) => Some(error),
+                Err(error) => {
+                    if let Some((_slot, root)) = error_root.take() {
+                        self.release_root(root);
                     }
+                    result = Err(error);
+                    None
                 }
-            }
+            },
             _ => None,
         };
         let graph = self

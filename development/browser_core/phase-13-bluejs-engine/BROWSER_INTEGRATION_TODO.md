@@ -57,15 +57,28 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-Realm collection metadata is the current follow-up (2026-10-17).
-Two cold-metadata refusal cases initially collected/pruned without native room;
-both now pass. A flat admitted plan covers discovery, snapshots, owner lookup,
-ignored pins and wrapper targets. Cached capacities retain their owner without
-retaining realm records, and permit existing-graph cleanup after terminal failure.
-All eighteen new finite cases and all 832 fixed selected cases pass, along
-with formatting and offline workspace/all-target Clippy. Collector work/mark
-sets, retained native values, shared programs and wider gates remain open;
-M1u stays the latest accepted milestone.
+The cached module value checkpoint (2026-10-17) now admits completion/error
+primitive copies before publication and keeps native ownership across installed,
+parked and Rust-held records. Async parents share one immutable error value and
+owned origin; weak discovery retains only header ownership after payload release.
+Twenty-one new finite cases, one existing origin control and all 853 prior
+selected cases pass: **875 total**, with formatting and offline workspace/all-
+target Clippy. Shared programs, other native values, managed-container backing
+buffers and wider gates remain open; M1u stays the latest accepted milestone.
+
+The collector workspace checkpoint (2026-10-17) precedes this follow-up.
+Work/mark/waiter storage retains an admitted owner before collection; borrowed
+visitors and a deduplicated queue avoid intermediate vectors and unplanned
+hash growth. Returned realm marks retain ownership outside the heap. Twenty-one
+new cases and all 853 selected cases pass, together with formatting and offline
+workspace/all-target Clippy. Remaining managed-container backing buffers,
+retained native values, shared programs and wider gates remain open; M1u stays
+the latest accepted milestone.
+
+The realm collection metadata checkpoint (2026-10-17) precedes the collector.
+Its admitted flat plan covers discovery, snapshots, owner lookup, ignored pins
+and wrapper targets. Eighteen finite cases and all 832 selected cases passed;
+see the dated record for its original failures and source/artifact audit.
 
 The safepoint trace batch checkpoint (2026-10-17) precedes this follow-up.
 Three tiny root/edge refusal cases initially entered heap work at a full scalar
@@ -691,8 +704,10 @@ work and exposes its retained payload ledger.
       selections. Generator storage, dynamic environments/bindings, realm-global
       records, incoming/outgoing snapshot buffers and parameter-entry roots now
       have bounded implementation checkpoints. Realm template-cache ownership
-      passes all 605 selected controls; other association copies, wider native
-      storage and integrated acceptance remain open.
+      now joins module records, sources, roots, safepoint batches, realm metadata
+      and collector workspace ownership; all 853 selected controls pass. Cached
+      native values, shared programs, managed-container backing buffers, wider
+      native storage and integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -3072,6 +3087,78 @@ Evidence: `/private/tmp/blueice-collector-workspace-controls-20261017.py`,
 hashes and staged/committed blob checks. This is an M1z implementation checkpoint;
 remaining managed-container buffers and wider native/integrated acceptance
 remain open.
+
+#### Cached module values follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: cached completion/error values retain admitted native storage while
+records are installed, parked or Rust-held. Admission precedes primitive
+copying and cached-value publication. Shared asynchronous evaluation errors keep one immutable value and
+origin owner; late activation attaches existing values once. Root failures,
+replacement, propagation and VM destruction preserve identity and refund the
+correct owner. Keep diagnostic-coordinate refinements parked.
+
+- [x] Reproduce missing cached completion/error native ownership with tiny
+      offline cases through module execution. Both original cases failed, then
+      passed after cached owners were admitted.
+- [x] Implement retained owners and pre-copy admission; twenty-one finite
+      synchronous, await/debugger, sharing, refusal and release cases pass.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Remaining managed-container buffers, shared
+      programs and wider native/integrated gates remain open.
+
+
+Cached completions own admitted immutable values. Cached evaluation errors share
+one immutable value and owned origin across async parents and cached replay.
+The retained owner admits its allocation headers before requesting the primitive
+copy; the existing fallible module-copy boundary checks reported UTF-16 capacity
+and transfers its lease without copying again. Cache publication follows value
+ownership and successful rooting; debugger error roots roll back if retention
+refuses. Synchronous,
+await-resume and debugger completion/error paths use the same retention boundary.
+
+A value/error held in Rust remains charged after leaving its graph or outliving
+its VM. An error's weak discovery entry keeps a separate shared header lease,
+without making a JavaScript object live. Last-strong-owner release frees value
+and origin buffers before their native refund; the remaining headers stay
+charged until pruning drops the weak entry. Discovery-vector growth stages full
+replacement capacity while old storage remains owned, checks actual capacity
+before publication and restores the old prefix/refunds staging on refusal.
+Empty discovery releases its vector without a cleanup-time reallocation.
+
+Existing host-neutral graph/parked values and Rust-held errors attach once on
+bounded activation. A foreign document cannot replace an existing owner.
+Ordinary JavaScript results and deliveries retain their value/root rules, and
+cloning a cached error adds no primitive copy or native charge. Terminal cleanup
+releases values, owned origins, weak headers and discovery slots without new
+admission or resetting the document's failure state.
+
+The first inherited run had twelve failures across six selections: aggregate
+assertions omitted the new cached-value owner, including a completion held by a
+Rust-side graph. Their exact native totals now include those owners explicitly;
+pointer, managed-heap, callback, publication, serial and refund checks remain
+intact. Original results are preserved in
+`/private/tmp/blueice-module-values-*-baseline-red-20261017.log`.
+
+
+Validation: **875 passed, zero failed/ignored**, across 38 executables and 74
+fixed selections: twenty-one new ownership cases, one existing displaced-origin
+control and all 853 prior selected cases. Formatting, diff checks and offline
+workspace/all-target Clippy with warnings denied pass. Cargo reuses the workspace
+target with incremental compilation and dev/test debug artifact growth disabled.
+The same seven pressure cases remain excluded and JSON resource sweeps are not
+selected. All execution cases are offline, fixed and finite. No network/service
+replay, physical exhaustion probe, fresh full Test262, real Core/MCP replay,
+coverage result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-module-values-controls-20261017.py`,
+`/private/tmp/blueice-module-values-commit-20261017.txt`,
+`/private/tmp/blueice-module-values-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-module-values-{red,first,focused,cached-values,origin-control,fmt,clippy}-20261017.log`.
+`target/module-values-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint. Shared
+programs, other native values, managed-container backing buffers and wider
+native/integrated acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

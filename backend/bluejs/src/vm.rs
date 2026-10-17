@@ -46,6 +46,7 @@ mod module_cell_storage;
 mod module_context;
 mod module_continuation_storage;
 mod module_graph_storage;
+mod module_value_storage;
 mod realm_collection;
 use module_graph_storage::ModuleRecords;
 mod displaced_roots;
@@ -447,7 +448,7 @@ struct LinkedModule {
     evaluated: bool,
     evaluating: bool,
     suspended: bool,
-    completion: Option<Value>,
+    completion: Option<module_value_storage::ModuleCompletion>,
     /// An asynchronous module keeps its abrupt completion after its frame has
     /// been released. Static parents and later dynamic imports observe this
     /// stored evaluation error instead of attempting to execute it again.
@@ -457,13 +458,7 @@ struct LinkedModule {
     host_error_pending: bool,
 }
 
-/// A cached evaluation completion keeps its value and certified provenance
-/// together. Async parent records share immutable native origin metadata.
-#[derive(Clone)]
-struct ModuleEvaluationError {
-    value: Value,
-    origin: Rc<ThrowOrigin>,
-}
+use module_value_storage::{ModuleErrorTracker, ModuleEvaluationError};
 
 /// The realm keeps Source Text Module Records after an entry evaluation.
 /// Dynamic imports must observe the same live bindings and evaluation status
@@ -1060,7 +1055,7 @@ pub struct Vm {
     module_execution_depth: usize,
     /// Weak accounting follows origins even while their graph is displaced
     /// into a Rust frame, without rooting any JavaScript value or module.
-    module_error_origins: Vec<std::rc::Weak<ThrowOrigin>>,
+    module_error_origins: Vec<ModuleErrorTracker>,
     // Bindings created by sloppy direct eval in the active ordinary-function
     // VariableEnvironment. They move into a generator's suspended state when
     // it yields and are rooted at interpreter safepoints.

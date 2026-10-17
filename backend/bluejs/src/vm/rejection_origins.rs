@@ -20,43 +20,9 @@ impl PromiseJob {
 }
 
 impl Vm {
-    pub(super) fn retain_module_error(
-        &mut self,
-        value: Value,
-        origin: ThrowOrigin,
-    ) -> Result<ModuleEvaluationError, RuntimeError> {
-        self.prune_module_error_origins();
-        let added_slots = if self.module_error_origins.len() == self.module_error_origins.capacity()
-        {
-            self.module_error_origins.capacity().max(4)
-        } else {
-            0
-        };
-        self.admit_scheduling_work(HostSchedulingUsage {
-            payload_bytes: std::mem::size_of::<ThrowOrigin>()
-                + 2 * std::mem::size_of::<usize>()
-                + origin.payload_bytes()
-                + added_slots * std::mem::size_of::<std::rc::Weak<ThrowOrigin>>(),
-            ..Default::default()
-        })?;
-        let origin = Rc::new(origin);
-        self.module_error_origins.push(Rc::downgrade(&origin));
-        self.synchronize_scheduling_usage()?;
-        Ok(ModuleEvaluationError { value, origin })
-    }
-
-    pub(super) fn prune_module_error_origins(&mut self) {
-        self.module_error_origins
-            .retain(|origin| origin.strong_count() != 0);
-        if self.module_error_origins.len().saturating_mul(4) < self.module_error_origins.capacity()
-        {
-            self.module_error_origins.shrink_to_fit();
-        }
-    }
-
     pub(super) fn propagate_module_error(&mut self, error: ModuleEvaluationError) -> RuntimeError {
-        self.publish_rejection_origin(error.origin.as_ref().clone());
-        RuntimeError::Thrown(error.value)
+        self.publish_rejection_origin(error.origin.clone());
+        RuntimeError::Thrown(error.value.clone())
     }
 
     pub(super) fn current_rejection_origin(&self) -> ThrowOrigin {

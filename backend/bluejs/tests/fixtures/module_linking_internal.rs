@@ -128,10 +128,11 @@ fn namespace_and_deferred_walks_reject_invalid_requests_and_missing_execution_co
             Vm::scc_evaluated("main.mjs", &modules, &linked),
             Err(RuntimeError::ModuleResolution(_))
         ));
-        linked.get_mut("other.mjs").unwrap().error = Some(ModuleEvaluationError {
-            value: Value::Number(7.0),
-            origin: Rc::new(ThrowOrigin::default()),
-        });
+        linked.get_mut("other.mjs").unwrap().error = Some(
+            Vm::default()
+                .retain_module_error(&Value::Number(7.0), ThrowOrigin::default())
+                .unwrap(),
+        );
         linked.get_mut("other.mjs").unwrap().evaluated = true;
         assert!(matches!(
             Vm::cycle_root_error("main.mjs", &modules, &linked),
@@ -1591,7 +1592,7 @@ fn module_origin_accounting_follows_displaced_owners_without_rooting_values() {
         ..Default::default()
     };
     let error = vm
-        .retain_module_error(Value::Object(value), origin)
+        .retain_module_error(&Value::Object(value), origin)
         .unwrap();
     let bytes = vm.host_scheduling_usage().unwrap().payload_bytes;
     assert!(bytes > baseline);
@@ -1629,7 +1630,7 @@ fn module_origin_admission_charges_spare_capacity_before_cache_publication() {
         ..Default::default()
     };
     assert!(matches!(
-        vm.retain_module_error(Value::Undefined, origin),
+        vm.retain_module_error(&Value::Undefined, origin),
         Err(RuntimeError::SchedulingLimit)
     ));
     assert!(vm.module_error_origins.is_empty());

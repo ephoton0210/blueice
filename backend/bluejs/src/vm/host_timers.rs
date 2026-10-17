@@ -98,6 +98,7 @@ impl Vm {
         if self.host_scheduling.is_some() {
             self.bounded_host_microtask_checkpoints = true;
             self.attach_linked_module_cells();
+            self.attach_cached_module_values(self.host_scheduling.as_ref().unwrap())?;
             self.synchronize_scheduling_usage()?;
             let scope = self.host_scheduling.as_ref().unwrap();
             self.symbol_registry.borrow_mut().attach(scope)?;
@@ -109,6 +110,7 @@ impl Vm {
         self.bounded_host_microtask_checkpoints = true;
         self.host_scheduling = Some(SchedulingScope::new());
         self.attach_linked_module_cells();
+        self.attach_cached_module_values(self.host_scheduling.as_ref().unwrap())?;
         self.synchronize_scheduling_usage()?;
         self.symbol_registry
             .borrow_mut()

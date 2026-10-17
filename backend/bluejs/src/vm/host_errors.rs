@@ -30,7 +30,7 @@ impl Vm {
             }
         }
         for error in errors {
-            self.report_host_error_value(error.value, error.origin.source.clone())?;
+            self.report_host_error_value(error.value.clone(), error.origin.source.clone())?;
         }
         Ok(())
     }

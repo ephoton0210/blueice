@@ -485,6 +485,7 @@ fn module_dependency_resource_abort_refunds_walk_leases() {
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
             + vm.module_record_storage_bytes()

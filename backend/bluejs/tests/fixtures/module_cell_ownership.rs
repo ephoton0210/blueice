@@ -300,6 +300,7 @@ fn module_cell_ownership_link_failure_releases_only_new_table_owners() {
     assert_eq!(
         observer.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
             + snapshot.retained_bytes()

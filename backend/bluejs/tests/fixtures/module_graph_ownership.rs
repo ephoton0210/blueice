@@ -47,6 +47,7 @@ fn module_graph_ownership_retained_records_and_names_have_a_native_owner() {
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes
             - vm.own_scheduling_usage().payload_bytes
+            - vm.module_value_storage_bytes()
             - vm.heap.collector_storage_bytes()
             - vm.module_registry.retained_bytes()
             - vm.module_root_storage_bytes(),
@@ -60,12 +61,19 @@ fn module_graph_ownership_rust_held_table_retains_and_then_refunds_its_owner() {
     load(&mut vm);
     let graph = vm.module_graph.take().unwrap();
     let bytes = metadata(&graph.linked);
+    let values = graph
+        .linked
+        .values()
+        .filter_map(|record| record.completion.as_ref())
+        .map(|value| value.retained_bytes())
+        .sum::<usize>();
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes
             - vm.own_scheduling_usage().payload_bytes
+            - vm.module_value_storage_bytes()
             - vm.heap.collector_storage_bytes()
             - vm.module_registry.retained_bytes(),
-        bytes + graph.roots.retained_bytes()
+        bytes + graph.roots.retained_bytes() + values
     );
     for root in &graph.roots {
         vm.heap.unroot(*root).unwrap();
@@ -75,6 +83,7 @@ fn module_graph_ownership_rust_held_table_retains_and_then_refunds_its_owner() {
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
     );
@@ -273,6 +282,7 @@ fn module_graph_ownership_late_activation_attaches_metadata_once() {
     assert_eq!(
         before,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
             + bytes
@@ -337,6 +347,7 @@ fn module_graph_ownership_linking_rollback_refunds_new_names_and_preserves_old_r
     assert_eq!(
         observer.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + vm.module_value_storage_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.module_registry.retained_bytes()
             + snapshot.retained_bytes()

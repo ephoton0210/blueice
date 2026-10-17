@@ -30,10 +30,22 @@ fn fail(scope: Option<&SchedulingScope>) -> RuntimeError {
     scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail)
 }
 impl ModuleRecords {
+    pub(super) fn attach_values(&self, scope: &SchedulingScope) -> Result<(), RuntimeError> {
+        for record in self.values() {
+            if let Some(value) = &record.completion {
+                value.attach(scope)?;
+            }
+            if let Some(error) = &record.error {
+                error.attach(scope)?;
+            }
+        }
+        Ok(())
+    }
     pub(super) fn retained_bytes(&self) -> usize {
         map_slots(&self.data).saturating_add(self.key_bytes)
     }
     pub(super) fn attach(&self, scope: &SchedulingScope) -> Result<(), RuntimeError> {
+        self.attach_values(scope)?;
         let mut charge = self.charge.borrow_mut();
         if let Some(charge) = charge.as_ref() {
             if !charge.belongs_to(scope) {
