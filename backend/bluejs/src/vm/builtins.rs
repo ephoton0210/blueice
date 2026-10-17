@@ -45,7 +45,7 @@ mod dynamic;
 mod general;
 mod numbers;
 pub(super) struct ClosureCall {
-    pub code: Rc<Bytecode>,
+    pub code: SharedBytecode,
     pub captures: Vec<ObjectId>,
     pub callee: Value,
     pub receiver: Value,

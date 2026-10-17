@@ -128,6 +128,7 @@ mod module_name_storage;
 mod module_notification_storage;
 mod module_walk_storage;
 mod namespace_cache_storage;
+mod shared_code_storage;
 
 #[cfg(test)]
 #[path = "../tests/fixtures/allocation_observer.rs"]
@@ -147,6 +148,7 @@ use interpreter_records::{DisposeMarks, HandlerRecords, IteratorRecords, Resourc
 use module_name_storage::{ModuleName, ModuleNames};
 use module_walk_storage::ModuleQueries;
 use promise_queue_storage::AwaitContinuation;
+pub(crate) use shared_code_storage::SharedBytecode;
 mod agent_registry;
 mod interpreter;
 mod intl;
@@ -541,7 +543,7 @@ struct AsyncContinuation {
     /// ordinary async-function frame. The request Promise remains `target`.
     generator: Option<ObjectId>,
     target: ObjectId,
-    code: Rc<Bytecode>,
+    code: SharedBytecode,
     pc: usize,
     execution: SuspendedModuleExecution,
     iterators: IteratorRecords,

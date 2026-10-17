@@ -190,7 +190,7 @@ impl Vm {
     #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn initialize_generator(
         &mut self,
-        code: Rc<Bytecode>,
+        code: SharedBytecode,
         captures: Vec<ObjectId>,
         callee: Value,
         receiver: Value,

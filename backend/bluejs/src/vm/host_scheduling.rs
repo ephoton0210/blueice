@@ -229,6 +229,14 @@ pub(crate) struct SharedSchedulingCharge {
 }
 
 impl SharedSchedulingCharge {
+    pub(crate) fn reserve_peer(&self, bytes: usize) -> Result<Self, RuntimeError> {
+        let mut charge = Self {
+            account: self.account.clone(),
+            bytes: 0,
+        };
+        charge.resize(bytes)?;
+        Ok(charge)
+    }
     pub(super) fn bytes(&self) -> usize {
         self.bytes
     }
@@ -631,8 +639,9 @@ fn handler_origins_bytes(handlers: &[HandlerFrame]) -> usize {
     })
 }
 
-/// Unique buffers of one outer code-unit clone. Shared child code, SourceText
-/// and diagnostic maps remain a separate program-storage ownership gate.
+/// Unique buffers of one outer code-unit clone. Runtime-parsed modules own
+/// shared child headers/buffers and SourceText separately. Host-precompiled shared
+/// storage and diagnostic maps remain separate ownership gates.
 pub(super) fn owned_code_bytes(code: &Bytecode) -> usize {
     code_bytes(code, false)
 }

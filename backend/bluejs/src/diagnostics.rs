@@ -325,14 +325,17 @@ impl DiagnosticSourceMap {
             }
         }
         self.generation = Some(generation);
-        fn attach(code: &mut Bytecode, map: &Rc<DiagnosticSourceMap>) {
+        fn attach(code: &mut Bytecode, map: &Rc<DiagnosticSourceMap>) -> Result<(), Error> {
             code.diagnostic_source_map = Some(map.clone());
             code.diagnostic_ast_owners = Vec::new();
             for child in &mut code.functions {
-                attach(Rc::make_mut(child), map);
+                child
+                    .edit(|child| attach(child, map))
+                    .map_err(|_| Error::LimitExceeded)??;
             }
+            Ok(())
         }
-        attach(code, &Rc::new(self));
+        attach(code, &Rc::new(self))?;
         Ok(())
     }
 

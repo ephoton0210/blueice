@@ -60,6 +60,10 @@ mod compilation_input_tests;
 #[path = "../../tests/fixtures/compiled_source_ownership.rs"]
 mod compiled_source_ownership_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/shared_code_storage.rs"]
+mod shared_code_storage_tests;
+
 struct EvaluationFrame<'a> {
     name: &'a str,
     code: ModuleCode,
@@ -2360,7 +2364,7 @@ impl Vm {
         &mut self,
         generator: ObjectId,
         target: ObjectId,
-        code: Rc<Bytecode>,
+        code: SharedBytecode,
         pc: usize,
         execution: SuspendedModuleExecution,
         mut iterators: IteratorRecords,

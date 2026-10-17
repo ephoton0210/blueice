@@ -1417,7 +1417,9 @@ impl Compiler {
         // reduce that budget, so this sum fits the parent's limit.
         self.max_bytecode_bytes = child_remaining.saturating_add(self.offset());
         let index = self.bytecode.functions.len() as u32;
-        self.bytecode.functions.push(std::rc::Rc::new(child));
+        self.bytecode
+            .functions
+            .push(crate::vm::SharedBytecode::new(child));
         self.emit(Opcode::Closure, index)?;
         Ok(())
     }

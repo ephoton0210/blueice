@@ -166,7 +166,7 @@ fn closure_metadata_validates_its_receiver_and_is_reclaimed_with_a_young_closure
     let ordinary = heap.alloc_object(None).unwrap();
     let closure = heap
         .alloc_closure(
-            Rc::new(Bytecode::empty()),
+            SharedBytecode::new(Bytecode::empty()),
             Vec::new(),
             Value::Undefined,
             prototype,
@@ -211,7 +211,7 @@ fn closure_metadata_rejects_foreign_handles_without_losing_its_fields() {
     let foreign = other.alloc_object(None).unwrap();
     let closure = heap
         .alloc_closure(
-            Rc::new(Bytecode::empty()),
+            SharedBytecode::new(Bytecode::empty()),
             Vec::new(),
             Value::Undefined,
             prototype,
@@ -285,7 +285,7 @@ fn closure_metadata_updates_leave_no_partial_state_at_the_heap_limit() {
         let home = heap.alloc_object(None).unwrap();
         let closure = heap
             .alloc_closure(
-                Rc::new(Bytecode::empty()),
+                SharedBytecode::new(Bytecode::empty()),
                 Vec::new(),
                 Value::Undefined,
                 prototype,
@@ -703,7 +703,7 @@ fn young_closure_metadata_survives_old_owner_and_ephemeron_edges() {
     let prototype = heap.alloc_object(None).unwrap();
     let closure = heap
         .alloc_closure(
-            Rc::new(Bytecode::empty()),
+            SharedBytecode::new(Bytecode::empty()),
             Vec::new(),
             Value::Undefined,
             prototype,
@@ -726,7 +726,7 @@ fn young_closure_metadata_survives_old_owner_and_ephemeron_edges() {
     let key_root = heap.root(key).unwrap();
     let ephemeron_closure = heap
         .alloc_closure(
-            Rc::new(Bytecode::empty()),
+            SharedBytecode::new(Bytecode::empty()),
             Vec::new(),
             Value::Undefined,
             prototype,
@@ -1007,7 +1007,7 @@ fn suspended_generator_references_keep_every_saved_object_visible_to_gc() {
             sync_fallback: false,
         }],
         dispose_marks: vec![0],
-        code: Rc::new(Bytecode::empty()),
+        code: SharedBytecode::new(Bytecode::empty()),
         pc: 0,
         stack: vec![Value::Object(stack)],
         bindings: vec![Some(Value::Object(binding))],
@@ -1090,7 +1090,7 @@ fn start_and_completed_generator_states_expose_their_gc_edges() {
     let argument = heap.alloc_object(None).unwrap();
     let home = heap.alloc_object(None).unwrap();
     let state = GeneratorState::Start {
-        code: Rc::new(Bytecode::empty()),
+        code: SharedBytecode::new(Bytecode::empty()),
         captures: vec![capture],
         callee: Value::Object(callee),
         receiver: Value::Object(receiver),
@@ -1118,7 +1118,7 @@ fn restoring_generator_state_updates_its_managed_byte_charge() {
     heap.set_generator_state(
         generator,
         GeneratorState::Start {
-            code: Rc::new(Bytecode::empty()),
+            code: SharedBytecode::new(Bytecode::empty()),
             captures: vec![saved],
             callee: Value::Undefined,
             receiver: Value::Undefined,
@@ -1139,7 +1139,7 @@ fn restoring_generator_state_updates_its_managed_byte_charge() {
 fn generator_entry_storage_counts_reserved_vector_capacity() {
     for part in 0..3 {
         let mut state = GeneratorState::Start {
-            code: Rc::new(Bytecode::empty()),
+            code: SharedBytecode::new(Bytecode::empty()),
             captures: Vec::new(),
             callee: Value::Undefined,
             receiver: Value::Undefined,
@@ -1189,7 +1189,7 @@ fn generator_entry_storage_counts_all_suspended_container_capacity() {
     }
     for part in 0..13 {
         let mut state = GeneratorState::Suspended {
-            code: Rc::new(Bytecode::empty()),
+            code: SharedBytecode::new(Bytecode::empty()),
             pc: 0,
             stack: Vec::new(),
             bindings: Vec::new(),
@@ -1424,7 +1424,7 @@ fn restoring_generator_state_respects_the_heap_limit() {
         heap.set_generator_state(
             generator,
             GeneratorState::Start {
-                code: Rc::new(Bytecode::empty()),
+                code: SharedBytecode::new(Bytecode::empty()),
                 captures: vec![saved; 1_024],
                 callee: Value::Undefined,
                 receiver: Value::Undefined,
@@ -2804,7 +2804,7 @@ fn function_and_boxed_slot_readers_distinguish_valid_and_ordinary_objects() {
 
     let closure = heap
         .alloc_closure(
-            Rc::new(Bytecode::empty()),
+            SharedBytecode::new(Bytecode::empty()),
             Vec::new(),
             Value::Undefined,
             prototype,

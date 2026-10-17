@@ -503,7 +503,7 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
     let function = vm
         .heap
         .alloc_closure(
-            std::rc::Rc::new(function_code),
+            crate::vm::SharedBytecode::new(function_code),
             Vec::new(),
             Value::Undefined,
             vm.object_prototype,

@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_shared_code_storage_contracts() {
+    blueice_bluejs::Vm::verify_shared_code_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_compiled_source_ownership_contracts() {
     blueice_bluejs::Vm::verify_compiled_source_ownership_contracts();
 }

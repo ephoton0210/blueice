@@ -28,8 +28,8 @@ impl SourceOwner {
     }
 }
 
-/// Inline code metadata: absent on ordinary host-compiled programs. Only runtime
-/// code with source owners is bound, preserving cross-VM reuse of ordinary code.
+/// Inline metadata: only runtime source/child-code owners bind a document,
+/// preserving cross-VM reuse of ordinary host-compiled code.
 #[derive(Clone, Default)]
 pub(crate) struct RuntimeCodeSources {
     source: Option<Rc<SourceOwner>>,
@@ -147,14 +147,14 @@ impl SourceOwners {
             );
         }
         let mut present = code.runtime_sources.source.is_some();
-        // Fresh compiler output is a tree of unique Rc children. Install before
+        // Fresh compiler output is a tree of unique shared children. Install before
         // publication, without allocating a traversal stack or copying code.
         for child in &mut code.functions {
-            let child = Rc::get_mut(child).ok_or_else(|| fail(scope))?;
-            self.install(child, scope)?;
+            self.install(child.get_mut().ok_or_else(|| fail(scope))?, scope)?;
+            child.enable_runtime(scope)?;
             present |= child.runtime_sources.present;
         }
-        code.runtime_sources.present = present;
+        code.runtime_sources.present = present || !code.functions.is_empty();
         Ok(())
     }
 }

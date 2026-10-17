@@ -634,7 +634,11 @@ impl Compiler {
                                 false,
                                 FunctionCompileOptions::object_method(),
                             )?;
-                            std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
+                            self.bytecode
+                                .functions
+                                .last_mut()
+                                .unwrap()
+                                .get_mut()
                                 .unwrap()
                                 .constructible = false;
                             if matches!(key, PropertyKey::Computed(_)) {

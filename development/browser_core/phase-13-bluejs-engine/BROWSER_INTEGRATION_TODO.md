@@ -68,6 +68,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The shared child-code storage follow-up (2026-10-18) is active. Dynamic modules'
+source leases and child-code headers/buffers now have independent owners.
+Metadata edits admit coexisting copies while preserving nested sharing and
+host-compiled reuse. Three old-code cases fail; the initial expanded fifteen and
+nineteen source-lifetime controls pass. The final seventeen new cases and related
+controls pass **103 distinct selected tests**, across five executable targets and
+twenty-one fixed selections. Formatting, diff checks and offline workspace/
+all-target Clippy pass, with source/artifact and local commit audits. Other
+program storage and integrated acceptance stay open.
+
 The compiled dynamic-module source follow-up (2026-10-18) transfers source
 leases from parsed ASTs into independently shared runtime code. Child code and
 queued timer/Promise callbacks retain their source after root-code/VM teardown;
@@ -7417,6 +7427,73 @@ Evidence: `target/compiled-source-ownership-source-20261018.json` and prefix
 `/private/tmp/blueice-compiled-source-ownership-` (2026-10-18), including the red
 input archive, initial 16-pass log, pre-lint 80-pass source/log archive and final
 frozen inputs, controls and commit message.
+
+#### Shared dynamic-module child-code follow-up (implementation checkpoint, 2026-10-18)
+
+Acceptance: charge each shared runtime-parsed module child's complete inline
+header and owned buffers once, retaining its lease through registry copies,
+closures, generators and saved frames. Release siblings and nested children at
+their own final code drop. Preserve host-compiled code reuse and admit complete
+coexisting copies before metadata changes to shared code.
+
+- [x] Reproduce missing child-buffer ownership with three fixed tiny lifetimes.
+- [x] Introduce shared code owners, transfer every code user to their handles,
+      and account for copy-on-write metadata edits and cleanup.
+- [x] Finish the fixed related selection, source/artifact audits and a detailed
+      English commit; retain the broader acceptance gates as open.
+
+The original three cases fail (**0/3 passed**): a child retained after root/VM
+drop has only its source lease, and dropping one sibling refunds no child-code
+storage. Runtime compilation now installs a native owner for each returned
+child's complete inline header and reported owned buffers before root adoption.
+The metric keeps existing code/value capacities and logical BigInt exclusions;
+Rc/allocator overhead remains excluded. Each owner's code data drops before its
+lease. Root-code buffers remain with their prepared/registry owner; independent
+source allocations keep their separate leases. No source payload is counted
+again by child-buffer ownership.
+
+Shared code handles replace bare Rc<Bytecode> in closures, generator states,
+async frames and compiler child tables. Ordinary host code remains unbound and
+reusable. Late bounded activation and incoming code adoption attach runtime
+headers/buffers even without SourceText. Sharing one owner adds no charge, while
+foreign-document adoption refuses. Runtime code cannot use the compiler's
+unchecked mutable access.
+
+Metadata edits admit the complete candidate before copying shared code and keep
+the original alive. The copy shares unchanged nested children and source owners.
+Unique edits avoid a copy, and retained buffers are reconciled even when the
+editor returns an error. Terminal cleanup refunds released buffers without
+clearing failure. Program code-unit preparation returns a typed native-storage
+limit; diagnostic binding propagates its existing resource limit. This is
+architectural storage work; M1q's coordinate refinements remain parked.
+
+The initial expanded **15/15** and existing source-lifetime **19/19** pass. The
+final expanded run passes **17/17**, including one unit-only allocation
+observation and sixteen functional contracts with an ordinary-library entry.
+Added cases prove nested copy sharing and public dynamic class/generator
+execution. Source-lifetime observations now include the independently owned
+child storage while keeping the separate source metric unchanged.
+
+Final validation passes **103 distinct selected tests** in twenty-one fixed
+selections across five executable targets: the seventeen new cases, the prior
+eighty controls, four exact closure/generator heap controls, one diagnostic-error
+compatibility case and one method/accessor source-text case. Formatting, diff
+checks and offline workspace/all-target Clippy pass. Source/artifact and staged/
+committed content audits bind twenty-three frozen Rust inputs, twenty-five
+source/document files, the five executables and a detailed English commit. The
+original code/value metric and later scheduling-controller implementations are
+unchanged. These checks do not renew earlier broad acceptance inventories.
+
+Other script/eval/Function programs, host-precompiled shared storage, diagnostic
+map/registry storage, full compiler producer preallocation, allocator/Rc-control
+overhead and integrated acceptance remain open. M1u remains the latest accepted milestone. Validation stays local,
+offline, finite and tiny; no broad, exhaustion, infinite-execution or network/
+Core/MCP replay is resumed, and the rejected push is not retried.
+
+Evidence: `target/shared-code-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-shared-code-storage-` (2026-10-18), with original red
+inputs/log, preserved adapter compile findings, initial green inputs/logs and
+final frozen Rust sources, fixed controls and commit message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

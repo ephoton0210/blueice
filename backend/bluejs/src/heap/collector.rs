@@ -310,7 +310,7 @@ impl CollectorWorkspace {
 }
 
 impl Heap {
-    pub(super) fn attach_code_sources(&self, code: &crate::Bytecode) -> Result<(), HeapError> {
+    pub(super) fn attach_code_sources(&self, code: &SharedBytecode) -> Result<(), HeapError> {
         if let Some(budget) = &self.collector.budget {
             code.attach_runtime_sources(budget)
                 .map_err(|_| HeapError::CodeSourceStorageLimit)?;

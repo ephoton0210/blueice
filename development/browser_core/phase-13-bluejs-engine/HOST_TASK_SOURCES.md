@@ -1066,8 +1066,35 @@ Same-document attachment shares the lease, foreign-document attachment fails,
 and a cached identity cannot bypass terminal failure. Ordinary host-compiled
 programs receive no runtime source owner and keep their cross-VM reuse contract.
 This source transfer covers runtime-parsed dynamic modules only: host-precompiled
-sources, shared child-code buffers/headers and diagnostic maps remain open, as
-do compiler producer preallocation and allocator/control-block exclusions.
+sources and their shared child-code buffers/headers, plus diagnostic maps, remain
+open, along with compiler producer preallocation and allocator/control-block
+exclusions.
+
+Runtime-parsed dynamic-module child code now has a shared owner for its complete
+inline header and owned buffer capacities, using the same code/value metric as
+root buffers. Each shared child is charged once; registry copies, closures,
+generators and saved frames retain its handle without copying the code or adding
+a second charge. Nested children own their own storage, and final drop destroys
+the code before refunding its lease. Source allocations keep their independent
+owners. Root-code buffers remain with their prepared/registry owner, so they are
+not also charged to a child owner.
+
+Unbounded runtime children keep attachable owners. The source/code adoption paths
+bind their native storage before execution; even a child without SourceText must
+fit its header and buffers and cannot move into another document. Host-compiled
+code keeps its existing reusable, host-neutral policy. Compiler-only mutable
+access ends when runtime ownership is installed. Debugger/diagnostic metadata
+edits use an admitted copy-on-write path: the old and complete candidate coexist,
+unchanged nested children stay shared, and retained buffers are reconciled even
+when the editor returns an error. Unique edits need no new copy; terminal cleanup
+may release buffers without clearing failure. Diagnostic binding and code-unit
+preparation return their resource error if a copy cannot be admitted. This is
+storage ownership work; M1q's coordinate refinements remain parked.
+
+Admission here covers returned code before publication and coexisting metadata
+copies. Other script/eval/Function programs, compiler producer preallocation,
+host-precompiled shared program storage, diagnostic map/registry storage,
+allocator/Rc-control overhead and integrated acceptance remain open.
 
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit

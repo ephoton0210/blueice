@@ -620,7 +620,7 @@ pub struct Bytecode {
     /// calls get an environment of their own, outside the parameters, for the
     /// `var`s such an eval declares (see `Vm::call_closure`).
     pub(crate) parameter_eval_scope: bool,
-    pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
+    pub(crate) functions: Vec<crate::vm::SharedBytecode>,
     pub(crate) captures: Vec<u32>,
     /// The immutable name environment binding of a named function expression.
     /// It is initialized to the closure object when that closure is called.
@@ -831,7 +831,7 @@ impl Bytecode {
     /// this tree deterministically rather than deriving an identity from a
     /// byte offset or a heap object address.
     pub fn child_code_units(&self) -> impl Iterator<Item = &Bytecode> {
-        self.functions.iter().map(std::rc::Rc::as_ref)
+        self.functions.iter().map(AsRef::as_ref)
     }
 
     pub(crate) fn instruction(&self, offset: usize) -> Option<Instruction> {

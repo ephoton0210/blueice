@@ -26,6 +26,7 @@
 //! an allocator guarantee or a whole-process memory limit.
 
 use crate::native::NativeFunction;
+use crate::vm::SharedBytecode;
 use crate::{Bytecode, JsString, JsSymbol, ObjectId, PropertyDescriptor, PropertyName, Value};
 use num_bigint::BigInt;
 use std::collections::hash_map::DefaultHasher;
@@ -219,7 +220,7 @@ pub(crate) struct IteratorHelperState {
     pub kind: IteratorHelperKind,
 }
 pub(crate) type ClosureEntryStorage<'a> = (&'a [ObjectId], &'a [Value], &'a Value);
-pub(crate) type ClosureState = (Rc<Bytecode>, Vec<ObjectId>, Value, Option<ObjectId>);
+pub(crate) type ClosureState = (SharedBytecode, Vec<ObjectId>, Value, Option<ObjectId>);
 
 /// The class-declaration side of an ECMAScript private element.  These
 /// entries live on the declaring class's home object, never in ordinary
@@ -445,7 +446,7 @@ pub(crate) struct GeneratorResumeLayout {
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum GeneratorState {
     Start {
-        code: Rc<Bytecode>,
+        code: SharedBytecode,
         captures: Vec<ObjectId>,
         callee: Value,
         receiver: Value,
@@ -455,7 +456,7 @@ pub(crate) enum GeneratorState {
         with_objects: Vec<Value>,
     },
     Suspended {
-        code: Rc<Bytecode>,
+        code: SharedBytecode,
         pc: usize,
         stack: Vec<Value>,
         bindings: Vec<Option<Value>>,
@@ -1146,7 +1147,7 @@ enum ObjectKind {
         initial_name: String,
     },
     Closure {
-        code: Rc<Bytecode>,
+        code: SharedBytecode,
         captures: Vec<ObjectId>,
         this: Value,
     },

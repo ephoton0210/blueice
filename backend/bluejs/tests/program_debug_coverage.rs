@@ -129,6 +129,10 @@ fn program_registry_errors_have_stable_host_facing_diagnostics() {
             Error::AstBytecodeShapeMismatch,
             "BlueJS AST and bytecode top-level provenance disagree",
         ),
+        (
+            Error::NativeStorageLimit,
+            "BlueJS shared code native storage limit exceeded",
+        ),
     ] {
         assert_eq!(error.to_string(), expected);
     }

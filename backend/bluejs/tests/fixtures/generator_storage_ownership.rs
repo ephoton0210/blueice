@@ -79,7 +79,7 @@ fn start_state(vm: &Vm, capacity: usize) -> GeneratorState {
     let mut args = Vec::with_capacity(capacity);
     args.push(Value::String("tiny".into()));
     GeneratorState::Start {
-        code: Rc::new(Bytecode::empty()),
+        code: SharedBytecode::new(Bytecode::empty()),
         captures: vec![vm.object_prototype],
         callee: Value::Undefined,
         receiver: Value::Undefined,

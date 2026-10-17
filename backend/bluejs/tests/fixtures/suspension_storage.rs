@@ -160,7 +160,7 @@ fn small_state(
     pending: Vec<GeneratorPendingCompletion>,
 ) -> GeneratorState {
     GeneratorState::Suspended {
-        code: Rc::new(Bytecode::empty()),
+        code: SharedBytecode::new(Bytecode::empty()),
         pc: 0,
         stack,
         bindings: Vec::new(),

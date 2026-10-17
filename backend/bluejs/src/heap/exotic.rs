@@ -149,7 +149,7 @@ impl Heap {
 
     pub(crate) fn alloc_closure(
         &mut self,
-        code: Rc<Bytecode>,
+        code: SharedBytecode,
         captures: Vec<ObjectId>,
         this: Value,
         prototype: ObjectId,
@@ -257,7 +257,7 @@ impl Heap {
     pub(crate) fn generator_execution_code(
         &self,
         object: ObjectId,
-    ) -> Result<Option<(Rc<Bytecode>, bool)>, HeapError> {
+    ) -> Result<Option<(SharedBytecode, bool)>, HeapError> {
         let ObjectKind::Generator { state, .. } = &self.object(object)?.kind else {
             return Err(HeapError::InvalidObject(object));
         };
@@ -1037,7 +1037,10 @@ impl Heap {
     }
 
     /// Inspect call metadata without cloning the captured environment.
-    pub(crate) fn closure_code(&self, object: ObjectId) -> Result<Option<Rc<Bytecode>>, HeapError> {
+    pub(crate) fn closure_code(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<SharedBytecode>, HeapError> {
         Ok(match &self.object(object)?.kind {
             ObjectKind::Closure { code, .. } => Some(code.clone()),
             _ => None,

@@ -111,7 +111,7 @@ fn compiled_source_ownership_nested_child_keeps_one_source() {
     let view = observer(&vm);
     let root = compiled(&vm, "export function outer(){return ()=>3;}");
     let child = root.functions[0].functions[0].clone();
-    let bytes = child.runtime_source_bytes();
+    let bytes = child.runtime_source_bytes() + child.retained_bytes();
     assert!(bytes > 0);
     drop(root);
     drop(vm);
@@ -156,7 +156,9 @@ fn compiled_source_ownership_unbounded_code_attaches_once() {
         .unwrap()
         .compile(None)
         .unwrap();
-    let bytes = code.bytes() + code.functions[0].runtime_source_bytes();
+    let bytes = code.bytes()
+        + code.functions[0].runtime_source_bytes()
+        + code.functions[0].retained_bytes();
     code.attach(vm.host_scheduling.as_ref()).unwrap();
     code.attach(vm.host_scheduling.as_ref()).unwrap();
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before + bytes);
@@ -257,7 +259,7 @@ fn compiled_source_ownership_compile_peak_exact_and_one_short() {
     }
 }
 
-fn unbounded_child() -> Rc<Bytecode> {
+fn unbounded_child() -> SharedBytecode {
     let root = ParsedModuleInput::parse("export function f(){return 1;}", None)
         .unwrap()
         .compile(None)
@@ -269,7 +271,7 @@ fn unbounded_child() -> Rc<Bytecode> {
 fn compiled_source_ownership_heap_activation_finds_detached_closure() {
     let mut vm = Vm::default();
     let child = unbounded_child();
-    let bytes = child.runtime_source_bytes();
+    let bytes = child.runtime_source_bytes() + child.retained_bytes();
     let prototype = vm.function_prototype().unwrap();
     vm.heap
         .alloc_closure(child.clone(), Vec::new(), Value::Undefined, prototype)
@@ -286,7 +288,7 @@ fn compiled_source_ownership_heap_activation_finds_detached_closure() {
 fn compiled_source_ownership_heap_activation_finds_generator() {
     let mut vm = Vm::default();
     let child = unbounded_child();
-    let bytes = child.runtime_source_bytes();
+    let bytes = child.runtime_source_bytes() + child.retained_bytes();
     let prototype = vm.heap.alloc_object(None).unwrap();
     vm.heap
         .alloc_generator(
@@ -337,7 +339,7 @@ fn compiled_source_ownership_heap_rejects_foreign_code_before_allocation() {
 fn compiled_source_ownership_collected_closure_refunds_last_source() {
     let mut vm = page();
     let code = compiled(&vm, "export function f(){return 1;}");
-    let bytes = code.functions[0].runtime_source_bytes();
+    let bytes = code.functions[0].runtime_source_bytes() + code.functions[0].retained_bytes();
     let prototype = vm.function_prototype().unwrap();
     let closure = vm
         .heap
@@ -385,7 +387,7 @@ fn compiled_source_ownership_lookup_growth_refunds_only_temporary_backing() {
     assert_eq!(identities.len(), 4);
     let bytes: usize = children
         .iter()
-        .map(|code| code.runtime_source_bytes())
+        .map(|code| code.runtime_source_bytes() + code.retained_bytes())
         .sum();
     drop(root);
     drop(vm);

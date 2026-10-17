@@ -454,6 +454,8 @@ pub enum BlueJsProgramDebugError {
     /// Compiler top-level statement provenance disagreed with the structured
     /// AST inventory and was rejected rather than guessed.
     AstBytecodeShapeMismatch,
+    /// A document refused shared executable storage while preparing metadata.
+    NativeStorageLimit,
 }
 
 impl fmt::Display for BlueJsProgramDebugError {
@@ -480,6 +482,9 @@ impl fmt::Display for BlueJsProgramDebugError {
             }
             Self::AstBytecodeShapeMismatch => {
                 f.write_str("BlueJS AST and bytecode top-level provenance disagree")
+            }
+            Self::NativeStorageLimit => {
+                f.write_str("BlueJS shared code native storage limit exceeded")
             }
         }
     }
@@ -824,15 +829,12 @@ fn collect_code_units(
         identifier_offsets,
     });
     for child in &mut bytecode.functions {
-        collect_code_units(
-            std::rc::Rc::make_mut(child),
-            generation,
-            limits,
-            nesting_depth
-                .checked_add(1)
-                .ok_or(BlueJsProgramDebugError::CodeUnitLimitExceeded)?,
-            code_units,
-        )?;
+        let depth = nesting_depth
+            .checked_add(1)
+            .ok_or(BlueJsProgramDebugError::CodeUnitLimitExceeded)?;
+        child
+            .edit(|child| collect_code_units(child, generation, limits, depth, code_units))
+            .map_err(|_| BlueJsProgramDebugError::NativeStorageLimit)??;
     }
     Ok(())
 }
