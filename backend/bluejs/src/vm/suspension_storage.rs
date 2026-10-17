@@ -154,7 +154,22 @@ impl Vm {
         at: usize,
     ) -> Result<SuspendedModuleExecution, RuntimeError> {
         let storage = self.prepare_suspension_storage(at, false)?;
-        Ok(self.capture_prepared_execution(storage))
+        let mut execution = self.capture_prepared_execution(storage);
+        if let Err(error) = execution.retain_native_storage(self) {
+            self.restore_captured_execution(execution);
+            return Err(error);
+        }
+        Ok(execution)
+    }
+
+    pub(super) fn restore_captured_execution(&mut self, mut execution: SuspendedModuleExecution) {
+        if !self.stack.is_empty() {
+            let mut prefix = std::mem::take(&mut self.stack);
+            debug_assert!(prefix.capacity() >= prefix.len() + execution.stack.len());
+            prefix.append(&mut execution.stack);
+            execution.stack = prefix;
+        }
+        self.restore_module_execution(execution);
     }
 
     pub(super) fn capture_prepared_execution(

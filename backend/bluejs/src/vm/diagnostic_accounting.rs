@@ -48,6 +48,7 @@ impl Vm {
             .map_or(0, |source| source.filename.capacity())
     }
 
+    #[cfg(any(test, coverage))]
     pub(super) fn diagnostic_handler_bytes(handlers: &[HandlerFrame]) -> usize {
         handlers.iter().fold(0usize, |bytes, handler| {
             bytes.saturating_add(handler.pending_origin.payload_bytes())

@@ -1055,6 +1055,7 @@ impl Vm {
             ));
         };
         let ModuleDebuggerContinuation {
+            _storage,
             module,
             mut module_charge,
             code,
@@ -1087,34 +1088,47 @@ impl Vm {
         let outcome = match ModuleRun::classify(outcome) {
             ModuleRun::Paused {
                 pc,
-                iterators,
-                handlers,
+                mut iterators,
+                mut handlers,
             } => {
-                let execution = self.suspend_module_execution();
-                let record = graph
-                    .linked
-                    .get_mut(&module)
-                    .expect("the stepped entry remains in its linked graph");
-                prepared_cells
-                    .take()
-                    .expect("suspension cell table was admitted")
-                    .install(record);
-                record.suspended = true;
-                previous_module.restore(self);
-                self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
-                    module,
-                    module_charge,
-                    code,
-                    pc,
-                    execution,
-                    iterators,
-                    handlers,
-                });
-                self.store_module_graph(graph, false);
-                return Ok(VmDebuggerExecutionState::Paused {
-                    bytecode_offset: u32::try_from(pc)
-                        .expect("verified BlueJS module offsets fit the debugger wire range"),
-                });
+                let mut execution = self.suspend_module_execution();
+                let retained = self
+                    .retain_debugger_execution_storage(
+                        &mut execution,
+                        &mut iterators,
+                        &mut handlers,
+                    )
+                    .and_then(|()| module_charge.retain_native(self, module.capacity()));
+                if let Err(error) = retained {
+                    self.restore_module_execution(execution);
+                    Err(error)
+                } else {
+                    let record = graph
+                        .linked
+                        .get_mut(&module)
+                        .expect("the stepped entry remains in its linked graph");
+                    prepared_cells
+                        .take()
+                        .expect("suspension cell table was admitted")
+                        .install(record);
+                    record.suspended = true;
+                    previous_module.restore(self);
+                    self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
+                        module,
+                        module_charge,
+                        code,
+                        pc,
+                        execution,
+                        iterators,
+                        handlers,
+                        _storage,
+                    });
+                    self.store_module_graph(graph, false);
+                    return Ok(VmDebuggerExecutionState::Paused {
+                        bytecode_offset: u32::try_from(pc)
+                            .expect("verified BlueJS module offsets fit the debugger wire range"),
+                    });
+                }
             }
             ModuleRun::Completed(outcome) => outcome,
         };
@@ -2959,10 +2973,18 @@ impl Vm {
             }
             ModuleRun::Paused {
                 pc,
-                iterators,
-                handlers,
+                mut iterators,
+                mut handlers,
             } => {
-                let (module, module_charge) = match self.prepare_module_frame_name(name) {
+                let (module, mut module_charge, storage) = match self
+                    .prepare_module_frame_name(name)
+                    .and_then(|(module, charge)| {
+                        let storage =
+                            self.prepare_debugger_control_storage(std::mem::size_of::<
+                                ModuleDebuggerContinuation,
+                            >())?;
+                        Ok((module, charge, storage))
+                    }) {
                     Ok(prepared) => prepared,
                     Err(error) => {
                         previous_module.restore(self);
@@ -2977,7 +2999,22 @@ impl Vm {
                         return Err(error);
                     }
                 };
-                let execution = self.suspend_module_execution();
+                let mut execution = self.suspend_module_execution();
+                let retained = self
+                    .retain_debugger_execution_storage(
+                        &mut execution,
+                        &mut iterators,
+                        &mut handlers,
+                    )
+                    .and_then(|()| module_charge.retain_native(self, module.capacity()));
+                if let Err(error) = retained {
+                    self.restore_module_execution(execution);
+                    previous_module.restore(self);
+                    let record = linked.get_mut(name).expect("checked module record exists");
+                    record.cells = std::mem::take(&mut self.cells);
+                    record.refresh_cells_charge();
+                    return Err(error);
+                }
                 let record = linked.get_mut(name).expect("checked module record exists");
                 prepared_cells
                     .take()
@@ -2993,6 +3030,7 @@ impl Vm {
                     execution,
                     iterators,
                     handlers,
+                    _storage: storage,
                 });
                 Ok(Value::Undefined)
             }

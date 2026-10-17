@@ -68,7 +68,7 @@ fn interpreter_records_debugger_pause_preserves_and_resume_releases_charges() {
         VmDebuggerExecutionState::Paused { .. }
     ));
     assert!(
-        vm.displaced_execution_control_bytes.get()
+        vm.retained_debugger_record_bytes()
             >= std::mem::size_of::<Value>() + std::mem::size_of::<HandlerFrame>()
     );
     assert_eq!(
@@ -76,6 +76,7 @@ fn interpreter_records_debugger_pause_preserves_and_resume_releases_charges() {
         VmDebuggerExecutionState::Completed
     );
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
+    assert_eq!(vm.retained_debugger_record_bytes(), 0);
 }
 
 #[cfg_attr(test, test)]

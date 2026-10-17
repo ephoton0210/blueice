@@ -68,13 +68,26 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The retained debugger-frame storage follow-up (2026-10-18) has an implementation
+checkpoint. Iterator/handler buffers and origins, captured execution, module
+identifiers and controller headers now retain native owners independently of
+their VM. Late activation attaches all paused states; step/resume and nested
+module throws preserve ownership. Moves do not acquire a second charge or leave
+stale peer usage. All eighteen new contracts and forty-five exact semantic
+controls pass: **63 distinct selected tests** across three executable targets.
+Formatting, diff checks and offline workspace/all-target Clippy pass. Final
+source/artifact and Git content audits bind the checkpoint. Request/inspection
+producers and wider native/integrated gates remain open. M1u remains the latest
+accepted milestone; M1z's integrated gates remain open.
+
 The root/debugger code-buffer follow-up (2026-10-18) has an implementation
 checkpoint. Borrowed outer buffers remain charged through execution; debugger
 root/nested/intermediate copies acquire admission before cloning and retain
 owners through pause, step/resume, failure and late activation. Prepared eval
-roots keep their existing charge. Validation covers **39 distinct selected
-tests** across three executable targets: twenty existing tiny regressions whose
-fifteen Rust inputs still match, plus nineteen exact semantic controls.
+roots keep their existing charge. That code-buffer checkpoint validated **39
+distinct selected tests** across three executable targets: twenty existing tiny
+regressions bound to fifteen frozen Rust inputs, plus nineteen exact semantic
+controls.
 Formatting, diff checks and offline workspace/all-target Clippy pass. The
 twenty-case run was not restarted after the cybersecurity warning; subsequent
 controls execute only reviewed tiny semantic programs. Wider resource-boundary
@@ -1338,7 +1351,11 @@ work and exposes its retained payload ledger.
       twenty-two fixed cases pass. Host-compiled children now have document
       copies shared through weak code/source caches, with complete weak-header
       retention and optional backing reclamation; twenty-four new cases pass.
-      Borrowed outer/debugger buffers, shared programs' remaining storage, other
+      Borrowed outer/debugger code buffers now have an implementation checkpoint
+      validated by 39 selected cases. Retained debugger state now joins those
+      checkpoints with eighteen new lifecycle/conservation contracts and 63
+      selected cases. Debugger request/inspection producers, shared programs'
+      remaining storage, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -7993,8 +8010,8 @@ The twenty fixed tiny cases cover all three public root forms, exact/one-short
 admission with scalar peers, normal and throw cleanup, refusal before guest
 side effects, root/nested/intermediate teardown, source/child retention, step
 allocation identity, existing paused-entry preservation, late activation and
-foreign/terminal refusal. Their passing source archive still matches all
-fifteen current Rust inputs. Initial static review ran no dynamic cases. After
+foreign/terminal refusal. At that checkpoint, their passing source archive
+matched all fifteen frozen Rust inputs. Initial static review ran no dynamic cases. After
 existing rejection records were inspected, nineteen exact, reviewed tiny
 semantic controls passed: nested/intermediate inspection and generation checks,
 root/nested throw restoration, paused-entry validation, iterator GC roots,
@@ -8027,6 +8044,88 @@ red/first/corrected/expanded logs, expanded/final frozen source archives,
 nineteen exact semantic-control results, static Clippy and the detailed English
 checkpoint message. The earlier static-review receipt preserves its original
 pending status; the checkpoint receipt records subsequent validation and commit.
+
+#### Retained debugger-frame storage (implementation checkpoint, 2026-10-18)
+
+Acceptance: iterator/handler buffers and saved origins, captured execution,
+module names and root/nested/intermediate/module controller headers must keep
+native credit through pause, step/resume and VM destruction. Activate neutral
+paused states once, reject foreign/terminal attachment, and transfer existing
+published ownership without another admission or a duplicated accounting peak.
+Re-parked module callers must retain their state after a child throw.
+
+- [x] Preserve three original tiny lifetime failures and their source archive.
+- [x] Transfer durable execution/record storage to independent document owners,
+      admit controller headers and attach existing paused state.
+- [x] Cover nested/intermediate/module storage and handler filenames, plus
+      moved-origin peak conservation, equal-size peer usage and module throws.
+- [x] Pass eighteen final contracts and forty-five exact semantic controls,
+      formatting, diff checks and offline workspace/all-target Clippy.
+- [x] Complete source/artifact and Git content audits, final documents and the
+      detailed English checkpoint commit; record its identity in the receipt.
+
+The original **0/3** run includes a captured buffer reporting zero native bytes
+after its VM drops while its Rust owner still holds **80 bytes**. The first
+correction passes **3/3**. Expanded tests pass **3/7**, exposing missing nested/
+intermediate/module storage and a **19-byte** handler filename; their joined
+correction passes **7/7**. A separate **0/1** case observes a fictitious **16-byte**
+peak while moving one existing filename. The next **16/17** run exposes the
+module caller re-parked after a child throw. Finally, another **0/1** case shows
+**15 bytes** left in peer-visible usage after equal-size filename replacement.
+The final **18/18** run closes these reproduced failures.
+
+Active execution keeps its existing VM counters. A durable handoff publishes
+the current owner, detaches its credit into a shared document lease and removes
+the corresponding counter contribution. Previously neutral snapshots admit
+their existing storage when accounting starts. Captured values/buffers drop
+before their charges; controller headers drop after their code, execution and
+interpreter records. No saved owner retains the VM itself.
+
+Handler filenames now belong to their interpreter records alongside record
+capacity. Mutation refreshes that ownership, replacing the separate active and
+paused diagnostic projections. Existing-data changes reconcile the VM and saved
+owner together before limit/peak observation, including equal-size replacement.
+This preserves exact transfer and immediate peer usage without relaxing
+allocation admission or clearing terminal failure.
+
+Root, nested and intermediate preparation admits header storage before copying
+code and retains records before publishing a new serial or pause. Late binding
+attaches root/nested/intermediate/module state, code and module identifiers.
+Re-pausing retains the new execution snapshot; caught nested module throws use
+the same handoff and an admitted complete cell-table copy before installation.
+Capture failure restores the original operand allocation for both zero and
+nonzero stack prefixes. Ordinary temporary caller and async/generator counter
+paths keep their existing policy.
+
+The eighteen cases exercise small primitive payloads, saved filenames, stack
+allocation identity, root/nested/intermediate/module teardown, stepping,
+idempotent late activation, cross-realm usage, foreign refusal and terminal
+cleanup. Forty-five exact related controls cover debugger inspection/generations,
+class/static-block and throw restoration, ShadowRealm evaluation, borrowed root
+code, ordinary interpreter records, async/generator transfers, module stepping/
+await and refused resume recovery. All **63 distinct tests** pass across three
+executable targets and forty-six selections. Formatting, diff checks and offline
+workspace/all-target Clippy with warnings denied pass. Frozen source/artifact and
+Git content audits bind eighteen Rust inputs, twenty changed source/document
+files, the additional control sources, three executables and the English message.
+
+The legacy pause-record fixture keeps its original minimum charge requirement
+while observing the independent record owner; its active-counter checks remain.
+The ordinary-library hook exposes all eighteen contracts without claiming fresh
+coverage. Earlier checkpoint counts remain historical evidence. No resource-
+boundary, exhaustion, infinite-execution, network/listener/Core/MCP or privileged
+runtime replay is resumed; rejected push and process inspection are not retried.
+
+Debugger request/inspection producers, other temporary/retained-map owners,
+host-side program registries, diagnostic maps/registries, complete compiler/
+parser/coercion producers, active-call backing, complete neutral-tree adoption
+and wider native/integrated gates remain open. M1u remains the latest accepted
+milestone; M1z's integrated gates remain open.
+
+Evidence: `target/retained-frame-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-retained-frame-storage-` (2026-10-18), including all failing/
+corrected source archives, peak/peer/module-throw counterexamples, final frozen
+inputs, static checks, exact controls and the detailed English checkpoint message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

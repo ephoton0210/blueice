@@ -559,15 +559,17 @@ impl Vm {
             ) {
                 DebuggerInterpreterExit::Suspended {
                     pc,
-                    iterators: saved_iterators,
-                    handlers,
-                } => match crate::vm::root_code_storage::SavedRootCode::copy(&code, self).and_then(
-                    |saved| {
-                        self.capture_suspension_execution(frame_base)
-                            .map(|execution| (saved, execution))
-                    },
+                    iterators: mut saved_iterators,
+                    mut handlers,
+                } => match self.prepare_debugger_child_storage(
+                    &code,
+                    std::mem::size_of::<NestedDebuggerContinuation>()
+                        - std::mem::size_of::<crate::vm::root_code_storage::SavedRootCode>(),
+                    frame_base,
+                    &mut saved_iterators,
+                    &mut handlers,
                 ) {
-                    Ok((saved_code, execution)) => {
+                    Ok((saved_code, storage, execution)) => {
                         self.next_debugger_frame_serial = next_frame_serial;
                         self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
                             frame_serial,
@@ -577,6 +579,7 @@ impl Vm {
                             execution,
                             iterators: saved_iterators,
                             handlers,
+                            _storage: storage,
                         });
                         suspended = true;
                         Ok(Value::Undefined)
@@ -615,17 +618,21 @@ impl Vm {
                 match DebuggerInterpreterExit::classify(exit, DebuggerFrameKind::NestedEntry) {
                     DebuggerInterpreterExit::Suspended {
                         pc,
-                        iterators: saved_iterators,
-                        handlers,
+                        iterators: mut saved_iterators,
+                        mut handlers,
                     } => {
                         debug_assert!(self.debugger_nested_continuation.is_some());
                         debug_assert!(self.debugger_nested_intermediate_continuation.is_none());
-                        match crate::vm::root_code_storage::SavedRootCode::copy(&code, self)
-                            .and_then(|saved| {
-                                self.capture_suspension_execution(frame_base)
-                                    .map(|execution| (saved, execution))
-                            }) {
-                            Ok((saved_code, execution)) => {
+                        match self.prepare_debugger_child_storage(
+                            &code,
+                            std::mem::size_of::<IntermediateDebuggerContinuation>()
+                                - std::mem::size_of::<crate::vm::root_code_storage::SavedRootCode>(
+                                ),
+                            frame_base,
+                            &mut saved_iterators,
+                            &mut handlers,
+                        ) {
+                            Ok((saved_code, storage, execution)) => {
                                 self.debugger_nested_intermediate_continuation =
                                     Some(IntermediateDebuggerContinuation {
                                         code: saved_code,
@@ -633,6 +640,7 @@ impl Vm {
                                         execution,
                                         iterators: saved_iterators,
                                         handlers,
+                                        _storage: storage,
                                     });
                                 suspended = true;
                                 Ok(Value::Undefined)

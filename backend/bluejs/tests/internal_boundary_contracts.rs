@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_retained_frame_storage_contracts() {
+    blueice_bluejs::Vm::verify_retained_frame_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_root_code_storage_contracts() {
     blueice_bluejs::Vm::verify_root_code_storage_contracts();
 }

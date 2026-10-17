@@ -1196,8 +1196,7 @@ impl Vm {
         iterators: &mut IteratorRecords,
         completion: Completion,
     ) -> Result<CompletionAction, RuntimeError> {
-        let mut handler_charge =
-            self.charge_diagnostic_payload(Self::diagnostic_handler_bytes(handlers));
+        handlers.refresh_payload(self);
         if let Completion::Halt(value) = completion {
             return Ok(CompletionAction::Return(value));
         }
@@ -1222,7 +1221,7 @@ impl Vm {
                         origin.epoch = self.throw_epoch.wrapping_add(1);
                         self.restore_pending_throw_origin(origin);
                     }
-                    handler_charge.set_bytes(0);
+                    handlers.refresh_payload(self);
                     self.resolve_completion(code, handlers, iterators, completion)
                 }
                 None => Ok(CompletionAction::Continue),
@@ -1234,7 +1233,7 @@ impl Vm {
         self.pending_completions.push(completion.clone());
         let mut completion = completion;
         loop {
-            handler_charge.set_bytes(Self::diagnostic_handler_bytes(handlers));
+            handlers.refresh_payload(self);
             let Some(frame) = handlers.last() else {
                 return Ok(match completion {
                     Completion::Throw(error) => CompletionAction::Throw(error),
@@ -1341,6 +1340,7 @@ impl Vm {
                     let frame = handlers.last_mut().expect("handler was inspected above");
                     frame.state = HandlerState::Catch;
                     frame.pending_origin = origin;
+                    handlers.refresh_payload(self);
                     self.stack.push(value);
                     // A class's heritage or computed key may have thrown while
                     // the function was running as strict code.
@@ -1366,6 +1366,7 @@ impl Vm {
                     frame.state = HandlerState::Finally;
                     frame.pending = Some(pending);
                     frame.pending_origin = self.take_pending_throw_origin();
+                    handlers.refresh_payload(self);
                     self.strict = code.strict;
                     return Ok(CompletionAction::Jump(target as usize));
                 }

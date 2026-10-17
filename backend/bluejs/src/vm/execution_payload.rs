@@ -145,6 +145,7 @@ pub(super) struct ExecutionPayloadCharge {
     counter: Rc<Cell<usize>>,
     bytes: usize,
     enabled: bool,
+    native: Option<host_scheduling::SharedSchedulingCharge>,
 }
 
 pub(super) struct CallEntryCharge {
@@ -180,6 +181,58 @@ impl CallEntryCharge {
 }
 
 impl ExecutionPayloadCharge {
+    pub(super) fn is_retained(&self) -> bool {
+        self.native.is_some()
+    }
+
+    pub(super) fn validate_retained(
+        &self,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<(), RuntimeError> {
+        if let Some(owner) = &self.native {
+            owner.reserve_peer(0)?;
+            if let Some(scope) = scope {
+                if !owner.belongs_to(scope) {
+                    return Err(scope.fail());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Move an existing published counter charge to its durable data owner.
+    /// A previously neutral snapshot instead admits its retained allocation.
+    pub(super) fn retain_native(&mut self, vm: &mut Vm, bytes: usize) -> Result<(), RuntimeError> {
+        if vm.host_scheduling.is_none() {
+            return Ok(());
+        }
+        self.validate_retained(vm.host_scheduling.as_ref())?;
+        vm.check_scheduling_failure()?;
+        if self.native.is_some() {
+            self.resize(bytes);
+            vm.reconcile_scheduling_ownership();
+            return vm.check_scheduling_failure();
+        }
+        let native = if self.enabled {
+            self.resize(bytes);
+            vm.reconcile_scheduling_ownership();
+            vm.check_scheduling_failure()?;
+            let native = vm
+                .host_scheduling
+                .as_mut()
+                .unwrap()
+                .detach_owned_payload(bytes);
+            self.counter.set(self.counter.get() - self.bytes);
+            native
+        } else {
+            vm.host_scheduling.as_ref().unwrap().shared_charge(bytes)?
+        };
+        self.bytes = bytes;
+        self.enabled = true;
+        self.native = Some(native);
+        Ok(())
+    }
+
     pub(super) fn bytes(&self) -> usize {
         self.bytes
     }
@@ -189,12 +242,25 @@ impl ExecutionPayloadCharge {
     }
 
     pub(super) fn resize(&mut self, bytes: usize) {
-        self.counter.set(self.counter.get() - self.bytes + bytes);
+        if let Some(owner) = &mut self.native {
+            owner.reconcile_owned_bytes(bytes);
+        } else {
+            self.counter.set(self.counter.get() - self.bytes + bytes);
+        }
         self.bytes = bytes;
     }
 }
 
 impl SuspendedModuleExecution {
+    pub(super) fn retain_native_storage(&mut self, vm: &mut Vm) -> Result<(), RuntimeError> {
+        let payload = self.payload_bytes();
+        let control = self.control_bytes();
+        self.payload_charge.retain_native(vm, payload)?;
+        self.control_charge.retain_native(vm, control)?;
+        self.disposables.retain_native_storage(vm)?;
+        self.dispose_marks.retain_native_storage(vm)
+    }
+
     pub(super) fn payload_bytes(&self) -> usize {
         let mut bytes = values_bytes(&self.stack)
             .saturating_add(values_bytes(&self.arguments))
@@ -240,7 +306,9 @@ impl SuspendedModuleExecution {
 
 impl Drop for ExecutionPayloadCharge {
     fn drop(&mut self) {
-        self.counter.set(self.counter.get() - self.bytes);
+        if self.native.is_none() {
+            self.counter.set(self.counter.get() - self.bytes);
+        }
     }
 }
 
@@ -254,6 +322,7 @@ impl Vm {
             counter,
             bytes,
             enabled,
+            native: None,
         }
     }
     pub(super) fn call_entry_charge(
@@ -308,6 +377,7 @@ impl Vm {
             counter,
             bytes,
             enabled: self.host_scheduling.is_some(),
+            native: None,
         }
     }
 
@@ -373,6 +443,7 @@ impl Vm {
             counter,
             bytes,
             enabled: self.host_scheduling.is_some(),
+            native: None,
         }
     }
 

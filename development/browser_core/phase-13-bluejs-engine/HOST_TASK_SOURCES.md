@@ -1227,11 +1227,11 @@ code acquires shared child/source owners through the existing document cache.
 The saved owner moves through pause, step and resume; its bytecode drops before
 its native credit. Late activation attaches existing paused snapshots to the
 document budget, and foreign or terminal admission refuses before publication.
-These changes cover saved code, leaving other debugger controller/header and
-diagnostic storage in their separate native-control gates.
+This code-buffer checkpoint covers saved code. The retained-frame follow-up
+below adds saved headers, execution/record buffers and handler origins.
 
-The existing twenty-case local/offline run matches all fifteen current Rust
-inputs by SHA256. It covers normal/throw cleanup, refusal before guest effects,
+At the code-buffer checkpoint, the twenty-case local/offline run matched all
+fifteen frozen Rust inputs by SHA256. It covered normal/throw cleanup, refusal before guest effects,
 late activation, saved-code lifetimes after VM destruction and allocation
 identity through step/resume. Nineteen additional exact tiny semantic controls
 pass without replaying resource-admission probes. Together these cover
@@ -1243,6 +1243,37 @@ remains the latest accepted milestone and M1z's wider gates remain open.
 Evidence: `target/root-code-storage-source-20261018.json`; the earlier
 `target/root-code-storage-static-review-source-20261018.json` preserves the
 initial review's pending status.
+
+Retained debugger state now transfers published execution/record credit into
+independent document leases. Active temporary contexts keep their VM counters;
+durable owners remove their counter contribution before retaining the same
+credit. Neutral saved state admits its existing storage during activation.
+Data drops before its credit, while controller header leases drop last. Saved
+code/records and captured frames can outlive the VM without keeping it alive.
+
+Handler origins join record payload ownership, replacing the separate active
+and paused diagnostic projections. Mutations reconcile the saved owner and VM
+before limit/peak observation. Moving a filename has no duplicate peak, and
+replacing it with equal-sized data immediately updates peer-realm usage.
+Allocation producers still perform their admission, and cleanup retains the
+terminal failure latch.
+
+Root/nested/intermediate controller headers acquire admission before saved-code
+copying; records become durable before new pause/serial publication. Activation
+attaches all root/nested/intermediate/module storage, including module names.
+Stepping and re-parking retain the next snapshot. Caught nested module throws
+also stage a complete cell-table copy before installing the caller's updated
+state. Failed captured handoff restores its original stack allocation.
+
+The retained-frame checkpoint passes eighteen tiny lifecycle/conservation
+contracts and forty-five exact related semantic controls: sixty-three distinct
+tests across three executable targets. Formatting, diff checks and offline
+workspace/all-target Clippy pass, with source/artifact and Git content audits.
+The ordinary-library hook does not establish fresh coverage. Request/inspection
+producers, other temporary/retained maps, program/diagnostic registries and wider
+native/integrated gates remain open. M1u remains the latest accepted milestone;
+M1z's integrated gates remain open. Evidence:
+`target/retained-frame-storage-source-20261018.json`.
 
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit

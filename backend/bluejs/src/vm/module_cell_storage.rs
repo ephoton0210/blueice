@@ -60,6 +60,16 @@ impl Vm {
 
     /// Stage the graph's independent copy while active cells still root all
     /// entries. Refusal becomes an ordinary engine exit before frame capture.
+    pub(super) fn copy_current_linked_module_cells(
+        &mut self,
+    ) -> Result<PreparedModuleCells, RuntimeError> {
+        let mut prepared = self.prepare_linked_module_cells(self.cells.len())?;
+        prepared
+            .cells
+            .extend(self.cells.iter().map(|(slot, cell)| (*slot, *cell)));
+        Ok(prepared)
+    }
+
     pub(super) fn stage_module_exit_cells(
         &mut self,
         outcome: Result<InterpreterExit, RuntimeError>,
@@ -73,13 +83,8 @@ impl Vm {
         ) {
             return (outcome, None);
         }
-        match self.prepare_linked_module_cells(self.cells.len()) {
-            Ok(mut prepared) => {
-                prepared
-                    .cells
-                    .extend(self.cells.iter().map(|(slot, cell)| (*slot, *cell)));
-                (outcome, Some(prepared))
-            }
+        match self.copy_current_linked_module_cells() {
+            Ok(prepared) => (outcome, Some(prepared)),
             Err(error) => (Err(error), None),
         }
     }

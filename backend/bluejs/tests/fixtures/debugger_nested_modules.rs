@@ -1022,6 +1022,7 @@ fn paused_continuation_iterator_edges_are_roots_at_gc_safepoints() {
         pc: 0,
         iterators: vec![Value::Object(iterator_record)].into(),
         handlers: Vec::new().into(),
+        _storage: None,
     });
 
     vm.with_roots(|heap| {

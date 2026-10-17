@@ -21,6 +21,12 @@ use super::*;
 #[path = "../../tests/fixtures/root_code_storage.rs"]
 mod root_code_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/retained_frame_storage.rs"]
+mod retained_frame_storage_tests;
+
+mod storage;
+
 /// Exact source-free bytecode instruction that originated the last uncaught
 /// catchable exception. The embedding host must bind this to its own live
 /// BlueTS attachment before mapping it to an original source span.
@@ -32,28 +38,6 @@ pub struct VmDebuggerThrowSite {
 }
 
 impl Vm {
-    pub(super) fn debugger_diagnostic_payload_bytes(&self) -> usize {
-        [
-            self.debugger_continuation
-                .as_ref()
-                .map(|frame| frame.handlers.as_slice()),
-            self.debugger_module_continuation
-                .as_ref()
-                .map(|frame| frame.handlers.as_slice()),
-            self.debugger_nested_continuation
-                .as_ref()
-                .map(|frame| frame.handlers.as_slice()),
-            self.debugger_nested_intermediate_continuation
-                .as_ref()
-                .map(|frame| frame.handlers.as_slice()),
-        ]
-        .into_iter()
-        .flatten()
-        .fold(0usize, |bytes, handlers| {
-            bytes.saturating_add(Self::diagnostic_handler_bytes(handlers))
-        })
-    }
-
     /// Available only after an outer execution finished with an uncaught
     /// language exception. A new execution, catch, or success clears it.
     pub fn debugger_uncaught_throw_site(&self) -> Option<VmDebuggerThrowSite> {
@@ -83,6 +67,7 @@ pub(super) struct DebuggerContinuation {
     pc: usize,
     iterators: IteratorRecords,
     handlers: HandlerRecords,
+    _storage: Option<host_scheduling::SharedSchedulingCharge>,
 }
 
 pub(super) struct ModuleDebuggerPauseRequest {
@@ -98,6 +83,7 @@ pub(super) struct ModuleDebuggerContinuation {
     pub(super) execution: SuspendedModuleExecution,
     pub(super) iterators: IteratorRecords,
     pub(super) handlers: HandlerRecords,
+    pub(super) _storage: Option<host_scheduling::SharedSchedulingCharge>,
 }
 
 pub(super) struct NestedDebuggerPauseRequest {
@@ -116,6 +102,7 @@ pub(super) struct NestedDebuggerContinuation {
     pub(super) execution: SuspendedModuleExecution,
     pub(super) iterators: IteratorRecords,
     pub(super) handlers: HandlerRecords,
+    pub(super) _storage: Option<host_scheduling::SharedSchedulingCharge>,
 }
 
 pub(super) struct IntermediateDebuggerContinuation {
@@ -124,6 +111,7 @@ pub(super) struct IntermediateDebuggerContinuation {
     pub(super) execution: SuspendedModuleExecution,
     pub(super) iterators: IteratorRecords,
     pub(super) handlers: HandlerRecords,
+    pub(super) _storage: Option<host_scheduling::SharedSchedulingCharge>,
 }
 
 impl Vm {
@@ -768,6 +756,7 @@ impl Vm {
             })
         ));
         let NestedDebuggerContinuation {
+            _storage,
             frame_serial,
             code_unit_ordinal,
             code,
@@ -801,10 +790,28 @@ impl Vm {
         match DebuggerInterpreterExit::classify(result, DebuggerFrameKind::NestedResume) {
             DebuggerInterpreterExit::Suspended {
                 pc,
-                iterators,
-                handlers,
+                mut iterators,
+                mut handlers,
             } => {
-                let execution = self.suspend_module_execution();
+                let mut execution = self.suspend_module_execution();
+                if let Err(error) = self.retain_debugger_execution_storage(
+                    &mut execution,
+                    &mut iterators,
+                    &mut handlers,
+                ) {
+                    self.restore_module_execution(execution);
+                    let error = self
+                        .finish_debugger_interpret_result(Err(error), &mut iterators, 0, 0)
+                        .expect_err("failed snapshot retention remains an abrupt completion");
+                    self.restore_module_execution(parent);
+                    self.remaining_instructions = child_remaining_instructions;
+                    return if self.debugger_module_continuation.is_some() {
+                        self.abort_nested_module_execution(error)
+                    } else {
+                        self.finish_root_execution(Err(error))
+                            .map(|_| VmDebuggerNestedExecutionState::Completed)
+                    };
+                }
                 self.restore_module_execution(parent);
                 self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
                     frame_serial,
@@ -814,6 +821,7 @@ impl Vm {
                     execution,
                     iterators,
                     handlers,
+                    _storage,
                 });
                 Ok(VmDebuggerNestedExecutionState::Paused {
                     frame_serial,
@@ -868,8 +876,13 @@ impl Vm {
                             root.execution.refresh_execution_charges();
                             root.execution.remaining_instructions = child_remaining_instructions;
                             root.pc += call.opcode.width();
+                            let offset = root.pc;
+                            self.reconcile_scheduling_ownership();
+                            if let Err(error) = self.check_scheduling_failure() {
+                                return self.abort_nested_module_execution(error);
+                            }
                             return Ok(VmDebuggerNestedExecutionState::FrameReturned {
-                                root_bytecode_offset: u32::try_from(root.pc)
+                                root_bytecode_offset: u32::try_from(offset)
                                     .expect("verified module offsets fit the debugger wire range"),
                             });
                         }
@@ -897,8 +910,15 @@ impl Vm {
                             _ => unreachable!("nested caller retains a direct-call opcode"),
                         }
                         root.pc += call.opcode.width();
+                        let offset = root.pc;
+                        self.reconcile_scheduling_ownership();
+                        if let Err(error) = self.check_scheduling_failure() {
+                            return self
+                                .finish_root_execution(Err(error))
+                                .map(|_| VmDebuggerNestedExecutionState::Completed);
+                        }
                         Ok(VmDebuggerNestedExecutionState::FrameReturned {
-                            root_bytecode_offset: u32::try_from(root.pc)
+                            root_bytecode_offset: u32::try_from(offset)
                                 .expect("verified bytecode offsets fit the debugger wire range"),
                         })
                     }
@@ -1057,15 +1077,38 @@ impl Vm {
             .evaluating_linked
             .take()
             .expect("module records return after resolving the nested throw");
+        let mut outcome = NestedThrowAction::classify(action);
+        let cells = if matches!(outcome, NestedThrowAction::Handler(_)) {
+            match self.copy_current_linked_module_cells() {
+                Ok(cells) => Some(cells),
+                Err(error) => {
+                    outcome = NestedThrowAction::Failed(error);
+                    None
+                }
+            }
+        } else {
+            None
+        };
         root.execution = self.suspend_module_execution();
+        if let Err(error) = self.retain_debugger_execution_storage(
+            &mut root.execution,
+            &mut root.iterators,
+            &mut root.handlers,
+        ) {
+            outcome = NestedThrowAction::Failed(error);
+        }
         let record = graph
             .linked
             .get_mut(&root.module)
             .expect("the paused entry remains in its linked graph");
-        record.cells = root.execution.cells.clone();
+        if matches!(outcome, NestedThrowAction::Handler(_)) {
+            cells
+                .expect("module handler stages its cell table")
+                .install(record);
+        }
         record.suspended = true;
         previous_module.restore(self);
-        let outcome = match NestedThrowAction::classify(action) {
+        let outcome = match outcome {
             NestedThrowAction::Handler(pc) => {
                 root.pc = pc;
                 Ok(pc)
@@ -1074,6 +1117,10 @@ impl Vm {
         };
         self.debugger_module_continuation = Some(root);
         self.store_module_graph(graph, false);
+        self.reconcile_scheduling_ownership();
+        if let Err(error) = self.check_scheduling_failure() {
+            return self.abort_nested_module_execution(error);
+        }
         match outcome {
             Ok(pc) => Ok(VmDebuggerNestedExecutionState::FrameReturned {
                 root_bytecode_offset: u32::try_from(pc)
@@ -1092,6 +1139,7 @@ impl Vm {
             .take()
             .expect("a nested module failure retains its entry root");
         let ModuleDebuggerContinuation {
+            _storage,
             module,
             module_charge: _module_charge,
             execution,
@@ -1251,6 +1299,7 @@ impl Vm {
                 "no debugger-paused root script is available",
             ))?;
         let DebuggerContinuation {
+            _storage,
             code,
             pc,
             mut iterators,
@@ -1277,6 +1326,7 @@ impl Vm {
                     pc,
                     iterators,
                     handlers,
+                    _storage,
                 });
                 return Ok(VmDebuggerExecutionState::Paused {
                     bytecode_offset: u32::try_from(pc)
@@ -1361,13 +1411,19 @@ impl Vm {
             DebuggerInterpreterExit::Suspended {
                 pc,
                 mut iterators,
-                handlers,
-            } => match SavedRootCode::copy(code, self) {
-                Ok(code) => DebuggerRunOutcome::Paused(Box::new(DebuggerContinuation {
+                mut handlers,
+            } => match self.prepare_debugger_saved_code(
+                code,
+                Self::debugger_root_storage_bytes(),
+                &mut iterators,
+                &mut handlers,
+            ) {
+                Ok((code, storage)) => DebuggerRunOutcome::Paused(Box::new(DebuggerContinuation {
                     code,
                     pc,
                     iterators,
                     handlers,
+                    _storage: storage,
                 })),
                 Err(error) => DebuggerRunOutcome::Completed(self.finish_debugger_interpret_result(
                     Err(error),

@@ -240,6 +240,16 @@ impl SharedNativeHeader {
 }
 
 impl SharedSchedulingCharge {
+    /// Reconcile storage already owned by a retained frame after a move/edit.
+    /// Producers still admit allocation separately. The VM reconciles its
+    /// corresponding fields before checking limits or observing a peak, so a
+    /// transfer cannot be counted in both ownership views.
+    pub(super) fn reconcile_owned_bytes(&mut self, bytes: usize) {
+        let mut account = self.account.borrow_mut();
+        account.usage.payload_bytes = account.usage.payload_bytes - self.bytes + bytes;
+        self.bytes = bytes;
+    }
+
     pub(super) fn clear_host_code_cache(&self) {
         self.account.borrow_mut().host_code_cache = std::rc::Weak::new();
     }
@@ -639,7 +649,6 @@ impl AsyncContinuation {
         suspended_bytes(&self.execution)
             .saturating_add(self.iterators.unleased_bytes())
             .saturating_add(self.handlers.unleased_bytes())
-            .saturating_add(handler_origins_bytes(&self.handlers))
     }
 }
 impl ModuleContinuation {
@@ -647,16 +656,9 @@ impl ModuleContinuation {
         suspended_bytes(&self.execution)
             .saturating_add(self.iterators.unleased_bytes())
             .saturating_add(self.handlers.unleased_bytes())
-            .saturating_add(handler_origins_bytes(&self.handlers))
             .saturating_add(self.module.capacity())
             .saturating_sub(self.module_charge.bytes())
     }
-}
-
-fn handler_origins_bytes(handlers: &[HandlerFrame]) -> usize {
-    handlers.iter().fold(0usize, |bytes, handler| {
-        bytes.saturating_add(handler.pending_origin.payload_bytes())
-    })
 }
 
 /// Unique buffers of one outer code-unit clone. Runtime-parsed modules own
@@ -932,7 +934,6 @@ impl Vm {
                 &self.uncaught_diagnostic_origin,
             ))
             .saturating_add(self.active_diagnostic_bytes.get())
-            .saturating_add(self.debugger_diagnostic_payload_bytes())
             .saturating_add(self.active_diagnostic_frame.as_ref().map_or(
                 0,
                 crate::diagnostics::ActiveDiagnosticFrame::owned_payload_bytes,

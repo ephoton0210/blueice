@@ -36,7 +36,7 @@ impl Vm {
         suspend_at: Option<InterpreterSuspensionPoint>,
         restored_handlers: Option<(HandlerRecords, usize)>,
     ) -> Result<InterpreterExit, RuntimeError> {
-        iterators.bind(self);
+        iterators.bind(self)?;
         let iterator_root_base = self.async_frame_roots.len();
         let previous_diagnostic_frame = self.active_diagnostic_frame.take();
         let _previous_diagnostic_charge =
@@ -90,9 +90,8 @@ impl Vm {
         let mut pc = start_pc;
         let (mut handlers, handler_stack_base) =
             restored_handlers.unwrap_or_else(|| (self.handler_records(Vec::new()), stack_base));
-        handlers.bind(self);
-        let mut handler_charge =
-            self.charge_diagnostic_payload(Self::diagnostic_handler_bytes(&handlers));
+        handlers.bind(self)?;
+        handlers.refresh_payload(self);
         // Suspended frames store stack offsets relative to their saved stack,
         // while an active interpreter may have an ambient caller frame below
         // it.  Convert at the boundary so catch/finally cleanup always uses
@@ -1869,7 +1868,7 @@ impl Vm {
                         handlers
                             .pop()
                             .expect("compiler pops its active try handler");
-                        handler_charge.set_bytes(Self::diagnostic_handler_bytes(&handlers));
+                        handlers.refresh_payload(self);
                     }
                     Opcode::EnterFinalizer => {
                         handlers
@@ -1945,7 +1944,7 @@ impl Vm {
                     }
                     Opcode::UpdateDisposalCompletion => {
                         self.update_disposal_completion(handlers.as_mut_slice(), operand)?;
-                        handler_charge.set_bytes(Self::diagnostic_handler_bytes(&handlers));
+                        handlers.refresh_payload(self);
                     }
                     Opcode::AbruptJump => {
                         let jump = &code.abrupt_jumps[operand];
@@ -2040,9 +2039,9 @@ impl Vm {
                 }
                 // Completion resolution accounts its mutable handler set
                 // while cleanup can call nested interpreters.
-                handler_charge.set_bytes(0);
+                handlers.refresh_payload(self);
                 let action = self.resolve_completion(code, &mut handlers, iterators, completion);
-                handler_charge.set_bytes(Self::diagnostic_handler_bytes(&handlers));
+                handlers.refresh_payload(self);
                 match action? {
                     CompletionAction::Continue => {}
                     CompletionAction::Jump(target) => pc = target,
@@ -2059,7 +2058,7 @@ impl Vm {
                         self.unwind_with(0);
                         self.close_iterators_to(iterators, 0);
                         handlers.clear();
-                        handler_charge.set_bytes(0);
+                        handlers.refresh_payload(self);
                         self.pending_completions.truncate(pending_base);
                         self.completion_saves.truncate(save_base);
                         self.completion = Value::Undefined;

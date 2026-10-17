@@ -913,8 +913,6 @@ struct Test262ForeignBufferMirror {
 struct SuspendedModuleExecution {
     disposables: ResourceRecords,
     dispose_marks: DisposeMarks,
-    payload_charge: execution_payload::ExecutionPayloadCharge,
-    control_charge: execution_payload::ExecutionPayloadCharge,
     result_root: Option<RootId>,
     stack: Vec<Value>,
     bindings: Vec<Option<Value>>,
@@ -944,6 +942,8 @@ struct SuspendedModuleExecution {
     home_object: Option<ObjectId>,
     class_field_initializer: bool,
     active_module_name: Option<String>,
+    payload_charge: execution_payload::ExecutionPayloadCharge,
+    control_charge: execution_payload::ExecutionPayloadCharge,
 }
 
 /// An isolated execution context with one realm global environment. Ordinary

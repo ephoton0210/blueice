@@ -10,18 +10,9 @@ impl Vm {
     pub(super) fn bind_native_budget(&mut self) -> Result<(), RuntimeError> {
         if let Some(scope) = &self.host_scheduling {
             let budget = scope.heap_native_budget();
-            self.heap.bind_native_budget(budget.clone())?;
-            if let Some(frame) = &mut self.debugger_continuation {
-                frame.code.attach(&budget, &mut self.heap)?;
-            }
-            if let Some(frame) = &mut self.debugger_nested_continuation {
-                frame.code.attach(&budget, &mut self.heap)?;
-            }
-            if let Some(frame) = &mut self.debugger_nested_intermediate_continuation {
-                frame.code.attach(&budget, &mut self.heap)?;
-            }
+            self.heap.bind_native_budget(budget)?;
         }
-        Ok(())
+        self.attach_retained_debugger_storage()
     }
 }
 

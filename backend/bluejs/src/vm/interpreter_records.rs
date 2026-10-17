@@ -19,8 +19,7 @@ impl InterpreterRecord for Value {
 
 impl InterpreterRecord for HandlerFrame {
     fn payload_bytes(&self) -> usize {
-        // Throw origins retain the existing diagnostic ownership path.
-        0
+        self.pending_origin.payload_bytes()
     }
 }
 
@@ -96,6 +95,17 @@ impl<'a> IntoIterator for &'a mut HandlerRecords {
 }
 
 impl HandlerRecords {
+    pub(super) fn refresh_payload(&mut self, vm: &mut Vm) {
+        let retained = self
+            .charge
+            .as_ref()
+            .is_some_and(|charge| charge.is_retained());
+        self.refresh();
+        if retained {
+            vm.reconcile_scheduling_ownership();
+        }
+    }
+
     pub(super) fn last_mut(&mut self) -> Option<&mut HandlerFrame> {
         self.values.last_mut()
     }
@@ -113,7 +123,12 @@ impl<T: InterpreterRecord> InterpreterRecords<T> {
             })
     }
 
-    pub(super) fn bind(&mut self, vm: &Vm) {
+    pub(super) fn bind(&mut self, vm: &Vm) -> Result<(), RuntimeError> {
+        if let Some(charge) = &self.charge {
+            if charge.is_retained() {
+                return charge.validate_retained(vm.host_scheduling.as_ref());
+            }
+        }
         if self
             .charge
             .as_ref()
@@ -121,6 +136,15 @@ impl<T: InterpreterRecord> InterpreterRecords<T> {
         {
             self.charge = Some(vm.charge_execution_control(Self::storage_bytes(&self.values)));
         }
+        Ok(())
+    }
+
+    pub(super) fn retain_native_storage(&mut self, vm: &mut Vm) -> Result<(), RuntimeError> {
+        let bytes = Self::storage_bytes(&self.values);
+        if self.charge.is_none() {
+            self.charge = Some(vm.charge_execution_control(bytes));
+        }
+        self.charge.as_mut().unwrap().retain_native(vm, bytes)
     }
 
     fn refresh(&mut self) {
@@ -135,10 +159,18 @@ impl<T: InterpreterRecord> InterpreterRecords<T> {
             .saturating_sub(self.charge.as_ref().map_or(0, |charge| charge.bytes()))
     }
 
+    #[cfg(any(test, coverage))]
+    pub(super) fn retained_native_bytes(&self) -> usize {
+        self.charge
+            .as_ref()
+            .filter(|charge| charge.is_retained())
+            .map_or(0, |charge| charge.bytes())
+    }
+
     /// Admission precedes reserve and publication, including a recheck of the
     /// allocator-reported capacity. Existing slots add no growth forecast.
     pub(super) fn try_push(&mut self, vm: &mut Vm, value: T) -> Result<(), RuntimeError> {
-        self.bind(vm);
+        self.bind(vm)?;
         let growth = SchedulingCapacity::for_vec_push(&self.values);
         let extra = HostSchedulingUsage {
             payload_bytes: value.payload_bytes(),
@@ -176,7 +208,7 @@ impl<T: InterpreterRecord> InterpreterRecords<T> {
     }
 
     pub(super) fn try_split_off(&mut self, vm: &mut Vm, at: usize) -> Result<Self, RuntimeError> {
-        self.bind(vm);
+        self.bind(vm)?;
         if at == 0 {
             return Ok(std::mem::take(self));
         }
