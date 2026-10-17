@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_host_wait_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_wait_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_promise_record_storage_contracts() {
     blueice_bluejs::Vm::verify_promise_record_storage_contracts();
 }

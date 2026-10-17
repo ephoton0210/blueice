@@ -46,6 +46,13 @@ acceptance. M1q's diagnostic refinements remain parked until these architectural
 dependencies are closed. Its interrupted 191-target replay is incomplete and
 does not constitute a milestone or a new acceptance gate.
 
+**Validation constraint — reaffirmed 2026-10-17.** Continue architecture work
+with offline static checks and fixed, finite unit/functional cases. Use tiny
+in-memory fixtures and numerical admission controls rather than represented
+large allocations. Do not resume resource-exhaustion/infinite-execution probes,
+network/service/listener/Core/MCP replay, privileged validation or process
+killing. Broader acceptance items below stay open under this constraint.
+
 M1s began with this public ownership failure:
 discarded ShadowRealm instances become unreachable (`WeakRef.deref()` returns
 undefined), but their VM tables retain global Promise results and their native
@@ -57,6 +64,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The host-wait registration checkpoint (2026-10-17) now admits complete detached
+wait/Promise table candidates and leased argument buffers before capability
+publication. Root IDs are preflighted before managed allocation; root storage
+precedes token serial acquisition as the final fallible preparation step.
+Twenty-four finite in-memory cases pass, including GC, refusal/refunds,
+callback lifetime, rejection order, completion and cancellation. All 1152 prior
+selected controls also pass: **1176 total**, with formatting and offline
+workspace/all-target Clippy. Other control tables/buffers, retained-map ownership,
+producer clones, shared programs and integrated acceptance remain open; M1u stays
+the latest accepted milestone.
+
 The Promise record checkpoint (2026-10-17) now keeps complete native table
 candidates detached through managed/trace admission and publishes them only
 after object creation. GC pruning preserves reusable slots; failure refunds
@@ -812,7 +830,9 @@ work and exposes its retained payload ledger.
       protection and argument handoff now join complete timer registration/root-
       batch staging plus admitted Promise job/reaction replacements and atomic
       await queue/map publication. Detached Promise record creation now preserves
-      admitted slots through GC and refusal; all 1152 selected controls pass.
+      admitted slots through GC and refusal. Host waits now prepare arguments,
+      joint tables and root storage before token/capability publication; all
+      1176 selected controls pass.
       Shared programs, other managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -4051,6 +4071,86 @@ and staged/committed blob checks. Ordinary-library entry points expose the same
 fixtures; no new coverage result is claimed. This is an M1z checkpoint.
 Host-wait/other tables, retained-map ownership, other buffers, shared programs and
 integrated acceptance remain open.
+
+#### Host-wait registration follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: prepare complete wait/record replacements and actual argument
+storage before publishing a completion capability. Preflight root IDs before
+managed allocation; admit the new object's root before consuming its token
+serial. Preserve old capacities, records, root identities and serials on
+preparation refusal, allowing ordinary GC pruning. Commit the Promise, wait and
+root before invoking one host callback; preserve rejection, completion and
+cancellation behavior. Unpublished managed objects remain collectible.
+
+- [x] Reproduce net-only joint growth, premature token serial and wait-capacity
+      publication on managed/root refusal using tiny in-memory callbacks.
+      All three original cases failed: serials advanced and native wait capacity
+      changed before registration could complete.
+- [x] Implement staged host-wait ownership; verify input storage, preparation/
+      rollback, GC, callback lifetime, cancellation and shared-document refunds.
+      All twenty-four finite host-wait cases pass; rejection still checks the
+      receiver before reporting a deferred argument conversion error.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Retained-map ownership, other buffers, shared
+      programs and integrated acceptance remain open.
+
+Registration admits its shared count and root-ID range before managed
+allocation. Actual converted primitive ownership and vector capacity retain an
+independent document lease. Complete detached wait/record candidates coexist
+with the original tables. Promise intrinsic setup and managed allocation may
+collect, so the prepared record reuses the GC-aware handoff and admitted spare
+slots. Root storage is prepared after the managed object exists. Token serial
+acquisition is the final fallible step; root, Promise record and wait then commit
+without allocation or collection before callback invocation.
+
+Refusal refunds detached ownership without publishing a wait, record, root or
+callback, or consuming a token serial. Existing native capacities and identities
+remain installed apart from ordinary GC. Later root/serial refusal can leave
+an unpublished managed object, which has no persistent root or native record
+and is collectible. Converted inputs retain their lease through the callback
+and release afterward; Rust-held preparations keep their document lease even
+after VM destruction. Completion and cancellation retain their original
+Promise/root lifecycle.
+
+Unsupported arguments stay deferred language errors, preserving a rejected
+Promise rather than introducing a synchronous throw. Receiver validation still
+precedes that error. A further single failing case caught the changed precedence
+from eager conversion; moving the deferred error after receiver validation
+restores the previous message and releases the wait root without a callback.
+The first expanded run also found three fixture setup failures: direct host
+calls lacked finite constructor fuel and warm-up collection reclaimed an empty
+cache. Corrected setup retains the original ownership assertions.
+
+Twenty-four finite cases cover full versus net-only joint admission, exact
+argument copies/slots, partial conversion and Rust-held lifetime, count/root-ID/
+root-storage/serial/managed refusal, terminal refusal, sibling refunds,
+exact/one-byte-short joint root allowance, GC pruning and live waits, atomic
+publication and callback observations, callback/argument/receiver rejection,
+completion and cancellation. New callbacks use only local captures and the
+UserInteraction source; fixtures use at most eight pending waits, tiny strings
+and scalar budget peers without represented large allocations.
+
+Validation: **1176 passed, zero failed/ignored**, across 41 executables and 98
+fixed selections: twenty-four new host-wait cases and all 1152 prior selected
+controls. Existing finite Promise, timer, GC, cancellation and navigation cases
+retain their behavior. Formatting, diff checks and offline workspace/all-target
+Clippy with warnings denied pass. Cargo reuses the workspace target with
+incremental compilation and dev/test debug artifact growth disabled. The same
+nine earlier resource/infinite-loop skips remain. Public timer/finalization
+selection names only finite cases; their large/resource/infinite cases and JSON
+resource sweeps remain unselected. No network/service replay, physical exhaustion
+probe, privileged validation, process killing, fresh full Test262, real Core/MCP
+replay, coverage result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-host-waits-controls-20261017.py`,
+`/private/tmp/blueice-host-waits-commit-20261017.txt`,
+`/private/tmp/blueice-host-waits-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-host-waits-{red,first,expanded-first,receiver-red,expanded,wait-storage,fmt,clippy}-20261017.log`.
+`target/host-waits-source-20261017.json` records source/log/executable hashes and
+staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
+control tables/buffers, retained-map ownership, producer clones, shared programs
+and integrated acceptance remain open; M1u stays the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

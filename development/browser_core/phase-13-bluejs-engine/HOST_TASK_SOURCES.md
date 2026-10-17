@@ -227,10 +227,30 @@ An existing empty cache survives a trace refusal without collection; a real
 collection may reclaim it without another allocation. Returned objects retain
 their requested prototype and normal Promise/GC ownership.
 
-Host-wait and other control tables still use their separate measured replacement/
-delta protocol. Their preallocation, retained hash-allocation ownership,
-producer-side clones in other Promise algorithms, allocator overhead and broader
-native control/service storage remain open.
+Host-wait registration first admits its shared pending count and preflights
+root-ID space. Converted primitive inputs and actual argument-vector slots have
+an independent document lease. Unsupported input retains a deferred language
+error instead of turning the ordinary rejected Promise into a synchronous throw.
+The wait and Promise tables each admit complete detached replacements while
+their original storage remains installed. Intrinsic setup and managed object
+allocation may collect; the record-table handoff supports the resulting pruning.
+
+After managed allocation, registration admits the object's root-table storage.
+Token serial acquisition is the final fallible preparation step. Root, Promise
+record and wait then publish without further allocation or collection, before
+the host callback observes its token and primitive arguments. Receiver validation
+and argument errors retain their previous rejection order. Converted argument
+ownership releases after callback dispatch, and normal rejection, queued
+completion and VM cancellation release the committed wait root.
+
+Preparation refusal publishes no new wait, record, root or callback and consumes
+no token serial. Detached buffers refund on every exit, including terminal
+failure and Rust-held lifetimes beyond VM destruction. Existing native owners
+remain installed apart from ordinary GC; an object created before a later root/
+serial refusal stays unrooted and collectible. Other control-table preallocation,
+retained hash-allocation ownership, producer-side clones in other Promise
+algorithms, allocator overhead and broader native control/service storage remain
+open.
 
 Ordinary and deferred dynamic-import waiters consume the same document
 reaction/request count. Ordinary registration checks table/vector growth and a

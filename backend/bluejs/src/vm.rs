@@ -87,6 +87,7 @@ mod host_objects;
 mod host_promises;
 mod host_rejections;
 mod host_task_storage;
+mod host_wait_storage;
 mod promise_queue_storage;
 mod promise_record_storage;
 mod timer_entry;

@@ -154,6 +154,23 @@ impl RootTable {
 }
 
 impl Heap {
+    pub(crate) fn check_root_registration_count(&self, count: usize) -> Result<(), HeapError> {
+        self.root_registration_range(count).map(|_| ())
+    }
+
+    fn root_registration_range(&self, count: usize) -> Result<(u64, u64), HeapError> {
+        let count = u64::try_from(count).map_err(|_| HeapError::IdExhausted)?;
+        let next = self
+            .next_root
+            .checked_add(count)
+            .ok_or(HeapError::IdExhausted)?;
+        let registrations = self
+            .root_registrations
+            .checked_add(count)
+            .ok_or(HeapError::IdExhausted)?;
+        Ok((next, registrations))
+    }
+
     #[cfg(any(test, coverage))]
     pub(crate) fn set_root_counter_for_test(&mut self, next: u64) {
         self.next_root = next;
@@ -166,15 +183,7 @@ impl Heap {
         for object in objects {
             self.object(*object)?;
         }
-        let count = u64::try_from(objects.len()).map_err(|_| HeapError::IdExhausted)?;
-        let next = self
-            .next_root
-            .checked_add(count)
-            .ok_or(HeapError::IdExhausted)?;
-        let registrations = self
-            .root_registrations
-            .checked_add(count)
-            .ok_or(HeapError::IdExhausted)?;
+        let (next, registrations) = self.root_registration_range(objects.len())?;
         Ok(PreparedRootBatch {
             objects,
             table: self.roots.prepare_additional(objects.len())?,
@@ -190,9 +199,24 @@ impl Heap {
         prepared: PreparedRootBatch<'_>,
         roots: &mut Vec<RootId>,
     ) {
+        assert!(roots.capacity() - roots.len() >= prepared.objects.len());
+        self.commit_root_batch_using(prepared, |root| roots.push(root));
+    }
+
+    pub(crate) fn commit_single_root(&mut self, prepared: PreparedRootBatch<'_>) -> RootId {
+        assert_eq!(prepared.objects.len(), 1);
+        let mut root = None;
+        self.commit_root_batch_using(prepared, |id| root = Some(id));
+        root.expect("one admitted root")
+    }
+
+    fn commit_root_batch_using(
+        &mut self,
+        prepared: PreparedRootBatch<'_>,
+        mut publish: impl FnMut(RootId),
+    ) {
         assert_eq!(self.identity, prepared.heap);
         assert_eq!(self.next_root, prepared.first);
-        assert!(roots.capacity() - roots.len() >= prepared.objects.len());
         self.roots.commit_prepared(prepared.table);
         for (index, object) in prepared.objects.iter().enumerate() {
             let root = RootId {
@@ -200,7 +224,7 @@ impl Heap {
                 serial: prepared.first + index as u64,
             };
             self.roots.insert(root, *object);
-            roots.push(root);
+            publish(root);
         }
         self.next_root = prepared.next;
         self.root_registrations = prepared.registrations;

@@ -6,6 +6,28 @@
 
 use super::*;
 
+pub(super) struct PreparedPromiseRecord {
+    pub(super) promise: ObjectId,
+    growth: promise_queue_storage::PreparedMap<ObjectId, PromiseRecord>,
+}
+impl PreparedPromiseRecord {
+    /// No collection may run between preparation and publication.
+    pub(super) fn commit(self, vm: &mut Vm) -> ObjectId {
+        self.growth.commit_after_pruning(&mut vm.promises);
+        vm.promises.insert(
+            self.promise,
+            PromiseRecord {
+                status: PromiseStatus::Pending,
+                rejection_origin: ThrowOrigin::default(),
+                reactions: Vec::new(),
+                handled: false,
+                rejection_notified: false,
+            },
+        );
+        self.promise
+    }
+}
+
 impl Vm {
     pub(super) fn allocate_promise_record(
         &mut self,
@@ -13,17 +35,26 @@ impl Vm {
     ) -> Result<ObjectId, RuntimeError> {
         let before = self.heap.stats();
         let result = self.allocate_promise_record_inner(prototype);
+        self.finish_promise_record_attempt(before, result.is_err());
+        result
+    }
+
+    pub(super) fn finish_promise_record_attempt(
+        &mut self,
+        before: crate::heap::HeapStats,
+        failed: bool,
+    ) {
         let after = self.heap.stats();
         let collected = before.minor_collections != after.minor_collections
             || before.major_collections != after.major_collections;
         // Collection may have emptied the old table during a refused creation.
         // Preserve an existing empty cache when preparation failed without GC.
         // Releasing an actually collected empty table requires no allocation.
-        if collected && !self.preserve_promise_table_capacity && self.promises.is_empty() {
+        if failed && collected && !self.preserve_promise_table_capacity && self.promises.is_empty()
+        {
             self.promises = HashMap::new();
         }
         self.reconcile_scheduling_ownership();
-        result
     }
 
     fn allocate_promise_record_inner(
@@ -35,25 +66,31 @@ impl Vm {
             &self.promises,
             self.host_scheduling.as_ref(),
         )?;
-        // GC may remove dead records, but an already-admitted spare slot must
-        // survive until the new object can be published. No JavaScript runs.
+        let prepared = self.prepare_promise_record_with_capacity(growth, Some(prototype))?;
+        Ok(prepared.commit(self))
+    }
+
+    pub(super) fn prepare_promise_record_with_capacity(
+        &mut self,
+        growth: promise_queue_storage::PreparedMap<ObjectId, PromiseRecord>,
+        prototype: Option<ObjectId>,
+    ) -> Result<PreparedPromiseRecord, RuntimeError> {
+        // Intrinsic initialization and managed allocation may collect, but
+        // neither runs JavaScript. Preserve admitted spare slots throughout.
         let previous = std::mem::replace(&mut self.preserve_promise_table_capacity, true);
-        let allocation = self.with_roots(|heap| heap.alloc_object(Some(prototype)));
+        let allocation = (|| {
+            let prototype = if let Some(prototype) = prototype {
+                prototype
+            } else {
+                self.global("Promise")?;
+                self.promise_prototype()?
+            };
+            self.with_roots(|heap| heap.alloc_object(Some(prototype)))
+        })();
         self.preserve_promise_table_capacity = previous;
         let promise = allocation?;
         self.check_scheduling_failure()?;
-        growth.commit_after_pruning(&mut self.promises);
-        self.promises.insert(
-            promise,
-            PromiseRecord {
-                status: PromiseStatus::Pending,
-                rejection_origin: ThrowOrigin::default(),
-                reactions: Vec::new(),
-                handled: false,
-                rejection_notified: false,
-            },
-        );
-        Ok(promise)
+        Ok(PreparedPromiseRecord { promise, growth })
     }
 }
 

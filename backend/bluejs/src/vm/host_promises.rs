@@ -248,95 +248,91 @@ impl Vm {
                 "host async function is unavailable".into(),
             ));
         }
-        let bytes = args
-            .iter()
-            .fold(0usize, |total, value| {
-                total.saturating_add(host_scheduling::value_payload_bytes(value))
-            })
-            .saturating_add(args.len().saturating_mul(std::mem::size_of::<HostValue>()));
-        let waits = SchedulingMapCapacity::for_insert(
+        let before = self.heap.stats();
+        let result = self.host_async_function_call_prepared(index, receiver, args);
+        self.finish_promise_record_attempt(before, result.is_err());
+        result
+    }
+
+    fn host_async_function_call_prepared(
+        &mut self,
+        index: u32,
+        receiver: Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        self.admit_scheduling_work(HostSchedulingUsage {
+            pending_reactions: 1,
+            ..Default::default()
+        })?;
+        self.heap.check_root_registration_count(1)?;
+        let mut arguments = self.prepare_host_wait_arguments(args)?;
+        let waits = promise_queue_storage::PreparedMap::for_insert(
             &self.host_promises.pending,
             self.host_scheduling.as_ref(),
         )?;
-        let promises =
-            SchedulingMapCapacity::for_insert(&self.promises, self.host_scheduling.as_ref())?;
-        self.admit_scheduling_work(
-            HostSchedulingUsage {
-                pending_reactions: 1,
-                payload_bytes: bytes,
-                ..HostSchedulingUsage::default()
-            }
-            .with_map_growth(&waits)
-            .with_map_growth(&promises),
+        let promises = promise_queue_storage::PreparedMap::for_insert(
+            &self.promises,
+            self.host_scheduling.as_ref(),
         )?;
+        let prepared = self.prepare_promise_record_with_capacity(promises, None)?;
+        let promise = prepared.promise;
+        let objects = [promise];
+        let roots = self.heap.prepare_root_batch(&objects)?;
+        self.check_scheduling_failure()?;
+        // The token is the final fallible step. No JavaScript or collection
+        // runs while publishing the admitted root, record and wait owners.
+        let token = HostPromiseToken {
+            heap: self.object_prototype.heap,
+            serial: self.next_host_task_serial()?,
+        };
+        let root = self.heap.commit_single_root(roots);
+        prepared.commit(self);
         waits.commit(&mut self.host_promises.pending);
-        promises.commit(&mut self.promises);
-        self.synchronize_scheduling_usage()?;
-        // Reserve native argument copies while Promise allocation can itself
-        // collect or reconcile the tables. The lease also refunds early exits.
-        let arguments_charge = self.charge_execution_payload(bytes);
-        let outcome = (|| {
-            let token = HostPromiseToken {
-                heap: self.object_prototype.heap,
-                serial: self.next_host_task_serial()?,
+        self.host_promises.pending.insert(
+            token,
+            PendingHostPromise {
+                promise,
+                root,
+                function: index,
+                queued: false,
+            },
+        );
+        self.reconcile_scheduling_ownership();
+        let started = (|| {
+            let family = match &self.host_promises.functions[index as usize].operation {
+                Operation::Function(_) => None,
+                Operation::Method { family, .. } => Some(*family),
             };
-            let promise = self.new_promise()?;
-            let root = self.heap.root(promise)?;
-            self.host_promises.pending.insert(
-                token,
-                PendingHostPromise {
-                    promise,
-                    root,
-                    function: index,
-                    queued: false,
-                },
-            );
-            let started = (|| {
-                self.synchronize_scheduling_usage()?;
-                let family = match &self.host_promises.functions[index as usize].operation {
-                    Operation::Function(_) => None,
-                    Operation::Method { family, .. } => Some(*family),
-                };
-                let key = family
-                    .map(|family| self.host_receiver_key(family, &receiver))
-                    .transpose()?;
-                // Match the admitted slot count: Result collection can grow the
-                // vector geometrically even when the input length is known.
-                let mut arguments = Vec::with_capacity(args.len());
-                for value in args {
-                    arguments.push(
-                        HostValue::try_from(value)
-                            .map_err(|error| RuntimeError::TypeError(error.to_string()))?,
-                    );
-                }
-                match &mut self.host_promises.functions[index as usize].operation {
-                    Operation::Function(function) => function.start(token, &arguments),
-                    Operation::Method { method, .. } => {
-                        method.start(token, key.expect("verified receiver"), &arguments)
-                    }
-                }
-                .map_err(|error| RuntimeError::TypeError(error.to_string()))
-            })();
-            drop(arguments_charge);
-            if let Err(error) = started {
-                let result = if host_timers::is_page_exception(&error) {
-                    self.error_value(error).and_then(|error| {
-                        self.settle_promise(promise, PromiseStatus::Rejected(error))
-                    })
-                } else {
-                    Err(error)
-                };
-                self.remove_host_promise(token);
-                self.release_root(root);
-                self.synchronize_scheduling_usage()?;
-                result?;
-            } else {
-                self.synchronize_scheduling_usage()?;
+            let key = family
+                .map(|family| self.host_receiver_key(family, &receiver))
+                .transpose()?;
+            if let Some(error) = arguments.error.take() {
+                return Err(error);
             }
-            Ok(Value::Object(promise))
+            match &mut self.host_promises.functions[index as usize].operation {
+                Operation::Function(function) => function.start(token, &arguments.values),
+                Operation::Method { method, .. } => {
+                    method.start(token, key.expect("verified receiver"), &arguments.values)
+                }
+            }
+            .map_err(|error| RuntimeError::TypeError(error.to_string()))
         })();
-        self.refresh_scheduling_ownership();
-        outcome
+        drop(arguments);
+        if let Err(error) = started {
+            let result = if host_timers::is_page_exception(&error) {
+                self.error_value(error)
+                    .and_then(|error| self.settle_promise(promise, PromiseStatus::Rejected(error)))
+            } else {
+                Err(error)
+            };
+            self.remove_host_promise(token);
+            self.release_root(root);
+            self.synchronize_scheduling_usage()?;
+            result?;
+        } else {
+            self.synchronize_scheduling_usage()?;
+        }
+        Ok(Value::Object(promise))
     }
 
     pub fn queue_host_promise_completion(
