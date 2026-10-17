@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The foreign callable pin checkpoint (2026-10-17) now admits shared native
+headers and registry slots before root publication. Dropping handles performs
+no allocation; safepoints reclaim released registrations and native ownership,
+including terminal cleanup and Rust-held lifetimes. Twenty new finite cases
+and all 930 prior controls pass: **950 total**, with formatting and offline
+workspace/all-target Clippy. Other heap buffers, broader report/event scratch,
+shared programs and wider gates remain open; M1u stays the latest accepted
+milestone.
+
 The persistent root-table checkpoint (2026-10-17) now admits replacement hash
 capacity before root-ID publication and keeps bootstrap/Rust-held heaps charged.
 Root and collector caches bind together; refusal preserves registrations and
@@ -723,9 +732,11 @@ work and exposes its retained payload ledger.
       records, incoming/outgoing snapshot buffers and parameter-entry roots now
       have bounded implementation checkpoints. Realm template-cache ownership
       now joins module records, sources, roots, safepoint batches, realm metadata
-      and collector workspace ownership; all 853 selected controls pass. Cached
-      native values, shared programs, managed-container backing buffers, wider
-      native storage and integrated acceptance remain open.
+      and collector workspace ownership. Cached completion/error values, admitted
+      error-reporting batches, persistent root tables and foreign callable pins
+      now have bounded checkpoints; all 950 selected controls pass. Shared
+      programs, managed-container backing buffers, wider native storage and
+      integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -3319,6 +3330,76 @@ and staged/committed blob checks. Ordinary-library entry points expose the same
 fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
 heap tables, deferred pin queues, broader report/event scratch, shared programs
 and wider native/integrated acceptance remain open.
+
+#### Foreign callable pin storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit retained pin headers and registry slots before root publication;
+retain ownership across clones, Rust-held lifetimes and late bounded activation.
+Dropping handles and reclaiming released roots must need no new allocation or
+admission, including terminal cleanup. Preserve live foreign callables, ignored
+conditional pins, native refusal rollback and collector failure ordering.
+
+- [x] Reproduce missing native ownership/admission with tiny offline cases.
+      Both initial tests failed before admission and now pass.
+- [x] Implement admitted pin storage and allocation-free release; twenty finite
+      cases verify clone, heap, activation, terminal, refusal and GC lifecycles.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Other heap buffers, shared programs and wider
+      integrated acceptance remain open.
+
+A per-heap sorted registry now retains one strong reference to each foreign
+callable pin. Its vector slots and each shared pin header enter the document
+native budget before root publication. Vector growth admits a complete detached
+replacement while old slots remain owned; root refusal drops the prepared pin
+storage and preserves the prior registry and root counters. Clones acquire no
+additional allocation or native charge.
+
+Dropping the last external handle only decreases its reference count. The
+registry retains the header and its charge until a safe cleanup point observes
+that sole ownership. Marking skips released pins with a binary lookup over the
+monotonic root IDs, preserving conditional/ignored-pin behavior without a
+scratch queue or mutation before collector preparation succeeds. Cleanup retains
+live pins, refunds released headers and frees the slot vector when it becomes
+empty. This works after terminal failure and never allocates in a pin destructor.
+Rust-held handles keep their own native header owner after their heap is dropped.
+
+Late bounded activation jointly stages root-table, collector and pin storage.
+No owner is installed until all three fit; shared pin headers receive split
+leases without another admission. Refusal preserves registrations/handles,
+refunds every candidate and drops only unadmitted collector scratch. Same-document
+rebinding remains idempotent, and another document cannot adopt bound storage.
+
+Both initial cases failed before admission and now pass. Twenty finite cases
+cover root publication/refusal, live storage, clone sharing, handle-drop lifetime,
+partial/final release, Rust-held handles/heaps, late activation/refusal, foreign
+budgets, invalid objects/IDs, root-growth rollback, complete slot replacement,
+exact allowances, minor/major GC, ignored/released pins and public foreign
+callback collection/release. The first full selection passed 949 cases and
+exposed one old aggregate assertion missing the new 88-byte pin owner; it now
+includes both realms' pin storage. The released-pin root-table fixture also
+counts pin headers/slots when checking final cleanup refunds.
+
+Validation: **950 passed, zero failed/ignored**, across 39 executables and 78
+fixed selections: twenty new foreign-pin cases and all 930 prior selected
+controls. Formatting, diff checks and offline workspace/all-target Clippy with
+warnings denied pass. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled. The same nine legacy
+resource/infinite-loop cases remain excluded and JSON resource sweeps are not
+selected. Execution cases are offline, fixed and finite. No network/service
+replay, physical exhaustion probe, fresh full Test262, real Core/MCP replay,
+coverage result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-realm-pins-controls-20261017.py`,
+`/private/tmp/blueice-realm-pins-commit-20261017.txt`,
+`/private/tmp/blueice-realm-pins-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-realm-pins-{red,expanded,pins,fmt,clippy}-20261017.log`.
+The initial inherited failure is preserved in
+`/private/tmp/blueice-realm-pins-contexts-baseline-red-20261017.log`.
+`target/realm-pins-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
+heap buffers, broader report/event scratch, shared programs and wider native/
+integrated acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

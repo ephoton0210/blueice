@@ -49,6 +49,7 @@ mod module_error_reporting;
 mod module_graph_storage;
 mod module_value_storage;
 mod realm_collection;
+mod realm_pin_storage;
 mod root_table_storage;
 use module_graph_storage::ModuleRecords;
 mod displaced_roots;

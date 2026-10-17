@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Bind collector and persistent-root storage to the document native account.
+//! Bind collector, persistent-root and foreign-pin storage to the native account.
 
 use super::*;
 

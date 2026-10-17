@@ -306,19 +306,27 @@ impl CollectorWorkspace {
 
 impl Heap {
     pub(crate) fn bind_native_budget(&mut self, budget: HeapNativeBudget) -> Result<(), HeapError> {
-        match (self.roots.budget(), self.collector.budget.as_ref()) {
-            (Some(roots), Some(collector)) => {
-                return if roots.same_document(&budget) && collector.same_document(&budget) {
+        match (
+            self.roots.budget(),
+            self.collector.budget.as_ref(),
+            self.realm_pins.budget(),
+        ) {
+            (Some(roots), Some(collector), Some(pins)) => {
+                return if roots.same_document(&budget)
+                    && collector.same_document(&budget)
+                    && pins.same_document(&budget)
+                {
                     Ok(())
                 } else {
                     Err(HeapError::InvalidConfig)
                 };
             }
-            (None, None) => {}
+            (None, None, None) => {}
             _ => return Err(HeapError::InvalidConfig),
         }
-        // Neither owner is installed until both cached allocations fit. Root
-        // entries remain valid even if activation must discard collector scratch.
+        // Install no owner until root, collector and pin storage all fit. Root
+        // registrations and handles survive refused activation; only unadmitted
+        // collector scratch may be discarded.
         let root_charge = match budget.reserve(self.roots.retained_bytes()) {
             Ok(charge) => charge,
             Err(_) => {
@@ -333,7 +341,15 @@ impl Heap {
                 return Err(HeapError::CollectorStorageLimit);
             }
         };
+        let pin_charge = match budget.reserve(self.realm_pins.retained_bytes()) {
+            Ok(charge) => charge,
+            Err(_) => {
+                self.collector = CollectorWorkspace::default();
+                return Err(HeapError::RootStorageLimit);
+            }
+        };
         self.roots.bind_admitted(budget.clone(), root_charge);
+        self.realm_pins.bind_admitted(budget.clone(), pin_charge);
         self.collector.charge = Some(collector_charge);
         self.collector.budget = Some(budget);
         Ok(())
@@ -389,20 +405,11 @@ impl Heap {
             return Err(error);
         }
         workspace.clear();
-        let mut released = self.released_realm_roots.borrow_mut();
-        released.sort_unstable_by_key(|root| (root.heap, root.serial));
         for (root, id) in self.roots.iter() {
-            if !ignored.contains(root)
-                && released
-                    .binary_search_by_key(&(root.heap, root.serial), |root| {
-                        (root.heap, root.serial)
-                    })
-                    .is_err()
-            {
+            if !ignored.contains(root) && !self.realm_pins.is_released(root) {
                 workspace.enqueue(&self.objects, young, *id);
             }
         }
-        drop(released);
         if let Some(batch) = &self.scoped_trace {
             for id in &batch.roots {
                 workspace.enqueue(&self.objects, young, *id);

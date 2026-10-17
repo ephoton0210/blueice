@@ -641,8 +641,9 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         // `target` may otherwise be an unstored expression completion value
         // with nothing else in `source`'s own reachability graph keeping it
-        // alive until the facade is collected. Releasing the lease queues an
-        // unroot in its home heap, which may currently be an active ancestor.
+        // alive until the facade is collected. Its admitted pin remains in the
+        // home heap until safepoint cleanup observes no external handles; dropping
+        // a handle needs no allocation or borrow of an active ancestor.
         let target_root = source.heap.realm_root(target)?;
         let outcome = (|| {
             let function_prototype = self.function_prototype()?;

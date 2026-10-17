@@ -1792,7 +1792,7 @@ pub struct Heap {
     nursery: Vec<ObjectId>,
     remembered: HashSet<ObjectId>,
     roots: RootTable,
-    released_realm_roots: Rc<std::cell::RefCell<Vec<RootId>>>,
+    realm_pins: realm_roots::RealmPins,
     /// Heap operations run no JS and cannot reenter the VM. One admitted
     /// safepoint batch supplies roots and conditional VM side-table edges.
     scoped_trace: Option<GcTraceBatch>,

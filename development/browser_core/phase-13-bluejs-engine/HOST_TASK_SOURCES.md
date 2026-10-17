@@ -745,8 +745,8 @@ programs and integrated acceptance remain open.
 ### Document managed heaps
 
 Persistent root registries retain a separate native owner for their backing
-hash-table slots. Bootstrap roots and collector caches attach to the same
-document together; a failed attachment preserves live registrations and refunds
+hash-table slots. Bootstrap roots, collector caches and foreign pins attach to
+the same document together; a failed attachment preserves live registrations and refunds
 candidate charges. Root growth prepares a complete replacement while old storage
 remains charged, checks reported capacity, then moves entries before publishing
 the next root ID. Refusal preserves entries, counters and the next identifier.
@@ -759,8 +759,21 @@ refunds its storage; released realm pins use the same removal path. These
 releases remain available after terminal failure. Native root-storage refusal
 becomes a noncatchable scheduling error; infallible rejection tracking latches
 the document failure instead of panicking or publishing an unrooted notification.
-Other heap tables, deferred-pin queues, shared programs and wider native/
-integrated acceptance remain open.
+
+Foreign callable pins retain admitted shared native headers and a per-heap
+registry of strong references. Slot replacement is prepared alongside the pin
+header before root publication; refusal preserves registrations and frees all
+candidate storage. Dropping a facade/handle only decreases its reference count.
+At collection, a pin with only the registry's reference is released: marking
+skips its root, and cleanup removes the registration and refunds its header.
+The sorted monotonic IDs support borrowed lookup without deferred queue growth.
+Live pins preserve their slots, the final removal drops the registry allocation,
+and terminal cleanup needs no allocation or admission. A Rust-held handle can
+outlive its heap while keeping its own native header charged. Late activation
+binds existing headers and slots in the same root/collector transaction.
+
+Other heap tables, shared programs and wider native/integrated acceptance remain
+open.
 
 Document scopes share one managed-storage envelope across the root VM and all
 ShadowRealms, including nested realms. The immutable root heap limit also

@@ -290,7 +290,7 @@ fn root_table_storage_released_realm_pins_refund_the_empty_table() {
     let mut heap = bounded_heap(&vm);
     let id = heap.alloc_object(None).unwrap();
     let pin = heap.realm_root(id).unwrap();
-    let bytes = heap.root_storage_bytes();
+    let bytes = heap.root_storage_bytes() + heap.realm_pin_storage_bytes();
     let _peer = leave_room(&mut vm, 0);
     let _ = vm.host_scheduling.as_ref().unwrap().fail();
     drop(pin);

@@ -74,7 +74,7 @@ impl Heap {
             nursery: Vec::new(),
             remembered: HashSet::new(),
             roots: RootTable::default(),
-            released_realm_roots: Rc::default(),
+            realm_pins: realm_roots::RealmPins::default(),
             scoped_trace: None,
             collector: CollectorWorkspace::default(),
             collection_error: None,
