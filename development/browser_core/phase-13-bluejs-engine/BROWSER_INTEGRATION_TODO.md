@@ -64,6 +64,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The animation-frame entry checkpoint (2026-10-17) now admits render handle
+snapshots and timestamp argument storage to the document budget before
+callback removal. Starting-fuel/native refusal preserves the registration,
+roots, ambient fuel and timestamp; committed dispatch/reporting errors release
+their roots. Twenty-five finite groups pass, including exact allowances,
+argument handoff, checkpoints and GC. Five exact finite public frame cases and
+all 1238 prior selected controls also pass: **1268 total**, with formatting and
+offline workspace/all-target Clippy. Other browser-task/event entry scratch,
+retained-map ownership, heap/host buffers, shared programs and integrated
+acceptance remain open; M1u stays the latest accepted milestone.
+
 The browser-task preparation checkpoint (2026-10-17) now admits complete queue
 replacements and incoming payload, stages roots and FileReader updates, and
 publishes task flags/state only after preparation succeeds. Twenty-seven
@@ -858,7 +869,9 @@ work and exposes its retained payload ledger.
       rejection registration now prepares complete queue and root storage
       before capacity/handle/serial publication. Complete browser-task queue/
       payload/root preparation and staged FileReader state now join those
-      checkpoints; all 1238 selected controls pass.
+      checkpoints. Render handle snapshots and animation-frame argument/fuel
+      preparation now preserve unattempted callbacks and clean up committed
+      dispatch/report failures; all 1268 selected controls pass.
       Shared programs, other managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -4357,6 +4370,90 @@ fixtures; no new coverage result is claimed. This is an M1z checkpoint.
 Callback-entry scratch, retained-map ownership, other heap/host buffers, shared
 programs and integrated acceptance remain open; M1u stays the latest accepted
 milestone.
+
+#### Animation-frame entry follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: independently admit render handle snapshots and callback argument
+slots. Validate starting fuel before native allocation; prepare without removing
+a callback, registering extra persistent roots or publishing a timestamp.
+Preserve unattempted work/context on refusal. Charge the first host instruction
+before committing an attempt, transfer argument capacity into dispatch once and
+release committed roots on every dispatch/reporting outcome. Keep snapshot order,
+nested registration, cancellation/checkpoints and monotonic timestamp behavior.
+
+- [x] Reproduce callback loss on zero fuel, snapshot and argument refusal with
+      tiny finite callbacks. All three initial cases failed, then passed.
+- [x] Implement admitted snapshots/entry preparation and verify exact allowances,
+      refunds, root/argument lifetimes, error cleanup and timestamp semantics.
+      All twenty-five finite entry groups pass.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Other browser-task/event entry scratch,
+      retained-map ownership, heap/host buffers and integrated acceptance stay open.
+
+Render snapshots now use the existing admitted native TaskVector protocol. The
+complete requested/reported handle storage retains an independent document
+lease through every callback and checkpoint, without rooting a VM or copying
+callback objects. Its identities keep registration order while callback or
+microtask cancellation affects the live registry and new registrations wait for
+the next snapshot. Empty snapshots need no backing storage.
+
+Entry checks starting fuel before snapshot/argument allocation. A one-element
+timestamp vector retains its own independent native lease while the registration
+still owns its existing callback root. Preparation refusal consumes no callback,
+root, timestamp or ambient fuel. The first host instruction commits an attempt,
+consistent with timer/finalization delivery, then the prepared vector transfers
+to ordinary dispatch once. Its slot charge does not survive into the following
+Promise checkpoint. No extra persistent root IDs or root scratch vectors are
+needed: the committed registration's root remains live through invocation and
+page-exception reporting, then releases before the existing checkpoint.
+
+Dispatch or reporting refusal still releases the consumed root; later unattempted
+callbacks remain registered. Every render exit refunds detached storage and
+reclaims an actually empty registry, including terminal failure. First-entry
+preparation refusal preserves the old render timestamp; attempted work publishes
+one monotonic timestamp for that opportunity. Successful empty renders still
+advance time and checkpoint jobs. Invalid timestamps keep their language-error
+precedence, while debugger pause or an already-canceled identity needs no new
+snapshot/arguments or starting instruction.
+
+Twenty-five finite groups cover zero-fuel refusal/retry, fuel-versus-native
+precedence, exact/one-byte-short snapshot/argument admission, snapshot identity
+stability under cancellation/new registration, empty/paused/canceled entries,
+Rust-held leases after VM destruction, single argument ownership during dispatch
+and its absence during checkpoints, partial attempted failure, page exceptions,
+terminal callback/report refusal, monotonic fractional time and real collection
+during a callback after clearing its other owner. New fixtures use at most four
+callbacks, tiny primitive inputs, two small garbage objects and numerical peers
+without represented large allocations. Other browser-task/event entry scratch,
+retained-map ownership, heap/host buffers, shared programs and wider integrated
+acceptance remain open.
+
+Validation: **1268 passed, zero failed/ignored**, across 45 executables and 117
+fixed selections: twenty-five new entry groups, five exact finite public frame
+cases and all 1238 prior selected controls. Public cases cover callback/job
+exceptions, invalid/monotonic time, empty-render checkpoints, timer/browser task
+separation and debugger pause. Existing finite ordering, nested registration,
+checkpoint cancellation, navigation, timer, finalization, read, rejection and
+Promise controls retain their behavior. Formatting, diff checks and offline
+workspace/all-target Clippy with warnings denied pass. Cargo reuses the workspace
+target with incremental compilation and dev/test debug artifact growth disabled.
+
+The same nine earlier resource/infinite-loop skips remain. Public frame selection
+names only finite cases; its capacity/resource/infinite cases and JSON resource
+sweeps remain unselected. No network/service replay, physical exhaustion probe,
+privileged validation, process killing, fresh full Test262, real Core/MCP replay,
+coverage result or integrated acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-frame-entry-controls-20261017.py`,
+`/private/tmp/blueice-frame-entry-commit-20261017.txt`,
+`/private/tmp/blueice-frame-entry-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-frame-entry-{red,first,expanded,frame-entry,fmt,clippy}-20261017.log`.
+`target/frame-entry-source-20261017.json` records source/log/executable hashes
+and staged/committed blob checks. Ordinary-library entry points expose the same
+fixtures; no new coverage result is claimed. This is an M1z checkpoint. Other
+browser-task/event entry scratch, retained-map ownership, heap/host buffers,
+shared programs and integrated acceptance remain open; M1u stays the latest
+accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

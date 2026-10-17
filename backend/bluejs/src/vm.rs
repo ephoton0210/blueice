@@ -69,6 +69,7 @@ mod scope_storage;
 mod suspension_storage;
 mod template_cache;
 use frame_bindings::{FrameBindingKind, PreparedFrameBindings};
+mod animation_frame_entry;
 mod for_in;
 mod functions;
 mod host_animation_frames;

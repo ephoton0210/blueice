@@ -205,6 +205,25 @@ Cancellation, notification handoff and callback/cleanup completion retain the
 existing root and GC lifecycle. Timer argument storage excludes the callback
 and delay and uses the complete preparation protocol above.
 
+Animation-frame render snapshots now own admitted native handle storage through
+callbacks and checkpoints. Requested and actual capacity are checked while the
+live registry remains installed; snapshot handles retain no VM or callback
+object roots. Cancellation checks the live registry, while registrations made
+after the snapshot wait for another render. Empty snapshots reserve no backing.
+
+Pending-frame entry validates starting fuel before snapshot/argument admission.
+Its timestamp argument vector has an independent document lease, preserving
+unattempted registrations, roots, ambient fuel and time on preparation refusal.
+The first host instruction commits an attempt; ordinary dispatch then adopts
+argument capacity once. The existing callback root protects invocation and error
+reporting without new persistent roots, and releases before the established
+Promise checkpoint. Dispatch/report refusal consumes only the attempted callback
+and releases its root; later entries stay registered. Empty-registry and staged
+storage refund on every exit, even terminal failure or Rust-held lifetimes after
+VM destruction. Paused/canceled work needs no starting instruction. Valid empty
+renders still advance one monotonic clock and checkpoint jobs; invalid timestamp
+validation precedes resource preparation.
+
 All browser-task producers now admit a complete detached deque replacement while
 old backing stays charged. Incoming text/completion/rejection-vector payload
 keeps an independent document lease through preparation. Actual queue/input

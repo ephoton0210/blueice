@@ -156,6 +156,37 @@ impl Vm {
         &mut self,
         timestamp_ms: f64,
     ) -> Result<BlueJsAnimationFrameRun, RuntimeError> {
+        let result = self.run_host_animation_frame_inner(timestamp_ms);
+        if self.host_animation_frames.is_empty() {
+            self.host_animation_frames.shrink_to_fit();
+        }
+        self.reconcile_scheduling_ownership();
+        if result.is_ok() {
+            self.synchronize_scheduling_usage()?;
+        }
+        result
+    }
+
+    pub(super) fn prepare_animation_frame_snapshot(
+        &mut self,
+    ) -> Result<host_task_storage::TaskVector<u32>, RuntimeError> {
+        self.check_scheduling_failure()?;
+        if !self.host_animation_frames.is_empty() && self.config.instruction_budget == 0 {
+            return Err(RuntimeError::InstructionLimit);
+        }
+        self.admit_scheduling_work(HostSchedulingUsage::default())?;
+        let mut handles = host_task_storage::TaskVector::new(self.host_scheduling.as_ref())?;
+        handles.reserve(self.host_animation_frames.len())?;
+        for frame in &self.host_animation_frames {
+            handles.push(frame.handle)?;
+        }
+        Ok(handles)
+    }
+
+    fn run_host_animation_frame_inner(
+        &mut self,
+        timestamp_ms: f64,
+    ) -> Result<BlueJsAnimationFrameRun, RuntimeError> {
         self.check_scheduling_failure()?;
         if !timestamp_ms.is_finite() || timestamp_ms < 0.0 {
             return Err(RuntimeError::RangeError(
@@ -165,51 +196,67 @@ impl Vm {
         if self.ensure_no_debugger_continuation().is_err() {
             return Ok(BlueJsAnimationFrameRun::default());
         }
-        self.host_animation_frame_timestamp_ms =
-            self.host_animation_frame_timestamp_ms.max(timestamp_ms);
-        let timestamp = self.host_animation_frame_timestamp_ms;
-        let handles = self
-            .host_animation_frames
-            .iter()
-            .map(|frame| frame.handle)
-            .collect::<Vec<_>>();
+        let timestamp = self.host_animation_frame_timestamp_ms.max(timestamp_ms);
+        let handles = self.prepare_animation_frame_snapshot()?;
         let mut run = BlueJsAnimationFrameRun::default();
-        for handle in handles {
-            let Some(index) = self
-                .host_animation_frames
-                .iter()
-                .position(|frame| frame.handle == handle)
-            else {
-                continue;
-            };
-            let frame = self.host_animation_frames.remove(index);
-            self.synchronize_scheduling_usage()?;
-            self.remaining_instructions = self.config.instruction_budget;
-            run.callbacks_run += 1;
-            let result = self.call_native(
-                Value::Object(frame.callback),
-                Value::Undefined,
-                vec![Value::Number(timestamp)],
-                false,
-            );
-            self.heap
-                .unroot(frame.root)
-                .expect("invoked callback owns its frame root");
-            match result {
-                Ok(_) => {}
-                Err(error) if is_page_exception(&error) => {
-                    self.report_host_exception(&error)?;
-                    run.uncaught_errors += 1;
-                }
-                Err(error) => return Err(error),
-            }
-            run.uncaught_errors += self.run_host_microtask_checkpoint()?;
+        for handle in handles.iter().copied() {
+            self.run_animation_frame_entry(handle, timestamp, &mut run)?;
         }
+        // An empty successful render opportunity still advances the clock and
+        // checkpoints jobs; a refused first callback leaves its old timestamp.
+        self.host_animation_frame_timestamp_ms = timestamp;
         run.uncaught_errors += self.run_host_microtask_checkpoint()?;
-        if self.host_animation_frames.is_empty() {
-            self.host_animation_frames.shrink_to_fit();
-        }
         self.synchronize_scheduling_usage()?;
         Ok(run)
+    }
+
+    pub(super) fn run_animation_frame_entry(
+        &mut self,
+        handle: u32,
+        timestamp: f64,
+        run: &mut BlueJsAnimationFrameRun,
+    ) -> Result<(), RuntimeError> {
+        let Some(index) = self
+            .host_animation_frames
+            .iter()
+            .position(|frame| frame.handle == handle)
+        else {
+            return Ok(());
+        };
+        let prepared = self.prepare_animation_frame_arguments(timestamp)?;
+        let previous_fuel = self.remaining_instructions;
+        self.remaining_instructions = self.config.instruction_budget;
+        if let Err(error) = self.charge_step() {
+            self.remaining_instructions = previous_fuel;
+            drop(prepared);
+            return Err(error);
+        }
+        // The first host instruction commits an attempt. Its existing root
+        // stays live through dispatch/reporting without a new registration.
+        self.host_animation_frame_timestamp_ms = timestamp;
+        let frame = self.host_animation_frames.remove(index);
+        run.callbacks_run += 1;
+        let arguments = prepared.into_arguments();
+        let result = self.call_native(
+            Value::Object(frame.callback),
+            Value::Undefined,
+            arguments,
+            false,
+        );
+        let result = match result {
+            Ok(_) => Ok(()),
+            Err(error) if is_page_exception(&error) => {
+                self.report_host_exception(&error).map(|()| {
+                    run.uncaught_errors += 1;
+                })
+            }
+            Err(error) => Err(error),
+        };
+        // Reporting refusal is still a committed attempt and must release it.
+        self.release_root(frame.root);
+        self.reconcile_scheduling_ownership();
+        result?;
+        run.uncaught_errors += self.run_host_microtask_checkpoint()?;
+        Ok(())
     }
 }
