@@ -458,11 +458,9 @@ fn timer_entry_argument_slots_do_not_survive_into_the_promise_checkpoint() {
             .unwrap();
         observations.push(observed.borrow()[0]);
     }
-    // Only the independently retained root vector gains one spare slot.
-    assert_eq!(
-        observations[1] - observations[0],
-        std::mem::size_of::<RootId>()
-    );
+    // Both root vectors contain only the callback. Primitive arguments add
+    // no object-root slots, and consumed argument slots leave the checkpoint.
+    assert_eq!(observations[1], observations[0]);
 }
 
 #[cfg_attr(test, test)]

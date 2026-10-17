@@ -152,6 +152,24 @@ admission and serial assignment.
 Work enqueued by an embedding clock callback is therefore included in that
 admission and receives the earlier enqueue serial, before the outer timer.
 
+After callback validation, delay coercion and clock sampling, timer registration
+checks the shared count and validates all input/root identities. A detached root
+batch admits its complete hash replacement, and a separate native lease admits
+argument/root vectors plus complete timer-table replacement while old storage
+remains charged. Each allocation's reported capacity is checked before the next
+allocation; primitive copies are made under that lease. Timer-table spare slots
+avoid a table-growth fee. Root-vector slots cover only the callback and actual
+object arguments, including independent registrations for duplicate objects.
+
+Task serial acquisition is the final fallible step. Root IDs/counters, moved
+table entries and the new timer then commit without another allocation. Native
+ownership transfers directly into the live registry; old replacement storage is
+refunded once freed. Refusal preserves old entries/capacities, timer/root IDs,
+serials and registration counters, and all detached owners refund on drop even
+after terminal failure. Rust-held candidates retain independent document leases.
+The borrowed root-batch protocol permits no collection or root mutation between
+preparation and commit.
+
 Refusing a registration above the document limit latches terminal scheduling
 failure; navigation creates a fresh account. Host-neutral VMs retain their
 1,024-per-realm catchable `RangeError` policy. Abort-timeout browser entries
@@ -160,15 +178,14 @@ are unchanged. Replacement and close drop the owning queues and reset source
 selection with the realm. These Rust count snapshots do not change the
 private transport's existing byte totals or layout.
 
-Callback-timer/frame vectors, Promise-job/browser/cleanup deques, each Promise's
+Animation-frame vectors, Promise-job/browser/cleanup deques, each Promise's
 pending reaction vector and the pending rejection-notification vector admit
 the slot-capacity delta needed for an append before publishing it. Growth
 explicitly requests at least four slots, doubling an existing full capacity.
 Available slots add no storage charge. If reservation reports more capacity
 than requested, admission checks that actual storage again before publishing;
-a refused timer/frame releases its temporary roots. Timer argument storage
-excludes the callback and delay and retains one callback root plus reserved
-argument-root slots.
+a refused frame releases its temporary roots. Timer argument storage excludes
+the callback and delay and uses the complete preparation protocol above.
 
 All browser-task producers reserve one entry before publishing task roots,
 completion-queued flags or FileReader state. The ledger records actual reserved

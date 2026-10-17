@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The timer registration checkpoint (2026-10-17) now admits complete coexisting
+table replacement, argument/root vectors and root-table batch storage before
+publishing timer/root IDs or task serials. Refusal preserves old registrations,
+capacities and counters; spare slots admit only newly owned inputs. Twenty-four
+new finite cases and all 1077 prior controls pass: **1101 total**, with formatting
+and offline workspace/all-target Clippy. Other managed/native scheduling and
+heap/host buffers, shared programs and wider integrated gates remain open; M1u
+stays the latest accepted milestone.
+
 The timer callback-entry checkpoint (2026-10-17) now validates starting fuel
 before one-shot removal or interval-copy admission, retains interval inputs
 through self-cancellation/GC and transfers argument capacity into dispatch once.
@@ -781,9 +790,10 @@ work and exposes its retained payload ledger.
       host-turn realm/timer/abort snapshots and finalization index/snapshot/direct
       cleanup plus callback-entry preparation and managed cell-vector backing
       now have bounded checkpoints. Timer callback preparation, interval GC
-      protection and argument handoff bring all selected controls to 1077.
-      Timer registration staging, shared programs, other managed-container
-      backing buffers, wider native storage and integrated acceptance remain open.
+      protection and argument handoff now join complete timer registration/root-
+      batch staging; all 1101 selected controls pass. Shared programs, other
+      managed-container and scheduling backing buffers, wider native storage and
+      integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -3803,6 +3813,79 @@ Evidence: `/private/tmp/blueice-timer-entry-controls-20261017.py`,
 staged/committed blob checks. Ordinary-library entry points expose the same
 fixtures; no new coverage result is claimed. This is an M1z checkpoint. Wider
 managed/native buffers, shared programs and integrated acceptance remain open.
+
+#### Timer registration follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: preflight all input/root IDs and complete root-table/table/vector
+storage before consuming timer IDs or task serials. Stage actual reported
+capacity and primitive copies while old allocations remain owned. Commit roots
+and one timer without another fallible admission step; refusal preserves old
+entries/capacities, IDs, roots and registration counters. Charge only actual
+object-root slots for primitive arguments and retain normal timer semantics.
+
+- [x] Reproduce coexisting table-growth, premature serial and partial-root
+      publication failures with tiny finite registrations.
+      All three original cases failed: growth accepted a net-only allowance,
+      root refusal consumed a task serial and partial rooting consumed a root ID.
+- [x] Implement admitted detached timer storage and an atomic root batch; verify
+      reuse, shared-document ownership, rollback, cleanup and GC lifetimes.
+      All twenty-four finite registration cases pass.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Other buffers, shared programs and integrated
+      acceptance remain open.
+
+After callback validation, delay coercion and clock sampling, count admission
+precedes storage preparation. Borrowed fixed input references validate every
+object and the complete root-ID/counter range before preparing an owned root-
+table replacement. A separate independent native lease covers argument/root
+vectors, primitive copies and complete timer-table growth while original storage
+remains charged. Actual reported capacity is checked after each allocation and
+before allocating its successor. Spare timer-table slots avoid a growth fee;
+primitive inputs add no object-root slots.
+
+Task serial acquisition is the last fallible step. An admitted root batch then
+commits unique registrations/counters into preallocated output slots, existing
+timers move into any admitted table replacement and the new timer/ID publishes.
+The staged lease hands ownership directly into the live registry, with no new
+admission after mutation. Refusal drops candidates and preserves old capacities,
+entries, timer/root IDs, serials and registration counters. Batch preparation
+and commit permit no intervening collection or root mutation. Existing single-
+root registration uses the same prepared hash-storage mechanism.
+
+The three original failures now pass. Twenty-four finite cases cover complete
+replacement/exact/one-byte-short admission, primitive-only root slots, dropped
+and committed root batches, duplicate/empty batches, invalid foreign objects,
+root/timer/task-serial boundaries, terminal refusal/refunds, spare-slot payload
+refusal, Rust-held candidates after VM destruction, shared-document refusal and
+released-byte reuse, object GC/cancellation and scalar timer-count admission.
+The argument boundary uses thirty-two permitted primitive values and one finite
+thirty-three-value refusal; it does not allocate a represented large resource.
+The prior checkpoint observation now expects equal native bytes with/without a
+primitive argument because both retained root vectors contain only the callback;
+consumed argument slots contribute nothing through its Promise checkpoint.
+
+Validation: **1101 passed, zero failed/ignored**, across 41 executables and 95
+fixed selections: twenty-four new registration/root-batch cases and all 1077
+prior selected controls. Existing finite public timer cases retain arguments,
+ordering, interval self-cancellation, exception handling, navigation cleanup and
+Promise-checkpoint behavior. Formatting, diff checks and offline workspace/all-
+target Clippy with warnings denied pass. Cargo reuses the workspace target with
+incremental compilation and dev/test debug artifact growth disabled. The same
+nine earlier resource/infinite-loop skips remain. Public timer/finalization
+selection names only finite cases; their large/resource/infinite cases and JSON
+resource sweeps remain unselected. No network/service replay, physical exhaustion
+probe, fresh full Test262, real Core/MCP replay, coverage result or integrated
+acceptance is claimed.
+
+Evidence: `/private/tmp/blueice-timer-registration-controls-20261017.py`,
+`/private/tmp/blueice-timer-registration-commit-20261017.txt`,
+`/private/tmp/blueice-timer-registration-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-timer-registration-{red,first,expanded,registration,entry-timer,root-table,fmt,clippy}-20261017.log`.
+`target/timer-registration-source-20261017.json` records source/log/executable
+hashes and staged/committed blob checks. Ordinary-library entry points expose
+the same fixtures; no new coverage result is claimed. This is an M1z checkpoint.
+Other managed/native scheduling and heap/host buffers, shared programs and wider
+integrated acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

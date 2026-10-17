@@ -367,6 +367,15 @@ impl Drop for SharedSchedulingCharge {
 }
 
 impl SchedulingScope {
+    #[cfg(any(test, coverage))]
+    pub(super) fn task_serial_state(&self) -> u64 {
+        self.account.borrow().next_task_serial
+    }
+    #[cfg(any(test, coverage))]
+    pub(super) fn set_task_serial_for_test(&self, next: u64) {
+        self.account.borrow_mut().next_task_serial = next;
+    }
+
     pub(super) fn heap_native_budget(&self) -> HeapNativeBudget {
         HeapNativeBudget {
             account: self.account.clone(),

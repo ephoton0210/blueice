@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_timer_registration_contracts() {
+    blueice_bluejs::Vm::verify_timer_registration_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_timer_entry_contracts() {
     blueice_bluejs::Vm::verify_timer_entry_contracts();
 }

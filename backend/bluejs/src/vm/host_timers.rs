@@ -300,25 +300,6 @@ impl Vm {
         Ok(())
     }
 
-    fn root_timer_task(
-        &mut self,
-        callback: ObjectId,
-        arguments: &[Value],
-    ) -> Result<Vec<RootId>, RuntimeError> {
-        let mut roots = Vec::with_capacity(arguments.len() + 1);
-        for object in std::iter::once(callback).chain(arguments.iter().filter_map(Value::object_id))
-        {
-            match self.heap.root(object) {
-                Ok(root) => roots.push(root),
-                Err(error) => {
-                    self.release_timer_roots(roots);
-                    return Err(error.into());
-                }
-            }
-        }
-        Ok(roots)
-    }
-
     fn release_timer_roots(&mut self, roots: Vec<RootId>) {
         for root in roots {
             self.heap
@@ -487,35 +468,33 @@ impl Vm {
         // A host clock can enqueue work in another same-document realm.
         // Observe it before final admission, root retention and serial assignment.
         let now = self.sample_host_timer_clock();
-        let argument_count = args.len().saturating_sub(2);
-        let extra = HostSchedulingUsage {
+        self.admit_scheduling_work(HostSchedulingUsage {
             pending_timers: 1,
-            payload_bytes: argument_count
-                .saturating_mul(std::mem::size_of::<Value>())
-                .saturating_add(
-                    argument_count
-                        .saturating_add(1)
-                        .saturating_mul(std::mem::size_of::<RootId>()),
-                )
-                .saturating_add(
-                    args.iter()
-                        .skip(2)
-                        .map(super::host_scheduling::value_payload_bytes)
-                        .sum::<usize>(),
-                ),
-            ..HostSchedulingUsage::default()
-        };
-        let growth = SchedulingCapacity::for_vec_push(&self.host_timers);
-        self.admit_scheduling_work(extra.with_growth(growth))?;
-        let serial = self.next_host_task_serial()?;
-        let arguments = args.iter().skip(2).cloned().collect::<Vec<_>>();
-        let roots = self.root_timer_task(callback, &arguments)?;
-        if growth.reserve_vec(&mut self.host_timers) {
-            if let Err(error) = self.admit_scheduling_work(extra) {
-                self.release_timer_roots(roots);
-                return Err(error);
-            }
+            ..Default::default()
+        })?;
+        let arguments = args.get(2..).unwrap_or(&[]);
+        let mut references = [callback; MAX_HOST_TIMER_ARGUMENTS + 1];
+        let mut count = 1;
+        for object in arguments.iter().filter_map(Value::object_id) {
+            references[count] = object;
+            count += 1;
         }
+        // Both detached owners remain charged while old storage stays live.
+        // No JavaScript, heap collection or root mutation runs before commit.
+        let batch = self.heap.prepare_root_batch(&references[..count])?;
+        let mut prepared = self.prepare_timer_registration(arguments, count)?;
+        let serial = self.next_host_task_serial()?;
+        self.heap.commit_root_batch(batch, &mut prepared.roots);
+        if let Some(mut replacement) = prepared.replacement.take() {
+            replacement.append(&mut self.host_timers);
+            self.host_timers = replacement;
+        }
+        let timer_registration::PreparedTimerRegistration {
+            arguments,
+            roots,
+            replacement: _,
+            charge,
+        } = prepared;
         self.host_timer_next_id = next;
         self.host_timers.push(HostTimer {
             id,
@@ -527,7 +506,8 @@ impl Vm {
             nesting: self.host_timer_nesting.saturating_add(1),
             roots,
         });
-        self.synchronize_scheduling_usage()?;
+        drop(charge);
+        self.reconcile_scheduling_ownership();
         Ok(Value::Number(f64::from(id)))
     }
 }

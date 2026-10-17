@@ -16,6 +16,24 @@ pub(super) struct RootTable {
     budget: Option<HeapNativeBudget>,
     charge: Option<HeapNativeCharge>,
 }
+
+struct PreparedRootTable {
+    replacement: Option<HashMap<RootId, ObjectId>>,
+    incoming: Option<HeapNativeCharge>,
+    previous_len: usize,
+    previous_capacity: usize,
+}
+
+/// Internal native transaction: no collection or root mutation may run between
+/// preparation and commit. Input IDs are borrowed without scratch allocation.
+pub(crate) struct PreparedRootBatch<'a> {
+    objects: &'a [ObjectId],
+    table: PreparedRootTable,
+    heap: u64,
+    first: u64,
+    next: u64,
+    registrations: u64,
+}
 impl std::ops::Deref for RootTable {
     type Target = HashMap<RootId, ObjectId>;
     fn deref(&self) -> &Self::Target {
@@ -40,9 +58,24 @@ impl RootTable {
         HeapError::RootStorageLimit
     }
     pub(super) fn prepare_registration(&mut self) -> Result<(), HeapError> {
-        let required = self.data.len().checked_add(1).ok_or_else(|| self.fail())?;
+        let prepared = self.prepare_additional(1)?;
+        self.commit_prepared(prepared);
+        Ok(())
+    }
+    fn prepare_additional(&self, count: usize) -> Result<PreparedRootTable, HeapError> {
+        let required = self
+            .data
+            .len()
+            .checked_add(count)
+            .ok_or_else(|| self.fail())?;
+        let mut prepared = PreparedRootTable {
+            replacement: None,
+            incoming: None,
+            previous_len: self.data.len(),
+            previous_capacity: self.data.capacity(),
+        };
         if required <= self.data.capacity() {
-            return Ok(());
+            return Ok(prepared);
         }
         let requested = required.max(self.data.len().saturating_mul(2));
         let minimum = requested.saturating_mul(size_of::<(RootId, ObjectId)>());
@@ -67,11 +100,24 @@ impl RootTable {
                 .resize(actual)
                 .map_err(|_| HeapError::RootStorageLimit)?;
         }
-        if let Some(incoming) = incoming {
+        prepared.replacement = Some(replacement);
+        prepared.incoming = incoming;
+        Ok(prepared)
+    }
+    fn commit_prepared(&mut self, prepared: PreparedRootTable) {
+        assert_eq!(self.data.len(), prepared.previous_len);
+        assert_eq!(self.data.capacity(), prepared.previous_capacity);
+        let Some(mut replacement) = prepared.replacement else {
+            return;
+        };
+        let actual = replacement
+            .capacity()
+            .saturating_mul(size_of::<(RootId, ObjectId)>());
+        if let Some(incoming) = prepared.incoming {
             if let Some(owner) = &mut self.charge {
                 owner
                     .absorb(incoming)
-                    .map_err(|_| HeapError::RootStorageLimit)?;
+                    .expect("prepared roots retain their original native account");
             } else {
                 self.charge = Some(incoming);
             }
@@ -82,7 +128,6 @@ impl RootTable {
         if let Some(charge) = &mut self.charge {
             charge.release_to(actual);
         }
-        Ok(())
     }
     pub(super) fn insert(&mut self, id: RootId, object: ObjectId) {
         assert!(
@@ -109,6 +154,58 @@ impl RootTable {
 }
 
 impl Heap {
+    #[cfg(any(test, coverage))]
+    pub(crate) fn set_root_counter_for_test(&mut self, next: u64) {
+        self.next_root = next;
+    }
+
+    pub(crate) fn prepare_root_batch<'a>(
+        &self,
+        objects: &'a [ObjectId],
+    ) -> Result<PreparedRootBatch<'a>, HeapError> {
+        for object in objects {
+            self.object(*object)?;
+        }
+        let count = u64::try_from(objects.len()).map_err(|_| HeapError::IdExhausted)?;
+        let next = self
+            .next_root
+            .checked_add(count)
+            .ok_or(HeapError::IdExhausted)?;
+        let registrations = self
+            .root_registrations
+            .checked_add(count)
+            .ok_or(HeapError::IdExhausted)?;
+        Ok(PreparedRootBatch {
+            objects,
+            table: self.roots.prepare_additional(objects.len())?,
+            heap: self.identity,
+            first: self.next_root,
+            next,
+            registrations,
+        })
+    }
+
+    pub(crate) fn commit_root_batch(
+        &mut self,
+        prepared: PreparedRootBatch<'_>,
+        roots: &mut Vec<RootId>,
+    ) {
+        assert_eq!(self.identity, prepared.heap);
+        assert_eq!(self.next_root, prepared.first);
+        assert!(roots.capacity() - roots.len() >= prepared.objects.len());
+        self.roots.commit_prepared(prepared.table);
+        for (index, object) in prepared.objects.iter().enumerate() {
+            let root = RootId {
+                heap: self.identity,
+                serial: prepared.first + index as u64,
+            };
+            self.roots.insert(root, *object);
+            roots.push(root);
+        }
+        self.next_root = prepared.next;
+        self.root_registrations = prepared.registrations;
+    }
+
     #[cfg(any(test, coverage))]
     pub(crate) fn root_storage_bytes(&self) -> usize {
         self.roots.retained_bytes()
