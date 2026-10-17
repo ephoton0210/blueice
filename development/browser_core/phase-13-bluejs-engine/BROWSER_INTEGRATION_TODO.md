@@ -64,6 +64,16 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The module-referrer retained-storage follow-up (2026-10-17) now retains weak
+hash backing and independently leases closure/call preparations after VM
+destruction. Finite cases reproduced lost detached charges, missing reclamation,
+transient double charging and stale candidates overwriting larger tables.
+Twenty-three new groups and all 1490 prior selected controls pass: **1513 total**,
+across 47 executables and 136 fixed selections. Formatting and offline workspace/
+all-target Clippy pass. Other input/origin producers, retained maps, heap/host
+buffers, shared programs and integrated acceptance remain open; M1u stays the
+latest accepted milestone.
+
 The finally-thunk provenance storage follow-up (2026-10-17) now retains hash
 allocation ownership across deletion and stages complete table/source storage
 before managed thunk-state creation. Three finite cases reproduced guarded GC
@@ -5404,6 +5414,105 @@ Evidence paths: `/private/tmp/blueice-thunk-origin-controls-20261017.py`,
 `target/thunk-origin-source-20261017.json`. Ordinary-library entry points expose
 the same fixtures; no fresh coverage result is claimed. This remains an M1z
 implementation checkpoint with wider acceptance open.
+
+#### Module-referrer retained storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: retain weak closure module-referrer hash backing independently of
+reported insertion headroom. Lease complete native table/name preparations before
+allocation, with ownership surviving VM destruction. Preserve reserved publication
+slots through GC and interleaved preparation. Reclaim sparse backing with optional
+admitted candidates; return empty backing after terminal failure. Transfer prepared
+owners at an exact allowance without a transient duplicate admission failure.
+
+- [x] Reproduce two detached preparations losing their native charge after VM
+      destruction and missing sparse-table reclamation: corrected runtime cases
+      were **0/3 passed** before implementation, then **3/3 passed**.
+- [x] Implement retained backing, independent leases, guarded reclamation and
+      publication handoffs; complete twenty-three finite groups including final
+      stale-candidate interleaving coverage.
+- [x] Complete fixed offline controls/static checks, evidence audit and detailed
+      English commit.
+
+The weak table now uses the retained control-map owner. Pruning/deletion returns
+name buffers while its backing remains charged; metadata keys remain weak. GC
+uses guarded scheduling-map reclamation. Both the shared table guard and pending
+module-publication reservations defer optional compaction. A complete smaller
+candidate must fit while old backing remains live; refusal refunds staging and
+stays nonterminal. Empty backing releases without allocation, including after a
+terminal abort or interpreter unwind.
+
+Closure preparation independently leases the full candidate plus source-copy
+minimum before allocation. It checks actual table capacity before allocating the
+name, then checks actual name capacity. Data drops before its lease/reservation;
+the account outlives the VM while Rust still holds a preparation. Publication
+reuses GC-freed slots or adopts prepared backing as outstanding reservations
+require, preserving existing entries and other preparations' slots. Only a
+candidate with greater insertion capacity may replace the current table, even
+when a newer reservation requires further growth. After all staging and
+reservations drop, deferred optional reclamation can proceed.
+
+Call preparation uses the same independent source-copy ownership before fuel,
+roots or caller-field changes. Associated empty names retain their context-switch
+semantics; absent associations retain their fast path. The displaced caller name
+keeps its existing separate execution owner and exact allocation restoration.
+
+The first expanded run passed **16/21** groups. One exact-budget handoff exposed
+transient duplicate charging when reconciliation checked both the new VM fields
+and their still-live staging lease. Fields now adopt storage, then staging drops
+immediately before synchronous reconciliation, with no allocation/callback between.
+Four aggregate assertions also needed the separately owned heap root/collector/
+pin/finalization storage, rather than only VM fields. Their corrected assertions
+remain exact. A new empty/spare/full-table exact-publication group brings the
+expanded result to **22/22 passed**. Initial fixture compile corrections and all
+intermediate outcomes remain in the evidence logs.
+
+Pre-commit review added an eight-object interleaving case. With six entries in a
+seven-slot map and a newer growth candidate pending, an older three-slot
+candidate attempted to replace live backing and panicked. The added case was
+**0/1 passed** before correction. A candidate may now replace only a table with smaller insertion
+capacity; otherwise it uses its reserved slot and newer work supplies further
+growth. The initial 1512-test/static pass and relevant source snapshots are
+archived separately; final fixed controls include this twenty-third group. The
+first corrected run reached the final assertion, with **22/23 passed**: the
+fixture hard-coded 15 slots while HashMap reported 14. It now checks actual
+retained storage and preserved entries, with that failed attempt archived too.
+
+Finite groups additionally cover retained backing after deletion, no/short/exact
+compaction headroom and retry, terminal empty cleanup, partial/all-dead GC while
+publication is pending, abandoned staging, complete-versus-net growth admission,
+forward/reversed interleaved publication, separate post-VM leases, terminal prepared
+commit, shared guards, captured-source stability, exact call transfer, actual table
+growth and GC-freed candidate reuse. Fixtures use at most eight weak keys and a
+few pending preparations; numerical peers allocate no represented large payload
+and no external operation starts. Existing real factory/import-origin and caller
+restoration controls remain selected.
+
+Validation: **1513 passed, zero failed/ignored**, across 47 executables and 136
+fixed selections: twenty-three new groups and all 1490 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass on the final source. Source, staged and post-commit audits bind that
+source to the final runner, executables, logs and detailed English commit message.
+Cargo reuses the workspace target with incremental compilation and dev/test debug
+artifact growth disabled. Other input/origin producers, retained maps, wider
+heap/host buffers, shared programs and integrated gates remain open; M1u stays the
+latest accepted milestone. The same nine resource/infinite-loop skips and other
+finite-public-case exclusions remain. No represented large allocation, resource/
+infinite probe, JSON resource sweep, network/service replay, privileged validation,
+process killing, fresh full Test262, coverage or integrated acceptance is claimed.
+
+Evidence paths: `/private/tmp/blueice-referrer-storage-controls-20261017.py`,
+`/private/tmp/blueice-referrer-storage-commit-20261017.txt`,
+`/private/tmp/blueice-referrer-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-referrer-storage-*-20261017.log`, and
+`target/referrer-storage-source-20261017.json`. The initial passing-run archive is
+`/private/tmp/blueice-referrer-storage-initial-controls-20261017/`, with its
+hashed manifest at `/private/tmp/blueice-referrer-storage-initial-controls-20261017.json`.
+The capacity-expectation attempt is preserved under
+`/private/tmp/blueice-referrer-storage-capacity-attempt-20261017/`, with its
+manifest at `/private/tmp/blueice-referrer-storage-capacity-attempt-20261017.json`.
+The ordinary-library entry point exposes the same fixtures; no fresh coverage
+result is claimed. This remains an M1z implementation checkpoint with wider
+acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

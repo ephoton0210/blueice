@@ -119,6 +119,7 @@ fn generator_resume_admission_exact_joint_budget_and_one_byte_refusal() {
                 name.push_str("owner");
                 vm.active_module_name = Some(name);
                 if referrer {
+                    vm.module_closure_referrers.reserve(1);
                     vm.module_closure_referrers
                         .insert(layout.callee.unwrap(), "child".into());
                 }

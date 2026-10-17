@@ -642,28 +642,39 @@ owners. Refusal preserves caller fields and terminal failure; parameter throws
 use the ordinary restoration path. Other association copies and wider native
 storage remain in the broader preallocation gate.
 
-Closure module-referrer associations are a weak-key realm table. Its actual
-table capacity and retained name capacities share the document native budget.
-Heap collection removes records for collected closures without tracing those
-keys as strong roots. Empty storage is returned once no in-flight closure
-publication relies on its spare slots, including during terminal cleanup.
+Closure module-referrer associations are a weak-key realm table with a retained
+hash-allocation ledger. Deletion refunds dead name buffers while backing remains
+charged independently of insertion headroom. Heap collection never traces those
+keys as strong roots. Empty storage releases without admission once no in-flight
+publication relies on its slots, including terminal cleanup. Sparse compaction
+leases a complete replacement, moves survivors and reconciles the smaller owner
+before refunding its candidate. Insufficient temporary headroom is nonterminal;
+both the shared staging guard and pending-publication count defer reclamation.
 
 Before a Closure instruction creates prototypes/capture cells or a function,
-it jointly admits the referrer copy and full detached replacement table while
-the old allocation coexists. Both table and name use fallible reservation;
-actual capacities are checked before heap effects. A scoped lease follows
-staging until publication moves old records and the new name into the realm
-table. A pending-publication guard preserves any source-table slots that GC
-would otherwise release; interpreter unwind releases the unused guard/storage.
+it jointly leases the referrer copy and full detached replacement table while
+the old allocation coexists. Reported hash capacity is admitted before allocating
+the name, then its actual capacity is checked too. Both allocations are fallible.
+The independent document lease follows Rust-held staging even after VM destruction;
+unpublished data drops before the lease and reservation. Publication can reuse
+GC-freed slots, while keeping enough backing for other outstanding reservations.
+A candidate is adopted when those reservations need its capacity and it grows
+existing backing. An older candidate never shrinks a larger table, even when a
+newer reservation requires further growth; newer work supplies that capacity. All data and the
+reservation transfer/drop before optional deferred reclamation. Interpreter
+unwind releases unused staging and empty backing.
 
-Calls admit and copy an associated referrer before consuming an instruction,
-adding call roots or displacing caller context. The copy stays leased until
-active fields adopt it, while the displaced caller name has a separate lease.
-Success and error restore the original allocation and release the temporary
-owner. No association takes the allocation-free path; an associated empty name
-still replaces the caller's context. Generator resume retains its existing
+Calls independently lease and copy an associated referrer before consuming an
+instruction, adding call roots or displacing caller context. The copy stays
+charged after VM destruction and until active fields adopt it; the displaced
+caller name has a separate execution owner. Closure/call publication refunds
+staging immediately before the synchronous VM ownership update, without an
+intervening allocation or callback. This avoids checking a transient duplicate
+charge against an exact allowance. Success and error restore the original caller
+allocation. An absent association uses the allocation-free path; an associated
+empty name still replaces the context. Generator resume keeps its existing
 pre-extraction referrer preparation. Other module-name/code/cache/service copies
-remain separate open work.
+and retained maps remain separate open work.
 
 Module instantiation/evaluation prepares its context-name copy before replacing
 caller fields or entering the frame. A scoped name lease swaps the prepared

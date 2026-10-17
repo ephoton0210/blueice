@@ -1071,7 +1071,7 @@ pub struct Vm {
     /// The defining source-text module for currently executing code. A
     /// closure receives the same association at creation time.
     active_module_name: Option<String>,
-    module_closure_referrers: HashMap<ObjectId, String>,
+    module_closure_referrers: retained_control_map::RetainedControlMap<ObjectId, String>,
     pending_module_referrers: Rc<std::cell::Cell<usize>>,
     /// Loader referrers can remain installed outside execution. Only actual
     /// module work suppresses an enclosing host checkpoint's final cleanup.
@@ -1858,6 +1858,9 @@ impl Vm {
                 .map_or(0, String::capacity),
         );
         drop(prepared_module);
+        if previous_module.is_some() {
+            self.reconcile_scheduling_ownership();
+        }
         self.call_depth += 1;
         // Whatever this call runs belongs to its own realm, not to the realm a
         // running native is acting for (see `acting_realm`).

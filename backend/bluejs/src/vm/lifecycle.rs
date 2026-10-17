@@ -108,7 +108,7 @@ impl Vm {
             module_async_parents: HashMap::new(),
             module_import_waiters: Default::default(),
             active_module_name: None,
-            module_closure_referrers: HashMap::new(),
+            module_closure_referrers: Default::default(),
             pending_module_referrers: Rc::new(std::cell::Cell::new(0)),
             module_execution_depth: 0,
             module_error_origins: Vec::new(),

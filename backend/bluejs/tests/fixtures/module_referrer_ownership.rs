@@ -37,6 +37,7 @@ fn module_referrer_ownership_counts_persistent_table_and_name_capacity() {
     let mut name = String::with_capacity(64);
     name.push_str("page/home.js");
     let payload = name.capacity();
+    vm.module_closure_referrers.reserve(1);
     vm.module_closure_referrers
         .insert(callee.object_id().unwrap(), name);
     assert_eq!(
@@ -127,6 +128,8 @@ fn module_referrer_ownership_creation_joint_budget_and_one_byte_refusal() {
                 .unwrap();
             let code = vm.heap.closure_code(callee).unwrap().unwrap();
             let prototype = vm.function_prototype().unwrap();
+            vm.module_closure_referrers
+                .reserve(if full { 3 } else { 1 });
             for _ in 0..if full { 3 } else { 1 } {
                 let id = vm
                     .heap
@@ -152,13 +155,14 @@ fn module_referrer_ownership_creation_joint_budget_and_one_byte_refusal() {
             let result = vm.prepare_closure_module_referrer();
             if accepts {
                 let prepared = result.unwrap();
-                assert_eq!(vm.displaced_execution_control_bytes.get(), bytes);
+                assert_eq!(vm.host_scheduling_snapshot().payload_bytes - before, bytes);
+                assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
                 assert_eq!(vm.pending_module_referrers.get(), 1);
                 drop(prepared);
             } else {
                 assert!(matches!(result, Err(RuntimeError::SchedulingLimit)));
             }
-            assert_eq!(vm.module_closure_referrers, state);
+            assert_eq!(&*vm.module_closure_referrers, &state);
             assert_eq!(vm.module_closure_referrers.capacity(), capacity);
             assert_eq!(vm.pending_module_referrers.get(), 0);
             assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
@@ -182,11 +186,12 @@ fn module_referrer_ownership_call_copy_is_leased_until_module_installation() {
         let capacity = caller.capacity();
         vm.active_module_name = Some(caller);
         let _peer = leave_room(&mut vm, "page/home.js".len() - usize::from(!accepts));
+        let before = vm.host_scheduling_snapshot().payload_bytes;
         let prepared = vm.prepare_call_module_referrer(&callee);
         if accepts {
             let mut prepared = prepared.unwrap();
             assert_eq!(
-                vm.displaced_execution_control_bytes.get(),
+                vm.host_scheduling_snapshot().payload_bytes - before,
                 "page/home.js".len()
             );
             let previous = prepared.install(&mut vm).unwrap();
@@ -301,6 +306,7 @@ fn module_referrer_ownership_absent_and_empty_names_have_distinct_call_semantics
     assert!(prepared.install(&mut vm).is_none());
     drop(prepared);
     assert_eq!(vm.active_module_name.as_deref(), Some("caller"));
+    vm.module_closure_referrers.reserve(1);
     vm.module_closure_referrers
         .insert(callee.object_id().unwrap(), String::new());
     let _peer = leave_room(&mut vm, 0);
