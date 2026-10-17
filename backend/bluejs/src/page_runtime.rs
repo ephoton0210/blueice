@@ -16,8 +16,9 @@ use crate::{
     BlueJsProgramRegistry, BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, BlueJsTimerRun,
     Bytecode, HeapError, HeapStats, HostFunction, HostObject, HostObjectFactory, HostObjectFamily,
     HostObjectKey, HostObjectMethod, HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig,
-    VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
-    VmDebuggerScopeEntry, VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
+    VmDebuggerExecutionState, VmDebuggerInspection, VmDebuggerLinkedPauseTarget,
+    VmDebuggerNestedExecutionState, VmDebuggerScopeEntry, VmDebuggerStackSnapshot,
+    VmDebuggerThrowSite, VmDebuggerValuePreview,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -1207,7 +1208,7 @@ impl BlueJsPageRuntime {
         frame: BlueJsPageDebuggerLinkedFrame,
         max_frames: u32,
         max_scope_entries: u32,
-    ) -> Result<VmDebuggerStackSnapshot, BlueJsPageRuntimeError> {
+    ) -> Result<VmDebuggerInspection<VmDebuggerStackSnapshot>, BlueJsPageRuntimeError> {
         let realm = self
             .realms
             .get(&tab_id)
@@ -1244,7 +1245,7 @@ impl BlueJsPageRuntime {
         loader: BlueJsProgramHandle,
         max_frames: u32,
         max_scope_entries: u32,
-    ) -> Result<VmDebuggerStackSnapshot, BlueJsPageRuntimeError> {
+    ) -> Result<VmDebuggerInspection<VmDebuggerStackSnapshot>, BlueJsPageRuntimeError> {
         let realm = self
             .realms
             .get(&tab_id)
@@ -1283,9 +1284,9 @@ impl BlueJsPageRuntime {
         frame: BlueJsPageDebuggerLinkedFrame,
         expected_stack: &VmDebuggerStackSnapshot,
         entry: VmDebuggerScopeEntry,
-    ) -> Result<VmDebuggerValuePreview, BlueJsPageRuntimeError> {
+    ) -> Result<VmDebuggerInspection<VmDebuggerValuePreview>, BlueJsPageRuntimeError> {
         let current = self.debugger_linked_stack_snapshot(tab_id, frame, 2, 256)?;
-        if &current != expected_stack {
+        if current.as_ref() != expected_stack {
             return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
         }
         let realm = self
@@ -1309,7 +1310,7 @@ impl BlueJsPageRuntime {
         frame: Option<BlueJsPageDebuggerFrame>,
         max_frames: u32,
         max_scope_entries: u32,
-    ) -> Result<VmDebuggerStackSnapshot, BlueJsPageRuntimeError> {
+    ) -> Result<VmDebuggerInspection<VmDebuggerStackSnapshot>, BlueJsPageRuntimeError> {
         let realm = self
             .realms
             .get(&tab_id)
@@ -1353,7 +1354,7 @@ impl BlueJsPageRuntime {
         program: BlueJsProgramHandle,
         frame: Option<BlueJsPageDebuggerFrame>,
         target: BlueJsPageDebuggerValueTarget,
-    ) -> Result<VmDebuggerValuePreview, BlueJsPageRuntimeError> {
+    ) -> Result<VmDebuggerInspection<VmDebuggerValuePreview>, BlueJsPageRuntimeError> {
         // Reuse the page ownership, generation and invocation checks before
         // the native VM checks the selected safe point and active slot.
         self.debugger_stack_snapshot(tab_id, program, frame, 2, 256)?;

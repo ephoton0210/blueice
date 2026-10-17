@@ -250,7 +250,7 @@ impl BlueJsChildHost {
                 },
             },
         ) {
-            Ok(preview) => page_host_debugger_value_preview(preview),
+            Ok(preview) => page_host_debugger_value_preview(preview.as_ref()),
             Err(_) => return invalid_debugger_state(),
         };
         let snapshot = PageHostDebuggerValueSnapshot { target, preview };
@@ -306,7 +306,7 @@ impl BlueJsChildHost {
                 scope_depth: target.scope_entry.scope_depth,
             },
         ) {
-            Ok(preview) => page_host_debugger_value_preview(preview),
+            Ok(preview) => page_host_debugger_value_preview(preview.as_ref()),
             Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
                 "debugger value exceeds the payload byte budget",
             ))) => return resource_limit(),

@@ -811,6 +811,7 @@ fn paused_root_previews_lossless_primitives_and_rejects_wrong_targets() {
             frame.bytecode_offset,
             active_entry(frame, &program, name),
         )
+        .map(|inspection| inspection.as_ref().clone())
     };
     assert_eq!(read("flag").unwrap(), VmDebuggerValuePreview::Bool(true));
     assert_eq!(read("empty").unwrap(), VmDebuggerValuePreview::Null);
@@ -863,10 +864,14 @@ fn paused_root_previews_lossless_primitives_and_rejects_wrong_targets() {
     ] {
         assert!(vm
             .debugger_value_preview(serial, index, unit, offset, entry)
+            .map(|inspection| inspection.as_ref().clone())
             .is_err());
     }
     vm.resume_debugger_execution().unwrap();
-    assert!(vm.debugger_value_preview(None, 0, 0, halt, flag).is_err());
+    assert!(vm
+        .debugger_value_preview(None, 0, 0, halt, flag)
+        .map(|inspection| inspection.as_ref().clone())
+        .is_err());
 }
 
 #[cfg_attr(test, test)]
@@ -917,6 +922,7 @@ fn paused_nested_preview_reads_cell_backed_capture_without_running_child() {
                     frame.bytecode_offset,
                     *entry,
                 )
+                .map(|inspection| inspection.as_ref().clone())
                 .unwrap(),
             );
             break;
@@ -959,7 +965,8 @@ fn paused_intermediate_preview_reads_only_its_retained_frame() {
             frame.code_unit_ordinal,
             frame.bytecode_offset,
             marker,
-        ),
+        )
+        .map(|inspection| inspection.as_ref().clone()),
         Ok(VmDebuggerValuePreview::NumberBits(73.0_f64.to_bits()))
     );
     assert!(vm
@@ -970,6 +977,7 @@ fn paused_intermediate_preview_reads_only_its_retained_frame() {
             frame.bytecode_offset,
             marker,
         )
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
 }
 
@@ -1193,13 +1201,16 @@ fn paused_module_root_preview_reads_retained_module_binding() {
             .iter()
             .find(|entry| entry.slot_ordinal == slot)
         {
-            if let Ok(value) = vm.debugger_value_preview(
-                None,
-                0,
-                frame.code_unit_ordinal,
-                frame.bytecode_offset,
-                *entry,
-            ) {
+            if let Ok(value) = vm
+                .debugger_value_preview(
+                    None,
+                    0,
+                    frame.code_unit_ordinal,
+                    frame.bytecode_offset,
+                    *entry,
+                )
+                .map(|inspection| inspection.as_ref().clone())
+            {
                 preview = Some(value);
                 break;
             }
@@ -1228,6 +1239,7 @@ fn preview_root_binding(
         frame.bytecode_offset,
         active_entry(frame, program, name),
     )
+    .map(|inspection| inspection.as_ref().clone())
 }
 
 #[cfg_attr(test, test)]
@@ -1825,8 +1837,8 @@ fn nested_uncaptured_slot_preview_preserves_tdz_without_resuming() {
         let frame = vm
             .debugger_stack_snapshot(Some(frame_serial), 2, 256)
             .unwrap()
-            .frames
-            .remove(0);
+            .frames[0]
+            .clone();
         if let Some(entry) = frame
             .scope_entries
             .iter()
@@ -1840,13 +1852,16 @@ fn nested_uncaptured_slot_preview_preserves_tdz_without_resuming() {
                 .cells
                 .contains_key(&(slot as usize)));
             let before = frame.bytecode_offset;
-            match vm.debugger_value_preview(
-                Some(frame_serial),
-                0,
-                frame.code_unit_ordinal,
-                before,
-                *entry,
-            ) {
+            match vm
+                .debugger_value_preview(
+                    Some(frame_serial),
+                    0,
+                    frame.code_unit_ordinal,
+                    before,
+                    *entry,
+                )
+                .map(|inspection| inspection.as_ref().clone())
+            {
                 Err(RuntimeError::Unsupported("debugger value binding is uninitialized")) => {
                     saw_tdz = true
                 }

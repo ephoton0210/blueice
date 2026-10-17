@@ -285,7 +285,9 @@ fn page_value_preview_requires_owned_exact_paused_slot() {
         scope_entry: frame.scope_entries[0],
     };
     assert_eq!(
-        runtime.debugger_value_preview(7, program, None, target),
+        runtime
+            .debugger_value_preview(7, program, None, target)
+            .map(|inspection| inspection.as_ref().clone()),
         Ok(VmDebuggerValuePreview::NumberBits(41.0_f64.to_bits()))
     );
     assert!(runtime
@@ -298,13 +300,16 @@ fn page_value_preview_requires_owned_exact_paused_slot() {
                 ..target
             },
         )
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
     assert!(runtime
         .debugger_value_preview(8, program, None, target)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
     assert!(runtime.close_realm(7));
     assert!(runtime
         .debugger_value_preview(7, program, None, target)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
 }
 
@@ -677,18 +682,22 @@ fn linked_module_frame_keeps_both_page_programs_and_expires_on_resume() {
         .scope_entries
         .iter()
         .find(|entry| {
-            runtime.debugger_linked_value_preview(7, frame, &snapshot, **entry)
+            runtime
+                .debugger_linked_value_preview(7, frame, &snapshot, **entry)
+                .map(|inspection| inspection.as_ref().clone())
                 == Ok(VmDebuggerValuePreview::NumberBits(9.0_f64.to_bits()))
         })
         .copied()
         .expect("the exact entry root must retain its initialized binding");
     assert!(runtime
         .debugger_linked_value_preview(8, frame, &snapshot, root_entry)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
-    let mut moved_snapshot = snapshot.clone();
+    let mut moved_snapshot = snapshot.as_ref().clone();
     moved_snapshot.frames[0].bytecode_offset += 1;
     assert!(runtime
         .debugger_linked_value_preview(7, frame, &moved_snapshot, root_entry)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
     assert!(runtime
         .debugger_linked_value_preview(
@@ -700,6 +709,7 @@ fn linked_module_frame_keeps_both_page_programs_and_expires_on_resume() {
                 ..root_entry
             },
         )
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
     assert!(runtime
         .debugger_stack_snapshot(7, entry, None, 2, 256)
@@ -716,6 +726,7 @@ fn linked_module_frame_keeps_both_page_programs_and_expires_on_resume() {
     };
     assert!(runtime
         .debugger_linked_value_preview(7, wrong_dependency, &snapshot, root_entry)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
     assert!(runtime
         .debugger_linked_stack_snapshot(7, wrong_dependency, 2, 256)
@@ -739,6 +750,7 @@ fn linked_module_frame_keeps_both_page_programs_and_expires_on_resume() {
         .is_err());
     assert!(runtime
         .debugger_linked_value_preview(7, frame, &snapshot, root_entry)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
     assert_eq!(
         runtime.resume_debugger_module_execution(7),

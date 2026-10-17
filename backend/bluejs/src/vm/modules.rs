@@ -2905,7 +2905,7 @@ impl Vm {
         let suspension = self
             .debugger_module_pause_request
             .as_ref()
-            .filter(|request| request.entry == name)
+            .filter(|request| &*request.entry == name)
             .map(|request| InterpreterSuspensionPoint::Offset(request.target));
         let outcome = self.interpret(code, &mut iterators, entry, None, suspension, None);
         *linked = self

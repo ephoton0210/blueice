@@ -336,20 +336,22 @@ fn closed_page_realms_reject_every_debugger_entry_before_accessing_programs() {
         Err(error.clone())
     );
     assert_eq!(
-        runtime.debugger_value_preview(
-            7,
-            program,
-            None,
-            BlueJsPageDebuggerValueTarget {
-                frame_index: 0,
-                code_unit_ordinal: 1,
-                bytecode_offset: point.bytecode_offset,
-                scope_entry: VmDebuggerScopeEntry {
-                    slot_ordinal: 0,
-                    scope_depth: 0
-                },
-            }
-        ),
+        runtime
+            .debugger_value_preview(
+                7,
+                program,
+                None,
+                BlueJsPageDebuggerValueTarget {
+                    frame_index: 0,
+                    code_unit_ordinal: 1,
+                    bytecode_offset: point.bytecode_offset,
+                    scope_entry: VmDebuggerScopeEntry {
+                        slot_ordinal: 0,
+                        scope_depth: 0
+                    },
+                }
+            )
+            .map(|inspection| inspection.as_ref().clone()),
         Err(error)
     );
 }
@@ -488,15 +490,17 @@ fn closed_realms_revoke_nested_and_linked_frames_and_their_snapshots() {
                 Err(BlueJsPageRuntimeError::UnknownRealm(7))
             );
             assert_eq!(
-                runtime.debugger_linked_value_preview(
-                    7,
-                    frame,
-                    &snapshot,
-                    VmDebuggerScopeEntry {
-                        slot_ordinal: 0,
-                        scope_depth: 0
-                    }
-                ),
+                runtime
+                    .debugger_linked_value_preview(
+                        7,
+                        frame,
+                        &snapshot,
+                        VmDebuggerScopeEntry {
+                            slot_ordinal: 0,
+                            scope_depth: 0
+                        }
+                    )
+                    .map(|inspection| inspection.as_ref().clone()),
                 Err(BlueJsPageRuntimeError::UnknownRealm(7))
             );
         } else {

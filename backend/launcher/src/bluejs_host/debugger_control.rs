@@ -950,13 +950,13 @@ impl BlueJsChildHost {
             snapshot: PageHostDebuggerStackSnapshot {
                 frames: snapshot
                     .frames
-                    .into_iter()
+                    .iter()
                     .map(|frame| PageHostDebuggerStackFrame {
                         code_unit_ordinal: frame.code_unit_ordinal,
                         bytecode_offset: frame.bytecode_offset,
                         scope_entries: frame
                             .scope_entries
-                            .into_iter()
+                            .iter()
                             .map(|entry| PageHostDebuggerScopeEntry {
                                 slot_ordinal: entry.slot_ordinal,
                                 scope_depth: entry.scope_depth,

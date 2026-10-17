@@ -160,28 +160,28 @@ pub(super) fn child_debugger_linked_frame(
 }
 
 pub(super) fn page_host_debugger_value_preview(
-    value: VmDebuggerValuePreview,
+    value: &VmDebuggerValuePreview,
 ) -> PageHostDebuggerValuePreview {
     match value {
         VmDebuggerValuePreview::Undefined => PageHostDebuggerValuePreview::Undefined,
         VmDebuggerValuePreview::Null => PageHostDebuggerValuePreview::Null,
-        VmDebuggerValuePreview::Bool(value) => PageHostDebuggerValuePreview::Bool(value),
-        VmDebuggerValuePreview::NumberBits(bits) => PageHostDebuggerValuePreview::NumberBits(bits),
+        VmDebuggerValuePreview::Bool(value) => PageHostDebuggerValuePreview::Bool(*value),
+        VmDebuggerValuePreview::NumberBits(bits) => PageHostDebuggerValuePreview::NumberBits(*bits),
         VmDebuggerValuePreview::BigIntBytes(bytes) => {
-            PageHostDebuggerValuePreview::BigIntBytes(bytes)
+            PageHostDebuggerValuePreview::BigIntBytes(bytes.clone())
         }
         VmDebuggerValuePreview::StringUnits(units) => {
-            PageHostDebuggerValuePreview::StringUnits(units)
+            PageHostDebuggerValuePreview::StringUnits(units.clone())
         }
         VmDebuggerValuePreview::Array(elements) => PageHostDebuggerValuePreview::Array(
             elements
-                .into_iter()
-                .map(|element| element.map(page_host_debugger_value_preview))
+                .iter()
+                .map(|element| element.as_ref().map(page_host_debugger_value_preview))
                 .collect(),
         ),
         VmDebuggerValuePreview::Record(entries) => PageHostDebuggerValuePreview::Record(
             entries
-                .into_iter()
+                .iter()
                 .map(|(key, value)| {
                     (
                         key.as_code_units().to_vec(),
@@ -444,33 +444,33 @@ mod tests {
     #[test]
     fn value_preview_maps_every_shape_without_recursing_incorrectly() {
         assert_eq!(
-            page_host_debugger_value_preview(VmDebuggerValuePreview::Undefined),
+            page_host_debugger_value_preview(&VmDebuggerValuePreview::Undefined),
             PageHostDebuggerValuePreview::Undefined
         );
         assert_eq!(
-            page_host_debugger_value_preview(VmDebuggerValuePreview::Null),
+            page_host_debugger_value_preview(&VmDebuggerValuePreview::Null),
             PageHostDebuggerValuePreview::Null
         );
         assert_eq!(
-            page_host_debugger_value_preview(VmDebuggerValuePreview::Bool(true)),
+            page_host_debugger_value_preview(&VmDebuggerValuePreview::Bool(true)),
             PageHostDebuggerValuePreview::Bool(true)
         );
         assert_eq!(
-            page_host_debugger_value_preview(VmDebuggerValuePreview::NumberBits(7)),
+            page_host_debugger_value_preview(&VmDebuggerValuePreview::NumberBits(7)),
             PageHostDebuggerValuePreview::NumberBits(7)
         );
         assert_eq!(
-            page_host_debugger_value_preview(VmDebuggerValuePreview::BigIntBytes(vec![1, 2])),
+            page_host_debugger_value_preview(&VmDebuggerValuePreview::BigIntBytes(vec![1, 2])),
             PageHostDebuggerValuePreview::BigIntBytes(vec![1, 2])
         );
         assert_eq!(
-            page_host_debugger_value_preview(VmDebuggerValuePreview::StringUnits(vec![
+            page_host_debugger_value_preview(&VmDebuggerValuePreview::StringUnits(vec![
                 b'h' as u16
             ])),
             PageHostDebuggerValuePreview::StringUnits(vec![b'h' as u16])
         );
         assert_eq!(
-            page_host_debugger_value_preview(VmDebuggerValuePreview::Array(vec![
+            page_host_debugger_value_preview(&VmDebuggerValuePreview::Array(vec![
                 None,
                 Some(VmDebuggerValuePreview::Bool(false)),
             ])),
@@ -480,7 +480,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            page_host_debugger_value_preview(VmDebuggerValuePreview::Record(vec![(
+            page_host_debugger_value_preview(&VmDebuggerValuePreview::Record(vec![(
                 blueice_bluejs::JsString::from("key"),
                 VmDebuggerValuePreview::Null,
             )])),

@@ -25,7 +25,14 @@ mod root_code_tests;
 #[path = "../../tests/fixtures/retained_frame_storage.rs"]
 mod retained_frame_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/debugger_inspection_storage.rs"]
+mod inspection_storage_tests;
+
+mod inspection_storage;
 mod storage;
+pub(crate) use inspection_storage::InspectionStorage;
+pub use inspection_storage::VmDebuggerInspection;
 
 /// Exact source-free bytecode instruction that originated the last uncaught
 /// catchable exception. The embedding host must bind this to its own live
@@ -71,7 +78,7 @@ pub(super) struct DebuggerContinuation {
 }
 
 pub(super) struct ModuleDebuggerPauseRequest {
-    pub(super) entry: String,
+    pub(super) entry: super::module_name_storage::ModuleName,
     pub(super) target: usize,
 }
 
@@ -201,44 +208,6 @@ pub struct VmDebuggerStackSnapshot {
     pub stack_truncated: bool,
 }
 
-fn debugger_scope_entries(
-    scopes: &[Vec<u32>],
-    max_entries: usize,
-) -> (Vec<VmDebuggerScopeEntry>, bool) {
-    let mut entries = Vec::new();
-    for (scope_depth, scope) in scopes.iter().rev().enumerate() {
-        for &slot_ordinal in scope {
-            if entries.len() == max_entries {
-                return (entries, true);
-            }
-            entries.push(VmDebuggerScopeEntry {
-                slot_ordinal,
-                scope_depth: u32::try_from(scope_depth)
-                    .expect("bounded interpreter scope depth fits the debugger wire"),
-            });
-        }
-    }
-    (entries, false)
-}
-
-fn debugger_stack_frame(
-    program_generation: u64,
-    code_unit_ordinal: u32,
-    pc: usize,
-    scopes: &[Vec<u32>],
-    max_entries: usize,
-) -> VmDebuggerStackFrame {
-    let (scope_entries, scope_truncated) = debugger_scope_entries(scopes, max_entries);
-    VmDebuggerStackFrame {
-        program_generation,
-        code_unit_ordinal,
-        bytecode_offset: u32::try_from(pc)
-            .expect("verified bytecode offset fits the debugger wire"),
-        scope_entries,
-        scope_truncated,
-    }
-}
-
 enum DebuggerRunOutcome {
     Paused(Box<DebuggerContinuation>),
     Completed(Result<Value, RuntimeError>),
@@ -360,13 +329,12 @@ impl Vm {
                 "debugger safe point is not the first module evaluate-body instruction",
             ));
         }
+        self.synchronize_scheduling_usage()?;
+        let request = self.prepare_debugger_module_pause_request(entry, target)?;
         self.pending_throw_site = None;
         self.uncaught_throw_site = None;
         self.throw_epoch = 0;
-        self.debugger_module_pause_request = Some(ModuleDebuggerPauseRequest {
-            entry: entry.to_string(),
-            target,
-        });
+        self.debugger_module_pause_request = Some(request);
         let result = (|| {
             self.execute_module_graph_inner(entry, modules, false, false, ImportPhase::Evaluation)?;
             // An async dependency can delay the entry body itself. Advance

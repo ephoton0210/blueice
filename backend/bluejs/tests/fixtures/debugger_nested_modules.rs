@@ -236,18 +236,21 @@ fn linked_module_nested_pause_preserves_each_frame_generation() {
         .iter()
         .find(|entry| {
             vm.debugger_linked_value_preview(1, &stack, **entry)
+                .map(|inspection| inspection.as_ref().clone())
                 == Ok(VmDebuggerValuePreview::NumberBits(9.0_f64.to_bits()))
         })
         .copied()
         .expect("the retained entry root must expose its initialized slot");
     assert!(stack.frames[1].scope_entries.iter().any(|entry| matches!(
-        vm.debugger_linked_value_preview(1, &stack, *entry),
+        vm.debugger_linked_value_preview(1, &stack, *entry)
+            .map(|inspection| inspection.as_ref().clone()),
         Err(RuntimeError::Unsupported(
             "debugger value exceeds the payload byte budget"
         ))
     )));
     assert!(vm
         .debugger_linked_value_preview(2, &stack, root_entry)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
     assert!(vm
         .debugger_linked_value_preview(
@@ -258,16 +261,19 @@ fn linked_module_nested_pause_preserves_each_frame_generation() {
                 ..root_entry
             },
         )
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
-    let mut moved_stack = stack.clone();
+    let mut moved_stack = stack.as_ref().clone();
     moved_stack.frames[0].bytecode_offset += 1;
     assert!(vm
         .debugger_linked_value_preview(1, &moved_stack, root_entry)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
-    let mut truncated_stack = stack.clone();
+    let mut truncated_stack = stack.as_ref().clone();
     truncated_stack.frames[1].scope_truncated = true;
     assert!(vm
         .debugger_linked_value_preview(1, &truncated_stack, root_entry)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
     assert!(matches!(
         vm.resume_debugger_nested_execution(1),
@@ -275,6 +281,7 @@ fn linked_module_nested_pause_preserves_each_frame_generation() {
     ));
     assert!(vm
         .debugger_linked_value_preview(1, &stack, root_entry)
+        .map(|inspection| inspection.as_ref().clone())
         .is_err());
     assert_eq!(
         vm.resume_debugger_module_execution(),

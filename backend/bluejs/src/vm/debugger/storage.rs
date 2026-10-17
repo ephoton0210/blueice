@@ -7,6 +7,20 @@
 use super::*;
 
 impl Vm {
+    pub(in crate::vm) fn prepare_debugger_module_pause_request(
+        &self,
+        entry: &str,
+        target: usize,
+    ) -> Result<ModuleDebuggerPauseRequest, RuntimeError> {
+        Ok(ModuleDebuggerPauseRequest {
+            entry: super::super::module_name_storage::ModuleName::copy(
+                entry,
+                self.host_scheduling.as_ref(),
+            )?,
+            target,
+        })
+    }
+
     #[cfg(any(test, coverage))]
     pub(in crate::vm) fn retained_debugger_record_bytes(&self) -> usize {
         self.debugger_continuation.as_ref().map_or(0, |frame| {
@@ -81,6 +95,10 @@ impl Vm {
     }
 
     pub(in crate::vm) fn attach_retained_debugger_storage(&mut self) -> Result<(), RuntimeError> {
+        if let Some(request) = &mut self.debugger_module_pause_request {
+            request.entry.attach(self.host_scheduling.as_ref())?;
+        }
+
         if let Some(mut frame) = self.debugger_continuation.take() {
             let result = self.attach_root_debugger_storage(&mut frame);
             self.debugger_continuation = Some(frame);

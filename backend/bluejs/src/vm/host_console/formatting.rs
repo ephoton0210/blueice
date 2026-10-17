@@ -78,12 +78,15 @@ impl Vm {
                 output.push("n");
             }
             Value::Object(id) => {
-                match self.heap.debugger_value_preview(
+                match self.heap.debugger_owned_value_preview(
                     value,
                     self.object_prototype,
                     self.array_prototype,
                 ) {
                     Ok(preview) => render_preview(&preview, output),
+                    Err(RuntimeError::SchedulingLimit) => {
+                        return Err(RuntimeError::SchedulingLimit)
+                    }
                     Err(_) => {
                         if self.is_callable(value)? {
                             output.push("[Function");

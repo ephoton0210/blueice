@@ -68,6 +68,21 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The debugger inspection/request producer follow-up (2026-10-18) has an
+implementation checkpoint. VM/page stack/value outputs now retain shared
+immutable document ownership through final result drop, including after VM
+teardown, navigation and close. Complete copies acquire admission before
+allocation; VM selection and heap shape validation borrow their data. Module
+pause request names acquire storage before request/diagnostic publication and
+attach during later bounded activation. All twenty-two new contracts, eighteen
+active-realm contracts, eighteen retained-frame contracts and fifty-three exact
+finite controls pass: **111 distinct selected tests**, four executable targets
+and fifty-six selections. Formatting, diff checks and offline workspace/all-
+target Clippy pass. Frozen source/artifact and Git content audits bind the
+checkpoint. Host reply/serialization buffers, other native producers, complete
+neutral-tree adoption and wider integrated acceptance remain open. M1u remains
+the latest accepted milestone; M1z's integrated gates remain open.
+
 The active cross-realm registry storage follow-up (2026-10-18) has an
 implementation checkpoint. Individual nodes acquire document credit before
 allocation; preparation precedes state changes while pointer publication stays
@@ -1369,8 +1384,9 @@ work and exposes its retained payload ledger.
       checkpoints with eighteen new lifecycle/conservation contracts and 63
       selected cases. Active cross-realm registry metadata now has an independent
       ownership checkpoint with eighteen new contracts and 85 selected cases.
-      Debugger request/inspection producers, shared programs'
-      remaining storage, other
+      BlueJS inspection/request producers now have an immutable output/name
+      checkpoint with twenty-two new contracts and 111 selected cases. Host
+      reply/serialization buffers, shared programs' remaining storage, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -8211,6 +8227,90 @@ Evidence: `target/active-realm-storage-source-20261018.json` and prefix
 `/private/tmp/blueice-active-realm-storage-` (2026-10-18), including original
 failing/first/expanded/final source archives, the fixture correction, frozen
 inputs, exact-control results, static checks and the English checkpoint message.
+
+#### Debugger inspection and request producers (implementation checkpoint, 2026-10-18)
+
+Acceptance: VM/page stack and plain-data value outputs must retain document
+credit independently of the paused VM. Admit complete output buffers before
+copying; validate exact generations, frames, slots and supported stored shapes
+without cloning bindings or allocating traversal/key scratch. Result clones
+must share immutable storage and return its credit only after the final owner
+drops. Admit module pause request names before publishing the request or
+clearing diagnostics; attach pending names during later bounded activation.
+
+- [x] Preserve the original three tiny public output lifetime failures.
+- [x] Add immutable native result ownership through VM/page/host consumers.
+- [x] Separate borrowed validation from admitted stack/value production.
+- [x] Admit module request names and preserve terminal/foreign refusal state.
+- [x] Pass all twenty-two final contracts, formatting and offline workspace/
+      all-target Clippy with warnings denied.
+- [x] Pass exact related semantic controls and source/artifact audits.
+- [x] Finish final documents, detailed English commit and staged/committed
+      content audits; record the commit in the source receipt.
+
+The original **0/3** run shows retained stack vectors, a copied string and a
+retained preview clone losing all native credit when their VM drops. The first
+planned implementation passes **3/3**; the joined expansion passes **21/21**.
+Two intervening compile checks identify fixture adapters needing an explicit
+immutable-data copy and a mutable lookup binding; neither runs guest fixtures.
+The final **22/22** contracts also cover public page navigation/close.
+
+`VmDebuggerInspection<T>` holds shared immutable data and its native lease.
+All allocating VM/page inspection APIs return this owner. `Clone` shares its
+existing allocation and credit; `Deref`/`AsRef` expose borrowed data. Independent
+reads own independent copies. Results hold no VM or heap handles and may outlive
+execution, navigation and close. Data drops before its charge. The native model
+includes the result payload/header and actual vector/key capacities, retaining
+the existing allocator/Rc-control and Rust-stack exclusions.
+
+VM frame selection uses a fixed borrowed three-frame plan. Exact classic,
+linked and foreign-intermediate validation precedes output allocation; scope
+iteration preserves inner-first order and truncation. Value selection borrows
+ordinary compiler-cell data or a binding reference. Heap preview first validates
+and measures the entire immutable tree, then admits its complete output and
+copies it. Fixed stack arrays replace allocating ancestor/key scratch; sparse
+array lookup borrows stored keys. Small signed BigInts encode directly into a
+pre-sized buffer rather than creating a growing conversion temporary. No guest
+getter, Proxy trap, coercion, bytecode or GC runs between the two passes.
+
+Module request names reuse `ModuleName` admission and late attachment. Name
+preparation precedes request/diagnostic publication. Inline scalar nested
+requests introduce no separate allocation. Console object formatting keeps the
+same owned preview through rendering and propagates terminal native refusal.
+Page Runtime retains output ownership; launcher mapping borrows it while making
+explicit host reply copies. Those new IPC reply/serialization buffers remain a
+separate required host-transport ownership gate.
+
+The twenty-two contracts cover root/nested/intermediate/linked output lifetimes,
+shared clone identity and separate reads, primitive headers, records/sparse
+arrays/UTF-16/finite BigInts, allocation-free VM target/shape refusal, document
+isolation, terminal state, request-name lifetime/late activation/foreign refusal,
+neutral output history and public navigation/close. The ordinary-library hook
+does not establish fresh coverage. No resource-boundary, exhaustion, infinite-
+input, network/listener/service/Core/MCP or privileged runtime replay is run;
+rejected push and process inspection are not retried.
+
+All **111 distinct selected tests** pass across four executable targets and
+fifty-six selections: twenty-two new contracts, eighteen active-realm contracts,
+eighteen retained-frame contracts and fifty-three exact finite semantic controls.
+The controls cover prior code/record/module ownership, ShadowRealm/Test262
+transport, plain-data preview refusals and console formatting/job boundaries.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass, including native host consumers. Frozen source/artifact and Git
+content audits bind nineteen Rust inputs, twenty-one changed source/document
+files, twenty-four related control inputs, four executables and the detailed
+English checkpoint message.
+
+Host reply/serialization buffers, remaining program/diagnostic/native producers,
+complete neutral-tree adoption and integrated acceptance remain open. M1u remains
+the latest accepted milestone; M1z's integrated gates remain open. Earlier
+checkpoint counts remain historical evidence.
+
+Evidence: `target/debugger-inspection-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-debugger-inspection-storage-` (2026-10-18), including the
+original failing/first/planned/expanded/joined/final source archives, immutable
+fixture adapters, frozen inputs, exact controls, static gates and English
+checkpoint message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

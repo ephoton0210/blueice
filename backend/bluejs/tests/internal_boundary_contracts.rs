@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_debugger_inspection_storage_contracts() {
+    blueice_bluejs::Vm::verify_debugger_inspection_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_active_realm_storage_contracts() {
     blueice_bluejs::Vm::verify_active_realm_storage_contracts();
 }

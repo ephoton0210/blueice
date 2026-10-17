@@ -1305,6 +1305,42 @@ integrated gates remain open. M1u remains the latest accepted milestone; M1z's
 integrated gates stay open. Evidence:
 `target/active-realm-storage-source-20261018.json`.
 
+Allocating native debugger stack/value APIs now return
+`VmDebuggerInspection<T>`: shared immutable output with an independent document
+lease. Cloning shares data and credit without another allocation; dereferencing
+borrows it. Separate reads own separate copies. Output headers, vector slots and
+owned key/value buffers retain their native credit until the final result drops,
+including after VM destruction, navigation or close. Data drops before its lease;
+the existing allocator/Rc-control and Rust-stack exclusions still apply.
+
+A fixed borrowed frame plan validates exact classic/linked/foreign generations
+before copying frames or scope slots. Value inspection borrows binding/cell data.
+Heap inspection validates and measures a complete tree before admitted copying;
+fixed stack ancestors and borrowed key ordering replace temporary heap scratch.
+Sparse array holes, stored string order, UTF-16, primitive bit patterns and fixed
+plain-data limits keep their semantics. BigInt output is encoded into its admitted
+final buffer. These immutable passes run no getter, Proxy trap, coercion, bytecode
+or GC. Unsupported VM targets/shapes allocate no output.
+
+Module pause request names acquire `ModuleName` ownership before request/
+diagnostic publication; late activation attaches existing names once, with foreign
+or terminal refusal preserving their previous owner. Scalar nested requests remain
+inline. Console object formatting uses the owned preview and propagates fatal
+native refusal. Page Runtime preserves returned owners; launcher conversion borrows
+them while explicitly copying wire data. Host IPC reply/serialization buffers
+remain separate required transport ownership work.
+
+The inspection/request checkpoint passes twenty-two finite lifecycle/data
+contracts, eighteen active-realm and eighteen retained-frame contracts, and fifty-
+three exact related semantic controls: one hundred eleven distinct tests across
+four executable targets and fifty-six selections. Formatting, diff checks and
+offline workspace/all-target Clippy pass, including static host consumers. Frozen
+source/artifact and Git content audits bind the result. No fresh coverage or
+integrated acceptance is claimed. Host reply/serialization buffers, other native
+producers and complete neutral-tree adoption remain open; M1u remains latest
+accepted and M1z's integrated gates stay open. Evidence:
+`target/debugger-inspection-storage-source-20261018.json`.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

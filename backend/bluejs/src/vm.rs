@@ -197,15 +197,17 @@ mod execution_boundaries;
 use completion::{
     call_stack_exhausted, Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
 };
+pub(crate) use debugger::InspectionStorage;
 use debugger::{
     DebuggerContinuation, DebuggerFrameKind, DebuggerInterpreterExit,
     IntermediateDebuggerContinuation, ModuleDebuggerContinuation, ModuleDebuggerPauseRequest,
     NestedDebuggerContinuation, NestedDebuggerPauseRequest,
 };
 pub use debugger::{
-    VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
-    VmDebuggerScopeEntry, VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite,
-    VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
+    VmDebuggerExecutionState, VmDebuggerInspection, VmDebuggerLinkedPauseTarget,
+    VmDebuggerNestedExecutionState, VmDebuggerScopeEntry, VmDebuggerStackFrame,
+    VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
+    VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
     VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
 };
 use host_animation_frames::HostAnimationFrame;
