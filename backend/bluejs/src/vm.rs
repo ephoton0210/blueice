@@ -85,6 +85,7 @@ pub use host_console::{
 mod finalization_backing;
 mod finalization_entry;
 mod finalization_storage;
+mod host_document_checkpoint;
 mod host_errors;
 mod host_event_checkpoints;
 mod host_finalization;
@@ -181,6 +182,7 @@ mod shadow_realm_gc;
 mod temporal;
 mod test262;
 mod test262_agents;
+mod weak_kept_storage;
 mod web_abort;
 mod web_dom_exception;
 mod web_drag_drop;
@@ -1271,7 +1273,7 @@ pub struct Vm {
     /// Targets passed to WeakRef or returned by `deref` must survive the
     /// current ECMAScript job. The list is cleared at the outer execution
     /// boundary and registered by every allocation safepoint.
-    kept_weak_objects: Vec<ObjectId>,
+    kept_weak_objects: weak_kept_storage::KeptWeakObjects,
     promises: retained_control_map::RetainedControlMap<ObjectId, PromiseRecord>,
     /// Managed Promise/host-wait preparation preserves every staged control map.
     preserve_promise_table_capacity: bool,

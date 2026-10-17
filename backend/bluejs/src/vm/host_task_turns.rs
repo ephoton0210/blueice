@@ -16,6 +16,10 @@ mod boundary_tests;
 #[path = "../../tests/fixtures/host_realm_tasks.rs"]
 mod realm_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/document_checkpoint.rs"]
+mod checkpoint_tests;
+
 const MAX_DOCUMENT_TASKS_PER_TURN: usize = 64;
 
 /// Result of a bounded page task turn, without callbacks or source text.
@@ -104,26 +108,7 @@ impl Vm {
     }
 
     fn checkpoint_document_task_entry(&mut self) -> Result<(), RuntimeError> {
-        let mut remaining = host_timers::MAX_HOST_CHECKPOINT_JOBS;
-        loop {
-            let before = remaining;
-            self.run_host_microtask_checkpoint_with_budget(&mut remaining)?;
-            let realms = self.host_task_realms()?;
-            for realm in realms.iter() {
-                realm.enter(self, |vm| {
-                    if vm.ensure_no_debugger_continuation().is_ok() {
-                        vm.sample_host_timer_clock();
-                        vm.run_host_microtask_checkpoint_with_budget(&mut remaining)?;
-                    }
-                    Ok(())
-                })?;
-            }
-            // A child can queue work in an earlier ancestor, or create another
-            // child. Repeat discovery until quiescent using the same job budget.
-            if before == remaining {
-                return Ok(());
-            }
-        }
+        self.run_host_microtask_checkpoint().map(|_| ())
     }
 
     pub(crate) fn next_host_task_wake(&mut self, now_ms: u64) -> Result<Option<u64>, RuntimeError> {
@@ -136,7 +121,11 @@ impl Vm {
         let timers = self
             .next_host_timer_due()
             .map(|due| due.saturating_sub(now));
-        Ok(earliest_wake(self.document_browser_wake()?, timers))
+        let pending = self.checkpoint_completion_pending().then_some(0);
+        Ok(earliest_wake(
+            earliest_wake(self.document_browser_wake()?, timers),
+            pending,
+        ))
     }
 
     pub(super) fn snapshot_task_timers(
@@ -244,6 +233,12 @@ impl Vm {
         self.host_timer_clock_ms = self.host_timer_clock_ms.max(now_ms);
         self.sample_host_timer_clock();
         self.checkpoint_document_task_entry()?;
+        if self.checkpoint_completion_pending() {
+            return Ok(BlueJsTaskTurn {
+                tasks_run: 0,
+                next_wake_in_ms: Some(0),
+            });
+        }
         let mut snapshots = TimerSnapshots::new(self.host_scheduling.as_ref())?;
         snapshots.insert(
             self.object_prototype.heap,
@@ -312,6 +307,11 @@ impl Vm {
             } else {
                 realms[owner - 1].heap
             };
+            let deferral = self
+                .host_scheduling
+                .as_ref()
+                .map(SchedulingScope::defer_checkpoint)
+                .transpose()?;
             let delivered = if owner == 0 {
                 self.deliver_host_task(delivery)?;
                 true
@@ -320,6 +320,7 @@ impl Vm {
                     .enter(self, |vm| vm.deliver_host_task(delivery))?
                     .is_some()
             };
+            drop(deferral);
             if !delivered {
                 continue;
             }
@@ -333,6 +334,9 @@ impl Vm {
             self.next_host_task_source = (source + 1) % TASK_SOURCES.len();
             turn.tasks_run += 1;
             self.checkpoint_document_task_entry()?;
+            if self.checkpoint_completion_pending() {
+                break;
+            }
         }
         turn.next_wake_in_ms = self.next_host_task_wake(now_ms)?;
         Ok(turn)

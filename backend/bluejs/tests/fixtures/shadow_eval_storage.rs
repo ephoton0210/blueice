@@ -429,7 +429,10 @@ fn shadow_eval_storage_reentrant_gc_restores_saved_owners() {
     let object = child.heap.alloc_object(None).unwrap();
     child.stack.push(Value::Object(object));
     child.parameter_eval_env = Some(object);
-    child.kept_weak_objects.push(object);
+    child
+        .kept_weak_objects
+        .keep(object, child.host_scheduling.as_ref())
+        .unwrap();
     child.call_depth = 3;
     child.inherited_with_depth = 2;
     child.remaining_instructions = 41;
@@ -445,7 +448,7 @@ fn shadow_eval_storage_reentrant_gc_restores_saved_owners() {
     assert_eq!(child.stack.as_ptr(), pointer);
     assert_eq!(child.stack, vec![Value::Object(object)]);
     assert_eq!(child.parameter_eval_env, Some(object));
-    assert_eq!(child.kept_weak_objects, vec![object]);
+    assert_eq!(&*child.kept_weak_objects, &[object]);
     assert_eq!(child.call_depth, 3);
     assert_eq!(child.inherited_with_depth, 2);
     assert_eq!(child.remaining_instructions, 41);

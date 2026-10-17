@@ -122,6 +122,8 @@ impl Vm {
             if let Some(scope) = &self.host_scheduling {
                 let _ = scope.fail();
             }
+        } else if let Some(scope) = &self.host_scheduling {
+            scope.request_checkpoint();
         }
         self.reconcile_scheduling_ownership();
     }

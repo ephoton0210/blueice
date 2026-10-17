@@ -17,7 +17,10 @@ fn displaced_root_ownership_reentrant_extra_registration_restores_every_saved_ow
     child.stack.push(Value::Object(first));
     let env = child.with_roots(|heap| heap.alloc_object(None)).unwrap();
     child.parameter_eval_env = Some(env);
-    child.kept_weak_objects.push(first);
+    child
+        .kept_weak_objects
+        .keep(first, child.host_scheduling.as_ref())
+        .unwrap();
     child.call_depth = 3;
     child.remaining_instructions = 41;
     child.inherited_with_depth = 2;
@@ -38,7 +41,7 @@ fn displaced_root_ownership_reentrant_extra_registration_restores_every_saved_ow
     assert_eq!(child.stack.as_ptr(), pointer);
     assert_eq!(child.stack, vec![Value::Object(first)]);
     assert_eq!(child.parameter_eval_env, Some(env));
-    assert_eq!(child.kept_weak_objects, vec![first]);
+    assert_eq!(&*child.kept_weak_objects, &[first]);
     assert_eq!(child.call_depth, 3);
     assert_eq!(child.remaining_instructions, 41);
     assert_eq!(child.inherited_with_depth, 2);
@@ -82,7 +85,10 @@ fn child_with_saved_owners() -> (Vm, ObjectId, ObjectId, ObjectId) {
     let env = child.with_roots(|heap| heap.alloc_object(None)).unwrap();
     child.parameter_eval_env = Some(env);
     let weak = child.with_roots(|heap| heap.alloc_object(None)).unwrap();
-    child.kept_weak_objects.push(weak);
+    child
+        .kept_weak_objects
+        .keep(weak, child.host_scheduling.as_ref())
+        .unwrap();
     child.call_depth = 3;
     child.remaining_instructions = 41;
     child.inherited_with_depth = 2;
@@ -91,7 +97,7 @@ fn child_with_saved_owners() -> (Vm, ObjectId, ObjectId, ObjectId) {
 fn assert_saved_owners(child: &mut Vm, stack: ObjectId, env: ObjectId, weak: ObjectId) {
     assert_eq!(child.stack, vec![Value::Object(stack)]);
     assert_eq!(child.parameter_eval_env, Some(env));
-    assert_eq!(child.kept_weak_objects, vec![weak]);
+    assert_eq!(&*child.kept_weak_objects, &[weak]);
     assert_eq!(child.call_depth, 3);
     assert_eq!(child.remaining_instructions, 41);
     assert_eq!(child.inherited_with_depth, 2);

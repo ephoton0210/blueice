@@ -47,6 +47,7 @@ fn check_stack(vm: &Vm) -> Result<(), RuntimeError> {
 fn read_path<T>(
     vm: &Vm,
     path: &[Step],
+    blocked: &mut bool,
     action: impl FnOnce(&Vm) -> Result<T, RuntimeError>,
 ) -> Result<Option<T>, RuntimeError> {
     check_stack(vm)?;
@@ -58,13 +59,14 @@ fn read_path<T>(
             let Some(child) = vm.test262_realms.get(&step.instance) else {
                 return Ok(None);
             };
-            if child.vm.object_prototype.heap != step.heap
-                || !same_document(vm, &child.vm)
-                || realm_reentrancy::resolve_active(step.heap).is_some()
-            {
+            if child.vm.object_prototype.heap != step.heap || !same_document(vm, &child.vm) {
                 return Ok(None);
             }
-            read_path(&child.vm, rest, action)
+            if realm_reentrancy::resolve_active(step.heap).is_some() {
+                *blocked = true;
+                return Ok(None);
+            }
+            read_path(&child.vm, rest, blocked, action)
         }
         Kind::Shared => {
             let Some(record) = vm
@@ -76,12 +78,19 @@ fn read_path<T>(
             };
             // The next phase needs exclusive access too. Skip a busy route now.
             let Ok(child) = record.vm.try_borrow_mut() else {
+                let foreign =
+                    realm_reentrancy::active_scheduling_scope(step.heap).is_some_and(|active| {
+                        vm.host_scheduling
+                            .as_ref()
+                            .is_some_and(|owner| !owner.same_document(&active))
+                    });
+                *blocked |= !foreign;
                 return Ok(None);
             };
             if !same_document(vm, &child) {
                 return Ok(None);
             }
-            read_path(&child, rest, action)
+            read_path(&child, rest, blocked, action)
         }
     }
 }
@@ -146,7 +155,15 @@ impl HostRealm {
         root: &Vm,
         action: impl FnOnce(&Vm) -> Result<T, RuntimeError>,
     ) -> Result<Option<T>, RuntimeError> {
-        read_path(root, &self.path, action)
+        read_path(root, &self.path, &mut false, action)
+    }
+    fn read_checkpoint<T>(
+        &self,
+        root: &Vm,
+        blocked: &mut bool,
+        action: impl FnOnce(&Vm) -> Result<T, RuntimeError>,
+    ) -> Result<Option<T>, RuntimeError> {
+        read_path(root, &self.path, blocked, action)
     }
     pub(super) fn enter<T>(
         &self,
@@ -204,12 +221,18 @@ impl HostRealm {
 
 impl Vm {
     pub(super) fn host_task_realms(&self) -> Result<TaskVector<HostRealm>, RuntimeError> {
+        self.host_checkpoint_realms().map(|(members, _)| members)
+    }
+    pub(super) fn host_checkpoint_realms(
+        &self,
+    ) -> Result<(TaskVector<HostRealm>, bool), RuntimeError> {
+        let mut blocked = false;
         let mut members = TaskVector::new(self.host_scheduling.as_ref())?;
         let Some(owner) = &self.host_scheduling else {
-            return Ok(members);
+            return Ok((members, blocked));
         };
         if self.test262_realms.is_empty() && self.shadow_realms.is_empty() {
-            return Ok(members);
+            return Ok((members, blocked));
         }
         let mut storage = MetadataStorage::new(Some(owner))?;
         let mut seen = HashSet::new();
@@ -226,7 +249,9 @@ impl Vm {
                 continue;
             }
             let found = node
-                .read(self, |vm| node.enqueue_children(vm, owner, &mut queue))?
+                .read_checkpoint(self, &mut blocked, |vm| {
+                    node.enqueue_children(vm, owner, &mut queue)
+                })?
                 .is_some();
             if found {
                 storage.reserve_set(&mut seen, 1)?;
@@ -235,6 +260,6 @@ impl Vm {
             }
         }
         members.sort_unstable_by_key(|member| member.heap);
-        Ok(members)
+        Ok((members, blocked))
     }
 }

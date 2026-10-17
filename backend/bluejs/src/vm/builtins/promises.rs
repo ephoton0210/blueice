@@ -479,7 +479,7 @@ impl Vm {
             let prototype = self.constructor_prototype(default)?;
             let weak_ref =
                 self.with_roots(|heap| heap.alloc_weak_ref(target.clone(), Some(prototype)))?;
-            self.keep_weak_target(&target);
+            self.keep_weak_target(&target)?;
             Ok(Value::Object(weak_ref))
         })();
         self.stack.truncate(base);
@@ -499,7 +499,7 @@ impl Vm {
             RuntimeError::TypeError("WeakRef deref requires a WeakRef receiver".into())
         })?;
         if let Some(target) = &target {
-            self.keep_weak_target(target);
+            self.keep_weak_target(target)?;
         }
         Ok(target.unwrap_or(Value::Undefined))
     }
@@ -815,12 +815,12 @@ impl Vm {
         }
     }
 
-    fn keep_weak_target(&mut self, target: &Value) {
+    fn keep_weak_target(&mut self, target: &Value) -> Result<(), RuntimeError> {
         if let Some(target) = target.object_id() {
-            if !self.kept_weak_objects.contains(&target) {
-                self.kept_weak_objects.push(target);
-            }
+            self.kept_weak_objects
+                .keep(target, self.host_scheduling.as_ref())?;
         }
+        Ok(())
     }
 
     pub(in super::super) fn weak_collection_method(

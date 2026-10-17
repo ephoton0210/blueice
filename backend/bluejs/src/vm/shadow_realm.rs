@@ -298,6 +298,17 @@ impl Vm {
         code: EvaluationCode<'_>,
         reentrant: bool,
     ) -> Result<Value, RuntimeError> {
+        // Reentrant setup temporarily hides the ancestor's call depth, even
+        // when its caller is neutral. Its document job still owns kept targets.
+        let _checkpoint_deferral = if reentrant {
+            child
+                .host_scheduling
+                .as_ref()
+                .map(SchedulingScope::defer_checkpoint)
+                .transpose()?
+        } else {
+            None
+        };
         let registration = prepare_active_registration(caller, child.host_scheduling.as_ref())?;
         if !reentrant {
             child.reset_lexical_global_bindings();
@@ -342,7 +353,12 @@ impl Vm {
         let parameter_eval_env = child.parameter_eval_env.take();
         // Script cleanup clears these even when an ancestor call is active.
         let call_stack = std::mem::take(&mut child.call_stack);
-        let kept_weak_objects = std::mem::take(&mut child.kept_weak_objects);
+        // Document evaluations share the surrounding kept-target set. Taking
+        // it would discard inner targets when the outer context is restored.
+        let kept_weak_objects = child
+            .host_scheduling
+            .is_none()
+            .then(|| std::mem::take(&mut child.kept_weak_objects));
         let inherited_with_depth = std::mem::replace(&mut child.inherited_with_depth, 0);
         // GetShadowRealmContext ( shadowRealmRecord, strictEval ): "Let
         // lexEnv be NewDeclarativeEnvironment(shadowRealmRecord.[[GlobalEnv]])."
@@ -380,7 +396,9 @@ impl Vm {
         child.restore_module_execution(execution);
         child.call_depth = call_depth;
         child.call_stack = call_stack;
-        child.kept_weak_objects = kept_weak_objects;
+        if let Some(kept) = kept_weak_objects {
+            child.kept_weak_objects = kept;
+        }
         child.parameter_eval_env = parameter_eval_env;
         child.inherited_with_depth = inherited_with_depth;
         for root in roots {

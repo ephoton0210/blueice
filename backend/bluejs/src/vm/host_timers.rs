@@ -193,10 +193,23 @@ impl Vm {
         if self.ensure_no_debugger_continuation().is_err() {
             return Ok(BlueJsTimerRun::default());
         }
-        let due = self.snapshot_due_host_timers(now_ms)?;
+        self.host_timer_clock_ms = self.host_timer_clock_ms.max(now_ms);
         let mut run = BlueJsTimerRun::default();
+        if self.host_scheduling.is_some()
+            && self.checkpoint_context_is_idle()
+            && !self.checkpoint_completion_deferred()
+        {
+            run.uncaught_errors = self.run_host_microtask_checkpoint()?;
+            if self.checkpoint_completion_pending() {
+                return Ok(run);
+            }
+        }
+        let due = self.snapshot_due_host_timers(now_ms)?;
         for &(_, id) in due.iter().take(MAX_HOST_TIMER_TASKS_PER_TURN) {
             self.run_host_timer_entry(id, &mut run)?;
+            if self.checkpoint_completion_pending() {
+                break;
+            }
         }
         Ok(run)
     }
@@ -229,6 +242,14 @@ impl Vm {
         // Earlier task callbacks and their checkpoints may have canceled it.
         let Some(index) = self.host_timers.iter().position(|timer| timer.id == id) else {
             return Ok(());
+        };
+        let owns_checkpoint = self.host_scheduling.is_some()
+            && !self.checkpoint_completion_deferred()
+            && self.checkpoint_context_is_idle();
+        let deferral = if owns_checkpoint {
+            Some(self.host_scheduling.as_ref().unwrap().defer_checkpoint()?)
+        } else {
+            None
         };
         let interval = self.host_timers[index].interval_ms;
         let mut prepared = self.prepare_timer_entry(index)?;
@@ -274,6 +295,12 @@ impl Vm {
                 timer.due_ms = now.saturating_add(nested_delay(interval, nesting));
                 timer.nesting = nesting.saturating_add(1);
             }
+        }
+        drop(deferral);
+        if owns_checkpoint {
+            run.uncaught_errors = run
+                .uncaught_errors
+                .saturating_add(self.run_host_microtask_checkpoint()?);
         }
         Ok(())
     }
@@ -340,6 +367,12 @@ impl Vm {
     ) -> Result<u32, RuntimeError> {
         self.check_scheduling_failure()?;
         self.ensure_no_debugger_continuation()?;
+        if self.host_scheduling.is_some()
+            && self.checkpoint_context_is_idle()
+            && !self.checkpoint_completion_deferred()
+        {
+            return self.run_document_checkpoint(remaining_jobs);
+        }
         self.enqueue_finalization_cleanup_jobs()?;
         let mut uncaught = 0;
         while *remaining_jobs > 0 {

@@ -192,7 +192,7 @@ impl Vm {
             async_disposable_stacks: Default::default(),
             disposables: Default::default(),
             dispose_marks: Default::default(),
-            kept_weak_objects: Vec::new(),
+            kept_weak_objects: Default::default(),
             promises: Default::default(),
             preserve_promise_table_capacity: false,
             promise_jobs: VecDeque::new(),

@@ -68,6 +68,27 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The document checkpoint/WeakRef follow-up (2026-10-18) has an implementation
+checkpoint. Five tiny regressions reproduced early script/child/ancestor/timer
+target loss and a spurious rejection wake; three further error-handler cases
+reproduced missing cleanup wakes. Public host cleanup now drains reachable document
+jobs to quiescence, defers rejection publication and kept-target clearing, protects
+callback/reentrant boundaries and clears available kept sets before optional GC.
+Borrowed routes retain completion and request retry before later tasks run. Kept
+object-handle buffers admit whole replacements, retain native ownership through
+displacement and VM teardown, and free backing before credit. Published jobs,
+rejection records and kept targets request cleanup even after script cleanup.
+
+All twenty-five new contracts, the previous 193 finite controls and twenty-seven
+selected public/saved-owner controls pass: **245 distinct selected tests**, nine
+executable targets and 103 selections. Formatting, diff checks and offline
+workspace/all-target Clippy pass. Frozen source/artifact and Git audits bind this
+local checkpoint. No quota-boundary, exhaustion, service or conformance timer
+thread replay was run; rejected push/process inspection was not retried. Alternative
+alias-route callbacks, wider native/transport/program ownership and integrated
+acceptance remain open. M1u remains latest accepted; M1z integrated gates remain
+open. Evidence: `target/document-checkpoint-source-20261018.json`.
+
 The mixed-realm host-turn follow-up (2026-10-18) has an implementation checkpoint.
 Owned Test262 and shared ShadowRealm members now contribute document wakes,
 Promise checkpoints, timer eligibility and task-source selection. Admitted scalar
@@ -1446,8 +1467,11 @@ work and exposes its retained payload ledger.
       selected cases. Mixed owned/shared host-turn routing now adds twenty
       contracts and 193 selected cases, including admitted nonretaining paths,
       ancestor entry, fixed-point Promise passes and unchanged timer eligibility.
-      Alternative alias-route callbacks and agent-wide WeakRef/notification
-      boundaries remain unverified. Other metadata/control/error replies, incoming decode buffers,
+      Document checkpoint/kept-target ownership now adds twenty-five contracts
+      and 245 selected cases, including document quiescence, deferred rejection
+      publication, kept-buffer admission/lifetime, busy retry and native/error
+      producer wakes. Alternative alias-route callbacks remain unverified.
+      Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance

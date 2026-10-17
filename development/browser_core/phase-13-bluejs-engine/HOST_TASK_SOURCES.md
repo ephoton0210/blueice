@@ -1466,6 +1466,58 @@ integrated gates remain open. Publication remains local, with no retry of reject
 external push/process inspection. Evidence:
 `target/host-realm-tasks-source-20261018.json`.
 
+Document checkpoints now preserve kept WeakRef object targets across bounded
+script return, child/ancestor Promise jobs and callback-local cleanup. The public
+host checkpoint drains the reachable same-document graph to quiescence with one
+remaining-job counter and aggregates catchable job exceptions. A suspended
+same-document call defers local completion using its captured account view;
+registered VM pointers are not dereferenced to decide that policy. Reentrant
+ShadowRealm setup explicitly defers the child's document even with a neutral
+caller, because it temporarily hides the ancestor's call depth.
+
+Rejection notification publication waits until peer jobs can attach handlers.
+Completion reporting may queue further jobs, which are included before clearing.
+All available kept sets clear before any realm's optional post-checkpoint GC.
+Bounded script cleanup leaves kept targets for the explicit owner checkpoint;
+neutral jobs retain their local boundary. Bounded reentrant evaluation keeps both
+inner and outer targets in the document set rather than discarding the inner set
+when restoring its caller. Existing callback-local checkpoints still run, but
+protected task entry prevents them from ending document keep-alive prematurely.
+Direct timer entry drains earlier document jobs and finishes the same boundary.
+
+Account-local deferrals hold no VM and balance on normal and failed exits.
+Discovery reports borrowed/active routes; a blocked member leaves completion
+pending, returns an immediate retry wake and prevents later task consumption.
+Completion resumes after the borrow ends. Published microtask counts, rejection
+records and kept buffers request cleanup themselves, including work created by
+onerror after ordinary script cleanup already inspected the VM. Foreign document
+activity does not acquire this document's completion boundary.
+
+Kept object-handle backing has an independent native owner. Complete replacements
+are admitted while old storage coexists; duplicate keeps use existing storage.
+Late activation attaches existing neutral backing once. A foreign rebind refuses
+without failing its source account. Moving a kept buffer through Rust preserves
+its credit, including after VM destruction; buffers drop before credit. Explicit
+completion frees backing, and terminal cleanup admits no new storage. Five-entry
+replacement and synthetic-terminal cases verify ownership without quota pressure.
+
+The document checkpoint/storage checkpoint passes twenty-five fixed tiny contracts,
+the previous 193 finite controls and twenty-seven selected public/saved-owner
+controls: two hundred forty-five distinct tests, nine executable targets and 103
+selections. Formatting, diff checks and offline workspace/all-target Clippy pass,
+with frozen source/artifact and Git audits. The contracts cover eight reproduced
+failures, eventual collectibility,
+displacement, late binding, duplicates, native growth, terminal release, busy retry,
+independent documents, reentrant targets, notification uniqueness, later handled
+events and direct timer ordering. No fresh coverage or integrated acceptance is
+claimed. Alternative alias-route callback reachability and wider native/transport/
+program ownership remain open; M1u remains latest accepted and M1z integrated gates
+remain open. No quota/resource-boundary, exhaustion, infinite-input, network/service/
+listener/Core/MCP or privileged runtime replay, conformance timer thread, process
+inspection or killing is resumed. Publication remains local; rejected external
+push/process inspection is not retried. Evidence:
+`target/document-checkpoint-source-20261018.json`.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

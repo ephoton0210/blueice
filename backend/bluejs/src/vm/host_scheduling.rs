@@ -208,6 +208,8 @@ struct Account {
     clock_ms: u64,
     host_code_cache: std::rc::Weak<RefCell<super::HostCodeCache>>,
     document_heap: Option<crate::heap::DocumentHeapBudget>,
+    checkpoint_depth: usize,
+    checkpoint_pending: bool,
 }
 
 impl Account {
@@ -231,6 +233,18 @@ impl Account {
 pub(super) struct SchedulingScope {
     account: Rc<RefCell<Account>>,
     own: HostSchedulingUsage,
+}
+
+/// One synchronous task/checkpoint defers per-realm completion without owning VMs.
+pub(super) struct CheckpointDeferral {
+    account: Rc<RefCell<Account>>,
+}
+impl Drop for CheckpointDeferral {
+    fn drop(&mut self) {
+        let mut account = self.account.borrow_mut();
+        debug_assert!(account.checkpoint_depth != 0);
+        account.checkpoint_depth -= 1;
+    }
 }
 
 /// One shared native owner, independent of individual realm scopes.
@@ -401,6 +415,31 @@ impl Drop for SharedSchedulingCharge {
 }
 
 impl SchedulingScope {
+    pub(super) fn defer_checkpoint(&self) -> Result<CheckpointDeferral, RuntimeError> {
+        let mut account = self.account.borrow_mut();
+        account.refresh_managed_failure();
+        let next = account.checkpoint_depth.checked_add(1);
+        if account.failed || next.is_none() {
+            account.failed = true;
+            return Err(RuntimeError::SchedulingLimit);
+        }
+        account.checkpoint_depth = next.unwrap();
+        Ok(CheckpointDeferral {
+            account: self.account.clone(),
+        })
+    }
+    pub(super) fn checkpoint_deferred(&self) -> bool {
+        self.account.borrow().checkpoint_depth != 0
+    }
+    pub(super) fn checkpoint_pending(&self) -> bool {
+        self.account.borrow().checkpoint_pending
+    }
+    pub(super) fn request_checkpoint(&self) {
+        self.account.borrow_mut().checkpoint_pending = true;
+    }
+    pub(super) fn complete_checkpoint(&self) {
+        self.account.borrow_mut().checkpoint_pending = false;
+    }
     /// Measure one finite native operation against the actual shared account.
     #[cfg(any(test, coverage))]
     pub(super) fn measure_payload_peak<T>(&self, operation: impl FnOnce() -> T) -> (T, usize) {
@@ -566,6 +605,8 @@ impl SchedulingScope {
     ) -> Result<(), RuntimeError> {
         let mut account = self.account.borrow_mut();
         account.refresh_managed_failure();
+        // Published jobs can arrive from native/error callbacks after script cleanup.
+        account.checkpoint_pending |= own.pending_microtasks != 0;
         account.usage = account.usage.sub(self.own).add(own);
         #[cfg(any(test, coverage))]
         account.observe_payload_peak();
@@ -947,26 +988,45 @@ impl Vm {
         Ok(())
     }
 
-    pub(super) fn finish_host_checkpoint(&mut self) -> Result<(), RuntimeError> {
-        // Implicit module drains can run inside an outer execution context;
-        // its WeakRef keep-alive guarantee has not ended at that point.
-        if self.call_depth != 0 || self.top_level_module || self.module_execution_depth != 0 {
+    pub(super) fn checkpoint_context_is_idle(&self) -> bool {
+        self.call_depth == 0 && !self.top_level_module && self.module_execution_depth == 0
+    }
+    pub(super) fn checkpoint_completion_deferred(&self) -> bool {
+        self.host_scheduling.as_ref().is_some_and(|scope| {
+            scope.checkpoint_deferred() || realm_reentrancy::has_active_document(scope)
+        })
+    }
+    pub(super) fn checkpoint_completion_pending(&self) -> bool {
+        self.host_scheduling
+            .as_ref()
+            .is_some_and(SchedulingScope::checkpoint_pending)
+    }
+    pub(super) fn prepare_checkpoint_completion(&mut self) -> Result<(), RuntimeError> {
+        if !self.checkpoint_context_is_idle() {
             return Ok(());
         }
         self.report_pending_host_module_errors()?;
-        self.notify_host_rejections()?;
-        self.kept_weak_objects.clear();
+        self.notify_host_rejections()
+    }
+    pub(super) fn collect_after_checkpoint(&mut self) -> Result<(), RuntimeError> {
+        if !self.checkpoint_context_is_idle() {
+            return Ok(());
+        }
         if self.host_scheduling.is_some()
             && self.own_scheduling_usage().payload_bytes >= MAX_HOST_SCHEDULING_BYTES / 4
         {
-            // Promise strings live outside managed heap byte pressure. Give
-            // dead owner records a collection opportunity between host tasks
-            // before they accumulate into a false scheduling admission limit.
             self.collect_realm_garbage()?;
             self.synchronize_scheduling_usage()?;
         }
-        self.enqueue_finalization_cleanup_jobs()?;
-        Ok(())
+        self.enqueue_finalization_cleanup_jobs()
+    }
+    pub(super) fn finish_host_checkpoint(&mut self) -> Result<(), RuntimeError> {
+        if !self.checkpoint_context_is_idle() || self.checkpoint_completion_deferred() {
+            return Ok(());
+        }
+        self.prepare_checkpoint_completion()?;
+        self.kept_weak_objects.clear();
+        self.collect_after_checkpoint()
     }
 
     pub(super) fn own_scheduling_usage(&self) -> HostSchedulingUsage {

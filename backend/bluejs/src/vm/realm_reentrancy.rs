@@ -187,6 +187,25 @@ pub(super) fn resolve_active(tag: u64) -> Option<*mut Vm> {
     })
 }
 
+/// A suspended same-document call still owns this synchronous job boundary.
+pub(super) fn has_active_document(scope: &SchedulingScope) -> bool {
+    ACTIVE.with(|active| {
+        let active = active.borrow();
+        let mut node = active.as_deref();
+        while let Some(current) = node {
+            if current
+                .scope
+                .as_ref()
+                .is_some_and(|owner| owner.same_document(scope))
+            {
+                return true;
+            }
+            node = current.previous.get().and_then(Option::as_deref);
+        }
+        false
+    })
+}
+
 /// Read only the account view captured by the active call's guard.
 pub(super) fn active_scheduling_scope(tag: u64) -> Option<SchedulingScope> {
     ACTIVE.with(|active| {

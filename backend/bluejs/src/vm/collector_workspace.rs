@@ -11,6 +11,7 @@ impl Vm {
         if let Some(scope) = &self.host_scheduling {
             let budget = scope.heap_native_budget();
             self.heap.bind_native_budget(budget)?;
+            self.kept_weak_objects.attach(scope)?;
         }
         self.attach_retained_debugger_storage()
     }

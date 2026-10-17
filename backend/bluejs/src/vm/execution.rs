@@ -151,10 +151,11 @@ impl Vm {
         if let Some(root) = self.result_root.take() {
             self.release_root(root);
         }
-        // ClearKeptObjects runs at the end of the preceding ECMAScript job.
-        // The next job's initial collection must not retain its WeakRef
-        // targets merely because a prior job touched them.
-        self.kept_weak_objects.clear();
+        // Neutral jobs retain their existing local boundary. Documents keep
+        // targets until the embedding owner completes its checkpoint.
+        if self.host_scheduling.is_none() {
+            self.kept_weak_objects.clear();
+        }
         self.collect_realm_garbage()?;
         self.enqueue_finalization_cleanup_jobs()?;
         Ok(())
@@ -236,9 +237,16 @@ impl Vm {
         self.call_stack.clear();
         self.release_finished_execution_control();
         self.refresh_scheduling_ownership();
-        // WeakRef's KeepDuringJob guarantee ends only after the complete
-        // script/module job (including abrupt completion cleanup) has run.
-        self.kept_weak_objects.clear();
+        // A document script is followed by its owner's explicit checkpoint;
+        // its Promise jobs still share these kept targets.
+        if self.host_scheduling.is_none() {
+            self.kept_weak_objects.clear();
+        }
+        if !self.kept_weak_objects.is_empty() || !self.promise_jobs.is_empty() {
+            if let Some(scope) = &self.host_scheduling {
+                scope.request_checkpoint();
+            }
+        }
         self.collect_realm_garbage()?;
         self.enqueue_finalization_cleanup_jobs()?;
         self.uncaught_throw_site = if result.as_ref().is_err_and(RuntimeError::is_catchable) {
