@@ -988,7 +988,7 @@ fn classic_stack_refuses_an_intermediate_from_another_program_generation() {
         .as_mut()
         .expect("the direct middle call retains an intermediate frame")
         .code
-        .debugger_program_generation = Some(foreign_generation);
+        .set_generation_for_test(Some(foreign_generation));
     assert!(matches!(
         vm.debugger_stack_snapshot(Some(1), 3, 256),
         Err(RuntimeError::Unsupported(
@@ -999,7 +999,7 @@ fn classic_stack_refuses_an_intermediate_from_another_program_generation() {
         .as_mut()
         .unwrap()
         .code
-        .debugger_program_generation = None;
+        .set_generation_for_test(None);
     assert!(matches!(
         vm.debugger_stack_snapshot(Some(1), 3, 256),
         Err(RuntimeError::Unsupported(

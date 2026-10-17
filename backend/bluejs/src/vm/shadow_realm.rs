@@ -36,6 +36,21 @@ mod boundary_tests;
 #[path = "../../tests/fixtures/shadow_displaced_roots.rs"]
 mod displaced_root_tests;
 
+enum EvaluationCode<'a> {
+    #[cfg(any(test, coverage))]
+    Borrowed(&'a Bytecode),
+    Prepared(&'a PreparedEvalCode),
+}
+impl EvaluationCode<'_> {
+    fn execute(&self, child: &mut Vm) -> Result<Value, RuntimeError> {
+        match self {
+            #[cfg(any(test, coverage))]
+            Self::Borrowed(code) => child.execute_script(code),
+            Self::Prepared(code) => child.execute_prepared_script(code),
+        }
+    }
+}
+
 impl Vm {
     fn collect_before_shadow_realm_entry(&mut self) -> Result<(), RuntimeError> {
         if self.heap.document_heap_budget().is_some() {
@@ -256,7 +271,7 @@ impl Vm {
         {
             code.attach(scope)?;
         }
-        Self::run_evaluate(caller, child, code, reentrant)
+        Self::run_evaluation_code(caller, child, EvaluationCode::Prepared(code), reentrant)
     }
 
     /// Runs a parsed/compiled `evaluate` body in `child` (registering
@@ -265,16 +280,25 @@ impl Vm {
     /// shared inner step both of `shadow_realm_evaluate`'s two paths (child
     /// freshly checked out vs. already active further up this call chain)
     /// need identically.
+    #[cfg(any(test, coverage))]
     fn run_evaluate(
         caller: &mut Vm,
         child: &mut Vm,
         code: &Bytecode,
         reentrant: bool,
     ) -> Result<Value, RuntimeError> {
+        Self::run_evaluation_code(caller, child, EvaluationCode::Borrowed(code), reentrant)
+    }
+    fn run_evaluation_code(
+        caller: &mut Vm,
+        child: &mut Vm,
+        code: EvaluationCode<'_>,
+        reentrant: bool,
+    ) -> Result<Value, RuntimeError> {
         if !reentrant {
             child.reset_lexical_global_bindings();
             let _guard = register_active(caller);
-            let value = child.execute_script(code)?;
+            let value = code.execute(child)?;
             child.run_promise_jobs()?;
             // Metadata traps execute after this function returns. Retain the
             // evaluation's completion root and remaining instruction budget.
@@ -339,7 +363,7 @@ impl Vm {
         let outcome = (|| {
             child.reset_lexical_global_bindings();
             let _guard = register_active(caller);
-            let value = child.execute_script(code)?;
+            let value = code.execute(child)?;
             // Promise reactions belong to this evaluation context too.
             child.run_promise_jobs()?;
             Ok(value)

@@ -224,7 +224,7 @@ impl Vm {
             ));
         }
         let (root_code, root_pc, root_scopes) = if let Some(root) = &self.debugger_continuation {
-            (&root.code, root.pc, self.active_scope_slots.as_slice())
+            (&*root.code, root.pc, self.active_scope_slots.as_slice())
         } else if let Some(root) = &self.debugger_module_continuation {
             (
                 &*root.code,

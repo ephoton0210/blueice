@@ -74,7 +74,7 @@ pub(crate) struct RuntimeCodeSources {
 }
 
 impl Bytecode {
-    pub(super) fn has_runtime_sources(&self) -> bool {
+    pub(crate) fn has_runtime_sources(&self) -> bool {
         self.runtime_sources.present
     }
     pub(super) fn install_host_source(

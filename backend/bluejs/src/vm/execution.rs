@@ -4,6 +4,8 @@
 
 //! Script execution, realm declarations, scope frames, and direct `eval`.
 
+use super::eval_compilation_storage::PreparedEvalCode;
+use super::root_code_storage::BorrowedRootCode;
 use super::*;
 
 /// The synchronous root entry cannot suspend at a generator or await boundary.
@@ -94,7 +96,30 @@ impl Vm {
         publish_globals: bool,
         module: bool,
     ) -> Result<Value, RuntimeError> {
-        self.prepare_root_execution(code, module)?;
+        self.execute_root(code, publish_globals, module, false)
+    }
+    pub(super) fn execute_prepared_script(
+        &mut self,
+        code: &PreparedEvalCode,
+    ) -> Result<Value, RuntimeError> {
+        self.execute_root(code, true, false, true)
+    }
+    fn execute_root(
+        &mut self,
+        code: &Bytecode,
+        publish_globals: bool,
+        module: bool,
+        prepared: bool,
+    ) -> Result<Value, RuntimeError> {
+        let _code = if prepared {
+            self.prepare_root_execution(code, module)?;
+            None
+        } else {
+            self.begin_root_execution()?;
+            let code_lease = BorrowedRootCode::new(code, self.host_scheduling.as_ref())?;
+            self.initialize_root_frame(code, module)?;
+            Some(code_lease)
+        };
         let result = if publish_globals {
             self.prepare_global_declarations(code)
                 .and_then(|()| self.run(code))
@@ -113,6 +138,10 @@ impl Vm {
         code: &Bytecode,
         module: bool,
     ) -> Result<(), RuntimeError> {
+        self.begin_root_execution()?;
+        self.initialize_root_frame(code, module)
+    }
+    pub(super) fn begin_root_execution(&mut self) -> Result<(), RuntimeError> {
         self.ensure_no_debugger_continuation()?;
         self.pending_throw_site = None;
         self.uncaught_throw_site = None;
@@ -128,6 +157,13 @@ impl Vm {
         self.kept_weak_objects.clear();
         self.collect_realm_garbage()?;
         self.enqueue_finalization_cleanup_jobs()?;
+        Ok(())
+    }
+    pub(super) fn initialize_root_frame(
+        &mut self,
+        code: &Bytecode,
+        module: bool,
+    ) -> Result<(), RuntimeError> {
         let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
         let (bindings, metadata, _) = prepared.take_parts();
         self.bindings = bindings;

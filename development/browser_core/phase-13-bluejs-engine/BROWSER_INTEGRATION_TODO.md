@@ -68,6 +68,19 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The root/debugger code-buffer follow-up (2026-10-18) has an implementation
+checkpoint. Borrowed outer buffers remain charged through execution; debugger
+root/nested/intermediate copies acquire admission before cloning and retain
+owners through pause, step/resume, failure and late activation. Prepared eval
+roots keep their existing charge. Validation covers **39 distinct selected
+tests** across three executable targets: twenty existing tiny regressions whose
+fifteen Rust inputs still match, plus nineteen exact semantic controls.
+Formatting, diff checks and offline workspace/all-target Clippy pass. The
+twenty-case run was not restarted after the cybersecurity warning; subsequent
+controls execute only reviewed tiny semantic programs. Wider resource-boundary
+replay and previously rejected publication remain pending. M1u is the latest
+accepted milestone; M1z's integrated gates remain open.
+
 The host-compiled child-code storage follow-up (2026-10-18) has an implementation
 checkpoint. Closure/generator handoff and late activation now acquire document
 code/source owners without binding the reusable host program. Weak caches share
@@ -7935,6 +7948,85 @@ Evidence: `target/host-code-storage-source-20261018.json` and prefix
 red inputs/log, first green inputs/log, the separate weak-header red/fixed
 inputs/logs, expanded/final frozen inputs, fixed controls and the detailed
 English commit message.
+
+#### Borrowed root/debugger code buffers (implementation checkpoint, 2026-10-18)
+
+Acceptance: charge borrowed unique outer code-unit buffers throughout public
+execution, and admit root/nested/intermediate debugger code copies before
+cloning or publishing a pause. Saved owners must survive step/resume and VM
+destruction, attach during late activation, and reject foreign/terminal accounts.
+Prepared ShadowRealm eval roots retain their existing charge. Other debugger
+controller/header storage and diagnostic/program-registry ownership remain
+separate architectural work.
+
+- [x] Preserve three original tiny failing cases and their source archive.
+- [x] Implement borrowed leases, saved-code owners and document-cache handoff.
+- [x] Preserve the existing twenty-case passing run and verify its fifteen Rust
+      inputs still match the worktree and source archive by SHA256.
+- [x] Review root setup/cleanup, snapshot move/drop paths, late attachment and
+      prepared-eval dispatch; verify formatting without running guest code.
+- [x] Complete nineteen exact related semantic controls and offline
+      workspace/all-target Clippy with warnings denied.
+- [x] Complete final source/artifact and Git content audits, final documents and
+      the detailed English checkpoint commit; record its identity in the receipt.
+
+The original **0/3 passed** log records an uncharged 786-byte borrowed buffer
+delta during a guest callback, a saved code buffer whose charge disappears when
+its VM drops, and a debugger pause published without snapshot admission. The
+first implementation log preserves five compiler/fixture adapter errors. Their
+correction passes the original **3/3**, followed by the existing **20/20** run.
+The passing run was already terminal when the cybersecurity warning was
+processed; it has not been restarted.
+
+Public root entries acquire their buffer lease before frame initialization and
+hold it through final cleanup. Existing debugger-entry rejection precedes that
+admission, preserving a paused frame on an unsupported new entry. Snapshot
+owners reserve the candidate header/buffers before cloning, reconcile actual
+capacity and prepare child/source ownership before publication. Pause/step/
+resume moves the same owner. Failed capture follows the existing frame cleanup,
+and dropping a detached saved-code owner returns credit after dropping its data.
+Late activation uses the heap's selected document account. ShadowRealm's typed
+prepared dispatch follows its existing account validation and avoids borrowing
+the already admitted eval root a second time.
+
+The twenty fixed tiny cases cover all three public root forms, exact/one-short
+admission with scalar peers, normal and throw cleanup, refusal before guest
+side effects, root/nested/intermediate teardown, source/child retention, step
+allocation identity, existing paused-entry preservation, late activation and
+foreign/terminal refusal. Their passing source archive still matches all
+fifteen current Rust inputs. Initial static review ran no dynamic cases. After
+existing rejection records were inspected, nineteen exact, reviewed tiny
+semantic controls passed: nested/intermediate inspection and generation checks,
+root/nested throw restoration, paused-entry validation, iterator GC roots,
+public class/static-block pause/resume and ShadowRealm result/error/callable/
+lexical behavior. These controls do not replay resource-admission probes.
+
+Validation covers **39 distinct selected tests**, three executable targets and
+twenty selections, counting the existing twenty-case run once. Formatting, diff
+checks and offline workspace/all-target Clippy with warnings denied pass.
+Source/artifact and Git content audits bind seventeen changed source/document
+files, the additional semantic-control sources, all three executables and the
+detailed English commit. The prior checkpoint's 251-test controls were not
+replayed and remain historical evidence. The ordinary-library contract hook
+does not establish fresh coverage.
+
+M1u remains the latest accepted milestone; M1z's integrated gates remain open.
+Other debugger controller/header storage, host program registries, diagnostic
+maps/registries, complete compiler/parser/coercion producers, active-call backing,
+complete neutral-tree adoption and wider native/integrated gates remain open.
+The latest warning did not identify an operation; existing records confirm push
+was rejected for source-code export and process inspection was sandbox-denied.
+Neither operation was retried. No resource-exhaustion, infinite-execution,
+network/listener/Core/MCP or privileged runtime validation was resumed. Wider
+resource-boundary replay and rejected publication remain pending.
+
+Evidence: `target/root-code-storage-source-20261018.json`, the earlier
+`target/root-code-storage-static-review-source-20261018.json` and prefix
+`/private/tmp/blueice-root-code-storage-` (2026-10-18), including original
+red/first/corrected/expanded logs, expanded/final frozen source archives,
+nineteen exact semantic-control results, static Clippy and the detailed English
+checkpoint message. The earlier static-review receipt preserves its original
+pending status; the checkpoint receipt records subsequent validation and commit.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

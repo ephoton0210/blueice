@@ -14,7 +14,12 @@
 //! nested frame has a distinct serial and continuation; root-only controls
 //! cannot resume it.
 
+use super::root_code_storage::{BorrowedRootCode, SavedRootCode};
 use super::*;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/root_code_storage.rs"]
+mod root_code_tests;
 
 /// Exact source-free bytecode instruction that originated the last uncaught
 /// catchable exception. The embedding host must bind this to its own live
@@ -74,7 +79,7 @@ pub enum VmDebuggerExecutionState {
 /// frame's zero operand-stack base; `interpreter.rs` performs the inverse
 /// conversion before returning this record.
 pub(super) struct DebuggerContinuation {
-    code: Bytecode,
+    pub(super) code: SavedRootCode,
     pc: usize,
     iterators: IteratorRecords,
     handlers: HandlerRecords,
@@ -106,7 +111,7 @@ pub(super) struct NestedDebuggerPauseRequest {
 pub(super) struct NestedDebuggerContinuation {
     pub(super) frame_serial: u64,
     pub(super) code_unit_ordinal: u32,
-    pub(super) code: Bytecode,
+    pub(super) code: SavedRootCode,
     pub(super) pc: usize,
     pub(super) execution: SuspendedModuleExecution,
     pub(super) iterators: IteratorRecords,
@@ -114,7 +119,7 @@ pub(super) struct NestedDebuggerContinuation {
 }
 
 pub(super) struct IntermediateDebuggerContinuation {
-    pub(super) code: Bytecode,
+    pub(super) code: SavedRootCode,
     pub(super) pc: usize,
     pub(super) execution: SuspendedModuleExecution,
     pub(super) iterators: IteratorRecords,
@@ -514,7 +519,9 @@ impl Vm {
             ));
         }
         let intermediate_generation = foreign_intermediate_generation.unwrap_or(generation);
-        self.prepare_root_execution(code, false)?;
+        self.begin_root_execution()?;
+        let _code = BorrowedRootCode::new(code, self.host_scheduling.as_ref())?;
+        self.initialize_root_frame(code, false)?;
         if let Err(error) = self.prepare_global_declarations(code) {
             return Err(self
                 .finish_root_execution(Err(error))
@@ -1194,7 +1201,9 @@ impl Vm {
             ));
         }
 
-        self.prepare_root_execution(code, false)?;
+        self.begin_root_execution()?;
+        let _code = BorrowedRootCode::new(code, self.host_scheduling.as_ref())?;
+        self.initialize_root_frame(code, false)?;
         if let Err(error) = self.prepare_global_declarations(code) {
             return Err(self
                 .finish_root_execution(Err(error))
@@ -1351,14 +1360,22 @@ impl Vm {
         ) {
             DebuggerInterpreterExit::Suspended {
                 pc,
-                iterators,
+                mut iterators,
                 handlers,
-            } => DebuggerRunOutcome::Paused(Box::new(DebuggerContinuation {
-                code: code.clone(),
-                pc,
-                iterators,
-                handlers,
-            })),
+            } => match SavedRootCode::copy(code, self) {
+                Ok(code) => DebuggerRunOutcome::Paused(Box::new(DebuggerContinuation {
+                    code,
+                    pc,
+                    iterators,
+                    handlers,
+                })),
+                Err(error) => DebuggerRunOutcome::Completed(self.finish_debugger_interpret_result(
+                    Err(error),
+                    &mut iterators,
+                    pending_base,
+                    save_base,
+                )),
+            },
             DebuggerInterpreterExit::Completed(result) => {
                 DebuggerRunOutcome::Completed(self.finish_debugger_interpret_result(
                     result,

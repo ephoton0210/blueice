@@ -149,24 +149,7 @@ impl HostCodeCache {
             code.attach_runtime_sources(budget)?;
             return Ok(code);
         }
-        let code = original.copy_host(budget, |code| {
-            let installed = code.has_runtime_sources();
-            let source = if installed {
-                None
-            } else {
-                code.source_text
-                    .allocation()
-                    .map(|source| Self::source(cache, source, budget))
-                    .transpose()?
-            };
-            for child in &mut code.functions {
-                *child = Self::prepare(cache, child, budget)?;
-            }
-            if !installed {
-                code.install_host_source(source, budget);
-            }
-            Ok(())
-        })?;
+        let code = original.copy_host(budget, |code| Self::prepare_root(cache, code, budget))?;
         let mut cache = cache.borrow_mut();
         let Self {
             code: entries,
@@ -182,6 +165,33 @@ impl HostCodeCache {
             },
         );
         Ok(code)
+    }
+    pub(crate) fn prepare_root(
+        cache: &Rc<RefCell<Self>>,
+        code: &mut Bytecode,
+        budget: &HeapNativeBudget,
+    ) -> Result<(), RuntimeError> {
+        budget.reserve(0)?;
+        if !budget.owns(&cache.borrow().charge) {
+            return Err(budget.fail());
+        }
+        code.attach_runtime_sources(budget)?;
+        let installed = code.has_runtime_sources();
+        let source = if installed {
+            None
+        } else {
+            code.source_text
+                .allocation()
+                .map(|source| Self::source(cache, source, budget))
+                .transpose()?
+        };
+        for child in &mut code.functions {
+            *child = Self::prepare(cache, child, budget)?;
+        }
+        if !installed {
+            code.install_host_source(source, budget);
+        }
+        Ok(())
     }
     pub(crate) fn prune(&mut self) {
         self.code.retain(|_, entry| entry.compiled.live());

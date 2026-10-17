@@ -133,6 +133,7 @@ mod module_name_storage;
 mod module_notification_storage;
 mod module_walk_storage;
 mod namespace_cache_storage;
+mod root_code_storage;
 mod shared_code_storage;
 
 #[cfg(test)]

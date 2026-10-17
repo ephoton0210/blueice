@@ -310,6 +310,26 @@ impl CollectorWorkspace {
 }
 
 impl Heap {
+    pub(crate) fn prepare_code_snapshot(
+        &mut self,
+        code: &mut Bytecode,
+        budget: &HeapNativeBudget,
+    ) -> Result<(), HeapError> {
+        if code.has_runtime_sources() && code.functions.iter().all(SharedBytecode::is_runtime) {
+            return code
+                .attach_runtime_sources(budget)
+                .map_err(|_| HeapError::CodeSourceStorageLimit);
+        }
+        let cache = if let Some(cache) = &self.host_code_cache {
+            cache.clone()
+        } else {
+            crate::vm::HostCodeCache::shared(budget)
+                .map_err(|_| HeapError::CodeSourceStorageLimit)?
+        };
+        self.host_code_cache = Some(cache.clone());
+        crate::vm::HostCodeCache::prepare_root(&cache, code, budget)
+            .map_err(|_| HeapError::CodeSourceStorageLimit)
+    }
     pub(super) fn prepare_code_sources(
         &mut self,
         code: SharedBytecode,

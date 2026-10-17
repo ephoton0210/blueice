@@ -1211,8 +1211,38 @@ discovery pointer creates no strong cycle and clears when that cache drops.
 
 Returned code, generator/async frames and timer/Promise callbacks retain their
 document code/source owners through final use. This covers retained host child
-code, not borrowed outer/debugger-only buffers or host-side program registries;
-those remain required program-storage work alongside the wider native gates.
+code. The borrowed outer/debugger buffer follow-up below has an implementation
+checkpoint. Host-side program registries remain separate required
+program-storage work.
+
+The root/debugger buffer follow-up (2026-10-18) introduces a temporary native
+lease for the unique outer buffers borrowed by public script,
+direct execution and dependency-free module entries. The lease survives guest
+calls and outer cleanup. ShadowRealm's prepared eval entry uses its existing
+root owner after document validation, avoiding another root-buffer charge.
+
+Debugger root, nested and intermediate snapshots admit their candidate header
+and unique buffers before cloning, then reconcile reported capacities. Saved
+code acquires shared child/source owners through the existing document cache.
+The saved owner moves through pause, step and resume; its bytecode drops before
+its native credit. Late activation attaches existing paused snapshots to the
+document budget, and foreign or terminal admission refuses before publication.
+These changes cover saved code, leaving other debugger controller/header and
+diagnostic storage in their separate native-control gates.
+
+The existing twenty-case local/offline run matches all fifteen current Rust
+inputs by SHA256. It covers normal/throw cleanup, refusal before guest effects,
+late activation, saved-code lifetimes after VM destruction and allocation
+identity through step/resume. Nineteen additional exact tiny semantic controls
+pass without replaying resource-admission probes. Together these cover
+thirty-nine distinct tests across three executable targets. Formatting, diff
+checks and offline workspace/all-target Clippy pass, with source/artifact and
+Git content audits. Prior broader regression counts remain historical evidence;
+these results do not establish fresh coverage or integrated acceptance. M1u
+remains the latest accepted milestone and M1z's wider gates remain open.
+Evidence: `target/root-code-storage-source-20261018.json`; the earlier
+`target/root-code-storage-static-review-source-20261018.json` preserves the
+initial review's pending status.
 
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit

@@ -1016,8 +1016,9 @@ fn module_root_step_retains_the_frame_across_branches_until_completion() {
 fn paused_continuation_iterator_edges_are_roots_at_gc_safepoints() {
     let mut vm = Vm::default();
     let iterator_record = vm.heap.alloc_object(None).unwrap();
+    let code = SavedRootCode::copy(&Bytecode::empty(), &mut vm).unwrap();
     vm.debugger_continuation = Some(DebuggerContinuation {
-        code: Bytecode::empty(),
+        code,
         pc: 0,
         iterators: vec![Value::Object(iterator_record)].into(),
         handlers: Vec::new().into(),

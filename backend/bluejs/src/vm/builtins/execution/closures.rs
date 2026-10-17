@@ -561,13 +561,18 @@ impl Vm {
                     pc,
                     iterators: saved_iterators,
                     handlers,
-                } => match self.capture_suspension_execution(frame_base) {
-                    Ok(execution) => {
+                } => match crate::vm::root_code_storage::SavedRootCode::copy(&code, self).and_then(
+                    |saved| {
+                        self.capture_suspension_execution(frame_base)
+                            .map(|execution| (saved, execution))
+                    },
+                ) {
+                    Ok((saved_code, execution)) => {
                         self.next_debugger_frame_serial = next_frame_serial;
                         self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
                             frame_serial,
                             code_unit_ordinal: target_ordinal,
-                            code: code.as_ref().clone(),
+                            code: saved_code,
                             pc,
                             execution,
                             iterators: saved_iterators,
@@ -615,11 +620,15 @@ impl Vm {
                     } => {
                         debug_assert!(self.debugger_nested_continuation.is_some());
                         debug_assert!(self.debugger_nested_intermediate_continuation.is_none());
-                        match self.capture_suspension_execution(frame_base) {
-                            Ok(execution) => {
+                        match crate::vm::root_code_storage::SavedRootCode::copy(&code, self)
+                            .and_then(|saved| {
+                                self.capture_suspension_execution(frame_base)
+                                    .map(|execution| (saved, execution))
+                            }) {
+                            Ok((saved_code, execution)) => {
                                 self.debugger_nested_intermediate_continuation =
                                     Some(IntermediateDebuggerContinuation {
-                                        code: code.as_ref().clone(),
+                                        code: saved_code,
                                         pc,
                                         execution,
                                         iterators: saved_iterators,
