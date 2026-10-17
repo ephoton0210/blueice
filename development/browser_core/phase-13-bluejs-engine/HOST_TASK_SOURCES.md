@@ -637,10 +637,23 @@ collection therefore remove the full adopted charge. The completion safepoint
 borrows the namespace/input-cell roots directly, preserving unrooted incoming
 cells before their edges are published. In-place UTF-16 sorting preserves valid
 unique export ordering without native sort scratch. Other heap kinds retain
-their current accounting scope; native list preparation before this adoption
-remains open.
-Binding-list and import-alias staging, other synthetic/source request producers
-and module/source caches remain open.
+their current accounting scope.
+
+Native preparation precedes namespace placeholder publication: complete output
+backing and UTF-16 names retain independent native ownership while cells and
+recursive namespaces are resolved. Kept names move without copying; skipped names
+refund payload while retaining vector backing. Consumed name headers are freed
+before the ready payload crosses the heap boundary. Its owner remains captured
+through trace preparation, then refunds immediately after heap adoption/error,
+before VM trace completion. Native and managed handoff use the same payload-size
+calculation. Late document attachment admits unbounded input; existing owners
+must retain their document identity. Data drops before the owner on every exit.
+
+Import-slot lookup uses admitted sorted/deduplicated backing during own-cell
+creation. Import aliases reserve a complete native batch before request/cell
+construction, publish into already-prepared linked cell tables without growth,
+then release staging. Both remain charged if Rust retains them after VM drop.
+Other synthetic/source request producers and module/source caches remain open.
 
 The graph's retained table/set/vector allocations and UTF-8 names share the document
 native-byte budget. Registration first admits the incoming vector, original

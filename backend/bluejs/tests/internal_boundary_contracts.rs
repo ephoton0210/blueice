@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_module_binding_storage_contracts() {
+    blueice_bluejs::Vm::verify_module_binding_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_namespace_payload_storage_contracts() {
     blueice_bluejs::Heap::verify_namespace_payload_storage_contracts();
 }

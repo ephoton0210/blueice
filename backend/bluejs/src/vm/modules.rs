@@ -32,6 +32,10 @@ mod export_name_storage_tests;
 #[path = "../../tests/fixtures/export_resolution_storage.rs"]
 mod export_resolution_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_binding_storage.rs"]
+mod module_binding_storage_tests;
+
 /// How code that is not a generator -- a module body, an async function body
 /// -- finishes a run: it returns, or it awaits. It never yields, and no
 /// running code suspends at a generator's entry.
@@ -529,18 +533,17 @@ impl Vm {
                             "{name} was not compiled using the module goal"
                         )));
                     }
-                    let imported_slots: HashSet<_> = code
-                        .module_imports
-                        .iter()
-                        .filter_map(|import| import.local_slot.map(|slot| slot as usize))
-                        .collect();
+                    let imported_slots = module_binding_storage::ImportedSlots::prepare(
+                        code,
+                        self.host_scheduling.as_ref(),
+                    )?;
                     let slots = code.scopes.first().map(Vec::as_slice).unwrap_or(&[]);
                     let record = linked
                         .get_mut(name)
                         .expect("linked record was allocated for every module");
                     for slot in slots {
                         let slot = *slot as usize;
-                        if imported_slots.contains(&slot) {
+                        if imported_slots.contains(slot) {
                             continue;
                         }
                         let root_slot = roots.prepare_slot(self.host_scheduling.as_ref())?;
@@ -662,7 +665,10 @@ impl Vm {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
-                    let mut aliases = Vec::new();
+                    let mut aliases = module_binding_storage::Aliases::prepare(
+                        code,
+                        self.host_scheduling.as_ref(),
+                    )?;
                     for import in &code.module_imports {
                         let Some(local_slot) = import.local_slot else {
                             continue;
@@ -749,14 +755,12 @@ impl Vm {
                                 )));
                             }
                         };
-                        aliases.push((local_slot as usize, cell));
+                        aliases.push(local_slot as usize, cell);
                     }
                     let record = linked
                         .get_mut(name)
                         .expect("linked record was allocated for every module");
-                    for (slot, cell) in aliases {
-                        record.cells.insert(slot, cell);
-                    }
+                    aliases.publish(&mut record.cells);
                 }
 
                 // Run declaration instantiation for every reachable module before

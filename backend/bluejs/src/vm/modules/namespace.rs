@@ -77,6 +77,10 @@ impl Vm {
             if deferred {
                 names.exclude("then");
             }
+            let mut exports = module_binding_storage::NamespaceExports::prepare(
+                &names,
+                self.host_scheduling.as_ref(),
+            )?;
             // Publish an identity-stable placeholder before resolving namespace
             // exports. A module may re-export its own namespace, directly or
             // through a cycle; waiting until after recursive resolution would
@@ -94,7 +98,6 @@ impl Vm {
             })();
             self.preserve_promise_table_capacity = saved_capacity;
             let namespace = placeholder?;
-            let mut exports = Vec::with_capacity(names.len());
             for &name in names.iter() {
                 let resolution =
                     Self::resolve_export(modules, module, name, self.host_scheduling.as_ref())?;
@@ -142,11 +145,14 @@ impl Vm {
                         self.with_roots(|heap| heap.set(cell, "value", value))?;
                         cell
                     }
-                    ExportResolution::Missing | ExportResolution::Ambiguous => continue,
+                    ExportResolution::Missing | ExportResolution::Ambiguous => {
+                        exports.skip_next();
+                        continue;
+                    }
                 };
-                exports.push((name.into(), cell));
+                exports.keep_next(cell);
             }
-            self.with_roots(|heap| heap.initialize_module_namespace(namespace, exports))?;
+            exports.publish(self, namespace)?;
             Ok(namespace)
         })();
         self.namespace_transaction_depth -= 1;

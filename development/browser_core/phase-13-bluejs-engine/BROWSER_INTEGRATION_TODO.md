@@ -68,6 +68,21 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The module-binding preparation follow-up (2026-10-17) now owns import and
+namespace staging. Four
+pre-admission observations reproduce one allocation each for import slots,
+aliases and namespace export backing at zero native headroom, and an uncharged
+retained namespace payload. These original producer expressions were extracted
+without adding admission before the red run. Import-slot/alias batches and
+namespace UTF-16/output storage now have native owners; namespace preparation
+precedes placeholder publication. The first completed expanded run passes
+**25/25**. Twenty-five new groups and all 1723 prior selected controls pass:
+**1748 total**, across 49 executables and 162 fixed selections. Formatting, diff
+checks and offline workspace/all-target Clippy pass; source/artifact and commit
+audits record the checkpoint. Other request/cache/heap buffers, namespace/module-
+body recursion and integrated acceptance remain open. M1u remains the latest
+accepted milestone.
+
 The namespace managed-payload follow-up (2026-10-17) now retains payload
 capacity and protects incoming cells. Five tiny
 old-code cases reproduce 42 rather than 384 retained bytes, 42 residual bytes
@@ -6475,6 +6490,89 @@ Evidence paths: `/private/tmp/blueice-namespace-payload-storage-controls-2026101
 red-phase sources in
 `/private/tmp/blueice-namespace-payload-storage-red-source-20261017/`, and
 `target/namespace-payload-storage-source-20261017.json`. This remains an M1z
+implementation checkpoint with wider acceptance open.
+
+#### Module binding preparation follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit import-slot lookup and full import-alias staging before their
+storage/managed effects; admit namespace output backing and UTF-16 names before
+placeholder publication. Keep native ownership through recursion, GC and abrupt
+exits, then transfer completed payloads to the heap's retained-capacity accounting.
+Refused preparations must preserve heap/root/cache state and refund their data.
+
+- [x] Preserve four failures from the extracted original producer expressions:
+      **0/4 passed**. Import-slot collection, alias growth and namespace backing
+      each allocate once at zero headroom; staged export payloads have no charge.
+- [x] Own complete import-slot/alias candidates and namespace UTF-16/output
+      preparation; transfer payload ownership at the heap operation boundary.
+- [x] Pass expanded finite contracts, fixed offline controls, formatting and
+      Clippy; record source/artifact and commit audits with detailed English text.
+
+Imported slots use an admitted sorted/deduplicated vector. Its backing stays
+owned while binding cells are allocated. Aliases reserve the complete batch
+before resolving imports or building namespace/source cells. Publication requires
+the complete batch and pre-existing destination cell-table capacity, then copies
+the cells without growth and releases the staging buffer. Both preparations
+reuse the existing complete-candidate native storage owner.
+
+Namespace preparation admits source-name headers, complete output backing and
+all UTF-16 name buffers before allocation, then checks reported capacities at
+each step. It creates no managed objects or roots. Kept names move into output
+slots without cloning; skipped names release their payload while both vectors'
+backing remains charged. The preparation survives Rust retention after its VM
+dies and releases data before its lease on abandonment.
+
+After every name is processed, consumed name headers are freed and the remaining
+lease covers exactly the heap export payload. A ready owner stays captured
+through GC-trace preparation. The heap either consumes the payload or drops it
+on error; its native lease drops immediately after that heap call and before VM
+trace completion/cleanup. Both sides use the shared retained-capacity payload
+calculation. A previously unbounded preparation admits its remaining data before
+entering a document; an existing owner cannot silently move to another document
+or an unbounded VM. Terminal failure permits refunds and rejects publication.
+
+Twenty-five finite groups cover the four original observations, slot contents,
+exact/short slot/alias/namespace preparations, allocation-free alias publication,
+detached lifetimes, empty/full-quota and terminal cases, UTF-16 native/managed
+handoff, skipped-name refunds/backing retention, unchanged preparation state,
+completion GC, managed refusal, trace-preparation refusal, late document admission,
+cross-document rejection, host-neutral behavior, terminal cleanup, real mixed
+live/deferred imports, and failed-link/new-cell retry. Twenty-two functional
+groups are exposed through the ordinary-library entry point; three allocation
+observations remain unit-only.
+
+Validation: **1748 distinct cases passed, zero failed/ignored**, across 49
+executables and 162 fixed selections: twenty-five new groups and all 1723 prior
+selected controls. The first completed expanded run passes **25/25**. Formatting,
+diff checks and offline workspace/all-target Clippy with warnings denied pass.
+All seven frozen Rust inputs remain unchanged through the runs. The source/
+artifact receipt records nine final source files, Cargo inputs, runner, distinct
+case identities, executable/log hashes, original red-phase source copies,
+separate compile-attempt inputs and detailed English message. Staged and
+committed audits bind the evidence to this checkpoint.
+
+The initial expanded compile attempt referenced a heap-private test query; it
+is preserved separately and is not behavioral red evidence. Absence checks now
+use the public heap read API. The same fixed offline/tiny-fixture constraint,
+nine explicit resource/infinite-loop skips and finite public filters remain.
+Tests reuse the workspace target and disable incremental/dev/test debug artifact
+growth. No physical resource-exhaustion probe, external network/service/listener/
+Core/MCP replay, privileged validation, process killing, fresh full Test262,
+coverage or integrated acceptance is claimed. The rejected push is not retried.
+Other synthetic/source request producers, namespace/module-body recursion,
+module/source caches, other heap/native buffers, allocator/error-message overhead,
+shared programs and integrated acceptance remain open. M1u remains the latest
+accepted milestone.
+
+Evidence paths: `/private/tmp/blueice-module-binding-storage-controls-20261017.py`,
+`/private/tmp/blueice-module-binding-storage-rust-inputs-20261017.json`,
+`/private/tmp/blueice-module-binding-storage-commit-20261017.txt`,
+`/private/tmp/blueice-module-binding-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-module-binding-storage-*-20261017.log`, red-phase
+source copies in `/private/tmp/blueice-module-binding-storage-red-source-20261017/`,
+and the separate compile attempt in
+`/private/tmp/blueice-module-binding-storage-compile-attempt-20261017/`, and
+`target/module-binding-storage-source-20261017.json`. This remains an M1z
 implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)

@@ -1856,7 +1856,7 @@ fn attribute_bytes(key: &PropertyName, descriptor: &PropertyDescriptor) -> usize
             .sum::<usize>()
 }
 
-fn namespace_export_bytes(exports: &Vec<(JsString, ObjectId)>) -> usize {
+pub(crate) fn namespace_export_bytes(exports: &Vec<(JsString, ObjectId)>) -> usize {
     exports.iter().fold(
         exports
             .capacity()
