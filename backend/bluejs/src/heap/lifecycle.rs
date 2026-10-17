@@ -160,6 +160,10 @@ impl Heap {
 
     pub(super) fn minor_gc(&mut self, protected: ProtectedRoots<'_>) -> Result<(), HeapError> {
         let marked = self.mark_without_roots(true, protected, &HashSet::new())?;
+        if let Err(error) = self.prepare_finalization_index(true, &marked) {
+            self.recycle_collector_marks(marked)?;
+            return Err(error);
+        }
         self.release_realm_roots();
         // Nursery identities are appended in serial order and drained together.
         // Borrow that index instead of allocating a second set during collection.
@@ -203,7 +207,11 @@ impl Heap {
                         cell.target = None;
                     }
                 }
-                if let Some(index) = cells.iter().position(|cell| cell.target.is_none()) {
+                if let Some(index) = cells
+                    .iter()
+                    .position(|cell| cell.target.is_none())
+                    .filter(|_| !object.young || marked.contains(id))
+                {
                     self.pending_finalization.insert(*id, index);
                 } else {
                     self.pending_finalization.remove(id);
@@ -238,6 +246,10 @@ impl Heap {
 
     pub(super) fn major_gc(&mut self, protected: ProtectedRoots<'_>) -> Result<(), HeapError> {
         let marked = self.mark_without_roots(false, protected, &HashSet::new())?;
+        if let Err(error) = self.prepare_finalization_index(false, &marked) {
+            self.recycle_collector_marks(marked)?;
+            return Err(error);
+        }
         self.release_realm_roots();
         let mut released_weak_entries: usize = 0;
         for (id, object) in &mut self.objects {
@@ -271,7 +283,11 @@ impl Heap {
                         cell.target = None;
                     }
                 }
-                if let Some(index) = cells.iter().position(|cell| cell.target.is_none()) {
+                if let Some(index) = cells
+                    .iter()
+                    .position(|cell| cell.target.is_none())
+                    .filter(|_| marked.contains(id))
+                {
                     self.pending_finalization.insert(*id, index);
                 } else {
                     self.pending_finalization.remove(id);
@@ -312,10 +328,6 @@ impl Heap {
 
     fn prune_finalization_cleanup_index(&mut self) {
         self.pending_finalization
-            .retain(|id, _| self.objects.contains_key(id));
-        if self.pending_finalization.len().saturating_mul(4) < self.pending_finalization.capacity()
-        {
-            self.pending_finalization.shrink_to_fit();
-        }
+            .retain(|id| self.objects.contains_key(id));
     }
 }

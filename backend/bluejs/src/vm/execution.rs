@@ -229,9 +229,13 @@ impl Vm {
         if self.host_scheduling.is_some() {
             return self.enqueue_host_finalization_tasks();
         }
-        for (callback, holdings) in self.heap.take_finalization_registry_cleanup_jobs() {
-            self.enqueue_promise_job(PromiseJob::FinalizationCleanup { callback, holdings });
-        }
+        // Host-neutral queues have no document admission policy. Move cells
+        // straight into their traced queue without bulk jobs/live-cell copies.
+        let jobs = &mut self.promise_jobs;
+        self.heap
+            .drain_finalization_registry_cleanup_jobs(|callback, holdings| {
+                jobs.push_back(PromiseJob::FinalizationCleanup { callback, holdings });
+            });
         Ok(())
     }
 

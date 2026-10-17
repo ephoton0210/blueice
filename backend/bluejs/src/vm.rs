@@ -77,6 +77,7 @@ pub use host_console::{
     MAX_HOST_CONSOLE_LABELS, MAX_HOST_CONSOLE_LABEL_BYTES, MAX_HOST_CONSOLE_MESSAGE_BYTES,
     MAX_HOST_CONSOLE_RECORDS,
 };
+mod finalization_storage;
 mod host_errors;
 mod host_event_checkpoints;
 mod host_finalization;

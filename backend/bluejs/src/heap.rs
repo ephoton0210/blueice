@@ -58,6 +58,7 @@ pub(crate) use realm_roots::RealmRoot;
 mod object_storage;
 mod root_table;
 use root_table::RootTable;
+mod finalization_storage;
 #[cfg(test)]
 mod tests;
 mod web_abort;
@@ -1782,7 +1783,7 @@ impl GcTraceBatch {
 pub struct Heap {
     // First cleared cell in each ready registry. This is an index, not a
     // strong edge: dead registries are removed by collection.
-    pending_finalization: HashMap<ObjectId, usize>,
+    pending_finalization: finalization_storage::FinalizationIndex,
     identity: u64,
     next_object: u64,
     next_root: u64,

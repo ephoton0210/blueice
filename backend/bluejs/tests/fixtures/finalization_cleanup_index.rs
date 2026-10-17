@@ -37,7 +37,10 @@ fn cleanup_selection_survives_live_cells_unregister_and_another_collection() {
         .unwrap();
     }
     heap.collect_major();
-    assert_eq!(heap.pending_finalization_registries(), [registry]);
+    assert_eq!(
+        heap.pending_finalization_registries().collect::<Vec<_>>(),
+        [registry]
+    );
     let first = heap
         .take_finalization_registry_cleanup_cell(registry)
         .unwrap()
@@ -59,7 +62,7 @@ fn cleanup_selection_survives_live_cells_unregister_and_another_collection() {
         delivered.push(value);
     }
     assert_eq!(delivered, [Value::Number(3.0), Value::Number(6.0)]);
-    assert!(heap.pending_finalization_registries().is_empty());
+    assert!(heap.pending_finalization_registries().next().is_none());
     let ObjectKind::FinalizationRegistry { cells, .. } = &heap.objects[&registry].kind else {
         panic!("registry brand");
     };
@@ -81,7 +84,7 @@ fn collecting_dead_registries_releases_the_cleanup_index() {
             .unwrap();
     }
     heap.collect_major();
-    assert!(heap.pending_finalization_registries().is_empty());
+    assert!(heap.pending_finalization_registries().next().is_none());
     assert_eq!(heap.pending_finalization.capacity(), 0);
     assert_eq!(heap.stats().managed_bytes, 0);
 }

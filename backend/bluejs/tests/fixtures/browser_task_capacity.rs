@@ -300,17 +300,23 @@ fn cleanup_vm(entries: usize) -> Vm {
 #[cfg_attr(test, test)]
 fn cleanup_growth_is_refused_before_roots_or_tasks_are_retained() {
     let mut vm = cleanup_vm(8);
+    let snapshot = vm.prepare_finalization_registry_snapshot().unwrap();
+    let snapshot_bytes = snapshot.retained_bytes();
+    drop(snapshot);
     let capacity = vm.host_finalization_tasks.capacity();
     assert_eq!(capacity, 8);
     let roots = vm.heap.stats().root_registrations;
     let _owner = leave_room(
         &mut vm,
-        capacity * std::mem::size_of::<host_finalization::HostFinalizationTask>() - 1,
+        snapshot_bytes + capacity * std::mem::size_of::<host_finalization::HostFinalizationTask>()
+            - 1,
     );
+    let before = vm.host_scheduling_snapshot().payload_bytes;
     assert_eq!(
         vm.enqueue_host_finalization_tasks(),
         Err(RuntimeError::SchedulingLimit)
     );
+    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
     assert_eq!(vm.host_finalization_tasks.len(), 8);
     assert_eq!(vm.host_finalization_tasks.capacity(), capacity);
     assert_eq!(vm.heap.stats().root_registrations, roots);
@@ -319,10 +325,16 @@ fn cleanup_growth_is_refused_before_roots_or_tasks_are_retained() {
 #[cfg_attr(test, test)]
 fn cleanup_uses_existing_slots() {
     let mut vm = cleanup_vm(5);
+    let snapshot = vm.prepare_finalization_registry_snapshot().unwrap();
+    let snapshot_bytes = snapshot.retained_bytes();
+    drop(snapshot);
     let capacity = vm.host_finalization_tasks.capacity();
     assert!(capacity > vm.host_finalization_tasks.len());
-    let _owner = leave_room(&mut vm, 0);
+    // Only the temporary snapshot needs bytes; the existing queue slots do not.
+    let _owner = leave_room(&mut vm, snapshot_bytes);
+    let before = vm.host_scheduling_snapshot().payload_bytes;
     assert_eq!(vm.enqueue_host_finalization_tasks(), Ok(()));
+    assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
     assert_eq!(vm.host_finalization_tasks.len(), 6);
     assert_eq!(vm.host_finalization_tasks.capacity(), capacity);
 }

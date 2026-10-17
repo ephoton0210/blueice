@@ -31,7 +31,7 @@ impl<T> TaskVector<T> {
         self.values.retain(keep);
     }
     #[cfg(any(test, coverage))]
-    fn retained_bytes(&self) -> usize {
+    pub(super) fn retained_bytes(&self) -> usize {
         host_scheduling::slots(&self.values)
     }
 }

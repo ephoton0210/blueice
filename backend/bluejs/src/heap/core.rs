@@ -64,7 +64,7 @@ impl Heap {
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .map_err(|_| HeapError::IdExhausted)?;
         Ok(Self {
-            pending_finalization: HashMap::new(),
+            pending_finalization: finalization_storage::FinalizationIndex::default(),
             identity,
             next_object: 1,
             next_root: 1,
@@ -357,18 +357,22 @@ impl Heap {
             self.object(*token)?;
         }
         let bytes = finalization_cell_bytes(&target, &holdings, &unregister_token);
-        let protected: Vec<_> = std::iter::once(registry)
-            .chain(match &target {
-                WeakCollectionKey::Object(target) => Some(*target),
-                WeakCollectionKey::Symbol(_) => None,
-            })
-            .chain(holdings.object_id())
-            .chain(match &unregister_token {
-                Some(WeakCollectionKey::Object(token)) => Some(*token),
-                _ => None,
-            })
-            .collect();
-        self.ensure_room(bytes, &protected)?;
+        let mut protected = [registry; 4];
+        let mut protected_len = 1;
+        for id in match &target {
+            WeakCollectionKey::Object(target) => Some(*target),
+            WeakCollectionKey::Symbol(_) => None,
+        }
+        .into_iter()
+        .chain(holdings.object_id())
+        .chain(match &unregister_token {
+            Some(WeakCollectionKey::Object(token)) => Some(*token),
+            _ => None,
+        }) {
+            protected[protected_len] = id;
+            protected_len += 1;
+        }
+        self.ensure_room(bytes, &protected[..protected_len])?;
         self.write_barrier(registry, holdings.object_id());
         let object = self
             .objects
@@ -420,21 +424,26 @@ impl Heap {
                 !remove
             });
             object.bytes -= released;
+            if cells.is_empty() {
+                *cells = Vec::new();
+            }
             if let Some(index) = cells.iter().position(|cell| cell.target.is_none()) {
                 self.pending_finalization.insert(registry, index);
             } else {
                 self.pending_finalization.remove(&registry);
             }
+            self.pending_finalization.release_empty();
             (cells.len() != previous_len, released)
         };
         self.managed_bytes.sub(released);
         Ok(removed)
     }
 
-    pub(crate) fn pending_finalization_registries(&self) -> Vec<ObjectId> {
-        let mut registries: Vec<_> = self.pending_finalization.keys().copied().collect();
-        registries.sort_by_key(|id| id.serial);
-        registries
+    /// Borrow ready identities without allocating a delivery snapshot.
+    pub(crate) fn pending_finalization_registries(
+        &self,
+    ) -> impl ExactSizeIterator<Item = ObjectId> + '_ {
+        self.pending_finalization.keys().copied()
     }
 
     /// Remove one cleared cell only when its cleanup task actually invokes
@@ -463,6 +472,10 @@ impl Heap {
         } else {
             self.pending_finalization.remove(&registry);
         }
+        self.pending_finalization.release_empty();
+        if cells.is_empty() {
+            *cells = Vec::new();
+        }
         let released = size_of::<FinalizationCell>()
             .saturating_add(cell.holdings.payload_bytes())
             .saturating_add(
@@ -475,13 +488,13 @@ impl Heap {
         Ok(Some((cleanup_callback.clone(), cell.holdings)))
     }
 
-    /// Transfers cells whose weak target was cleared by collection to the VM
-    /// job queue. The callback and holdings stay strongly reachable through
-    /// the returned job until the host invokes the callback.
-    pub(crate) fn take_finalization_registry_cleanup_jobs(&mut self) -> Vec<(Value, Value)> {
+    /// Transfer cleared cells in their existing order, directly into the
+    /// standalone VM queue. The visitor must not run JavaScript or collect.
+    pub(crate) fn drain_finalization_registry_cleanup_jobs(
+        &mut self,
+        mut visit: impl FnMut(Value, Value),
+    ) {
         self.pending_finalization.clear();
-        self.pending_finalization.shrink_to_fit();
-        let mut jobs = Vec::new();
         let mut released: usize = 0;
         for object in self.objects.values_mut() {
             let ObjectKind::FinalizationRegistry {
@@ -492,32 +505,31 @@ impl Heap {
                 continue;
             };
             let mut registry_released: usize = 0;
-            let mut live = Vec::with_capacity(cells.len());
-            for cell in std::mem::take(cells) {
-                if cell.target.is_none() {
-                    // `target` is cleared by GC, so only its key identity is
-                    // needed here; the entry still carries the holdings and
-                    // unregister token payload that were charged at register.
-                    registry_released =
-                        registry_released.saturating_add(size_of::<FinalizationCell>());
-                    registry_released =
-                        registry_released.saturating_add(cell.holdings.payload_bytes());
-                    registry_released = registry_released.saturating_add(
+            cells.retain_mut(|cell| {
+                if cell.target.is_some() {
+                    return true;
+                }
+                registry_released = registry_released
+                    .saturating_add(size_of::<FinalizationCell>())
+                    .saturating_add(cell.holdings.payload_bytes())
+                    .saturating_add(
                         cell.unregister_token
                             .as_ref()
                             .map_or(0, weak_collection_key_bytes),
                     );
-                    jobs.push((cleanup_callback.clone(), cell.holdings));
-                } else {
-                    live.push(cell);
-                }
+                visit(
+                    cleanup_callback.clone(),
+                    std::mem::replace(&mut cell.holdings, Value::Undefined),
+                );
+                false
+            });
+            if cells.is_empty() {
+                *cells = Vec::new();
             }
-            *cells = live;
             object.bytes -= registry_released;
             released = released.saturating_add(registry_released);
         }
         self.managed_bytes.sub(released);
-        jobs
     }
 
     pub(crate) fn weak_ref_target(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {

@@ -34,6 +34,29 @@ This is BlueIce's scheduling policy, within HTML's
 [task-queue selection freedom](https://html.spec.whatwg.org/multipage/webappapis.html#event-loop-processing-model).
 It does not promise one global FIFO across unrelated sources.
 
+Finalization readiness uses a separately admitted native index. Collection
+counts newly ready surviving registries and prepares complete backing capacity
+before clearing weak targets, releasing pins, sweeping or changing counters.
+An index refusal recycles the mark result and preserves those heap states.
+Existing keys update in place even when the table is full. Reported-capacity
+changes after deletion do not refund a retained allocation; final removal and
+registry reclamation release its native owner without new admission.
+
+Page cleanup borrows ready identities into an admitted sorted registry snapshot
+before publishing tasks. Its native lease follows the complete Rust-held
+snapshot lifetime. Host-neutral cleanup instead compacts cells in place and
+moves cleared holdings directly into the traced Promise-job queue, preserving
+per-registry cell order without bulk jobs/live-cell scratch vectors. Empty cell
+storage is dropped; nonempty backing and callback-entry preparation remain
+within the wider managed-container/host-buffer gate. Registration protects its
+at-most-four object references in a fixed stack array.
+
+Existing ready-index storage joins root-table, collector and foreign-pin native
+binding as one transaction. Refusal installs no partial owners, preserves live
+registrations/readiness and drops only unadmitted collector scratch. Rust-held
+heaps retain their account; unregister and cleanup release an empty index after
+terminal failure. Wider native/integrated acceptance remains open.
+
 ## Clock, turns and ownership
 
 Page abort timeouts use the same host-supplied monotonic milliseconds as

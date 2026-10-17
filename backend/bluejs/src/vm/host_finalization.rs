@@ -19,8 +19,22 @@ pub(super) struct HostFinalizationTask {
 }
 
 impl Vm {
+    pub(super) fn prepare_finalization_registry_snapshot(
+        &self,
+    ) -> Result<host_task_storage::TaskVector<ObjectId>, RuntimeError> {
+        let mut registries = host_task_storage::TaskVector::new(self.host_scheduling.as_ref())?;
+        let pending = self.heap.pending_finalization_registries();
+        registries.reserve(pending.len())?;
+        for registry in pending {
+            registries.push(registry)?;
+        }
+        registries.sort_unstable_by_key(|id| id.serial);
+        Ok(registries)
+    }
+
     pub(super) fn enqueue_host_finalization_tasks(&mut self) -> Result<(), RuntimeError> {
-        for registry in self.heap.pending_finalization_registries() {
+        let registries = self.prepare_finalization_registry_snapshot()?;
+        for &registry in registries.iter() {
             if self.active_finalization_registry == Some(registry)
                 || self
                     .host_finalization_tasks

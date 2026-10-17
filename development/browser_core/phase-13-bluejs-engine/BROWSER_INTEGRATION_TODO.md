@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The finalization storage checkpoint (2026-10-17) now admits ready-index growth
+before weak clearing/sweeping and page registry snapshots before task publication.
+Standalone cleanup moves holdings directly into traced jobs without bulk scratch
+copies. Twenty-five new finite cases, three existing index cases and all 972
+prior controls pass: **1000 total**, with formatting and offline workspace/all-
+target Clippy. Cell backing/callback-entry preparation, other heap buffers,
+broader report/event scratch, shared programs and wider gates remain open; M1u
+stays the latest accepted milestone.
+
 The host-turn snapshot checkpoint (2026-10-17) now admits realm discovery and
 due callback/abort/per-realm snapshot storage. Native leases survive callbacks
 and Rust-held lifetimes while weak handles allow discarded realms to disappear.
@@ -741,11 +750,11 @@ work and exposes its retained payload ledger.
       have bounded implementation checkpoints. Realm template-cache ownership
       now joins module records, sources, roots, safepoint batches, realm metadata
       and collector workspace ownership. Cached completion/error values, admitted
-      error-reporting batches, persistent root tables and foreign callable pins
-      and host-turn realm/timer/abort snapshots now have bounded checkpoints;
-      all 972 selected controls pass. Finalization cleanup index/job snapshots,
-      shared programs, managed-container backing buffers, wider native storage
-      and integrated acceptance remain open.
+      error-reporting batches, persistent root tables, foreign callable pins,
+      host-turn realm/timer/abort snapshots and finalization index/snapshot/direct
+      cleanup now have bounded checkpoints; all 1000 selected controls pass.
+      Cell backing/callback-entry preparation, shared programs, managed-container
+      backing buffers, wider native storage and integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -3477,6 +3486,85 @@ and staged/committed blob checks. Ordinary-library entry points expose the same
 fixtures; no new coverage result is claimed. This is an M1z checkpoint.
 Finalization cleanup index/job snapshots, other heap buffers, broader report/
 event scratch, shared programs and wider native/integrated gates remain open.
+
+#### Finalization storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit ready-registry index backing capacity before collection
+changes weak cells, pins, objects or counters. Preserve readiness and roots on
+refusal; retain one native owner through table reuse, late document activation,
+Rust-held heaps and terminal release. Admit page registry snapshots before task
+publication. Transfer standalone cleanup cells directly into queued jobs without
+bulk job or replacement-cell vectors, preserving existing cleanup order.
+
+- [x] Reproduce missing native ownership/admission with tiny offline cases.
+      All three original GC/index/page-snapshot cases failed, then passed.
+- [x] Implement admitted index/snapshot storage and direct standalone transfer;
+      twenty-five finite cases pass, including reported/full replacement bounds.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Other heap buffers, broader report/event
+      scratch, shared programs and wider integrated gates remain open.
+
+The ready-registry index now retains one native owner for its hash allocation.
+After marking, collection determines which surviving registries will gain their
+first ready cell. It admits a complete replacement while old storage remains
+charged, checks reported capacity and transfers entries before weak clearing,
+pin release, sweep or collection counters change. Refusal recycles the borrowed
+mark result before returning and preserves those heap states. Dead registries
+and live targets do not demand fictitious ready-index entries.
+
+Existing keys update through mutable value lookup, avoiding HashMap growth when
+updating a full table. Deletion may reduce reported capacity without freeing its
+allocation, so the owner retains the original allocation size through partial
+delivery. GC batches keep prepared spare storage through intermediate removals;
+final pruning, unregister and final-cell delivery free an empty index without
+new admission. Rust-held heaps keep the same native account until destruction.
+
+Existing ready-index storage joins root, collector and foreign-pin binding in
+one transaction. No owner is installed unless all four fit; refusal preserves
+roots/readiness and discards only unadmitted collector scratch. Borrowed ready
+identities become an admitted sorted page snapshot before tasks are published;
+its lease survives Rust-held lifetimes and refunds on success or refusal.
+
+Host-neutral cleanup compacts cells in place and moves holdings directly into
+the traced Promise queue in their original per-registry order. There is no bulk
+job vector or replacement live-cell vector. Empty cell buffers are dropped;
+nonempty buffers keep their existing capacity. Registration protects its at-most-
+four object references in a fixed stack array. Cell backing and callback-entry
+preparation remain within the broader managed-container/host-buffer gate.
+
+The original three cases failed before admission and now pass. Expanded cases
+cover minor/major refusal and generation behavior, released pins, live targets,
+full-table reuse, terminal delivery/unregister, dead registries, Rust-held heaps,
+late activation/refusal and foreign documents, leased/sorted/empty snapshots,
+publication/refusal accounting, standalone cell order/capacity and queued object
+holdings through GC. Reported-capacity refusal and complete replacement/exact
+allowance cases also pass. The first fixed sweep exposed one old spare-queue
+fixture without allowance for its new temporary snapshot. Both queue-growth and
+spare-slot fixtures now isolate that snapshot's bytes and assert their full
+refund on return, preserving their original capacity boundary checks.
+
+Validation: **1000 passed, zero failed/ignored**, across 39 executables and 81
+fixed selections: twenty-five new finalization-storage cases, three existing
+cleanup-index cases and all 972 prior selected controls. Formatting, diff checks
+and offline workspace/all-target Clippy with warnings denied pass. Cargo reuses
+the workspace target with incremental compilation and dev/test debug artifact
+growth disabled. The same nine legacy resource/infinite-loop cases remain
+excluded and JSON resource sweeps are not selected. Execution cases are offline,
+fixed and finite. No network/service replay, physical exhaustion probe, fresh
+full Test262, real Core/MCP replay, coverage result or integrated acceptance is
+claimed.
+
+Evidence: `/private/tmp/blueice-finalization-storage-controls-20261017.py`,
+`/private/tmp/blueice-finalization-storage-commit-20261017.txt`,
+`/private/tmp/blueice-finalization-storage-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-finalization-storage-{red,first,expanded,finalization,index-controls,fmt,clippy}-20261017.log`.
+The initial inherited failure is preserved in
+`/private/tmp/blueice-finalization-storage-browser-controls-baseline-red-20261017.log`.
+`target/finalization-storage-source-20261017.json` records source/log/executable
+hashes and staged/committed blob checks. Ordinary-library entry points expose
+the same fixtures; no new coverage result is claimed. This is an M1z checkpoint.
+Cell backing/callback-entry preparation, other heap buffers, broader report/event
+scratch, shared programs and wider native/integrated gates remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

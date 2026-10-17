@@ -310,21 +310,23 @@ impl Heap {
             self.roots.budget(),
             self.collector.budget.as_ref(),
             self.realm_pins.budget(),
+            self.pending_finalization.budget(),
         ) {
-            (Some(roots), Some(collector), Some(pins)) => {
+            (Some(roots), Some(collector), Some(pins), Some(finalization)) => {
                 return if roots.same_document(&budget)
                     && collector.same_document(&budget)
                     && pins.same_document(&budget)
+                    && finalization.same_document(&budget)
                 {
                     Ok(())
                 } else {
                     Err(HeapError::InvalidConfig)
                 };
             }
-            (None, None, None) => {}
+            (None, None, None, None) => {}
             _ => return Err(HeapError::InvalidConfig),
         }
-        // Install no owner until root, collector and pin storage all fit. Root
+        // Install no owner until root, collector, pin and ready-index storage fit. Root
         // registrations and handles survive refused activation; only unadmitted
         // collector scratch may be discarded.
         let root_charge = match budget.reserve(self.roots.retained_bytes()) {
@@ -348,6 +350,15 @@ impl Heap {
                 return Err(HeapError::RootStorageLimit);
             }
         };
+        let finalization_charge = match budget.reserve(self.pending_finalization.retained_bytes()) {
+            Ok(charge) => charge,
+            Err(_) => {
+                self.collector = CollectorWorkspace::default();
+                return Err(HeapError::CollectorStorageLimit);
+            }
+        };
+        self.pending_finalization
+            .bind_admitted(budget.clone(), finalization_charge);
         self.roots.bind_admitted(budget.clone(), root_charge);
         self.realm_pins.bind_admitted(budget.clone(), pin_charge);
         self.collector.charge = Some(collector_charge);
