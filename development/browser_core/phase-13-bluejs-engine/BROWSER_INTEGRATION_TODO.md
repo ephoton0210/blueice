@@ -68,6 +68,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The eval environment producer follow-up (2026-10-18) has an implementation
+checkpoint. Borrowed
+selection scratch, snapshot vectors, copied names and dynamic capture tables
+now acquire native admission before construction. Both original refusal cases
+and all fourteen expanded cases pass. Final validation passes **176 distinct
+selected tests** across twelve executable targets and thirty-eight fixed
+selections. Formatting, diff checks and offline workspace/all-target Clippy pass,
+with source/artifact and local commit audits. Broader acceptance remains open.
+
 The direct/indirect eval storage follow-up (2026-10-18) is active. Apply retained
 input/source/code ownership to eval, including its compiler environment snapshots
 and capture handoff. Preserve strictness, lexical/global variable environments,
@@ -1289,7 +1298,9 @@ work and exposes its retained payload ledger.
       Continuation awaits now share admitted status/queue preparation and publish
       handled state after frame/work ownership. Finally provenance retains hash
       backing cost and prepares table/source state across GC. Other input/origin producers
-      remain open. Shared programs, other
+      remain open. Eval compiler environment producers now preflight borrowed
+      selection scratch, copied names and returned snapshot backing; fourteen
+      fixed semantics/lifetime/refusal cases pass. Shared programs, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -7654,6 +7665,81 @@ Evidence: `target/eval-source-storage-source-20261018.json` and prefix
 `/private/tmp/blueice-eval-source-storage-` (2026-10-18), including initial fixture
 findings, corrected red input/log, initial green input/log, expanded frozen
 inputs, fixed controls and commit message.
+
+#### Eval environment producer follow-up (implementation checkpoint, 2026-10-18)
+
+Acceptance: admit borrowed selection scratch, returned vectors, copied names
+and dynamic-capture tables before their construction. Preserve exact active,
+captured and live-name precedence, parameter-eval corrections, variable-scope
+membership and lexical conflict ordering. Refusal preserves the caller and any
+already-published compiler snapshot; all scratch and discarded candidates refund.
+
+- [x] Reproduce allocation before refusal with two fixed tiny snapshots.
+- [x] Replace production tree snapshots with admitted borrowed selection and
+      fallible name copies; keep old selectors as test-only references.
+- [x] Finish expanded finite contracts, fixed controls, source/artifact audits,
+      final documentation and a detailed English commit.
+
+The original **0/2 passed** run records **4 allocations** for the visible-binding
+snapshot and **2 allocations** for the name lists before zero-headroom refusal.
+Both initial cases now pass with zero allocations. An expanded fixture's two
+missing mutable declarations are preserved as a separate compiler finding;
+the subsequent **13/14** run preserved a fixture assertion that incorrectly
+expected the VM's existing **96 bytes** to disappear. Comparing the unchanged
+baseline instead gives **14/14 passed**. Neither fixture correction changed
+production behavior.
+
+Borrowed candidates sort by name and original selection priority before any
+name is copied. The last active declaration wins; captured and live-name
+fallbacks keep their first-match order. Discarded candidates retain references
+only. Snapshot slots, dynamic-capture capacity and both copies of each selected
+name acquire admission first, then reconcile reported capacity before the next
+copy. Parameter eval changes metadata only for the original eligible slots.
+
+Variable and lexical selection use admitted borrowed scratch. The function
+variable environment remains narrower than visible bindings; catch parameters
+remain excluded from lexical conflicts. Ordinary function parameter evaluation
+includes body lexicals, while arrows retain their inherited boundary. Global
+declarative names append in the original map order, preserving duplicates and
+excluding property-backed names. Complete replacement name lists coexist with
+the old snapshot until both succeed; publication destroys old data before its
+refund and transfers the new leases without double admission.
+
+The fourteen finite cases include the two unit-only allocation observations and
+twelve functional contracts exposed through an ordinary-library entry. They
+compare retained test-only tree selectors, including duplicate/shadowed binding
+selection, parameter-eval metadata/cells, variable/lexical/catch/function/arrow
+boundaries and global append order/duplicates. Exact/one-short scratch-plus-
+snapshot peaks, replacement refusal/success, VM-independent lifetimes,
+foreign/detached rejection, unbounded attachment and terminal cleanup verify
+ownership. Fixtures use at most ten binding slots and tiny names with scalar
+quota peers.
+
+Final validation passes **176 distinct selected tests** in thirty-eight fixed
+selections across twelve executable targets: the fourteen new cases and all
+162 preceding eval/Function/module/GC controls. Formatting, diff checks and
+offline workspace/all-target Clippy with warnings denied pass. The first
+176-case run and its two fixture-style Clippy findings remain preserved; final
+validation follows both style corrections with unchanged production sources.
+Source/artifact and staged/committed content audits bind five frozen Rust
+inputs, seven source/document files, twelve test executables and the detailed
+English commit. Parser/compiler lowering, returned input/source/code ownership,
+indirect eval, frame restoration and later builtin dispatch remain unchanged.
+These checks do not renew earlier broad acceptance inventories. The ordinary-
+library entry exposes the functional fixtures without claiming fresh coverage.
+
+Full parser/compiler/coercion producer preallocation, ShadowRealm.evaluate
+account handoff, ordinary host-precompiled shared script ownership, diagnostic
+map/registry storage and allocator/BigInt-spare/Rc-control exclusions remain open
+with integrated acceptance. M1u remains the latest accepted milestone. Validation
+stays local, offline, finite and tiny; no broad, exhaustion, infinite-execution
+or network/Core/MCP replay is resumed, and the rejected push is not retried.
+
+Evidence: `target/eval-environment-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-eval-environment-storage-` (2026-10-18), including original
+red inputs/log, initial green source/log, expanded compiler and baseline findings,
+initial validation/style findings, final frozen inputs, fixed controls and the
+detailed English commit message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

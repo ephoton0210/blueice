@@ -298,37 +298,11 @@ impl Vm {
         let program =
             ParsedEvalInput::parse_eval(&source, self.strict, self.host_scheduling.as_ref())?;
         drop(source);
-        let mut visible = self.eval_visible_bindings();
-        let mut dynamic_captures = HashMap::new();
-        if self.parameter_eval_env.is_some() {
-            for (name, binding, slot) in &mut visible {
-                // An active local/catch/block binding sits inside the eval
-                // variable environment and must keep its original cell.
-                if self
-                    .active_scope_slots
-                    .iter()
-                    .any(|scope| scope.contains(slot))
-                {
-                    continue;
-                }
-                if let Some(dynamic) = self.dynamic_eval_bindings.get(name) {
-                    // A repeated eval's var initializer stores to a captured
-                    // slot directly. Capture the local dynamic var, with its
-                    // mutable metadata, rather than its shadowed outer cell.
-                    // Caller references already resolved to that outer cell
-                    // and unrelated closures remain unchanged.
-                    binding.mutable = true;
-                    binding.strict_immutable = false;
-                    binding.lexical = false;
-                    binding.catch_parameter = false;
-                    binding.eval_var = true;
-                    dynamic_captures.insert(*slot, dynamic.cell);
-                }
-            }
-        }
+        let mut environment = EvalCompileEnvironment::visible(self)?;
         // Only the derived constructor itself, or an arrow function or eval
         // code inside it, has the constructor binding `super()` needs.
-        let derived_constructor = visible
+        let derived_constructor = environment
+            .visible
             .iter()
             .any(|(name, _, _)| name == crate::compiler::DERIVED_CONSTRUCTOR_BINDING);
         if crate::ast::contains_super_call_outside_class(&program)
@@ -355,27 +329,7 @@ impl Vm {
         // The persistent global-realm path uses its existing binding cells
         // for direct eval declarations. Function eval instead distinguishes
         // the immediate VariableEnvironment from captured outer cells.
-        let variable_environment_names = if global_execution {
-            visible.iter().map(|(name, _, _)| name.clone()).collect()
-        } else {
-            self.eval_variable_environment_names()
-        };
-        let mut lexical_conflicts = self.eval_lexical_conflicts();
-        if global_execution {
-            lexical_conflicts.extend(
-                self.global_bindings
-                    .iter()
-                    .filter(|(_, binding)| !binding.property)
-                    .map(|(name, _)| name.clone()),
-            );
-        }
-        let environment = EvalCompileEnvironment::adopt(
-            visible,
-            dynamic_captures,
-            variable_environment_names,
-            lexical_conflicts,
-            self.host_scheduling.as_ref(),
-        )?;
+        environment.finish_names(self, global_execution)?;
         let code = program.compile_with(self.host_scheduling.as_ref(), |program| {
             crate::compiler::compile_eval(
                 program,

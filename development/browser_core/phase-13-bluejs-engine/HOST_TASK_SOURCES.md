@@ -1153,9 +1153,20 @@ owners while keeping terminal failure latched. Returned/queued closures,
 generators and saved async code retain independently shared source/code storage;
 unbounded eval code attaches when document accounting begins.
 
-This covers direct/indirect eval returned inputs, compiler snapshots and durable
-code. Temporary BTree snapshot builders and full parser/compiler producer
-preallocation remain open, together with ShadowRealm.evaluate account handoff,
+Eval environment producers now admit borrowed selection vectors before sorting
+and deduplicating, then admit returned vector/map capacity and all selected name
+payloads before copying. Active declarations retain last-match precedence;
+captured/live fallback bindings retain first-match precedence. Parameter-eval
+metadata and dynamic cells keep their existing eligibility. Variable and lexical
+name lists preserve function/arrow/catch boundaries and global append ordering.
+Complete replacement lists coexist with their old snapshot until publication;
+old data drops before refund, and new leases transfer without a second charge.
+Refusal leaves prior names unchanged. Test-only tree selectors provide the
+original semantic reference; production no longer builds those trees.
+
+This covers direct/indirect eval returned inputs, compiler snapshots, their
+environment producers and durable code. Full parser/compiler producer
+preallocation remains open, together with ShadowRealm.evaluate account handoff,
 ordinary host-precompiled shared script ownership, diagnostic map/registry
 storage, allocator/BigInt-spare/Rc-control exclusions and integrated acceptance.
 

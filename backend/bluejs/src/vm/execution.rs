@@ -1692,6 +1692,7 @@ impl Vm {
         result
     }
 
+    #[cfg(any(test, coverage))]
     pub(super) fn eval_visible_bindings(&self) -> Vec<(String, Binding, u32)> {
         let mut visible = std::collections::BTreeMap::new();
         for scope in &self.active_scope_slots {
@@ -1729,6 +1730,7 @@ impl Vm {
     /// visible cells. In particular, an inner function may capture `x` from
     /// an outer function while a sloppy direct eval still has to create its
     /// own `var x` in the inner VariableEnvironment.
+    #[cfg(any(test, coverage))]
     pub(super) fn eval_variable_environment_names(&self) -> Vec<String> {
         let mut names = std::collections::BTreeSet::new();
         if let Some(position) = self
@@ -1814,6 +1816,7 @@ impl Vm {
     /// Lexical names between a direct eval site and the active function's
     /// VariableEnvironment. Unlike captured outer bindings, these prevent a
     /// sloppy eval `var` declaration from being instantiated.
+    #[cfg(any(test, coverage))]
     pub(super) fn eval_lexical_conflicts(&self) -> Vec<String> {
         let variable_scope_position = self
             .active_scopes
