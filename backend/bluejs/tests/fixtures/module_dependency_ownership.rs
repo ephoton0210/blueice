@@ -351,9 +351,20 @@ fn module_deferred_frontier_storage_is_charged_before_dependency_code_runs() {
     vm.use_bounded_host_microtask_checkpoints().unwrap();
     let observed = Rc::new(RefCell::new(Vec::new()));
     let output = observed.clone();
-    let counter = vm.displaced_execution_bytes.clone();
+    // Names/frontiers now have independent leases, outside the displaced-
+    // frame subtotal. Observe their contribution to the real document budget.
+    let view = Vm {
+        host_scheduling: Some(vm.host_scheduling.as_ref().unwrap().child()),
+        ..Vm::default()
+    };
+    let baseline = Rc::new(std::cell::Cell::new(0));
+    let before = baseline.clone();
     vm.install_host_function("observe", 0, move |_args: &[HostValue]| {
-        output.borrow_mut().push(counter.get());
+        output.borrow_mut().push(
+            view.host_scheduling_snapshot()
+                .payload_bytes
+                .saturating_sub(before.get()),
+        );
         Ok(HostValue::Undefined)
     })
     .unwrap();
@@ -377,12 +388,13 @@ fn module_deferred_frontier_storage_is_charged_before_dependency_code_runs() {
     ]);
     vm.set_module_loader_context("test/main.js", registry);
     execute(&mut vm, "var target=import.defer('./entry.mjs'); 0;");
-    let job_bytes = vm.promise_jobs[0].scheduling_payload_bytes();
     let callback = vm.lookup_global_name("callback").unwrap().unwrap();
     vm.enqueue_promise_job(PromiseJob::HostMicrotask { callback });
+    baseline.set(vm.host_scheduling_usage().unwrap().payload_bytes);
     vm.run_next_promise_job().unwrap();
-    let minimum =
-        job_bytes + 2 * std::mem::size_of::<String>() + "test/a.mjs".len() + "test/b.mjs".len();
+    // Queued job payload is already in the baseline. Frontier storage must be
+    // additional ownership while dependency code is on the host boundary.
+    let minimum = 2 * std::mem::size_of::<String>() + "test/a.mjs".len() + "test/b.mjs".len();
     assert!(
         observed.borrow()[0] >= minimum,
         "observed={:?}, minimum={minimum}",
@@ -532,10 +544,19 @@ fn module_dependency_collector_storage_follows_later_dependency_callbacks() {
         vm.use_bounded_host_microtask_checkpoints().unwrap();
         let observed = Rc::new(RefCell::new(Vec::new()));
         let output = observed.clone();
-        let counter = vm.displaced_execution_bytes.clone();
+        let view = Vm {
+            host_scheduling: Some(vm.host_scheduling.as_ref().unwrap().child()),
+            ..Vm::default()
+        };
+        let baseline = Rc::new(std::cell::Cell::new(0));
+        let before = baseline.clone();
         let scope = vm.host_scheduling.as_ref().unwrap().child();
         vm.install_host_function("observe", 0, move |_args: &[HostValue]| {
-            output.borrow_mut().push(counter.get());
+            output.borrow_mut().push(
+                view.host_scheduling_snapshot()
+                    .payload_bytes
+                    .saturating_sub(before.get()),
+            );
             if abort {
                 scope.fail();
             }
@@ -558,6 +579,7 @@ fn module_dependency_collector_storage_follows_later_dependency_callbacks() {
             ),
         ]);
         vm.execute_module_graph("test/hot.mjs", &registry).unwrap();
+        baseline.set(vm.host_scheduling_usage().unwrap().payload_bytes);
         let result = vm.execute_module_graph("test/root.mjs", &registry);
         if abort {
             assert_eq!(result, Err(RuntimeError::SchedulingLimit));
@@ -572,6 +594,30 @@ fn module_dependency_collector_storage_follows_later_dependency_callbacks() {
             observed.borrow()
         );
         assert_eq!(vm.displaced_execution_bytes.get(), 0);
+        // The first suspended dependency retains the earlier host snapshot;
+        // the second execute_module_graph call installs a distinct snapshot.
+        // Count each live registry owner once when checking the final account.
+        let mut registries =
+            HashSet::from([&*vm.module_registry as *const HashMap<String, Bytecode>]);
+        let mut detached_registry_bytes = 0;
+        for frame in vm.module_continuations.values() {
+            let registry = frame.code.registry();
+            let data: &HashMap<String, Bytecode> = registry;
+            if registries.insert(data as *const _) {
+                detached_registry_bytes += registry.retained_bytes();
+            }
+        }
+        assert_eq!(
+            vm.host_scheduling_snapshot().payload_bytes,
+            vm.own_scheduling_usage().payload_bytes
+                + vm.module_value_storage_bytes()
+                + vm.heap.collector_storage_bytes()
+                + vm.heap.root_storage_bytes()
+                + vm.module_registry.retained_bytes()
+                + vm.module_record_storage_bytes()
+                + vm.module_root_storage_bytes()
+                + detached_registry_bytes
+        );
     }
 }
 

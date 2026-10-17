@@ -12,6 +12,10 @@ use super::*;
 #[path = "../../tests/fixtures/module_dependency_ownership.rs"]
 mod dependency_ownership_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_name_storage.rs"]
+mod module_name_storage_tests;
+
 /// How code that is not a generator -- a module body, an async function body
 /// -- finishes a run: it returns, or it awaits. It never yields, and no
 /// running code suspends at a generator's entry.
@@ -273,7 +277,7 @@ impl Vm {
             drain_jobs,
             is_dynamic_import,
             phase,
-            &mut Vec::new(),
+            &mut ModuleNames::default(),
         )
     }
 
@@ -284,7 +288,7 @@ impl Vm {
         drain_jobs: bool,
         is_dynamic_import: bool,
         phase: ImportPhase,
-        frontier: &mut Vec<String>,
+        frontier: &mut ModuleNames,
     ) -> Result<Value, RuntimeError> {
         self.synchronize_scheduling_usage()?;
         self.module_execution_depth += 1;
@@ -307,7 +311,7 @@ impl Vm {
         drain_jobs: bool,
         is_dynamic_import: bool,
         phase: ImportPhase,
-        frontier: &mut Vec<String>,
+        frontier: &mut ModuleNames,
     ) -> Result<Value, RuntimeError> {
         if let Some(scope) = &self.host_scheduling {
             modules.attach(scope)?;
@@ -749,27 +753,17 @@ impl Vm {
                 // the asynchronous part of its dependency graph runs now.
                 // Loading the requested modules resolved every request the walk
                 // follows.
-                let dependencies =
-                    Self::gather_async_dependencies(entry, modules, &linked, &mut HashSet::new())
-                        .expect("every request of the graph was resolved when it was loaded");
-                // This vector remains Rust-owned across dependency JavaScript.
-                // Cache hits run no code; their immediate result handoff stays
-                // within the existing transient native-operation policy.
-                let executes = dependencies.iter().any(|name| {
-                    linked.get(name).is_some_and(|record| {
-                        !record.evaluated && !record.evaluating && record.error.is_none()
-                    })
-                });
-                let frontier_payload = self.charge_execution_payload(if executes {
-                    module_dependencies::string_vector_bytes(&dependencies)
-                } else {
-                    0
-                });
+                let dependencies = Self::gather_async_dependency_names(
+                    entry,
+                    modules,
+                    &linked,
+                    &mut HashSet::new(),
+                    self.host_scheduling.as_ref(),
+                )?;
                 self.synchronize_scheduling_usage()?;
-                for dependency in &dependencies {
+                for dependency in dependencies.iter() {
                     self.evaluate_module_record(dependency, &registry, &mut linked)?;
                 }
-                drop(frontier_payload);
                 *frontier = dependencies;
                 let namespace =
                     self.module_namespace(entry, true, modules, &mut linked, &mut roots)?;
@@ -1419,7 +1413,13 @@ impl Vm {
         module_type: ModuleType,
         phase: ImportPhase,
     ) -> Result<DynamicImportResult, RuntimeError> {
-        let entry = Self::resolve_module_target(referrer, specifier, module_type)?;
+        self.synchronize_scheduling_usage()?;
+        let entry = ModuleName::resolve(
+            referrer,
+            specifier,
+            module_type,
+            self.host_scheduling.as_ref(),
+        )?;
         if phase == ImportPhase::Defer {
             return self.dynamic_import_defer_job(&entry);
         }
@@ -2541,12 +2541,12 @@ impl Vm {
     /// cycle root, not necessarily the particular module that appeared in
     /// the import declaration.  Without this distinction an outside importer
     /// can resume between a cycle leaf and its root's own top-level await.
-    pub(super) fn async_dependency_root(
-        &self,
-        dependency: &str,
+    pub(super) fn async_dependency_root<'a>(
+        &'a self,
+        dependency: &'a str,
         modules: &HashMap<String, Bytecode>,
         linked: &HashMap<String, LinkedModule>,
-    ) -> Result<String, RuntimeError> {
+    ) -> Result<&'a str, RuntimeError> {
         for candidate in self
             .module_async_parents
             .get(dependency)
@@ -2558,10 +2558,10 @@ impl Vm {
                 .is_some_and(|record| record.evaluating || record.suspended)
                 && Self::module_reaches(dependency, candidate, modules, &mut HashSet::new())?
             {
-                return Ok(candidate.clone());
+                return Ok(candidate.as_str());
             }
         }
-        Ok(dependency.to_string())
+        Ok(dependency)
     }
 
     pub(super) fn evaluate_module_record(
@@ -2582,6 +2582,7 @@ impl Vm {
         if record.evaluated || record.evaluating {
             return Ok(Value::Undefined);
         }
+        self.synchronize_scheduling_usage()?;
         linked
             .get_mut(name)
             .expect("checked module record exists")
@@ -2589,58 +2590,57 @@ impl Vm {
         let evaluation_epoch = self.throw_epoch;
         let result = (|| {
             let code = modules.code(name);
-            let mut pending_dependencies = Vec::new();
+            let mut pending_dependencies = ModuleNames::default();
             for request in &code.module_requests {
                 // Loading the requested modules resolved every request.
-                let target =
-                    Self::resolve_module_target(name, &request.module_request, request.module_type)
-                        .expect("every request of the graph resolves");
+                let target = ModuleName::resolve(
+                    name,
+                    &request.module_request,
+                    request.module_type,
+                    self.host_scheduling.as_ref(),
+                )?;
                 // A deferred request contributes only the asynchronous part of
                 // its graph; an eager one contributes the module itself.
                 let evaluation_list = if request.deferred {
-                    Self::gather_async_dependencies(&target, modules, linked, &mut HashSet::new())
-                        .expect("every request of the graph resolves")
+                    Self::gather_async_dependency_names(
+                        &target,
+                        modules,
+                        linked,
+                        &mut HashSet::new(),
+                        self.host_scheduling.as_ref(),
+                    )?
                 } else {
-                    vec![target]
+                    ModuleNames::singleton(target, self.host_scheduling.as_ref())?
                 };
-                let capacity = evaluation_list.capacity();
-                let mut evaluation_list = evaluation_list.into_iter();
-                while let Some(target) = evaluation_list.next() {
-                    let executes = linked.get(&target).is_some_and(|record| {
+                for target in evaluation_list {
+                    let executes = linked.get(target.as_str()).is_some_and(|record| {
                         !record.evaluated && !record.evaluating && record.error.is_none()
                     });
-                    // Earlier pending names and later evaluation-list entries
-                    // stay Rust-owned while this dependency can execute JS.
-                    let _pending_payload = self.charge_execution_payload(if executes {
-                        module_dependencies::string_vector_bytes(&pending_dependencies)
-                    } else {
-                        0
-                    });
-                    let _evaluation_payload = self.charge_execution_payload(if executes {
-                        module_dependencies::string_iterator_bytes(
-                            capacity,
-                            evaluation_list.as_slice(),
-                        )
-                        .saturating_add(target.capacity())
-                    } else {
-                        0
-                    });
+                    // List/iterator/name leases remain independent of the
+                    // ambient VM while this dependency executes JavaScript.
                     if executes {
                         self.synchronize_scheduling_usage()?;
                     }
                     self.evaluate_module_record(&target, modules, linked)?;
-                    if linked.get(&target).is_some_and(|record| record.suspended) {
+                    if linked
+                        .get(target.as_str())
+                        .is_some_and(|record| record.suspended)
+                    {
                         // `target` is part of the graph, whose requests all
                         // resolve.
-                        pending_dependencies.push(
+                        pending_dependencies.push_copy(
                             self.async_dependency_root(&target, modules, linked)
                                 .expect("every request of the graph resolves"),
-                        );
+                            self.host_scheduling.as_ref(),
+                        )?;
                     }
                 }
             }
             if !pending_dependencies.is_empty() {
-                self.register_async_module_dependencies(name, pending_dependencies)?;
+                self.register_async_module_dependencies(
+                    name,
+                    pending_dependencies.into_unleased(),
+                )?;
                 linked
                     .get_mut(name)
                     .expect("checked module record exists")

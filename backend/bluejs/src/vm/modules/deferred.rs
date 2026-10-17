@@ -62,7 +62,7 @@ impl Vm {
         entry: &str,
     ) -> Result<DynamicImportResult, RuntimeError> {
         let modules = self.module_registry.clone();
-        let mut frontier = Vec::new();
+        let mut frontier = ModuleNames::default();
         self.execute_module_graph_with_frontier(
             entry,
             &modules,
@@ -74,21 +74,18 @@ impl Vm {
         let namespace = self
             .last_module_namespace
             .expect("successful deferred graph execution publishes its namespace before returning");
-        let running: Vec<String> = frontier
-            .into_iter()
-            .filter(|dependency| {
-                self.linked_record(dependency)
-                    // Evaluation remains active while suspended, and both
-                    // flags are cleared together when a dependency settles.
-                    .is_some_and(|record| record.evaluating)
-            })
-            .collect();
-        if running.is_empty() {
+        frontier.retain(|dependency| {
+            self.linked_record(dependency)
+                // Evaluation remains active while suspended, and both
+                // flags are cleared together when a dependency settles.
+                .is_some_and(|record| record.evaluating)
+        });
+        if frontier.is_empty() {
             return Ok(DynamicImportResult::Fulfilled(Value::Object(namespace)));
         }
         Ok(DynamicImportResult::WaitingDeferred {
             namespace,
-            modules: running,
+            modules: frontier,
         })
     }
 
@@ -166,13 +163,25 @@ impl Vm {
     /// top-level `await`. The walk follows every request, of every phase, and
     /// stops at the first asynchronous module of each branch; a module that is
     /// running (synchronously) or already evaluated contributes nothing.
+    #[cfg(any(test, coverage))]
     pub(super) fn gather_async_dependencies(
         module: &str,
         modules: &HashMap<String, Bytecode>,
         linked: &HashMap<String, LinkedModule>,
         seen: &mut HashSet<String>,
     ) -> Result<Vec<String>, RuntimeError> {
-        let mut result = Vec::new();
+        Self::gather_async_dependency_names(module, modules, linked, seen, None)
+            .map(ModuleNames::into_unleased)
+    }
+
+    pub(super) fn gather_async_dependency_names(
+        module: &str,
+        modules: &HashMap<String, Bytecode>,
+        linked: &HashMap<String, LinkedModule>,
+        seen: &mut HashSet<String>,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<ModuleNames, RuntimeError> {
+        let mut result = ModuleNames::default();
         if !seen.insert(module.to_string()) {
             return Ok(result);
         }
@@ -187,18 +196,19 @@ impl Vm {
             return Ok(result);
         }
         if Self::module_has_tla(code) {
-            result.push(module.to_string());
+            result.push_copy(module, scope)?;
             return Ok(result);
         }
         for request in &code.module_requests {
             let target =
-                Self::resolve_module_target(module, &request.module_request, request.module_type)?;
+                ModuleName::resolve(module, &request.module_request, request.module_type, scope)?;
             // One shared visited set spans every recursive request. A TLA
             // frontier member is emitted only on its first visit, so another
             // result-vector membership check cannot remove any duplicates.
-            result.extend(Self::gather_async_dependencies(
-                &target, modules, linked, seen,
-            )?);
+            result.append(
+                Self::gather_async_dependency_names(&target, modules, linked, seen, scope)?,
+                scope,
+            )?;
         }
         Ok(result)
     }

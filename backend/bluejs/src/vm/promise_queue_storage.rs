@@ -92,6 +92,16 @@ prepared_sequence!(PreparedVec, Vec);
 prepared_sequence!(PreparedDeque, VecDeque);
 
 impl<T> PreparedVec<T> {
+    /// A detached owner adopts the complete candidate lease with its buffer.
+    pub(super) fn commit_owned(mut self, values: &mut Vec<T>) -> Option<SharedSchedulingCharge> {
+        assert_eq!((values.len(), values.capacity()), self.previous);
+        if let Some(mut replacement) = self.replacement.take() {
+            replacement.append(values);
+            *values = replacement;
+        }
+        assert!(self.additional <= values.capacity() - values.len());
+        self.charge.take()
+    }
     pub(super) fn staging_bytes(&self) -> usize {
         self.replacement.as_ref().map_or(0, |values| {
             values.capacity().saturating_mul(std::mem::size_of::<T>())

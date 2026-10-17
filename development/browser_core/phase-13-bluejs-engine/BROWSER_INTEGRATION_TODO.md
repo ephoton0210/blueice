@@ -64,6 +64,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The module-name producer follow-up (2026-10-17) is in progress. Admit request
+canonicalization buffers, evaluation/frontier vectors and pending-name copies
+before allocation, then retain independent ownership across dependency execution
+and result handoff. Fixed eager/deferred runtime boundary observations failed
+with 6/9 allocation attempts and now pass without allocation. Nineteen new groups
+and all 1587 prior selected controls pass: **1606 total**, across 47 executables
+and 141 fixed selections. Formatting and offline workspace/all-target Clippy
+pass. DFS/visited/SCC scratch, readiness/loading/linking producers, full module
+caches, shared programs, other native/host buffers and integrated acceptance
+remain open; M1u stays the latest accepted milestone.
+
 The module-dependency batch-storage follow-up (2026-10-17) now prepares
 deduplication/input/name storage and complete forward/reverse/set/vector
 candidates before either graph direction changes. Three tiny old-code cases
@@ -5872,6 +5883,110 @@ Evidence paths: `/private/tmp/blueice-dependency-storage-controls-20261017.py`,
 exposes nineteen functional groups; unit-only allocation observations use the
 shared fixture observer. No fresh coverage result is claimed. This remains an
 M1z implementation checkpoint with wider acceptance open.
+
+#### Module-name producer follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: admit request normalization/type-key work buffers, copied pending
+names and complete eager/deferred evaluation/frontier vectors before allocating
+them. Retain independent native owners across dependency JavaScript, iteration
+and dynamic-import result handoff. Move existing payloads, preserve canonical
+paths and evaluation order, and refund abandoned owners after their data drops.
+Keep DFS/visited/SCC and loading/linking scratch as separate open work.
+
+- [x] Reproduce allocation before zero-headroom eager/deferred evaluation
+      refusal: **0/2 passed**, with **6/9 allocation attempts**, before the
+      implementation; **2/2 passed** without allocation afterwards.
+- [x] Add independent name/list/iterator ownership and prepared-vector adoption;
+      expanded finite contracts pass **19/19** on their first run.
+- [x] Migrate legacy callback observations and complete the public waiter
+      preparation budgets; focused controls pass **16/16** and **12/12**.
+- [x] Finish final fixed offline controls/static checks, source/artifact audit
+      and detailed English commit.
+
+One independently leased String now handles request path normalization and its
+module-type suffix in the evaluation, frontier and dynamic-import producers.
+Admission covers the maximum intermediate work length and allocator-reported
+capacity before writing. Normalization updates that buffer in place with a
+segment count; it creates neither a segment vector nor a second qualified-key
+copy. A fixed lexical table compares paths/types/errors with the established
+resolver, including empty segments, host-root escapes, Unicode and NUL rejection.
+Other host-neutral linking/loading resolver callers keep their original scope.
+
+Each name/list owns its reported String/vector capacities through an independent
+document lease. Copies acquire native ownership before allocation. Growth
+prepares the complete new vector while old slots/names remain owned, moves the
+existing String payloads, refunds old backing and absorbs the candidate's lease
+without readmission. Available vector slots consume only an already owned name.
+Terminal and foreign-owner refusals preserve existing names/capacity; cleanup
+can still drop obsolete names while retaining live vector backing.
+
+An iterator retains the original vector allocation and every remaining name,
+splitting off the current name's existing charge on each yield. All coexist
+through dependency execution and remain owned beyond VM destruction if a Rust
+caller retains them. Pending roots are borrowed during selection and copied only
+through the admitted destination list. Deferred frontiers retain their own leases
+through execution, result handoff and in-place filtering. Ordinary/deferred
+dynamic-import results hold these leases until consumed or dropped. Immediate
+batch/waiter consumption releases the incoming lease directly before the
+recipient admits retained input or discards a duplicate, without an intervening
+allocation/callback or a transient duplicate check against exact headroom.
+
+Fallible producer admission now propagates as a runtime resource refusal through
+both eager/deferred evaluation paths. It no longer relies on the old assumption
+that every fallible frontier result can only contain a resolution error. The
+parent's new dependency edges and suspended state publish only after complete
+batch admission. A late pending-copy refusal preserves the preexisting graph and
+restores parent evaluation flags; existing dependency execution semantics remain.
+
+Nineteen finite groups cover the two old-code boundaries, lexical compatibility,
+one-buffer reported ownership, pre-allocation request refusal, full/exact/spare
+vector growth, stable payload pointers, partial/exhausted/detached iterators,
+append ownership, terminal retention/append behavior, foreign documents,
+host-neutral lists, cached dynamic-import results, frontier result ownership,
+late pending refusal and exact native batch handoff. Seventeen functional groups
+are exposed through the ordinary-library entry point; two allocation-only
+runtime observations stay unit-only. Fixtures use short names, tiny graphs and
+numerical native peers without representing their quota-sized payload.
+
+Two historical M1y callback observers initially reported **14/16 passing** because
+they read only the displaced-frame subtotal. The corresponding names now have
+independent owners. Their observations now use document-budget deltas, with
+queued job storage already included in the baseline, and exact steady-state
+native ownership after success or abort. Distinct compiled snapshots retained
+by suspended continuations count once each. All sixteen controls pass; the
+intermediate **15/16** balance observation also remains separate evidence.
+
+The first complete runner reached every fixed selection, with only two waiter
+success fixtures failing (**10/12** in that selection). Their old allowance
+covered waiter input/set staging but omitted the newly admitted producer peak.
+A unit/coverage-only scalar peak observer measures one fixed native operation
+against the actual shared document account. Ordinary/deferred fixtures budget
+the complete producer/staging peak, retain their public job entry, and check
+final refunds and unchanged spare capacity. This uses one tiny preview per
+fixture, without a quota search or represented large allocation. Earlier runner,
+source-input and Clippy evidence is preserved separately before final validation.
+
+Validation: **1606 passed, zero failed/ignored**, across 47 executables and 141
+fixed selections: nineteen new groups and all 1587 prior selected controls.
+Formatting, diff checks and offline workspace/all-target Clippy with warnings
+denied pass. Source, staged and post-commit audits bind final source/build inputs,
+the twelve unchanged Rust inputs, runner, executables, initial/final logs and
+detailed English commit text. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled. The same nine explicit
+resource/infinite-loop skips and finite-public-case exclusions remain.
+DFS/visited/SCC scratch, readiness/
+loading/linking producers, full module caches, shared programs, other native/host
+buffers and integrated acceptance remain open; M1u stays the latest accepted
+milestone. No resource-exhaustion probe, external service/network/Core/MCP replay,
+privileged validation, process killing, full Test262 or coverage is claimed.
+
+Evidence paths: `/private/tmp/blueice-module-name-storage-controls-20261017.py`,
+`/private/tmp/blueice-module-name-storage-commit-20261017.txt`,
+`/private/tmp/blueice-module-name-storage-audit-20261017.py`, logs matching
+`/private/tmp/blueice-module-name-storage-*-20261017.log`, and
+`target/module-name-storage-source-20261017.json`. The fixture-placement compile
+error is preserved separately and is not counted as behavioral red evidence.
+This remains an M1z implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

@@ -116,6 +116,7 @@ mod import_waiter_storage;
 mod import_waiters;
 mod interpreter_records;
 mod module_dependencies;
+mod module_name_storage;
 
 #[cfg(test)]
 #[path = "../tests/fixtures/allocation_observer.rs"]
@@ -131,6 +132,7 @@ pub use host_scheduling::{
     MAX_PENDING_HOST_MICROTASKS, MAX_PENDING_HOST_REACTIONS, MAX_PENDING_HOST_TIMERS,
 };
 use interpreter_records::{DisposeMarks, HandlerRecords, IteratorRecords, ResourceRecords};
+use module_name_storage::{ModuleName, ModuleNames};
 use promise_queue_storage::AwaitContinuation;
 mod agent_registry;
 mod interpreter;
@@ -727,12 +729,12 @@ enum PromiseJob {
 
 enum DynamicImportResult {
     Fulfilled(Value),
-    Waiting(String),
+    Waiting(ModuleName),
     /// An `import.defer()` whose asynchronous dependencies are still running:
     /// fulfilled with `namespace` once all of `modules` have finished.
     WaitingDeferred {
         namespace: ObjectId,
-        modules: Vec<String>,
+        modules: ModuleNames,
     },
 }
 

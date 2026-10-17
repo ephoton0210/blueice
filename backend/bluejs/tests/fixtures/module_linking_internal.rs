@@ -464,12 +464,12 @@ fn the_cycle_root_of_a_dependency_is_the_waiting_parent_it_reaches() {
     // and is reached from the dependency is its cycle root.
     assert_eq!(
         vm.async_dependency_root("t/dep.js", &modules, &linked),
-        Ok("t/parent.js".to_string())
+        Ok("t/parent.js")
     );
     // One that waits without being reachable leaves the dependency itself.
     assert_eq!(
         vm.async_dependency_root("t/parent.js", &modules, &linked),
-        Ok("t/parent.js".to_string())
+        Ok("t/parent.js")
     );
     assert_eq!(
         vm.async_dependency_root("t/broken.js", &modules, &linked),

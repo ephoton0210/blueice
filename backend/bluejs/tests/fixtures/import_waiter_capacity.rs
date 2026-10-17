@@ -177,10 +177,27 @@ fn import_waiter_existing_slots_do_not_recharge_the_module_name() {
     let mut vm = fixture(Mode::EagerSame, 5, false);
     let capacity = vm.module_import_waiters["test/m0.mjs"].capacity();
     assert!(capacity > 5);
-    let _owner = leave_room(&mut vm, 0);
+    let scope = vm.host_scheduling.as_ref().unwrap().child();
+    let (preview, peak) = scope.measure_payload_peak(|| {
+        vm.dynamic_import_job(
+            "test/main.js",
+            "./m0.mjs",
+            ModuleType::JavaScript,
+            ImportPhase::Evaluation,
+        )
+    });
+    assert!(matches!(preview, Ok(DynamicImportResult::Waiting(_))));
+    drop(preview);
+    let job_bytes = vm.promise_jobs.front().unwrap().scheduling_payload_bytes();
+    let _owner = leave_room(&mut vm, peak);
+    let before = vm.host_scheduling_snapshot().payload_bytes;
     assert_eq!(vm.run_next_promise_job(), Ok(true));
     assert_eq!(vm.module_import_waiters["test/m0.mjs"].len(), 6);
     assert_eq!(vm.module_import_waiters["test/m0.mjs"].capacity(), capacity);
+    assert_eq!(
+        vm.host_scheduling_snapshot().payload_bytes,
+        before - job_bytes
+    );
 }
 
 fn assert_count_refusal(mode: Mode) {
@@ -226,15 +243,16 @@ fn deferred_waiter_existing_slots_charge_complete_dependency_staging() {
     assert!(capacity > 5);
     // Inspect one fixed loader result before applying the scalar allowance.
     // The queued import still runs through the ordinary job entry below.
-    let DynamicImportResult::WaitingDeferred { modules, .. } = vm
-        .dynamic_import_job(
+    let scope = vm.host_scheduling.as_ref().unwrap().child();
+    let (preview, producer_peak) = scope.measure_payload_peak(|| {
+        vm.dynamic_import_job(
             "test/main.js",
             "./entry.mjs",
             ModuleType::JavaScript,
             ImportPhase::Defer,
         )
-        .unwrap()
-    else {
+    });
+    let DynamicImportResult::WaitingDeferred { modules, .. } = preview.unwrap() else {
         unreachable!()
     };
     let bytes = host_scheduling::slots(&modules)
@@ -242,10 +260,16 @@ fn deferred_waiter_existing_slots_charge_complete_dependency_staging() {
         + HashSet::<String>::with_capacity(modules.len()).capacity()
             * std::mem::size_of::<String>();
     drop(modules);
-    let _owner = leave_room(&mut vm, bytes);
+    let job_bytes = vm.promise_jobs.front().unwrap().scheduling_payload_bytes();
+    let _owner = leave_room(&mut vm, bytes.max(producer_peak));
+    let before = vm.host_scheduling_snapshot().payload_bytes;
     assert_eq!(vm.run_next_promise_job(), Ok(true));
     assert_eq!(vm.deferred_import_waiters.len(), 6);
     assert_eq!(vm.deferred_import_waiters.capacity(), capacity);
+    assert_eq!(
+        vm.host_scheduling_snapshot().payload_bytes,
+        before - job_bytes + vm.deferred_import_waiters[5].pending.retained_bytes(),
+    );
 }
 
 fn assert_cleanup(mode: Mode) {

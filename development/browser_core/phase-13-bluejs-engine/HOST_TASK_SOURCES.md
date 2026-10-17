@@ -548,7 +548,25 @@ when delivery has finished and no other owner retains them.
 
 Static asynchronous module evaluation owns a forward dependency set for each
 waiting parent and an ordered reverse-parent vector for each dependency.
-Their retained table/set/vector allocations and UTF-8 names share the document
+Evaluation and ordinary/deferred dynamic-import jobs prepare request targets in
+one independently leased normalization/type-key buffer. Relative path processing
+uses that buffer in place, covering the largest intermediate path and reported
+capacity before writing; it creates neither a segment vector nor a second typed
+key. Unchanged host-neutral linking/loading helpers retain their existing policy.
+
+Pending-name and eager/deferred evaluation/frontier lists independently own every
+String capacity and vector slot. New copies and complete vector replacements
+are admitted before allocation. Growth moves existing names, returns old backing
+ownership and absorbs the prepared candidate without readmission. Iterators
+retain their original backing and split off each yielded name's existing lease;
+both iterator and current name stay owned across dependency JavaScript. Frontier
+filtering drops obsolete names in place. Detached import results keep their name/
+frontier leases until consumption or drop, including beyond a VM's lifetime.
+Immediate dependency-batch/waiter handoff refunds the incoming lease directly
+before its recipient admits retained input or discards a duplicate, with no
+intervening callback or allocation and no transient duplicate native charge.
+
+The graph's retained table/set/vector allocations and UTF-8 names share the document
 native-byte budget. Registration first admits the incoming vector, original
 name capacities and complete deduplication set. It then independently leases
 all edge metadata, copied names and complete replacement forward/reverse maps,
@@ -574,8 +592,8 @@ its frontier back to its caller without a realm cache and charges it across
 dependency JavaScript. Collected pending dependency names and the remaining
 evaluation-list buffer also retain scoped charges while a later dependency
 executes. Earlier traversal/frontier evidence covers ownership across callbacks;
-producer-side pending-name/frontier/DFS/walk allocation, full module caches,
-shared programs and broader native/integrated acceptance remain open. The
+DFS/visited/SCC scratch, readiness/loading/linking producer allocation, full module
+caches, shared programs and broader native/integrated acceptance remain open. The
 module-dependency batch follow-up is an M1z implementation checkpoint, separate
 from the original M1y evidence and final integration acceptance.
 

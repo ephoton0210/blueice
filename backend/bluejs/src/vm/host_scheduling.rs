@@ -201,9 +201,20 @@ impl HostSchedulingUsage {
 #[derive(Default)]
 struct Account {
     usage: HostSchedulingUsage,
+    #[cfg(any(test, coverage))]
+    payload_peak: Option<usize>,
     failed: bool,
     next_task_serial: u64,
     clock_ms: u64,
+}
+
+#[cfg(any(test, coverage))]
+impl Account {
+    fn observe_payload_peak(&mut self) {
+        if let Some(peak) = &mut self.payload_peak {
+            *peak = (*peak).max(self.usage.payload_bytes);
+        }
+    }
 }
 
 pub(super) struct SchedulingScope {
@@ -282,6 +293,8 @@ impl SharedSchedulingCharge {
             return false;
         }
         account.usage = next;
+        #[cfg(any(test, coverage))]
+        account.observe_payload_peak();
         self.bytes = bytes;
         true
     }
@@ -322,6 +335,31 @@ impl Drop for SharedSchedulingCharge {
 }
 
 impl SchedulingScope {
+    /// Measure one finite native operation against the actual shared account.
+    #[cfg(any(test, coverage))]
+    pub(super) fn measure_payload_peak<T>(&self, operation: impl FnOnce() -> T) -> (T, usize) {
+        struct Observation<'a>(&'a SchedulingScope);
+        impl Drop for Observation<'_> {
+            fn drop(&mut self) {
+                self.0.account.borrow_mut().payload_peak = None;
+            }
+        }
+        let before = {
+            let mut account = self.account.borrow_mut();
+            assert!(
+                account.payload_peak.is_none(),
+                "one finite observation at a time"
+            );
+            let before = account.usage.payload_bytes;
+            account.payload_peak = Some(before);
+            before
+        };
+        let observation = Observation(self);
+        let result = operation();
+        let peak = self.account.borrow().payload_peak.unwrap() - before;
+        drop(observation);
+        (result, peak)
+    }
     /// Cleanup has already freed this part of the VM's published allocation.
     /// Refund it before releasing a candidate lease or preparing the next one.
     pub(super) fn release_owned_payload(&mut self, bytes: usize) {
@@ -408,6 +446,8 @@ impl SchedulingScope {
     ) -> Result<(), RuntimeError> {
         let mut account = self.account.borrow_mut();
         account.usage = account.usage.sub(self.own).add(own);
+        #[cfg(any(test, coverage))]
+        account.observe_payload_peak();
         self.own = own;
         if !account.usage.add(extra).fits() {
             account.failed = true;
