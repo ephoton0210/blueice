@@ -40,6 +40,41 @@ mod module_binding_storage_tests;
 #[path = "../../tests/fixtures/module_identity_cache.rs"]
 mod module_identity_cache_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_evaluation_stack.rs"]
+mod evaluation_stack_tests;
+
+struct EvaluationFrame<'a> {
+    name: &'a str,
+    code: ModuleCode,
+    epoch: u64,
+    next_request: usize,
+    targets: Option<module_name_storage::ModuleNameIterator>,
+    waiting: Option<ModuleName>,
+    pending: ModuleNames,
+}
+impl<'a> EvaluationFrame<'a> {
+    fn new(name: &str, modules: &'a ModuleRegistry, epoch: u64) -> Self {
+        Self {
+            name: modules
+                .get_key_value(name)
+                .expect("evaluating module has supplied code")
+                .0,
+            code: modules.code(name),
+            epoch,
+            next_request: 0,
+            targets: None,
+            waiting: None,
+            pending: ModuleNames::default(),
+        }
+    }
+}
+enum EvaluationStep {
+    Dependency(ModuleName),
+    Body,
+    Suspend,
+}
+
 /// How code that is not a generator -- a module body, an async function body
 /// -- finishes a run: it returns, or it awaits. It never yields, and no
 /// running code suspends at a generator's entry.
@@ -2607,38 +2642,125 @@ impl Vm {
         modules: &ModuleRegistry,
         linked: &mut ModuleRecords,
     ) -> Result<Value, RuntimeError> {
-        // Loading the requested modules checked that every module of the graph
-        // exists, and linking made a record for each.
+        #[cfg(test)]
+        let _call = evaluation_stack_tests::CallProbe::enter();
+        if let Some(result) = self.cached_module_evaluation(name, linked) {
+            return result;
+        }
+        self.synchronize_scheduling_usage()?;
+        let mut frames = module_walk_storage::Storage::default();
+        frames.reserve(1, self.host_scheduling.as_ref())?;
+        let root = EvaluationFrame::new(name, modules, self.throw_epoch);
+        linked
+            .get_mut(root.name)
+            .expect("every module is linked")
+            .evaluating = true;
+        frames.data.push(root);
+        loop {
+            let result = match self.advance_module_evaluation(&mut frames, modules, linked) {
+                Ok(EvaluationStep::Dependency(target)) => {
+                    match self.push_module_dependency(target, modules, linked, &mut frames) {
+                        Ok(()) => continue,
+                        Err(error) => Err(error),
+                    }
+                }
+                Ok(EvaluationStep::Body) => {
+                    let frame = frames.data.last().unwrap();
+                    self.evaluate_module_body(frame.name, &frame.code, linked)
+                }
+                Ok(EvaluationStep::Suspend) => {
+                    let frame = frames.data.last_mut().unwrap();
+                    let pending = std::mem::take(&mut frame.pending);
+                    self.register_async_module_dependencies(frame.name, pending.into_unleased())
+                        .map(|()| {
+                            linked
+                                .get_mut(frame.name)
+                                .expect("every module is linked")
+                                .suspended = true;
+                            Value::Undefined
+                        })
+                }
+                Err(error) => Err(error),
+            };
+            let mut result = result;
+            loop {
+                let frame = frames
+                    .data
+                    .pop()
+                    .expect("completion has an active module frame");
+                let name = frame.name;
+                let epoch = frame.epoch;
+                // Request iterators, target names and pending lists release
+                // their independent owners before completion/error retention.
+                drop(frame);
+                result = self.finish_module_evaluation(name, epoch, result, linked);
+                if frames.data.is_empty() {
+                    return result;
+                }
+                if result.is_ok() {
+                    break;
+                }
+                // A dependency's abrupt completion finishes every active
+                // importer in DFS order without growing the native call stack.
+            }
+        }
+    }
+
+    fn cached_module_evaluation(
+        &mut self,
+        name: &str,
+        linked: &ModuleRecords,
+    ) -> Option<Result<Value, RuntimeError>> {
         let record = linked
             .get(name)
             .expect("every module of the graph is linked");
         if let Some(error) = &record.error {
             let error = error.clone();
-            return Err(self.propagate_module_error(error));
+            Some(Err(self.propagate_module_error(error)))
+        } else if record.evaluated || record.evaluating {
+            Some(Ok(Value::Undefined))
+        } else {
+            None
         }
-        if record.evaluated || record.evaluating {
-            return Ok(Value::Undefined);
-        }
-        self.synchronize_scheduling_usage()?;
-        linked
-            .get_mut(name)
-            .expect("checked module record exists")
-            .evaluating = true;
-        let evaluation_epoch = self.throw_epoch;
-        let result = (|| {
-            let code = modules.code(name);
-            let mut pending_dependencies = ModuleNames::default();
-            for request in &code.module_requests {
-                // Loading the requested modules resolved every request.
+    }
+
+    fn advance_module_evaluation(
+        &mut self,
+        frames: &mut module_walk_storage::Storage<EvaluationFrame<'_>>,
+        modules: &ModuleRegistry,
+        linked: &ModuleRecords,
+    ) -> Result<EvaluationStep, RuntimeError> {
+        loop {
+            let frame = frames
+                .data
+                .last_mut()
+                .expect("module evaluation has a frame");
+            if let Some(target) = frame.waiting.take() {
+                if linked
+                    .get(target.as_str())
+                    .is_some_and(|record| record.suspended)
+                {
+                    frame.pending.push_copy(
+                        self.async_dependency_root(&target, modules, linked)?,
+                        self.host_scheduling.as_ref(),
+                    )?;
+                }
+            }
+            if let Some(targets) = &mut frame.targets {
+                if let Some(target) = targets.next() {
+                    return Ok(EvaluationStep::Dependency(target));
+                }
+                frame.targets = None;
+            }
+            if let Some(request) = frame.code.module_requests.get(frame.next_request) {
+                frame.next_request += 1;
                 let target = ModuleName::resolve(
-                    name,
+                    frame.name,
                     &request.module_request,
                     request.module_type,
                     self.host_scheduling.as_ref(),
                 )?;
-                // A deferred request contributes only the asynchronous part of
-                // its graph; an eager one contributes the module itself.
-                let evaluation_list = if request.deferred {
+                let targets = if request.deferred {
                     Self::gather_async_dependency_names(
                         &target,
                         modules,
@@ -2648,161 +2770,123 @@ impl Vm {
                 } else {
                     ModuleNames::singleton(target, self.host_scheduling.as_ref())?
                 };
-                for target in evaluation_list {
-                    let executes = linked.get(target.as_str()).is_some_and(|record| {
-                        !record.evaluated && !record.evaluating && record.error.is_none()
-                    });
-                    // List/iterator/name leases remain independent of the
-                    // ambient VM while this dependency executes JavaScript.
-                    if executes {
-                        self.synchronize_scheduling_usage()?;
-                    }
-                    self.evaluate_module_record(&target, modules, linked)?;
-                    if linked
-                        .get(target.as_str())
-                        .is_some_and(|record| record.suspended)
-                    {
-                        // `target` is part of the graph, whose requests all
-                        // resolve.
-                        pending_dependencies.push_copy(
-                            self.async_dependency_root(&target, modules, linked)?,
-                            self.host_scheduling.as_ref(),
-                        )?;
-                    }
-                }
+                frame.targets = Some(targets.into_iter());
+                continue;
             }
-            if !pending_dependencies.is_empty() {
-                self.register_async_module_dependencies(
-                    name,
-                    pending_dependencies.into_unleased(),
-                )?;
-                linked
-                    .get_mut(name)
-                    .expect("checked module record exists")
-                    .suspended = true;
-                return Ok(Value::Undefined);
+            return Ok(if frame.pending.is_empty() {
+                EvaluationStep::Body
+            } else {
+                EvaluationStep::Suspend
+            });
+        }
+    }
+
+    fn push_module_dependency<'a>(
+        &mut self,
+        target: ModuleName,
+        modules: &'a ModuleRegistry,
+        linked: &mut ModuleRecords,
+        frames: &mut module_walk_storage::Storage<EvaluationFrame<'a>>,
+    ) -> Result<(), RuntimeError> {
+        if let Some(result) = self.cached_module_evaluation(&target, linked) {
+            result?;
+            frames.data.last_mut().unwrap().waiting = Some(target);
+            return Ok(());
+        }
+        self.synchronize_scheduling_usage()?;
+        frames.reserve(1, self.host_scheduling.as_ref())?;
+        let child = EvaluationFrame::new(&target, modules, self.throw_epoch);
+        frames.data.last_mut().unwrap().waiting = Some(target);
+        linked
+            .get_mut(child.name)
+            .expect("every module is linked")
+            .evaluating = true;
+        frames.data.push(child);
+        Ok(())
+    }
+
+    fn evaluate_module_body(
+        &mut self,
+        name: &str,
+        code: &ModuleCode,
+        linked: &mut ModuleRecords,
+    ) -> Result<Value, RuntimeError> {
+        // Linking already instantiated this module's declarations.
+        let entry = code
+            .module_evaluate_entry
+            .expect("a linked module has an evaluation entry") as usize;
+        let mut previous_module = self.prepare_module_name(name)?;
+        let record = linked.get_mut(name).expect("checked module record exists");
+        self.enter_module_record_storage(code, &mut record.cells, Some(&mut record.cells_charge))?;
+        // A sibling Source Text Module runs in a fresh execution context.
+        // A suspended async dependency deliberately leaves its displaced
+        // frame with zero ambient fuel, which must not exhaust this
+        // independent module before its first instruction.
+        self.remaining_instructions = self.config.instruction_budget;
+        self.enter_scope(code, 0)?;
+        let mut iterators = self.iterator_records(Vec::new());
+        previous_module.swap_into(self);
+        // Park the graph's records where user code can reach them: a
+        // deferred namespace observed by this module (or a module it
+        // triggers) evaluates other modules of the same graph.
+        self.evaluating_linked = Some(std::mem::take(linked));
+        let suspension = self
+            .debugger_module_pause_request
+            .as_ref()
+            .filter(|request| request.entry == name)
+            .map(|request| InterpreterSuspensionPoint::Offset(request.target));
+        let outcome = self.interpret(code, &mut iterators, entry, None, suspension, None);
+        *linked = self
+            .evaluating_linked
+            .take()
+            .expect("module records are restored after the module body ran");
+        let (outcome, mut prepared_cells) = self.stage_module_exit_cells(outcome);
+        match ModuleRun::classify(outcome) {
+            ModuleRun::Completed(Ok(StraightLineExit::Return(value))) => {
+                previous_module.restore(self);
+                let cells = std::mem::take(&mut self.cells);
+                let record = linked.get_mut(name).expect("checked module record exists");
+                record.cells = cells;
+                record.refresh_cells_charge();
+                let completion = self.retain_module_completion(&value)?;
+                self.keep_module_value_alive(&value)?;
+                record.completion = Some(completion);
+                Ok(value)
             }
-            // Linking already instantiated this module's declarations.
-            let entry = code
-                .module_evaluate_entry
-                .expect("a linked module has an evaluation entry") as usize;
-            let mut previous_module = self.prepare_module_name(name)?;
-            let record = linked.get_mut(name).expect("checked module record exists");
-            self.enter_module_record_storage(
-                &code,
-                &mut record.cells,
-                Some(&mut record.cells_charge),
-            )?;
-            // A sibling Source Text Module runs in a fresh execution context.
-            // A suspended async dependency deliberately leaves its displaced
-            // frame with zero ambient fuel, which must not exhaust this
-            // independent module before its first instruction.
-            self.remaining_instructions = self.config.instruction_budget;
-            self.enter_scope(&code, 0)?;
-            let mut iterators = self.iterator_records(Vec::new());
-            previous_module.swap_into(self);
-            // Park the graph's records where user code can reach them: a
-            // deferred namespace observed by this module (or a module it
-            // triggers) evaluates other modules of the same graph.
-            self.evaluating_linked = Some(std::mem::take(linked));
-            let suspension = self
-                .debugger_module_pause_request
-                .as_ref()
-                .filter(|request| request.entry == name)
-                .map(|request| InterpreterSuspensionPoint::Offset(request.target));
-            let outcome = self.interpret(&code, &mut iterators, entry, None, suspension, None);
-            *linked = self
-                .evaluating_linked
-                .take()
-                .expect("module records are restored after the module body ran");
-            let (outcome, mut prepared_cells) = self.stage_module_exit_cells(outcome);
-            match ModuleRun::classify(outcome) {
-                ModuleRun::Completed(Ok(StraightLineExit::Return(value))) => {
-                    previous_module.restore(self);
-                    let cells = std::mem::take(&mut self.cells);
-                    let record = linked.get_mut(name).expect("checked module record exists");
-                    record.cells = cells;
-                    record.refresh_cells_charge();
-                    let completion = self.retain_module_completion(&value)?;
-                    self.keep_module_value_alive(&value)?;
-                    record.completion = Some(completion);
-                    Ok(value)
-                }
-                ModuleRun::Completed(Ok(StraightLineExit::Await {
-                    promise,
-                    pc,
-                    handlers,
-                })) => {
-                    // Move the realm frame out before another sibling module
-                    // evaluates. The continuation is attached to the Await
-                    // promise and resumes in its own Promise job turn.
-                    let (module, module_charge) = match self.prepare_module_frame_name(name) {
-                        Ok(prepared) => prepared,
-                        Err(error) => {
-                            previous_module.restore(self);
-                            linked
-                                .get_mut(name)
-                                .expect("checked module record exists")
-                                .cells = std::mem::take(&mut self.cells);
-                            linked
-                                .get_mut(name)
-                                .expect("checked module record exists")
-                                .refresh_cells_charge();
-                            return Err(error);
-                        }
-                    };
-                    let execution = self.suspend_module_execution();
-                    previous_module.restore(self);
-                    let record = linked.get_mut(name).expect("checked module record exists");
-                    prepared_cells
-                        .take()
-                        .expect("suspension cell table was admitted")
-                        .install(record);
-                    record.suspended = true;
-                    self.suspend_module_await(
-                        ModuleContinuation {
-                            gc_live: false,
-                            module,
-                            module_charge,
-                            code: code.clone(),
-                            pc,
-                            execution,
-                            iterators,
-                            handlers,
-                        },
-                        promise,
-                    )?;
-                    Ok(Value::Undefined)
-                }
-                ModuleRun::Paused {
-                    pc,
-                    iterators,
-                    handlers,
-                } => {
-                    let (module, module_charge) = match self.prepare_module_frame_name(name) {
-                        Ok(prepared) => prepared,
-                        Err(error) => {
-                            previous_module.restore(self);
-                            linked
-                                .get_mut(name)
-                                .expect("checked module record exists")
-                                .cells = std::mem::take(&mut self.cells);
-                            linked
-                                .get_mut(name)
-                                .expect("checked module record exists")
-                                .refresh_cells_charge();
-                            return Err(error);
-                        }
-                    };
-                    let execution = self.suspend_module_execution();
-                    let record = linked.get_mut(name).expect("checked module record exists");
-                    prepared_cells
-                        .take()
-                        .expect("suspension cell table was admitted")
-                        .install(record);
-                    record.suspended = true;
-                    previous_module.restore(self);
-                    self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
+            ModuleRun::Completed(Ok(StraightLineExit::Await {
+                promise,
+                pc,
+                handlers,
+            })) => {
+                // Move the realm frame out before another sibling module
+                // evaluates. The continuation is attached to the Await
+                // promise and resumes in its own Promise job turn.
+                let (module, module_charge) = match self.prepare_module_frame_name(name) {
+                    Ok(prepared) => prepared,
+                    Err(error) => {
+                        previous_module.restore(self);
+                        linked
+                            .get_mut(name)
+                            .expect("checked module record exists")
+                            .cells = std::mem::take(&mut self.cells);
+                        linked
+                            .get_mut(name)
+                            .expect("checked module record exists")
+                            .refresh_cells_charge();
+                        return Err(error);
+                    }
+                };
+                let execution = self.suspend_module_execution();
+                previous_module.restore(self);
+                let record = linked.get_mut(name).expect("checked module record exists");
+                prepared_cells
+                    .take()
+                    .expect("suspension cell table was admitted")
+                    .install(record);
+                record.suspended = true;
+                self.suspend_module_await(
+                    ModuleContinuation {
+                        gc_live: false,
                         module,
                         module_charge,
                         code: code.clone(),
@@ -2810,26 +2894,71 @@ impl Vm {
                         execution,
                         iterators,
                         handlers,
-                    });
-                    Ok(Value::Undefined)
-                }
-                ModuleRun::Completed(Err(error)) => {
-                    previous_module.restore(self);
-                    let cells = std::mem::take(&mut self.cells);
-                    let record = linked.get_mut(name).expect("checked module record exists");
-                    record.cells = cells;
-                    record.refresh_cells_charge();
-                    Err(error)
-                }
+                    },
+                    promise,
+                )?;
+                Ok(Value::Undefined)
             }
-        })();
-        // Evaluate() records an abrupt completion as the module's
-        // [[EvaluationError]]: every module on the DFS stack finishes
-        // `evaluated` with that same error, which later importers, deferred
-        // namespace triggers and dynamic imports all observe unchanged.
-        // Errors raised by the engine itself become one JavaScript value here
-        // so that identity survives the propagation to the importers.
-        let result = match result {
+            ModuleRun::Paused {
+                pc,
+                iterators,
+                handlers,
+            } => {
+                let (module, module_charge) = match self.prepare_module_frame_name(name) {
+                    Ok(prepared) => prepared,
+                    Err(error) => {
+                        previous_module.restore(self);
+                        linked
+                            .get_mut(name)
+                            .expect("checked module record exists")
+                            .cells = std::mem::take(&mut self.cells);
+                        linked
+                            .get_mut(name)
+                            .expect("checked module record exists")
+                            .refresh_cells_charge();
+                        return Err(error);
+                    }
+                };
+                let execution = self.suspend_module_execution();
+                let record = linked.get_mut(name).expect("checked module record exists");
+                prepared_cells
+                    .take()
+                    .expect("suspension cell table was admitted")
+                    .install(record);
+                record.suspended = true;
+                previous_module.restore(self);
+                self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
+                    module,
+                    module_charge,
+                    code: code.clone(),
+                    pc,
+                    execution,
+                    iterators,
+                    handlers,
+                });
+                Ok(Value::Undefined)
+            }
+            ModuleRun::Completed(Err(error)) => {
+                previous_module.restore(self);
+                let cells = std::mem::take(&mut self.cells);
+                let record = linked.get_mut(name).expect("checked module record exists");
+                record.cells = cells;
+                record.refresh_cells_charge();
+                Err(error)
+            }
+        }
+    }
+
+    fn finish_module_evaluation(
+        &mut self,
+        name: &str,
+        evaluation_epoch: u64,
+        result: Result<Value, RuntimeError>,
+        linked: &mut ModuleRecords,
+    ) -> Result<Value, RuntimeError> {
+        // Error conversion/retention may itself refuse. Always clear an
+        // unsuspended frame's active flag, including those resource exits.
+        let result = (|| match result {
             Err(error)
                 if error.is_catchable()
                     && !linked.get(name).is_some_and(|record| record.suspended) =>
@@ -2846,7 +2975,7 @@ impl Vm {
                 Err(RuntimeError::Thrown(value))
             }
             result => result,
-        };
+        })();
         let record = linked.get_mut(name).expect("checked module record exists");
         if !record.suspended {
             record.evaluating = false;

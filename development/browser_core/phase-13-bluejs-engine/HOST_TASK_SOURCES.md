@@ -657,8 +657,20 @@ self-reference. Child completion resumes the parent's alias-cell construction;
 cached self/cyclic edges reuse stable placeholders. One outer transaction owns
 new epochs and temporary roots, restores inherited capacity policy and rolls
 back on failure. Invalid initial epochs refuse before controller allocation, and cache
-hits retain their allocation-free fast path. Namespace-call depth stays constant;
-module-body evaluation recursion remains a separate open gate.
+hits retain their allocation-free fast path. Namespace-call depth stays constant.
+
+Module evaluation dependency DFS uses a separately admitted frame vector. Each
+frame retains an immutable code snapshot, canonical name, throw epoch, request
+cursor, owned target iterator, waiting name and pending dependency names through
+child JavaScript execution. Complete coexisting frame replacements precede child
+activation. Cached completed/busy/error records retain their prior behavior;
+async dependency registration still uses cycle roots and notification order.
+Body entry, interpreter/await/debugger continuations and displaced execution
+contexts keep their existing path. Request owners drop before final error/
+completion retention; errors unwind active importers explicitly, preserving
+throw identity and origin. Error-retention/allocation refusal also clears an
+unsuspended record's active flag. JavaScript-driven deferred-property reentry
+starts a separate controller through the existing context mechanism.
 
 Import-slot lookup uses admitted sorted/deduplicated backing during own-cell
 creation. Import aliases reserve a complete native batch before request/cell

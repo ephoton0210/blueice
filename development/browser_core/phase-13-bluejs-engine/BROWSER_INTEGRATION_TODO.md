@@ -68,6 +68,19 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The iterative module-dependency evaluation follow-up (2026-10-17) now owns
+explicit dependency evaluation frames.
+Three fixed public graphs reproduce 3/4/3 simultaneously active dependency
+evaluation calls. An admitted explicit DFS controller now retains request
+iterators, waiting targets and pending dependency names independently of the VM
+while JavaScript runs. The first focused run passes **24/24**. Twenty-four new
+groups and all 1843 prior selected controls pass: **1867 total**, across 50
+executables and 170 fixed selections. Formatting, diff checks and offline
+workspace/all-target Clippy pass; source/artifact and commit audits record the
+checkpoint. Legitimate JavaScript-driven reentry retains the existing execution-
+context mechanism; dynamic source compilation, other native/heap/task buffers
+and integrated acceptance remain open. M1u remains the latest accepted milestone.
+
 The iterative namespace-construction follow-up (2026-10-17) now owns explicit
 construction frames and removes recursive namespace calls.
 Three fixed public module graphs reproduce 3/4/2 simultaneous namespace host
@@ -6926,6 +6939,76 @@ passed attempt at `/private/tmp/blueice-namespace-build-stack-first-source-20261
 `/private/tmp/blueice-namespace-build-stack-audit-20261017.py`,
 `/private/tmp/blueice-namespace-build-stack-commit-20261017.txt` and
 `target/namespace-build-stack-source-20261017.json`.
+
+#### Iterative module-dependency evaluation follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: traverse module evaluation dependencies with admitted explicit
+frames, preserving DFS/cycle/source order, async dependency roots, completion
+and thrown-value identity. Retain request/target/pending owners across JavaScript
+and unwind every active importer without recursive dependency calls. Body
+execution, await/debugger continuations and legitimate JavaScript-driven module
+reentry must keep their existing context semantics.
+
+- [x] Preserve three old-code failures through public `execute_module_graph`:
+      **0/3 passed**, with 3/4/3 simultaneously active evaluation calls for a
+      small chain, cycle and await chain. These observe call nesting without a
+      resource-exhaustion or stack-overflow workload.
+- [x] Admit movable evaluation frames before marking a child active, retain
+      request/target/pending owners and unwind errors through explicit frames.
+- [x] Pass fixed finite controls, formatting and Clippy; complete source/artifact
+      and commit audits with detailed English text.
+
+Each frame borrows its canonical name from the immutable registry and retains a
+code snapshot, throw epoch, request position, owned target iterator, waiting
+target and pending dependency names. Full coexisting frame replacement precedes
+child activation. Completed/busy/error records keep their existing fast paths.
+Deferred requests retain the existing asynchronous-frontier traversal, and
+suspended children still register parents against their asynchronous cycle root.
+
+Body execution uses the existing declaration/context entry, fresh sibling fuel,
+parked linked records, interpreter, exit-cell staging and continuation transfer.
+Finishing a frame drops request/pending owners before completion/error retention.
+A dependency error then finishes active importers in DFS order while preserving
+one JavaScript error identity and its origin. Completion cleanup now clears an
+unsuspended record's active flag even if error allocation or retention refuses.
+Suspended records retain the marks required by their continuation.
+
+The first focused run passes **24/24**. Twenty-one functional groups cover
+detached/exact/short/spare/moved frame storage, request payload validity after
+growth, child activation refusal, entry/cache admission, diamond/cycle order,
+awaited sibling fuel and parent order, asynchronous-only deferred traversal,
+deferred-property reentry with import-meta restoration, shared/replayed language
+errors, deep fixed-graph error unwind, instruction/resource exits, error-object
+and retention refusal, suspended flags, actual GC across a pending await,
+successful record flags and host-neutral order. Three unit-only observations
+measure dependency-call nesting. Functional groups are exposed through the
+ordinary-library entry point. Final validation passes **1867 distinct selected
+tests**, across 50 executables and 170 fixed selections: twenty-four new groups
+and all 1843 prior selected controls. The nine explicit resource/infinite-
+execution skips and finite public filters remain unchanged. Formatting, diff
+checks and offline workspace/all-target Clippy with warnings denied pass. Three
+frozen Rust inputs and five final source/document inputs tie source/artifact,
+staged and committed audits to executable/log hashes, Cargo inputs and detailed
+English commit text. A source comparison confirms preserved body expressions
+after immutable code borrowing and the formatter's optional argument comma.
+
+This removes recursive dependency traversal per evaluation entry. JavaScript
+observing a deferred namespace can still start a separate evaluation controller
+through the existing displaced execution context; that valid reentry is retained.
+Dynamic source parsing/compilation, remaining async-notification/task/native/heap
+buffers, allocator/error-message overhead, shared programs and integrated
+acceptance remain open. M1u remains the latest accepted milestone; the prior
+rejected push is not retried.
+
+Evidence: `/private/tmp/blueice-module-evaluation-stack-controls-20261017.py`,
+`/private/tmp/blueice-module-evaluation-stack-rust-inputs-20261017.json`, logs
+matching `/private/tmp/blueice-module-evaluation-stack-*-20261017.log`, original
+source copies at `/private/tmp/blueice-module-evaluation-stack-red-source-20261017/`,
+the first passed attempt at
+`/private/tmp/blueice-module-evaluation-stack-first-source-20261017/`,
+`/private/tmp/blueice-module-evaluation-stack-audit-20261017.py`,
+`/private/tmp/blueice-module-evaluation-stack-commit-20261017.txt` and
+`target/module-evaluation-stack-source-20261017.json`.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 
