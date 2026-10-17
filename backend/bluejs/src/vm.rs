@@ -94,6 +94,7 @@ mod host_task_storage;
 mod host_wait_storage;
 mod promise_queue_storage;
 mod promise_record_storage;
+mod promise_settlement;
 mod rejection_batch_entry;
 mod retained_async_maps;
 mod retained_control_map;

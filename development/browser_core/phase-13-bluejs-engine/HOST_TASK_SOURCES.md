@@ -375,8 +375,29 @@ propagates runtime errors, including the caller's instruction limit. Rejection
 transfers its leased value/origin to the Promise record/override before refunding
 staging. Callable namespace exports hand roots to ordinary thenable jobs. Every
 result releases batch roots and scratch and reconciles usage; ambient fuel is
-preserved. Common Promise settlement/reaction clone scratch, provenance/other
-maps and wider heap/host buffers remain open.
+preserved. Other Promise reaction/input/origin producers, provenance/other maps
+and wider heap/host buffers remain open.
+
+Common Promise settlement prepares its entire reaction fan-out while the
+original pending record and reaction edges remain installed. It admits all new
+job counts together, leases incoming value ownership, and prepares complete
+snapshot backing plus copied selected handlers/capabilities, values and origins.
+Source preflight borrows the winning override/frame filename before its first
+clone; requested/reported storage is checked before each further allocation.
+Native preparation runs in linear time without JavaScript or managed collection.
+
+The job queue reuses enough spare slots or prepares a complete coexisting
+replacement for the whole batch, preserving repeated single-entry geometric
+growth even for non-power-of-two existing capacities. Publication adopts the
+record value/origin,
+drops obsolete reactions, appends prepared jobs after existing work, frees
+snapshot metadata and refunds staging without further admission. Refusal retains
+all pending status/reactions/jobs and latches the document abort rather than
+panicking native resolvers. Already-settled records remain no-ops and invalid
+inputs retain TypeError. Rejection-notification registration follows successful
+publication as its own committed attempt. Native preparation changes neither
+ambient fuel nor root IDs. Already-settled reaction/origin producers, provenance
+maps and other native-buffer ownership remain open.
 
 Host-wait registration first admits its shared pending count and preflights
 root-ID space. Converted primitive inputs and actual argument-vector slots have

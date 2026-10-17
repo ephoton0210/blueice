@@ -64,6 +64,17 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The Promise settlement fan-out follow-up (2026-10-17) prepares all reaction-job
+copies and complete queue capacity before changing a pending record. Three tiny
+refusal reproductions failed before the fix and now pass. Whole-batch refusal
+retains the pending status and every reaction while latching the document abort;
+native resolvers do not panic. Twenty-two new groups and all 1398 prior selected
+controls pass: **1420 total**, across 47 executables and 132 fixed selections.
+Formatting and offline workspace/all-target Clippy pass.
+Already-settled reaction/origin producers, provenance/other maps, heap/host
+buffers, shared programs and integrated acceptance remain open; M1u stays the
+latest accepted milestone.
+
 The import-delivery ownership follow-up (2026-10-17) prepares complete native
 snapshots and target/namespace/reason roots before consuming waiters or advancing
 dependencies. Three finite refusal cases reproduced the old behavior. All
@@ -932,8 +943,9 @@ work and exposes its retained payload ledger.
       cleanup and future deferral preserved; all 1300 selected controls pass.
       Import delivery now prepares native snapshots and a complete temporary
       root batch before dependency progress or consumption, retaining queued
-      targets after an earlier committed attempt fails. Common Promise
-      settlement/reaction scratch remains open. Shared programs, other
+      targets after an earlier committed attempt fails. Common settlement fan-out
+      now stages complete copies/queue growth before status publication.
+      Already-settled reaction/origin producers remain open. Shared programs, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -4994,6 +5006,110 @@ Evidence paths: `/private/tmp/blueice-import-delivery-controls-20261017.py`,
 `target/import-delivery-source-20261017.json`. Ordinary-library entry points
 expose the same fixtures; no fresh coverage result is claimed. This remains an
 M1z implementation checkpoint with wider acceptance open.
+
+#### Promise settlement fan-out follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: retain pending Promise status and its entire reaction vector until
+the complete fan-out has admitted job counts, native snapshots, copied values/
+selected handlers/capabilities/source metadata and any queue replacement. Native
+refusal must preserve status, reactions and queued jobs without panicking native
+resolvers. Successful publication keeps existing job order and hands ownership
+to retained records/jobs without charging transferred inputs twice.
+
+- [x] Reproduce premature status publication under input, fan-out and rejection
+      source refusal using three tiny fixtures: **0/3 passed** before the fix.
+- [x] Prepare complete fan-out ownership; all three reproductions now pass.
+- [x] Complete expanded finite cases, fixed offline controls/static checks,
+      evidence and the detailed English commit.
+
+Preparation validates the receiver/status before copying provenance or admitting
+work. It checks the whole job count, retains or acquires the incoming value's
+independent lease, and admits a complete snapshot vector plus all selected
+reaction/value/source copies before allocation. Borrowed source metadata gives
+the initial filename allowance; actual capacities and cloned payloads are checked
+before the next allocation. An explicit unknown-source override still wins over
+the active frame. Source preparation and per-job accounting take linear time
+without JavaScript, managed allocation or collection.
+
+Queue preparation now accepts a complete additional count, reuses existing spare
+slots, or leases a full coexisting replacement. Zero additional jobs requires no
+queue allocation. Batch growth preserves the capacity reached by repeated single
+appends, including a non-power-of-two existing capacity. All original reaction
+edges remain installed during preparation;
+publication moves the admitted record origin/value, drops the old reaction
+vector, appends every prepared job in order, frees snapshot metadata, transfers
+input ownership and reconciles refunds without another fallible admission.
+
+Preparation failure drops all candidates/copies, retains the pending record and
+its reactions, and latches the document abort. Native tracked-settlement callers
+remain infallible for valid inputs; invalid receivers and pending-as-final-status
+still return TypeError. Existing settled records remain a no-op. Notification
+tracking runs after successful settlement as a separate committed producer; a
+notification-root refusal retains the completed status and latches failure.
+Ambient fuel and root-ID space are unchanged by native preparation.
+
+The existing import-delivery failure control now checks this stronger nested
+boundary: the outer current import attempt is consumed, its pending Promise and
+reaction stay unchanged when settlement preparation refuses, and the remaining
+import suffix stays queued. Its earlier expectation of a rejected first record
+described the pre-transaction settlement behavior; suffix protection is retained.
+
+The first expanded-fixture compile found ambiguous UTF-16 string conversions and
+an incorrect checkpoint API name (six diagnostics). After fixing the comparisons
+and using the existing host checkpoint API, **21/22 groups passed**. The remaining
+refund assertion mixed aggregate native usage with VM-field usage, omitting 224
+bytes of unchanged heap-native storage. It now compares the VM ownership delta
+against the aggregate account and keeps the separate post-destruction peer/refund
+assertions. Valid-receiver lookup also constructs its error lazily, avoiding an
+unused temporary error string on the ordinary settlement path.
+
+The first full fixed run was **1418 passed / 2 failed**. Two older rejected-await
+fixtures expected the previous geometric queue shape: five settled reactions
+followed by three fixed jobs filled eight slots. Initial batch reservation used
+five slots and then grew to ten. Batch growth now preserves repeated single-entry
+capacity growth; all older fixture assertions remain unchanged. The new five-
+reaction case additionally checks an eight-slot queue. The complete first run
+is archived separately before revalidation.
+
+Twenty-two finite groups cover initial/full/one-byte-short preparation, complete
+queue growth and spare slots, all five reaction-job variants, native/source/value
+ownership transfers and refunds, snapshots held after VM destruction, existing
+FIFO/wrapped queues, scalar whole-batch quotas, invalid/already-settled records,
+native-frame/unknown-override precedence, infallible refusal with ambient fuel
+preserved, committed notification-root refusal, public callback/async order and
+actual job-root collectibility. Fixtures use up to five reactions, a handful of
+jobs/objects and numerical admission peers; they start no external operation.
+
+Validation: **1420 passed, zero failed/ignored**, across 47 executables and 132
+fixed selections: twenty-two new groups and all 1398 prior selected controls.
+Both older rejected-await fixtures pass with their original assertions. Existing
+Promise/await, import, host-wait, timer, finalization, browser and ownership
+controls retain their behavior. Formatting, diff checks and offline workspace/
+all-target Clippy with warnings denied pass. Cargo reuses the workspace target
+with incremental compilation and dev/test debug artifact growth disabled.
+
+The same nine explicit resource/infinite-loop skips and other finite-public-case
+exclusions remain. No represented large allocations, resource/infinite probes,
+JSON resource sweeps, network/service replay, privileged validation, process
+killing, fresh full Test262, coverage result or integrated acceptance is claimed.
+Already-settled reaction/origin producers, provenance/other maps, wider heap/host
+buffers, shared programs and integrated gates remain open. M1u stays the latest
+accepted milestone.
+The next common producer boundary is already-settled `perform_promise_then`:
+it still marks the receiver handled and clones the retained value/origin before
+the queue producer's admission. This fan-out transaction does not close that
+registration boundary.
+
+Evidence paths: `/private/tmp/blueice-promise-settlement-controls-20261017.py`,
+`/private/tmp/blueice-promise-settlement-commit-20261017.txt`,
+`/private/tmp/blueice-promise-settlement-audit-20261017.py`, logs matching
+`/private/tmp/blueice-promise-settlement-*-20261017.log`, and
+`target/promise-settlement-source-20261017.json`. Ordinary-library entry points
+expose the same fixtures; no fresh coverage result is claimed. This remains an
+M1z implementation checkpoint with wider acceptance open.
+The first fixed-run logs are retained under
+`/private/tmp/blueice-promise-settlement-controls-attempt-20261017/`; its summary
+is `/private/tmp/blueice-promise-settlement-initial-controls-attempt-20261017.json`.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

@@ -23,25 +23,41 @@ macro_rules! prepared_sequence {
             replacement: Option<$container<T>>,
             charge: Option<SharedSchedulingCharge>,
             previous: (usize, usize),
+            additional: usize,
         }
         impl<T> $name<T> {
             pub(super) fn for_push(
                 values: &$container<T>,
                 scope: Option<&SchedulingScope>,
             ) -> Result<Self, RuntimeError> {
+                Self::for_additional(values, 1, scope)
+            }
+            pub(super) fn for_additional(
+                values: &$container<T>,
+                additional: usize,
+                scope: Option<&SchedulingScope>,
+            ) -> Result<Self, RuntimeError> {
                 let mut prepared = Self {
                     replacement: None,
                     charge: None,
                     previous: (values.len(), values.capacity()),
+                    additional,
                 };
-                if values.len() < values.capacity() {
+                if additional <= values.capacity() - values.len() {
                     return Ok(prepared);
                 }
-                let requested = values
+                let minimum = values
                     .len()
-                    .saturating_add(1)
-                    .max(values.capacity().saturating_mul(2))
-                    .max(4);
+                    .checked_add(additional)
+                    .ok_or_else(|| fail(scope))?;
+                // Match repeated single-entry growth, including non-power-of-
+                // two existing capacities, while admitting one full candidate.
+                let step = values.capacity().saturating_mul(2).max(4);
+                let multiple = minimum
+                    .div_ceil(step)
+                    .checked_next_power_of_two()
+                    .ok_or_else(|| fail(scope))?;
+                let requested = step.checked_mul(multiple).ok_or_else(|| fail(scope))?;
                 prepared.charge =
                     charge(scope, requested.saturating_mul(std::mem::size_of::<T>()))?;
                 let mut replacement = $container::<T>::new();
@@ -65,8 +81,8 @@ macro_rules! prepared_sequence {
                     *values = replacement;
                 }
                 assert!(
-                    values.len() < values.capacity(),
-                    "queue slot admitted before publication"
+                    self.additional <= values.capacity() - values.len(),
+                    "queue slots admitted before publication"
                 );
             }
         }

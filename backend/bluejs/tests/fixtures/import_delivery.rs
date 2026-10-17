@@ -346,8 +346,11 @@ fn import_delivery_committed_reaction_admission_failure_keeps_the_suffix_queued(
     assert_eq!(vm.deferred_import_waiters[0].promise, targets[1]);
     assert!(matches!(
         vm.promises[&targets[0]].status,
-        PromiseStatus::Rejected(Value::Number(7.0))
+        PromiseStatus::Pending
     ));
+    // Import delivery consumed its current attempt; the nested settlement
+    // transaction refused before publishing its status or reaction jobs.
+    assert_eq!(vm.promises[&targets[0]].reactions.len(), 1);
     assert!(matches!(
         vm.promises[&targets[1]].status,
         PromiseStatus::Pending
