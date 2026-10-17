@@ -1603,13 +1603,12 @@ fn weak_collection_entry_bytes(key: &WeakCollectionKey, value: &Value) -> usize 
         .saturating_add(value.payload_bytes())
 }
 
-fn finalization_cell_bytes(
+fn finalization_cell_payload_bytes(
     target: &WeakCollectionKey,
     holdings: &Value,
     unregister_token: &Option<WeakCollectionKey>,
 ) -> usize {
-    size_of::<FinalizationCell>()
-        .saturating_add(weak_collection_key_bytes(target))
+    weak_collection_key_bytes(target)
         .saturating_add(holdings.payload_bytes())
         .saturating_add(
             unregister_token

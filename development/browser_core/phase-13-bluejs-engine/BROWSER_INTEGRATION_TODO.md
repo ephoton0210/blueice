@@ -57,6 +57,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The finalization cell backing checkpoint (2026-10-17) now charges actual slots
+in the existing managed heap ledger, admits coexisting replacement storage
+before mutation and refunds only released allocation/payload. Twenty-four new
+finite offline cases and all 1026 prior controls pass: **1050 total**, with
+formatting and offline workspace/all-target Clippy. Document sharing and cleanup
+ownership remain intact. Other managed/native heap/host buffers, broader report/
+event scratch, shared programs and wider integrated gates remain open; M1u stays
+the latest accepted milestone.
+
 The finalization callback-entry checkpoint (2026-10-17) now prepares roots,
 payload, argument storage and starting fuel before consuming its queued task or
 cell. Refusal preserves cleanup ownership and ambient context; committed calls
@@ -761,10 +770,10 @@ work and exposes its retained payload ledger.
       and collector workspace ownership. Cached completion/error values, admitted
       error-reporting batches, persistent root tables, foreign callable pins,
       host-turn realm/timer/abort snapshots and finalization index/snapshot/direct
-      cleanup plus callback-entry preparation now have bounded checkpoints;
-      all 1026 selected controls pass. Cell backing, shared programs, managed-
-      container backing buffers, wider native storage and integrated acceptance
-      remain open.
+      cleanup plus callback-entry preparation and managed cell-vector backing
+      now have bounded checkpoints; all 1050 selected controls pass. Shared
+      programs, other managed-container backing buffers, wider native storage
+      and integrated acceptance remain open.
 - [ ] **M1x: scheduling capacity admission.** Refuse container growth before
       publishing another task, reaction, registration or handle; admit appends
       that fit existing storage without a fictitious growth charge. Timer,
@@ -3643,6 +3652,70 @@ hashes and staged/committed blob checks. Ordinary-library entry points expose
 the same fixtures; no new coverage result is claimed. This is an M1z checkpoint.
 Cell backing, other heap/host buffers, broader report/event scratch, shared
 programs and wider native/integrated acceptance remain open.
+
+#### Finalization cell backing follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: actual cell-vector capacity belongs to the managed heap/document;
+live payload is charged once. Admit complete detached growth while old storage
+coexists, check reported capacity before publication and preserve existing cells
+on refusal. Spare-slot reuse needs only new payload bytes. Partial removal
+retains its backing charge; empty release, collection and heap destruction return
+the right bytes. Cover registration protection, shared documents and cleanup.
+
+- [x] Reproduce missing capacity ownership/admission with tiny offline cases.
+      All three original cases failed before the fix and now pass.
+- [x] Implement capacity/payload accounting and verify growth/refusal, reuse,
+      unregister/delivery, GC, document sharing and destruction lifecycles.
+      All twenty-four finite offline cases pass.
+- [x] Run fixed offline controls/static checks, update evidence and commit with
+      a detailed English message. Other managed/native heap/host buffers, shared
+      programs and wider integrated acceptance remain open.
+
+The registry's existing managed owner now includes actual retained vector slots
+and live payload separately. The old per-live-cell header charge missed spare
+slots and refunded headers while the vector still retained its allocation.
+Initial/growing registration validates the registry brand first, protects its
+at-most-four input objects, admits a complete detached candidate alongside the
+old allocation and checks reported capacity before moving cells and publishing
+the new registration. A spare slot requires only its new payload allowance.
+Refusal preserves existing cell data and vector capacity; ordinary admission
+collection may still run.
+
+Unregister, individual cleanup delivery and standalone draining refund only
+removed payload while any cell remains. Removing the last cell drops the vector
+and returns its complete backing charge. Object collection and heap destruction
+use the same managed owner. Document accounting includes capacity created before
+attachment, follows Rust-held child heaps and permits cleanup refunds after
+terminal failure. There is no second native charge for these managed slots.
+
+All three initial accounting/admission/removal cases failed before the fix and
+now pass. Twenty-four finite cases cover initial/exact/one-byte-short admission,
+complete coexisting growth, spare-slot payload-only admission/refusal, partial
+and empty unregister/delivery/drain, collection, shared-document refusal/reuse,
+late/idempotent attachment, Rust-held child destruction, GC input protection,
+invalid registry/target/token precedence and cleanup after terminal failure.
+Fixtures use at most five cells and tiny strings with scalar byte allowances.
+
+Validation: **1050 passed, zero failed/ignored**, across 40 executables and 87
+fixed selections: twenty-four new backing cases and all 1026 prior selected
+controls. Formatting, diff checks and offline workspace/all-target Clippy with
+warnings denied pass. Cargo reuses the workspace target with incremental
+compilation and dev/test debug artifact growth disabled. The same nine earlier
+resource/infinite-loop skips remain. Public finalization selection names only
+four finite cases; its large/resource/infinite cases and JSON resource sweeps
+remain unselected. No network/service replay, physical exhaustion probe, fresh
+full Test262, real Core/MCP replay, coverage result or integrated acceptance is
+claimed.
+
+Evidence: `/private/tmp/blueice-finalization-backing-controls-20261017.py`,
+`/private/tmp/blueice-finalization-backing-commit-20261017.txt`,
+`/private/tmp/blueice-finalization-backing-audit-20261017.py`, and logs matching
+`/private/tmp/blueice-finalization-backing-{red,first,expanded,backing-finalization,fmt,clippy}-20261017.log`.
+`target/finalization-backing-source-20261017.json` records source/log/executable
+hashes and staged/committed blob checks. Ordinary-library entry points expose
+the same fixtures; no new coverage result is claimed. This is an M1z checkpoint.
+Other managed/native heap/host buffers, broader report/event scratch, shared
+programs and wider integrated acceptance remain open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

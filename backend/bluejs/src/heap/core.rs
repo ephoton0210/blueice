@@ -356,7 +356,7 @@ impl Heap {
         if let Some(WeakCollectionKey::Object(token)) = &unregister_token {
             self.object(*token)?;
         }
-        let bytes = finalization_cell_bytes(&target, &holdings, &unregister_token);
+        let payload_bytes = finalization_cell_payload_bytes(&target, &holdings, &unregister_token);
         let mut protected = [registry; 4];
         let mut protected_len = 1;
         for id in match &target {
@@ -372,22 +372,73 @@ impl Heap {
             protected[protected_len] = id;
             protected_len += 1;
         }
-        self.ensure_room(bytes, &protected[..protected_len])?;
+        let ObjectKind::FinalizationRegistry { cells, .. } = &self.object(registry)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(registry));
+        };
+        let old_backing = cells
+            .capacity()
+            .saturating_mul(size_of::<FinalizationCell>());
+        let requested = (cells.len() == cells.capacity()).then(|| {
+            cells
+                .len()
+                .saturating_add(1)
+                .max(cells.capacity().saturating_mul(2))
+                .max(4)
+        });
+        // During growth the complete candidate coexists with the old backing.
+        let forecast = requested
+            .unwrap_or(0)
+            .saturating_mul(size_of::<FinalizationCell>())
+            .saturating_add(payload_bytes);
+        self.ensure_room(forecast, &protected[..protected_len])?;
+        let mut replacement = if let Some(capacity) = requested {
+            let mut values = Vec::<FinalizationCell>::new();
+            values
+                .try_reserve_exact(capacity)
+                .map_err(|_| HeapError::HeapLimitExceeded {
+                    limit: self.config.max_heap_bytes,
+                })?;
+            let actual = values
+                .capacity()
+                .saturating_mul(size_of::<FinalizationCell>())
+                .saturating_add(payload_bytes);
+            if actual > forecast {
+                self.ensure_room(actual, &protected[..protected_len])?;
+            }
+            Some(values)
+        } else {
+            None
+        };
         self.write_barrier(registry, holdings.object_id());
         let object = self
             .objects
             .get_mut(&registry)
             .expect("FinalizationRegistry is protected across collection");
         let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind else {
-            return Err(HeapError::InvalidInternalSlot(registry));
+            unreachable!("registry kind is stable across heap-only preparation");
         };
+        let backing_growth = if let Some(mut replacement) = replacement.take() {
+            let actual = replacement
+                .capacity()
+                .saturating_mul(size_of::<FinalizationCell>());
+            replacement.append(cells);
+            *cells = replacement;
+            actual - old_backing
+        } else {
+            0
+        };
+        assert!(
+            cells.len() < cells.capacity(),
+            "cell slot admitted before publication"
+        );
         cells.push(FinalizationCell {
             target: Some(target),
             holdings,
             unregister_token,
         });
-        object.bytes += bytes;
-        self.managed_bytes.add(bytes);
+        let added = backing_growth.saturating_add(payload_bytes);
+        object.bytes += added;
+        self.managed_bytes.add(added);
         Ok(())
     }
 
@@ -406,13 +457,13 @@ impl Heap {
             let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind else {
                 return Err(HeapError::InvalidInternalSlot(registry));
             };
+            let old_backing = cells.capacity() * size_of::<FinalizationCell>();
             let mut released: usize = 0;
             let previous_len = cells.len();
             cells.retain(|cell| {
                 let remove = cell.unregister_token.as_ref() == Some(&unregister_token);
                 if remove {
                     released = released
-                        .saturating_add(size_of::<FinalizationCell>())
                         .saturating_add(cell.target.as_ref().map_or(0, weak_collection_key_bytes))
                         .saturating_add(cell.holdings.payload_bytes())
                         .saturating_add(
@@ -423,10 +474,12 @@ impl Heap {
                 }
                 !remove
             });
-            object.bytes -= released;
             if cells.is_empty() {
                 *cells = Vec::new();
             }
+            released = released
+                .saturating_add(old_backing - cells.capacity() * size_of::<FinalizationCell>());
+            object.bytes -= released;
             if let Some(index) = cells.iter().position(|cell| cell.target.is_none()) {
                 self.pending_finalization.insert(registry, index);
             } else {
@@ -488,6 +541,7 @@ impl Heap {
         let Some(index) = self.pending_finalization.get(&registry).copied() else {
             return Ok(None);
         };
+        let old_backing = cells.capacity() * size_of::<FinalizationCell>();
         let cell = cells.swap_remove(index);
         if let Some(next) = cells[index..].iter().position(|cell| cell.target.is_none()) {
             self.pending_finalization.insert(registry, index + next);
@@ -498,8 +552,10 @@ impl Heap {
         if cells.is_empty() {
             *cells = Vec::new();
         }
-        let released = size_of::<FinalizationCell>()
-            .saturating_add(cell.holdings.payload_bytes())
+        let released = cell
+            .holdings
+            .payload_bytes()
+            .saturating_add(old_backing - cells.capacity() * size_of::<FinalizationCell>())
             .saturating_add(
                 cell.unregister_token
                     .as_ref()
@@ -526,13 +582,13 @@ impl Heap {
             else {
                 continue;
             };
+            let old_backing = cells.capacity() * size_of::<FinalizationCell>();
             let mut registry_released: usize = 0;
             cells.retain_mut(|cell| {
                 if cell.target.is_some() {
                     return true;
                 }
                 registry_released = registry_released
-                    .saturating_add(size_of::<FinalizationCell>())
                     .saturating_add(cell.holdings.payload_bytes())
                     .saturating_add(
                         cell.unregister_token
@@ -548,6 +604,8 @@ impl Heap {
             if cells.is_empty() {
                 *cells = Vec::new();
             }
+            registry_released = registry_released
+                .saturating_add(old_backing - cells.capacity() * size_of::<FinalizationCell>());
             object.bytes -= registry_released;
             released = released.saturating_add(registry_released);
         }

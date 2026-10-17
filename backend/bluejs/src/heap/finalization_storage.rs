@@ -157,6 +157,10 @@ impl Heap {
         self.pending_finalization.retained_bytes()
     }
     #[cfg(any(test, coverage))]
+    pub(crate) fn finalization_cell_slot_bytes() -> usize {
+        size_of::<FinalizationCell>()
+    }
+    #[cfg(any(test, coverage))]
     pub(crate) fn finalization_cell_storage_state(&self, registry: ObjectId) -> (usize, usize) {
         let ObjectKind::FinalizationRegistry { cells, .. } = &self.objects[&registry].kind else {
             panic!("registry fixture");

@@ -46,10 +46,20 @@ Page cleanup borrows ready identities into an admitted sorted registry snapshot
 before publishing tasks. Its native lease follows the complete Rust-held
 snapshot lifetime. Host-neutral cleanup instead compacts cells in place and
 moves cleared holdings directly into the traced Promise-job queue, preserving
-per-registry cell order without bulk jobs/live-cell scratch vectors. Empty cell
-storage is dropped; nonempty backing remains within the wider managed-container/
-host-buffer gate. Registration protects its
-at-most-four object references in a fixed stack array.
+per-registry cell order without bulk jobs/live-cell scratch vectors. Registration
+protects its at-most-four object references in a fixed stack array.
+
+Cell-vector slots belong to the registry's managed heap charge at actual retained
+capacity; live primitive payload is charged separately once. Growth admits a
+complete detached candidate while the original allocation remains charged,
+checks its reported capacity, then moves cells and publishes the new entry.
+Refusal preserves existing cells and backing. Spare slots require only the new
+payload allowance. Unregister and cleanup refund removed payload immediately,
+retain the capacity charge for a nonempty vector and release all backing when
+the last cell leaves. Collection and heap destruction refund the same owner.
+The existing managed document account includes capacity across child heaps and
+Rust-held heaps, including storage created before joining that account; cleanup
+can refund bytes after terminal document failure.
 
 Cleanup callback entry first borrows the ready cell without consuming it.
 Primitive callback/holdings ownership, a one-argument vector and required async
