@@ -54,6 +54,7 @@ mod statements;
 mod tests;
 
 pub use editions::SyntaxEdition;
+pub(crate) use module::module_parse_input_bytes;
 pub use module::{
     parse_module, parse_module_with_debug_spans, parse_module_with_diagnostic_node_spans,
     parse_module_with_edition,

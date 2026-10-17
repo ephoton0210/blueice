@@ -4,6 +4,15 @@
 
 use super::*;
 
+/// Every module parse allocates its copied source, an EOF token and a position,
+/// even for empty input. This is a lower bound, not a complete parser budget.
+pub(crate) fn module_parse_input_bytes(source: &str) -> Option<usize> {
+    source
+        .len()
+        .checked_add(std::mem::size_of::<SpannedToken>())?
+        .checked_add(std::mem::size_of::<usize>())
+}
+
 /// Parses one ECMAScript module and retains its declarative import/export
 /// entries separately from executable statements. Linking remains host-driven
 /// through [`crate::Vm::execute_module_graph`], but this distinct goal keeps

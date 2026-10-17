@@ -13,13 +13,14 @@ use super::*;
 use std::collections::HashSet;
 
 #[derive(Default)]
-struct CountContext {
+struct CountContext<'a> {
     source_texts: HashSet<usize>,
     skip_shared_source_text: bool,
+    source_admission: Option<&'a mut dyn FnMut(usize, usize) -> Option<bool>>,
 }
 
 trait HeapPayload {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize>;
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize>;
 }
 
 /// Account for a child payload without conflating allocation size with the
@@ -38,32 +39,32 @@ macro_rules! sum {
 }
 
 impl HeapPayload for String {
-    fn heap_payload(&self, _: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, _: &mut CountContext<'_>) -> Option<usize> {
         Some(self.capacity())
     }
 }
 
 impl HeapPayload for JsString {
-    fn heap_payload(&self, _: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, _: &mut CountContext<'_>) -> Option<usize> {
         self.owned_heap_payload_bytes()
     }
 }
 
 impl<T: HeapPayload> HeapPayload for Option<T> {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         self.as_ref()
             .map_or(Some(0), |value| value.heap_payload(context))
     }
 }
 
 impl<T: HeapPayload> HeapPayload for Box<T> {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         add_payload(std::mem::size_of::<T>(), (**self).heap_payload(context))
     }
 }
 
 impl<T: HeapPayload> HeapPayload for Vec<T> {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         // Vec's allocation layout bounds this product by isize::MAX. For
         // zero-sized elements the product is zero, including capacity MAX.
         let mut bytes = self
@@ -78,7 +79,7 @@ impl<T: HeapPayload> HeapPayload for Vec<T> {
 }
 
 impl HeapPayload for BigInt {
-    fn heap_payload(&self, _: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, _: &mut CountContext<'_>) -> Option<usize> {
         // The pinned num-bigint digit iterator reports the exact logical
         // u32 limb count, without copying. Its byte length cannot exceed
         // the allocated native-digit buffer, including zero and sign.
@@ -92,13 +93,20 @@ impl HeapPayload for BigInt {
 }
 
 impl HeapPayload for SourceText {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         if context.skip_shared_source_text {
             return Some(0);
         }
         let Some(text) = &self.text else {
             return Some(0);
         };
+        if let Some(admit) = &mut context.source_admission {
+            return Some(if admit(text.as_ptr() as usize, text.len())? {
+                text.len()
+            } else {
+                0
+            });
+        }
         Some(if context.source_texts.insert(text.as_ptr() as usize) {
             text.len()
         } else {
@@ -125,24 +133,45 @@ impl Program {
 
 impl Module {
     pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
-        let mut context = CountContext::default();
+        self.heap_payload(&mut CountContext::default())
+    }
+    pub(crate) fn payload_without_source_text(&self) -> Option<usize> {
+        self.heap_payload(&mut CountContext {
+            skip_shared_source_text: true,
+            ..Default::default()
+        })
+    }
+    /// The caller admits source storage and deduplication scratch before each
+    /// new identity. Template placeholders may own distinct source allocations.
+    pub(crate) fn payload_with_source_admission(
+        &self,
+        admit: &mut dyn FnMut(usize, usize) -> Option<bool>,
+    ) -> Option<usize> {
+        self.heap_payload(&mut CountContext {
+            source_admission: Some(admit),
+            ..Default::default()
+        })
+    }
+}
+impl HeapPayload for Module {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
-            self.body.heap_payload(&mut context),
-            self.imports.heap_payload(&mut context),
-            self.exports.heap_payload(&mut context),
-            self.requests.heap_payload(&mut context),
+            self.body.heap_payload(context),
+            self.imports.heap_payload(context),
+            self.exports.heap_payload(context),
+            self.requests.heap_payload(context),
         )
     }
 }
 
 impl HeapPayload for RequestedModule {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         self.specifier.heap_payload(context)
     }
 }
 
 impl HeapPayload for ImportName {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Named(name) => name.heap_payload(context),
             Self::Namespace | Self::DeferredNamespace | Self::Source => Some(0),
@@ -151,7 +180,7 @@ impl HeapPayload for ImportName {
 }
 
 impl HeapPayload for ImportEntry {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
             self.module_request.heap_payload(context),
             self.import_name.heap_payload(context),
@@ -161,7 +190,7 @@ impl HeapPayload for ImportEntry {
 }
 
 impl HeapPayload for ExportEntry {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Local {
                 export_name,
@@ -194,7 +223,7 @@ impl HeapPayload for ExportEntry {
 }
 
 impl HeapPayload for Function {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
             self.name.heap_payload(context),
             self.params.heap_payload(context),
@@ -205,7 +234,7 @@ impl HeapPayload for Function {
 }
 
 impl HeapPayload for Class {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
             self.name.heap_payload(context),
             self.extends.heap_payload(context),
@@ -217,7 +246,7 @@ impl HeapPayload for Class {
 }
 
 impl HeapPayload for ClassElement {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Method {
                 key,
@@ -251,7 +280,7 @@ impl HeapPayload for ClassElement {
 }
 
 impl HeapPayload for Param {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
             self.pattern.heap_payload(context),
             self.default.heap_payload(context),
@@ -260,7 +289,7 @@ impl HeapPayload for Param {
 }
 
 impl HeapPayload for Pattern {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Identifier(name) => name.heap_payload(context),
             Self::Array(elements) => elements.heap_payload(context),
@@ -270,7 +299,7 @@ impl HeapPayload for Pattern {
 }
 
 impl HeapPayload for AssignmentPattern {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Target(target) => target.heap_payload(context),
             Self::Array(elements) => elements.heap_payload(context),
@@ -280,7 +309,7 @@ impl HeapPayload for AssignmentPattern {
 }
 
 impl HeapPayload for AssignmentPatternElement {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
             self.pattern.heap_payload(context),
             self.default.heap_payload(context),
@@ -289,7 +318,7 @@ impl HeapPayload for AssignmentPatternElement {
 }
 
 impl HeapPayload for AssignmentPatternProp {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::KeyValue {
                 key,
@@ -306,7 +335,7 @@ impl HeapPayload for AssignmentPatternProp {
 }
 
 impl HeapPayload for ArrayPatternElement {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
             self.pattern.heap_payload(context),
             self.default.heap_payload(context),
@@ -315,7 +344,7 @@ impl HeapPayload for ArrayPatternElement {
 }
 
 impl HeapPayload for ObjectPatternProp {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::KeyValue {
                 key,
@@ -332,7 +361,7 @@ impl HeapPayload for ObjectPatternProp {
 }
 
 impl HeapPayload for PropertyKey {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Identifier(name) => name.heap_payload(context),
             Self::String(value) => value.heap_payload(context),
@@ -343,7 +372,7 @@ impl HeapPayload for PropertyKey {
 }
 
 impl HeapPayload for VarDeclarator {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
             self.pattern.heap_payload(context),
             self.init.heap_payload(context),
@@ -352,7 +381,7 @@ impl HeapPayload for VarDeclarator {
 }
 
 impl HeapPayload for SwitchCase {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
             self.test.heap_payload(context),
             self.consequent.heap_payload(context),
@@ -361,7 +390,7 @@ impl HeapPayload for SwitchCase {
 }
 
 impl HeapPayload for CatchClause {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         sum!(
             self.param.heap_payload(context),
             self.body.heap_payload(context),
@@ -370,7 +399,7 @@ impl HeapPayload for CatchClause {
 }
 
 impl HeapPayload for ForHead {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Decl(_, pattern) => pattern.heap_payload(context),
             Self::AnnexBVarInit(pattern, expression) => sum!(
@@ -384,7 +413,7 @@ impl HeapPayload for ForHead {
 }
 
 impl HeapPayload for ForInit {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::VarDecl(_, declarations) => declarations.heap_payload(context),
             Self::Expr(expression) => expression.heap_payload(context),
@@ -393,7 +422,7 @@ impl HeapPayload for ForInit {
 }
 
 impl HeapPayload for Stmt {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Empty => Some(0),
             Self::Expr(expression) | Self::Throw(expression) => expression.heap_payload(context),
@@ -472,7 +501,7 @@ impl HeapPayload for Stmt {
 }
 
 impl HeapPayload for ArrayElement {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Normal(expression) | Self::Spread(expression) => expression.heap_payload(context),
         }
@@ -480,7 +509,7 @@ impl HeapPayload for ArrayElement {
 }
 
 impl HeapPayload for ObjectProp {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::KeyValue { key, value, .. } => {
                 sum!(key.heap_payload(context), value.heap_payload(context),)
@@ -494,7 +523,7 @@ impl HeapPayload for ObjectProp {
 }
 
 impl HeapPayload for Argument {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Normal(expression) | Self::Spread(expression) => expression.heap_payload(context),
         }
@@ -502,7 +531,7 @@ impl HeapPayload for Argument {
 }
 
 impl HeapPayload for ArrowBody {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Expr(expression) => expression.heap_payload(context),
             Self::Block(body) => body.heap_payload(context),
@@ -511,7 +540,7 @@ impl HeapPayload for ArrowBody {
 }
 
 impl HeapPayload for Expr {
-    fn heap_payload(&self, context: &mut CountContext) -> Option<usize> {
+    fn heap_payload(&self, context: &mut CountContext<'_>) -> Option<usize> {
         match self {
             Self::Number(_)
             | Self::Bool(_)

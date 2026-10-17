@@ -52,6 +52,10 @@ mod notification_storage_tests;
 #[path = "../../tests/fixtures/import_call_storage.rs"]
 mod import_call_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_compilation_input.rs"]
+mod compilation_input_tests;
+
 struct EvaluationFrame<'a> {
     name: &'a str,
     code: ModuleCode,
@@ -1295,14 +1299,24 @@ impl Vm {
         if modules.contains_key(target) {
             return Ok(());
         }
-        let Some(source) = self.dynamic_module_sources.get(target) else {
+        if !self.dynamic_module_sources.contains_key(target) {
             return Ok(());
-        };
-        let program = crate::parse_module(source)
-            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compile_module_with_limit(&program, u32::MAX)
-            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
-        modules.insert(target, code, self.host_scheduling.as_ref())
+        }
+        let result = (|| {
+            self.synchronize_scheduling_usage()?;
+            let source = self
+                .dynamic_module_sources
+                .get(target)
+                .expect("checked source is retained during compilation");
+            let input = module_compilation_input::ParsedModuleInput::parse(
+                source,
+                self.host_scheduling.as_ref(),
+            )?;
+            let code = input.compile(self.host_scheduling.as_ref())?;
+            modules.insert_prepared(target, code, self.host_scheduling.as_ref())
+        })();
+        self.reconcile_scheduling_ownership();
+        result
     }
 
     /// The module-registry key a request names: its specifier resolved

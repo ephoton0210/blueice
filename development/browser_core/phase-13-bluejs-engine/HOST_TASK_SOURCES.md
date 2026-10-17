@@ -1029,6 +1029,23 @@ then carry their heap charge; the original export keeps its separate shared
 native owner. Shared child/source/diagnostic program storage, compiler staging
 and other parser/continuation/cache/service buffers remain separate gates.
 
+Dynamic module compilation preflights the unavoidable copied-source/EOF-token/
+position minimum before parsing, including empty input. Returned AST buffers
+then retain a document owner through compilation. Two allocation-free traversals
+count native structure and invoke source admission; distinct SourceText payloads
+use independently admitted, coexisting hash-set scratch. Template placeholders
+may own separate source allocations and are counted alongside their parent.
+Scratch drops before the parsed owner returns. Accounting preserves the existing
+AST metric's logical BigInt-limb model and allocator/control-block exclusions.
+
+Script, module and diagnostic lowering share a borrowed body slice. Module
+entry no longer deep-copies its executable tree into a temporary Program, and
+strict restricted-name errors precede unused diagnostic inventories. Parsed
+input and admitted root-code buffers coexist until handoff; the input drops
+before registry copying/publication. Parser resource errors remain resource
+errors. Full token/AST/compiler producer preallocation and compiled shared child/
+source/diagnostic storage remain separate open gates.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

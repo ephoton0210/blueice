@@ -341,6 +341,7 @@ impl ModuleRegistryDraft {
             builder: None,
         }
     }
+    #[cfg(any(test, coverage))]
     pub(super) fn insert(
         &mut self,
         key: &str,

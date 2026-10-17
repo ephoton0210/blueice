@@ -68,6 +68,15 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The dynamic module compilation-input follow-up (2026-10-18) now borrows module
+bodies and owns returned AST buffers through root-code preparation. Parser input
+minimums and source-deduplication scratch are admitted, including separate
+template-fragment source allocations. The corrected focused run passes **22/22**;
+final related controls pass **60 distinct selected tests**, across five executable
+targets and twelve selections. Formatting, diff checks and offline workspace/
+all-target Clippy pass, with source/artifact and commit audits. Complete parser/
+compiler producer preallocation and shared compiled-program storage remain open.
+
 The source-phase import admission follow-up (2026-10-17) now resolves source
 requests through admitted native name storage and returns latched settlement/
 thenable-job failure through its fallible entry. Three old-code cases reproduce
@@ -7261,6 +7270,86 @@ Core/MCP validations, and do not retry the previously rejected push.
 Evidence: `target/import-source-admission-source-20261017.json` and prefix
 `/private/tmp/blueice-import-source-admission-`, including red/first/pre-cfg source
 archives, frozen Rust inputs, the fixed runner, supplemental name control and logs.
+
+#### Dynamic module compilation-input follow-up (implementation checkpoint, 2026-10-18)
+
+Acceptance: module lowering borrows the parsed body, including diagnostic
+compilation, and strict early errors precede unused diagnostic inventories.
+Dynamic compilation admits unavoidable source/EOF parser storage before parsing,
+then gives the returned AST an independent document owner. Deduplicate all
+SourceText allocations, including template-fragment parser sources, through
+separately admitted accounting scratch. Keep the AST charged through owned root-code
+preparation and drop it before registry copying/publication. Preserve lazy
+syntax errors, import/export metadata and module execution semantics.
+
+- [x] Preserve old-code body-copy/early-error and dynamic parse-before-refusal
+      failures using fixed tiny sources and scalar quota peers.
+- [x] Implement borrowed-body lowering and independently owned compilation input.
+- [x] Pass focused finite compiler/module controls, formatting and offline
+      Clippy; record source/artifact audits and a detailed English commit.
+
+Four original cases fail (**0/4 passed**): ordinary/diagnostic strict early errors
+perform **7/11 allocations**, while zero-headroom ordinary/empty dynamic sources
+perform **57/7 allocations** before refusal. Red source copies preserve the
+unchanged compiler and dynamic-compilation body from the parent checkpoint.
+
+Script, module and diagnostic entry points now lower a borrowed statement slice.
+Module bodies are no longer cloned into a temporary Program; pure strict
+restricted-name validation precedes diagnostic inventories that an error would
+discard. The parser exposes its unavoidable copied-source/EOF-token/position
+lower bound for preflight, including empty input. This is not its full allocation
+budget. Returned ASTs own reported vector/string/box/source payloads through an
+independent shared document charge, using the existing logical BigInt-limb and
+allocator/control-block exclusions.
+
+An initial **20/20** selection missed a source-identity assumption. A valid module
+with a function in a template placeholder returns a separately parsed SourceText
+allocation; the added counterexample fails (**0/1 passed**) with SchedulingLimit.
+Preserve both states. The corrected accounting traverses structural buffers
+without allocation and admits every distinct source payload before growing
+separately owned deduplication scratch. Complete coexisting hash-set candidates
+retain reported slot charges; scratch drops before the AST owner returns. Mixed
+and template-fragment source allocations are counted once each.
+
+The AST remains charged until a PreparedModuleCode admits its unique root buffers.
+It drops before registry copying/publication, and the prepared root owner moves
+into registry adoption. Existing/missing sources keep their no-work paths.
+Syntax/root refusal publishes no new module and refunds the input. Parser resource
+errors retain their resource type. Foreign/unbounded escape and terminal rules
+match other native owners. The unprepared registry adapter now serves fixtures
+only and is restricted to test/coverage configurations.
+
+The corrected expanded run passes **22/22**: five allocation observations remain
+unit-only, and seventeen functional contracts also have an ordinary-library
+entry point. Cases cover metric compatibility and source identities, VM-drop
+ownership, retained/scratch exact and one-short budgets, AST/root coexistence,
+refusal refunds/publication, lazy syntax errors, attachment/foreign/terminal rules,
+and a public module retaining imports, exports, await, template execution and
+function source text after input destruction. Nineteen registry controls, ten
+dynamic-import cases, two AST metric controls, two existing diagnostic module
+cases, four exact live/cycle/lazy-error cases and one function/template source
+case pass: **60 distinct selected tests**, across five executable targets and
+twelve contributing selections. A pre-lint 60-pass state and its Clippy fallback
+finding are archived; the equivalent cleanup is followed by the same final
+60-case selection. Formatting, diff checks and offline workspace/all-target
+Clippy with warnings denied pass; source/artifact and commit audits record the
+checkpoint.
+
+Source/artifact audits bind ten frozen Rust inputs and twelve source/document
+files, preserve original/intermediate/template/final evidence, and compare the
+unchanged eval/later compiler helpers and module evaluation controller. The focused
+checks do not renew the earlier broad inventory.
+
+This does not close token/AST/compiler producer preallocation, allocator/BigInt-
+spare exclusions, shared compiled child code/source/diagnostic storage or
+integrated acceptance. In particular, the root-code handoff does not transfer
+ongoing charges for compiled shared sources/children. M1u remains the
+latest accepted milestone. Broad, pressure/infinite-execution and network/Core/
+MCP replay remain prohibited; the rejected push is not retried.
+
+Evidence: `target/module-compilation-input-source-20261018.json` and prefix
+`/private/tmp/blueice-module-compilation-input-`, including 2026-10-17 red and
+single-source/template archives plus 2026-10-18 final inputs, controls and logs.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

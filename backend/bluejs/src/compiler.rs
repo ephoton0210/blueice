@@ -127,7 +127,7 @@ pub fn compile_with_limits(
     program: &Program,
     limits: CompileLimits,
 ) -> Result<Bytecode, CompileError> {
-    compile_with_limit_and_mode(program, limits, false, &[], &[], &[], false)
+    compile_with_limit_and_mode(&program.body, limits, false, &[], &[], &[], false)
 }
 
 /// Like [`compile_module`], with the Test262 adapter's bytecode resource
@@ -152,9 +152,7 @@ pub fn compile_module_with_limits(
     limits: CompileLimits,
 ) -> Result<Bytecode, CompileError> {
     compile_with_limit_and_mode(
-        &Program {
-            body: module.body.clone(),
-        },
+        &module.body,
         limits,
         true,
         &module.imports,
@@ -169,7 +167,7 @@ pub(crate) fn compile_for_diagnostics(
 ) -> Result<Bytecode, CompileError> {
     match program {
         crate::BlueJsProgramV1::Script(program) => compile_with_limit_and_mode(
-            program,
+            &program.body,
             CompileLimits::default(),
             false,
             &[],
@@ -178,9 +176,7 @@ pub(crate) fn compile_for_diagnostics(
             true,
         ),
         crate::BlueJsProgramV1::Module(module) => compile_with_limit_and_mode(
-            &Program {
-                body: module.body.clone(),
-            },
+            &module.body,
             CompileLimits::default(),
             true,
             &module.imports,
@@ -192,7 +188,7 @@ pub(crate) fn compile_for_diagnostics(
 }
 
 fn compile_with_limit_and_mode(
-    program: &Program,
+    body: &[Stmt],
     limits: CompileLimits,
     module: bool,
     module_imports: &[ImportEntry],
@@ -200,6 +196,12 @@ fn compile_with_limit_and_mode(
     module_requests: &[RequestedModule],
     capture_diagnostics: bool,
 ) -> Result<Bytecode, CompileError> {
+    let strict = module || strict_body(body);
+    if strict && strict_assignment_to_restricted_name(body) {
+        return Err(CompileError::InvalidSyntax(
+            "strict code cannot assign to eval or arguments",
+        ));
+    }
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
         names: Vec::new(),
@@ -225,29 +227,23 @@ fn compile_with_limit_and_mode(
     };
     if capture_diagnostics {
         compiler.diagnostic_ast_ids = Some(std::rc::Rc::new(
-            crate::program_debug::ast_ids::collect_diagnostic_ast_node_ids(&program.body),
+            crate::program_debug::ast_ids::collect_diagnostic_ast_node_ids(body),
         ));
         compiler.bytecode.diagnostic_source_node_count =
             compiler.diagnostic_ast_ids.as_ref().unwrap().node_count;
     }
-    compiler.bytecode.strict = module || strict_body(&program.body);
+    compiler.bytecode.strict = strict;
     compiler.bytecode.module = module;
     compiler.bytecode.import_meta_allowed = module;
-    if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
-        return Err(CompileError::InvalidSyntax(
-            "strict code cannot assign to eval or arguments",
-        ));
-    }
-    compiler.bytecode.global_function_names = program
-        .body
+    compiler.bytecode.global_function_names = body
         .iter()
         .filter_map(|statement| match statement {
             Stmt::FunctionDecl(function) => function.name.clone(),
             _ => None,
         })
         .collect();
-    let mut lexical = lexical_names(&program.body);
-    let mut vars = top_level_var_names(&program.body);
+    let mut lexical = lexical_names(body);
+    let mut vars = top_level_var_names(body);
     if module {
         for import in module_imports {
             if let Some(local_name) = &import.local_name {
@@ -256,8 +252,7 @@ fn compile_with_limit_and_mode(
         }
         // Module function declarations are lexical bindings, rather than the
         // classic-script global var bindings used by the existing compiler.
-        let function_names: BTreeSet<_> = program
-            .body
+        let function_names: BTreeSet<_> = body
             .iter()
             .filter_map(|statement| match statement {
                 Stmt::FunctionDecl(function) => function.name.clone(),
@@ -266,22 +261,22 @@ fn compile_with_limit_and_mode(
             .collect();
         vars.retain(|name| !function_names.contains(name));
         lexical.extend(function_names.into_iter().map(|name| (name, DeclKind::Let)));
-        lexical.extend(program.body.iter().filter_map(|statement| match statement {
+        lexical.extend(body.iter().filter_map(|statement| match statement {
             Stmt::ModuleDefaultFunction { binding, .. } => Some((binding.clone(), DeclKind::Let)),
             _ => None,
         }));
     }
     if !compiler.bytecode.strict {
-        vars.extend(annex_b_function_names(&program.body, &lexical));
+        vars.extend(annex_b_function_names(body, &lexical));
     }
     compiler.enter_scope(lexical, &vars, true)?;
-    let mut root_statement_offsets = vec![None; program.body.len()];
-    let mut root_statement_ranges = vec![None; program.body.len()];
-    let mut root_function_child_indices = vec![None; program.body.len()];
-    let mut root_statement_child_ranges = vec![None; program.body.len()];
+    let mut root_statement_offsets = vec![None; body.len()];
+    let mut root_statement_ranges = vec![None; body.len()];
+    let mut root_function_child_indices = vec![None; body.len()];
+    let mut root_statement_child_ranges = vec![None; body.len()];
     if module {
         compiler.top_level_function_declarations(
-            &program.body,
+            body,
             &mut root_statement_offsets,
             &mut root_statement_ranges,
             &mut root_function_child_indices,
@@ -290,11 +285,11 @@ fn compile_with_limit_and_mode(
         // Unlike a Script, a Module's top level *is* one of the
         // UsingDeclaration-permitted contexts: a `using`/`await using`
         // there disposes when the module's own evaluation completes.
-        if has_using_declaration(&program.body) {
-            let is_async = has_await_using_declaration(&program.body);
+        if has_using_declaration(body) {
+            let is_async = has_await_using_declaration(body);
             compiler.wrap_with_disposal(is_async, &mut |this| {
                 this.top_level_statements_after_function_declarations(
-                    &program.body,
+                    body,
                     &mut root_statement_offsets,
                     &mut root_statement_ranges,
                     &mut root_statement_child_ranges,
@@ -302,7 +297,7 @@ fn compile_with_limit_and_mode(
             })?;
         } else {
             compiler.top_level_statements_after_function_declarations(
-                &program.body,
+                body,
                 &mut root_statement_offsets,
                 &mut root_statement_ranges,
                 &mut root_statement_child_ranges,
@@ -314,26 +309,25 @@ fn compile_with_limit_and_mode(
         // indirectly, within a Block, ...": a `using`/`await using`
         // directly at Script top level (not module) has no enclosing
         // block to dispose it at the end of.
-        if has_using_declaration(&program.body) {
+        if has_using_declaration(body) {
             return Err(CompileError::InvalidSyntax(
                 "a using declaration is not allowed directly at the top level of a Script",
             ));
         }
         compiler.top_level_function_declarations(
-            &program.body,
+            body,
             &mut root_statement_offsets,
             &mut root_statement_ranges,
             &mut root_function_child_indices,
         )?;
         compiler.top_level_statements_after_function_declarations(
-            &program.body,
+            body,
             &mut root_statement_offsets,
             &mut root_statement_ranges,
             &mut root_statement_child_ranges,
         )?;
     }
-    compiler.bytecode.root_declaration_binding_slots = program
-        .body
+    compiler.bytecode.root_declaration_binding_slots = body
         .iter()
         .map(|statement| {
             let name = match statement {
