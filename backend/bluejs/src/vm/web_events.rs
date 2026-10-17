@@ -350,6 +350,12 @@ impl Vm {
 
     pub(super) fn new_web_event_state(&self, rank: u8, name: JsString) -> DragEventState {
         let mut state = DragEventState::new(rank);
+        self.initialize_web_event_state(&mut state, name);
+        state
+    }
+
+    pub(super) fn initialize_web_event_state(&self, state: &mut DragEventState, name: JsString) {
+        let rank = state.interface;
         state.set("type", Value::String(name));
         state.set("target", Value::Null);
         state.set("isTrusted", Value::Bool(false));
@@ -374,7 +380,6 @@ impl Vm {
             }
             state.set("relatedTarget", Value::Null);
         }
-        state
     }
 
     pub(super) fn construct_web_event(

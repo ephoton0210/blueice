@@ -64,6 +64,14 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The rejection-batch entry follow-up (2026-10-17) prepares native notification
+snapshots before removing their rooted task. The two original refusal cases
+failed before the fix; seventeen focused finite groups, four additional exact
+public rejection cases and all 1300 prior selected controls pass: **1321 total**.
+Formatting and offline workspace/all-target Clippy pass.
+Managed event allocation/dispatch scratch, retained-map ownership,
+other heap/host buffers, shared programs and integrated acceptance remain open.
+
 The browser-task entry checkpoint (2026-10-17) now peeks queued work and prepares
 starting fuel/drag argument capacity before removal. Twenty-eight finite
 groups pass: active refusal preserves queued state/context, stale cleanup needs
@@ -4550,6 +4558,88 @@ fixtures; no new coverage result is claimed. This is an M1z checkpoint.
 Per-event/batch staging, retained-map ownership, other heap/host buffers, shared
 programs and integrated acceptance remain open; M1u stays the latest accepted
 milestone.
+
+#### Rejection-batch entry follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: prepare the complete native notification snapshot while its browser
+task and Promise roots remain queued. Admit event attribute backing, names,
+reason copies and source filenames before copying/publishing them. Preparation
+refusal must preserve the batch, roots, serial, notification flags and task-entry
+fuel. Delivery must recheck suppression after earlier callbacks/checkpoints,
+transfer event/source ownership once and release roots/temporary storage on
+every committed outcome.
+
+- [x] Reproduce premature task consumption and absent snapshot admission with
+      two tiny cases, including the public task-turn boundary: **0/2 passed**
+      before implementation.
+- [x] Implement a prepared batch with complete requested/actual storage checks,
+      independent payload leases and event/console ownership handoff.
+- [x] Complete fixed finite controls, static checks, evidence and a detailed
+      English commit. This remains part of M1z; integrated gates stay open.
+
+Entry prepares one complete vector while the original queue/root owners remain
+installed. Eligible entries reserve eight event attributes without incremental
+growth, retain both the event and preview reason copies, and copy source names
+under a document lease. Suppressed entries preserve their positions without
+payload copies. Starting-fuel validation still precedes native preparation;
+the first host instruction still commits the task attempt. Stale-only cleanup
+does not prepare snapshots or spend a host instruction.
+
+Preparation splits independently owned event, source and preview leases from
+the admitted vector. Event state keeps its native lease throughout managed
+allocation, then transfers to the heap or drops on refusal. Console source
+ownership stays leased through clock sampling and insertion, then refunds before
+console admission. Per-entry payloads release after dispatch or suppression;
+vector backing releases before the final event-turn checkpoint. Delivery
+rechecks handled state after earlier callbacks and their microtasks. Managed
+allocation/dispatch failures retain committed-attempt behavior and release all
+notification roots and temporary native ownership.
+
+The earlier zero-allocation non-drag preparation control continues to cover
+completion, read and timeout work; rejection work now has its own complete
+snapshot admission controls. Initial expanded controls reported **10/15 passed**:
+fixtures needed public pre-task checkpoint fuel semantics, read-only account
+observation, actual global-value lookup and sufficient reclaimed event storage
+for the GC case. The GC fixture uses four small managed event objects. A further
+managed-refusal case checks cleanup under a numerical heap limit.
+
+The callback-suppression case also exposed an invalid aggregate-root-count
+expectation: callbacks can create unrelated roots. It now clears page references
+and proves both original notification Promises are collected. Sixteen groups
+then passed. A final delivery-time timestamp refresh preserves event creation
+semantics after earlier callbacks; its case uses a fixed sentinel without sleeps.
+All seventeen focused finite groups pass.
+
+Seventeen finite groups cover public/private admission refusal, complete exact/
+one-byte-short allowances, dropped preparation/refunds, Rust-held ownership after
+VM destruction, fuel precedence, stale/mixed notifications, callback-checkpoint
+suppression and actual Promise collectibility, source/UTF-16 preservation,
+managed/instruction failure cleanup, object-reason lifetime through real GC,
+handled-event shape, console handoff and delivery timestamp refresh.
+
+Validation: **1321 passed, zero failed/ignored**, across 47 executables and 127
+fixed selections: seventeen new groups, four additional exact finite public
+rejection cases and all 1300 prior selected controls. The public additions cover
+handling during delivery, adoption/combinator order, uncanceled diagnostics
+without invoking getters, and event constructor identity/validation. Formatting,
+diff checks and offline workspace/all-target Clippy with warnings denied pass.
+Cargo reuses the workspace target with incremental compilation and dev/test debug
+artifact growth disabled. Ordinary-library entry points expose the same fixtures;
+no fresh coverage result is claimed.
+
+The selection remains offline and finite, with the same nine resource/infinite-
+loop skips. Large/resource/infinite cases, JSON resource
+sweeps, network/service replay, privileged validation, process killing, fresh
+full Test262, real Core/MCP replay, coverage and integrated gates are unclaimed.
+
+Evidence paths: `/private/tmp/blueice-rejection-batch-controls-20261017.py`,
+`/private/tmp/blueice-rejection-batch-commit-20261017.txt`,
+`/private/tmp/blueice-rejection-batch-audit-20261017.py`, logs matching
+`/private/tmp/blueice-rejection-batch-*-20261017.log`, and
+`target/rejection-batch-source-20261017.json`. This is an M1z checkpoint;
+managed event allocation and other event/dispatch scratch, retained-map ownership,
+other heap/host buffers, shared programs and integrated acceptance remain open.
+M1u remains the latest accepted milestone.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

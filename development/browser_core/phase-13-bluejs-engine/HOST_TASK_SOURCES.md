@@ -279,6 +279,27 @@ after failure. Event/settlement/batch internals retain their committed-attempt
 cleanup behavior, and finer event/batch staging remains open alongside retained
 maps, other heap/host buffers, shared programs and integrated acceptance.
 
+Rejection-task entry additionally prepares a complete native notification
+snapshot while the original task and all Promise roots remain queued. It admits
+the snapshot vector, each eligible event's complete attribute backing, both
+reason copies, event-name storage and copied source filename before publication.
+Requested and reported capacities are checked under an independent document
+lease. Suppressed entries keep their position without copying payload; delivery
+rechecks handled state after earlier callbacks and their checkpoints.
+Each timestamp refreshes at actual delivery, after earlier callbacks, without
+growing the prepared attribute backing.
+
+Each entry owns separate event/reason/source leases split from that admitted
+batch. Managed event allocation retains the native event lease until the heap
+adopts or drops its state. Console transfer retains the filename lease through
+clock sampling and releases it after insertion, before console admission. Entry
+payloads drop after each attempted/skipped notification; vector backing drops
+before the final event-turn checkpoint. Preparation refusal consumes no task,
+root, serial, notification bit or ambient fuel. Managed event allocation and
+dispatch are committed attempts; their errors still release the entire batch's
+roots and temporary ownership. Other event producers and dispatch scratch,
+retained maps and integrated acceptance remain open.
+
 Async/module await admits counts and settled value/origin ownership before
 copying its status, then leases unowned frame payload, complete queue growth and
 complete continuation-map replacement together. Refusal leaves live queue/map

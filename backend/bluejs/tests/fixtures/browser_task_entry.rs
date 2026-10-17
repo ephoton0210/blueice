@@ -293,7 +293,7 @@ fn browser_task_entry_zero_fuel_precedes_native_admission_for_every_active_kind(
 }
 #[cfg_attr(test, test)]
 fn browser_task_entry_non_drag_preparation_needs_no_argument_allocation() {
-    for kind in [Kind::Completion, Kind::Read, Kind::Timeout, Kind::Rejection] {
+    for kind in [Kind::Completion, Kind::Read, Kind::Timeout] {
         let mut work = Work::new(kind);
         let roots = work.vm.heap.root_storage_state();
         let _peer = leave_room(&mut work.vm, 0);

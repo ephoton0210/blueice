@@ -94,6 +94,7 @@ mod host_task_storage;
 mod host_wait_storage;
 mod promise_queue_storage;
 mod promise_record_storage;
+mod rejection_batch_entry;
 mod timer_entry;
 mod timer_registration;
 mod window_aliases;

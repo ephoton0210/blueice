@@ -218,6 +218,7 @@ impl Vm {
         &mut self,
         entries: Vec<PendingRejection>,
         handled: bool,
+        prepared: rejection_batch_entry::PreparedRejectionBatch,
     ) -> Result<(), RuntimeError> {
         let count = entries.len();
         self.host_rejections
@@ -225,8 +226,9 @@ impl Vm {
             .expect("notification owner")
             .active += count;
         let result = self.run_host_event_turn(|vm| {
+            let mut batch = prepared;
             vm.synchronize_scheduling_usage()?;
-            for entry in &entries {
+            for mut entry in batch.entries.drain(..) {
                 vm.charge_step()?;
                 let record = vm
                     .promises
@@ -235,24 +237,22 @@ impl Vm {
                 if !handled && record.handled {
                     continue;
                 }
-                let PromiseStatus::Rejected(reason) = &record.status else {
+                let PromiseStatus::Rejected(_) = &record.status else {
                     continue;
-                };
-                let reason = reason.clone();
-                let source = record.rejection_origin.source.clone();
-                let event_name = if handled {
-                    "rejectionhandled"
-                } else {
-                    "unhandledrejection"
                 };
                 let base = vm.stack.len();
                 let fired = (|| {
-                    let mut state = vm.new_web_event_state(7, event_name.into());
-                    state.cancelable = !handled;
-                    state.set("promise", Value::Object(entry.promise));
-                    state.set("reason", reason.clone());
+                    let mut state = entry.state.take().expect("eligible prepared notification");
+                    // Storage is prepared as a batch, but each event is born
+                    // when its delivery begins, after preceding callbacks.
+                    state.set(
+                        "timeStamp",
+                        Value::Number(vm.event_time_origin.elapsed().as_secs_f64() * 1000.0),
+                    );
                     let prototype = vm.globals["%WebPromiseRejectionEvent%"];
-                    let event = vm.with_roots(|heap| heap.alloc_drag_event(state, prototype))?;
+                    let event = vm.with_roots(|heap| heap.alloc_drag_event(state, prototype));
+                    drop(entry.state_charge.take());
+                    let event = event?;
                     vm.stack.push(Value::Object(event));
                     vm.finish_web_event(event)?;
                     let global = vm.global("globalThis")?.object_id().unwrap();
@@ -260,12 +260,13 @@ impl Vm {
                         vm.dispatch_web_target_event(global, event, true)? == Value::Bool(true);
                     if !handled && not_canceled {
                         let mut output = Output::message("Uncaught (in promise) ");
-                        vm.console_preview(&reason, &mut output)?;
-                        vm.console_emit_with_source(
+                        vm.console_preview(&entry.reason, &mut output)?;
+                        vm.console_emit_with_leased_source(
                             ConsoleFunction::Error,
                             "error",
                             output,
-                            source,
+                            entry.source.take(),
+                            entry.source_charge.take(),
                         )?;
                     }
                     if !handled {

@@ -255,11 +255,24 @@ impl Vm {
         output: Output,
         source: Option<crate::diagnostics::DiagnosticSourceLocation>,
     ) -> Result<(), RuntimeError> {
+        self.console_emit_with_leased_source(function, level, output, source, None)
+    }
+
+    pub(super) fn console_emit_with_leased_source(
+        &mut self,
+        function: ConsoleFunction,
+        level: &'static str,
+        output: Output,
+        source: Option<crate::diagnostics::DiagnosticSourceLocation>,
+        charge: Option<host_scheduling::SharedSchedulingCharge>,
+    ) -> Result<(), RuntimeError> {
         let now = self.sample_host_timer_clock();
         self.host_console
             .as_mut()
             .expect("console native has its state")
             .push(function, level, now, output, source);
+        // Console state adopts the moved filename before its next admission.
+        drop(charge);
         self.synchronize_scheduling_usage()
     }
 

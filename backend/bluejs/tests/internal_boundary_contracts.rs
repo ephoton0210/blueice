@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_rejection_batch_entry_contracts() {
+    blueice_bluejs::Vm::verify_rejection_batch_entry_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_browser_task_entry_contracts() {
     blueice_bluejs::Vm::verify_browser_task_entry_contracts();
 }

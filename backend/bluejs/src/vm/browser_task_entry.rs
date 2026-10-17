@@ -31,6 +31,7 @@ impl PreparedBrowserArguments {
 pub(super) struct PreparedBrowserEntry {
     pub(super) action: BrowserEntryAction,
     pub(super) arguments: Option<PreparedBrowserArguments>,
+    pub(super) rejections: Option<rejection_batch_entry::PreparedRejectionBatch>,
 }
 impl Vm {
     pub(super) fn prepare_browser_task_entry(
@@ -98,6 +99,7 @@ impl Vm {
         let mut prepared = PreparedBrowserEntry {
             action,
             arguments: None,
+            rejections: None,
         };
         if action != BrowserEntryAction::Run {
             return Ok(prepared);
@@ -106,7 +108,11 @@ impl Vm {
             return Err(RuntimeError::InstructionLimit);
         }
         let drag = matches!(task, BrowserTask::DragString { .. });
+        let rejections = matches!(task, BrowserTask::PromiseRejections { .. });
         self.admit_scheduling_work(HostSchedulingUsage::default())?;
+        if rejections {
+            prepared.rejections = Some(self.prepare_rejection_batch(index)?);
+        }
         if drag {
             let charge = self
                 .host_scheduling

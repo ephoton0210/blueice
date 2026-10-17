@@ -289,7 +289,14 @@ impl Vm {
             BrowserTask::PromiseRejections {
                 entries, handled, ..
             } => (
-                self.run_host_rejection_task(entries, handled),
+                self.run_host_rejection_task(
+                    entries,
+                    handled,
+                    prepared
+                        .rejections
+                        .take()
+                        .expect("prepared rejection batch"),
+                ),
                 None,
                 None,
                 false,
