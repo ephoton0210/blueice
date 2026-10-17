@@ -1924,7 +1924,7 @@ fn shadow_wrapped_functions_reject_construction_and_busy_realms_reject_imports()
     let function = vm
         .shadow_realm_evaluate(
             realm.clone(),
-            Value::String("(function() {return 42;})".into()),
+            &Value::String("(function() {return 42;})".into()),
         )
         .unwrap();
     let wrapper = function.object_id().unwrap();
@@ -2119,7 +2119,7 @@ fn failed_shadow_wrapper_does_not_retain_its_target() {
         let realm_root = vm.heap.root(realm_id).unwrap();
         let source = format!("globalThis.target = function() {{return 42;}}; Object.defineProperty(target, '{property}', {{get() {{throw 'private';}}, configurable: true}}); target");
         assert!(matches!(
-            vm.shadow_realm_evaluate(realm.clone(), Value::String(source.into())),
+            vm.shadow_realm_evaluate(realm.clone(), &Value::String(source.into())),
             Err(RuntimeError::TypeError(_))
         ));
         assert!(vm.shadow_wrapped_functions.is_empty());
@@ -2146,7 +2146,7 @@ fn failed_shadow_wrapper_does_not_retain_its_target() {
         );
         drop(child);
         assert_eq!(
-            vm.shadow_realm_evaluate(realm, Value::String("21 + 21".into())),
+            vm.shadow_realm_evaluate(realm, &Value::String("21 + 21".into())),
             Ok(Value::Number(42.0))
         );
         vm.heap.unroot(realm_root).unwrap();
@@ -2780,7 +2780,7 @@ fn failed_shadow_wrapping_releases_child_targets_and_preserves_opaque_metadata_e
         vm.heap.allow_only(extra);
         let result = vm.shadow_realm_evaluate(
             realm.clone(),
-            Value::String("(function named(value) {return value + 1;})".into()),
+            &Value::String("(function named(value) {return value + 1;})".into()),
         );
         if result.is_err() {
             next_extra = vm.heap.next_allocation_headroom(extra);
@@ -2813,7 +2813,7 @@ fn failed_shadow_wrapping_releases_child_targets_and_preserves_opaque_metadata_e
             assert!(matches!(
                 vm.shadow_realm_evaluate(
                     realm,
-                    Value::String("(function(value) {return value + 1;})".into())
+                    &Value::String("(function(value) {return value + 1;})".into())
                 ),
                 Ok(Value::Object(_))
             ));

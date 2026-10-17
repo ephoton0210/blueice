@@ -1166,9 +1166,27 @@ original semantic reference; production no longer builds those trees.
 
 This covers direct/indirect eval returned inputs, compiler snapshots, their
 environment producers and durable code. Full parser/compiler producer
-preallocation remains open, together with ShadowRealm.evaluate account handoff,
+preallocation remains open, together with
 ordinary host-precompiled shared script ownership, diagnostic map/registry
 storage, allocator/BigInt-spare/Rc-control exclusions and integrated acceptance.
+
+ShadowRealm evaluation borrows its original native UTF-16 argument and uses the
+same admitted text/AST/root/source/child-code carriers. Before encoding, it
+selects the child's document account, falling back to a bounded caller for a
+neutral child. Active-call guards retain zero-owning account views, allowing
+reentrant compilation-policy lookup without another VM-pointer dereference.
+Different document accounts refuse before compilation/context changes; a busy
+record lacking an active ancestor still parses before reporting that error.
+
+Prepared entry synchronizes the child and validates or attaches code ownership
+before resetting lexicals or suspending a frame. Root code remains charged
+through execution, Promise cleanup and wrapper metadata getters. Shared code and
+source survive returned functions, pending timer/Promise callbacks and Rust-held
+handles, including late activation of previously neutral code. Catchable getter
+failures remain opaque; fatal host errors keep their identity and release
+candidate pins. Complete neutral-tree policy adoption and thread-local active-
+call backing remain separate open control-storage work, alongside the wider
+native/integrated gates above.
 
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit

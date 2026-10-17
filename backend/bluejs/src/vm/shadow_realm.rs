@@ -19,8 +19,14 @@
 //! `WrappedFunctionCreate`) cross at all; every other object is a
 //! `TypeError`.
 
-use super::realm_reentrancy::{register_active, resolve_active};
+use super::compilation_text_storage::NativeText;
+use super::eval_compilation_storage::{ParsedEvalInput, PreparedEvalCode};
+use super::realm_reentrancy::{active_scheduling_scope, register_active, resolve_active};
 use super::*;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/shadow_eval_storage.rs"]
+mod eval_storage_tests;
 
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/shadow_realm_boundaries.rs"]
@@ -152,7 +158,7 @@ impl Vm {
     pub(super) fn shadow_realm_evaluate(
         &mut self,
         this: Value,
-        source_text: Value,
+        source_text: &Value,
     ) -> Result<Value, RuntimeError> {
         self.synchronize_scheduling_usage()?;
         self.collect_before_shadow_realm_entry()?;
@@ -162,6 +168,22 @@ impl Vm {
                 "ShadowRealm.prototype.evaluate requires a string".into(),
             ));
         };
+        let record = self
+            .shadow_realms
+            .get(&this_id)
+            .cloned()
+            .expect("require_shadow_realm confirmed this_id names a live ShadowRealm record");
+        let target_scope = match record.vm.try_borrow() {
+            Ok(child) => child.host_scheduling.as_ref().map(SchedulingScope::child),
+            Err(_) => active_scheduling_scope(record.heap),
+        };
+        if let (Some(caller), Some(target)) = (&self.host_scheduling, &target_scope) {
+            if !caller.same_document(target) {
+                return Err(target.fail());
+            }
+        }
+        let scope =
+            target_scope.or_else(|| self.host_scheduling.as_ref().map(SchedulingScope::child));
         // Parsing happens before an eval execution context is ever pushed:
         // a `HostEnsureCanCompileStrings`/`ParseText` failure throws a real
         // `SyntaxError` directly, distinct from the opaque `TypeError`
@@ -171,24 +193,18 @@ impl Vm {
         // ordinarily `self`, or (through `Test262`'s own foreign-call
         // membrane) another realm's `Vm` when `evaluate` was reached via a
         // cross-realm facade, with no extra work required here.
-        let source_text = crate::source_encoding::encode(&source_text);
-        let program = crate::parser::parse_encoded(&source_text)
-            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compile(&program)
-            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let text = NativeText::encoded(source_text, scope.as_ref())?;
+        let program = ParsedEvalInput::parse_script(&text, scope.as_ref())?;
+        drop(text);
+        let mut code = program.compile_with(scope.as_ref(), crate::compile)?;
         // `this_id` names a live record (checked above), so this record is
         // always present; it may still be a *shared* one -- see
         // `ShadowRealmRecord`'s own doc comment -- if it was ever
         // transported into another realm.
-        let record = self
-            .shadow_realms
-            .get(&this_id)
-            .cloned()
-            .expect("require_shadow_realm confirmed this_id names a live ShadowRealm record");
         return match record.vm.try_borrow_mut() {
             Ok(mut child) => {
                 let child_guard = register_active(&mut child);
-                let outcome = Self::run_evaluate(self, &mut child, &code, false);
+                let outcome = Self::run_prepared_evaluate(self, &mut child, &mut code, false);
                 drop(child_guard);
                 match outcome {
                     Ok(value) => self.shadow_wrap_into(&mut child, value),
@@ -213,7 +229,7 @@ impl Vm {
                 // SAFETY: see `ACTIVE`'s documentation and the identical
                 // reasoning in `shadow_call_wrapped`.
                 let record_vm = unsafe { &mut *ptr };
-                let outcome = Self::run_evaluate(self, record_vm, &code, true);
+                let outcome = Self::run_prepared_evaluate(self, record_vm, &mut code, true);
                 match outcome {
                     Ok(value) => self.shadow_wrap_into(record_vm, value),
                     Err(error) if !error.is_catchable() => Err(error),
@@ -221,6 +237,26 @@ impl Vm {
                 }
             }
         };
+    }
+
+    fn run_prepared_evaluate(
+        caller: &mut Vm,
+        child: &mut Vm,
+        code: &mut PreparedEvalCode,
+        reentrant: bool,
+    ) -> Result<Value, RuntimeError> {
+        child.synchronize_scheduling_usage()?;
+        // Related bounded realms share one account. A neutral caller attaches
+        // to the child's account; a neutral child retains its caller's lease.
+        // Foreign-document refusal precedes lexical reset or frame suspension.
+        if let Some(scope) = child
+            .host_scheduling
+            .as_ref()
+            .or(caller.host_scheduling.as_ref())
+        {
+            code.attach(scope)?;
+        }
+        Self::run_evaluate(caller, child, code, reentrant)
     }
 
     /// Runs a parsed/compiled `evaluate` body in `child` (registering
@@ -660,8 +696,14 @@ impl Vm {
             // Metadata getters must not expose their original exception
             // across the boundary. The root transfers to the wrapper record
             // only after every descriptor has been copied successfully.
-            copied.map_err(|_| {
-                RuntimeError::TypeError("could not wrap this function across a ShadowRealm".into())
+            copied.map_err(|error| {
+                if error.is_catchable() {
+                    RuntimeError::TypeError(
+                        "could not wrap this function across a ShadowRealm".into(),
+                    )
+                } else {
+                    error
+                }
             })?;
             self.shadow_wrapped_functions.insert(
                 wrapper,

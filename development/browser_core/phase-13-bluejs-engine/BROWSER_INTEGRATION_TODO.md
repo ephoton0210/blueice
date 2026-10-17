@@ -68,9 +68,18 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The ShadowRealm evaluation storage follow-up (2026-10-18) has an implementation
+checkpoint. Lexer/AST/root/source/child-code ownership now follows the selected
+caller/child account, including reentrant evaluation and wrapper metadata
+getters. All twenty-two expanded cases pass. Final validation passes **227
+distinct selected tests** across thirteen executable targets and forty-three
+fixed selections. Formatting, diff checks and offline workspace/all-target
+Clippy pass, with source/artifact and local commit audits. Broader acceptance
+remains open under the existing local/offline cybersecurity constraint.
+
 The eval environment producer follow-up (2026-10-18) has an implementation
-checkpoint. Borrowed
-selection scratch, snapshot vectors, copied names and dynamic capture tables
+checkpoint. Borrowed selection scratch, snapshot vectors, copied names and
+dynamic capture tables
 now acquire native admission before construction. Both original refusal cases
 and all fourteen expanded cases pass. Final validation passes **176 distinct
 selected tests** across twelve executable targets and thirty-eight fixed
@@ -1300,7 +1309,10 @@ work and exposes its retained payload ledger.
       backing cost and prepares table/source state across GC. Other input/origin producers
       remain open. Eval compiler environment producers now preflight borrowed
       selection scratch, copied names and returned snapshot backing; fourteen
-      fixed semantics/lifetime/refusal cases pass. Shared programs, other
+      fixed semantics/lifetime/refusal cases pass. ShadowRealm evaluation now
+      selects caller/child account ownership before runtime compilation and
+      keeps root/source/code leases through wrapping and timer/Promise GC;
+      twenty-two fixed cases pass. Shared programs, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
       remain open.
@@ -7740,6 +7752,92 @@ Evidence: `target/eval-environment-storage-source-20261018.json` and prefix
 red inputs/log, initial green source/log, expanded compiler and baseline findings,
 initial validation/style findings, final frozen inputs, fixed controls and the
 detailed English commit message.
+
+#### ShadowRealm evaluation storage follow-up (implementation checkpoint, 2026-10-18)
+
+Acceptance: borrow native source input and admit lexer text, returned AST,
+temporary root code and durable source/child code against the correct document.
+Choose the child account before compilation even for a host-neutral caller or
+an already active child. Retain root code through wrapping metadata getters and
+shared owners through returned/queued functions and final collection. Preserve
+fresh lexical environments, shared globals, parser/error precedence, reentrant
+frame restoration and fatal host errors.
+
+- [x] Preserve original tiny missing-owner, early-copy and metadata-error cases.
+- [x] Reuse admitted compilation carriers and prepare caller/child account
+      handoff before context changes; preserve fatal metadata failures.
+- [x] Complete expanded finite semantics/GC/account contracts, fixed related
+      controls, static/source/artifact audits and a detailed English commit.
+
+The original **0/4 passed** run records missing runtime source owners, premature
+native refunds after realm-tree destruction, **26 total allocations** before
+native refusal, and a finite getter's managed-heap refusal converted to an
+opaque TypeError. The first **3/4** pass; its remaining two allocations belong
+to prior GC work. The corrected observation compares native dispatch with the
+same direct entry instead of requiring GC to allocate nothing. A separate
+neutral-caller/bounded-child case requires zero allocations before child-budget
+refusal, testing compiler admission without prior caller collection.
+
+Native dispatch borrows the original UTF-16 value. Compilation selects the
+target's document before encoding, falling back to the caller's scope for a
+neutral child. An active-call guard retains a zero-owning scheduling view so
+reentrant policy inspection reads no VM pointer. Foreign documents refuse before
+compilation or child context changes. Missing active-ancestor resolution remains
+deferred until after parsing, preserving syntax-error precedence for a busy
+record. No new unsafe pointer access is introduced.
+
+Lexer text and returned Program use the shared carriers; text drops after AST
+admission and AST drops after compilation. Root storage has its own owner,
+remaining live through child execution, Promise cleanup and function metadata
+copying. Independent source and child-code owners survive queued callbacks,
+returned wrappers and Rust-held code. Prepared entry synchronizes the child and
+validates/attaches root/source/code owners before lexical reset or frame
+suspension. A neutral child retains caller-owned compilation storage. This does
+not enable a new document policy for an existing neutral realm tree.
+
+Catchable metadata getter failures retain their opaque TypeError copy. Fatal
+instruction, scheduling and heap failures keep their original identity and
+release candidate wrapper pins through the existing failure path. Legacy raw
+`run_evaluate` frame/lexical restoration remains unchanged.
+
+The initial twenty and expanded **22/22** cases pass. Three allocation
+observations remain unit-only; nineteen functional contracts expose an
+ordinary-library entry. Cases cover native dispatch comparison, fresh and
+active-child preparse refusal, correct account selection, public/prepared
+foreign-document rejection, neutral/bounded and late attachment, exact/one-short
+root admission, idempotent leases, terminal cleanup, parse/error/UTF-16 behavior,
+guard nesting, reentrant frame/GC restoration, independent code lifetimes and
+timer/Promise delivery followed by final source collection. Fixtures use at most
+three VMs, tiny source strings, one callback and scalar quota peers or a finite
+zero-additional-headroom getter.
+
+Final validation passes **227 distinct selected tests** in forty-three fixed
+selections across thirteen executable targets: the new twenty-two, all 176 prior
+controls, eighteen public ShadowRealm cases, ten existing boundary/displaced-root
+cases and one exact metadata cleanup case. Formatting, diff checks and offline
+workspace/all-target Clippy with warnings denied pass. Source/artifact and
+staged/committed content audits bind nine frozen Rust inputs, eleven source/
+document files, thirteen test executables and the detailed English commit.
+The legacy fixture edits only borrow their source argument; their broad
+allocation-boundary sweeps remain unselected. Parser/compiler lowering,
+`CompilationInput`/`NativeText`, shared source/child-code owner implementations,
+raw frame restoration, realm construction and
+unrelated native dispatch remain unchanged. No fresh coverage or broader
+acceptance is claimed by the ordinary-library entry or these controls.
+
+Full parser/compiler/coercion producer preallocation, ordinary host-precompiled
+script ownership, thread-local
+active-call backing and other native control/host buffers, late policy adoption
+for a complete neutral realm tree, diagnostic map/registry storage and allocator/
+BigInt-spare/Rc-control exclusions remain open with integrated acceptance. M1u
+remains the latest accepted milestone. No broad, exhaustion, infinite-execution
+or network/Core/MCP replay is resumed; the rejected push is not retried.
+
+Evidence: `target/shadow-eval-storage-source-20261018.json` and prefix
+`/private/tmp/blueice-shadow-eval-storage-` (2026-10-18), including original red
+inputs/log, the first three-of-four GC-allocation finding, expanded twenty-case
+inputs/log, final frozen inputs, fixed controls and the detailed English commit
+message.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

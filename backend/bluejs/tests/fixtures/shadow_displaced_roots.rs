@@ -64,7 +64,7 @@ fn displaced_root_ownership_public_evaluate_preserves_fatal_rooting_errors() {
         .clone();
     record.vm.borrow_mut().heap.allow_root_registrations(0);
     assert_eq!(
-        vm.shadow_realm_evaluate(realm, Value::String("({answer:42});".into())),
+        vm.shadow_realm_evaluate(realm, &Value::String("({answer:42});".into())),
         Err(RuntimeError::Heap(HeapError::IdExhausted))
     );
 }

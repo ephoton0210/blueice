@@ -93,7 +93,7 @@ fn shadow_ancestors_and_wrapped_this_are_validated_before_reborrowing() {
     let record = destination.shadow_realms[&realm.object_id().unwrap()].clone();
     let held = record.vm.borrow_mut();
     assert!(
-        matches!(destination.shadow_realm_evaluate(realm, Value::String("42".into())),
+        matches!(destination.shadow_realm_evaluate(realm, &Value::String("42".into())),
         Err(RuntimeError::TypeError(message)) if message == "the ShadowRealm this function belongs to is no longer reachable")
     );
     drop(held);

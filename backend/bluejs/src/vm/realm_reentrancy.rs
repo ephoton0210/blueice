@@ -14,6 +14,8 @@
 
 use super::*;
 
+type ActiveVm = (u64, *mut Vm, Option<SchedulingScope>);
+
 thread_local! {
     /// A stack of `Vm`s currently mid-call as part of one synchronous
     /// cross-realm call chain on this thread, most recently registered last.
@@ -34,7 +36,7 @@ thread_local! {
     /// for its home realm) simply fails [`resolve_active`] and reports a
     /// catchable error, rather than dereferencing memory whose lifetime has
     /// already ended.
-    static ACTIVE: RefCell<Vec<(u64, *mut Vm)>> = const { RefCell::new(Vec::new()) };
+    static ACTIVE: RefCell<Vec<ActiveVm>> = const { RefCell::new(Vec::new()) };
 }
 
 pub(super) struct ActiveGuard {
@@ -46,7 +48,7 @@ impl Drop for ActiveGuard {
         ACTIVE.with(|active| {
             let popped = active.borrow_mut().pop();
             debug_assert!(
-                popped.is_some_and(|(tag, _)| tag == self.tag),
+                popped.is_some_and(|(tag, _, _)| tag == self.tag),
                 "cross-realm active-Vm registrations must nest with the Rust call stack"
             );
         });
@@ -58,14 +60,18 @@ impl Drop for ActiveGuard {
 /// realm, and keep the guard alive across exactly that call.
 pub(super) fn register_active(vm: &mut Vm) -> ActiveGuard {
     let tag = vm.object_prototype.heap;
-    ACTIVE.with(|active| active.borrow_mut().push((tag, vm as *mut Vm)));
+    // Host policy cannot change while this synchronous call owns the VM.
+    // Keep a zero-owning account view for reentrant compilation without
+    // dereferencing the active VM merely to inspect its scheduling policy.
+    let scope = vm.host_scheduling.as_ref().map(SchedulingScope::child);
+    ACTIVE.with(|active| active.borrow_mut().push((tag, vm as *mut Vm, scope)));
     ActiveGuard { tag }
 }
 
 /// Whether this call is nested inside a different Realm's suspended call.
 /// Only inspect heap tags; no registered VM pointer is dereferenced.
 pub(super) fn has_foreign_caller(tag: u64) -> bool {
-    ACTIVE.with(|active| active.borrow().iter().any(|(caller, _)| *caller != tag))
+    ACTIVE.with(|active| active.borrow().iter().any(|(caller, _, _)| *caller != tag))
 }
 
 /// Finds the most recently registered `Vm` for `tag`, if one is currently
@@ -78,7 +84,19 @@ pub(super) fn resolve_active(tag: u64) -> Option<*mut Vm> {
             .borrow()
             .iter()
             .rev()
-            .find(|(t, _)| *t == tag)
-            .map(|(_, ptr)| *ptr)
+            .find(|(t, _, _)| *t == tag)
+            .map(|(_, ptr, _)| *ptr)
+    })
+}
+
+/// Read only the account view captured by the active call's guard.
+pub(super) fn active_scheduling_scope(tag: u64) -> Option<SchedulingScope> {
+    ACTIVE.with(|active| {
+        active
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(t, _, _)| *t == tag)
+            .and_then(|(_, _, scope)| scope.as_ref().map(SchedulingScope::child))
     })
 }

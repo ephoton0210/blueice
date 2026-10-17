@@ -24,6 +24,22 @@ impl std::ops::Deref for PreparedEvalCode {
         &self.code
     }
 }
+impl PreparedEvalCode {
+    /// A host-neutral caller can enter an already bounded child. Bind all
+    /// surviving code before any child execution context is displaced.
+    pub(super) fn attach(&mut self, scope: &SchedulingScope) -> Result<(), RuntimeError> {
+        scope.shared_charge(0)?;
+        if let Some(owner) = &self._charge {
+            if !owner.belongs_to(scope) {
+                return Err(scope.fail());
+            }
+        } else {
+            self._charge = Some(scope.shared_charge(owned_code_bytes(&self.code))?);
+        }
+        self.code
+            .attach_runtime_sources(&scope.heap_native_budget())
+    }
+}
 impl ParsedEvalInput {
     pub(super) fn parse_eval(
         source: &str,

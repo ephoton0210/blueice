@@ -1184,9 +1184,7 @@ impl Vm {
                 self.disposable_stack_disposed(&receiver, is_async)
             }
             NativeFunction::ShadowRealm => self.shadow_realm_constructor(construct),
-            NativeFunction::ShadowRealmEvaluate => {
-                self.shadow_realm_evaluate(receiver, first.clone())
-            }
+            NativeFunction::ShadowRealmEvaluate => self.shadow_realm_evaluate(receiver, first),
             NativeFunction::ShadowRealmImportValue => {
                 let second = native::argument(&args, 1);
                 self.shadow_realm_import_value(receiver, first.clone(), second.clone())
