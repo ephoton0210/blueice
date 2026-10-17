@@ -295,21 +295,27 @@ impl Vm {
                 "host did not provide a source-phase representation for {module}"
             )));
         }
-        let prototype = self.host_module_source_prototype()?;
-        // A freshly made prototype is reachable from nothing until the (rooted)
-        // source object below points at it; keep it on the operand stack
-        // while that source is allocated.
-        self.stack.push(Value::Object(prototype));
-        let source = self.with_roots(|heap| heap.alloc_object(Some(prototype)));
-        self.stack.pop();
-        let source = source?;
-        let root = self.heap.root(source)?;
-        // A retained source object owns the prototype's first heap edge.
-        // Cold allocation/root failures must not publish a dangling cache.
-        self.host_module_source_prototype = Some(prototype);
-        self.module_source_cache.insert(module.to_string(), source);
-        self.module_source_roots.insert(module.to_string(), root);
-        Ok(source)
+        self.synchronize_scheduling_usage()?;
+        let prepared = module_identity_cache::PreparedIdentity::prepare(
+            self,
+            module,
+            module_identity_cache::IdentityKind::Source,
+        )?;
+        let saved_capacity = self.preserve_promise_table_capacity;
+        self.preserve_promise_table_capacity = true;
+        let result = (|| {
+            let prototype = self.host_module_source_prototype()?;
+            // Heap allocation protects its prototype argument. Native trace
+            // preparation performs no managed collection before that call.
+            let source = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            let root = self.heap.root(source)?;
+            self.host_module_source_prototype = Some(prototype);
+            prepared.publish(self, source, root);
+            Ok(source)
+        })();
+        self.preserve_promise_table_capacity = saved_capacity;
+        self.reconcile_scheduling_ownership();
+        result
     }
 
     /// The [[Prototype]] of every Module Source object this host creates.

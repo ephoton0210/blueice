@@ -36,6 +36,10 @@ mod export_resolution_storage_tests;
 #[path = "../../tests/fixtures/module_binding_storage.rs"]
 mod module_binding_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_identity_cache.rs"]
+mod module_identity_cache_tests;
+
 /// How code that is not a generator -- a module body, an async function body
 /// -- finishes a run: it returns, or it awaits. It never yields, and no
 /// running code suspends at a generator's entry.
@@ -1309,18 +1313,27 @@ impl Vm {
     /// no URL-like fields in this embedding, but the required null prototype
     /// and module-local identity are observable and must be stable.
     pub(super) fn import_meta(&mut self) -> Result<Value, RuntimeError> {
-        let module = self
-            .active_module_name
-            .clone()
-            .unwrap_or_else(|| "<module>".to_string());
-        if let Some(meta) = self.module_import_meta.get(&module) {
+        let name = self.active_module_name.as_deref().unwrap_or("<module>");
+        if let Some(meta) = self.module_import_meta.get(name) {
             return Ok(Value::Object(*meta));
         }
-        let meta = self.with_roots(|heap| heap.alloc_object(None))?;
-        let root = self.heap.root(meta)?;
-        self.module_import_meta.insert(module.clone(), meta);
-        self.module_import_meta_roots.insert(module, root);
-        Ok(Value::Object(meta))
+        self.synchronize_scheduling_usage()?;
+        let prepared = module_identity_cache::PreparedIdentity::prepare(
+            self,
+            self.active_module_name.as_deref().unwrap_or("<module>"),
+            module_identity_cache::IdentityKind::Meta,
+        )?;
+        let saved_capacity = self.preserve_promise_table_capacity;
+        self.preserve_promise_table_capacity = true;
+        let result = (|| {
+            let meta = self.with_roots(|heap| heap.alloc_object(None))?;
+            let root = self.heap.root(meta)?;
+            prepared.publish(self, meta, root);
+            Ok(Value::Object(meta))
+        })();
+        self.preserve_promise_table_capacity = saved_capacity;
+        self.reconcile_scheduling_ownership();
+        result
     }
 
     /// Dynamic `import()` first creates a Promise capability, then defers all

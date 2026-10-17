@@ -68,6 +68,21 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The source/import-meta identity-cache follow-up (2026-10-17) now owns retained
+cache storage and prepares complete publication.
+Four old-code cases reproduce one allocation on an import-meta hit, four on a
+zero-headroom cold call, and missing retained table/key charges. Four identity/
+root tables now own retained backing and key capacities; publication prepares
+complete table/name storage before managed allocation. Import-meta lookup
+borrows its name, and source allocation uses the heap's protected prototype
+argument. The first expanded run passes **23/23**. Twenty-three new groups,
+two additional finite public identity cases and all 1748 prior selected controls
+pass: **1773 total**, across 50 executables and 165 fixed selections. Formatting,
+diff checks and offline workspace/all-target Clippy pass; source/artifact and
+commit audits record the checkpoint. Synthetic request producers, other caches/
+buffers, recursion and integrated acceptance remain open. M1u remains the latest
+accepted milestone.
+
 The module-binding preparation follow-up (2026-10-17) now owns import and
 namespace staging. Four
 pre-admission observations reproduce one allocation each for import slots,
@@ -6574,6 +6589,82 @@ and the separate compile attempt in
 `/private/tmp/blueice-module-binding-storage-compile-attempt-20261017/`, and
 `target/module-binding-storage-source-20261017.json`. This remains an M1z
 implementation checkpoint with wider acceptance open.
+
+#### Source/import-meta identity-cache follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: retain all four source/import-meta identity/root table allocations
+and key capacities in the document native budget. Prepare complete publication
+storage before managed allocation, preserve old identities on failure, and keep
+lookup hits allocation-free at full healthy quota. Cold source prototypes must
+survive allocation GC without an unadmitted operand buffer.
+
+- [x] Preserve four old-code failures: **0/4 passed**. Import-meta hit/cold
+      calls allocate 1/4 times where no allocation is permitted; the first table
+      layer reports zero instead of 120 bytes, and its padded key reports zero
+      instead of 64 bytes.
+- [x] Retain cache backing and names, stage complete publication, borrow hit
+      lookup names and protect source prototype inputs through the heap API.
+- [x] Pass expanded finite checks, fixed offline controls, formatting and Clippy;
+      complete source/artifact and commit audits with detailed English text.
+
+Each cache/root pair uses retained allocation ledgers plus all live String key
+capacities. Prepared publication owns two copied names and complete candidate
+maps before any heap object is created; the owner is tied to that VM's intrinsic
+identity and document account. Abandonment drops buffers before refund, including
+when Rust retains a preparation after VM destruction. Publication registers the
+heap root first, moves native storage, refunds staging and immediately reconciles
+the VM owner without intervening allocation or callback.
+
+Import-meta hits borrow the active module name or fallback literal; distinct
+modules keep distinct null-prototype objects. Source identities and metadata
+identities stay separate. Source validation preserves existing error kinds.
+The source constructor passes its prototype directly to protected heap
+allocation; native trace preparation performs no managed collection before that
+call. The redundant operand-stack temporary is removed. Root/allocation failure
+leaves cache entries and the cold-prototype field unpublished.
+
+Capacity preservation covers managed allocation/GC while candidates are live.
+Optional sparse reclamation separately admits complete replacements, releases
+each adopted reduction before dropping its lease and funds the next table with
+the refunded headroom. Refusal stays nonterminal; retained name buffers and root
+IDs move unchanged. Deleted keys refund payload while surviving table backing
+remains charged.
+
+Twenty-three finite groups cover the four original observations, identity/hit
+behavior, fallback/module names, unchanged preparation state, detached owners,
+exact/short preparation and publication, source refusal before heap/prototype
+work, root/managed failure and retry, GC/VM-drop ownership, retained deletion
+backing, refused/exact/retried sparse reclamation, preserved candidate shapes
+during GC, stack-free cold-source prototype protection, host-neutral behavior,
+validation errors and real source/meta module identity. Twenty-one functional
+groups are exposed through the ordinary-library entry point; two allocation
+observations remain unit-only.
+
+The first expanded run passes **23/23**. The runner passes **1773 distinct
+selected tests** across 50 executables and 165 fixed selections: 23 new groups,
+two inspected finite public source/import-meta identity contracts and all 1748
+prior selected controls. Formatting, diff checks and offline workspace/all-target
+Clippy with warnings denied pass. Nine frozen Rust input hashes and eleven final
+source/document inputs tie the source/artifact, staged and committed audits to
+the logs, executable hashes, Cargo inputs and detailed English commit message.
+The same nine explicit resource/infinite-loop skips and finite public filters
+remain. The initial expanded compile attempt referenced a nonexistent VM field;
+its source/log manifest remains separate from behavioral red evidence. The owner
+guard now uses the existing fixed intrinsic object identity.
+Synthetic/source request producers, namespace/module-body recursion, other
+module/source caches, other heap/native buffers, allocator/error-message overhead,
+shared programs and integrated acceptance remain open. M1u remains the latest
+accepted milestone; the prior rejected push is not retried.
+
+Evidence paths: `/private/tmp/blueice-module-identity-cache-controls-20261017.py`,
+`/private/tmp/blueice-module-identity-cache-rust-inputs-20261017.json`, logs
+matching `/private/tmp/blueice-module-identity-cache-*-20261017.log`, original
+source inputs in `/private/tmp/blueice-module-identity-cache-red-source-20261017/`,
+the separate compile attempt at
+`/private/tmp/blueice-module-identity-cache-compile-attempt-20261017/`,
+`/private/tmp/blueice-module-identity-cache-audit-20261017.py`,
+`/private/tmp/blueice-module-identity-cache-commit-20261017.txt` and
+`target/module-identity-cache-source-20261017.json`.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

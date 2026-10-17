@@ -655,6 +655,21 @@ construction, publish into already-prepared linked cell tables without growth,
 then release staging. Both remain charged if Rust retains them after VM drop.
 Other synthetic/source request producers and module/source caches remain open.
 
+Source/import-meta identity and root maps retain their reported backing and all
+owned key capacities in the document native account. Each new identity prepares
+both name copies and complete map candidates before managed allocation, preserves
+table shapes across GC, and registers its root before publication. Staging
+refunds immediately before VM reconciliation; retained Rust preparations keep
+their own charge after VM destruction. Cache hits borrow lookup names. Source
+allocation passes its prototype directly as a protected heap argument, avoiding
+an operand-stack temporary during cold construction.
+
+Optional sparse identity-map reclamation admits full coexisting replacements
+and refunds each adopted reduction before the next table. Refusal stays
+nonterminal, while name buffers and root IDs move unchanged. Deleted key payload
+refunds independently of retained table backing. Synthetic request preparation,
+other module/source caches and broader native/heap buffers remain open.
+
 The graph's retained table/set/vector allocations and UTF-8 names share the document
 native-byte budget. Registration first admits the incoming vector, original
 name capacities and complete deduplication set. It then independently leases

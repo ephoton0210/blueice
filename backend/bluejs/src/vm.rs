@@ -119,6 +119,7 @@ mod module_binding_storage;
 mod module_dependencies;
 mod module_export_names;
 mod module_export_resolution;
+mod module_identity_cache;
 mod module_name_storage;
 mod module_walk_storage;
 mod namespace_cache_storage;
@@ -1027,13 +1028,13 @@ pub struct Vm {
     /// Host-provided source-phase module records. Their opaque identities are
     /// intentionally separate from executable module bytecode.
     module_source_registry: module_sources::SourceNames,
-    module_source_cache: HashMap<String, ObjectId>,
-    module_source_roots: HashMap<String, RootId>,
+    module_source_cache: module_identity_cache::IdentityMap,
+    module_source_roots: module_identity_cache::IdentityRoots,
     /// The host-created [[ImportMeta]] value for each source-text module.
     /// The root gives module records stable identity across nested closure
     /// calls and later graph evaluations.
-    module_import_meta: HashMap<String, ObjectId>,
-    module_import_meta_roots: HashMap<String, RootId>,
+    module_import_meta: module_identity_cache::IdentityMap,
+    module_import_meta_roots: module_identity_cache::IdentityRoots,
     abstract_module_source_prototype: Option<ObjectId>,
     /// The prototype shared by every Module Source object this host makes:
     /// the host's own concrete source "class" (as `WebAssembly.Module.prototype`

@@ -1042,6 +1042,7 @@ impl Vm {
             .payload_bytes
             .saturating_add(self.module_dependency_bytes())
             .saturating_add(self.namespace_cache_bytes())
+            .saturating_add(self.module_identity_cache_bytes())
             .saturating_add(self.disposal_storage_bytes());
         usage
     }
