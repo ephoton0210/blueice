@@ -20,6 +20,33 @@ impl PromiseJob {
 }
 
 impl Vm {
+    pub(super) fn current_rejection_origin_payload_bytes(&self) -> usize {
+        if let Some(origin) = &self.promise_origin_override {
+            origin.payload_bytes()
+        } else {
+            self.active_diagnostic_frame
+                .as_ref()
+                .and_then(|frame| frame.location())
+                .map_or(0, |source| source.filename.capacity())
+        }
+    }
+
+    pub(super) fn prepare_current_rejection_origin(
+        &mut self,
+    ) -> Result<(ThrowOrigin, Option<host_scheduling::SharedSchedulingCharge>), RuntimeError> {
+        self.synchronize_scheduling_usage()?;
+        let mut charge = self
+            .host_scheduling
+            .as_ref()
+            .map(|scope| scope.shared_charge(self.current_rejection_origin_payload_bytes()))
+            .transpose()?;
+        let origin = self.current_rejection_origin();
+        if let Some(charge) = &mut charge {
+            charge.resize(origin.payload_bytes())?;
+        }
+        Ok((origin, charge))
+    }
+
     pub(super) fn propagate_module_error(&mut self, error: ModuleEvaluationError) -> RuntimeError {
         self.publish_rejection_origin(error.origin.clone());
         RuntimeError::Thrown(error.value.clone())

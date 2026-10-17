@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_thunk_origin_storage_contracts() {
+    blueice_bluejs::Vm::verify_thunk_origin_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_await_registration_contracts() {
     blueice_bluejs::Vm::verify_await_registration_contracts();
 }

@@ -968,7 +968,7 @@ pub struct Vm {
     /// Native Promise algorithms forward an origin; entering JavaScript masks it.
     promise_origin_override: Option<ThrowOrigin>,
     /// Weak metadata owned by native finally-thunk state, never a heap root.
-    promise_thunk_origins: HashMap<ObjectId, ThrowOrigin>,
+    promise_thunk_origins: retained_control_map::RetainedControlMap<ObjectId, ThrowOrigin>,
     /// Distinguishes a new callee throw from its propagation through `Call`.
     throw_epoch: u64,
     stack: Vec<Value>,

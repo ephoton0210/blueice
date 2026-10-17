@@ -876,7 +876,7 @@ impl Vm {
         }
         usage.payload_bytes = usage
             .payload_bytes
-            .saturating_add(map_slots(&self.promise_thunk_origins))
+            .saturating_add(self.promise_thunk_origins.retained_bytes())
             .saturating_add(
                 self.promise_thunk_origins
                     .values()

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Await and external-wait maps retain their native allocation owners.
+//! Scheduling and provenance maps retain their native allocation owners.
 
 use super::*;
 
@@ -15,6 +15,11 @@ impl Vm {
             return;
         }
         let charge = self.promises.reclaim(self.host_scheduling.as_ref());
+        self.reconcile_scheduling_ownership();
+        drop(charge);
+        let charge = self
+            .promise_thunk_origins
+            .reclaim(self.host_scheduling.as_ref());
         self.reconcile_scheduling_ownership();
         drop(charge);
         let charge = self

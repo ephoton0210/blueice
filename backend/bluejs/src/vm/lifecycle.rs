@@ -61,7 +61,7 @@ impl Vm {
             uncaught_diagnostic_origin: None,
             active_diagnostic_bytes: Rc::default(),
             promise_origin_override: None,
-            promise_thunk_origins: HashMap::new(),
+            promise_thunk_origins: Default::default(),
             throw_epoch: 0,
             stack: Vec::new(),
             bindings: Vec::new(),

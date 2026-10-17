@@ -142,13 +142,8 @@ impl Vm {
         // with unknown source still wins over the active diagnostic frame.
         let origin_bytes = if fulfilled {
             0
-        } else if let Some(origin) = &self.promise_origin_override {
-            origin.payload_bytes()
         } else {
-            self.active_diagnostic_frame
-                .as_ref()
-                .and_then(|frame| frame.location())
-                .map_or(0, |source| source.filename.capacity())
+            self.current_rejection_origin_payload_bytes()
         };
         let payload = |origin_bytes: usize| {
             copied_reactions

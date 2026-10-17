@@ -16,7 +16,111 @@
 
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/thunk_origin_storage.rs"]
+mod thunk_origin_storage_tests;
+
+struct PreparedThunkOrigin {
+    origin: ThrowOrigin,
+    growth: promise_queue_storage::PreparedMap<ObjectId, ThrowOrigin>,
+    charge: Option<host_scheduling::SharedSchedulingCharge>,
+}
+impl PreparedThunkOrigin {
+    fn publish(self, vm: &mut Vm, state: ObjectId) {
+        let Self {
+            origin,
+            growth,
+            charge,
+        } = self;
+        growth.commit_after_pruning(&mut vm.promise_thunk_origins);
+        vm.promise_thunk_origins.insert(state, origin);
+        drop(charge);
+        vm.reconcile_scheduling_ownership();
+    }
+}
+
 impl Vm {
+    fn prepare_thunk_origin(&mut self) -> Result<PreparedThunkOrigin, RuntimeError> {
+        let (origin, charge) = self.prepare_current_rejection_origin()?;
+        let growth = promise_queue_storage::PreparedMap::for_insert(
+            &self.promise_thunk_origins,
+            self.host_scheduling.as_ref(),
+        )?;
+        Ok(PreparedThunkOrigin {
+            origin,
+            growth,
+            charge,
+        })
+    }
+
+    fn allocate_finally_thunk_state(
+        &mut self,
+        argument: &Value,
+        catch: bool,
+    ) -> Result<ObjectId, RuntimeError> {
+        let before = self.heap.stats();
+        let result = self.allocate_finally_thunk_state_inner(argument, catch);
+        // All candidates have committed or dropped before deferred GC cleanup.
+        self.finish_promise_record_attempt(before);
+        result
+    }
+
+    fn allocate_finally_thunk_state_inner(
+        &mut self,
+        argument: &Value,
+        catch: bool,
+    ) -> Result<ObjectId, RuntimeError> {
+        let mut prepared = if catch {
+            Some(self.prepare_thunk_origin()?)
+        } else {
+            None
+        };
+        let previous = self.preserve_promise_table_capacity;
+        self.preserve_promise_table_capacity = previous || prepared.is_some();
+        let base = self.stack.len();
+        self.stack
+            .push(argument.object_id().map_or(Value::Undefined, Value::Object));
+        let result = (|| {
+            let state = self.promise_state()?;
+            self.stack.push(Value::Object(state));
+            self.promise_state_set(state, "value", argument.clone())?;
+            self.check_scheduling_failure()?;
+            if let Some(prepared) = prepared.take() {
+                prepared.publish(self, state);
+            }
+            Ok(state)
+        })();
+        self.stack.truncate(base);
+        drop(prepared);
+        self.preserve_promise_table_capacity = previous;
+        result
+    }
+
+    fn prepare_stored_thunk_origin(
+        &mut self,
+        state: ObjectId,
+    ) -> Result<(ThrowOrigin, Option<host_scheduling::SharedSchedulingCharge>), RuntimeError> {
+        self.synchronize_scheduling_usage()?;
+        let bytes = self
+            .promise_thunk_origins
+            .get(&state)
+            .map_or(0, ThrowOrigin::payload_bytes);
+        let mut charge = self
+            .host_scheduling
+            .as_ref()
+            .map(|scope| scope.shared_charge(bytes))
+            .transpose()?;
+        let origin = self
+            .promise_thunk_origins
+            .get(&state)
+            .cloned()
+            .unwrap_or_default();
+        if let Some(charge) = &mut charge {
+            charge.resize(origin.payload_bytes())?;
+        }
+        Ok((origin, charge))
+    }
+
     /// Native resolving functions retain the Promise and AlreadyResolved record
     /// in their immutable NativeFunction payload. The VM traces both records.
     pub(in super::super) fn promise_resolving_function(
@@ -824,35 +928,31 @@ impl Vm {
         let base = self.stack.len();
         self.stack
             .push(argument.object_id().map_or(Value::Undefined, Value::Object));
-        let origin = self.current_rejection_origin();
-        let result = self.with_rejection_origin(Some(origin), |vm| {
-            let on_finally = vm.promise_field(state, "onFinally");
-            let constructor = vm.promise_field(state, "constructor");
-            let outcome = vm.call_native(on_finally, Value::Undefined, Vec::new(), false)?;
-            vm.stack
-                .push(outcome.object_id().map_or(Value::Undefined, Value::Object));
-            let promise = vm.promise_resolve_constructor(&constructor, outcome)?;
-            vm.stack
-                .push(promise.object_id().map_or(Value::Undefined, Value::Object));
-            let thunk_state = vm.promise_state()?;
-            vm.stack.push(Value::Object(thunk_state));
-            vm.promise_state_set(thunk_state, "value", argument.clone())?;
-            if catch {
-                let origin = vm.current_rejection_origin();
-                vm.promise_thunk_origins.insert(thunk_state, origin);
-                vm.synchronize_scheduling_usage()?;
-            }
-            let thunk = vm.promise_native_function(
-                NativeFunction::PromiseValueThunk {
-                    state: thunk_state,
-                    thrower: catch,
-                },
-                0,
-            )?;
-            vm.stack
-                .push(thunk.object_id().map_or(Value::Undefined, Value::Object));
-            vm.invoke(&promise, "then", vec![thunk])
-        });
+        let result = (|| {
+            let (origin, origin_charge) = self.prepare_current_rejection_origin()?;
+            self.with_leased_rejection_origin(Some(origin), origin_charge, |vm| {
+                let on_finally = vm.promise_field(state, "onFinally");
+                let constructor = vm.promise_field(state, "constructor");
+                let outcome = vm.call_native(on_finally, Value::Undefined, Vec::new(), false)?;
+                vm.stack
+                    .push(outcome.object_id().map_or(Value::Undefined, Value::Object));
+                let promise = vm.promise_resolve_constructor(&constructor, outcome)?;
+                vm.stack
+                    .push(promise.object_id().map_or(Value::Undefined, Value::Object));
+                let thunk_state = vm.allocate_finally_thunk_state(argument, catch)?;
+                vm.stack.push(Value::Object(thunk_state));
+                let thunk = vm.promise_native_function(
+                    NativeFunction::PromiseValueThunk {
+                        state: thunk_state,
+                        thrower: catch,
+                    },
+                    0,
+                )?;
+                vm.stack
+                    .push(thunk.object_id().map_or(Value::Undefined, Value::Object));
+                vm.invoke(&promise, "then", vec![thunk])
+            })
+        })();
         self.stack.truncate(base);
         result
     }
@@ -864,17 +964,15 @@ impl Vm {
         state: ObjectId,
         thrower: bool,
     ) -> Result<Value, RuntimeError> {
-        let value = self.promise_field(state, "value");
         if thrower {
-            let origin = self
-                .promise_thunk_origins
-                .get(&state)
-                .cloned()
-                .unwrap_or_default();
+            let (origin, charge) = self.prepare_stored_thunk_origin(state)?;
+            let value = self.promise_field(state, "value");
             self.publish_rejection_origin(origin);
+            drop(charge);
+            self.reconcile_scheduling_ownership();
             Err(RuntimeError::Thrown(value))
         } else {
-            Ok(value)
+            Ok(self.promise_field(state, "value"))
         }
     }
 

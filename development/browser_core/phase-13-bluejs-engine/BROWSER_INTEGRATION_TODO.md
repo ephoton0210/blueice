@@ -64,6 +64,19 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The finally-thunk provenance storage follow-up (2026-10-17) now retains hash
+allocation ownership across deletion and stages complete table/source storage
+before managed thunk-state creation. Three finite cases reproduced guarded GC
+shrinkage, premature entry publication and an unadmitted thrower source copy.
+The first implementation run fixed those behaviors; a fixture's broad heap
+snapshot included legitimate earlier callback/PromiseResolve allocations and is
+now checked separately at the native table boundary. Twenty-four new groups and
+all 1466 prior selected controls pass: **1490 total**, across 47 executables and
+135 fixed selections. Formatting and offline workspace/all-target Clippy pass.
+Other input/origin
+producers, other retained maps, heap/host buffers, shared programs and integrated
+acceptance remain open; M1u stays the latest accepted milestone.
+
 The continuation await preparation follow-up (2026-10-17) now prepares module,
 async-function and generator await work before changing handled state. Three
 corrected finite refusal cases failed before implementation and now pass.
@@ -972,7 +985,8 @@ work and exposes its retained payload ledger.
       now stages complete copies/queue growth before status publication.
       Then registration prepares native input/queues before handled-state changes.
       Continuation awaits now share admitted status/queue preparation and publish
-      handled state after frame/work ownership. Other input/origin producers
+      handled state after frame/work ownership. Finally provenance retains hash
+      backing cost and prepares table/source state across GC. Other input/origin producers
       remain open. Shared programs, other
       managed-container and scheduling backing buffers,
       retained-map ownership, wider native storage and integrated acceptance
@@ -5312,6 +5326,84 @@ M1z implementation checkpoint with wider acceptance open.
 The initial fixed-run/static logs and source snapshots are retained under
 `/private/tmp/blueice-continuation-await-static-attempt-20261017/`, with the summary
 in `/private/tmp/blueice-continuation-await-initial-static-attempt-20261017.json`.
+
+#### Finally-thunk provenance storage follow-up (implementation checkpoint, 2026-10-17)
+
+Acceptance: retain the weak finally-state provenance table's allocation cost
+across deletion. Admit complete replacement/source storage before creating a
+managed thunk state; GC may prune dead entries while preserving staged capacity.
+Commit only after state/property preparation succeeds, with no fallible table
+admission after publication. Compact through admitted optional candidates and
+release empty backing without new admission. Pre-admit finally capture and
+thrower filename clones and transfer their ownership without charging twice.
+
+- [x] Reproduce guarded GC shrinkage, entry publication before native refusal
+      and a thrower publishing a refused filename copy: **0/3 passed** before
+      implementation.
+- [x] Add a retained table ledger, staged registration and admitted source-copy
+      handoffs. The first run was **2/3 passed** because one fixture also counted
+      earlier callback/PromiseResolve work in its thunk-allocation snapshot.
+- [x] Complete expanded finite groups, fixed offline controls/static checks,
+      evidence and the detailed English commit.
+
+The weak map now owns a retained hash-allocation ledger. Deletion returns removed
+filename payload while keeping table backing charged. GC prunes unreachable
+state keys and then uses the guarded scheduling-map reclamation boundary.
+Optional compaction leases a complete smaller table, moves survivors, reconciles
+their new owner and refunds staging; unavailable headroom remains nonterminal.
+Empty backing releases even after terminal failure. Keys never become heap roots.
+
+Finally registration captures current provenance under an independent filename
+lease and prepares the complete table candidate before managed state/value-field
+creation. The shared map guard survives nested allocation and preserves admitted
+slots while GC prunes entries. Commit reuses a slot freed by GC or adopts the
+prepared replacement, publishes the state/origin pair, then transfers ownership.
+All candidates commit or drop before post-GC deferred reclamation; every result
+restores the caller's guard and root stack. A fulfilled value thunk needs no map
+entry. Callback/PromiseResolve side effects before this boundary remain committed.
+
+A borrowed current-source byte preflight is shared with settlement. Explicit
+unknown-source overrides still win over a named active frame. Outer finally
+capture admits its clone before the callback scope adopts it; thrower reads
+pre-admit the stored filename and move it to pending throw provenance before
+refunding staging. Refused reads change no pending origin/epoch. Other value/
+argument and origin producers remain separate open dependencies.
+
+The first expanded fixture refinement preserves the public operation's refused
+entry/count/capacity and stack assertions, and separately calls the native thunk
+allocation boundary to prove it allocates no managed state on table refusal.
+The earlier broad heap comparison also counted legitimate allocations preceding
+table preparation, so it could not establish that narrower ownership invariant.
+
+Twenty-four finite groups cover original/refined refusal boundaries, retained
+backing after deletion, optional exact/short/no-headroom compaction and retry,
+terminal empty release, full/spare managed-GC handoffs, managed creation failure,
+nested guard restoration, independently leased Rust preparations after VM drop,
+current/stored source admission, unknown-source precedence, function/state/reason
+GC ownership and public finally cleanup ordering/rejection. GC fixtures use at
+most eight state objects and four small garbage events; numerical peers perform
+no represented large allocation and no external operation starts.
+
+Validation: **1490 passed, zero failed/ignored**, across 47 executables and 135
+fixed selections: twenty-four new groups and all 1466 prior selected controls.
+Existing Promise/await, import, host-wait, timer, finalization, browser and ownership
+controls retain their behavior. Formatting, diff checks and offline workspace/
+all-target Clippy with warnings denied pass. Cargo reuses the workspace target with incremental compilation and
+dev/test debug artifact growth disabled. The same nine explicit resource/infinite-
+loop skips and other finite-public-case exclusions remain. No represented large
+allocations, resource/infinite probes, JSON resource sweeps, network/service
+replay, privileged validation, process killing, fresh full Test262, coverage result
+or integrated acceptance is claimed. Other input/origin producers, other retained
+maps, wider heap/host buffers, shared programs and integrated gates remain open;
+M1u stays the latest accepted milestone.
+
+Evidence paths: `/private/tmp/blueice-thunk-origin-controls-20261017.py`,
+`/private/tmp/blueice-thunk-origin-commit-20261017.txt`,
+`/private/tmp/blueice-thunk-origin-audit-20261017.py`, logs matching
+`/private/tmp/blueice-thunk-origin-*-20261017.log`, and
+`target/thunk-origin-source-20261017.json`. Ordinary-library entry points expose
+the same fixtures; no fresh coverage result is claimed. This remains an M1z
+implementation checkpoint with wider acceptance open.
 
 ### M1y — Asynchronous module dependency ownership (implementation checkpoint, 2026-10-16)
 

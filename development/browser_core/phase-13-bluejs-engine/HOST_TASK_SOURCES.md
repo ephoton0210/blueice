@@ -332,7 +332,7 @@ Insufficient headroom skips optional compaction without poisoning collection;
 later GC may retry. Empty backing releases without a candidate, and managed
 Promise preparation still preserves admitted spare slots. Mandatory admission
 continues to latch an abort; reclamation never clears a prior abort.
-Provenance and other control maps still need retained-allocation ownership.
+Other control maps still need retained-allocation ownership.
 
 Host waits and async/module continuations now keep allocation ledgers too.
 Prepared growth commits through those owners; partial removal retains backing
@@ -437,6 +437,26 @@ or user callbacks. Other input/origin producers and wider native-buffer ownershi
 remain open.
 The superseded direct reaction append helpers are compiled only for test/coverage
 fixtures; production await/Then registration uses the prepared work boundary.
+
+Finally-thunk provenance uses a weak retained-allocation map too. Pruning returns
+dead filename buffers without refunding retained hash backing. Guarded scheduling
+reclamation skips staged maps, funds optional smaller replacements under native
+leases and releases empty tables without admission, including terminal cleanup.
+The metadata keys never root their state objects.
+
+Finally capture pre-admits its current-source clone before adopting it as the
+callback override. After onFinally and PromiseResolve, registration leases the
+copied source and complete table candidate before managed thunk state/value-field
+creation. The shared guard preserves capacity through GC; commit reuses a freed
+slot or adopts prepared backing, then transfers the state/origin owner without
+another table admission. Candidates commit/drop before deferred GC reclamation;
+every result restores the previous guard and temporary root stack.
+
+Thrower reads pre-admit the stored filename before cloning and transfer it into
+pending provenance before refunding staging. Refusal publishes no origin/epoch.
+Unknown-source overrides retain precedence over active-frame source metadata.
+Earlier callbacks and PromiseResolve effects stay committed. Wider argument/value
+scratch, other origin producers/maps and native-buffer ownership remain open.
 
 Host-wait registration first admits its shared pending count and preflights
 root-ID space. Converted primitive inputs and actual argument-vector slots have
