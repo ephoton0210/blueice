@@ -493,6 +493,28 @@ impl Heap {
         Ok(bytes[byte_offset..end].to_vec())
     }
 
+    /// Copy into an already admitted native snapshot without temporary storage.
+    pub(crate) fn array_buffer_read_into(
+        &self,
+        object: ObjectId,
+        byte_offset: usize,
+        output: &mut [u8],
+    ) -> Result<(), HeapError> {
+        if let Ok(backing) = self.shared_buffer_backing(object) {
+            return backing
+                .read_into(byte_offset, output)
+                .then_some(())
+                .ok_or(HeapError::InvalidBufferRange);
+        }
+        let bytes = self.buffer_bytes(object)?;
+        let end = byte_offset
+            .checked_add(output.len())
+            .filter(|end| *end <= bytes.len())
+            .ok_or(HeapError::InvalidBufferRange)?;
+        output.copy_from_slice(&bytes[byte_offset..end]);
+        Ok(())
+    }
+
     pub(crate) fn array_buffer_write(
         &mut self,
         object: ObjectId,

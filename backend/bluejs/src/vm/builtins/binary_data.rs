@@ -1874,7 +1874,9 @@ impl Vm {
                         "source does not fit in TypedArray".into(),
                     ));
                 }
-                self.typed_array_write_values(target, kind, target_offset, &values)?;
+                let result = self.typed_array_write_values(target, kind, target_offset, &values);
+                values.validate_owner()?;
+                result?;
                 return Ok(Value::Undefined);
             }
         }

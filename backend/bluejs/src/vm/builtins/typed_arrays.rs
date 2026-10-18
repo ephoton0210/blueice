@@ -1213,7 +1213,7 @@ impl Vm {
                     RuntimeError::TypeError("TypedArray method requires a TypedArray receiver".into())
                 })?;
                 if !self.heap.is_typed_array(object)?
-                    && self.test262_foreign_typed_array_values(object)?.is_none()
+                    && self.test262_foreign_typed_array_info(object)?.is_none()
                 {
                     return Err(RuntimeError::TypeError(
                         "TypedArray method requires a TypedArray receiver".into(),

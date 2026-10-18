@@ -62,8 +62,7 @@ impl Vm {
                         vm.heap.detach_array_buffer(target).map_err(Into::into)
                     })?;
                 }
-                self.test262_detach_foreign_buffer_mirrors(realm_id, target)
-                    .expect("the mirrored buffers are live");
+                self.test262_detach_foreign_buffer_mirrors(realm_id, target)?;
                 return Ok(Value::Undefined);
             }
             // DetachArrayBuffer is idempotent: detaching a buffer that a

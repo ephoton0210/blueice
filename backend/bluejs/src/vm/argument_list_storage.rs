@@ -19,6 +19,17 @@ pub(super) struct ArgumentValues {
 }
 
 impl ArgumentValues {
+    pub(super) fn single(
+        vm: &mut Vm,
+        value: Value,
+        owner: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
+        let mut result = Self::new(vm, owner)?;
+        result.reserve_capacity(1)?;
+        result.push(value)?;
+        Ok(result)
+    }
+
     fn new(vm: &mut Vm, owner: Option<&SharedSchedulingCharge>) -> Result<Self, RuntimeError> {
         let values = Vec::new();
         let mut entry = vm.call_entry_charge(&Value::Undefined, &Value::Undefined, &values);
@@ -31,6 +42,10 @@ impl ArgumentValues {
             return Ok(());
         }
         let count = self.values.capacity().saturating_mul(2).max(4);
+        self.reserve_capacity(count)
+    }
+
+    fn reserve_capacity(&mut self, count: usize) -> Result<(), RuntimeError> {
         let owner = self.entry.native_owner()?;
         let mut charge = owner
             .as_ref()

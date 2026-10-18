@@ -66,12 +66,14 @@ them through different commands, privileges or routes. Local commits may record
 reviewed changes, but outbound publication is outside this validation checkpoint.
 
 The owner's renewed cybersecurity warning (2026-10-18) leaves the specific
-affected operation unidentified. Additional build/test/runtime validation and
-publication are pending that clarification. This warning response only reviewed
-existing local files and logs; it started no new Cargo validation, runtime replay,
-service or network operation. Preserve the unfinished source/tests and their
-existing evidence without treating them as a passing checkpoint. Static review
-and TODO reconciliation can continue within the current local scope.
+affected operation unidentified. The initial response conservatively held all
+additional build/test validation and inspected existing files and logs. That
+blanket hold was an agent precaution; it was not an owner instruction prohibiting
+ordinary offline compilation or the previously authorized fixed tiny cases.
+After static review, those local checks can proceed within the constraints above.
+This does not resolve the reported warning or authorize any excluded operation;
+affected broader replay and publication remain pending. Preserve the original
+evidence and do not infer acceptance from an uncompiled or unexecuted draft.
 
 M1s began with this public ownership failure:
 discarded ShadowRealm instances become unreachable (`WeakRef.deref()` returns
@@ -84,18 +86,39 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
-The binary transport snapshot follow-up (2026-10-18) is unfinished. Existing
-corrected-fixture output records **two passed and four failed**: the byte/value
+The binary transport snapshot follow-up (2026-10-18) has an implementation
+checkpoint. Corrected before-fix output records **two passed and four failed**: the byte/value
 snapshot ownership cases reproduce missing native credit and its loss after VM
 destruction. The two passing controls preserve cached intrinsic behavior after
 JavaScript global replacement. Two initial fixture assumptions about overridden
 globals were incorrect; their original six-failure output is preserved separately.
-The current source only adds regression scaffolding; no production snapshot fix
-or passing implementation checkpoint is claimed. Planned scope is admitted binary/
-value snapshots, immutable buffer moves and mirror-plan storage/lifetime. BigInt
-payload would follow the existing primitive-byte policy; wider arithmetic/
-allocator staging and integrated acceptance remain open. Additional execution
-validation is pending identification of the renewed cybersecurity warning above.
+The implementation adds owned byte/value snapshots and mirror
+plans, preallocation admission with actual vector-capacity reconciliation, and
+direct immutable-byte adoption. Native credit follows the snapshot independently
+of either VM; typed BigInt snapshots admit their logical payload before decoding.
+The destination's length argument uses the existing owned call-entry path. Cached
+intrinsic selection is preserved; validation-only locale checks use internal shape
+metadata, and resource errors from admitted mirror operations propagate instead
+of reaching allocation-free `expect` assumptions. Empty mirror refreshes avoid
+allocating an unused byte snapshot.
+
+All twenty-five new fixture contracts, the previous 306 selected controls and
+twenty additional public buffer/realm controls pass: **351 distinct selected
+tests**, eleven executable targets and 146 selections. Coverage includes numeric/
+BigInt payloads, VM destruction, independent document adoption, active/root/peer
+ownership loans without policy rebinding, terminal cleanup, validation precedence,
+shared/resizable/detached/immutable buffers, sibling mirrors and NaN bit patterns.
+The expanded 25-case result was retained after source and executable hashes
+matched; the earlier static draft and original red output remain separate evidence.
+Formatting, diff checks and offline workspace/all-target Clippy pass. Frozen
+source/artifact hashes and staging/commit audits bind this local checkpoint. The
+ordinary-library coverage hook adds no measured coverage claim. Other native
+producers, local TypedArray snapshots, wider BigInt arithmetic/allocator staging,
+managed-buffer capacity policy and integrated acceptance remain open. M1u remains
+the latest accepted milestone, and M1z integrated gates stay open. Validation
+stays local/offline with fixed finite inputs; rejected publication/process
+inspection and other excluded replay are not retried.
+Evidence: `target/transport-buffer-storage-source-20261018.json`.
 Existing corrected evidence: `/private/tmp/blueice-transport-buffer-storage-red-contracts-20261018.{json,tar.gz,log}`.
 
 The common array-like argument-list follow-up (2026-10-18) has an implementation

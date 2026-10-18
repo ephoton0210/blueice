@@ -1163,49 +1163,55 @@ impl Vm {
                 let length = self.get_property(&Value::Object(object), &"length".into())?;
                 self.coerce_length(&length)? as u64
             };
-            let mut output = JsString::default();
-            for index in 0..length {
-                self.charge_step()?;
-                if index != 0 {
-                    native::append(&mut output, &",".into(), self.config.max_string_bytes)?;
+            let result = (|| {
+                let mut output = JsString::default();
+                for index in 0..length {
+                    self.charge_step()?;
+                    if index != 0 {
+                        native::append(&mut output, &",".into(), self.config.max_string_bytes)?;
+                    }
+                    let value = if let Some(values) = &foreign_typed_values {
+                        values[index as usize].clone()
+                    } else {
+                        self.get_property(&Value::Object(object), &index.to_string().into())?
+                    };
+                    if matches!(value, Value::Null | Value::Undefined) {
+                        continue;
+                    }
+                    self.stack.push(value.clone());
+                    let method = self.get_property(&value, &"toLocaleString".into())?;
+                    self.stack.push(method.clone());
+                    if !self
+                        .is_callable(&method)
+                        .expect("Get returned a live local value or an imported facade")
+                    {
+                        return Err(RuntimeError::TypeError(
+                            "Array element toLocaleString is not callable".into(),
+                        ));
+                    }
+                    // ECMA-262 forwards both optional arguments, including their
+                    // `undefined` defaults, to every non-null array element.
+                    // Supplying the pair explicitly is observable to user-defined
+                    // `toLocaleString` methods through `arguments.length`.
+                    let string = self.call_native(
+                        method,
+                        value,
+                        vec![
+                            native::argument(args, 0).clone(),
+                            native::argument(args, 1).clone(),
+                        ],
+                        false,
+                    )?;
+                    let string = self.coerce_string(&string)?;
+                    native::append(&mut output, &string, self.config.max_string_bytes)?;
+                    self.stack.truncate(base + 1);
                 }
-                let value = if let Some(values) = &foreign_typed_values {
-                    values[index as usize].clone()
-                } else {
-                    self.get_property(&Value::Object(object), &index.to_string().into())?
-                };
-                if matches!(value, Value::Null | Value::Undefined) {
-                    continue;
-                }
-                self.stack.push(value.clone());
-                let method = self.get_property(&value, &"toLocaleString".into())?;
-                self.stack.push(method.clone());
-                if !self
-                    .is_callable(&method)
-                    .expect("Get returned a live local value or an imported facade")
-                {
-                    return Err(RuntimeError::TypeError(
-                        "Array element toLocaleString is not callable".into(),
-                    ));
-                }
-                // ECMA-262 forwards both optional arguments, including their
-                // `undefined` defaults, to every non-null array element.
-                // Supplying the pair explicitly is observable to user-defined
-                // `toLocaleString` methods through `arguments.length`.
-                let string = self.call_native(
-                    method,
-                    value,
-                    vec![
-                        native::argument(args, 0).clone(),
-                        native::argument(args, 1).clone(),
-                    ],
-                    false,
-                )?;
-                let string = self.coerce_string(&string)?;
-                native::append(&mut output, &string, self.config.max_string_bytes)?;
-                self.stack.truncate(base + 1);
+                Ok(Value::String(output))
+            })();
+            if let Some(values) = &foreign_typed_values {
+                values.validate_owner()?;
             }
-            Ok(Value::String(output))
+            result
         })();
         self.stack.truncate(base);
         result

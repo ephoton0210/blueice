@@ -1285,6 +1285,19 @@ impl SharedBuffer {
         (end <= bytes.len()).then(|| bytes[offset..end].to_vec())
     }
 
+    /// Fill storage admitted by the caller without allocating a second copy.
+    pub(crate) fn read_into(&self, offset: usize, output: &mut [u8]) -> bool {
+        let bytes = self.bytes.lock().expect("SharedArrayBuffer lock poisoned");
+        let Some(end) = offset.checked_add(output.len()) else {
+            return false;
+        };
+        let Some(source) = bytes.get(offset..end) else {
+            return false;
+        };
+        output.copy_from_slice(source);
+        true
+    }
+
     pub(crate) fn write(&self, offset: usize, values: &[u8]) -> bool {
         let mut bytes = self.bytes.lock().expect("SharedArrayBuffer lock poisoned");
         let Some(end) = offset.checked_add(values.len()) else {
