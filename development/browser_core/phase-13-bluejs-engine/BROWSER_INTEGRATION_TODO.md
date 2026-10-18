@@ -68,6 +68,39 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The membrane-retention follow-up (2026-10-18) has an implementation
+checkpoint. Eight tiny cases reproduced permanent forward/reverse facade,
+transport-snapshot and buffer-mirror roots retaining discarded objects, callable
+homes and owned realms. Agent collection now admits complete scalar pin/target
+metadata before marking, follows live identities, releases dead root pairs and
+prunes identity/mirror/re-export tables. Local prototype and mirror edges preserve
+live data through ordinary collections. Reverse identity edges preserve WeakRef
+observers in already active realms without activating a discarded destination.
+
+Owned realms now follow live instance/facade and actual-work reachability. One
+retained discovery route through owned/shared ancestors preserves queued inner
+work, fixing two premature-route-loss regressions. Kept WeakRef targets retain
+their VM until the document checkpoint clears them, fixing another early-loss
+case. An independent temporary root protects an imported constructor result
+while its prototype getter can collect; a real cross-VM Date regression reproduced
+a missing membrane record and panic before this protection. Getter throws release
+that temporary root. Busy or unavailable counterpart contexts retain their full
+root pairs until a complete agent collection is possible.
+
+Twenty-six new contracts and the previous 128 relevant controls pass: **154
+distinct selected tests**, five executable targets and 97 selections. Formatting,
+diff checks and offline workspace/all-target Clippy pass. Older routing/policy
+fixtures now retain the public realm references they intend to inspect; specified
+object cleanup is checked without removing unrelated live identity entries.
+Frozen source/artifact and Git audits bind this local checkpoint. An ordinary-
+library coverage hook is present; no fresh coverage or integrated acceptance is
+claimed. General retained-map growth admission, wider native/transport/program
+ownership and integrated acceptance remain open. M1u remains latest accepted;
+M1z integrated gates remain open. No quota-boundary, exhaustion, service,
+conformance timer thread or privileged replay was run; rejected push/process
+inspection was not retried. Evidence:
+`target/realm-membrane-gc-source-20261018.json`.
+
 The aliased callable-home follow-up (2026-10-18) has an implementation
 checkpoint. Three tiny regressions reproduced lost owned/shared callback homes
 when a shorter alias replaced the selected host route. Wrapped callables now
@@ -1500,6 +1533,10 @@ work and exposes its retained payload ledger.
       128 relevant selected cases, including borrowable owned/shared cells,
       weak allocation ownership and mixed-tree GC reachability. This targeted
       replay is separate from the preceding historical 245-case checkpoint.
+      Membrane retention now adds twenty-six contracts and 154 relevant selected
+      cases, including conditional pin/identity tracing, discarded owned realms,
+      one retained work route, kept-target VM lifetime and temporary constructor
+      return roots. General retained-map growth admission remains open.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

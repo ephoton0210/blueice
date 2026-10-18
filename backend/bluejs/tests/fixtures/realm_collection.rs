@@ -71,8 +71,9 @@ fn realm_collection_metadata_refusal_preserves_unreachable_realm_owners() {
     );
 }
 
-fn metadata_bytes(plan: &RealmCollection) -> usize {
+pub(super) fn metadata_bytes(plan: &RealmCollection) -> usize {
     host_scheduling::slots(&plan.nodes)
+        + host_scheduling::slots(&plan.pins)
         + host_scheduling::slots(&plan.indices)
         + host_scheduling::slots(&plan.known_owners)
         + plan.seen.capacity() * std::mem::size_of::<u64>()

@@ -12,7 +12,10 @@ use super::realm_collection::RealmCollection;
 
 impl Vm {
     pub(super) fn shadow_has_work(&self) -> bool {
-        !self.promise_jobs.is_empty()
+        // ClearKeptObjects belongs to the document checkpoint. Its owning
+        // VM must survive even after the last public realm facade is dropped.
+        !self.kept_weak_objects.is_empty()
+            || !self.promise_jobs.is_empty()
             || !self.browser_tasks.is_empty()
             || !self.host_finalization_tasks.is_empty()
             || !self.host_timers.is_empty()
@@ -109,17 +112,15 @@ impl Vm {
         }
         loop {
             let mut changed = false;
-            // An owned child shares the lifetime of its owning VM. Pending
-            // child work or a live incoming wrapper must retain that owner;
-            // the owner's activation in turn retains every owned child.
-            for index in 0..plan.len {
-                for edge in 0..plan.nodes[index].owned_children.len() {
-                    let heap = plan.nodes[index].owned_children[edge];
-                    if let Some(child) = plan.index_of(heap) {
-                        if plan.nodes[index].active || plan.nodes[child].active {
-                            changed |= !plan.nodes[index].active || !plan.nodes[child].active;
-                            plan.nodes[index].active = true;
-                            plan.nodes[child].active = true;
+            // A live descendant retains the discovered access route through
+            // owned and shared ancestors. First discovery chooses one route;
+            // another dead alias need not retain an otherwise dead creator.
+            for index in (1..plan.len).rev() {
+                if plan.nodes[index].active {
+                    if let Some(parent) = plan.nodes[index].parent {
+                        if !plan.nodes[parent].active {
+                            plan.nodes[parent].active = true;
+                            changed = true;
                         }
                     }
                 }
@@ -164,12 +165,63 @@ impl Vm {
                         }
                     }
                 }
+                for pin in 0..plan.pins.len() {
+                    let edge = &plan.pins[pin];
+                    if edge.tracked
+                        && !edge.followed
+                        && edge.owner.heap == plan.nodes[index].heap
+                        && live.contains(&edge.owner)
+                    {
+                        let target = edge.target;
+                        let home = plan.index_of(target.heap).expect("tracked membrane target");
+                        plan.pins[pin].followed = true;
+                        plan.nodes[home].active = true;
+                        assert!(plan.nodes[home].extra.len() < plan.nodes[home].extra.capacity());
+                        plan.nodes[home].extra.push(target);
+                        changed = true;
+                    }
+                }
                 plan.nodes[index].live = Some(live);
+            }
+            // A facade represents the same object in an already live realm.
+            // Preserve WeakRef/identity observers there, without allowing a
+            // transport cache to activate a discarded destination VM.
+            for pin in 0..plan.pins.len() {
+                let edge = &plan.pins[pin];
+                if edge.tracked
+                    && !edge.reverse_followed
+                    && edge.owner != edge.target
+                    && plan.object_is_live(edge.target)
+                {
+                    let owner = plan
+                        .index_of(edge.owner.heap)
+                        .expect("tracked identity owner");
+                    if plan.nodes[owner].active {
+                        let object = edge.owner;
+                        plan.pins[pin].reverse_followed = true;
+                        assert!(plan.nodes[owner].extra.len() < plan.nodes[owner].extra.capacity());
+                        plan.nodes[owner].extra.push(object);
+                        changed = true;
+                    }
+                }
             }
             if !changed {
                 break;
             }
         }
+        // No guest code runs between marking and these scalar root releases.
+        // Snapshot handles keep inactive targets alive until every pair is gone.
+        for pin in &plan.pins {
+            if pin.tracked && !plan.object_is_live(pin.owner) {
+                let target = plan.index_of(pin.target.heap).expect("tracked root heap");
+                if let Some(handle) = plan.nodes[target].handle() {
+                    handle.borrow_mut().heap.unroot(pin.root)?;
+                } else {
+                    self.heap.unroot(pin.root)?;
+                }
+            }
+        }
+        self.prune_membrane_owners(plan);
         self.prune_shadow_owners(
             plan,
             plan.nodes[0]
@@ -179,6 +231,7 @@ impl Vm {
         );
         for node in &plan.nodes[1..plan.len] {
             let mut vm = node.handle().expect("a discovered child").borrow_mut();
+            vm.prune_membrane_owners(plan);
             if let Some(live) = &node.live {
                 vm.prune_shadow_owners(plan, live);
             } else {

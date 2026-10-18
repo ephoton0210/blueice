@@ -175,6 +175,7 @@ mod promise_gc;
 mod promise_reactions;
 mod properties;
 mod realm_cells;
+mod realm_membrane_gc;
 mod realm_reentrancy;
 mod regexp;
 mod rejection_origins;

@@ -513,7 +513,7 @@ fn host_realm_tasks_nested_owned_path_delivers_and_releases_each_registration() 
     let leaf_id;
     {
         let child = &mut root.test262_realms.get_mut(&id).unwrap().vm.borrow_mut();
-        run(child, "$262.createRealm();0;");
+        run(child, "var nestedRealm=$262.createRealm();0;");
         leaf_id = *child.test262_realms.keys().next().unwrap();
         work(
             &mut child

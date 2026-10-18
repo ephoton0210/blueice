@@ -1538,9 +1538,11 @@ boundaries. Host task entry still preserves fuel; ordinary foreign calls still
 reset it. The common active resolver replaces repeated raw child-pointer entry.
 
 Collection discovery now includes owned descendants and admits their lifetime
-edges before heap effects. Owned children and their owning VM stay active
-together: a child with pending work or a live incoming wrapper retains its
-owner; that owner's activation retains its owned children. Live wrapped
+edges before heap effects. At that checkpoint, owned children and their owning VM stayed active
+together: a child with pending work or a live incoming wrapper retained its
+owner; the owner's activation retained its owned children. The membrane-retention
+checkpoint below replaces this conservative cohort with conditional identities
+and one discovered work route. Live wrapped
 functions contribute their original home and target edges across both kinds
 of member. Their home links own no VM. Once those functions die, shared
 record cycles can be pruned; inactive snapshots release their owned children
@@ -1563,6 +1565,62 @@ network/service/listener/Core/MCP, privileged replay, conformance timer thread,
 process inspection or killing was resumed. Rejected external push/process
 inspection was not retried. Evidence:
 `target/realm-alias-home-source-20261018.json`.
+
+The membrane-retention checkpoint (2026-10-18) replaces permanent membrane
+retention with object reachability at complete inactive-agent safepoints.
+Forward/reverse facade root pairs, imported identity roots and ordinary buffer
+mirror roots become scalar conditional pin descriptors. Discovery admits the
+whole pin vector, ignored-root sets and forward/reverse target capacity before
+marking, unrooting or pruning either heap. Live objects contribute their edges;
+dead pairs release their registrations before identity/mirror/re-export metadata
+is removed. Empty tables release backing storage. A borrowed member or missing
+parent keeps its complete pair until the owning agent can inspect both heaps.
+
+Foreign representations preserve the original object's identity. A live target
+retains its facade/transport in an already active VM, preserving WeakRef
+observability and later round trips. This reverse cache edge does not activate
+a discarded destination. Dead cross-heap cycles cannot bootstrap themselves.
+Local prototype overrides and the two mirror/facade directions are conditional
+edges in ordinary safepoint batches too, preserving a live view's backing,
+facade and synchronized bytes while allowing an unreachable pair to die.
+
+Owned realm maps now contribute live instance/facade edges rather than keeping
+every owned child active whenever its parent is active. An active descendant
+retains one discovered route through owned and shared ancestors so its queued
+timer/Promise work remains accessible. A shorter existing alias does not retain
+a second dead creator route. When work and live identities end, discarded owned
+VMs and their shared cycles can be reclaimed. Kept WeakRef targets count as VM
+work until the document checkpoint clears them; otherwise an unreferenced VM
+could disappear during the target's required protection period.
+
+An imported constructor result also needs a real temporary root before the
+caller stores it. A caller-selected prototype getter can execute JavaScript and
+collect the complete agent while this result is still a Rust temporary. A Date
+construction reproduced removal of its return facade and a subsequent panic.
+The forward call now registers an independent root across that getter and
+releases it on success or throw before returning or publishing the override.
+
+Twenty-six new contracts plus the previous 128 selected controls pass: 154
+distinct finite cases, five executable targets and 97 selections. The original
+eight retention regressions failed first; two later cases reproduced lost shared
+descendant routes, two reproduced early cross-realm WeakRef identity loss, one
+reproduced constructor return loss and one reproduced VM loss before kept-target
+cleanup. Positive controls cover live identities, buffer synchronization,
+constructor throws, busy preflight, discarded destinations, actual snapshot
+backing/charge conservation and cached terminal cleanup. Historical partial runs
+also record fixture corrections: use user-variable lookup, retain intended
+public realm references, exercise the actual Date membrane, capture weak handles
+before discard and check only the specified object's identity entries.
+
+Formatting, diff checks and offline workspace/all-target Clippy pass. Frozen
+source/artifact and Git audits bind the local checkpoint. The ordinary-library
+hook is present without a fresh coverage claim. General retained-map allocation/
+growth admission, wider native/transport/program ownership and integrated
+acceptance remain open. M1u remains latest accepted and M1z integrated gates stay
+open. No quota/resource-boundary, exhaustion, infinite-input, network/service/
+listener/Core/MCP, privileged replay, conformance timer thread, process inspection
+or killing was resumed. Rejected external push/process inspection was not retried.
+Evidence: `target/realm-membrane-gc-source-20261018.json`.
 
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit

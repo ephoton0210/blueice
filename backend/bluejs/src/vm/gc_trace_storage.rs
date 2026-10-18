@@ -97,6 +97,7 @@ impl Vm {
         let mut edges = 0usize;
         self.visit_execution_roots(|_| roots = roots.saturating_add(1));
         self.visit_promise_owned_edges(|_, _| edges = edges.saturating_add(1));
+        self.visit_membrane_owned_edges(|_, _| edges = edges.saturating_add(1));
         let mut batch = std::mem::take(&mut self.gc_trace_cache);
         let mut charge = self.charge_execution_control(batch.retained_bytes());
         let prepared = (|| {
@@ -147,6 +148,9 @@ impl Vm {
             }
             self.visit_execution_roots(|id| batch.roots.push(id));
             self.visit_promise_owned_edges(|owner, reference| batch.edges.push((owner, reference)));
+            self.visit_membrane_owned_edges(|owner, reference| {
+                batch.edges.push((owner, reference))
+            });
             Ok(())
         })();
         if let Err(error) = prepared {

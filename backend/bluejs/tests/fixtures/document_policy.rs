@@ -85,7 +85,7 @@ fn document_policy_fresh_test262_realms_inherit_the_document() {
     let mut root = Vm::default();
     root.use_bounded_host_microtask_checkpoints().unwrap();
     root.install_test262_harness().unwrap();
-    run(&mut root, "$262.createRealm();0;");
+    run(&mut root, "var ownedRealm=$262.createRealm();0;");
     let child = &root.test262_realms.values().next().unwrap().vm.borrow_mut();
     assert!(
         child.host_scheduling.as_ref().is_some_and(|child| root
@@ -124,13 +124,13 @@ fn document_policy_fresh_shadow_realms_attach_before_publication() {
 fn document_policy_mixed_owned_and_shared_descendants_join_once() {
     let mut root = Vm::default();
     root.install_test262_harness().unwrap();
-    run(&mut root, "$262.createRealm();0;");
+    run(&mut root, "var ownedRealm=$262.createRealm();0;");
     let owned = root.test262_realms.values_mut().next().unwrap();
     let middle = shadow(&mut owned.vm.borrow_mut());
     let leaf = {
         let mut vm = middle.vm.borrow_mut();
         vm.install_test262_harness().unwrap();
-        run(&mut vm, "$262.createRealm();0;");
+        run(&mut vm, "var ownedRealm=$262.createRealm();0;");
         let leaf = shadow(
             &mut vm
                 .test262_realms
@@ -287,7 +287,7 @@ fn document_policy_foreign_shared_document_keeps_its_account() {
 fn document_policy_foreign_owned_document_is_refused_without_rebinding() {
     let mut root = Vm::default();
     root.install_test262_harness().unwrap();
-    run(&mut root, "$262.createRealm();0;");
+    run(&mut root, "var ownedRealm=$262.createRealm();0;");
     root.test262_realms
         .values_mut()
         .next()

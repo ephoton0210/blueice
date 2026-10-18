@@ -112,7 +112,7 @@ impl MetadataStorage {
 pub(super) struct RealmInstance {
     pub(super) object: ObjectId,
     pub(super) child: u64,
-    owner: usize,
+    owner: Option<usize>,
 }
 #[derive(Clone, Copy)]
 pub(super) struct RealmWrapper {
@@ -122,11 +122,34 @@ pub(super) struct RealmWrapper {
     root: RootId,
     pub(super) followed: bool,
 }
+pub(super) struct MembranePin {
+    pub(super) owner: ObjectId,
+    pub(super) target: ObjectId,
+    pub(super) root: RootId,
+    peer: u64,
+    pub(super) tracked: bool,
+    pub(super) followed: bool,
+    pub(super) reverse_followed: bool,
+}
+impl MembranePin {
+    pub(super) fn new(owner: ObjectId, target: ObjectId, root: RootId, peer: u64) -> Self {
+        Self {
+            owner,
+            target,
+            root,
+            peer,
+            tracked: false,
+            followed: false,
+            reverse_followed: false,
+        }
+    }
+}
+
 pub(super) struct CollectionRealm {
     pub(super) heap: u64,
     pub(super) record: Option<ShadowRealmRecord>,
     pub(super) owned_vm: Option<realm_cells::RealmHandle>,
-    pub(super) owned_children: Vec<u64>,
+    pub(super) parent: Option<usize>,
     pub(super) instances: Vec<RealmInstance>,
     pub(super) wrappers: Vec<RealmWrapper>,
     pub(super) ignored: HashSet<RootId>,
@@ -145,12 +168,12 @@ impl CollectionRealm {
             .or(self.owned_vm.as_ref())
     }
 
-    fn new(heap: u64, record: Option<ShadowRealmRecord>) -> Self {
+    fn new(heap: u64, record: Option<ShadowRealmRecord>, parent: Option<usize>) -> Self {
         Self {
             heap,
             record,
             owned_vm: None,
-            owned_children: Vec::new(),
+            parent,
             instances: Vec::new(),
             wrappers: Vec::new(),
             ignored: HashSet::new(),
@@ -165,6 +188,7 @@ impl CollectionRealm {
 pub(super) struct RealmCollection {
     pub(super) nodes: Vec<CollectionRealm>,
     pub(super) len: usize,
+    pub(super) pins: Vec<MembranePin>,
     indices: Vec<(u64, usize)>,
     known_owners: Vec<usize>,
     seen: HashSet<u64>,
@@ -180,6 +204,7 @@ impl RealmCollection {
         Ok(Self {
             nodes: Vec::new(),
             len: 0,
+            pins: Vec::new(),
             indices: Vec::new(),
             known_owners: Vec::new(),
             seen: HashSet::new(),
@@ -190,7 +215,7 @@ impl RealmCollection {
         for node in &mut self.nodes {
             node.record = None;
             node.owned_vm = None;
-            node.owned_children.clear();
+            node.parent = None;
             node.instances.clear();
             node.wrappers.clear();
             node.ignored.clear();
@@ -200,6 +225,7 @@ impl RealmCollection {
             node.active = false;
         }
         self.len = 0;
+        self.pins.clear();
         self.indices.clear();
         self.known_owners.clear();
         self.seen.clear();
@@ -209,51 +235,61 @@ impl RealmCollection {
         &mut self,
         heap: u64,
         record: Option<ShadowRealmRecord>,
+        parent: Option<usize>,
     ) -> Result<(), RuntimeError> {
         if self.len == self.nodes.len() {
             self.storage.reserve_vec(&mut self.nodes, 1)?;
-            self.nodes.push(CollectionRealm::new(heap, record));
+            self.nodes.push(CollectionRealm::new(heap, record, parent));
         } else {
             self.nodes[self.len].heap = heap;
             self.nodes[self.len].record = record;
+            self.nodes[self.len].parent = parent;
         }
         self.len += 1;
         Ok(())
     }
     fn begin(&mut self, heap: u64) -> Result<(), RuntimeError> {
         self.storage.reserve_set(&mut self.seen, 1)?;
-        self.push_node(heap, None)?;
+        self.push_node(heap, None, None)?;
         self.seen.insert(heap);
         Ok(())
     }
-    fn add_record(&mut self, record: &ShadowRealmRecord) -> Result<(), RuntimeError> {
+    fn add_record(
+        &mut self,
+        record: &ShadowRealmRecord,
+        parent: usize,
+    ) -> Result<(), RuntimeError> {
         if self.seen.contains(&record.heap) {
             return Ok(());
         }
         self.storage.reserve_set(&mut self.seen, 1)?;
-        self.push_node(record.heap, Some(record.clone()))?;
+        self.push_node(record.heap, Some(record.clone()), Some(parent))?;
         self.seen.insert(record.heap);
         Ok(())
     }
-    fn add_owned(&mut self, handle: &realm_cells::RealmHandle) -> Result<(), RuntimeError> {
+    fn add_owned(
+        &mut self,
+        handle: &realm_cells::RealmHandle,
+        parent: usize,
+    ) -> Result<(), RuntimeError> {
         let heap = handle.heap();
         if self.seen.contains(&heap) {
             return Ok(());
         }
         self.storage.reserve_set(&mut self.seen, 1)?;
-        self.push_node(heap, None)?;
+        self.push_node(heap, None, Some(parent))?;
         self.nodes[self.len - 1].owned_vm = Some(handle.clone());
         self.seen.insert(heap);
         Ok(())
     }
     fn snapshot(&mut self, index: usize, vm: &Vm) -> Result<(), RuntimeError> {
         let node = &mut self.nodes[index];
-        self.storage
-            .reserve_vec(&mut node.owned_children, vm.test262_realms.len())?;
-        node.owned_children
-            .extend(vm.test262_realms.values().map(|realm| realm.vm.heap()));
-        self.storage
-            .reserve_vec(&mut node.instances, vm.shadow_realms.len())?;
+        self.storage.reserve_vec(
+            &mut node.instances,
+            vm.shadow_realms
+                .len()
+                .saturating_add(vm.test262_realms.len()),
+        )?;
         self.storage
             .reserve_vec(&mut node.wrappers, vm.shadow_wrapped_functions.len())?;
         node.instances.extend(
@@ -262,7 +298,16 @@ impl RealmCollection {
                 .map(|(&object, record)| RealmInstance {
                     object,
                     child: record.heap,
-                    owner: Rc::as_ptr(&record.owner) as usize,
+                    owner: Some(Rc::as_ptr(&record.owner) as usize),
+                }),
+        );
+        node.instances.extend(
+            vm.test262_realms
+                .iter()
+                .map(|(&object, realm)| RealmInstance {
+                    object,
+                    child: realm.vm.heap(),
+                    owner: None,
                 }),
         );
         node.wrappers.extend(
@@ -277,13 +322,25 @@ impl RealmCollection {
                 }),
         );
         node.active = index == 0 || vm.shadow_has_work();
-        Ok(())
+        vm.visit_membrane_pins(|pin| {
+            self.storage.reserve_vec(&mut self.pins, 1)?;
+            self.pins.push(pin);
+            Ok(())
+        })
     }
     pub(super) fn index_of(&self, heap: u64) -> Option<usize> {
         self.indices
             .binary_search_by_key(&heap, |&(heap, _)| heap)
             .ok()
             .map(|index| self.indices[index].1)
+    }
+    pub(super) fn object_is_live(&self, object: ObjectId) -> bool {
+        self.index_of(object.heap).is_some_and(|index| {
+            self.nodes[index]
+                .live
+                .as_ref()
+                .is_some_and(|live| live.contains(&object))
+        })
     }
     pub(super) fn is_active(&self, heap: u64) -> bool {
         self.index_of(heap)
@@ -300,13 +357,18 @@ impl RealmCollection {
         self.indices.sort_unstable_by_key(|&(heap, _)| heap);
         let owners = self.nodes[..self.len]
             .iter()
-            .map(|node| node.instances.len())
+            .map(|node| {
+                node.instances
+                    .iter()
+                    .filter(|instance| instance.owner.is_some())
+                    .count()
+            })
             .sum();
         self.storage.reserve_vec(&mut self.known_owners, owners)?;
         self.known_owners.extend(
             self.nodes[..self.len]
                 .iter()
-                .flat_map(|node| node.instances.iter().map(|instance| instance.owner)),
+                .flat_map(|node| node.instances.iter().filter_map(|instance| instance.owner)),
         );
         self.known_owners.sort_unstable();
         self.known_owners.dedup();
@@ -315,6 +377,21 @@ impl RealmCollection {
                 let home = self.nodes[index].wrappers[wrapper].home;
                 if let Some(home) = self.index_of(home) {
                     self.nodes[home].incoming += 1;
+                }
+            }
+        }
+        for index in 0..self.pins.len() {
+            let pin = &self.pins[index];
+            if self.index_of(pin.owner.heap).is_some() && self.index_of(pin.peer).is_some() {
+                if let Some(target) = self.index_of(pin.target.heap) {
+                    self.nodes[target].incoming += 1;
+                    if pin.owner != pin.target {
+                        let owner = self
+                            .index_of(pin.owner.heap)
+                            .expect("tracked membrane owner");
+                        self.nodes[owner].incoming += 1;
+                    }
+                    self.pins[index].tracked = true;
                 }
             }
         }
@@ -345,6 +422,14 @@ impl RealmCollection {
                 }
             }
         }
+        for pin in &self.pins {
+            if pin.tracked {
+                let target = self
+                    .index_of(pin.target.heap)
+                    .expect("tracked membrane root");
+                self.nodes[target].ignored.insert(pin.root);
+            }
+        }
         Ok(())
     }
 }
@@ -353,10 +438,10 @@ impl Vm {
     fn fill_realm_collection(&self, plan: &mut RealmCollection) -> Result<bool, RuntimeError> {
         plan.begin(self.object_prototype.heap)?;
         for record in self.shadow_realms.values() {
-            plan.add_record(record)?;
+            plan.add_record(record, 0)?;
         }
         for realm in self.test262_realms.values() {
-            plan.add_owned(&realm.vm)?;
+            plan.add_owned(&realm.vm, 0)?;
         }
         let mut index = 1;
         while index < plan.len {
@@ -368,10 +453,10 @@ impl Vm {
                 return Ok(false);
             };
             for child in vm.shadow_realms.values() {
-                plan.add_record(child)?;
+                plan.add_record(child, index)?;
             }
             for child in vm.test262_realms.values() {
-                plan.add_owned(&child.vm)?;
+                plan.add_owned(&child.vm, index)?;
             }
             plan.snapshot(index, &vm)?;
             index += 1;
@@ -471,3 +556,7 @@ impl Vm {
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/realm_collection.rs"]
 mod ownership_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/realm_membrane_gc.rs"]
+mod membrane_tests;

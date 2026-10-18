@@ -2044,12 +2044,18 @@ impl Vm {
             ) {
                 // `default` is this Realm's intrinsic of the same name: the
                 // right fallback when the new target belongs to this Realm.
-                let default = self
-                    .intrinsic_prototype(intrinsic)?
-                    .object_id()
-                    .expect("intrinsic prototype is an object");
-                let prototype = self.constructor_prototype_for(default, Some(intrinsic))?;
-                self.test262_set_foreign_prototype_override(created, prototype);
+                // The returned facade is still a Rust temporary. A prototype
+                // getter can collect the whole agent before the caller stores it.
+                let root = self.heap.root(created)?;
+                let prototype = (|| {
+                    let default = self
+                        .intrinsic_prototype(intrinsic)?
+                        .object_id()
+                        .expect("intrinsic prototype is an object");
+                    self.constructor_prototype_for(default, Some(intrinsic))
+                })();
+                self.release_root(root);
+                self.test262_set_foreign_prototype_override(created, prototype?);
             }
         }
         Ok(result)
