@@ -1842,7 +1842,21 @@ impl Vm {
         construct: bool,
         target: Value,
     ) -> Result<Value, RuntimeError> {
-        let result = self.enter_call(callee, receiver, args, construct, target);
+        let entry = self.call_entry_charge(&callee, &receiver, &args);
+        self.call_with_target_owned(callee, receiver, args, construct, target, entry)
+    }
+
+    fn call_with_target_owned(
+        &mut self,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+        target: Value,
+        entry: execution_payload::CallEntryCharge,
+    ) -> Result<Value, RuntimeError> {
+        let result = self.enter_call_owned(callee, receiver, args, construct, target, entry);
+        self.reconcile_scheduling_ownership();
         self.finish_pending_tail_calls(result)
     }
 
@@ -2075,12 +2089,18 @@ impl Vm {
         }
         if let Value::Object(id) = callee {
             if self.test262_foreign_reference(id).is_some() {
-                return self.test262_foreign_call(id, receiver, args, construct);
+                return self.test262_foreign_call_owned(
+                    id,
+                    receiver,
+                    args,
+                    construct,
+                    call_payload,
+                );
             }
         }
         if let Value::Object(id) = callee {
             if self.test262_reverse_reference(id).is_some() {
-                return self.test262_reverse_call(id, receiver, args, construct);
+                return self.test262_reverse_call(id, receiver, args, construct, call_payload);
             }
         }
         if let Value::Object(id) = callee {

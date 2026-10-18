@@ -66,18 +66,30 @@ impl RealmCallInput {
             .filter_map(Value::object_id)
     }
 
-    pub(super) fn invoke(mut self, vm: &mut Vm, target: ObjectId) -> Result<Value, RuntimeError> {
+    pub(super) fn invoke(
+        mut self,
+        vm: &mut Vm,
+        target: ObjectId,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
         self.entry.retarget_native(vm.host_scheduling.as_ref())?;
-        let result = vm.enter_call_owned(
+        let owner = self.entry.native_owner()?;
+        let result = vm.call_with_target_owned(
             Value::Object(target),
             self.receiver,
             self.arguments,
-            false,
-            Value::Undefined,
+            construct,
+            if construct {
+                Value::Object(target)
+            } else {
+                Value::Undefined
+            },
             self.entry,
         );
-        vm.reconcile_scheduling_ownership();
-        vm.finish_pending_tail_calls(result)
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
     }
 }
 

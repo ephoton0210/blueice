@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::realm_call_storage::{RealmCallInput, RealmCallRoots};
 use super::super::realm_reentrancy::{prepare_active_registration, ActiveRegistration};
 use super::*;
 use crate::heap::TypedArrayKind;
@@ -319,6 +320,19 @@ impl Vm {
             .get_mut(&wrapper)
             .expect("foreign result has a membrane record")
             .prototype_override = Some(prototype);
+    }
+
+    /// An owned primitive crosses without allocating another backing buffer.
+    fn test262_export_foreign_value_owned(
+        &mut self,
+        realm_id: ObjectId,
+        value: Value,
+    ) -> Result<Value, RuntimeError> {
+        if value.object_id().is_some() {
+            self.test262_export_foreign_value(realm_id, &value)
+        } else {
+            Ok(value)
+        }
     }
 
     pub(in super::super) fn test262_export_foreign_value(
@@ -1731,12 +1745,25 @@ impl Vm {
         Ok(())
     }
 
+    #[cfg(any(test, coverage))]
     pub(in super::super) fn test262_foreign_call(
         &mut self,
         wrapper: ObjectId,
         receiver: Value,
         args: Vec<Value>,
         construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let entry = self.call_entry_charge(&Value::Object(wrapper), &receiver, &args);
+        self.test262_foreign_call_owned(wrapper, receiver, args, construct, entry)
+    }
+
+    pub(in super::super) fn test262_foreign_call_owned(
+        &mut self,
+        wrapper: ObjectId,
+        receiver: Value,
+        mut args: Vec<Value>,
+        construct: bool,
+        entry: execution_payload::CallEntryCharge,
     ) -> Result<Value, RuntimeError> {
         let (realm_id, target, _, constructible) = self
             .test262_foreign_reference(wrapper)
@@ -1861,12 +1888,12 @@ impl Vm {
                 call_target_native.map(|method| {
                     (
                         method,
-                        args.first().cloned().unwrap_or(Value::Undefined),
-                        args.get(1..).unwrap_or_default().to_vec(),
+                        native::argument(&args, 0),
+                        args.get(1..).unwrap_or_default(),
                     )
                 })
             } else {
-                foreign_native.map(|method| (method, receiver.clone(), args.clone()))
+                foreign_native.map(|method| (method, &receiver, args.as_slice()))
             };
             if let Some((method, this_value, arguments)) = method_call {
                 let foreign_to_callee = |vm: &Self, value: &Value| {
@@ -1877,16 +1904,26 @@ impl Vm {
                 };
                 let runs_here = match runs_where_its_operands_live(method) {
                     None => false,
-                    Some(OperandPolicy::Receiver) => foreign_to_callee(self, &this_value),
+                    Some(OperandPolicy::Receiver) => foreign_to_callee(self, this_value),
                     Some(OperandPolicy::FirstArgument) => arguments
                         .first()
                         .is_some_and(|value| foreign_to_callee(self, value)),
                     Some(OperandPolicy::AnyOperand) => {
-                        foreign_to_callee(self, &this_value)
+                        foreign_to_callee(self, this_value)
                             || arguments.iter().any(|value| foreign_to_callee(self, value))
                     }
                 };
                 if runs_here {
+                    let (this_value, arguments) = if foreign_native == Some(NativeFunction::Call) {
+                        let this_value = if args.is_empty() {
+                            Value::Undefined
+                        } else {
+                            args.remove(0)
+                        };
+                        (this_value, args)
+                    } else {
+                        (receiver, args)
+                    };
                     return self
                         .test262_run_native_for_realm(realm_id, method, this_value, arguments);
                 }
@@ -1916,10 +1953,15 @@ impl Vm {
                 )
             )
         {
+            let this_value = if args.is_empty() {
+                Value::Undefined
+            } else {
+                args.remove(0)
+            };
             return self.native_call(
                 call_target_native.expect("matched TypedArray native function"),
-                args.first().cloned().unwrap_or(Value::Undefined),
-                args.get(1..).unwrap_or_default().to_vec(),
+                this_value,
+                args,
                 false,
             );
         }
@@ -2060,23 +2102,72 @@ impl Vm {
                 self.test262_import_foreign_value(realm_id, error)?,
             ));
         }
+        let child = self.test262_realm_handle(realm_id)?;
+        let owner = child.read(self.object_prototype.heap, |child| {
+            self.realm_call_native_owner(child)
+        })?;
+        let mut input = RealmCallInput {
+            callee: Value::Object(wrapper),
+            receiver,
+            arguments: args,
+            entry,
+        };
+        input.entry.retain_native(
+            self,
+            &input.callee,
+            &input.receiver,
+            &input.arguments,
+            owner.as_ref(),
+        )?;
+        let roots = RealmCallRoots::new(input.objects().count(), owner.as_ref())?;
+        input.objects().for_each(|id| roots.push(id));
+        // Original source operands keep their conditional membrane edges live
+        // while conversion creates destination objects. No active VM window moves.
+        let result = self.with_realm_call_roots(roots, |source| {
+            source.test262_foreign_call_input(
+                realm_id,
+                target,
+                wrapper,
+                foreign_native,
+                input,
+                construct,
+            )
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
+    }
+
+    fn test262_foreign_call_input(
+        &mut self,
+        realm_id: ObjectId,
+        target: ObjectId,
+        wrapper: ObjectId,
+        foreign_native: Option<NativeFunction>,
+        mut input: RealmCallInput,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
         let registration = self.prepare_foreign_active_registration(realm_id)?;
         // Any foreign function can mutate or transfer a mirrored buffer,
         // including closures and Function.prototype.call/apply. Flush before
         // entry rather than relying on the outer function's native identity.
         self.test262_sync_foreign_buffer_mirrors(realm_id)?;
-        let receiver = self.test262_export_foreign_value(realm_id, &receiver)?;
-        let args = args
-            .iter()
-            .map(|value| self.test262_export_foreign_value(realm_id, value))
-            .collect::<Result<Vec<_>, _>>()?;
+        input.receiver = self.test262_export_foreign_value_owned(
+            realm_id,
+            std::mem::replace(&mut input.receiver, Value::Undefined),
+        )?;
+        for slot in &mut input.arguments {
+            let value = std::mem::replace(slot, Value::Undefined);
+            *slot = self.test262_export_foreign_value_owned(realm_id, value)?;
+        }
         let child = self.test262_realm_handle(realm_id)?;
         let caller = self.object_prototype.heap;
         let _guard = registration.publish(self);
         let result = child.edit(caller, |child| {
             child.remaining_instructions = child.config.instruction_budget;
             child.construct_completion_check_failed = false;
-            let result = child.call_native(Value::Object(target), receiver, args, construct);
+            let result = input.invoke(child, target, construct);
             match result {
                 Ok(value) => Ok(value),
                 // [[Construct]]'s completion checks (a derived constructor's

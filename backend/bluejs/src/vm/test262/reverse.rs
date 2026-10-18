@@ -21,26 +21,20 @@
 //! an analogous problem (`ShadowRealm`'s `WrappedFunctionCreate` facades),
 //! extracted into `realm_reentrancy` so both can share it.
 //!
-//! # Soundness: `Box<Vm>`, not `Rc<RefCell<Vm>>`
+//! # Soundness and dynamic borrows
 //!
-//! `ShadowRealmRecord` shares its child via `Rc<RefCell<Vm>>`, so a
-//! reentrant call back into an already-borrowed child is caught at runtime
-//! (`RefCell::try_borrow_mut` returning `Err`, handled by falling back to
-//! `resolve_active`). `Test262Realm` instead owns its child with a plain
-//! `Box<Vm>` -- there is no equivalent runtime check here. Every function
-//! below therefore follows a stricter discipline than the `RefCell` case
-//! needs: read everything required from `self` (the child) *before*
-//! resolving and dereferencing the parent pointer, then never touch `self`
-//! again for the rest of the function. As long as that holds, the parent
-//! pointer this module dereferences is used in a call that is always
-//! strictly *nested* inside -- never overlapping -- any use of the `self`
-//! reference these functions were called with, which is the same
-//! non-overlapping-borrow discipline `register_active`/`resolve_active`'s
-//! own documentation describes. The complementary half of this discipline,
-//! on the forward side (never holding a `self.test262_realms`-derived safe
-//! reference alive across a call that might reenter through this module),
-//! lives in `foreign.rs`'s `test262_foreign_call` -- see its own comments.
+//! Realm cells use `Rc<RefCell<Vm>>`. A reverse call reaches an ancestor whose
+//! outer mutable borrow is still suspended, so the shared active registry is
+//! the authority for that reentrant access. Resolve the ancestor and register
+//! the child at the existing synchronous boundary. Once the parent is
+//! reborrowed, suspend all source VM access until the nested parent operation
+//! returns. Input ownership and root frames can be prepared before this window;
+//! root-frame cleanup follows it. Never retain a map-derived realm borrow
+//! across a guest call that might enter the same cell again. `RealmHandle`'s
+//! read/edit helpers implement that complementary discipline on the forward
+//! side without extending the active pointer's lifetime.
 
+use super::super::realm_call_storage::{RealmCallInput, RealmCallRoots};
 use super::super::realm_reentrancy::{register_active, resolve_active};
 use super::*;
 
@@ -459,37 +453,60 @@ impl Vm {
         receiver: Value,
         args: Vec<Value>,
         construct: bool,
+        entry: execution_payload::CallEntryCharge,
     ) -> Result<Value, RuntimeError> {
         let (home_heap, target, _, _) = self
             .test262_reverse_reference(wrapper)
             .expect("reverse call has a membrane record");
-        let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self)?;
-        // SAFETY: see this module's top-level "Soundness" note. `parent`'s
-        // own nested calls (`call_native` below, and everything it in turn
-        // invokes) manage their own reentrancy discipline; this function
-        // never touches `self` again once `parent` is in hand.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        let receiver = parent.test262_import_foreign_value(child_realm_id, receiver)?;
-        let args = args
-            .into_iter()
-            .map(|arg| parent.test262_import_foreign_value(child_realm_id, arg))
-            .collect::<Result<Vec<_>, _>>()?;
-        parent.remaining_instructions = parent.config.instruction_budget;
-        let result = parent.call_native(Value::Object(target), receiver, args, construct);
-        let result = match result {
-            Ok(value) => Ok(value),
-            // RuntimeError represents spec throws until they cross a VM
-            // boundary, matching `test262_foreign_call`'s identical
-            // handling for its own (opposite-direction) result.
-            Err(error) => match parent.error_value(error) {
-                Ok(error) => Err(RuntimeError::Thrown(error)),
-                Err(error) => Err(error),
-            },
+        let owner = match self.host_scheduling.as_ref() {
+            Some(scope) => Some(scope.shared_charge(0)?),
+            None => realm_reentrancy::reserve_active_native(0)?,
         };
-        test262_reverse_export_result(parent, child_realm_id, result)
+        let mut input = RealmCallInput {
+            callee: Value::Object(wrapper),
+            receiver,
+            arguments: args,
+            entry,
+        };
+        input.entry.retain_native(
+            self,
+            &input.callee,
+            &input.receiver,
+            &input.arguments,
+            owner.as_ref(),
+        )?;
+        let roots = RealmCallRoots::new(input.objects().count(), owner.as_ref())?;
+        input.objects().for_each(|id| roots.push(id));
+        let result = self.with_realm_call_roots(roots, |source| {
+            let self_heap = source.object_prototype.heap;
+            let ptr = source.resolve_reverse_parent(home_heap)?;
+            let _guard = register_active(source)?;
+            // SAFETY: the original parent-resolution/publication boundary is
+            // unchanged. After reborrowing the parent, no source VM access
+            // occurs until the whole parent operation returns and roots unwind.
+            let parent = unsafe { &mut *ptr };
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            input.receiver = parent.test262_import_foreign_value(child_realm_id, input.receiver)?;
+            for slot in &mut input.arguments {
+                let value = std::mem::replace(slot, Value::Undefined);
+                *slot = parent.test262_import_foreign_value(child_realm_id, value)?;
+            }
+            parent.remaining_instructions = parent.config.instruction_budget;
+            let result = input.invoke(parent, target, construct);
+            let result = match result {
+                Ok(value) => Ok(value),
+                // Materialize ordinary throws in the callee's own realm.
+                Err(error) => match parent.error_value(error) {
+                    Ok(error) => Err(RuntimeError::Thrown(error)),
+                    Err(error) => Err(error),
+                },
+            };
+            test262_reverse_export_result(parent, child_realm_id, result)
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
     }
 }
 

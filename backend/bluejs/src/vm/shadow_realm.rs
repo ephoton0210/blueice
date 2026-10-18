@@ -769,7 +769,7 @@ impl Vm {
                 }
                 other.remaining_instructions = other.config.instruction_budget;
                 // Keep conversion errors distinct from target exceptions.
-                Ok(input.invoke(other, target))
+                Ok(input.invoke(other, target, false))
             })
         })?;
         if let Some(owner) = &owner {

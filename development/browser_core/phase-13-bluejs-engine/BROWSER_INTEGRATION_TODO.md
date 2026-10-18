@@ -71,6 +71,36 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The Test262 membrane call-assembly follow-up (2026-10-18) has an implementation
+checkpoint. Four fixed small regressions reproduced forward vector/string
+copies and source entry control retained after destination adoption: 280 bytes
+forward and 40 bytes reverse. Both generic call directions now convert in place
+and carry the original entry guard into the destination's common owned call
+path. Primitive export buffers move unchanged. Admitted source-ID frames keep
+original operands and their conditional membrane edges live through conversion
+and callbacks; the existing active ancestor publication windows stay unchanged.
+Native-route selection inspects borrowed operands, then moves the chosen local
+inputs and removes a call receiver in place instead of cloning provisional
+vectors. Constructor/newTarget handling, error realms, buffer coherence and
+proper tail-call completion remain on their existing semantic paths.
+
+The expanded selection passed sixteen cases and reproduced one additional
+terminal-marker failure: a callback could mark the account failed but still
+return success across the membrane. Zero-byte source/destination account views
+now survive entry adoption and validate terminal state after invocation. Cleanup
+releases roots and input ownership on either outcome; neutral captured policy
+does not change. The original four failures and expanded failure are preserved.
+
+All seventeen new contracts and the previous 269 selected controls pass:
+**286 distinct selected tests**, five executable targets and 124 selections.
+Formatting, diff checks and offline workspace/all-target Clippy pass. Frozen
+source/artifact and staged/committed Git audits bind this checkpoint; the
+ordinary-library hook adds no measured coverage claim. Array/TypedArray/buffer
+transport snapshots, wider native producers and integrated acceptance remain
+open. M1u remains latest accepted, and M1z integrated gates stay open. Validation
+stays local/offline with fixed finite inputs; rejected push/process inspection
+is not retried. Evidence: `target/membrane-call-storage-source-20261018.json`.
+
 The owned ShadowRealm entry follow-up (2026-10-18) has a correction checkpoint.
 Three small public-script regressions reproduced a missing proper-tail-call
 trampoline after the argument-ownership change: a strict native tail return
@@ -1734,6 +1764,12 @@ work and exposes its retained payload ledger.
       entry tail-call correction adds eight contracts and 269 relevant selected
       cases: a shared completion trampoline preserves the final result/throw,
       callback execution and subsequent calls without a duplicate initial lease.
+      Test262 generic call assembly adds seventeen contracts and 286 relevant
+      selected cases: in-place forward/reverse conversion, primitive moves,
+      original entry handoff, admitted source roots, borrowed native routing and
+      post-callback terminal-owner validation. Constructor/error realms, GC,
+      sibling identity, neutral policy and proper tail calls remain covered;
+      Array/TypedArray/buffer transport snapshots remain open.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

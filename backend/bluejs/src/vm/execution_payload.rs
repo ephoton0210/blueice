@@ -217,6 +217,19 @@ impl CallEntryCharge {
         }
         Ok(())
     }
+
+    /// A zero-byte view survives frame adoption so a native callback's terminal
+    /// marker is still observed when the complete invocation returns.
+    pub(super) fn native_owner(
+        &self,
+    ) -> Result<Option<host_scheduling::SharedSchedulingCharge>, RuntimeError> {
+        self.payload
+            .native
+            .as_ref()
+            .or(self.control.native.as_ref())
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()
+    }
 }
 
 impl ExecutionPayloadCharge {

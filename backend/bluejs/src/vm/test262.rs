@@ -11,6 +11,10 @@ mod cases;
 mod foreign;
 mod harness;
 mod reverse;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/membrane_call_storage.rs"]
+mod call_storage_tests;
 /// The four numbering-system digit sets selected by the pinned precision
 /// matrix. These are the same `numberingSystemDigits` entries consumed by its
 /// upstream JavaScript helper.
