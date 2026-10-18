@@ -132,8 +132,6 @@ impl Vm {
     }
 }
 
-fn release_empty<K, V>(table: &mut HashMap<K, V>) {
-    if table.is_empty() {
-        *table = HashMap::new();
-    }
+fn release_empty<K: Eq + std::hash::Hash, V>(table: &mut MembraneMap<K, V>) {
+    table.release_empty();
 }

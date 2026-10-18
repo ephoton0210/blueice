@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_membrane_map_storage_contracts() {
+    blueice_bluejs::Vm::verify_membrane_map_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_realm_rejection_lifetime_contracts() {
     blueice_bluejs::Vm::verify_realm_rejection_lifetime_contracts();
 }

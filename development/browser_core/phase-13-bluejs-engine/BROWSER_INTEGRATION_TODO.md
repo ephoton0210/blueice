@@ -68,6 +68,35 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The membrane-table ownership follow-up (2026-10-18) has an implementation
+checkpoint. Three tiny regressions reproduced missing native ownership for
+forward, nested-wrapper and imported-source table backing. All four top-level
+Test262 tables and four per-realm
+identity/transport tables now retain independent document leases. Moving a
+record or table into Rust-held storage preserves its owner after VM teardown.
+The retained allocation ledger survives deletion; backing drops before its
+credit is returned. Neutral storage attaches once, and foreign ownership is
+checked before document-policy publication.
+
+Forward wrappers, transport/reverse pairs, ordinary-buffer mirrors, re-export
+caches and realm creation prepare every related replacement before metadata
+publication. Guest reads and heap allocation finish before preparing the tables;
+a source getter that publishes another transport exercises this ordering.
+Successful growth counts both old and candidate backing until commit, while
+reusable slots retain one owner. This is logical retained slot-capacity
+accounting; hash-control/allocator overhead, wider retained maps and other
+native/transport/program buffers remain open. M1u remains latest accepted and
+M1z integrated gates remain open. Validation stays local and offline, with no
+quota-boundary, exhaustion, service or privileged replay; previously rejected
+push and process inspection are not retried or bypassed.
+
+Eighteen new contracts and the previous 168 relevant controls pass: **186
+distinct selected tests**, five executable targets and 99 selections. Formatting,
+diff checks and offline workspace/all-target Clippy pass. Frozen source/artifact
+and Git audits bind the local checkpoint. The ordinary-library hook is present
+without a new coverage result. Evidence:
+`target/membrane-map-storage-source-20261018.json`.
+
 The rejection-notification lifetime follow-up (2026-10-18) has an implementation
 checkpoint. Three tiny owned/shared/nested regressions reproduced VM loss after
 public realm references were discarded, before the document checkpoint published
@@ -1562,7 +1591,11 @@ work and exposes its retained payload ledger.
       return roots. Rejection-notification lifetime now adds fourteen contracts
       and 168 relevant selected cases: pending/active batches preserve the VM
       and route until delivery; empty profiles and the reported bit do not.
-      General retained-map growth admission remains open.
+      Membrane table ownership now adds eighteen contracts and 186 relevant
+      selected cases: all eight Test262 tables retain document leases, prepare
+      joint replacements before publication and preserve Rust-held backing,
+      neutral attachment and teardown ownership. Wider retained-map growth
+      admission and allocator/hash-control overhead remain open.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

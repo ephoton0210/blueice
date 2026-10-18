@@ -168,6 +168,7 @@ mod intl;
 mod intrinsics;
 mod json;
 mod lifecycle;
+mod membrane_map;
 mod modules;
 mod native_stack;
 mod operations;
@@ -176,6 +177,10 @@ mod promise_reactions;
 mod properties;
 mod realm_cells;
 mod realm_membrane_gc;
+use membrane_map::MembraneMap;
+#[cfg(any(test, coverage))]
+#[path = "../tests/fixtures/membrane_map_storage.rs"]
+mod membrane_map_storage_contracts;
 mod realm_reentrancy;
 mod regexp;
 mod rejection_origins;
@@ -773,12 +778,12 @@ enum DynamicImportResult {
 /// value.
 struct Test262Realm {
     vm: realm_cells::RealmHandle,
-    wrappers: HashMap<ObjectId, ObjectId>,
+    wrappers: MembraneMap<ObjectId, ObjectId>,
     /// Parent-heap values temporarily represented by an ordinary object in
     /// this child heap. The reverse map preserves identity when child code
     /// returns or retains an argument supplied by the parent.
-    imported_sources: HashMap<ObjectId, ObjectId>,
-    imported_values: HashMap<ObjectId, Test262ImportedValue>,
+    imported_sources: MembraneMap<ObjectId, ObjectId>,
+    imported_values: MembraneMap<ObjectId, Test262ImportedValue>,
     /// A `ShadowRealm` instance (keyed here by its identity in the realm
     /// that actually owns the child, i.e. `target` in
     /// `export_foreign_shadow_realm`) that has already been re-exported
@@ -790,7 +795,7 @@ struct Test262Realm {
     /// own `shadow_realms`/`shadow_realm_by_heap` already fully describe --
     /// this map exists purely so re-exporting the same one twice returns
     /// the same instance rather than minting a second one.
-    shadow_realm_reexports: HashMap<ObjectId, ObjectId>,
+    shadow_realm_reexports: MembraneMap<ObjectId, ObjectId>,
 }
 
 /// The two roots keep an opaque membrane transport value alive in each heap.
@@ -1308,9 +1313,9 @@ pub struct Vm {
     test262_agent_host: Option<std::sync::Arc<test262_agents::Test262AgentHost>>,
     test262_agent_control: Option<std::sync::Arc<test262_agents::Test262AgentControl>>,
     test262_async_waits: std::sync::Arc<test262_agents::Test262AsyncWaits>,
-    test262_realms: HashMap<ObjectId, Test262Realm>,
-    test262_foreign_values: HashMap<ObjectId, Test262ForeignValue>,
-    test262_foreign_buffer_mirrors: HashMap<(ObjectId, ObjectId), Test262ForeignBufferMirror>,
+    test262_realms: MembraneMap<ObjectId, Test262Realm>,
+    test262_foreign_values: MembraneMap<ObjectId, Test262ForeignValue>,
+    test262_foreign_buffer_mirrors: MembraneMap<(ObjectId, ObjectId), Test262ForeignBufferMirror>,
     /// Whether the most recent function [[Construct]] this realm finished
     /// failed one of the completion checks the specification performs after
     /// the callee's execution context has been removed (a derived
@@ -1334,7 +1339,7 @@ pub struct Vm {
     /// [`realm_reentrancy::resolve_active`], keyed by `home_heap`. See
     /// [`test262::reverse`] for the forwarding functions that dispatch
     /// through this map.
-    test262_reverse_values: HashMap<ObjectId, Test262ReverseValue>,
+    test262_reverse_values: MembraneMap<ObjectId, Test262ReverseValue>,
     shadow_realm_prototype: Option<ObjectId>,
     shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
     /// Reverse index from a `ShadowRealm` child's own heap tag back to the

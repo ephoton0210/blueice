@@ -180,7 +180,15 @@ impl<K: Eq + std::hash::Hash, V> PreparedMap<K, V> {
             .as_ref()
             .map_or(0, host_scheduling::map_slots)
     }
-    pub(super) fn commit(mut self, values: &mut retained_control_map::RetainedControlMap<K, V>) {
+    pub(super) fn commit(self, values: &mut retained_control_map::RetainedControlMap<K, V>) {
+        self.commit_owned(values);
+    }
+
+    /// Move a complete candidate lease with independently owned table backing.
+    pub(super) fn commit_owned(
+        mut self,
+        values: &mut retained_control_map::RetainedControlMap<K, V>,
+    ) -> Option<SharedSchedulingCharge> {
         assert_eq!((values.len(), values.capacity()), self.previous);
         if let Some(replacement) = self.replacement.take() {
             values.replace_prepared(replacement);
@@ -189,6 +197,7 @@ impl<K: Eq + std::hash::Hash, V> PreparedMap<K, V> {
             self.additional <= values.capacity() - values.len(),
             "record slots admitted before publication"
         );
+        self.charge.take()
     }
 
     /// Heap-only allocation may prune records while retaining their backing.

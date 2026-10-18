@@ -244,6 +244,11 @@ fn host_realm_tasks_foreign_owned_member_stays_outside_document_delivery() {
     work(&mut foreign.test262_realms.get_mut(&id).unwrap().vm.borrow_mut());
     let child = foreign.test262_realms.remove(&id).unwrap();
     let key = root.object_prototype;
+    let prepared = root
+        .test262_realms
+        .prepare_insert(root.host_scheduling.as_ref())
+        .unwrap();
+    root.test262_realms.commit(prepared);
     root.test262_realms.insert(key, child);
     assert_eq!(root.next_host_task_wake(0).unwrap(), None);
     assert_eq!(root.run_host_task_turn(1, 1).unwrap().tasks_run, 0);

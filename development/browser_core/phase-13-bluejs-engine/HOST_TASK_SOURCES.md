@@ -1654,6 +1654,41 @@ conformance timer thread, process inspection or killing was resumed. Rejected
 external push/process inspection was not retried. Evidence:
 `target/rejection-lifetime-source-20261018.json`.
 
+The membrane-table ownership follow-up (2026-10-18) accounts for all four
+Test262 VM tables (owned realms, forward facades, reverse facades and buffer
+mirrors) and all four per-realm tables (wrappers, imported sources, imported
+values and ShadowRealm re-exports). Each backing allocation keeps its own
+native lease, including a table or realm record moved into Rust-held storage.
+Deletion changes insertion headroom without refunding live backing. Empty-table
+release destroys backing before returning its credit, including terminal cleanup.
+
+Preparation admits a full replacement while the previous backing remains
+charged. Publication moves the candidate and its lease together, then refunds
+the old allocation. Reusable slots acquire no replacement charge. Forward and
+reverse root pairs, transport identities, mirrors and initial realm records
+prepare all related tables before inserting metadata; temporary roots are
+released when preparation fails. Snapshot guest reads and heap creation precede
+table preparation, so a source getter can publish another transport safely.
+Re-export instances stay rooted until adoption and cache publication.
+
+Neutral storage reports its unleased slot capacity and attaches once when its
+VM joins a document. Read-only policy discovery rejects foreign table ownership
+before binding a neutral graph. Already active documents leave Rust-held foreign
+records under their original account and outside their delivery route. The
+existing shared retained-allocation ledger is reused; no new raw VM pointers or
+unsafe blocks are introduced. Eighteen new contracts and the previous 168
+relevant controls pass: 186 distinct finite tests, five executable targets and
+99 selections. The original three missing-credit cases failed before the fix.
+Formatting, diff checks and offline workspace/all-target Clippy pass; frozen
+source/artifact and Git audits bind the local checkpoint. The ordinary-library
+hook is present without a new coverage result. Evidence:
+`target/membrane-map-storage-source-20261018.json`.
+This logical slot-capacity checkpoint excludes allocator/hash-control overhead,
+wider retained maps and native/transport/program buffers. M1u remains latest
+accepted and M1z integrated gates remain open. No quota-boundary, exhaustion,
+service, privileged or workspace-wide runtime replay is resumed; rejected push
+and process inspection are not retried or bypassed.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

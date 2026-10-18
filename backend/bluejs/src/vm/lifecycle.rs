@@ -10,7 +10,9 @@ use std::rc::Rc;
 
 use crate::{Bytecode, Heap, HeapError, ImportPhase, Value};
 
-use super::{test262_agents, AgentSymbolRegistry, ModuleRegistry, RuntimeError, Vm, VmConfig};
+use super::{
+    test262_agents, AgentSymbolRegistry, MembraneMap, ModuleRegistry, RuntimeError, Vm, VmConfig,
+};
 
 impl Default for Vm {
     fn default() -> Self {
@@ -217,12 +219,12 @@ impl Vm {
             test262_agent_host: None,
             test262_agent_control: None,
             test262_async_waits: std::sync::Arc::new(test262_agents::Test262AsyncWaits::new()),
-            test262_realms: HashMap::new(),
-            test262_foreign_values: HashMap::new(),
-            test262_foreign_buffer_mirrors: HashMap::new(),
+            test262_realms: MembraneMap::default(),
+            test262_foreign_values: MembraneMap::default(),
+            test262_foreign_buffer_mirrors: MembraneMap::default(),
             construct_completion_check_failed: false,
             acting_realm: None,
-            test262_reverse_values: HashMap::new(),
+            test262_reverse_values: MembraneMap::default(),
             shadow_realm_prototype: None,
             shadow_realms: HashMap::new(),
             shadow_realm_by_heap: HashMap::new(),

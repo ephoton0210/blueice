@@ -141,6 +141,9 @@ impl Plan {
                 if !vm.heap.can_join_document_heap_budget(managed) {
                     return Err(scope.fail());
                 }
+                if !vm.membrane_storage_can_join(scope) {
+                    return Err(scope.fail());
+                }
                 if vm.document_policy_ready {
                     return Ok(false);
                 }

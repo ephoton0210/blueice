@@ -207,11 +207,36 @@ impl Vm {
                 return Err(error.into());
             }
         };
-        self.test262_realms
+        let prepared = (|| {
+            let wrappers = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live")
+                .wrappers
+                .prepare_insert(self.host_scheduling.as_ref())?;
+            let values = self
+                .test262_foreign_values
+                .prepare_insert(self.host_scheduling.as_ref())?;
+            Ok::<_, RuntimeError>((wrappers, values))
+        })();
+        let (wrappers, values) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                self.release_root(wrapper_root);
+                child.edit(caller, |vm| {
+                    vm.release_root(target_root);
+                    Ok(())
+                })?;
+                return Err(error);
+            }
+        };
+        let realm = self
+            .test262_realms
             .get_mut(&realm_id)
-            .expect("foreign realm remains live")
-            .wrappers
-            .insert(target, wrapper);
+            .expect("foreign realm remains live");
+        realm.wrappers.commit(wrappers);
+        self.test262_foreign_values.commit(values);
+        realm.wrappers.insert(target, wrapper);
         self.test262_foreign_values.insert(
             wrapper,
             Test262ForeignValue {
@@ -367,19 +392,44 @@ impl Vm {
         {
             return Ok(Some(Value::Object(existing)));
         }
-        let instance =
-            self.test262_realm_handle(realm_id)?
-                .edit(self.object_prototype.heap, |vm| {
-                    let default = vm.shadow_realm_prototype()?;
-                    let instance = vm.with_roots(|heap| heap.alloc_object(Some(default)))?;
-                    vm.adopt_shadow_realm(instance, source_record);
-                    Ok(instance)
-                })?;
-        self.test262_realms
+        // Intrinsic setup can allocate and collect. Prepare only after it has
+        // finished, while the unpublished instance has an explicit root.
+        let child = self.test262_realm_handle(realm_id)?;
+        let caller = self.object_prototype.heap;
+        let (instance, root) = child.edit(caller, |vm| {
+            let default = vm.shadow_realm_prototype()?;
+            let instance = vm.with_roots(|heap| heap.alloc_object(Some(default)))?;
+            let root = vm.heap.root(instance)?;
+            Ok((instance, root))
+        })?;
+        let prepared = self
+            .test262_realms
             .get_mut(&realm_id)
             .expect("foreign realm remains live")
             .shadow_realm_reexports
-            .insert(target, instance);
+            .prepare_insert(self.host_scheduling.as_ref());
+        let prepared = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                child.edit(caller, |vm| {
+                    vm.release_root(root);
+                    Ok(())
+                })?;
+                return Err(error);
+            }
+        };
+        child.edit(caller, |vm| {
+            vm.adopt_shadow_realm(instance, source_record);
+            vm.release_root(root);
+            Ok(())
+        })?;
+        let cache = &mut self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live")
+            .shadow_realm_reexports;
+        cache.commit(prepared);
+        cache.insert(target, instance);
         Ok(Some(Value::Object(instance)))
     }
 
@@ -533,6 +583,7 @@ impl Vm {
         let constructible = self
             .is_constructor(&Value::Object(source))
             .expect("the transport source was validated without running JavaScript");
+        let child = self.test262_realm_handle(realm_id)?;
         let home_heap = self.object_prototype.heap;
         let source_root = self.heap.root(source)?;
         // A second, independent root for the same `source` object, held by
@@ -550,99 +601,140 @@ impl Vm {
                 self.release_root(source_root);
                 RuntimeError::from(error)
             })?;
-        let child = self.test262_realm_handle(realm_id)?;
-        let result = (|| {
-            let (target, target_root) = child.edit(self.object_prototype.heap, |vm| {
-            let target = if let Some((
-                shared,
-                detached,
-                byte_length,
-                maximum,
-                flexible,
-                bytes,
-                backing,
-            )) = &buffer_transport
-            {
-                let prototype = if *shared {
-                    vm.buffer_prototype("SharedArrayBuffer")?
+        let result = child.edit(self.object_prototype.heap, |vm| {
+            let target =
+                if let Some((shared, detached, byte_length, maximum, flexible, bytes, backing)) =
+                    &buffer_transport
+                {
+                    let prototype = if *shared {
+                        vm.buffer_prototype("SharedArrayBuffer")?
+                    } else {
+                        vm.buffer_prototype("ArrayBuffer")?
+                    };
+                    let buffer = if let Some(backing) = backing.clone() {
+                        vm.with_roots(|heap| {
+                            heap.alloc_shared_array_buffer_backing(
+                                backing,
+                                flexible.then_some(*maximum),
+                                Some(prototype),
+                            )
+                        })?
+                    } else if immutable_buffer {
+                        // An immutable buffer stays immutable in the child realm;
+                        // its bytes are supplied once, at allocation.
+                        let bytes = bytes.clone().unwrap_or_default();
+                        vm.with_roots(|heap| {
+                            heap.alloc_immutable_array_buffer(bytes, Some(prototype))
+                        })?
+                    } else if *flexible {
+                        vm.with_roots(|heap| {
+                            heap.alloc_resizable_array_buffer(
+                                *byte_length,
+                                *maximum,
+                                Some(prototype),
+                            )
+                        })?
+                    } else {
+                        vm.with_roots(|heap| {
+                            heap.alloc_array_buffer(*byte_length, Some(prototype))
+                        })?
+                    };
+                    if *detached {
+                        vm.heap.detach_array_buffer(buffer).expect(
+                            "the fresh ordinary snapshot has not been exposed to JavaScript",
+                        );
+                    } else if let (Some(bytes), false) = (bytes, immutable_buffer) {
+                        vm.heap.array_buffer_write(buffer, 0, bytes).expect(
+                            "the fresh writable snapshot has exactly the copied byte length",
+                        );
+                    }
+                    buffer
+                } else if let Some(values) = array_values {
+                    vm.array_from(values)?
+                        .object_id()
+                        .expect("array construction returns an object")
+                } else if let Some((kind, values)) = typed_array_values {
+                    let constructor = vm.global(kind.name())?;
+                    let target = vm
+                        .call_native(
+                            constructor,
+                            Value::Undefined,
+                            vec![Value::Number(values.len() as f64)],
+                            true,
+                        )?
+                        .object_id()
+                        .expect("TypedArray construction returns an object");
+                    for (index, value) in values.iter().enumerate() {
+                        vm.heap
+                            .typed_array_set_index(target, index, value)
+                            .expect("the intrinsic snapshot has the source kind and length");
+                    }
+                    target
                 } else {
-                    vm.buffer_prototype("ArrayBuffer")?
+                    let prototype = vm.object_prototype;
+                    vm.with_roots(|heap| heap.alloc_object(Some(prototype)))?
                 };
-                let buffer = if let Some(backing) = backing.clone() {
-                    vm.with_roots(|heap| {
-                        heap.alloc_shared_array_buffer_backing(
-                            backing,
-                            flexible.then_some(*maximum),
-                            Some(prototype),
-                        )
-                    })?
-                } else if immutable_buffer {
-                    // An immutable buffer stays immutable in the child realm;
-                    // its bytes are supplied once, at allocation.
-                    let bytes = bytes.clone().unwrap_or_default();
-                    vm.with_roots(|heap| {
-                        heap.alloc_immutable_array_buffer(bytes, Some(prototype))
-                    })?
-                } else if *flexible {
-                    vm.with_roots(|heap| {
-                        heap.alloc_resizable_array_buffer(*byte_length, *maximum, Some(prototype))
-                    })?
-                } else {
-                    vm
-                        .with_roots(|heap| heap.alloc_array_buffer(*byte_length, Some(prototype)))?
-                };
-                if *detached {
-                    vm
-                        .heap
-                        .detach_array_buffer(buffer)
-                        .expect("the fresh ordinary snapshot has not been exposed to JavaScript");
-                } else if let (Some(bytes), false) = (bytes, immutable_buffer) {
-                    vm
-                        .heap
-                        .array_buffer_write(buffer, 0, bytes)
-                        .expect("the fresh writable snapshot has exactly the copied byte length");
-                }
-                buffer
-            } else if let Some(values) = array_values {
-                vm
-                    .array_from(values)?
-                    .object_id()
-                    .expect("array construction returns an object")
-            } else if let Some((kind, values)) = typed_array_values {
-                let constructor = vm.global(kind.name())?;
-                let target = vm
-                    .call_native(
-                        constructor,
-                        Value::Undefined,
-                        vec![Value::Number(values.len() as f64)],
-                        true,
-                    )?
-                    .object_id()
-                    .expect("TypedArray construction returns an object");
-                for (index, value) in values.iter().enumerate() {
-                    vm
-                            .heap.typed_array_set_index(target, index, value).expect("the original intrinsic allocated the exact snapshot kind and length from a primitive length");
-                }
-                target
-            } else {
-                let prototype = vm.object_prototype;
-                vm
-                    .with_roots(|heap| heap.alloc_object(Some(prototype)))?
-            };
             let target_root = vm.heap.root(target)?;
-            if property_forwarding {
-                // The opaque, "everything else" case: rather than leaving
-                // `target` a permanently empty, non-callable stand-in (the
-                // old behavior), register it as a live reverse-membrane
-                // facade so property access, [[Call]]/[[Construct]], and
-                // prototype-chain walks reaching it from *this* (child)
-                // realm's own code dispatch back to the real `source`
-                // object in the parent -- see `test262::reverse` for the
-                // forwarding functions this makes reachable.
-                let wrapper_root = vm.heap.root(target).map_err(|error| {
+            let wrapper_root = if property_forwarding {
+                Some(vm.heap.root(target).map_err(|error| {
                     vm.release_root(target_root);
                     RuntimeError::from(error)
-                })?;
+                })?)
+            } else {
+                None
+            };
+            // All guest constructors and heap allocation have finished. Admit
+            // every table in both heaps before publishing either root pair.
+            let prepared = (|| {
+                let realm = self
+                    .test262_realms
+                    .get_mut(&realm_id)
+                    .expect("foreign realm remains live");
+                let sources = realm
+                    .imported_sources
+                    .prepare_insert(self.host_scheduling.as_ref())?;
+                let values = realm
+                    .imported_values
+                    .prepare_insert(self.host_scheduling.as_ref())?;
+                let mirrors = if ordinary_buffer {
+                    Some(
+                        self.test262_foreign_buffer_mirrors
+                            .prepare_insert(self.host_scheduling.as_ref())?,
+                    )
+                } else {
+                    None
+                };
+                let reverse = if property_forwarding {
+                    Some(
+                        vm.test262_reverse_values
+                            .prepare_insert(vm.host_scheduling.as_ref())?,
+                    )
+                } else {
+                    None
+                };
+                Ok::<_, RuntimeError>((sources, values, mirrors, reverse))
+            })();
+            let (sources, values, mirrors, reverse) = match prepared {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    vm.release_root(target_root);
+                    if let Some(root) = wrapper_root {
+                        vm.release_root(root);
+                    }
+                    return Err(error);
+                }
+            };
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.imported_sources.commit(sources);
+            realm.imported_values.commit(values);
+            if let Some(prepared) = mirrors {
+                self.test262_foreign_buffer_mirrors.commit(prepared);
+            }
+            if let Some(prepared) = reverse {
+                vm.test262_reverse_values.commit(prepared);
                 vm.test262_reverse_values.insert(
                     target,
                     Test262ReverseValue {
@@ -651,19 +743,11 @@ impl Vm {
                         callable,
                         constructible,
                         prototype_override: None,
-                        _wrapper_root: wrapper_root,
-                        _target_root: reverse_target_root.expect(
-                            "reverse_target_root is rooted whenever property_forwarding is true",
-                        ),
+                        _wrapper_root: wrapper_root.expect("forwarding facade owns its root"),
+                        _target_root: reverse_target_root.expect("forwarding source owns its root"),
                     },
                 );
             }
-                Ok((target, target_root))
-            })?;
-            let realm = self
-                .test262_realms
-                .get_mut(&realm_id)
-                .expect("foreign realm remains live");
             realm.imported_sources.insert(source, target);
             realm.imported_values.insert(
                 target,
@@ -673,25 +757,7 @@ impl Vm {
                     _target_root: target_root,
                 },
             );
-            Ok(Value::Object(target))
-        })();
-        match result.as_ref() {
-            Err(_) => {
-                self.release_root(source_root);
-                // `reverse_target_root` is `Copy` (`RootId` is `Copy`), so
-                // capturing it into the now-finished closure above did not
-                // move it away from this binding; if the closure never
-                // reached the `property_forwarding` branch that consumes
-                // it, it is still exactly this root and must be released
-                // here like `source_root` above.
-                if let Some(root) = reverse_target_root {
-                    self.release_root(root);
-                }
-            }
-            Ok(value) if ordinary_buffer => {
-                let target = value
-                    .object_id()
-                    .expect("successful transport returns a child object");
+            if ordinary_buffer {
                 self.test262_foreign_buffer_mirrors.insert(
                     (source, realm_id),
                     Test262ForeignBufferMirror {
@@ -702,7 +768,13 @@ impl Vm {
                     },
                 );
             }
-            Ok(_) => {}
+            Ok(Value::Object(target))
+        });
+        if result.is_err() {
+            self.release_root(source_root);
+            if let Some(root) = reverse_target_root {
+                self.release_root(root);
+            }
         }
         result
     }
@@ -1394,6 +1466,17 @@ impl Vm {
                     .expect("the fresh mutable mirror has the exact snapshotted byte length");
             }
             let buffer_root = self.heap.root(buffer)?;
+            let prepared = match self
+                .test262_foreign_buffer_mirrors
+                .prepare_insert(self.host_scheduling.as_ref())
+            {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    self.release_root(buffer_root);
+                    return Err(error);
+                }
+            };
+            self.test262_foreign_buffer_mirrors.commit(prepared);
             self.test262_foreign_buffer_mirrors.insert(
                 (buffer, realm_id),
                 Test262ForeignBufferMirror {
@@ -2155,17 +2238,29 @@ impl Vm {
             let record = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
             self.stack.push(Value::Object(record));
             self.define_data(record, "global", Value::Object(global), true, true, true)?;
+            let mut wrappers = MembraneMap::default();
+            let wrapper_slot = wrappers.prepare_insert(self.host_scheduling.as_ref())?;
+            let realm_slot = self
+                .test262_realms
+                .prepare_insert(self.host_scheduling.as_ref())?;
+            let value_slot = self
+                .test262_foreign_values
+                .prepare_insert(self.host_scheduling.as_ref())?;
             // Acquire the parent root immediately before publication. Earlier
             // allocations can fail while both objects are still stack roots.
             let wrapper_root = self.heap.root(global)?;
+            wrappers.commit(wrapper_slot);
+            wrappers.insert(foreign_global, global);
+            self.test262_realms.commit(realm_slot);
+            self.test262_foreign_values.commit(value_slot);
             self.test262_realms.insert(
                 global,
                 Test262Realm {
                     vm: realm,
-                    wrappers: HashMap::from([(foreign_global, global)]),
-                    imported_sources: HashMap::new(),
-                    imported_values: HashMap::new(),
-                    shadow_realm_reexports: HashMap::new(),
+                    wrappers,
+                    imported_sources: MembraneMap::default(),
+                    imported_values: MembraneMap::default(),
+                    shadow_realm_reexports: MembraneMap::default(),
                 },
             );
             published_realm = Some(global);
@@ -2203,6 +2298,8 @@ impl Vm {
                 // Every child root belongs to this private heap. No user code
                 // has received the failed realm or one of its facades.
                 self.test262_realms.remove(&realm_id);
+                self.test262_realms.release_empty();
+                self.test262_foreign_values.release_empty();
             }
         }
         self.stack.truncate(base);
