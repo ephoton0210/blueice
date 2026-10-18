@@ -213,6 +213,7 @@ impl Vm {
             next_host_task_source: 0,
             next_standalone_task_serial: 0,
             async_frame_roots: Vec::new(),
+            realm_call_roots: None,
             gc_trace_cache: Default::default(),
             realm_collection_cache: None,
             test262_done: None,

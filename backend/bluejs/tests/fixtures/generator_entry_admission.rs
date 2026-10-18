@@ -116,12 +116,14 @@ fn generator_entry_admission_parameter_environment_refusal_precedes_allocation()
 
 fn entry_charge(vm: &Vm, inherited: &Vec<Value>) -> CallEntryCharge {
     let mut entry = vm.call_entry_charge(&Value::Undefined, &Value::Undefined, &Vec::new());
-    entry.refresh(
-        &Value::Undefined,
-        &Value::Undefined,
-        &Vec::new(),
-        host_scheduling::slots(inherited) + host_scheduling::values_bytes(inherited),
-    );
+    entry
+        .refresh(
+            &Value::Undefined,
+            &Value::Undefined,
+            &Vec::new(),
+            host_scheduling::slots(inherited) + host_scheduling::values_bytes(inherited),
+        )
+        .unwrap();
     entry
 }
 

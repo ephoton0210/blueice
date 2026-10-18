@@ -1936,8 +1936,9 @@ fn shadow_wrapped_functions_reject_construction_and_busy_realms_reject_imports()
         .unwrap();
     let wrapper = function.object_id().unwrap();
     let wrapper_root = vm.heap.root(wrapper).unwrap();
+    let entry = vm.call_entry_charge(&function, &Value::Undefined, &Vec::new());
     assert_eq!(
-        vm.shadow_call_wrapped(wrapper, Value::Undefined, Vec::new(), true),
+        vm.shadow_call_wrapped(wrapper, Value::Undefined, Vec::new(), true, entry),
         Err(RuntimeError::TypeError(
             "a ShadowRealm wrapped function has no [[Construct]]".into()
         ))
@@ -1963,8 +1964,9 @@ fn shadow_wrapped_functions_reject_construction_and_busy_realms_reject_imports()
         vm.get_property(&error, &"name".into()).unwrap(),
         Value::String("TypeError".into())
     );
+    let entry = vm.call_entry_charge(&function, &Value::Undefined, &Vec::new());
     assert_eq!(
-        vm.shadow_call_wrapped(wrapper, Value::Undefined, Vec::new(), false),
+        vm.shadow_call_wrapped(wrapper, Value::Undefined, Vec::new(), false, entry),
         Ok(Value::Number(42.0))
     );
     vm.heap.unroot(wrapper_root).unwrap();

@@ -125,17 +125,7 @@ pub(super) fn prepare_active_registration(
         // A neutral membrane nested inside bounded work still allocates
         // metadata for that call chain. Borrow its nearest owner's budget
         // without changing the neutral VM's captured policy.
-        ACTIVE.with(|active| {
-            let active = active.borrow();
-            let mut node = active.as_deref();
-            while let Some(current) = node {
-                if let Some(owner) = &current._storage {
-                    return owner.reserve_peer(bytes).map(Some);
-                }
-                node = current.previous.get().and_then(Option::as_deref);
-            }
-            Ok(None)
-        })?
+        reserve_active_native(bytes)?
     };
     Ok(ActiveRegistration {
         node: Rc::new(ActiveVm {
@@ -145,6 +135,23 @@ pub(super) fn prepare_active_registration(
             previous: OnceCell::new(),
             _storage: storage,
         }),
+    })
+}
+
+/// Borrow only the nearest native account; do not resolve or access a VM.
+pub(super) fn reserve_active_native(
+    bytes: usize,
+) -> Result<Option<host_scheduling::SharedSchedulingCharge>, RuntimeError> {
+    ACTIVE.with(|active| {
+        let active = active.borrow();
+        let mut node = active.as_deref();
+        while let Some(current) = node {
+            if let Some(owner) = &current._storage {
+                return owner.reserve_peer(bytes).map(Some);
+            }
+            node = current.previous.get().and_then(Option::as_deref);
+        }
+        Ok(None)
     })
 }
 

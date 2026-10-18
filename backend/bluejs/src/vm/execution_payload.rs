@@ -155,11 +155,12 @@ pub(super) struct CallEntryCharge {
 
 impl CallEntryCharge {
     /// Forwarded metadata can reserve additional slots before VM adoption.
-    pub(super) fn add_control_storage(&mut self, bytes: usize) {
+    pub(super) fn add_control_storage(&mut self, bytes: usize) -> Result<(), RuntimeError> {
         if self.control.enabled() {
             self.control
-                .resize(self.control.bytes().saturating_add(bytes));
+                .resize_entry(self.control.bytes().saturating_add(bytes))?;
         }
+        Ok(())
     }
 
     pub(super) fn refresh(
@@ -168,19 +169,88 @@ impl CallEntryCharge {
         receiver: &Value,
         args: &Vec<Value>,
         metadata: usize,
-    ) {
+    ) -> Result<(), RuntimeError> {
         let payload = values_bytes(args)
             .saturating_add(value_payload_bytes(callee))
             .saturating_add(value_payload_bytes(receiver));
         self.payload
-            .resize(if self.payload.enabled() { payload } else { 0 });
+            .resize_entry(if self.payload.enabled() { payload } else { 0 })?;
         let control = host_scheduling::slots(args).saturating_add(metadata);
         self.control
-            .resize(if self.control.enabled() { control } else { 0 });
+            .resize_entry(if self.control.enabled() { control } else { 0 })
+    }
+
+    /// Detach the original entry counters before metadata getters reenter the
+    /// caller. A neutral caller can borrow the active document's native owner.
+    pub(super) fn retain_native(
+        &mut self,
+        vm: &mut Vm,
+        callee: &Value,
+        receiver: &Value,
+        args: &Vec<Value>,
+        hint: Option<&host_scheduling::SharedSchedulingCharge>,
+    ) -> Result<(), RuntimeError> {
+        self.refresh(callee, receiver, args, 0)?;
+        let payload = values_bytes(args)
+            .saturating_add(value_payload_bytes(callee))
+            .saturating_add(value_payload_bytes(receiver));
+        self.payload.retain_entry(vm, payload, hint)?;
+        self.control
+            .retain_entry(vm, host_scheduling::slots(args), hint)
+    }
+
+    /// The destination assumes this same allocation when its frame adopts the
+    /// input. Separate documents admit their replacement lease before release.
+    pub(super) fn retarget_native(
+        &mut self,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<(), RuntimeError> {
+        for charge in [&mut self.payload, &mut self.control] {
+            if let Some(owner) = &charge.native {
+                owner.reserve_peer(0)?;
+                if let Some(scope) = scope {
+                    if !owner.belongs_to(scope) {
+                        charge.native = Some(scope.shared_charge(charge.bytes)?);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
 impl ExecutionPayloadCharge {
+    fn resize_entry(&mut self, bytes: usize) -> Result<(), RuntimeError> {
+        if let Some(owner) = &mut self.native {
+            owner.resize(bytes)?;
+            self.bytes = bytes;
+        } else {
+            self.resize(bytes);
+        }
+        Ok(())
+    }
+
+    fn retain_entry(
+        &mut self,
+        vm: &mut Vm,
+        bytes: usize,
+        hint: Option<&host_scheduling::SharedSchedulingCharge>,
+    ) -> Result<(), RuntimeError> {
+        if self.native.is_some() {
+            return self.resize_entry(bytes);
+        }
+        if vm.host_scheduling.is_some() {
+            return self.retain_native(vm, bytes);
+        }
+        if let Some(owner) = hint {
+            debug_assert!(!self.enabled);
+            self.native = Some(owner.reserve_peer(bytes)?);
+            self.bytes = bytes;
+            self.enabled = true;
+        }
+        Ok(())
+    }
+
     pub(super) fn is_retained(&self) -> bool {
         self.native.is_some()
     }

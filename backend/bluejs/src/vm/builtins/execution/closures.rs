@@ -233,7 +233,7 @@ impl Vm {
             host_scheduling::slots(&captures)
                 .saturating_add(host_scheduling::slots(&closure_with_objects))
                 .saturating_add(host_scheduling::values_bytes(&closure_with_objects)),
-        );
+        )?;
         self.synchronize_execution_payload()?;
         if construct && code.class_constructor && !code.derived_constructor {
             // A base class constructor's InitializeInstanceElements runs

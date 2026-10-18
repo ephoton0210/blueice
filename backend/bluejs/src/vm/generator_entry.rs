@@ -105,7 +105,7 @@ impl Vm {
                 .as_ref()
                 .map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail));
         }
-        entry.add_control_storage(host_scheduling::slots(inherited).saturating_sub(before));
+        entry.add_control_storage(host_scheduling::slots(inherited).saturating_sub(before))?;
         self.admit_scheduling_work(HostSchedulingUsage {
             payload_bytes: stack_growth,
             ..Default::default()

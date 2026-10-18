@@ -73,15 +73,22 @@ fn shadow_ancestors_and_wrapped_this_are_validated_before_reborrowing() {
         .shadow_wrapped_function_create(&mut source, callable)
         .unwrap();
     let wrapper_root = destination.heap.root(wrapper.object_id().unwrap()).unwrap();
+    let entry = destination.call_entry_charge(&wrapper, &Value::Undefined, &Vec::new());
     assert!(
-        matches!(destination.shadow_call_wrapped(wrapper.object_id().unwrap(), Value::Undefined, Vec::new(), false),
+        matches!(destination.shadow_call_wrapped(wrapper.object_id().unwrap(), Value::Undefined, Vec::new(), false, entry),
         Err(RuntimeError::TypeError(message)) if message == "the ShadowRealm this function belongs to is no longer reachable")
     );
 
     let object = destination.heap.alloc_object(None).unwrap();
     let object_root = destination.heap.root(object).unwrap();
+    let input = RealmCallInput {
+        callee: wrapper.clone(),
+        receiver: Value::Object(object),
+        arguments: Vec::new(),
+        entry: destination.call_entry_charge(&wrapper, &Value::Object(object), &Vec::new()),
+    };
     assert!(
-        matches!(destination.shadow_call_across(&mut source, callable, Value::Object(object), Vec::new()),
+        matches!(destination.shadow_call_across(&mut source, callable, input),
         Err(RuntimeError::TypeError(message)) if message == "only primitive values and functions may cross a ShadowRealm boundary")
     );
     assert!(destination.stack.is_empty() && source.stack.is_empty());

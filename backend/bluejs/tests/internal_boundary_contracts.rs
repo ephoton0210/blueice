@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_shadow_argument_storage_contracts() {
+    blueice_bluejs::Vm::verify_shadow_argument_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_shadow_alias_pruning_contracts() {
     blueice_bluejs::Vm::verify_shadow_alias_pruning_contracts();
 }

@@ -32,6 +32,7 @@ fn allocate_replacement<T>(
 
 impl Vm {
     pub(super) fn visit_execution_roots(&self, mut visit: impl FnMut(ObjectId)) {
+        self.visit_realm_call_roots(&mut visit);
         self.stack
             .iter()
             .chain(self.bindings.iter().flatten())

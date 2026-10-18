@@ -51,6 +51,7 @@ mod module_continuation_storage;
 mod module_error_reporting;
 mod module_graph_storage;
 mod module_value_storage;
+mod realm_call_storage;
 mod realm_collection;
 mod realm_pin_storage;
 mod root_table_storage;
@@ -1325,6 +1326,7 @@ pub struct Vm {
     /// live outside the operand stack. Nested frames retain their own suffix
     /// until they return, fail, or hand ownership to a suspended frame.
     async_frame_roots: Vec<ObjectId>,
+    realm_call_roots: Option<Rc<realm_call_storage::RealmCallRoots>>,
     gc_trace_cache: crate::heap::GcTraceBatch,
     realm_collection_cache: Option<realm_collection::RealmCollection>,
     test262_done: Option<Result<(), Value>>,
@@ -2053,7 +2055,7 @@ impl Vm {
             if !construct {
                 receiver = self.heap.bound_function(inner)?.unwrap().this.clone();
             }
-            call_payload.refresh(&callee, &receiver, &args, 0);
+            call_payload.refresh(&callee, &receiver, &args, 0)?;
         }
         drop(prefixes);
         self.synchronize_execution_payload()?;
@@ -2074,7 +2076,7 @@ impl Vm {
         }
         if let Value::Object(id) = callee {
             if self.shadow_wrapped_functions.contains_key(&id) {
-                return self.shadow_call_wrapped(id, receiver, args, construct);
+                return self.shadow_call_wrapped(id, receiver, args, construct, call_payload);
             }
         }
         if let Value::Object(id) = callee {
@@ -2113,7 +2115,7 @@ impl Vm {
                     host_scheduling::slots(&captures)
                         .saturating_add(host_scheduling::slots(&with_objects))
                         .saturating_add(host_scheduling::values_bytes(&with_objects)),
-                );
+                )?;
                 self.synchronize_execution_payload()?;
                 return self.call_closure(
                     builtins::ClosureCall {

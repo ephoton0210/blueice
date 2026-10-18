@@ -21,6 +21,7 @@
 
 use super::compilation_text_storage::NativeText;
 use super::eval_compilation_storage::{ParsedEvalInput, PreparedEvalCode};
+use super::realm_call_storage::{RealmCallInput, RealmCallRoots};
 #[cfg(any(test, coverage))]
 use super::realm_reentrancy::register_active;
 use super::realm_reentrancy::{
@@ -47,6 +48,10 @@ mod alias_home_tests;
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/shadow_registry_storage.rs"]
 mod registry_storage_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/shadow_argument_storage.rs"]
+mod argument_storage_tests;
 
 enum EvaluationCode<'a> {
     #[cfg(any(test, coverage))]
@@ -619,6 +624,7 @@ impl Vm {
         this_arg: Value,
         args: Vec<Value>,
         construct: bool,
+        entry: execution_payload::CallEntryCharge,
     ) -> Result<Value, RuntimeError> {
         self.synchronize_scheduling_usage()?;
         self.collect_before_shadow_realm_entry()?;
@@ -627,6 +633,12 @@ impl Vm {
                 "a ShadowRealm wrapped function has no [[Construct]]".into(),
             ));
         }
+        let input = RealmCallInput {
+            callee: Value::Object(wrapper),
+            receiver: this_arg,
+            arguments: args,
+            entry,
+        };
         let ShadowWrappedFunction {
             home_heap, target, ..
         } = self
@@ -655,7 +667,7 @@ impl Vm {
                     let child_registration =
                         prepare_active_registration(&mut other, self.host_scheduling.as_ref())?;
                     let child_guard = child_registration.publish(&mut other);
-                    let result = self.shadow_call_across(&mut other, target, this_arg, args);
+                    let result = self.shadow_call_across(&mut other, target, input);
                     drop(child_guard);
                     return result;
                 }
@@ -677,14 +689,14 @@ impl Vm {
                 let registration =
                     prepare_active_registration(&mut other, self.host_scheduling.as_ref())?;
                 let guard = registration.publish(&mut other);
-                let result = self.shadow_call_across(&mut other, target, this_arg, args);
+                let result = self.shadow_call_across(&mut other, target, input);
                 drop(guard);
                 return result;
             }
         }
         let caller = self.object_prototype.heap;
         realm_reentrancy::with_active_vm(caller, home_heap, |other| {
-            self.shadow_call_across(other, target, this_arg, args)
+            self.shadow_call_across(other, target, input)
         })
     }
 
@@ -712,49 +724,60 @@ impl Vm {
 
     /// `OrdinaryWrappedFunctionCall`: wraps `this`/each argument *into*
     /// `other`'s realm (`GetWrappedValue(targetRealm, _)`), invokes the
-    /// target there, then wraps the result (or a fresh `TypeError` on any
-    /// abrupt completion) back into `self`'s realm
+    /// target there, then wraps the result (or a fresh `TypeError` for a
+    /// catchable target exception) back into `self`'s realm
     /// (`GetWrappedValue(callerRealm, _)`).
     fn shadow_call_across(
         &mut self,
         other: &mut Vm,
         target: ObjectId,
-        this_arg: Value,
-        args: Vec<Value>,
+        mut input: RealmCallInput,
     ) -> Result<Value, RuntimeError> {
+        let owner = self.realm_call_native_owner(other)?;
+        input.entry.retain_native(
+            self,
+            &input.callee,
+            &input.receiver,
+            &input.arguments,
+            owner.as_ref(),
+        )?;
+        let source_roots = RealmCallRoots::new(input.objects().count(), owner.as_ref())?;
+        input.objects().for_each(|id| source_roots.push(id));
+        let target_owner = other.realm_call_native_owner(self)?;
+        let count = 1
+            + input.receiver.object_id().is_some() as usize
+            + input.arguments.iter().filter_map(Value::object_id).count();
+        let target_roots = RealmCallRoots::new(count, target_owner.as_ref())?;
+        target_roots.push(target);
         let registration = prepare_active_registration(self, other.host_scheduling.as_ref())?;
         let _guard = registration.publish(self);
-        // Each facade is a fresh object of `other`'s heap that nothing there
-        // references yet, and building the next one allocates (and may
-        // collect) in that same heap: keep every finished facade on `other`'s
-        // operand stack, a GC root, until the call has pushed its own frame.
-        let base = other.stack.len();
-        let wrapped = (|| {
-            let wrapped_this = other.shadow_wrap_into(&mut *self, this_arg)?;
-            other.stack.push(wrapped_this.clone());
-            let mut wrapped_args = Vec::with_capacity(args.len());
-            for arg in args {
-                let wrapped_arg = other.shadow_wrap_into(&mut *self, arg)?;
-                other.stack.push(wrapped_arg.clone());
-                wrapped_args.push(wrapped_arg);
-            }
-            Ok::<_, RuntimeError>((wrapped_this, wrapped_args))
-        })();
-        let result = match wrapped {
-            Ok((wrapped_this, wrapped_args)) => {
+        // Guest metadata getters can collect in either heap. Original IDs
+        // remain rooted in the source; completed facades get destination IDs.
+        // Primitive buffers move in place in the incoming allocation.
+        let result = self.with_realm_call_roots(source_roots, |source| {
+            other.with_realm_call_roots(target_roots.clone(), |other| {
+                input.receiver = other.shadow_wrap_into(source, input.receiver)?;
+                if let Some(id) = input.receiver.object_id() {
+                    target_roots.push(id);
+                }
+                for slot in &mut input.arguments {
+                    let value = std::mem::replace(slot, Value::Undefined);
+                    *slot = other.shadow_wrap_into(source, value)?;
+                    if let Some(id) = slot.object_id() {
+                        target_roots.push(id);
+                    }
+                }
                 other.remaining_instructions = other.config.instruction_budget;
-                let result =
-                    other.call_native(Value::Object(target), wrapped_this, wrapped_args, false);
-                other.stack.truncate(base);
-                result
-            }
-            Err(error) => {
-                other.stack.truncate(base);
-                return Err(error);
-            }
-        };
+                // Keep conversion errors distinct from target exceptions.
+                Ok(input.invoke(other, target))
+            })
+        })?;
+        if let Some(owner) = &owner {
+            owner.reserve_peer(0)?;
+        }
         match result {
             Ok(value) => self.shadow_wrap_into(other, value),
+            Err(error) if !error.is_catchable() => Err(error),
             Err(_) => Err(RuntimeError::TypeError(String::new())),
         }
     }
@@ -790,43 +813,46 @@ impl Vm {
         // a handle needs no allocation or borrow of an active ancestor.
         let target_root = source.heap.realm_root(target)?;
         let outcome = (|| {
-            let function_prototype = self.function_prototype()?;
-            let wrapper = self.with_roots(|heap| {
-                heap.alloc_native_function(
-                    NativeFunction::ShadowRealmWrappedFunction,
-                    "",
-                    function_prototype,
-                )
-            })?;
-            self.stack.push(Value::Object(wrapper));
-            let copied = self.copy_name_and_length(source, wrapper, target);
-            self.stack.pop();
-            // Metadata getters must not expose their original exception
-            // across the boundary. The root transfers to the wrapper record
-            // only after every descriptor has been copied successfully.
-            copied.map_err(|error| {
-                if error.is_catchable() {
-                    RuntimeError::TypeError(
-                        "could not wrap this function across a ShadowRealm".into(),
+            let owner = self.realm_call_native_owner(source)?;
+            let roots = RealmCallRoots::new(1, owner.as_ref())?;
+            self.with_realm_call_roots(roots.clone(), |vm| {
+                let function_prototype = vm.function_prototype()?;
+                let wrapper = vm.with_roots(|heap| {
+                    heap.alloc_native_function(
+                        NativeFunction::ShadowRealmWrappedFunction,
+                        "",
+                        function_prototype,
                     )
-                } else {
-                    error
-                }
-            })?;
-            let prepared = self
-                .shadow_wrapped_functions
-                .prepare_insert(self.host_scheduling.as_ref())?;
-            self.shadow_wrapped_functions.commit(prepared);
-            self.shadow_wrapped_functions.insert(
-                wrapper,
-                ShadowWrappedFunction {
-                    home_heap: target.heap,
-                    target,
-                    target_root: target_root.clone(),
-                    home: source.realm_home.clone(),
-                },
-            );
-            Ok(Value::Object(wrapper))
+                })?;
+                roots.push(wrapper);
+                let copied = vm.copy_name_and_length(source, wrapper, target);
+                // Metadata getters must not expose their original exception
+                // across the boundary. The root transfers to the wrapper record
+                // only after every descriptor has been copied successfully.
+                copied.map_err(|error| {
+                    if error.is_catchable() {
+                        RuntimeError::TypeError(
+                            "could not wrap this function across a ShadowRealm".into(),
+                        )
+                    } else {
+                        error
+                    }
+                })?;
+                let prepared = vm
+                    .shadow_wrapped_functions
+                    .prepare_insert(vm.host_scheduling.as_ref())?;
+                vm.shadow_wrapped_functions.commit(prepared);
+                vm.shadow_wrapped_functions.insert(
+                    wrapper,
+                    ShadowWrappedFunction {
+                        home_heap: target.heap,
+                        target,
+                        target_root: target_root.clone(),
+                        home: source.realm_home.clone(),
+                    },
+                );
+                Ok(Value::Object(wrapper))
+            })
         })();
         if outcome.is_err() {
             drop(target_root);

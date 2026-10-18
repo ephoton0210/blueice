@@ -56,6 +56,9 @@ After a cybersecurity warning or automatic approval rejection, inspect existing
 local evidence first. Do not rephrase, reroute or repeat the affected operation
 to bypass review. Record affected checks and publication as pending while the
 operation is being identified.
+Previously rejected push and process inspection remain excluded; do not retry
+them through different commands, privileges or routes. Local commits may record
+reviewed changes, but outbound publication is outside this validation checkpoint.
 
 M1s began with this public ownership failure:
 discarded ShadowRealm instances become unreachable (`WeakRef.deref()` returns
@@ -68,6 +71,37 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The ShadowRealm argument-assembly follow-up (2026-10-18) has an implementation
+checkpoint. Three fixed small regressions reproduced replacement of the incoming
+vector, primitive copies in temporary GC stack roots and 280 bytes of source
+entry control still charged after callee adoption. Argument conversion now moves
+values in place in the original vector. Independently leased root frames retain
+object IDs in both heaps, including unconverted source operands and completed
+destination facades. Frame headers and reported vector capacity are admitted
+before publication; nested frames restore their previous roots on success/error.
+Provisional callable metadata uses the same rooting mechanism without operand
+stack copies.
+
+The original call-entry guard detaches its published source counters into native
+ownership while Rust holds the inputs, then accompanies the same vector into
+the callee's common entry path. Same-document handoff keeps one lease; a foreign
+document admits replacement credit before release. Neutral contexts can borrow
+the nearest active native owner without changing their captured scheduling
+policy. Ordinary callee/heap accounting applies after input adoption; this does
+not close the broader native-producer admission work. Catchable target/metadata
+exceptions remain opaque TypeErrors; uncatchable failures propagate unchanged.
+
+Twelve new contracts, the previous 240 relevant controls and nine call-entry /
+generator controls pass: **261 distinct selected tests**, five executable targets
+and 123 selections. Formatting, diff checks and offline workspace/all-target
+Clippy pass. Frozen source/artifact and Git audits bind this checkpoint. An
+ordinary-library hook is present without a new coverage claim. Test262 transport
+snapshots and wider return/native producers remain open; M1u remains latest
+accepted and M1z integrated gates remain open. Validation stays local/offline
+with fixed finite inputs; no quota-boundary, exhaustion, service or privileged
+replay is resumed. Rejected push/process inspection is not retried or bypassed.
+Evidence: `target/shadow-argument-storage-source-20261018.json`.
+
 The discarded ShadowRealm alias follow-up (2026-10-18) has an implementation
 checkpoint. Agent GC now retains live instances and one existing discovered
 parent route for an active child. It prefers a live instance in that parent,
