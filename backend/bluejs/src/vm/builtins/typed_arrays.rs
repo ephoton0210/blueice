@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::argument_list_storage::ArgumentValues;
+use super::super::transport_buffer_storage::TransportVector;
 use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -20,6 +22,10 @@ enum TypedArrayCallbackMethod {
 #[cfg(any(test, coverage))]
 #[path = "../../../tests/fixtures/typed_array_boundaries.rs"]
 mod boundary_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/typed_snapshot_storage.rs"]
+mod storage_tests;
 
 impl Vm {
     fn typed_array_method_receiver(
@@ -120,13 +126,9 @@ impl Vm {
                 "TypedArray constructor must be a constructor".into(),
             ));
         }
-        let result = self.call_with_target(
-            constructor.clone(),
-            Value::Undefined,
-            vec![Value::Number(length as f64)],
-            true,
-            constructor,
-        )?;
+        let owner = self.argument_list_owner()?;
+        let arguments = ArgumentValues::single(self, Value::Number(length as f64), owner.as_ref())?;
+        let result = arguments.call_native(self, constructor, Value::Undefined, true)?;
         self.reject_immutable_typed_array(&result)?;
         let (_, _, result_length, result_kind) = self.typed_array_receiver(&result)?;
         if result_length < length {
@@ -187,13 +189,9 @@ impl Vm {
         if !is_foreign_constructor {
             return Ok(None);
         }
-        let target = self.call_with_target(
-            constructor.clone(),
-            Value::Undefined,
-            vec![Value::Number(length as f64)],
-            true,
-            constructor.clone(),
-        )?;
+        let owner = self.argument_list_owner()?;
+        let arguments = ArgumentValues::single(self, Value::Number(length as f64), owner.as_ref())?;
+        let target = arguments.call_native(self, constructor.clone(), Value::Undefined, true)?;
         // TypedArrayCreateFromConstructor validates internal slots, without
         // reading an observable length property. A user getter could otherwise
         // disguise a short result or detach a transported snapshot before its
@@ -231,17 +229,8 @@ impl Vm {
         object: ObjectId,
         start: usize,
         length: usize,
-    ) -> Result<Vec<Value>, RuntimeError> {
-        let end = start
-            .checked_add(length)
-            .ok_or_else(|| RuntimeError::RangeError("TypedArray range is too large".into()))?;
-        (start..end)
-            .map(|index| {
-                self.heap
-                    .typed_array_index_value(object, index)?
-                    .ok_or_else(|| RuntimeError::TypeError("TypedArray is out of bounds".into()))
-            })
-            .collect()
+    ) -> Result<TransportVector<Value>, RuntimeError> {
+        TransportVector::typed_range(self, object, start, length)
     }
 
     fn typed_array_element(&self, object: ObjectId, index: usize) -> Value {
@@ -263,8 +252,17 @@ impl Vm {
         values: &[Value],
     ) -> Result<(), RuntimeError> {
         for (index, value) in values.iter().enumerate() {
-            let value = self.typed_array_element_value(kind, value)?;
-            self.with_roots(|heap| heap.typed_array_set_index(object, start + index, &value))?;
+            // Decoded snapshots already hold the required primitive. Borrow
+            // it through the pure write instead of cloning another BigInt.
+            let value = match (kind.bigint(), value) {
+                (true, Value::BigInt(_)) | (false, Value::Number(_)) => {
+                    std::borrow::Cow::Borrowed(value)
+                }
+                _ => std::borrow::Cow::Owned(self.typed_array_element_value(kind, value)?),
+            };
+            self.with_roots(|heap| {
+                heap.typed_array_set_index(object, start + index, value.as_ref())
+            })?;
         }
         Ok(())
     }
@@ -710,18 +708,21 @@ impl Vm {
                     .expect("foreign TypedArray buffer has a foreign backing store");
                 let byte_start = source_offset + start * kind.byte_width();
                 let byte_length = copy_count * kind.byte_width();
-                let bytes = self
-                    .heap
-                    .array_buffer_copy(source_buffer, byte_start, byte_length)?;
+                let bytes = TransportVector::buffer_range(
+                    self,
+                    source_buffer,
+                    byte_start,
+                    byte_length,
+                    None,
+                )?;
                 self.with_roots(|heap| heap.array_buffer_write(target_buffer, 0, &bytes))?;
                 let (realm_id, _, _, _) = self
                     .test262_foreign_reference(constructed_id)
                     .expect("foreign TypedArray construction retains its realm");
                 self.test262_sync_foreign_buffer_mirrors(realm_id)?;
             } else {
-                let values = self.typed_array_read_values(object, start, copy_count)
-                    .expect("slice revalidated this source range after species construction; no callback intervened");
-                let source = self.array_from(values)?;
+                let values = self.typed_array_read_values(object, start, copy_count)?;
+                let source = values.into_array(self)?;
                 // Looking up a foreign set method can allocate a facade or
                 // invoke a getter that collects this realm. Retain the new
                 // argument array until the entire callback has returned.
@@ -767,10 +768,13 @@ impl Vm {
                     .expect("a cross-realm species constructor is an object");
                 let byte_start = source_offset + start * kind.byte_width();
                 let byte_length = copy_count * kind.byte_width();
-                let bytes = self
-                    .heap
-                    .array_buffer_copy(source_buffer, byte_start, byte_length)
-                    .expect("slice revalidated this source range after species construction; no callback intervened");
+                let bytes = TransportVector::buffer_range(
+                    self,
+                    source_buffer,
+                    byte_start,
+                    byte_length,
+                    None,
+                )?;
                 real_write_done = self.test262_reverse_write_into_real_construction_result(
                     constructor_wrapper,
                     constructed_id,
@@ -791,7 +795,7 @@ impl Vm {
                         .expect("local species results are validated or transported TypedArrays");
                     self.with_roots(|heap| {
                         heap.array_buffer_write(local_buffer, local_offset, &bytes)
-                    }).expect("the fresh mutable transported snapshot has the validated species range; the real write runs no callbacks");
+                    })?;
                 }
             }
             if !real_write_done {
@@ -802,11 +806,16 @@ impl Vm {
                 // snapshot only, which is still correct for any caller
                 // that observes it before a round trip, and strictly
                 // better than leaving it unpopulated.
-                let values = self.typed_array_read_values(object, start, copy_count)
-                    .expect("the reverse byte-write helper cannot invoke source callbacks or resize this source");
-                for (index, value) in values.into_iter().enumerate() {
-                    self.typed_array_write_values(constructed_id, target_kind, index, &[value])?;
+                let values = self.typed_array_read_values(object, start, copy_count)?;
+                for (index, value) in values.iter().enumerate() {
+                    self.typed_array_write_values(
+                        constructed_id,
+                        target_kind,
+                        index,
+                        std::slice::from_ref(value),
+                    )?;
                 }
+                values.validate_owner()?;
             }
             return Ok(constructed);
         }
@@ -823,12 +832,10 @@ impl Vm {
             // forward element-by-element behavior below.
             let byte_start = source_offset + start * kind.byte_width();
             let byte_length = copy_count * kind.byte_width();
-            let bytes = self
-                .heap
-                .array_buffer_copy(source_buffer, byte_start, byte_length)
-                .expect("slice revalidated this local source range after species construction");
-            self.with_roots(|heap| heap.array_buffer_write(target_buffer, target_offset, &bytes))
-                .expect("TypedArrayCreate validated this mutable destination and its minimum length; byte copying invokes no callbacks");
+            let bytes =
+                TransportVector::buffer_range(self, source_buffer, byte_start, byte_length, None)?;
+            self.with_roots(|heap| heap.array_buffer_write(target_buffer, target_offset, &bytes))?;
+            bytes.validate_owner()?;
             return Ok(Value::Object(target));
         }
         // Read and write one element at a time. This preserves slice's
@@ -878,117 +885,126 @@ impl Vm {
 
     fn typed_array_sort_values(
         &mut self,
-        values: &mut [Value],
+        values: &mut TransportVector<Value>,
         compare: &Value,
         kind: TypedArrayKind,
         source: Option<ObjectId>,
     ) -> Result<bool, RuntimeError> {
-        if *compare != Value::Undefined && !self.is_callable(compare)? {
-            return Err(RuntimeError::TypeError(
-                "TypedArray sort comparator must be callable".into(),
-            ));
-        }
-        if *compare == Value::Undefined {
-            values.sort_by(|left, right| Self::typed_array_default_compare(left, right, kind));
-            return Ok(true);
-        }
-
-        // The values are snapshotted before sorting. A comparator may mutate
-        // the receiver, but must not turn an O(n log n) sort into O(n²)
-        // interpreter calls. Detecting natural runs avoids needlessly calling
-        // an observable comparator O(n log n) times for already sorted input
-        // (including Test262's descending TypedArray cases), then stable
-        // merging handles the general case and propagates abrupt completions.
-        let mut scratch = values.to_vec();
-        let mut runs = Vec::new();
-        let mut start = 0usize;
-        while start < values.len() {
-            let mut end = start + 1;
-            if end < values.len() {
-                let Some(first_order) = self.typed_array_compare_values(
-                    compare,
-                    &values[end],
-                    &values[end - 1],
-                    source,
-                )?
-                else {
-                    return Ok(false);
-                };
-                let descending = first_order == std::cmp::Ordering::Less;
-                end += 1;
-                while end < values.len() {
-                    let Some(order) = self.typed_array_compare_values(
-                        compare,
-                        &values[end],
-                        &values[end - 1],
-                        source,
-                    )?
-                    else {
-                        return Ok(false);
-                    };
-                    if (descending && order != std::cmp::Ordering::Less)
-                        || (!descending && order == std::cmp::Ordering::Less)
-                    {
-                        break;
-                    }
-                    end += 1;
-                }
-                // Only a strictly descending run reaches here, so reversing
-                // it cannot disturb the comparator's stable equal elements.
-                if descending {
-                    values[start..end].reverse();
-                }
+        let original = values.retain_for_vm(self)?;
+        let owner = values.owner_view()?;
+        let result = (|| {
+            if *compare != Value::Undefined && !self.is_callable(compare)? {
+                return Err(RuntimeError::TypeError(
+                    "TypedArray sort comparator must be callable".into(),
+                ));
             }
-            runs.push((start, end));
-            start = end;
-        }
-        while runs.len() > 1 {
-            let mut next_runs = Vec::with_capacity(runs.len().div_ceil(2));
-            let mut index = 0usize;
-            while index < runs.len() {
-                let (start, middle) = runs[index];
-                let Some(&(right_start, end)) = runs.get(index + 1) else {
-                    next_runs.push((start, middle));
-                    break;
-                };
-                debug_assert_eq!(middle, right_start);
-                let (mut left, mut right, mut target) = (start, middle, start);
-                while left < middle && right < end {
-                    let Some(order) = self.typed_array_compare_values(
-                        compare,
-                        &values[right],
+            if values.len() < 2 {
+                return Ok(true);
+            }
+            // Retain one primitive snapshot. Sorting and merging only copy
+            // admitted indices; BigInt buffers are never cloned into scratch.
+            let mut order = TransportVector::capture(0..values.len(), owner.as_ref())?;
+            let mut scratch = TransportVector::capture(
+                std::iter::repeat_n(0usize, values.len()),
+                owner.as_ref(),
+            )?;
+            let mut runs = TransportVector::capture(std::iter::empty(), owner.as_ref())?;
+            let compare_at = |vm: &mut Vm, left: usize, right: usize| {
+                if *compare == Value::Undefined {
+                    Ok(Some(Self::typed_array_default_compare(
                         &values[left],
+                        &values[right],
+                        kind,
+                    )))
+                } else {
+                    vm.typed_array_compare_values(
+                        compare,
+                        &values[left],
+                        &values[right],
                         source,
-                    )?
-                    else {
+                        owner.as_ref(),
+                    )
+                }
+            };
+            // Preserve the existing natural-run comparator sequence. Strict
+            // descending runs can reverse without disturbing equal elements.
+            let mut start = 0usize;
+            while start < order.len() {
+                let mut end = start + 1;
+                if end < order.len() {
+                    let Some(first_order) = compare_at(self, order[end], order[end - 1])? else {
                         return Ok(false);
                     };
-                    if order == std::cmp::Ordering::Less {
-                        scratch[target] = values[right].clone();
-                        right += 1;
-                    } else {
-                        scratch[target] = values[left].clone();
+                    let descending = first_order == std::cmp::Ordering::Less;
+                    end += 1;
+                    while end < order.len() {
+                        let Some(ordering) = compare_at(self, order[end], order[end - 1])? else {
+                            return Ok(false);
+                        };
+                        if (descending && ordering != std::cmp::Ordering::Less)
+                            || (!descending && ordering == std::cmp::Ordering::Less)
+                        {
+                            break;
+                        }
+                        end += 1;
+                    }
+                    if descending {
+                        order[start..end].reverse();
+                    }
+                }
+                runs.push((start, end))?;
+                start = end;
+            }
+            while runs.len() > 1 {
+                let (mut index, mut written) = (0usize, 0usize);
+                while index < runs.len() {
+                    let (start, middle) = runs[index];
+                    let Some(&(right_start, end)) = runs.get(index + 1) else {
+                        runs[written] = (start, middle);
+                        written += 1;
+                        break;
+                    };
+                    debug_assert_eq!(middle, right_start);
+                    let (mut left, mut right, mut target) = (start, middle, start);
+                    while left < middle && right < end {
+                        let Some(ordering) = compare_at(self, order[right], order[left])? else {
+                            return Ok(false);
+                        };
+                        if ordering == std::cmp::Ordering::Less {
+                            scratch[target] = order[right];
+                            right += 1;
+                        } else {
+                            scratch[target] = order[left];
+                            left += 1;
+                        }
+                        target += 1;
+                    }
+                    while left < middle {
+                        scratch[target] = order[left];
+                        target += 1;
                         left += 1;
                     }
-                    target += 1;
+                    while right < end {
+                        scratch[target] = order[right];
+                        target += 1;
+                        right += 1;
+                    }
+                    order[start..end].copy_from_slice(&scratch[start..end]);
+                    // Compact the run plan in place and retain its capacity.
+                    runs[written] = (start, end);
+                    written += 1;
+                    index += 2;
                 }
-                while left < middle {
-                    scratch[target] = values[left].clone();
-                    target += 1;
-                    left += 1;
-                }
-                while right < end {
-                    scratch[target] = values[right].clone();
-                    target += 1;
-                    right += 1;
-                }
-                values[start..end].clone_from_slice(&scratch[start..end]);
-                next_runs.push((start, end));
-                index += 2;
+                runs.truncate(written);
             }
-            runs = next_runs;
+            values.apply_order(&order, &mut scratch);
+            Ok(true)
+        })();
+        values.validate_owner()?;
+        if let Some(owner) = original {
+            owner.reserve_peer(0)?;
         }
-        Ok(true)
+        result
     }
 
     fn typed_array_compare_values(
@@ -997,13 +1013,10 @@ impl Vm {
         left: &Value,
         right: &Value,
         source: Option<ObjectId>,
+        owner: Option<&host_scheduling::SharedSchedulingCharge>,
     ) -> Result<Option<std::cmp::Ordering>, RuntimeError> {
-        let result = self.call_native(
-            compare.clone(),
-            Value::Undefined,
-            vec![left.clone(), right.clone()],
-            false,
-        )?;
+        let arguments = ArgumentValues::copied_pair(self, left, right, owner)?;
+        let result = arguments.call_native(self, compare.clone(), Value::Undefined, false)?;
         let result = self.coerce_number(&result)?;
         if let Some(source) = source {
             let (buffer, _, _, _) = self
@@ -1029,14 +1042,12 @@ impl Vm {
 
     fn typed_array_to_reversed(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
-        let values = self
-            .typed_array_read_values(object, 0, length)
-            .expect("validated length bounds a snapshot without JavaScript");
+        let values = self.typed_array_read_values(object, 0, length)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
-        for (index, value) in values.into_iter().rev().enumerate() {
-            self.typed_array_write_values(target, kind, index, &[value])
-                .expect("fresh mutable target accepts decoded values");
+        for (index, value) in values.iter().rev().enumerate() {
+            self.typed_array_write_values(target, kind, index, std::slice::from_ref(value))?;
         }
+        values.validate_owner()?;
         Ok(Value::Object(target))
     }
 
@@ -1046,13 +1057,11 @@ impl Vm {
         compare: &Value,
     ) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
-        let mut values = self
-            .typed_array_read_values(object, 0, length)
-            .expect("validated length bounds a snapshot without JavaScript");
+        let mut values = self.typed_array_read_values(object, 0, length)?;
         self.typed_array_sort_values(&mut values, compare, kind, None)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
-        self.typed_array_write_values(target, kind, 0, &values)
-            .expect("fresh mutable target accepts decoded values");
+        self.typed_array_write_values(target, kind, 0, &values)?;
+        values.validate_owner()?;
         Ok(Value::Object(target))
     }
 
@@ -1083,20 +1092,23 @@ impl Vm {
             || index > usize::MAX as f64
             || self
                 .heap
-                .typed_array_index_value(object, index as usize)
+                .typed_array_info(object)
                 .expect("value coercion retains the validated receiver")
-                .is_none()
+                .2
+                <= index as usize
         {
             return Err(RuntimeError::RangeError(
                 "TypedArray index is outside its bounds".into(),
             ));
         }
+        let owner = self.argument_list_owner()?;
+        let replacement = ArgumentValues::single(self, replacement, owner.as_ref())?;
         let values = self.typed_array_read_values(object, 0, length)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
-        self.typed_array_write_values(target, kind, 0, &values)
-            .expect("with copies decoded primitives into its fresh mutable same-kind target without callbacks");
-        self.typed_array_write_values(target, kind, index as usize, &[replacement])
-            .expect("with converted the replacement before allocating its mutable target");
+        self.typed_array_write_values(target, kind, 0, &values)?;
+        self.typed_array_write_values(target, kind, index as usize, &replacement.values)?;
+        values.validate_owner()?;
+        replacement.validate_owner()?;
         Ok(Value::Object(target))
     }
 
@@ -1174,8 +1186,9 @@ impl Vm {
                     .min(length.saturating_sub(target))
                     .min(current_length.saturating_sub(target))
                     .min(current_length.saturating_sub(start));
-                let values = self.typed_array_read_values(object, start, count).expect("copyWithin bounds the current readable overlap");
-                self.typed_array_write_values(object, kind, target, &values).expect("copyWithin validated mutable storage and decoded values");
+                let values = self.typed_array_read_values(object, start, count)?;
+                self.typed_array_write_values(object, kind, target, &values)?;
+                values.validate_owner()?;
                 Ok(receiver.clone())
             }
             TypedArrayMethod::Fill => {
@@ -1260,22 +1273,23 @@ impl Vm {
             }
             TypedArrayMethod::Reverse => {
                 let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
-                let values = self.typed_array_read_values(object, 0, length).expect("validated length bounds the initial snapshot");
-                let reversed: Vec<_> = values.into_iter().rev().collect();
-                self.typed_array_write_values(object, kind, 0, &reversed).expect("mutable source accepts decoded elements without JavaScript");
+                let mut values = self.typed_array_read_values(object, 0, length)?;
+                values.reverse();
+                self.typed_array_write_values(object, kind, 0, &values)?;
+                values.validate_owner()?;
                 Ok(receiver.clone())
             }
             TypedArrayMethod::Slice => self.typed_array_slice(receiver, args),
             TypedArrayMethod::Sort => {
                 let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
-                let mut values = self.typed_array_read_values(object, 0, length).expect("validated length bounds the initial snapshot");
+                let mut values = self.typed_array_read_values(object, 0, length)?;
                 if self.typed_array_sort_values(
                     &mut values,
                     native::argument(args, 0),
                     kind,
                     Some(object),
                 )? {
-                    self.typed_array_write_values(object, kind, 0, &values).expect("mutable, attached source accepts decoded elements");
+                    self.typed_array_write_values(object, kind, 0, &values)?;
                 }
                 Ok(receiver.clone())
             }

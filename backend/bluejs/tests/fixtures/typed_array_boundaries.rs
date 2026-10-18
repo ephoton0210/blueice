@@ -31,26 +31,26 @@ fn typed_snapshots_check_overflow_bounds_and_foreign_ownership() {
     let mut vm = Vm::default();
     let (view, root) = rooted_view(&mut vm, TypedArrayKind::Uint8);
     assert_eq!(
-        vm.typed_array_read_values(view, usize::MAX, 1),
-        Err(RuntimeError::RangeError(
+        vm.typed_array_read_values(view, usize::MAX, 1).err(),
+        Some(RuntimeError::RangeError(
             "TypedArray range is too large".into()
         ))
     );
     assert_eq!(
-        vm.typed_array_read_values(view, 1, 2),
-        Err(RuntimeError::TypeError(
+        vm.typed_array_read_values(view, 1, 2).err(),
+        Some(RuntimeError::TypeError(
             "TypedArray is out of bounds".into()
         ))
     );
     assert_eq!(
-        vm.typed_array_read_values(view, 0, 2),
-        Ok(vec![Value::Number(0.0), Value::Number(0.0)])
+        vm.typed_array_read_values(view, 0, 2).unwrap().as_ref(),
+        &[Value::Number(0.0), Value::Number(0.0)]
     );
     let mut owner = Vm::default();
     let (foreign, foreign_root) = rooted_view(&mut owner, TypedArrayKind::Uint8);
     assert_eq!(
-        vm.typed_array_read_values(foreign, 0, 1),
-        Err(RuntimeError::Heap(HeapError::InvalidObject(foreign)))
+        vm.typed_array_read_values(foreign, 0, 1).err(),
+        Some(RuntimeError::Heap(HeapError::InvalidObject(foreign)))
     );
     assert_eq!(
         vm.typed_array_write_values(foreign, TypedArrayKind::Uint8, 0, &[Value::Number(7.0)]),

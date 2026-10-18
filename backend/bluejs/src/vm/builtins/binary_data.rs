@@ -1860,12 +1860,10 @@ impl Vm {
                         "source does not fit in TypedArray".into(),
                     ));
                 }
-                let values = self
-                    .typed_array_read_values(source_object, 0, source_length)
-                    .expect(
-                        "the checked attached source and range cannot change without user code",
-                    );
-                self.typed_array_write_values(target, kind, target_offset, &values)?;
+                let values = self.typed_array_read_values(source_object, 0, source_length)?;
+                let result = self.typed_array_write_values(target, kind, target_offset, &values);
+                values.validate_owner()?;
+                result?;
                 return Ok(Value::Undefined);
             }
             if let Some(values) = self.test262_foreign_typed_array_values(source_object)? {

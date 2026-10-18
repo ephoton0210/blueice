@@ -15,6 +15,11 @@ pub(super) struct TransportVector<T> {
 }
 
 impl<T> TransportVector<T> {
+    #[cfg(any(test, coverage))]
+    pub(super) fn retained_slots(&self) -> usize {
+        host_scheduling::slots(&self.values)
+    }
+
     fn with_capacity(
         count: usize,
         owner: Option<&SharedSchedulingCharge>,
@@ -34,14 +39,35 @@ impl<T> TransportVector<T> {
     }
 
     pub(super) fn validate_owner(&self) -> Result<(), RuntimeError> {
-        if let Some(owner) = &self.storage {
-            owner.reserve_peer(0)?;
-        }
+        self.owner_view()?;
         Ok(())
+    }
+
+    pub(super) fn owner_view(&self) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        self.storage
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()
     }
 }
 
 impl<T: Copy> TransportVector<T> {
+    pub(super) fn push(&mut self, value: T) -> Result<(), RuntimeError> {
+        if self.values.len() == self.values.capacity() {
+            let capacity = self.values.capacity().saturating_mul(2).max(4);
+            let mut replacement = Self::with_capacity(capacity, self.storage.as_ref())?;
+            replacement.values.extend_from_slice(&self.values);
+            // Destroy the old slots before their native credit is returned.
+            *self = replacement;
+        }
+        self.values.push(value);
+        Ok(())
+    }
+
+    pub(super) fn truncate(&mut self, length: usize) {
+        self.values.truncate(length);
+    }
+
     /// Both iterator passes inspect the same immutable metadata, with no guest
     /// calls or collection between counting and filling the admitted slots.
     pub(super) fn capture(
@@ -72,11 +98,21 @@ impl TransportVector<u8> {
         byte_length: usize,
         hint: Option<&SharedSchedulingCharge>,
     ) -> Result<Self, RuntimeError> {
+        Self::buffer_range(vm, buffer, 0, byte_length, hint)
+    }
+
+    pub(super) fn buffer_range(
+        vm: &Vm,
+        buffer: ObjectId,
+        byte_offset: usize,
+        byte_length: usize,
+        hint: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
         let owner = vm.transport_storage_owner(hint)?;
         let mut result = Self::with_capacity(byte_length, owner.as_ref())?;
         result.values.resize(byte_length, 0);
         vm.heap
-            .array_buffer_read_into(buffer, 0, &mut result.values)?;
+            .array_buffer_read_into(buffer, byte_offset, &mut result.values)?;
         Ok(result)
     }
 
@@ -120,6 +156,28 @@ impl TransportVector<u8> {
 }
 
 impl TransportVector<Value> {
+    pub(super) fn typed_range(
+        vm: &Vm,
+        array: ObjectId,
+        start: usize,
+        length: usize,
+    ) -> Result<Self, RuntimeError> {
+        let end = start
+            .checked_add(length)
+            .ok_or_else(|| RuntimeError::RangeError("TypedArray range is too large".into()))?;
+        if length == 0 {
+            let owner = vm.argument_list_owner()?;
+            return Self::with_capacity(0, owner.as_ref());
+        }
+        let (_, _, available, kind) = vm.heap.typed_array_info(array)?;
+        if end > available {
+            return Err(RuntimeError::TypeError(
+                "TypedArray is out of bounds".into(),
+            ));
+        }
+        Self::read_typed_range(vm, array, start, length, kind, None)
+    }
+
     pub(super) fn typed_values(
         vm: &Vm,
         array: ObjectId,
@@ -130,9 +188,23 @@ impl TransportVector<Value> {
         if vm.heap.buffer_is_detached(buffer)? || vm.heap.typed_array_is_out_of_bounds(array)? {
             return Err(RuntimeError::TypeError(invalid_source.into()));
         }
+        Ok((
+            kind,
+            Self::read_typed_range(vm, array, 0, length, kind, hint)?,
+        ))
+    }
+
+    fn read_typed_range(
+        vm: &Vm,
+        array: ObjectId,
+        start: usize,
+        length: usize,
+        kind: TypedArrayKind,
+        hint: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
         let owner = vm.transport_storage_owner(hint)?;
         let mut result = Self::with_capacity(length, owner.as_ref())?;
-        for index in 0..length {
+        for index in start..start + length {
             // TypedArray elements are Numbers or at most two logical u32
             // BigInt limbs under the existing primitive-payload byte policy.
             // Wider BigInt allocator staging remains a separate work item.
@@ -160,7 +232,71 @@ impl TransportVector<Value> {
             }
             result.values.push(value);
         }
-        Ok((kind, result))
+        Ok(result)
+    }
+
+    /// Reordering moves existing primitives, so it neither clones payloads nor
+    /// changes the vector's total native credit. Scratch is admitted separately.
+    pub(super) fn apply_order(&mut self, order: &[usize], inverse: &mut [usize]) {
+        assert_eq!(self.values.len(), order.len());
+        assert_eq!(self.values.len(), inverse.len());
+        for (target, &original) in order.iter().enumerate() {
+            inverse[original] = target;
+        }
+        for index in 0..inverse.len() {
+            while inverse[index] != index {
+                let next = inverse[index];
+                self.values.swap(index, next);
+                inverse.swap(index, next);
+            }
+        }
+    }
+
+    pub(super) fn reverse(&mut self) {
+        self.values.reverse();
+    }
+
+    pub(super) fn retain_for_vm(
+        &mut self,
+        vm: &Vm,
+    ) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        let original = self.owner_view()?;
+        let bytes = host_scheduling::slots(&self.values)
+            .saturating_add(host_scheduling::values_bytes(&self.values));
+        if let Some(scope) = vm.host_scheduling.as_ref() {
+            if !self
+                .storage
+                .as_ref()
+                .is_some_and(|owner| owner.belongs_to(scope))
+            {
+                self.storage = Some(scope.shared_charge(bytes)?);
+            }
+        } else if self.storage.is_none() {
+            self.storage = vm
+                .argument_list_owner()?
+                .map(|owner| owner.reserve_peer(bytes))
+                .transpose()?;
+        }
+        Ok(original)
+    }
+
+    pub(super) fn into_array(mut self, vm: &mut Vm) -> Result<Value, RuntimeError> {
+        let original = self.retain_for_vm(vm)?;
+        let control = self
+            .storage
+            .as_mut()
+            .map(|owner| owner.split_off(host_scheduling::slots(&self.values)));
+        let entry = execution_payload::CallEntryCharge::adopt_native_arguments(
+            vm,
+            self.storage.take(),
+            control,
+        );
+        let result = argument_list_storage::ArgumentValues::adopt_retained(self.values, entry)
+            .into_array(vm);
+        if let Some(owner) = original {
+            owner.reserve_peer(0)?;
+        }
+        result
     }
 }
 

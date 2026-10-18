@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_typed_snapshot_storage_contracts() {
+    blueice_bluejs::Vm::verify_typed_snapshot_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_transport_buffer_storage_contracts() {
     blueice_bluejs::Vm::verify_transport_buffer_storage_contracts();
 }

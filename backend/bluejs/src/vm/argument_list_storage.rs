@@ -19,6 +19,33 @@ pub(super) struct ArgumentValues {
 }
 
 impl ArgumentValues {
+    pub(super) fn validate_owner(&self) -> Result<(), RuntimeError> {
+        self.entry.native_owner()?;
+        Ok(())
+    }
+
+    pub(super) fn adopt_retained(
+        values: Vec<Value>,
+        entry: execution_payload::CallEntryCharge,
+    ) -> Self {
+        Self { values, entry }
+    }
+
+    pub(super) fn copied_pair(
+        vm: &mut Vm,
+        left: &Value,
+        right: &Value,
+        owner: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
+        let mut result = Self::new(vm, owner)?;
+        result.reserve_capacity(2)?;
+        for value in [left, right] {
+            result.entry.append_argument_payload(value)?;
+            result.values.push(value.clone());
+        }
+        Ok(result)
+    }
+
     pub(super) fn single(
         vm: &mut Vm,
         value: Value,

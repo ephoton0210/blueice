@@ -154,6 +154,29 @@ pub(super) struct CallEntryCharge {
 }
 
 impl CallEntryCharge {
+    /// Adopt native storage already admitted by a snapshot producer, without
+    /// publishing duplicate displaced counters before the pure handoff.
+    pub(super) fn adopt_native_arguments(
+        vm: &Vm,
+        payload: Option<host_scheduling::SharedSchedulingCharge>,
+        control: Option<host_scheduling::SharedSchedulingCharge>,
+    ) -> Self {
+        let retained = |counter, native: Option<host_scheduling::SharedSchedulingCharge>| {
+            ExecutionPayloadCharge {
+                counter,
+                bytes: native
+                    .as_ref()
+                    .map_or(0, host_scheduling::SharedSchedulingCharge::bytes),
+                enabled: native.is_some(),
+                native,
+            }
+        };
+        Self {
+            payload: retained(vm.displaced_execution_bytes.clone(), payload),
+            control: retained(vm.displaced_execution_control_bytes.clone(), control),
+        }
+    }
+
     pub(super) fn replace_argument_control(
         &mut self,
         owner: Option<host_scheduling::SharedSchedulingCharge>,

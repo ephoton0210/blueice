@@ -86,6 +86,42 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The local TypedArray snapshot/sort follow-up (2026-10-18) has an implementation
+checkpoint.
+Three fixed tiny cases reproduce unowned local range capacity/payload and zero
+native credit after VM destruction; two existing sort-behavior controls pass.
+The original output is preserved separately. Local ranges now retain independent
+native ownership through their consumers. Sorting preserves the existing natural
+run comparator sequence and stable merges using admitted indices, then permutes
+primitives in place. Run plans grow under full replacement admission, compact in
+place and keep actual capacity credit; scratch no longer clones BigInt buffers.
+
+Comparator copies are admitted before cloning, and length arguments use owned
+entry. Decoded primitives are borrowed through writes; converted `with` values
+remain owned through target allocation, and its validity check reads shape rather
+than decoding an unused element. Snapshot-to-array handoff splits the existing
+native lease into payload/control and adopts it without duplicate displaced
+counters. Source/destination views preserve terminal state across adoption.
+TypedArray slice's raw bytes retain their NaN-preserving route under owned range
+storage. Affected resource errors propagate instead of reaching infallible-copy
+`expect` assumptions. The first compile's counter-field spelling error and its
+corrected five-case result remain separate evidence.
+
+All twenty-five new contracts, the previous 351 selected controls and eleven
+additional finite species/GC/copy controls pass: **387 distinct selected tests**,
+twelve executable targets and 158 selections. The expanded 25-case result is
+retained only after matching source and executable hashes. Formatting, diff checks
+and offline workspace/all-target Clippy pass. Frozen source/artifact and staged/
+committed Git audits bind this checkpoint; the ordinary-library hook adds no new
+coverage measurement. Legacy allocation/fuel/resource sweeps remain excluded.
+Filter/other callback or coercion producers, wider BigInt/allocator staging,
+managed-buffer capacity policy and integrated acceptance remain open. M1u remains
+the latest accepted milestone, and M1z integrated gates stay open. Validation
+remains local/offline and finite; rejected publication/process inspection and
+excluded replay are not retried.
+Evidence: `target/typed-snapshot-storage-source-20261018.json`.
+Red evidence: `/private/tmp/blueice-typed-snapshot-storage-red-20261018.{json,tar.gz,log}`.
+
 The binary transport snapshot follow-up (2026-10-18) has an implementation
 checkpoint. Corrected before-fix output records **two passed and four failed**: the byte/value
 snapshot ownership cases reproduce missing native credit and its loss after VM
