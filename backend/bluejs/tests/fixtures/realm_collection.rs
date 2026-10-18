@@ -248,7 +248,7 @@ fn realm_collection_metadata_shared_records_are_discovered_once() {
         .unwrap()
         .object_id()
         .unwrap();
-    vm.adopt_shadow_realm(alias, record.clone());
+    vm.adopt_shadow_realm(alias, record.clone()).unwrap();
     drop(record);
     let plan = vm.prepare_realm_collection().unwrap().unwrap();
     assert_eq!(plan.len, 2);
@@ -295,7 +295,7 @@ fn realm_collection_metadata_external_owner_keeps_the_shared_realm_live() {
         .unwrap()
         .object_id()
         .unwrap();
-    external.adopt_shadow_realm(alias, record);
+    external.adopt_shadow_realm(alias, record).unwrap();
     clear_global(&mut vm, "realm");
     vm.collect_realm_garbage().unwrap();
     assert!(weak.upgrade().is_some());

@@ -144,6 +144,14 @@ impl Plan {
                 if !vm.membrane_storage_can_join(scope) {
                     return Err(scope.fail());
                 }
+                if node.path.is_empty()
+                    && node
+                        .anchor
+                        .as_ref()
+                        .is_some_and(|record| !record.owner_storage_can_join(scope))
+                {
+                    return Err(scope.fail());
+                }
                 if vm.document_policy_ready {
                     return Ok(false);
                 }

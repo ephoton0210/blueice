@@ -54,6 +54,9 @@ impl Vm {
             .retain(|_, record| plan.is_active(record.heap));
         self.shadow_realm_by_heap
             .retain(|heap, id| plan.is_active(*heap) && self.shadow_realms.contains_key(id));
+        self.shadow_realms.release_empty();
+        self.shadow_realm_by_heap.release_empty();
+        self.shadow_wrapped_functions.release_empty();
     }
 
     fn collect_local_realm(&mut self) -> Result<(), RuntimeError> {
@@ -108,10 +111,7 @@ impl Vm {
         // pruning owner metadata, tracing roots or collecting either heap.
         for node in &plan.nodes[..plan.len] {
             if let Some(record) = &node.record {
-                record
-                    .owners
-                    .borrow_mut()
-                    .retain(|owner| owner.strong_count() != 0);
+                record.owners.prune();
             }
         }
         loop {

@@ -44,10 +44,19 @@ mod displaced_root_tests;
 #[path = "../../tests/fixtures/realm_alias_home.rs"]
 mod alias_home_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/shadow_registry_storage.rs"]
+mod registry_storage_tests;
+
 enum EvaluationCode<'a> {
     #[cfg(any(test, coverage))]
     Borrowed(&'a Bytecode),
     Prepared(&'a PreparedEvalCode),
+}
+
+struct PreparedShadowTables {
+    records: promise_queue_storage::PreparedMap<ObjectId, ShadowRealmRecord>,
+    index: promise_queue_storage::PreparedMap<u64, ObjectId>,
 }
 impl EvaluationCode<'_> {
     fn execute(&self, child: &mut Vm) -> Result<Value, RuntimeError> {
@@ -60,6 +69,48 @@ impl EvaluationCode<'_> {
 }
 
 impl Vm {
+    fn prepare_shadow_tables(
+        &mut self,
+        instance: ObjectId,
+        heap: u64,
+    ) -> Result<PreparedShadowTables, RuntimeError> {
+        let records = self
+            .shadow_realms
+            .prepare_set(&instance, self.host_scheduling.as_ref())?;
+        let index = self
+            .shadow_realm_by_heap
+            .prepare_set(&heap, self.host_scheduling.as_ref())?;
+        Ok(PreparedShadowTables { records, index })
+    }
+    fn publish_shadow_record(
+        &mut self,
+        prepared: PreparedShadowTables,
+        instance: ObjectId,
+        record: ShadowRealmRecord,
+    ) {
+        self.shadow_realms.commit(prepared.records);
+        self.shadow_realm_by_heap.commit(prepared.index);
+        let previous = self.shadow_realms.get(&instance).map(|old| old.heap);
+        self.shadow_realm_by_heap.set(record.heap, instance);
+        let heap = record.heap;
+        self.shadow_realms.set(instance, record);
+        if let Some(previous) = previous.filter(|previous| *previous != heap) {
+            if self.shadow_realm_by_heap.get(&previous) == Some(&instance) {
+                let replacement = self
+                    .shadow_realms
+                    .iter()
+                    .find_map(|(&id, record)| (record.heap == previous).then_some(id));
+                if let Some(id) = replacement {
+                    *self
+                        .shadow_realm_by_heap
+                        .get_mut(&previous)
+                        .expect("existing previous index") = id;
+                } else {
+                    self.shadow_realm_by_heap.remove(&previous);
+                }
+            }
+        }
+    }
     fn collect_before_shadow_realm_entry(&mut self) -> Result<(), RuntimeError> {
         if self.heap.document_heap_budget().is_some() {
             // Collect the owner before borrowing its child. Once the child
@@ -90,10 +141,9 @@ impl Vm {
         child.symbol_registry = Rc::clone(&self.symbol_registry);
         child.inherit_document_policy(self)?;
         let record = ShadowRealmRecord::new(child)?;
-        let heap_tag = record.heap;
         let instance = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        self.shadow_realm_by_heap.insert(heap_tag, instance);
-        self.shadow_realms.insert(instance, record);
+        let prepared = self.prepare_shadow_tables(instance, record.heap)?;
+        self.publish_shadow_record(prepared, instance, record);
         Ok(Value::Object(instance))
     }
 
@@ -105,17 +155,18 @@ impl Vm {
     /// `evaluate`/`importValue`/a wrapped-function call reached through the
     /// transported stand-in observes the identical realm -- same
     /// `globalThis`, same prior `evaluate` side effects -- as the original.
-    pub(super) fn adopt_shadow_realm(&mut self, instance: ObjectId, mut record: ShadowRealmRecord) {
-        let heap_tag = record.heap;
+    pub(super) fn adopt_shadow_realm(
+        &mut self,
+        instance: ObjectId,
+        mut record: ShadowRealmRecord,
+    ) -> Result<(), RuntimeError> {
+        let tables = self.prepare_shadow_tables(instance, record.heap)?;
+        let owner = record.owners.prepare_owner(self.host_scheduling.as_ref())?;
         // A new table entry is an independent owner. Temporary traversal and
         // call clones retain the same token and do not create new owners.
-        record.owner = Rc::new(());
-        record
-            .owners
-            .borrow_mut()
-            .push(Rc::downgrade(&record.owner));
-        self.shadow_realm_by_heap.insert(heap_tag, instance);
-        self.shadow_realms.insert(instance, record);
+        record.owner = record.owners.commit_owner(owner);
+        self.publish_shadow_record(tables, instance, record);
+        Ok(())
     }
 
     /// The live record for `instance`, if this `Vm` has one -- for
@@ -762,6 +813,10 @@ impl Vm {
                     error
                 }
             })?;
+            let prepared = self
+                .shadow_wrapped_functions
+                .prepare_insert(self.host_scheduling.as_ref())?;
+            self.shadow_wrapped_functions.commit(prepared);
             self.shadow_wrapped_functions.insert(
                 wrapper,
                 ShadowWrappedFunction {

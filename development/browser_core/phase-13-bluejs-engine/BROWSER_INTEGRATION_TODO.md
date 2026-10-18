@@ -68,6 +68,42 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The shared ShadowRealm registry follow-up (2026-10-18) has an implementation
+checkpoint. Four tiny regressions reproduced missing instance/index/callable
+credit and unowned owner metadata after all VM data dropped. The three tables
+now retain independent document leases and prepare complete replacements before
+construction, adoption or callable publication. Replacing an instance also repairs
+or removes its previous heap index.
+
+Shared owner vectors are replaced by individually admitted weak identity nodes.
+Each alias pays for its own node and Rc headers in the receiving document;
+foreign or neutral adoption preserves the shared head's original owner. Clones
+share existing identity/credit. Dead weak headers remain charged until pruning,
+and list destruction detaches links iteratively so an independently held token
+retains only its own node. Neutral headers/nodes attach once, with dead neutral
+nodes removed before head binding. Policy discovery validates shared-header
+ownership before joining a child. Snapshot records continue to supply the same
+external-owner identities to agent GC.
+
+Publication prepares both tables and the complete alias node before changing
+metadata; function name/length getters finish before callable-table preparation.
+Re-export failure releases its temporary instance root. Existing alias replacement,
+foreign-document isolation, timer/Promise work retention and weak callable-home
+behavior pass their relevant controls. Twenty-four new contracts, the previous
+186 controls and twelve additional reviewed controls pass: **222 distinct
+selected tests**, five executable targets and 112 selections. Formatting, diff
+checks and offline workspace/all-target Clippy pass. Frozen source/artifact and
+Git audits bind the checkpoint; the ordinary-library hook is present without a
+new coverage result. Evidence:
+`target/shadow-registry-storage-source-20261018.json`.
+
+Wider retained maps, native/transport/program buffers and integrated gates remain
+open; M1u remains latest accepted. Separately, discarded ShadowRealm alias-record
+pruning must preserve one lookup/delivery route when another alias or pending
+work retains the child. This liveness follow-up remains open. Validation
+stays local and offline, with no quota-boundary, exhaustion, service or privileged
+replay. Rejected push/process inspection is not retried or bypassed.
+
 The membrane-table ownership follow-up (2026-10-18) has an implementation
 checkpoint. Three tiny regressions reproduced missing native ownership for
 forward, nested-wrapper and imported-source table backing. All four top-level
@@ -1596,6 +1632,13 @@ work and exposes its retained payload ledger.
       joint replacements before publication and preserve Rust-held backing,
       neutral attachment and teardown ownership. Wider retained-map growth
       admission and allocator/hash-control overhead remain open.
+      Shared ShadowRealm registry ownership now adds twenty-four contracts and
+      222 relevant selected cases: three tables, shared headers and per-document
+      weak identity nodes admit publication and retain Rust/weak ownership.
+      Cross-document alias adoption preserves each original account; replacing
+      an instance repairs its reverse index. Discarded alias-record pruning
+      with one retained lookup/delivery route remains a separate liveness
+      follow-up.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

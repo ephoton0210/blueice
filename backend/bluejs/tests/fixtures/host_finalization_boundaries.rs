@@ -82,10 +82,13 @@ fn cleanup_file_reading_and_drag_sources_each_get_a_turn() {
         &mut child,
         "var reader=new FileReader();reader.onloadstart=()=>record('file');reader.readAsText(new Blob(['payload']));",
     );
-    owner.shadow_realms.insert(
-        owner.object_prototype,
-        ShadowRealmRecord::new(child).unwrap(),
-    );
+    let record = ShadowRealmRecord::new(child).unwrap();
+    let prepared = owner
+        .shadow_realms
+        .prepare_set(&owner.object_prototype, owner.host_scheduling.as_ref())
+        .unwrap();
+    owner.shadow_realms.commit(prepared);
+    owner.shadow_realms.set(owner.object_prototype, record);
     assert!(!owner.run_browser_task_turn(2).unwrap());
     assert_eq!(*log.borrow(), [HostValue::String("file".into())]);
     assert!(!owner.run_browser_task_turn(1).unwrap());

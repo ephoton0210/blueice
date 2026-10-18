@@ -201,16 +201,17 @@ fn host_realm_tasks_shared_aliases_and_cycles_have_one_snapshot_entry() {
     let mut root = page();
     let first = shadow(&mut root);
     let second = shadow(&mut root);
-    root.adopt_shadow_realm(root.object_prototype, first.clone());
+    root.adopt_shadow_realm(root.object_prototype, first.clone())
+        .unwrap();
     {
         let mut vm = first.vm.borrow_mut();
         let key = vm.object_prototype;
-        vm.adopt_shadow_realm(key, second.clone());
+        vm.adopt_shadow_realm(key, second.clone()).unwrap();
     }
     {
         let mut vm = second.vm.borrow_mut();
         let key = vm.object_prototype;
-        vm.adopt_shadow_realm(key, first.clone());
+        vm.adopt_shadow_realm(key, first.clone()).unwrap();
     }
     let snapshot = root.host_task_realms().unwrap();
     assert_eq!(

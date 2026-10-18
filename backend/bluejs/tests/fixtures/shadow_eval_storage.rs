@@ -188,7 +188,7 @@ fn shadow_eval_storage_public_foreign_record_refuses_before_compilation() {
     let mut caller = page();
     let instance = caller.heap.alloc_object(None).unwrap();
     caller.heap.root(instance).unwrap();
-    caller.adopt_shadow_realm(instance, record.clone());
+    caller.adopt_shadow_realm(instance, record.clone()).unwrap();
     assert_eq!(
         caller.shadow_realm_evaluate(
             Value::Object(instance),

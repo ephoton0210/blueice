@@ -1689,6 +1689,51 @@ accepted and M1z integrated gates remain open. No quota-boundary, exhaustion,
 service, privileged or workspace-wide runtime replay is resumed; rejected push
 and process inspection are not retried or bypassed.
 
+The shared ShadowRealm registry checkpoint (2026-10-18) extends retained table
+ownership to the instance, heap-to-instance index and wrapped-callable maps.
+Construction and adoption prepare both tables before publication; replacing an
+instance repairs or removes its previous heap index. Function metadata getters
+finish before callable-table preparation, so nested wrapper creation cannot
+invalidate a staged table. Re-export adoption is fallible and always releases
+the unpublished instance's temporary root on failure.
+
+Shared owner vectors are replaced by individually admitted weak identity nodes.
+Each node owns its identity Rc header, node allocation and native lease in the
+receiving document. The shared head retains its original allocation owner.
+Foreign and neutral aliases consequently add no allocation charge to the
+original document; existing cross-document adoption and evaluation isolation are
+preserved. Strong clones share identities and credit. A weak identity keeps its
+header charged until pruning or node destruction. Pruning and shared-head drop
+unlink nodes iteratively; a token that outlives the list retains only its own
+node. There is no growing shared vector or unprepared owner-list backing.
+
+Neutral record nodes attach to their receiving document once. The shared head
+binds to its creator's document once, pruning dead neutral nodes first. Already
+foreign allocations keep their original account. Read-only policy discovery
+checks the shared header before joining a child VM; existing foreign shared
+children remain outside that document's activation and work routing. Agent GC
+uses the same live identity/known-owner comparison through the node list, with
+no new raw VM pointer or unsafe block.
+
+All four initial missing-credit regressions failed before implementation.
+Twenty-four new contracts, the previous 186 relevant controls and twelve
+additional reviewed controls pass: 222 distinct finite tests, five executable
+targets and 112 selections. Controls include mixed/foreign/neutral aliases,
+external owners, retained Promise work, cross-heap cycles, timer/task FIFO,
+getter reentry and throws, instance replacement, weak headers, Rust-held data,
+terminal cleanup and independent token teardown. Formatting, diff checks and
+offline workspace/all-target Clippy pass. Frozen source/artifact and Git audits
+bind the local checkpoint; the ordinary-library hook supplies no new coverage
+claim. Evidence: `target/shadow-registry-storage-source-20261018.json`.
+
+Hash-control/allocator overhead, wider retained maps and native/transport/program
+buffers remain open. Discarded alias-record pruning with one surviving lookup/
+delivery route is a separate liveness follow-up. M1u remains latest accepted;
+M1z integrated gates remain open. Only fixed finite local/offline functional and
+in-memory checks ran. No quota/resource-boundary, exhaustion, service/listener/
+network/Core/MCP, conformance timer thread, privileged or workspace-wide runtime
+replay was resumed. Rejected push/process inspection was not retried or bypassed.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

@@ -183,6 +183,15 @@ fn host_task_storage_discovery_snapshot_does_not_keep_realms_alive() {
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before - bytes);
 }
 
+fn store_shadow(vm: &mut Vm, key: ObjectId, record: ShadowRealmRecord) {
+    let prepared = vm
+        .shadow_realms
+        .prepare_set(&key, vm.host_scheduling.as_ref())
+        .unwrap();
+    vm.shadow_realms.commit(prepared);
+    vm.shadow_realms.set(key, record);
+}
+
 fn attached_child(owner: &Vm) -> Vm {
     Vm {
         host_scheduling: owner.host_scheduling.as_ref().map(SchedulingScope::child),
@@ -195,20 +204,14 @@ fn host_task_storage_discovery_filters_documents_deduplicates_cycles_and_sorts()
     let child = ShadowRealmRecord::new(attached_child(&vm)).unwrap();
     let grandchild = ShadowRealmRecord::new(attached_child(&vm)).unwrap();
     let foreign = ShadowRealmRecord::new(bounded_vm()).unwrap();
-    child
-        .vm
-        .borrow_mut()
-        .shadow_realms
-        .insert(vm.object_prototype, grandchild.clone());
-    grandchild
-        .vm
-        .borrow_mut()
-        .shadow_realms
-        .insert(vm.object_prototype, child.clone());
-    vm.shadow_realms.insert(vm.object_prototype, child.clone());
-    vm.shadow_realms.insert(vm.array_prototype, child.clone());
+    let object = vm.object_prototype;
+    let array = vm.array_prototype;
+    store_shadow(&mut child.vm.borrow_mut(), object, grandchild.clone());
+    store_shadow(&mut grandchild.vm.borrow_mut(), object, child.clone());
+    store_shadow(&mut vm, object, child.clone());
+    store_shadow(&mut vm, array, child.clone());
     let alias = vm.heap.alloc_object(None).unwrap();
-    vm.shadow_realms.insert(alias, foreign.clone());
+    store_shadow(&mut vm, alias, foreign.clone());
     let references = child.vm.strong_count();
     let snapshot = vm.host_task_realms().unwrap();
     let ids: Vec<_> = snapshot.iter().map(|record| record.heap).collect();

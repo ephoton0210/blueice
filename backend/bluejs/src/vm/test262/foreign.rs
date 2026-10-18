@@ -419,9 +419,9 @@ impl Vm {
             }
         };
         child.edit(caller, |vm| {
-            vm.adopt_shadow_realm(instance, source_record);
+            let adopted = vm.adopt_shadow_realm(instance, source_record);
             vm.release_root(root);
-            Ok(())
+            adopted
         })?;
         let cache = &mut self
             .test262_realms

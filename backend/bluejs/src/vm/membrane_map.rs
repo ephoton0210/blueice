@@ -65,6 +65,20 @@ impl<K: Eq + Hash, V> MembraneMap<K, V> {
         &mut self,
         scope: Option<&SchedulingScope>,
     ) -> Result<PreparedMap<K, V>, RuntimeError> {
+        self.prepare_additional(1, scope)
+    }
+    pub(super) fn prepare_set(
+        &mut self,
+        key: &K,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<PreparedMap<K, V>, RuntimeError> {
+        self.prepare_additional(usize::from(!self.data.contains_key(key)), scope)
+    }
+    fn prepare_additional(
+        &mut self,
+        additional: usize,
+        scope: Option<&SchedulingScope>,
+    ) -> Result<PreparedMap<K, V>, RuntimeError> {
         if let Some(scope) = scope {
             self.attach(scope)?;
             // A reusable slot must also respect an already terminal document.
@@ -72,7 +86,7 @@ impl<K: Eq + Hash, V> MembraneMap<K, V> {
         } else if self.owner.is_some() {
             return Err(RuntimeError::SchedulingLimit);
         }
-        PreparedMap::for_insert(&self.data, scope)
+        PreparedMap::for_additional(&self.data, additional, scope)
     }
     pub(super) fn commit(&mut self, prepared: PreparedMap<K, V>) {
         if let Some(owner) = prepared.commit_owned(&mut self.data) {
@@ -82,6 +96,13 @@ impl<K: Eq + Hash, V> MembraneMap<K, V> {
     }
     pub(super) fn insert(&mut self, key: K, value: V) {
         self.data.insert(key, value);
+    }
+    pub(super) fn set(&mut self, key: K, value: V) {
+        if let Some(current) = self.data.get_mut(&key) {
+            *current = value;
+        } else {
+            self.data.insert(key, value);
+        }
     }
     pub(super) fn get_mut<Q: Eq + Hash + ?Sized>(&mut self, key: &Q) -> Option<&mut V>
     where
@@ -124,7 +145,10 @@ impl Vm {
             .unowned_bytes()
             .saturating_add(self.test262_foreign_values.unowned_bytes())
             .saturating_add(self.test262_foreign_buffer_mirrors.unowned_bytes())
-            .saturating_add(self.test262_reverse_values.unowned_bytes());
+            .saturating_add(self.test262_reverse_values.unowned_bytes())
+            .saturating_add(self.shadow_realms.unowned_bytes())
+            .saturating_add(self.shadow_realm_by_heap.unowned_bytes())
+            .saturating_add(self.shadow_wrapped_functions.unowned_bytes());
         self.test262_realms.values().fold(bytes, |bytes, realm| {
             bytes
                 .saturating_add(realm.wrappers.unowned_bytes())
@@ -138,6 +162,9 @@ impl Vm {
             && self.test262_foreign_values.can_join(scope)
             && self.test262_foreign_buffer_mirrors.can_join(scope)
             && self.test262_reverse_values.can_join(scope)
+            && self.shadow_realms.can_join(scope)
+            && self.shadow_realm_by_heap.can_join(scope)
+            && self.shadow_wrapped_functions.can_join(scope)
             && self.test262_realms.values().all(|realm| {
                 realm.wrappers.can_join(scope)
                     && realm.imported_sources.can_join(scope)
@@ -153,6 +180,9 @@ impl Vm {
             || !self.test262_foreign_values.can_join(scope)
             || !self.test262_foreign_buffer_mirrors.can_join(scope)
             || !self.test262_reverse_values.can_join(scope)
+            || !self.shadow_realms.can_join(scope)
+            || !self.shadow_realm_by_heap.can_join(scope)
+            || !self.shadow_wrapped_functions.can_join(scope)
         {
             return Err(scope.fail());
         }
@@ -160,6 +190,14 @@ impl Vm {
         self.test262_foreign_values.attach(scope)?;
         self.test262_foreign_buffer_mirrors.attach(scope)?;
         self.test262_reverse_values.attach(scope)?;
+        self.shadow_realms.attach(scope)?;
+        self.shadow_realm_by_heap.attach(scope)?;
+        self.shadow_wrapped_functions.attach(scope)?;
+        for record in self.shadow_realms.values() {
+            // Foreign shared records remain owned by their original document.
+            // Their own discovery node validates attachment when it can join.
+            record.attach_owner_storage(scope)?;
+        }
         for realm in self.test262_realms.values_mut() {
             // A Rust-held foreign record keeps its original owner. Activation
             // rejects this graph in its read-only discovery pass; ordinary

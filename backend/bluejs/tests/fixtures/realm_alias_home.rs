@@ -37,7 +37,8 @@ fn owned_home() -> (Vm, ShadowRealmRecord) {
         .unwrap()
         .clone();
     // Discovery sees this direct shared alias before the owned creator route.
-    root.adopt_shadow_realm(root.object_prototype, leaf.clone());
+    root.adopt_shadow_realm(root.object_prototype, leaf.clone())
+        .unwrap();
     (root, leaf)
 }
 
@@ -98,7 +99,8 @@ fn realm_alias_home_shared_callback_survives_shorter_owner_route() {
         .next()
         .unwrap()
         .clone();
-    root.adopt_shadow_realm(root.object_prototype, leaf.clone());
+    root.adopt_shadow_realm(root.object_prototype, leaf.clone())
+        .unwrap();
     {
         let mut vm = leaf.vm.borrow_mut();
         vm.install_host_timer_functions().unwrap();
@@ -275,7 +277,8 @@ fn local_owned_home() -> (Vm, realm_cells::RealmHandle, ShadowRealmRecord) {
     );
     let home = root.test262_realms.values().next().unwrap().vm.clone();
     let leaf = home.borrow().shadow_realms.values().next().unwrap().clone();
-    root.adopt_shadow_realm(root.object_prototype, leaf.clone());
+    root.adopt_shadow_realm(root.object_prototype, leaf.clone())
+        .unwrap();
     (root, home, leaf)
 }
 
@@ -329,7 +332,8 @@ fn realm_alias_home_live_wrapper_retains_shared_home_then_releases_its_cycle() {
         .unwrap()
         .clone();
     let weak = home.vm.downgrade();
-    root.adopt_shadow_realm(root.object_prototype, leaf.clone());
+    root.adopt_shadow_realm(root.object_prototype, leaf.clone())
+        .unwrap();
     run(&mut owner.borrow_mut(), "outer=null;0;");
     drop(home);
     root.collect_realm_garbage().unwrap();

@@ -211,16 +211,17 @@ fn document_policy_shared_aliases_and_cycles_do_not_duplicate_heap_charges() {
     let expected = root.heap.stats().managed_bytes
         + first.vm.borrow().heap.stats().managed_bytes
         + second.vm.borrow().heap.stats().managed_bytes;
-    root.adopt_shadow_realm(root.object_prototype, first.clone());
+    root.adopt_shadow_realm(root.object_prototype, first.clone())
+        .unwrap();
     {
         let mut vm = first.vm.borrow_mut();
         let id = vm.object_prototype;
-        vm.adopt_shadow_realm(id, second.clone());
+        vm.adopt_shadow_realm(id, second.clone()).unwrap();
     }
     {
         let mut vm = second.vm.borrow_mut();
         let id = vm.object_prototype;
-        vm.adopt_shadow_realm(id, first.clone());
+        vm.adopt_shadow_realm(id, first.clone()).unwrap();
     }
     root.use_bounded_host_microtask_checkpoints().unwrap();
     assert_eq!(root.heap.document_heap_budget().unwrap().0, expected);
@@ -263,7 +264,8 @@ fn document_policy_foreign_shared_document_keeps_its_account() {
     foreign.use_bounded_host_microtask_checkpoints().unwrap();
     let record = shadow(&mut foreign);
     let mut root = Vm::default();
-    root.adopt_shadow_realm(root.object_prototype, record.clone());
+    root.adopt_shadow_realm(root.object_prototype, record.clone())
+        .unwrap();
     let expected = root.heap.stats().managed_bytes;
     root.use_bounded_host_microtask_checkpoints().unwrap();
     assert_eq!(root.heap.document_heap_budget().unwrap().0, expected);
@@ -469,7 +471,8 @@ fn document_policy_active_foreign_record_is_excluded_without_changing_it() {
     foreign.use_bounded_host_microtask_checkpoints().unwrap();
     let record = shadow(&mut foreign);
     let mut root = Vm::default();
-    root.adopt_shadow_realm(root.object_prototype, record.clone());
+    root.adopt_shadow_realm(root.object_prototype, record.clone())
+        .unwrap();
     let mut borrowed = record.vm.borrow_mut();
     let guard = realm_reentrancy::register_active(&mut borrowed).unwrap();
     root.use_bounded_host_microtask_checkpoints().unwrap();

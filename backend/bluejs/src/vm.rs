@@ -184,6 +184,7 @@ mod membrane_map_storage_contracts;
 mod realm_reentrancy;
 mod regexp;
 mod rejection_origins;
+mod shadow_owner_storage;
 mod shadow_realm;
 mod shadow_realm_gc;
 mod temporal;
@@ -826,17 +827,37 @@ struct Test262ImportedValue {
 struct ShadowRealmRecord {
     heap: u64,
     vm: realm_cells::RealmHandle,
-    owner: Rc<()>,
-    owners: Rc<RefCell<Vec<std::rc::Weak<()>>>>,
+    owner: shadow_owner_storage::RealmOwner,
+    owners: shadow_owner_storage::RealmOwners,
 }
 
 impl ShadowRealmRecord {
+    fn owner_storage_can_join(&self, scope: &SchedulingScope) -> bool {
+        // Individual alias nodes may belong to other documents. The shared
+        // head follows the child VM's original document allocation.
+        self.owners.can_join(scope)
+    }
+    fn attach_owner_storage(&self, scope: &SchedulingScope) -> Result<(), RuntimeError> {
+        // A foreign alias owns its node in the receiver while the shared head
+        // remains with its creator. Bind only this record's neutral metadata.
+        if self.owner.can_join(scope) {
+            self.owner.attach(scope)?;
+        }
+        if self.owners.can_join(scope) {
+            self.owners.attach(scope)?;
+        }
+        Ok(())
+    }
     fn new(vm: Vm) -> Result<Self, RuntimeError> {
-        let owner = Rc::new(());
+        let heap = vm.object_prototype.heap;
+        let scope = vm.host_scheduling.as_ref().map(SchedulingScope::child);
+        let vm = realm_cells::RealmHandle::new(vm)?;
+        let owners = shadow_owner_storage::RealmOwners::new(scope.as_ref())?;
+        let owner = owners.commit_owner(owners.prepare_owner(scope.as_ref())?);
         Ok(Self {
-            heap: vm.object_prototype.heap,
-            vm: realm_cells::RealmHandle::new(vm)?,
-            owners: Rc::new(RefCell::new(vec![Rc::downgrade(&owner)])),
+            heap,
+            vm,
+            owners,
             owner,
         })
     }
@@ -1341,12 +1362,12 @@ pub struct Vm {
     /// through this map.
     test262_reverse_values: MembraneMap<ObjectId, Test262ReverseValue>,
     shadow_realm_prototype: Option<ObjectId>,
-    shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
+    shadow_realms: MembraneMap<ObjectId, ShadowRealmRecord>,
     /// Reverse index from a `ShadowRealm` child's own heap tag back to the
     /// key it is stored under in `shadow_realms`, so a wrapped-function call
     /// can find "a realm I created directly" without a linear scan.
-    shadow_realm_by_heap: HashMap<u64, ObjectId>,
-    shadow_wrapped_functions: HashMap<ObjectId, ShadowWrappedFunction>,
+    shadow_realm_by_heap: MembraneMap<u64, ObjectId>,
+    shadow_wrapped_functions: MembraneMap<ObjectId, ShadowWrappedFunction>,
     throw_type_error: Option<ObjectId>,
     /// The shared `caller` / `arguments` getters of sloppy functions' legacy
     /// own accessors, created on first use.

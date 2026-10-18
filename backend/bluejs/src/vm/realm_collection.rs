@@ -298,7 +298,7 @@ impl RealmCollection {
                 .map(|(&object, record)| RealmInstance {
                     object,
                     child: record.heap,
-                    owner: Some(Rc::as_ptr(&record.owner) as usize),
+                    owner: Some(record.owner.identity()),
                 }),
         );
         node.instances.extend(
@@ -399,17 +399,7 @@ impl RealmCollection {
             self.storage.reserve_vec(&mut node.extra, node.incoming)?;
             self.storage.reserve_set(&mut node.ignored, node.incoming)?;
             if let Some(record) = &node.record {
-                if record
-                    .owners
-                    .borrow()
-                    .iter()
-                    .filter(|owner| owner.strong_count() != 0)
-                    .any(|owner| {
-                        self.known_owners
-                            .binary_search(&(owner.as_ptr() as usize))
-                            .is_err()
-                    })
-                {
+                if record.owners.has_external_owner(&self.known_owners) {
                     node.active = true;
                 }
             }
