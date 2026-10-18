@@ -52,6 +52,7 @@ mod module_continuation_storage;
 mod module_error_reporting;
 mod module_graph_storage;
 mod module_value_storage;
+mod native_value_storage;
 mod realm_call_storage;
 mod realm_collection;
 mod realm_pin_storage;

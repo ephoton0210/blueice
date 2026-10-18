@@ -19,11 +19,6 @@ pub(super) struct ArgumentValues {
 }
 
 impl ArgumentValues {
-    pub(super) fn validate_owner(&self) -> Result<(), RuntimeError> {
-        self.entry.native_owner()?;
-        Ok(())
-    }
-
     pub(super) fn adopt_retained(
         values: Vec<Value>,
         entry: execution_payload::CallEntryCharge,
@@ -132,6 +127,18 @@ impl ArgumentValues {
             Value::Undefined
         };
         self.call(vm, callee, receiver, construct, target)
+    }
+
+    pub(super) fn call_native_borrowed(
+        mut self,
+        vm: &mut Vm,
+        callee: &Value,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.entry.retarget_native(vm.host_scheduling.as_ref())?;
+        // Cover copied callee/receiver buffers before making those copies.
+        self.entry.refresh(callee, receiver, &self.values, 0)?;
+        self.call_native(vm, callee.clone(), receiver.clone(), false)
     }
 
     pub(super) fn super_call(self, vm: &mut Vm, constructor: Value) -> Result<Value, RuntimeError> {

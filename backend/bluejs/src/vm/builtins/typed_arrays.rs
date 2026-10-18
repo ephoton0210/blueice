@@ -3,6 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::super::argument_list_storage::ArgumentValues;
+use super::super::native_value_storage::NativeValue;
+use super::super::realm_call_storage::RealmCallRoots;
 use super::super::transport_buffer_storage::TransportVector;
 use super::*;
 
@@ -26,6 +28,10 @@ mod boundary_tests;
 #[cfg(any(test, coverage))]
 #[path = "../../../tests/fixtures/typed_snapshot_storage.rs"]
 mod storage_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/typed_callback_storage.rs"]
+mod callback_storage_tests;
 
 impl Vm {
     fn typed_array_method_receiver(
@@ -254,33 +260,55 @@ impl Vm {
         for (index, value) in values.iter().enumerate() {
             // Decoded snapshots already hold the required primitive. Borrow
             // it through the pure write instead of cloning another BigInt.
-            let value = match (kind.bigint(), value) {
+            match (kind.bigint(), value) {
                 (true, Value::BigInt(_)) | (false, Value::Number(_)) => {
-                    std::borrow::Cow::Borrowed(value)
+                    self.with_roots(|heap| {
+                        heap.typed_array_set_index(object, start + index, value)
+                    })?;
                 }
-                _ => std::borrow::Cow::Owned(self.typed_array_element_value(kind, value)?),
-            };
-            self.with_roots(|heap| {
-                heap.typed_array_set_index(object, start + index, value.as_ref())
-            })?;
+                _ => {
+                    let owner = self.argument_list_owner()?;
+                    let converted = self.typed_array_element_value(kind, value)?;
+                    let converted = NativeValue::adopt(converted, owner.as_ref())?;
+                    converted.with_value(self, |vm, value| {
+                        vm.with_roots(|heap| {
+                            heap.typed_array_set_index(object, start + index, value)
+                        })
+                    })?;
+                }
+            }
         }
         Ok(())
+    }
+
+    fn typed_array_owned_element(
+        &self,
+        object: ObjectId,
+        index: usize,
+        owner: Option<&host_scheduling::SharedSchedulingCharge>,
+    ) -> Result<NativeValue, RuntimeError> {
+        NativeValue::typed_element(self, object, index, owner)
     }
 
     fn typed_array_callback(
         &mut self,
         callback: &Value,
         this_arg: &Value,
-        value: Value,
+        value: NativeValue,
         index: usize,
         object: ObjectId,
     ) -> Result<Value, RuntimeError> {
-        self.call_native(
-            callback.clone(),
-            this_arg.clone(),
-            vec![value, Value::Number(index as f64), Value::Object(object)],
-            false,
-        )
+        let owner = self.argument_list_owner()?;
+        let mut arguments = TransportVector::with_capacity(3, owner.as_ref())?;
+        arguments.push_owned(value)?;
+        arguments.push_owned(NativeValue::adopt(
+            Value::Number(index as f64),
+            owner.as_ref(),
+        )?)?;
+        arguments.push_owned(NativeValue::adopt(Value::Object(object), owner.as_ref())?)?;
+        arguments.with_arguments(self, |vm, arguments| {
+            arguments.call_native_borrowed(vm, callback, this_arg)
+        })
     }
 
     fn typed_array_callback_method(
@@ -296,138 +324,137 @@ impl Vm {
                 "TypedArray callback must be callable".into(),
             ));
         }
-        let this_arg = native::argument(args, 1).clone();
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        let result = (|| match method {
-            TypedArrayCallbackMethod::Every => {
-                for index in 0..length {
-                    let value = self.typed_array_element(object, index);
-                    let result =
-                        self.typed_array_callback(callback, &this_arg, value, index, object)?;
-                    if !self
-                        .to_boolean(&result)
-                        .expect("callback returns a value validated in this realm")
-                    {
-                        return Ok(Value::Bool(false));
+        let this_arg = native::argument(args, 1);
+        let owner = self.argument_list_owner()?;
+        let roots = RealmCallRoots::new(
+            1 + usize::from(callback.object_id().is_some())
+                + usize::from(this_arg.object_id().is_some())
+                + usize::from(matches!(
+                    method,
+                    TypedArrayCallbackMethod::Map | TypedArrayCallbackMethod::Filter
+                )),
+            owner.as_ref(),
+        )?;
+        roots.push(object);
+        if let Some(callback) = callback.object_id() {
+            roots.push(callback);
+        }
+        if let Some(receiver) = this_arg.object_id() {
+            roots.push(receiver);
+        }
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            let result_value = |value| NativeValue::adopt(value, owner.as_ref());
+            match method {
+                TypedArrayCallbackMethod::Every => {
+                    for index in 0..length {
+                        let value = vm.typed_array_owned_element(object, index, owner.as_ref())?;
+                        let result =
+                            vm.typed_array_callback(callback, this_arg, value, index, object)?;
+                        if !vm.to_boolean(&result)? {
+                            return result_value(Value::Bool(false));
+                        }
                     }
+                    result_value(Value::Bool(true))
                 }
-                Ok(Value::Bool(true))
-            }
-            TypedArrayCallbackMethod::ForEach => {
-                for index in 0..length {
-                    let value = self.typed_array_element(object, index);
-                    self.typed_array_callback(callback, &this_arg, value, index, object)?;
-                }
-                Ok(Value::Undefined)
-            }
-            TypedArrayCallbackMethod::Some => {
-                for index in 0..length {
-                    let value = self.typed_array_element(object, index);
-                    let result =
-                        self.typed_array_callback(callback, &this_arg, value, index, object)?;
-                    if self
-                        .to_boolean(&result)
-                        .expect("callback returns a value validated in this realm")
-                    {
-                        return Ok(Value::Bool(true));
+                TypedArrayCallbackMethod::ForEach => {
+                    for index in 0..length {
+                        let value = vm.typed_array_owned_element(object, index, owner.as_ref())?;
+                        vm.typed_array_callback(callback, this_arg, value, index, object)?;
                     }
+                    result_value(Value::Undefined)
                 }
-                Ok(Value::Bool(false))
-            }
-            TypedArrayCallbackMethod::Find | TypedArrayCallbackMethod::FindIndex => {
-                for index in 0..length {
-                    let value = self.typed_array_element(object, index);
-                    let result = self.typed_array_callback(
-                        callback,
-                        &this_arg,
-                        value.clone(),
-                        index,
-                        object,
-                    )?;
-                    if self
-                        .to_boolean(&result)
-                        .expect("callback returns a value validated in this realm")
-                    {
-                        return Ok(if method == TypedArrayCallbackMethod::Find {
-                            value
+                TypedArrayCallbackMethod::Some => {
+                    for index in 0..length {
+                        let value = vm.typed_array_owned_element(object, index, owner.as_ref())?;
+                        let result =
+                            vm.typed_array_callback(callback, this_arg, value, index, object)?;
+                        if vm.to_boolean(&result)? {
+                            return result_value(Value::Bool(true));
+                        }
+                    }
+                    result_value(Value::Bool(false))
+                }
+                TypedArrayCallbackMethod::Find
+                | TypedArrayCallbackMethod::FindIndex
+                | TypedArrayCallbackMethod::FindLast
+                | TypedArrayCallbackMethod::FindLastIndex => {
+                    let reverse = matches!(
+                        method,
+                        TypedArrayCallbackMethod::FindLast
+                            | TypedArrayCallbackMethod::FindLastIndex
+                    );
+                    for step in 0..length {
+                        let index = if reverse { length - 1 - step } else { step };
+                        let value = vm.typed_array_owned_element(object, index, owner.as_ref())?;
+                        let argument = NativeValue::copied(value.value(), owner.as_ref())?;
+                        let result =
+                            vm.typed_array_callback(callback, this_arg, argument, index, object)?;
+                        if vm.to_boolean(&result)? {
+                            return if matches!(
+                                method,
+                                TypedArrayCallbackMethod::Find | TypedArrayCallbackMethod::FindLast
+                            ) {
+                                Ok(value)
+                            } else {
+                                result_value(Value::Number(index as f64))
+                            };
+                        }
+                    }
+                    result_value(
+                        if matches!(
+                            method,
+                            TypedArrayCallbackMethod::Find | TypedArrayCallbackMethod::FindLast
+                        ) {
+                            Value::Undefined
                         } else {
-                            Value::Number(index as f64)
-                        });
+                            Value::Number(-1.0)
+                        },
+                    )
+                }
+                TypedArrayCallbackMethod::Map => {
+                    let (target, target_kind) =
+                        vm.typed_array_species_create(receiver, length, kind)?;
+                    roots.push(target);
+                    for index in 0..length {
+                        let value = vm.typed_array_owned_element(object, index, owner.as_ref())?;
+                        let value =
+                            vm.typed_array_callback(callback, this_arg, value, index, object)?;
+                        let value = NativeValue::adopt(value, owner.as_ref())?;
+                        value.with_value(vm, |vm, value| {
+                            vm.typed_array_write_values(
+                                target,
+                                target_kind,
+                                index,
+                                std::slice::from_ref(value),
+                            )
+                        })?;
                     }
+                    result_value(Value::Object(target))
                 }
-                Ok(if method == TypedArrayCallbackMethod::Find {
-                    Value::Undefined
-                } else {
-                    Value::Number(-1.0)
-                })
-            }
-            TypedArrayCallbackMethod::FindLast | TypedArrayCallbackMethod::FindLastIndex => {
-                for index in (0..length).rev() {
-                    let value = self.typed_array_element(object, index);
-                    let result = self.typed_array_callback(
-                        callback,
-                        &this_arg,
-                        value.clone(),
-                        index,
-                        object,
-                    )?;
-                    if self
-                        .to_boolean(&result)
-                        .expect("callback returns a value validated in this realm")
-                    {
-                        return Ok(if method == TypedArrayCallbackMethod::FindLast {
-                            value
-                        } else {
-                            Value::Number(index as f64)
-                        });
+                TypedArrayCallbackMethod::Filter => {
+                    let mut selected = TransportVector::with_capacity(0, owner.as_ref())?;
+                    for index in 0..length {
+                        let value = vm.typed_array_owned_element(object, index, owner.as_ref())?;
+                        let argument = NativeValue::copied(value.value(), owner.as_ref())?;
+                        let result =
+                            vm.typed_array_callback(callback, this_arg, argument, index, object)?;
+                        if vm.to_boolean(&result)? {
+                            selected.push_owned(value)?;
+                        }
                     }
+                    let (target, target_kind) =
+                        vm.typed_array_species_create(receiver, selected.len(), kind)?;
+                    roots.push(target);
+                    vm.typed_array_write_values(target, target_kind, 0, &selected)?;
+                    selected.validate_owner()?;
+                    result_value(Value::Object(target))
                 }
-                Ok(if method == TypedArrayCallbackMethod::FindLast {
-                    Value::Undefined
-                } else {
-                    Value::Number(-1.0)
-                })
             }
-            TypedArrayCallbackMethod::Map => {
-                let (target, target_kind) =
-                    self.typed_array_species_create(receiver, length, kind)?;
-                self.stack.push(Value::Object(target));
-                for index in 0..length {
-                    let value = self.typed_array_element(object, index);
-                    let value =
-                        self.typed_array_callback(callback, &this_arg, value, index, object)?;
-                    self.typed_array_write_values(target, target_kind, index, &[value])?;
-                }
-                Ok(Value::Object(target))
-            }
-            TypedArrayCallbackMethod::Filter => {
-                let mut selected = Vec::new();
-                for index in 0..length {
-                    let value = self.typed_array_element(object, index);
-                    let result = self.typed_array_callback(
-                        callback,
-                        &this_arg,
-                        value.clone(),
-                        index,
-                        object,
-                    )?;
-                    if self
-                        .to_boolean(&result)
-                        .expect("callback returns a value validated in this realm")
-                    {
-                        selected.push(value);
-                    }
-                }
-                let (target, target_kind) =
-                    self.typed_array_species_create(receiver, selected.len(), kind)?;
-                self.stack.push(Value::Object(target));
-                self.typed_array_write_values(target, target_kind, 0, &selected)?;
-                Ok(Value::Object(target))
-            }
-        })();
-        self.stack.truncate(base);
-        result
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result.map(NativeValue::into_value)
     }
 
     fn typed_array_last_index_of(
@@ -842,8 +869,10 @@ impl Vm {
         // observable forward byte-copy behavior when a species result shares
         // the source buffer at a different byte offset.
         for index in 0..copy_count {
-            let value = self.typed_array_element(object, start + index);
-            self.typed_array_write_values(target, target_kind, index, &[value])?;
+            let value = self.typed_array_owned_element(object, start + index, None)?;
+            value.with_value(self, |vm, value| {
+                vm.typed_array_write_values(target, target_kind, index, std::slice::from_ref(value))
+            })?;
         }
         Ok(Value::Object(target))
     }
@@ -1102,11 +1131,16 @@ impl Vm {
             ));
         }
         let owner = self.argument_list_owner()?;
-        let replacement = ArgumentValues::single(self, replacement, owner.as_ref())?;
+        let replacement = NativeValue::adopt(replacement, owner.as_ref())?;
         let values = self.typed_array_read_values(object, 0, length)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
         self.typed_array_write_values(target, kind, 0, &values)?;
-        self.typed_array_write_values(target, kind, index as usize, &replacement.values)?;
+        self.typed_array_write_values(
+            target,
+            kind,
+            index as usize,
+            std::slice::from_ref(replacement.value()),
+        )?;
         values.validate_owner()?;
         replacement.validate_owner()?;
         Ok(Value::Object(target))
@@ -1199,15 +1233,17 @@ impl Vm {
                 } else {
                     length
                 };
+                let owner = self.argument_list_owner()?;
                 let value = self.typed_array_element_value(kind, native::argument(args, 0))?;
+                let value = NativeValue::adopt(value, owner.as_ref())?;
                 // A user-defined conversion can resize a resizable backing
                 // buffer.  Fixed-length views must reject their newly
                 // out-of-bounds state before the first indexed write.
                 self.typed_array_receiver(receiver)?;
                 for index in start..end {
-                    self.with_roots(|heap| heap.typed_array_set_index(object, index, &value))
-                        .expect("fill revalidated the mutable receiver after coercion and writes only its decoded primitive");
+                    self.with_roots(|heap| heap.typed_array_set_index(object, index, value.value()))?;
                 }
+                value.validate_owner()?;
                 Ok(receiver.clone())
             }
             TypedArrayMethod::Includes => self.typed_array_includes(receiver, args, |left, right| {

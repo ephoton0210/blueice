@@ -1,0 +1,139 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Scalar data retains native credit; object IDs use scoped consumer roots.
+
+use super::host_scheduling::{value_payload_bytes, SharedSchedulingCharge};
+use super::realm_call_storage::RealmCallRoots;
+use super::*;
+
+pub(super) struct NativeValue {
+    value: Value,
+    // Primitive buffers are destroyed before their credit is returned.
+    storage: Option<SharedSchedulingCharge>,
+}
+
+impl NativeValue {
+    /// The caller already produced this value. Retain its storage before any
+    /// subsequent guest call or collection; producer staging is separate.
+    pub(super) fn adopt(
+        value: Value,
+        owner: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
+        let storage = owner
+            .map(|owner| owner.reserve_peer(value_payload_bytes(&value)))
+            .transpose()?;
+        Ok(Self { value, storage })
+    }
+
+    pub(super) fn copied(
+        value: &Value,
+        owner: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
+        let mut storage = owner
+            .map(|owner| owner.reserve_peer(value_payload_bytes(value)))
+            .transpose()?;
+        let value = value.clone();
+        if let Some(storage) = &mut storage {
+            storage.resize(value_payload_bytes(&value))?;
+        }
+        Ok(Self { value, storage })
+    }
+
+    pub(super) fn typed_element(
+        vm: &Vm,
+        object: ObjectId,
+        index: usize,
+        hint: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
+        let (_, _, _, kind) = vm.heap.typed_array_info(object)?;
+        let owner = if let Some(owner) = hint {
+            Some(owner.reserve_peer(0)?)
+        } else {
+            vm.argument_list_owner()?
+        };
+        let mut storage = owner
+            .as_ref()
+            .map(|owner| owner.reserve_peer(if kind.bigint() { 8 } else { 0 }))
+            .transpose()?;
+        // Earlier callbacks can detach or shrink a view. Missing elements
+        // remain undefined in the operation's originally captured range.
+        let value = vm
+            .heap
+            .typed_array_index_value(object, index)?
+            .unwrap_or(Value::Undefined);
+        if let Some(storage) = &mut storage {
+            storage.resize(value_payload_bytes(&value))?;
+        }
+        Ok(Self { value, storage })
+    }
+
+    pub(super) fn value(&self) -> &Value {
+        &self.value
+    }
+
+    pub(super) fn owner_view(&self) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        self.storage
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()
+    }
+
+    pub(super) fn validate_owner(&self) -> Result<(), RuntimeError> {
+        self.owner_view()?;
+        Ok(())
+    }
+
+    pub(super) fn with_value<T>(
+        &self,
+        vm: &mut Vm,
+        operation: impl FnOnce(&mut Vm, &Value) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        let owner = self.owner_view()?;
+        let result = if let Some(object) = self.value.object_id() {
+            let roots = RealmCallRoots::new(1, owner.as_ref())?;
+            roots.push(object);
+            vm.with_realm_call_roots(roots, |vm| operation(vm, &self.value))
+        } else {
+            operation(vm, &self.value)
+        };
+        self.validate_owner()?;
+        result
+    }
+
+    /// A pure return boundary transfers this same value to the ordinary VM
+    /// result consumer. No guest call or safepoint separates those views.
+    pub(super) fn into_value(self) -> Value {
+        drop(self.storage);
+        self.value
+    }
+
+    /// The destination prepared its slots before this pure move. Borrowed
+    /// transfer preserves source data ownership on every refusal path.
+    pub(super) fn move_into(
+        mut self,
+        values: &mut Vec<Value>,
+        storage: &mut Option<SharedSchedulingCharge>,
+    ) -> Result<(), RuntimeError> {
+        self.validate_owner()?;
+        assert!(values.len() < values.capacity());
+        if let Some(target) = storage {
+            if self.storage.is_none() {
+                self.storage = Some(target.reserve_peer(value_payload_bytes(&self.value))?);
+            }
+            target.absorb_from(
+                self.storage
+                    .as_mut()
+                    .expect("the destination supplied this owner"),
+            )?;
+        } else {
+            assert!(
+                self.storage.is_none(),
+                "the destination admits its existing data first"
+            );
+        }
+        values.push(self.value);
+        Ok(())
+    }
+}

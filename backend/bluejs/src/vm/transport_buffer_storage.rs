@@ -5,6 +5,7 @@
 //! Native transport snapshots own storage independently of either realm VM.
 
 use super::host_scheduling::SharedSchedulingCharge;
+use super::native_value_storage::NativeValue;
 use super::*;
 use crate::heap::{SharedBuffer, TypedArrayKind};
 
@@ -20,7 +21,7 @@ impl<T> TransportVector<T> {
         host_scheduling::slots(&self.values)
     }
 
-    fn with_capacity(
+    pub(super) fn with_capacity(
         count: usize,
         owner: Option<&SharedSchedulingCharge>,
     ) -> Result<Self, RuntimeError> {
@@ -156,6 +157,47 @@ impl TransportVector<u8> {
 }
 
 impl TransportVector<Value> {
+    pub(super) fn push_owned(&mut self, value: NativeValue) -> Result<(), RuntimeError> {
+        self.validate_owner()?;
+        value.validate_owner()?;
+        if self.storage.is_none() {
+            if let Some(owner) = value.owner_view()? {
+                let bytes = host_scheduling::slots(&self.values)
+                    .saturating_add(host_scheduling::values_bytes(&self.values));
+                self.storage = Some(owner.reserve_peer(bytes)?);
+            }
+        }
+        if self.values.len() == self.values.capacity() {
+            let count = self.values.capacity().saturating_mul(2).max(4);
+            let old_control = host_scheduling::slots(&self.values);
+            let mut charge = self
+                .storage
+                .as_ref()
+                .map(|owner| owner.reserve_peer(count.saturating_mul(std::mem::size_of::<Value>())))
+                .transpose()?;
+            let mut replacement = Vec::new();
+            replacement.try_reserve_exact(count).map_err(|_| {
+                self.storage
+                    .as_ref()
+                    .map_or(RuntimeError::SchedulingLimit, SharedSchedulingCharge::fail)
+            })?;
+            if let Some(charge) = &mut charge {
+                charge.resize(host_scheduling::slots(&replacement))?;
+            }
+            // Merge the two live control leases before moving data, so a
+            // refused transfer leaves both allocations with their owners.
+            if let (Some(owner), Some(charge)) = (&mut self.storage, &mut charge) {
+                owner.absorb_from(charge)?;
+            }
+            replacement.append(&mut self.values);
+            self.values = replacement;
+            if let Some(owner) = &mut self.storage {
+                owner.release_to(owner.bytes() - old_control);
+            }
+        }
+        value.move_into(&mut self.values, &mut self.storage)
+    }
+
     pub(super) fn typed_range(
         vm: &Vm,
         array: ObjectId,
@@ -280,7 +322,14 @@ impl TransportVector<Value> {
         Ok(original)
     }
 
-    pub(super) fn into_array(mut self, vm: &mut Vm) -> Result<Value, RuntimeError> {
+    pub(super) fn with_arguments<T>(
+        mut self,
+        vm: &mut Vm,
+        operation: impl FnOnce(
+            &mut Vm,
+            argument_list_storage::ArgumentValues,
+        ) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
         let original = self.retain_for_vm(vm)?;
         let control = self
             .storage
@@ -291,12 +340,18 @@ impl TransportVector<Value> {
             self.storage.take(),
             control,
         );
-        let result = argument_list_storage::ArgumentValues::adopt_retained(self.values, entry)
-            .into_array(vm);
+        let result = operation(
+            vm,
+            argument_list_storage::ArgumentValues::adopt_retained(self.values, entry),
+        );
         if let Some(owner) = original {
             owner.reserve_peer(0)?;
         }
         result
+    }
+
+    pub(super) fn into_array(self, vm: &mut Vm) -> Result<Value, RuntimeError> {
+        self.with_arguments(vm, |vm, arguments| arguments.into_array(vm))
     }
 }
 

@@ -308,6 +308,12 @@ impl SharedSchedulingCharge {
     }
     /// Transfer existing ownership without admitting or charging it again.
     pub(crate) fn absorb(&mut self, mut other: Self) -> Result<(), RuntimeError> {
+        self.absorb_from(&mut other)
+    }
+
+    /// Keep the source guard intact on refusal so its data can drop before
+    /// its credit. Successful transfer leaves that source as a zero-byte view.
+    pub(super) fn absorb_from(&mut self, other: &mut Self) -> Result<(), RuntimeError> {
         if !Rc::ptr_eq(&self.account, &other.account) {
             return Err(self.fail());
         }

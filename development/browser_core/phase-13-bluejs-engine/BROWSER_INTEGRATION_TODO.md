@@ -86,6 +86,40 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The TypedArray callback/filter follow-up (2026-10-18) has an implementation
+checkpoint. Two fixed tiny regressions fail before the change: decoded BigInt
+storage loses its credit after VM destruction, and retaining two selected
+BigInts adds no native credit at species entry. Two live-read/original-selection
+behavior controls pass; the original two-failure output remains separate evidence.
+
+Decoded scalars now own their native payload independently of a VM. Admission
+precedes BigInt decoding and callback copies. Filter selections own actual vector
+capacity and retained payload; growth admits the full replacement while old
+storage exists, then moves payload credit without cloning or charging it twice.
+Borrowed charge transfer preserves the source guard on refusal. Callback entry
+adopts existing argument storage and admits callee/receiver copies before cloning.
+Source/callback/receiver/result object IDs have scoped roots, and map return
+objects remain rooted during coercion. Selected originals survive source mutation,
+while later elements are still read after earlier callbacks. Converted writes,
+fill/with replacements and shared-slice scalar consumers retain their ownership.
+Root scopes and stack prefixes are restored on ordinary errors; zero-payload
+views retain terminal identity. Wider producer/allocator staging remains open.
+
+All twenty-five new contracts, the previous 387 selected controls and four
+additional finite public callback/ingress controls pass: **416 distinct selected
+tests**, twelve executable targets and 163 selections. Final validation reruns
+the 25 contracts after removing an unused argument helper; earlier green output
+is not substituted for the final source. Formatting, diff checks and offline
+workspace/all-target Clippy pass. Frozen source/artifact and staged/committed Git
+audits bind this checkpoint; the ordinary-library hook adds no measured coverage
+claim. Reducer/other scalar producers, wider BigInt/allocator staging, managed
+buffer capacity policy, native ingress and integrated acceptance remain open.
+M1u remains the latest accepted milestone, and M1z integrated gates stay open.
+Validation remains local/offline and finite; legacy allocation/fuel/resource
+sweeps, rejected publication/process inspection and excluded replay are not run.
+Evidence: `target/typed-callback-storage-source-20261018.json`.
+Red evidence: `/private/tmp/blueice-typed-callback-storage-red-20261018.{json,tar.gz,log}`.
+
 The local TypedArray snapshot/sort follow-up (2026-10-18) has an implementation
 checkpoint.
 Three fixed tiny cases reproduce unowned local range capacity/payload and zero
