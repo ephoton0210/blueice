@@ -68,6 +68,39 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The discarded ShadowRealm alias follow-up (2026-10-18) has an implementation
+checkpoint. Agent GC now retains live instances and one existing discovered
+parent route for an active child. It prefers a live instance in that parent,
+prunes discarded aliases in other parents, and repairs existing heap indices
+without allocating after marking. Collection snapshots retain VM data, the weak
+owner registry and a scalar route instance, without retaining an alias identity.
+A final owner-list pass releases newly dead identity nodes in the same collection.
+Live table backing remains charged until its allocation is actually released.
+
+Captured work paths resolve a surviving alias by heap identity. If an entire old
+parent edge is gone, they admit a fresh nonretaining path snapshot and resolve
+the same final heap through its current route. The action runs once; callback
+errors, busy contexts and foreign-document exclusions do not trigger retry.
+Discarded VMs are not revived. Original alias/index/path failures are preserved;
+correcting fixture var-binding clearance separates real reachability from raw
+global-property writes. The corrected intermediate suite passed seventeen cases
+and reproduced one additional cross-parent path failure before full recovery.
+
+Eighteen new contracts and the previous 222 relevant controls pass: **240
+distinct selected tests**, five executable targets and 113 selections. Coverage
+includes live/dead/callable aliases, timer/Promise/kept-target work, busy retry,
+foreign isolation, same-parent and cross-parent path recovery, admitted route
+storage, single action/error propagation, snapshot ownership, immediate node
+release, retained backing and synthetic terminal cleanup. Formatting, diff checks
+and offline workspace/all-target Clippy pass. Frozen source/artifact and Git
+audits bind the checkpoint. An ordinary-library hook is present without a new
+coverage claim. Wider retained maps, native/transport/program buffers and
+integrated acceptance remain open; M1u remains latest accepted and M1z integrated
+gates remain open. Validation stays local/offline with fixed finite inputs;
+no quota-boundary, exhaustion, service or privileged replay is resumed. Rejected
+push/process inspection is not retried or bypassed. Evidence:
+`target/shadow-alias-pruning-source-20261018.json`.
+
 The shared ShadowRealm registry follow-up (2026-10-18) has an implementation
 checkpoint. Four tiny regressions reproduced missing instance/index/callable
 credit and unowned owner metadata after all VM data dropped. The three tables
@@ -98,9 +131,9 @@ new coverage result. Evidence:
 `target/shadow-registry-storage-source-20261018.json`.
 
 Wider retained maps, native/transport/program buffers and integrated gates remain
-open; M1u remains latest accepted. Separately, discarded ShadowRealm alias-record
-pruning must preserve one lookup/delivery route when another alias or pending
-work retains the child. This liveness follow-up remains open. Validation
+open; M1u remains latest accepted. The discarded-alias liveness follow-up above
+now has a separate implementation checkpoint, preserving one lookup/delivery
+route when another alias or pending work retains the child. Validation
 stays local and offline, with no quota-boundary, exhaustion, service or privileged
 replay. Rejected push/process inspection is not retried or bypassed.
 
@@ -1636,9 +1669,11 @@ work and exposes its retained payload ledger.
       222 relevant selected cases: three tables, shared headers and per-document
       weak identity nodes admit publication and retain Rust/weak ownership.
       Cross-document alias adoption preserves each original account; replacing
-      an instance repairs its reverse index. Discarded alias-record pruning
-      with one retained lookup/delivery route remains a separate liveness
-      follow-up.
+      an instance repairs its reverse index. Discarded alias pruning now adds
+      eighteen contracts and 240 relevant selected cases: live instances and
+      one discovered route survive, ownerless collection snapshots allow same-
+      collection identity release, and admitted heap-based path recovery
+      preserves delivery after aliases or whole parent edges disappear.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

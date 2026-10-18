@@ -145,9 +145,17 @@ impl MembranePin {
     }
 }
 
+/// A collection owns VM data and the weak registry, never an alias identity.
+/// Its chosen instance is the scalar access route through the discovered parent.
+pub(super) struct SharedRealmSnapshot {
+    pub(super) instance: ObjectId,
+    pub(super) vm: realm_cells::RealmHandle,
+    pub(super) owners: shadow_owner_storage::RealmOwners,
+}
+
 pub(super) struct CollectionRealm {
     pub(super) heap: u64,
-    pub(super) record: Option<ShadowRealmRecord>,
+    pub(super) record: Option<SharedRealmSnapshot>,
     pub(super) owned_vm: Option<realm_cells::RealmHandle>,
     pub(super) parent: Option<usize>,
     pub(super) instances: Vec<RealmInstance>,
@@ -168,7 +176,7 @@ impl CollectionRealm {
             .or(self.owned_vm.as_ref())
     }
 
-    fn new(heap: u64, record: Option<ShadowRealmRecord>, parent: Option<usize>) -> Self {
+    fn new(heap: u64, record: Option<SharedRealmSnapshot>, parent: Option<usize>) -> Self {
         Self {
             heap,
             record,
@@ -234,7 +242,7 @@ impl RealmCollection {
     fn push_node(
         &mut self,
         heap: u64,
-        record: Option<ShadowRealmRecord>,
+        record: Option<SharedRealmSnapshot>,
         parent: Option<usize>,
     ) -> Result<(), RuntimeError> {
         if self.len == self.nodes.len() {
@@ -256,6 +264,7 @@ impl RealmCollection {
     }
     fn add_record(
         &mut self,
+        instance: ObjectId,
         record: &ShadowRealmRecord,
         parent: usize,
     ) -> Result<(), RuntimeError> {
@@ -263,7 +272,15 @@ impl RealmCollection {
             return Ok(());
         }
         self.storage.reserve_set(&mut self.seen, 1)?;
-        self.push_node(record.heap, Some(record.clone()), Some(parent))?;
+        self.push_node(
+            record.heap,
+            Some(SharedRealmSnapshot {
+                instance,
+                vm: record.vm.clone(),
+                owners: record.owners.clone(),
+            }),
+            Some(parent),
+        )?;
         self.seen.insert(record.heap);
         Ok(())
     }
@@ -346,6 +363,47 @@ impl RealmCollection {
         self.index_of(heap)
             .is_some_and(|index| self.nodes[index].active)
     }
+    /// Prefer a live instance in the already chosen parent. Otherwise the
+    /// original discovered instance remains one metadata-only work route.
+    pub(super) fn select_shared_routes(&mut self) {
+        for parent in 0..self.len {
+            for index in 0..self.nodes[parent].instances.len() {
+                let instance = self.nodes[parent].instances[index];
+                if instance.owner.is_none()
+                    || !self.nodes[parent]
+                        .live
+                        .as_ref()
+                        .is_some_and(|live| live.contains(&instance.object))
+                {
+                    continue;
+                }
+                let child = self
+                    .index_of(instance.child)
+                    .expect("discovered instance child");
+                if self.nodes[child].parent == Some(parent) {
+                    if let Some(record) = &mut self.nodes[child].record {
+                        record.instance = instance.object;
+                    }
+                }
+            }
+        }
+    }
+    pub(super) fn keeps_shadow_instance(
+        &self,
+        parent: usize,
+        instance: ObjectId,
+        heap: u64,
+    ) -> bool {
+        self.index_of(heap).is_some_and(|child| {
+            let node = &self.nodes[child];
+            node.active
+                && node.parent == Some(parent)
+                && node
+                    .record
+                    .as_ref()
+                    .is_some_and(|record| record.instance == instance)
+        })
+    }
     fn finish_metadata(&mut self) -> Result<(), RuntimeError> {
         self.storage.reserve_vec(&mut self.indices, self.len)?;
         self.indices.extend(
@@ -427,8 +485,8 @@ impl RealmCollection {
 impl Vm {
     fn fill_realm_collection(&self, plan: &mut RealmCollection) -> Result<bool, RuntimeError> {
         plan.begin(self.object_prototype.heap)?;
-        for record in self.shadow_realms.values() {
-            plan.add_record(record, 0)?;
+        for (&instance, record) in &self.shadow_realms {
+            plan.add_record(instance, record, 0)?;
         }
         for realm in self.test262_realms.values() {
             plan.add_owned(&realm.vm, 0)?;
@@ -442,8 +500,8 @@ impl Vm {
             let Ok(vm) = handle.try_borrow_mut() else {
                 return Ok(false);
             };
-            for child in vm.shadow_realms.values() {
-                plan.add_record(child, index)?;
+            for (&instance, child) in &vm.shadow_realms {
+                plan.add_record(instance, child, index)?;
             }
             for child in vm.test262_realms.values() {
                 plan.add_owned(&child.vm, index)?;

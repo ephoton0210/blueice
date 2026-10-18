@@ -48,12 +48,28 @@ impl Vm {
     }
 
     fn prune_shadow_owners(&mut self, plan: &RealmCollection, live: &HashSet<ObjectId>) {
+        let parent = plan
+            .index_of(self.object_prototype.heap)
+            .expect("collected parent");
         self.shadow_wrapped_functions
             .retain(|id, _| live.contains(id));
-        self.shadow_realms
-            .retain(|_, record| plan.is_active(record.heap));
-        self.shadow_realm_by_heap
-            .retain(|heap, id| plan.is_active(*heap) && self.shadow_realms.contains_key(id));
+        self.shadow_realms.retain(|instance, record| {
+            plan.is_active(record.heap)
+                && (live.contains(instance)
+                    || plan.keeps_shadow_instance(parent, *instance, record.heap))
+        });
+        // Retarget existing keys without allocating after marking. One pass
+        // over survivors avoids rescanning the table for every discarded key.
+        for (&instance, record) in &self.shadow_realms {
+            if let Some(id) = self.shadow_realm_by_heap.get_mut(&record.heap) {
+                *id = instance;
+            }
+        }
+        self.shadow_realm_by_heap.retain(|heap, id| {
+            self.shadow_realms
+                .get(id)
+                .is_some_and(|record| record.heap == *heap)
+        });
         self.shadow_realms.release_empty();
         self.shadow_realm_by_heap.release_empty();
         self.shadow_wrapped_functions.release_empty();
@@ -215,6 +231,7 @@ impl Vm {
         }
         // No guest code runs between marking and these scalar root releases.
         // Snapshot handles keep inactive targets alive until every pair is gone.
+        plan.select_shared_routes();
         for pin in &plan.pins {
             if pin.tracked && !plan.object_is_live(pin.owner) {
                 let target = plan.index_of(pin.target.heap).expect("tracked root heap");
@@ -244,6 +261,13 @@ impl Vm {
                 vm.shadow_realms.clear();
                 vm.shadow_realm_by_heap.clear();
                 vm.test262_realms.clear();
+            }
+        }
+        // Snapshot records do not own alias tokens. Release newly dead weak
+        // identity nodes in this collection, while VM data remains pinned.
+        for node in &plan.nodes[..plan.len] {
+            if let Some(record) = &node.record {
+                record.owners.prune();
             }
         }
         self.recycle_realm_marks(plan)?;

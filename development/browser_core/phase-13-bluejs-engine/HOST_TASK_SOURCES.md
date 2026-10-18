@@ -1727,12 +1727,63 @@ bind the local checkpoint; the ordinary-library hook supplies no new coverage
 claim. Evidence: `target/shadow-registry-storage-source-20261018.json`.
 
 Hash-control/allocator overhead, wider retained maps and native/transport/program
-buffers remain open. Discarded alias-record pruning with one surviving lookup/
-delivery route is a separate liveness follow-up. M1u remains latest accepted;
+buffers remain open. Discarded alias-record pruning now has a separate
+implementation checkpoint below. M1u remains latest accepted;
 M1z integrated gates remain open. Only fixed finite local/offline functional and
 in-memory checks ran. No quota/resource-boundary, exhaustion, service/listener/
 network/Core/MCP, conformance timer thread, privileged or workspace-wide runtime
 replay was resumed. Rejected push/process inspection was not retried or bypassed.
+
+The discarded ShadowRealm alias checkpoint (2026-10-18) changes per-instance
+retention independently of child-VM activity. Live instances keep their records.
+An active child keeps one scalar route in its original discovered parent,
+preferring that parent's live instance when available. Other dead aliases are
+removed, including records in noncanonical parents. Existing heap-index keys
+retarget survivors in one pass and obsolete keys are removed; marking/pruning
+introduces no map growth. Empty tables release backing while nonempty retained
+allocations keep their full ledger.
+
+Collection snapshots now own a VM handle, weak owner registry and scalar route
+instance, without cloning the alias owner token. After all record pruning and
+inactive-cycle cleanup, a second owner-list pass releases newly dead weak nodes
+while snapshot handles still protect VM data. One collection therefore returns
+discarded identity-node credit without sacrificing temporary data ownership.
+The existing canonical-parent forest is retained, avoiding a new parent cycle
+when an alias points back into another live realm.
+
+A captured task path first resolves its saved heap through an existing alias or
+cached heap index. A missing cache entry can use a nonallocating identity scan.
+If collection removes an entire old parent edge, read/entry admit a fresh scalar
+route snapshot before finding the same final heap elsewhere in the document.
+The original action remains unconsumed until a complete path resolves. It runs
+once; its errors propagate without another attempt. Busy contexts keep their
+retry signal, foreign documents remain excluded and absent VMs remain absent.
+Replacement route storage stays charged through the action and drops afterward;
+ordinary valid paths acquire no replacement snapshot.
+
+The original four-case run records alias duplication, stale indices and captured
+path loss. The first expanded run exposed a fixture mistake: a raw global-object
+write left a separate var-binding cell rooted. Fixtures now use the VM binding
+update API. The corrected intermediate run passed seventeen contracts and failed
+one additional cross-parent route case. Only the final frozen source is used
+for acceptance: eighteen new contracts and the previous 222 controls pass,
+240 distinct finite tests in five executable targets and 113 selections.
+
+Controls cover live/dead aliases, callable-only fallback, timer/Promise and kept-
+target work, snapshot data versus identity ownership, native credit/backing
+release, busy/foreign contexts, alias replacement, parent changes, route-storage
+ownership, single action and error propagation, no revival and synthetic terminal
+cleanup. Formatting, diff checks and offline workspace/all-target Clippy pass.
+Frozen source/artifact and Git audits bind the local checkpoint; the ordinary-
+library hook supplies no new coverage claim. Evidence:
+`target/shadow-alias-pruning-source-20261018.json`.
+
+Wider retained maps, native/transport/program buffers and integrated acceptance
+remain open. M1u remains latest accepted; M1z integrated gates remain open. Only
+fixed finite local/offline functional and in-memory checks ran. No quota/resource-
+boundary, exhaustion, network/service/listener/Core/MCP, conformance timer thread,
+privileged or workspace-wide runtime replay was resumed. Rejected push/process
+inspection was not retried or bypassed.
 
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit

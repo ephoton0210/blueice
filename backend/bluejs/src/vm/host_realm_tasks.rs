@@ -8,6 +8,10 @@ use super::host_task_storage::TaskVector;
 use super::realm_collection::MetadataStorage;
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/shadow_alias_pruning.rs"]
+mod alias_pruning_tests;
+
 #[derive(Clone, Copy)]
 enum Kind {
     Owned,
@@ -44,10 +48,29 @@ fn check_stack(vm: &Vm) -> Result<(), RuntimeError> {
     }
 }
 
+fn shared_record<'a>(vm: &'a Vm, step: &Step) -> Option<&'a ShadowRealmRecord> {
+    vm.shadow_realms
+        .get(&step.instance)
+        .filter(|record| record.heap == step.heap)
+        .or_else(|| {
+            vm.shadow_realm_by_heap
+                .get(&step.heap)
+                .and_then(|instance| vm.shadow_realms.get(instance))
+                .filter(|record| record.heap == step.heap)
+        })
+        // Heap identity remains authoritative when the cached index is absent.
+        .or_else(|| {
+            vm.shadow_realms
+                .values()
+                .find(|record| record.heap == step.heap)
+        })
+}
+
 fn read_path<T>(
     vm: &Vm,
     path: &[Step],
     blocked: &mut bool,
+    stale: &mut bool,
     action: impl FnOnce(&Vm) -> Result<T, RuntimeError>,
 ) -> Result<Option<T>, RuntimeError> {
     check_stack(vm)?;
@@ -57,9 +80,11 @@ fn read_path<T>(
     match step.kind {
         Kind::Owned => {
             let Some(child) = vm.test262_realms.get(&step.instance) else {
+                *stale = true;
                 return Ok(None);
             };
             if child.vm.heap() != step.heap {
+                *stale = true;
                 return Ok(None);
             }
             let Ok(child) = child.vm.try_borrow_mut() else {
@@ -69,14 +94,11 @@ fn read_path<T>(
             if !same_document(vm, &child) {
                 return Ok(None);
             }
-            read_path(&child, rest, blocked, action)
+            read_path(&child, rest, blocked, stale, action)
         }
         Kind::Shared => {
-            let Some(record) = vm
-                .shadow_realms
-                .get(&step.instance)
-                .filter(|record| record.heap == step.heap)
-            else {
+            let Some(record) = shared_record(vm, step) else {
+                *stale = true;
                 return Ok(None);
             };
             // The next phase needs exclusive access too. Skip a busy route now.
@@ -93,7 +115,7 @@ fn read_path<T>(
             if !same_document(vm, &child) {
                 return Ok(None);
             }
-            read_path(&child, rest, blocked, action)
+            read_path(&child, rest, blocked, stale, action)
         }
     }
 }
@@ -101,6 +123,7 @@ fn read_path<T>(
 fn enter_path<T>(
     vm: &mut Vm,
     path: &[Step],
+    stale: &mut bool,
     action: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
 ) -> Result<Option<T>, RuntimeError> {
     check_stack(vm)?;
@@ -110,10 +133,14 @@ fn enter_path<T>(
     match step.kind {
         Kind::Owned => {
             let Some(child) = vm.test262_realms.get(&step.instance) else {
+                *stale = true;
                 return Ok(None);
             };
-            if child.vm.heap() != step.heap || realm_reentrancy::resolve_active(step.heap).is_some()
-            {
+            if child.vm.heap() != step.heap {
+                *stale = true;
+                return Ok(None);
+            }
+            if realm_reentrancy::resolve_active(step.heap).is_some() {
                 return Ok(None);
             }
             let Ok(child) = child.vm.try_borrow() else {
@@ -123,14 +150,13 @@ fn enter_path<T>(
                 return Ok(None);
             }
             drop(child);
-            vm.test262_with_host_realm(step.instance, |child| enter_path(child, rest, action))
+            vm.test262_with_host_realm(step.instance, |child| {
+                enter_path(child, rest, stale, action)
+            })
         }
         Kind::Shared => {
-            let Some(record) = vm
-                .shadow_realms
-                .get(&step.instance)
-                .filter(|record| record.heap == step.heap)
-            else {
+            let Some(record) = shared_record(vm, step) else {
+                *stale = true;
                 return Ok(None);
             };
             let realm = record.vm.clone();
@@ -143,7 +169,7 @@ fn enter_path<T>(
             let registration =
                 realm_reentrancy::prepare_active_registration(vm, child.host_scheduling.as_ref())?;
             let guard = registration.publish(vm);
-            let result = enter_path(&mut child, rest, action);
+            let result = enter_path(&mut child, rest, stale, action);
             drop(guard);
             result
         }
@@ -161,7 +187,25 @@ impl HostRealm {
         root: &Vm,
         action: impl FnOnce(&Vm) -> Result<T, RuntimeError>,
     ) -> Result<Option<T>, RuntimeError> {
-        read_path(root, &self.path, &mut false, action)
+        let mut action = Some(action);
+        let mut stale = false;
+        let result = read_path(root, &self.path, &mut false, &mut stale, |vm| {
+            action.take().expect("one resolved path invokes its action")(vm)
+        })?;
+        if result.is_some() || !stale {
+            return Ok(result);
+        }
+        // Collection can remove an entire old parent edge. Admit a fresh
+        // nonretaining route before resolving the same final heap elsewhere.
+        let routes = root.host_task_realms()?;
+        let Some(route) = routes.iter().find(|route| route.heap == self.heap) else {
+            return Ok(None);
+        };
+        read_path(root, &route.path, &mut false, &mut false, |vm| {
+            action
+                .take()
+                .expect("one replacement path invokes its action")(vm)
+        })
     }
     fn read_checkpoint<T>(
         &self,
@@ -169,14 +213,30 @@ impl HostRealm {
         blocked: &mut bool,
         action: impl FnOnce(&Vm) -> Result<T, RuntimeError>,
     ) -> Result<Option<T>, RuntimeError> {
-        read_path(root, &self.path, blocked, action)
+        read_path(root, &self.path, blocked, &mut false, action)
     }
     pub(super) fn enter<T>(
         &self,
         root: &mut Vm,
         action: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
     ) -> Result<Option<T>, RuntimeError> {
-        enter_path(root, &self.path, action)
+        let mut action = Some(action);
+        let mut stale = false;
+        let result = enter_path(root, &self.path, &mut stale, |vm| {
+            action.take().expect("one resolved path invokes its action")(vm)
+        })?;
+        if result.is_some() || !stale {
+            return Ok(result);
+        }
+        let routes = root.host_task_realms()?;
+        let Some(route) = routes.iter().find(|route| route.heap == self.heap) else {
+            return Ok(None);
+        };
+        enter_path(root, &route.path, &mut false, |vm| {
+            action
+                .take()
+                .expect("one replacement path invokes its action")(vm)
+        })
     }
     fn child(&self, step: Step, owner: &SchedulingScope) -> Result<Self, RuntimeError> {
         let mut path = TaskVector::new(Some(owner))?;
