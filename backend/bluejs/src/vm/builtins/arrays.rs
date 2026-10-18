@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::native_value_storage::NativeValue;
+use super::super::realm_call_storage::RealmCallRoots;
 use super::*;
 
 impl Vm {
@@ -781,54 +783,7 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let callback = native::argument(args, 0);
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            let length = self.array_like_length(object)?;
-            if !self.is_callable(callback)? {
-                return Err(RuntimeError::TypeError(
-                    "Array.prototype.reduce callback must be callable".into(),
-                ));
-            }
-            let mut scan = self
-                .index_scan(object, length)
-                .expect("the receiver is live");
-            let mut from = 0;
-            // The accumulator lives in a stack slot: a getter or callback may
-            // collect while it is between calls.
-            let accumulator = self.stack.len();
-            if args.len() > 1 {
-                self.stack.push(args[1].clone());
-            } else {
-                let Some((index, value)) = self.array_next_present(&mut scan, object, 0)? else {
-                    return Err(RuntimeError::TypeError(
-                        "reduce of empty array with no initial value".into(),
-                    ));
-                };
-                self.stack.push(value);
-                from = index + 1;
-            }
-            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
-                let next = self.call_native(
-                    callback.clone(),
-                    Value::Undefined,
-                    vec![
-                        self.stack[accumulator].clone(),
-                        value,
-                        Value::Number(index as f64),
-                        Value::Object(object),
-                    ],
-                    false,
-                )?;
-                self.stack[accumulator] = next;
-                from = index + 1;
-            }
-            Ok(self.stack[accumulator].clone())
-        })();
-        self.stack.truncate(base);
-        result
+        self.array_reduce_direction(receiver, args, false)
     }
 
     pub(in super::super) fn array_reduce_right(
@@ -836,54 +791,94 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
+        self.array_reduce_direction(receiver, args, true)
+    }
+
+    fn array_reduce_direction(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+        reverse: bool,
+    ) -> Result<Value, RuntimeError> {
         let callback = native::argument(args, 0);
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            let length = self.array_like_length(object)?;
-            if !self.is_callable(callback)? {
+        let owner = self.argument_list_owner()?;
+        let roots = RealmCallRoots::new(3, owner.as_ref())?;
+        if let Some(callback) = callback.object_id() {
+            roots.push(callback);
+        }
+        if let Some(initial) = args.get(1).and_then(Value::object_id) {
+            roots.push(initial);
+        }
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            let object = vm.coerce_object(receiver)?;
+            roots.push(object);
+            let length = vm.array_like_length(object)?;
+            if !vm.is_callable(callback)? {
                 return Err(RuntimeError::TypeError(
-                    "Array.prototype.reduceRight callback must be callable".into(),
+                    if reverse {
+                        "Array.prototype.reduceRight callback must be callable"
+                    } else {
+                        "Array.prototype.reduce callback must be callable"
+                    }
+                    .into(),
                 ));
             }
-            let mut scan = self
-                .index_scan(object, length)
-                .expect("the receiver is live");
-            let mut end = length;
-            let accumulator = self.stack.len();
-            if args.len() > 1 {
-                self.stack.push(args[1].clone());
+            let mut scan = vm.index_scan(object, length)?;
+            let mut boundary = if reverse { length } else { 0 };
+            let mut accumulator = if let Some(initial) = args.get(1) {
+                NativeValue::copied(initial, owner.as_ref())?
             } else {
-                let Some((index, value)) =
-                    self.array_previous_present(&mut scan, object, length)?
-                else {
+                let first = if reverse {
+                    vm.array_previous_present(&mut scan, object, boundary)?
+                } else {
+                    vm.array_next_present(&mut scan, object, boundary)?
+                };
+                let Some((index, value)) = first else {
                     return Err(RuntimeError::TypeError(
-                        "reduceRight of empty array with no initial value".into(),
+                        if reverse {
+                            "reduceRight of empty array with no initial value"
+                        } else {
+                            "reduce of empty array with no initial value"
+                        }
+                        .into(),
                     ));
                 };
-                self.stack.push(value);
-                end = index;
+                boundary = if reverse { index } else { index + 1 };
+                NativeValue::adopt(value, owner.as_ref())?
+            };
+            while if reverse {
+                boundary > 0
+            } else {
+                boundary < length
+            } {
+                // A getter can collect before the accumulator moves into the
+                // callback arguments. Root only its object ID through both.
+                let (next_boundary, next) = accumulator.with_owned(vm, |vm, accumulator| {
+                    let next = if reverse {
+                        vm.array_previous_present(&mut scan, object, boundary)?
+                    } else {
+                        vm.array_next_present(&mut scan, object, boundary)?
+                    };
+                    let Some((index, value)) = next else {
+                        return Ok((None, accumulator));
+                    };
+                    let value = NativeValue::adopt(value, owner.as_ref())?;
+                    let next =
+                        vm.call_reducer(callback, accumulator, value, index as f64, object)?;
+                    Ok((Some(if reverse { index } else { index + 1 }), next))
+                })?;
+                accumulator = next;
+                match next_boundary {
+                    Some(next) => boundary = next,
+                    None => break,
+                }
             }
-            while let Some((index, value)) = self.array_previous_present(&mut scan, object, end)? {
-                let next = self.call_native(
-                    callback.clone(),
-                    Value::Undefined,
-                    vec![
-                        self.stack[accumulator].clone(),
-                        value,
-                        Value::Number(index as f64),
-                        Value::Object(object),
-                    ],
-                    false,
-                )?;
-                self.stack[accumulator] = next;
-                end = index;
-            }
-            Ok(self.stack[accumulator].clone())
-        })();
-        self.stack.truncate(base);
-        result
+            Ok(accumulator)
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result.map(NativeValue::into_value)
     }
 
     pub(in super::super) fn array_start_index(

@@ -56,6 +56,7 @@ mod native_value_storage;
 mod realm_call_storage;
 mod realm_collection;
 mod realm_pin_storage;
+mod reducer_storage;
 mod root_table_storage;
 mod rooted_task_storage;
 mod transport_buffer_storage;

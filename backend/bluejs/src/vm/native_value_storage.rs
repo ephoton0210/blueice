@@ -102,6 +102,27 @@ impl NativeValue {
         result
     }
 
+    /// Keep an object rooted while its owned value moves into a consumer,
+    /// including any getter that runs before that consumer takes the value.
+    pub(super) fn with_owned<T>(
+        self,
+        vm: &mut Vm,
+        operation: impl FnOnce(&mut Vm, Self) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        let owner = self.owner_view()?;
+        let result = if let Some(object) = self.value.object_id() {
+            let roots = RealmCallRoots::new(1, owner.as_ref())?;
+            roots.push(object);
+            vm.with_realm_call_roots(roots, |vm| operation(vm, self))
+        } else {
+            operation(vm, self)
+        };
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
+    }
+
     /// A pure return boundary transfers this same value to the ordinary VM
     /// result consumer. No guest call or safepoint separates those views.
     pub(super) fn into_value(self) -> Value {

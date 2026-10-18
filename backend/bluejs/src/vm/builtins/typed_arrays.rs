@@ -617,6 +617,7 @@ impl Vm {
         &mut self,
         receiver: &Value,
         args: &[Value],
+        reverse: bool,
     ) -> Result<Value, RuntimeError> {
         let (object, length, _) = self.typed_array_method_receiver(receiver)?;
         let callback = native::argument(args, 0);
@@ -625,34 +626,40 @@ impl Vm {
                 "TypedArray callback must be callable".into(),
             ));
         }
-        let mut index = 0;
-        let mut accumulator = if args.len() > 1 {
-            args[1].clone()
-        } else {
-            if length == 0 {
-                return Err(RuntimeError::TypeError(
-                    "reduce of empty TypedArray with no initial value".into(),
-                ));
-            }
-            index = 1;
-            self.typed_array_element(object, 0)
-        };
-        while index < length {
-            let value = self.typed_array_element(object, index);
-            accumulator = self.call_native(
-                callback.clone(),
-                Value::Undefined,
-                vec![
-                    accumulator,
-                    value,
-                    Value::Number(index as f64),
-                    Value::Object(object),
-                ],
-                false,
-            )?;
-            index += 1;
+        let owner = self.argument_list_owner()?;
+        let roots = RealmCallRoots::new(2, owner.as_ref())?;
+        roots.push(object);
+        if let Some(callback) = callback.object_id() {
+            roots.push(callback);
         }
-        Ok(accumulator)
+        let result = self.with_realm_call_roots(roots, |vm| {
+            let (mut accumulator, start) = if let Some(initial) = args.get(1) {
+                (NativeValue::copied(initial, owner.as_ref())?, 0)
+            } else {
+                if length == 0 {
+                    return Err(RuntimeError::TypeError(
+                        "reduce of empty TypedArray with no initial value".into(),
+                    ));
+                }
+                let index = if reverse { length - 1 } else { 0 };
+                (
+                    vm.typed_array_owned_element(object, index, owner.as_ref())?,
+                    1,
+                )
+            };
+            for step in start..length {
+                let index = if reverse { length - 1 - step } else { step };
+                accumulator = accumulator.with_owned(vm, |vm, accumulator| {
+                    let value = vm.typed_array_owned_element(object, index, owner.as_ref())?;
+                    vm.call_reducer(callback, accumulator, value, index as f64, object)
+                })?;
+            }
+            Ok(accumulator)
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result.map(NativeValue::into_value)
     }
 
     fn typed_array_slice(
@@ -1252,7 +1259,7 @@ impl Vm {
             }),
             TypedArrayMethod::IndexOf => self.typed_array_index_of(receiver, args),
             TypedArrayMethod::Join => self.typed_array_join(receiver, native::argument(args, 0)),
-            TypedArrayMethod::Reduce => self.typed_array_reduce(receiver, args),
+            TypedArrayMethod::Reduce => self.typed_array_reduce(receiver, args, false),
             TypedArrayMethod::ToLocaleString => {
                 // ValidateTypedArray precedes any observable element lookup.
                 // The shared array algorithm then forwards both locale
@@ -1270,43 +1277,7 @@ impl Vm {
                 }
                 self.array_to_locale_string(receiver, args, true)
             }
-            TypedArrayMethod::ReduceRight => {
-                let (object, length, _) = self.typed_array_method_receiver(receiver)?;
-                let callback = native::argument(args, 0);
-                if !self.is_callable(callback)? {
-                    return Err(RuntimeError::TypeError(
-                        "TypedArray callback must be callable".into(),
-                    ));
-                }
-                let mut index = length;
-                let mut accumulator = if args.len() > 1 {
-                    args[1].clone()
-                } else {
-                    if index == 0 {
-                        return Err(RuntimeError::TypeError(
-                            "reduce of empty TypedArray with no initial value".into(),
-                        ));
-                    }
-                    index -= 1;
-                    self.typed_array_element(object, index)
-                };
-                while index > 0 {
-                    index -= 1;
-                    let value = self.typed_array_element(object, index);
-                    accumulator = self.call_native(
-                        callback.clone(),
-                        Value::Undefined,
-                        vec![
-                            accumulator,
-                            value,
-                            Value::Number(index as f64),
-                            Value::Object(object),
-                        ],
-                        false,
-                    )?;
-                }
-                Ok(accumulator)
-            }
+            TypedArrayMethod::ReduceRight => self.typed_array_reduce(receiver, args, true),
             TypedArrayMethod::Reverse => {
                 let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
                 let mut values = self.typed_array_read_values(object, 0, length)?;

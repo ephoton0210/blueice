@@ -86,6 +86,43 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The Array/TypedArray reducer follow-up (2026-10-18) has an implementation
+checkpoint. All four reduce/reduceRight paths previously assembled unowned
+argument vectors; ordinary Array reductions also copied accumulator payloads
+into operand-stack roots. The unchanged production vector assembly was extracted
+before testing. Original output records two passing getter/order/live-read controls
+and one ownership failure: a fixed 228-byte batch reports zero native bytes after
+VM destruction. That result remains separate evidence.
+
+Reducers now share admitted four-slot arguments and move existing accumulator/
+element leases into owned callback entry. Initial primitive copies and typed
+BigInt decoding are admitted first. Neutral contexts select input/root ownership
+loans before allocating slots without rebinding their policy. Getter and callback
+results remain owned through later consumers; final results stay owned through
+outer terminal validation and the pure VM return. A consuming scalar scope roots
+its object ID through getters and argument handoff. Array source/callback/initial
+IDs remain rooted across length access; accumulators no longer require primitive
+copies in operand-stack roots. Ordinary exceptions and terminal markers restore
+prior root chains and stack prefixes. Shared forward/reverse loops preserve
+length/callability order, holes, observable HasProperty/Get probes, live mutation
+reads, explicit undefined initial values and captured TypedArray length on resize.
+Proper-tail-call completion and throw identity remain preserved.
+
+All twenty-five new contracts, the previous 416 selected controls and five
+additional finite public array/reducer controls pass: **446 distinct selected
+tests**, fourteen executable targets and 169 selections. The expanded 25-case
+result is reused only after source and executable hashes match. Formatting, diff
+checks and offline workspace/all-target Clippy pass. Frozen source/artifact and
+staged/committed Git audits bind this checkpoint; the ordinary-library hook adds
+no new coverage measurement. Sparse-index planning, other Array/scalar producers,
+wider allocator staging, managed-buffer policy, native ingress and integrated
+acceptance remain open. M1u remains the latest accepted milestone, and M1z's
+integrated gates stay open. Validation stays local/offline and finite; legacy
+resource sweeps, rejected publication/process inspection and excluded replay
+are not run.
+Evidence: `target/reducer-storage-source-20261018.json`.
+Red evidence: `/private/tmp/blueice-reducer-storage-red-20261018.{json,tar.gz,log}`.
+
 The TypedArray callback/filter follow-up (2026-10-18) has an implementation
 checkpoint. Two fixed tiny regressions fail before the change: decoded BigInt
 storage loses its credit after VM destruction, and retaining two selected
@@ -1929,6 +1966,21 @@ work and exposes its retained payload ledger.
       helper option roots, native loans and terminal cleanup. Array transport
       now uses the same owned batch; TypedArray/buffer snapshots, other array
       factories and getter/runtime producers remain open.
+      Binary transport snapshots add twenty-five contracts and 351 relevant
+      selected cases: owned byte/value copies, mirror plans, cached intrinsic
+      selection, independent VM lifetime and direct immutable-buffer adoption.
+      Local TypedArray snapshots and sort plans add twenty-five contracts and
+      387 relevant selected cases: admitted range capacity/payload, stable
+      index-based merge plans, comparator copies, argument/heap handoff and
+      preserved NaN bytes. TypedArray callback/filter ownership adds twenty-five
+      contracts and 416 relevant selected cases: decoded scalars, selected
+      capacity/payload, admitted callback entry, scoped map-coercion roots,
+      source mutation order and terminal cleanup. Common Array/TypedArray reducer
+      ownership adds twenty-five contracts and 446 relevant selected cases:
+      admitted argument vectors, moving accumulator leases, getter/consumer roots,
+      neutral input/root loans, forward/reverse semantics, tail calls and terminal
+      cleanup. Sparse-index planning, other Array/scalar producers, wider staging,
+      managed-buffer policy and integrated acceptance stay open.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,
