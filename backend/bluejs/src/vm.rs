@@ -1842,7 +1842,16 @@ impl Vm {
         construct: bool,
         target: Value,
     ) -> Result<Value, RuntimeError> {
-        let mut result = self.enter_call(callee, receiver, args, construct, target);
+        let result = self.enter_call(callee, receiver, args, construct, target);
+        self.finish_pending_tail_calls(result)
+    }
+
+    /// Both ordinary entry and an already-owned cross-realm entry must finish
+    /// proper tail calls before their caller observes a result or exception.
+    fn finish_pending_tail_calls(
+        &mut self,
+        mut result: Result<Value, RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
         // A frame that ended in a `TailCall` has already been torn down; its
         // callee runs here, at the same depth, instead of nesting under it.
         while let Some(mut call) = self.pending_tail_call.take() {

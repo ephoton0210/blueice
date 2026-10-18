@@ -71,6 +71,26 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The owned ShadowRealm entry follow-up (2026-10-18) has a correction checkpoint.
+Three small public-script regressions reproduced a missing proper-tail-call
+trampoline after the argument-ownership change: a strict native tail return
+exposed undefined instead of 7, a tail exception did not reach opaque TypeError
+masking, and a tail callback did not run. Ordinary entry and owned realm entry
+now share the existing tail-call completion loop. The original first-entry lease
+still transfers once; subsequent tail calls use ordinary entry, and source /
+destination root frames remain active until the actual completion is wrapped.
+
+Eight new fixed contracts cover native results, exception masking, one callback,
+callable/object results, a two-step chain, consecutive calls and an explicit
+terminal marker. They and all previous 261 controls pass: **269 distinct selected
+tests**, five executable targets and 123 selections. Formatting, diff checks and
+offline workspace/all-target Clippy pass; source/artifact and staged/committed
+Git audits bind the correction. The ordinary-library hook includes these cases
+without a new coverage claim. M1u remains latest accepted, and M1z integrated
+acceptance and wider native/transport ownership remain open. Validation stays
+local/offline with fixed finite inputs; rejected push/process inspection is not
+retried. Evidence: `target/shadow-tail-entry-source-20261018.json`.
+
 The ShadowRealm argument-assembly follow-up (2026-10-18) has an implementation
 checkpoint. Three fixed small regressions reproduced replacement of the incoming
 vector, primitive copies in temporary GC stack roots and 280 bytes of source
@@ -1708,6 +1728,12 @@ work and exposes its retained payload ledger.
       one discovered route survive, ownerless collection snapshots allow same-
       collection identity release, and admitted heap-based path recovery
       preserves delivery after aliases or whole parent edges disappear.
+      ShadowRealm argument assembly adds twelve contracts and 261 relevant
+      selected cases: in-place conversion, object-only root frames, durable
+      original entry ownership and bounded/neutral/foreign handoff. The owned
+      entry tail-call correction adds eight contracts and 269 relevant selected
+      cases: a shared completion trampoline preserves the final result/throw,
+      callback execution and subsequent calls without a duplicate initial lease.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

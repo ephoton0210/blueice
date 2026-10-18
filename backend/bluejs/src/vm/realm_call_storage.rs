@@ -77,7 +77,7 @@ impl RealmCallInput {
             self.entry,
         );
         vm.reconcile_scheduling_ownership();
-        result
+        vm.finish_pending_tail_calls(result)
     }
 }
 

@@ -427,8 +427,181 @@ fn shadow_argument_storage_explicit_terminal_marker_is_not_masked_as_a_typeerror
     }
 }
 
+#[cfg_attr(test, test)]
+fn shadow_argument_storage_tail_calls_return_the_actual_completion() {
+    let mut vm = page();
+    assert_eq!(
+        run(
+            &mut vm,
+            r#"
+        var tail=realm.evaluate('(function(){"use strict";return Math.abs(-7);})');
+        tail();
+    "#
+        ),
+        Value::Number(7.0)
+    );
+    for record in vm.shadow_realms.values() {
+        assert!(record.vm.borrow_mut().pending_tail_call.is_none());
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shadow_argument_storage_tail_calls_throw_before_boundary_masking() {
+    let mut vm = page();
+    assert_eq!(
+        run(
+            &mut vm,
+            r#"
+        var tail=realm.evaluate('(function(){function fail(){throw "private";}return function(){"use strict";return fail();};})()');
+        var caught=false;
+        try { tail(); } catch(error) { caught=error instanceof TypeError && error.message===''; }
+        caught;
+    "#
+        ),
+        Value::Bool(true)
+    );
+    for record in vm.shadow_realms.values() {
+        assert!(record.vm.borrow_mut().pending_tail_call.is_none());
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shadow_argument_storage_tail_calls_reenter_the_caller_once() {
+    let mut vm = page();
+    assert_eq!(
+        run(
+            &mut vm,
+            r#"
+        var count=0;
+        var tail=realm.evaluate('(function(callback){"use strict";return callback(3);})');
+        var result=tail(function(n){count++;return n+4;});
+        result===7 && count===1;
+    "#
+        ),
+        Value::Bool(true)
+    );
+    assert!(vm.realm_call_roots.is_none());
+    assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
+    for record in vm.shadow_realms.values() {
+        let child = record.vm.borrow_mut();
+        assert!(child.pending_tail_call.is_none());
+        assert!(child.realm_call_roots.is_none());
+        assert_eq!(child.displaced_execution_control_bytes.get(), 0);
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shadow_argument_storage_tail_calls_wrap_the_final_callable() {
+    let mut vm = page();
+    assert_eq!(
+        run(
+            &mut vm,
+            r#"
+        var tail=realm.evaluate('(function(){function make(){return ()=>9;}return function(){"use strict";return make();};})()');
+        var result=tail();
+        typeof result==='function' && result()===9;
+    "#
+        ),
+        Value::Bool(true)
+    );
+    assert!(vm.realm_call_roots.is_none());
+}
+
+#[cfg_attr(test, test)]
+fn shadow_argument_storage_tail_calls_validate_the_final_object_result() {
+    let mut vm = page();
+    assert_eq!(
+        run(
+            &mut vm,
+            r#"
+        var tail=realm.evaluate('(function(){function make(){return {answer:9};}return function(){"use strict";return make();};})()');
+        var caught=false;
+        try { tail(); } catch(error) { caught=error instanceof TypeError; }
+        caught;
+    "#
+        ),
+        Value::Bool(true)
+    );
+    assert!(vm.realm_call_roots.is_none());
+}
+
+#[cfg_attr(test, test)]
+fn shadow_argument_storage_tail_calls_complete_a_fixed_two_step_chain() {
+    let mut vm = page();
+    assert_eq!(
+        run(
+            &mut vm,
+            r#"
+        var tail=realm.evaluate('(function(){function last(n){return n+1;}function middle(n){"use strict";return last(n);}return function(n){"use strict";return middle(n);};})()');
+        tail(3);
+    "#
+        ),
+        Value::Number(4.0)
+    );
+    for record in vm.shadow_realms.values() {
+        assert!(record.vm.borrow_mut().pending_tail_call.is_none());
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shadow_argument_storage_tail_calls_leave_no_work_for_the_next_boundary_call() {
+    let mut vm = page();
+    assert_eq!(
+        run(
+            &mut vm,
+            r#"
+        var tail=realm.evaluate('(function(){var calls=0;function finish(){calls++;return calls;}return function(){"use strict";return finish();};})()');
+        var first=tail();
+        var second=tail();
+        first===1 && second===2;
+    "#
+        ),
+        Value::Bool(true)
+    );
+    for record in vm.shadow_realms.values() {
+        assert!(record.vm.borrow_mut().pending_tail_call.is_none());
+    }
+}
+
+#[cfg_attr(test, test)]
+fn shadow_argument_storage_tail_calls_propagate_an_explicit_terminal_marker() {
+    let mut vm = page();
+    let scope = vm.host_scheduling.as_ref().unwrap().child();
+    vm.install_host_function("markTailTerminal", 0, move |_: &[HostValue]| {
+        let _ = scope.fail();
+        Ok(HostValue::Undefined)
+    })
+    .unwrap();
+    run(
+        &mut vm,
+        "var tail=realm.evaluate('(function(callback){\"use strict\";return callback();})');0;",
+    );
+    let callee = vm.lookup_global_name("tail").unwrap().unwrap();
+    let callback = vm.lookup_global_name("markTailTerminal").unwrap().unwrap();
+    assert_eq!(
+        vm.call_native(callee, Value::Undefined, vec![callback], false),
+        Err(RuntimeError::SchedulingLimit)
+    );
+    assert!(vm.realm_call_roots.is_none());
+    assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
+    for record in vm.shadow_realms.values() {
+        let child = record.vm.borrow_mut();
+        assert!(child.pending_tail_call.is_none());
+        assert!(child.realm_call_roots.is_none());
+        assert_eq!(child.displaced_execution_control_bytes.get(), 0);
+    }
+}
+
 impl Vm {
     pub fn verify_shadow_argument_storage_contracts() {
+        shadow_argument_storage_tail_calls_wrap_the_final_callable();
+        shadow_argument_storage_tail_calls_validate_the_final_object_result();
+        shadow_argument_storage_tail_calls_complete_a_fixed_two_step_chain();
+        shadow_argument_storage_tail_calls_leave_no_work_for_the_next_boundary_call();
+        shadow_argument_storage_tail_calls_propagate_an_explicit_terminal_marker();
+        shadow_argument_storage_tail_calls_return_the_actual_completion();
+        shadow_argument_storage_tail_calls_throw_before_boundary_masking();
+        shadow_argument_storage_tail_calls_reenter_the_caller_once();
         shadow_argument_storage_reuses_the_incoming_argument_allocation();
         shadow_argument_storage_gc_roots_do_not_clone_primitive_payloads();
         shadow_argument_storage_source_entry_releases_transferred_control_credit();
