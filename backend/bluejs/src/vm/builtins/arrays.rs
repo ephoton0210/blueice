@@ -544,9 +544,7 @@ impl Vm {
                     "Array.prototype.forEach callback must be callable".into(),
                 ));
             }
-            let mut scan = self
-                .index_scan(object, length)
-                .expect("the receiver is live");
+            let mut scan = self.index_scan(object, length)?;
             let mut from = 0;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 self.call_native(
@@ -581,9 +579,7 @@ impl Vm {
             }
             let target = self.array_species_create(object, 0)?;
             self.stack.push(Value::Object(target));
-            let mut scan = self
-                .index_scan(object, length)
-                .expect("the receiver is live");
+            let mut scan = self.index_scan(object, length)?;
             let mut from = 0;
             let mut target_index = 0usize;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
@@ -638,9 +634,7 @@ impl Vm {
             }
             let target = self.array_species_create(object, length as usize)?;
             self.stack.push(Value::Object(target));
-            let mut scan = self
-                .index_scan(object, length)
-                .expect("the receiver is live");
+            let mut scan = self.index_scan(object, length)?;
             let mut from = 0;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 let mapped = self.call_native(
@@ -675,9 +669,7 @@ impl Vm {
                     "Array predicate callback must be callable".into(),
                 ));
             }
-            let mut scan = self
-                .index_scan(object, length)
-                .expect("the receiver is live");
+            let mut scan = self.index_scan(object, length)?;
             let mut from = 0;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 let selected = self.call_native(
@@ -913,14 +905,10 @@ impl Vm {
                 return Ok(Value::Bool(false));
             }
             let start = self.array_start_index(from_index, length as i64)? as u64;
-            let mut scan = self
-                .index_scan(object, length)
-                .expect("the receiver is live");
+            let mut scan = self.index_scan(object, length)?;
             let mut from = start;
             loop {
-                let next = self
-                    .scan_next(&mut scan, object, from)
-                    .expect("the receiver is live");
+                let next = self.scan_next(&mut scan, object, from)?;
                 // Indices the scan skips are absent everywhere on the chain,
                 // and `Get` reads an absent index as `undefined`.
                 if *search == Value::Undefined && next.map_or(from < length, |next| next > from) {
@@ -956,9 +944,7 @@ impl Vm {
                 return Ok(Value::Number(-1.0));
             }
             let start = self.array_start_index(from_index, length as i64)? as u64;
-            let mut scan = self
-                .index_scan(object, length)
-                .expect("the receiver is live");
+            let mut scan = self.index_scan(object, length)?;
             let mut from = start;
             while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 if value == *search {
@@ -1251,9 +1237,7 @@ impl Vm {
             if index < 0 {
                 return Ok(Value::Number(-1.0));
             }
-            let mut scan = self
-                .index_scan(object, length as u64)
-                .expect("the receiver is live");
+            let mut scan = self.index_scan(object, length as u64)?;
             let mut end = index as u64 + 1;
             while let Some((index, value)) = self.array_previous_present(&mut scan, object, end)? {
                 if value == *search {

@@ -86,6 +86,43 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The common Array index-scan follow-up (2026-10-18) has an implementation
+checkpoint. Three fixed tiny cases reproduce a two-key plan losing all 32 native
+bytes after VM destruction and neutral consumers accepting indices/getter results
+after the original document fails. Two sorting/public-search controls pass. The
+original three-failure result remains separate evidence.
+
+Stored plans now retain independent native ownership and actual vector capacity.
+Rebuilding borrows immutable canonical integer-key metadata directly, avoiding
+intermediate key vectors. Candidate growth admits a complete replacement while
+old storage remains live. Sorting/dedup preserve backing credit; candidate plans
+and local epoch/work state are prepared before publication. Refusal preserves the
+prior plan, epoch and work total; dense/exotic fallback releases obsolete capacity.
+Original ownership is retained even for empty/dense plans. Existing unowned
+capacity is admitted when a later document policy or root loan first applies,
+without rebinding neutral VM policy. Both probe directions validate the original
+owner before use and after HasProperty/Get guest work, including thrown getters.
+Plans contain indices rather than managed roots and do not retain receivers.
+Affected Array consumers now propagate initialization/refresh admission errors
+instead of treating a live receiver as proof that the whole operation cannot fail.
+
+All twenty-one new contracts, the previous 446 selected controls and two finite
+existing heap/exception controls pass: **469 distinct selected tests**, fifteen
+executable targets and 172 selections. The final selection is replayed after
+correcting the borrowed iterator's inherited sorting comment; earlier source and
+results are kept separately. Formatting, diff checks and offline workspace/
+all-target Clippy pass. A formatting-stage missing-delimiter draft is preserved
+separately from compiled evidence. Frozen source/artifact and staged/committed
+Git audits bind this checkpoint; the ordinary-library hook adds no measured
+coverage claim. Other Array/scalar producers, wider allocator staging, managed
+buffer policy, native ingress and integrated acceptance remain open. M1u remains
+the latest accepted milestone and M1z integrated gates stay open. Validation uses
+tiny stored-key fixtures and fixed numerical bookkeeping; large-length/optimization
+threshold and resource sweeps, rejected publication/process inspection and excluded
+replay are not run.
+Evidence: `target/array-scan-storage-source-20261018.json`.
+Red evidence: `/private/tmp/blueice-array-scan-storage-red-20261018.{json,tar.gz,log}`.
+
 The Array/TypedArray reducer follow-up (2026-10-18) has an implementation
 checkpoint. All four reduce/reduceRight paths previously assembled unowned
 argument vectors; ordinary Array reductions also copied accumulator payloads
@@ -1979,8 +2016,12 @@ work and exposes its retained payload ledger.
       ownership adds twenty-five contracts and 446 relevant selected cases:
       admitted argument vectors, moving accumulator leases, getter/consumer roots,
       neutral input/root loans, forward/reverse semantics, tail calls and terminal
-      cleanup. Sparse-index planning, other Array/scalar producers, wider staging,
-      managed-buffer policy and integrated acceptance stay open.
+      cleanup. Common Array index-plan ownership adds twenty-one contracts and
+      469 relevant selected cases: borrowed integer-key views, admitted candidate
+      plans, actual backing retention, atomic epoch/work publication, later policy/
+      root loans, neutral post-guest terminal checks and nonretaining receiver
+      semantics. Other Array/scalar producers, wider staging, managed-buffer policy
+      and integrated acceptance stay open.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

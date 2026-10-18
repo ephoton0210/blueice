@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_array_scan_storage_contracts() {
+    blueice_bluejs::Vm::verify_array_scan_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_reducer_storage_contracts() {
     blueice_bluejs::Vm::verify_reducer_storage_contracts();
 }

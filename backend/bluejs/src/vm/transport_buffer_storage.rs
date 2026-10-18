@@ -53,6 +53,19 @@ impl<T> TransportVector<T> {
 }
 
 impl<T: Copy> TransportVector<T> {
+    /// Attach a previously unowned Copy buffer before its next consumer. An
+    /// existing native loan keeps its original document identity.
+    pub(super) fn attach_owner(
+        &mut self,
+        owner: &SharedSchedulingCharge,
+    ) -> Result<(), RuntimeError> {
+        self.validate_owner()?;
+        if self.storage.is_none() {
+            self.storage = Some(owner.reserve_peer(host_scheduling::slots(&self.values))?);
+        }
+        Ok(())
+    }
+
     pub(super) fn push(&mut self, value: T) -> Result<(), RuntimeError> {
         if self.values.len() == self.values.capacity() {
             let capacity = self.values.capacity().saturating_mul(2).max(4);

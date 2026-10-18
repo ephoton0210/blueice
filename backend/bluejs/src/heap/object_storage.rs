@@ -838,12 +838,15 @@ impl Heap {
         Ok(ordered_stored_property_keys(&obj.order, indices, strings))
     }
 
-    /// Ascending canonical integer-index keys (`"0"`, `"1"`, ...) of every own
+    /// Borrowed canonical integer-index keys (`"0"`, `"1"`, ...) of every own
     /// string property stored on `object`, or `None` when an index can exist
     /// without being stored (Proxy traps, String and TypedArray elements,
     /// module namespace exports) and the stored keys therefore say nothing
     /// about which indices an `[[HasProperty]]` probe could find.
-    pub(crate) fn own_integer_keys(&self, object: ObjectId) -> Result<Option<Vec<u64>>, HeapError> {
+    pub(crate) fn own_integer_keys_view(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<impl Iterator<Item = u64> + Clone + '_>, HeapError> {
         let obj = self.object(object)?;
         if self.drag_index_count(object)?.is_some() {
             return Ok(None);
@@ -857,13 +860,22 @@ impl Heap {
         ) {
             return Ok(None);
         }
-        let mut keys: Vec<u64> = obj
-            .order
-            .iter()
-            .filter_map(|key| key.index().map(|index| index as u64))
-            .collect();
-        keys.sort_unstable();
-        Ok(Some(keys))
+        Ok(Some(
+            obj.order
+                .iter()
+                .filter_map(|key| key.index().map(|index| index as u64)),
+        ))
+    }
+
+    // Preserve sorted owned enumeration for existing heap/coverage contracts;
+    // the runtime scanner consumes the borrowed view without this allocation.
+    #[cfg(any(test, coverage))]
+    pub(crate) fn own_integer_keys(&self, object: ObjectId) -> Result<Option<Vec<u64>>, HeapError> {
+        Ok(self.own_integer_keys_view(object)?.map(|keys| {
+            let mut keys: Vec<_> = keys.collect();
+            keys.sort_unstable();
+            keys
+        }))
     }
 
     pub(crate) fn structure_epoch(&self) -> u64 {

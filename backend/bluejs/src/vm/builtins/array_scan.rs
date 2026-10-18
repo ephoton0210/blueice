@@ -17,7 +17,13 @@
 //! prototype mid-walk, so the stored-index list is rebuilt whenever the heap's
 //! structure epoch moved. Once rebuilding costs more than a plain walk would,
 //! the scan falls back to visiting every index.
+use super::super::host_scheduling::SharedSchedulingCharge;
+use super::super::transport_buffer_storage::TransportVector;
 use super::*;
+
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/array_scan_storage.rs"]
+mod storage_tests;
 
 /// A plain walk is cheaper than building a stored-index list below this length.
 const SPARSE_LENGTH_THRESHOLD: u64 = 65_536;
@@ -26,10 +32,37 @@ pub(super) struct IndexScan {
     length: u64,
     /// Ascending indices below `length` that some object on the chain stores,
     /// or `None` to visit every index.
-    stored: Option<Vec<u64>>,
+    stored: Option<TransportVector<u64>>,
     epoch: u64,
     /// Property keys examined by all rebuilds so far.
     work: u64,
+    // Preserve the original operation's identity even without retained slots.
+    owner: Option<SharedSchedulingCharge>,
+}
+
+impl IndexScan {
+    fn validate_owner(&self) -> Result<(), RuntimeError> {
+        if let Some(owner) = &self.owner {
+            owner.reserve_peer(0)?;
+        }
+        if let Some(stored) = &self.stored {
+            stored.validate_owner()?;
+        }
+        Ok(())
+    }
+
+    fn retain_owner(&mut self, vm: &Vm) -> Result<(), RuntimeError> {
+        self.validate_owner()?;
+        if self.owner.is_none() {
+            if let Some(owner) = vm.argument_list_owner()? {
+                if let Some(stored) = &mut self.stored {
+                    stored.attach_owner(&owner)?;
+                }
+                self.owner = Some(owner);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Vm {
@@ -49,51 +82,70 @@ impl Vm {
             stored: None,
             epoch: 0,
             work: 0,
+            owner: self.argument_list_owner()?,
         };
         if length >= SPARSE_LENGTH_THRESHOLD {
             if !self.heap.contains(object) {
                 return Err(RuntimeError::Heap(HeapError::InvalidObject(object)));
             }
-            self.rebuild_index_scan(&mut scan, object);
+            self.rebuild_index_scan(&mut scan, object)?;
         }
         Ok(scan)
     }
 
-    /// Every object on the chain is one the walk itself just reached from a
-    /// live receiver, so the heap reads below cannot fail.
-    fn rebuild_index_scan(&self, scan: &mut IndexScan, object: ObjectId) {
-        scan.epoch = self.heap.structure_epoch();
-        scan.stored = None;
-        let mut stored = Vec::new();
+    /// Borrow immutable stored keys without producing a second native vector.
+    /// Prepare a complete replacement before publishing epoch/work/plan state.
+    fn rebuild_index_scan(
+        &self,
+        scan: &mut IndexScan,
+        object: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        scan.retain_owner(self)?;
+        let epoch = self.heap.structure_epoch();
+        let mut work = scan.work;
+        let mut stored = TransportVector::with_capacity(0, scan.owner.as_ref())?;
         let mut current = Some(object);
         while let Some(id) = current {
-            let Some(keys) = self
-                .heap
-                .own_integer_keys(id)
-                .expect("a prototype chain is made of live heap objects")
-            else {
-                return;
+            let Some(keys) = self.heap.own_integer_keys_view(id)? else {
+                drop(stored);
+                scan.stored = None;
+                scan.epoch = epoch;
+                scan.work = work;
+                return Ok(());
             };
-            scan.work += keys.len() as u64 + 1;
-            stored.extend(keys.into_iter().take_while(|key| *key < scan.length));
-            // `own_integer_keys` just validated this object, and no heap
-            // mutation occurs between that lookup and this one.
-            current = self
-                .heap
-                .prototype(id)
-                .expect("the object validated by own_integer_keys is still live");
+            work = work
+                .saturating_add(keys.clone().count() as u64)
+                .saturating_add(1);
+            for key in keys.filter(|key| *key < scan.length) {
+                stored.push(key)?;
+            }
+            current = self.heap.prototype(id)?;
         }
-        if scan.work <= scan.length / 4 {
+        let prepared = if work <= scan.length / 4 {
             stored.sort_unstable();
             stored.dedup();
-            scan.stored = Some(stored);
-        }
+            Some(stored)
+        } else {
+            drop(stored);
+            None
+        };
+        scan.validate_owner()?;
+        scan.stored = prepared;
+        scan.epoch = epoch;
+        scan.work = work;
+        Ok(())
     }
 
-    fn refresh_index_scan(&self, scan: &mut IndexScan, object: ObjectId) {
+    fn refresh_index_scan(
+        &self,
+        scan: &mut IndexScan,
+        object: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        scan.retain_owner(self)?;
         if scan.stored.is_some() && scan.epoch != self.heap.structure_epoch() {
-            self.rebuild_index_scan(scan, object);
+            self.rebuild_index_scan(scan, object)?;
         }
+        Ok(())
     }
 
     /// The smallest index in `[from, length)` a walk must probe, or `None` once
@@ -109,28 +161,38 @@ impl Vm {
         if !self.heap.contains(object) {
             return Err(RuntimeError::Heap(HeapError::InvalidObject(object)));
         }
-        Ok(self.next_index(scan, object, from))
+        self.next_index(scan, object, from)
     }
 
-    fn next_index(&self, scan: &mut IndexScan, object: ObjectId, from: u64) -> Option<u64> {
-        self.refresh_index_scan(scan, object);
-        match &scan.stored {
+    fn next_index(
+        &self,
+        scan: &mut IndexScan,
+        object: ObjectId,
+        from: u64,
+    ) -> Result<Option<u64>, RuntimeError> {
+        self.refresh_index_scan(scan, object)?;
+        Ok(match &scan.stored {
             Some(stored) => stored
                 .get(stored.partition_point(|index| *index < from))
                 .copied(),
             None => (from < scan.length).then_some(from),
-        }
+        })
     }
 
     /// The largest index below `end` a walk must probe.
-    fn scan_previous(&self, scan: &mut IndexScan, object: ObjectId, end: u64) -> Option<u64> {
-        self.refresh_index_scan(scan, object);
-        match &scan.stored {
+    fn scan_previous(
+        &self,
+        scan: &mut IndexScan,
+        object: ObjectId,
+        end: u64,
+    ) -> Result<Option<u64>, RuntimeError> {
+        self.refresh_index_scan(scan, object)?;
+        Ok(match &scan.stored {
             Some(stored) => stored[..stored.partition_point(|index| *index < end)]
                 .last()
                 .copied(),
             None => end.checked_sub(1),
-        }
+        })
     }
 
     /// The next index at or after `from` where a walk finds a property, as
@@ -145,8 +207,10 @@ impl Vm {
             return Err(RuntimeError::Heap(HeapError::InvalidObject(object)));
         }
         let mut from = from;
-        while let Some(index) = self.next_index(scan, object, from) {
-            if let Some(value) = self.array_probe(object, index)? {
+        while let Some(index) = self.next_index(scan, object, from)? {
+            let value = self.array_probe(object, index);
+            scan.validate_owner()?;
+            if let Some(value) = value? {
                 return Ok(Some((index, value)));
             }
             from = index + 1;
@@ -166,8 +230,10 @@ impl Vm {
             return Err(RuntimeError::Heap(HeapError::InvalidObject(object)));
         }
         let mut end = end;
-        while let Some(index) = self.scan_previous(scan, object, end) {
-            if let Some(value) = self.array_probe(object, index)? {
+        while let Some(index) = self.scan_previous(scan, object, end)? {
+            let value = self.array_probe(object, index);
+            scan.validate_owner()?;
+            if let Some(value) = value? {
                 return Ok(Some((index, value)));
             }
             end = index;
