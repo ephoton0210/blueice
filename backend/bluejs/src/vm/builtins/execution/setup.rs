@@ -5,27 +5,6 @@
 use super::*;
 
 impl Vm {
-    pub(in super::super::super) fn array_like_values(
-        &mut self,
-        value: &Value,
-    ) -> Result<Vec<Value>, RuntimeError> {
-        if !matches!(value, Value::Object(_)) {
-            return Err(RuntimeError::TypeError(
-                "argument list must be an object".into(),
-            ));
-        }
-        let length = self.get_property(value, &"length".into())?;
-        let length = self.coerce_length(&length)? as u64;
-        let mut args = Vec::new();
-        for index in 0..length {
-            self.charge_step()?;
-            let value = self.get_property(value, &index.to_string().into())?;
-            self.stack.push(value.clone());
-            args.push(value);
-        }
-        Ok(args)
-    }
-
     pub(in super::super::super) fn base_iterator_prototype(
         &mut self,
     ) -> Result<ObjectId, RuntimeError> {

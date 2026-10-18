@@ -285,19 +285,20 @@ impl Vm {
                     }
                     Opcode::CallSpread | Opcode::DirectEvalSpread => {
                         let base = self.stack.len() - 3;
-                        let args = self.array_like_values(&self.stack[base + 2].clone())?;
-                        let callee = self.take_call_operand(base);
-                        let receiver = self.take_call_operand(base + 1);
-                        let result = if instruction.opcode == Opcode::DirectEvalSpread
-                            && self.is_intrinsic_eval(&callee).expect(
-                                "intrinsic eval classification only reads the live callee tag",
-                            ) {
-                            let _arguments =
-                                self.charge_execution_payload(host_scheduling::values_bytes(&args));
-                            self.direct_eval(native::argument(&args, 0))?
-                        } else {
-                            self.call_native(callee, receiver, args, operand != 0)?
-                        };
+                        let list = self.stack[base + 2].clone();
+                        let result = self.with_array_like_values(&list, |vm, args| {
+                            let callee = vm.take_call_operand(base);
+                            let receiver = vm.take_call_operand(base + 1);
+                            if instruction.opcode == Opcode::DirectEvalSpread
+                                && vm.is_intrinsic_eval(&callee).expect(
+                                    "intrinsic eval classification only reads the live callee tag",
+                                )
+                            {
+                                vm.direct_eval(native::argument(&args.values, 0))
+                            } else {
+                                args.call_native(vm, callee, receiver, operand != 0)
+                            }
+                        })?;
                         self.stack.truncate(base);
                         self.stack.push(result);
                     }
@@ -572,23 +573,26 @@ impl Vm {
                     Opcode::SuperCall | Opcode::SuperCallSpread | Opcode::SuperCallForward => {
                         // `superCtor` sits below any arguments and stays
                         // rooted on the stack through the construction.
-                        let (constructor_slot, args) = match instruction.opcode {
-                            Opcode::SuperCall => {
-                                let constructor_slot = self.stack.len() - operand - 1;
-                                (
-                                    constructor_slot,
-                                    self.stack[constructor_slot + 1..].to_vec(),
-                                )
-                            }
-                            Opcode::SuperCallSpread => {
-                                let arguments = self.stack[self.stack.len() - 1].clone();
-                                let constructor_slot = self.stack.len() - 2;
-                                (constructor_slot, self.array_like_values(&arguments)?)
-                            }
-                            _ => (self.stack.len() - 1, self.arguments.clone()),
+                        let (constructor_slot, value) = if instruction.opcode
+                            == Opcode::SuperCallSpread
+                        {
+                            let arguments = self.stack[self.stack.len() - 1].clone();
+                            let slot = self.stack.len() - 2;
+                            let constructor = self.stack[slot].clone();
+                            let value = self.with_array_like_values(&arguments, |vm, args| {
+                                args.super_call(vm, constructor)
+                            })?;
+                            (slot, value)
+                        } else {
+                            let (slot, args) = if instruction.opcode == Opcode::SuperCall {
+                                let slot = self.stack.len() - operand - 1;
+                                (slot, self.stack[slot + 1..].to_vec())
+                            } else {
+                                (self.stack.len() - 1, self.arguments.clone())
+                            };
+                            let constructor = self.stack[slot].clone();
+                            (slot, self.super_call(constructor, args)?)
                         };
-                        let constructor = self.stack[constructor_slot].clone();
-                        let value = self.super_call(constructor, args)?;
                         self.stack.truncate(constructor_slot);
                         self.stack.push(value);
                     }

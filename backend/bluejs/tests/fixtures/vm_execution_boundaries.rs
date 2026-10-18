@@ -1575,14 +1575,18 @@ fn iterator_cleanup_keeps_pending_records_and_the_first_throw_alive_across_colle
             let sources = vm
                 .execute_script(&compile(&parse(&source).unwrap()).unwrap())
                 .unwrap();
-            let values = vm.array_like_values(&sources).unwrap();
-            let mut records = vm.iterator_records(Vec::new());
-            let mut roots = Vec::new();
-            for value in values {
-                let record = vm.get_iterator(&value).unwrap();
-                roots.push(vm.heap.root(record.object_id().unwrap()).unwrap());
-                records.try_push(&mut vm, record).unwrap();
-            }
+            let (mut records, roots) = vm
+                .with_array_like_values(&sources, |vm, values| {
+                    let mut records = vm.iterator_records(Vec::new());
+                    let mut roots = Vec::new();
+                    for value in &values.values {
+                        let record = vm.get_iterator(value)?;
+                        roots.push(vm.heap.root(record.object_id().unwrap())?);
+                        records.try_push(vm, record)?;
+                    }
+                    Ok((records, roots))
+                })
+                .unwrap();
             vm.execute_script(&compile(&parse("0").unwrap()).unwrap())
                 .unwrap();
             for root in roots {

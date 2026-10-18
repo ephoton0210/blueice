@@ -71,6 +71,39 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The common array-like argument-list follow-up (2026-10-18) has an implementation
+checkpoint. Three fixed tiny regressions reproduced primitive copies in operand
+stack roots, 164 unowned native bytes in a Rust-held list, and a leftover stack
+suffix after a getter throw. Collection now scopes input/result object-ID roots
+around its consumer and owns vector capacity/primitive buffers independently.
+Incremental growth admits a full replacement while old storage exists, reconciles
+actual capacity, then releases old credit after destruction. It does not reserve
+an untrusted complete length before indexed getters run. Neutral contexts borrow
+active or existing-root ownership without changing their captured policy.
+
+All former collector consumers use the scoped API. Apply/Reflect/spread/super
+entry adopts the same vector and entry guard; direct eval retains that input
+lease instead of adding a second primitive guard. Array transport exports in
+place and transfers primitive ownership directly to a pure heap consumer while
+retaining vector credit through deallocation. Destination values/prototype/result
+remain rooted during array creation. Test262 helpers also root earlier option
+getter outputs before later getters can collect. Primitive-only Rust-held data
+keeps its charge after VM destruction; managed object roots belong to the scoped
+consumer lifetime.
+
+Twenty new contracts and the previous 286 selected controls pass: **306 distinct
+selected tests**, five executable targets and 125 selections. Coverage includes
+growing/scoped roots, native conservation, heap/call handoff, argument allocation
+identity, getter ordering/errors, validation precedence, newTarget/construct,
+spread/super/direct eval, temporary helper outputs, neutral loans and terminal
+cleanup. Formatting, diff checks and offline workspace/all-target Clippy pass.
+Frozen source/artifact and staged/committed Git audits bind the checkpoint; the
+ordinary-library hook adds no measured coverage claim. TypedArray/buffer snapshots,
+other array factories, getter/runtime producers and wider native ownership remain
+open. M1u remains latest accepted and M1z integrated gates stay open. Validation
+is local/offline with fixed finite inputs; rejected push/process inspection is
+not retried. Evidence: `target/argument-list-storage-source-20261018.json`.
+
 The Test262 membrane call-assembly follow-up (2026-10-18) has an implementation
 checkpoint. Four fixed small regressions reproduced forward vector/string
 copies and source entry control retained after destination adoption: 280 bytes
@@ -1770,6 +1803,12 @@ work and exposes its retained payload ledger.
       post-callback terminal-owner validation. Constructor/error realms, GC,
       sibling identity, neutral policy and proper tail calls remain covered;
       Array/TypedArray/buffer transport snapshots remain open.
+      Common array-like argument collection adds twenty contracts and 306
+      relevant selected cases: incremental owned vectors, scoped object-ID
+      roots, entry/heap adoption, apply/construct/spread/super/eval semantics,
+      helper option roots, native loans and terminal cleanup. Array transport
+      now uses the same owned batch; TypedArray/buffer snapshots, other array
+      factories and getter/runtime producers remain open.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

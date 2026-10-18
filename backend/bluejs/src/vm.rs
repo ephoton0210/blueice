@@ -23,6 +23,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
+mod argument_list_storage;
 mod async_root_storage;
 mod browser_task_entry;
 mod browser_task_storage;

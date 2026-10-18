@@ -1,0 +1,200 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Argument-list construction owns its buffers through callbacks and adoption.
+
+use super::host_scheduling::SharedSchedulingCharge;
+use super::realm_call_storage::RealmCallRoots;
+use super::*;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/argument_list_storage.rs"]
+mod ownership_tests;
+
+pub(super) struct ArgumentValues {
+    pub(super) values: Vec<Value>,
+    // The input allocation is destroyed before its native ownership.
+    entry: execution_payload::CallEntryCharge,
+}
+
+impl ArgumentValues {
+    fn new(vm: &mut Vm, owner: Option<&SharedSchedulingCharge>) -> Result<Self, RuntimeError> {
+        let values = Vec::new();
+        let mut entry = vm.call_entry_charge(&Value::Undefined, &Value::Undefined, &values);
+        entry.retain_native(vm, &Value::Undefined, &Value::Undefined, &values, owner)?;
+        Ok(Self { values, entry })
+    }
+
+    fn prepare_push(&mut self) -> Result<(), RuntimeError> {
+        if self.values.len() < self.values.capacity() {
+            return Ok(());
+        }
+        let count = self.values.capacity().saturating_mul(2).max(4);
+        let owner = self.entry.native_owner()?;
+        let mut charge = owner
+            .as_ref()
+            .map(|owner| owner.reserve_peer(count.saturating_mul(std::mem::size_of::<Value>())))
+            .transpose()?;
+        let mut replacement = Vec::new();
+        replacement.try_reserve_exact(count).map_err(|_| {
+            owner
+                .as_ref()
+                .map_or(RuntimeError::SchedulingLimit, SharedSchedulingCharge::fail)
+        })?;
+        if let Some(charge) = &mut charge {
+            charge.resize(host_scheduling::slots(&replacement))?;
+        }
+        replacement.append(&mut self.values);
+        self.values = replacement;
+        self.entry.replace_argument_control(charge);
+        Ok(())
+    }
+
+    fn push(&mut self, value: Value) -> Result<(), RuntimeError> {
+        assert!(self.values.len() < self.values.capacity());
+        self.entry.append_argument_payload(&value)?;
+        self.values.push(value);
+        Ok(())
+    }
+
+    pub(super) fn call(
+        mut self,
+        vm: &mut Vm,
+        callee: Value,
+        receiver: Value,
+        construct: bool,
+        target: Value,
+    ) -> Result<Value, RuntimeError> {
+        self.entry.retarget_native(vm.host_scheduling.as_ref())?;
+        self.entry.refresh(&callee, &receiver, &self.values, 0)?;
+        let owner = self.entry.native_owner()?;
+        let result =
+            vm.call_with_target_owned(callee, receiver, self.values, construct, target, self.entry);
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
+    }
+
+    pub(super) fn call_native(
+        self,
+        vm: &mut Vm,
+        callee: Value,
+        receiver: Value,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let target = if construct {
+            callee.clone()
+        } else {
+            Value::Undefined
+        };
+        self.call(vm, callee, receiver, construct, target)
+    }
+
+    pub(super) fn super_call(self, vm: &mut Vm, constructor: Value) -> Result<Value, RuntimeError> {
+        if !vm.is_constructor(&constructor)? {
+            return Err(RuntimeError::TypeError(
+                "super constructor is not a constructor".into(),
+            ));
+        }
+        let target = vm.new_target.clone();
+        self.call(vm, constructor, Value::Undefined, true, target)
+    }
+
+    /// Transport converts values in place, then transfers each primitive to a
+    /// pure heap consumer without keeping a second native payload charge.
+    pub(super) fn into_array(mut self, vm: &mut Vm) -> Result<Value, RuntimeError> {
+        self.entry.retarget_native(vm.host_scheduling.as_ref())?;
+        let owner = self.entry.native_owner()?;
+        let roots = RealmCallRoots::new(
+            self.values
+                .iter()
+                .filter_map(Value::object_id)
+                .count()
+                .saturating_add(2),
+            owner.as_ref(),
+        )?;
+        self.values
+            .iter()
+            .filter_map(Value::object_id)
+            .for_each(|id| roots.push(id));
+        let result = vm.with_realm_call_roots(roots.clone(), |vm| {
+            let prototype = vm.array_create_prototype()?;
+            roots.push(prototype);
+            let array =
+                vm.with_roots(|heap| heap.alloc_array(self.values.len() as u32, Some(prototype)))?;
+            roots.push(array);
+            let mut values = self.values.into_iter();
+            for (index, value) in values.by_ref().enumerate() {
+                let bytes = host_scheduling::value_payload_bytes(&value);
+                vm.with_roots(|heap| {
+                    // Heap::set admits the same moved value immediately. No
+                    // guest code or safepoint separates these ownership views.
+                    self.entry.release_argument_payload(bytes);
+                    heap.set(array, index.to_string(), value)
+                })?;
+            }
+            drop(values);
+            drop(self.entry);
+            Ok(Value::Object(array))
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
+    }
+}
+
+impl Vm {
+    pub(super) fn argument_list_owner(
+        &self,
+    ) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        if let Some(scope) = self.host_scheduling.as_ref() {
+            scope.shared_charge(0).map(Some)
+        } else if let Some(owner) = realm_reentrancy::reserve_active_native(0)? {
+            Ok(Some(owner))
+        } else {
+            self.current_realm_root_owner()
+        }
+    }
+
+    pub(super) fn with_array_like_values<T>(
+        &mut self,
+        value: &Value,
+        operation: impl FnOnce(&mut Vm, ArgumentValues) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        let Some(source) = value.object_id() else {
+            return Err(RuntimeError::TypeError(
+                "argument list must be an object".into(),
+            ));
+        };
+        let owner = self.argument_list_owner()?;
+        let input_roots = RealmCallRoots::new(1, owner.as_ref())?;
+        input_roots.push(source);
+        let result = self.with_realm_call_roots(input_roots, |vm| {
+            let length = vm.get_property(value, &"length".into())?;
+            let length = vm.coerce_length(&length)? as u64;
+            let roots = RealmCallRoots::new(0, owner.as_ref())?;
+            vm.with_realm_call_roots(roots.clone(), |vm| {
+                let mut arguments = ArgumentValues::new(vm, owner.as_ref())?;
+                // Grow from actual work, rather than reserving an untrusted
+                // complete length before the first indexed getter can run.
+                for index in 0..length {
+                    vm.charge_step()?;
+                    arguments.prepare_push()?;
+                    let value = vm.get_property(value, &index.to_string().into())?;
+                    if let Some(id) = value.object_id() {
+                        roots.push_admitted(id)?;
+                    }
+                    arguments.push(value)?;
+                }
+                operation(vm, arguments)
+            })
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
+    }
+}

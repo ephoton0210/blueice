@@ -11,7 +11,7 @@ pub(super) struct RealmCallRoots {
     values: RefCell<Vec<ObjectId>>,
     previous: RefCell<Option<Rc<Self>>>,
     // The backing allocation is destroyed before its native lease.
-    _storage: Option<SharedSchedulingCharge>,
+    _storage: RefCell<Option<SharedSchedulingCharge>>,
 }
 
 impl RealmCallRoots {
@@ -36,7 +36,7 @@ impl RealmCallRoots {
         Ok(Rc::new(Self {
             values: RefCell::new(values),
             previous: RefCell::new(None),
-            _storage: storage,
+            _storage: RefCell::new(storage),
         }))
     }
 
@@ -47,6 +47,40 @@ impl RealmCallRoots {
             "realm roots were prepared before guest entry"
         );
         values.push(id);
+    }
+
+    /// Unknown getter results grow one prepared root buffer at a time. Admit
+    /// the full replacement while the previous allocation is still alive.
+    pub(super) fn push_admitted(&self, id: ObjectId) -> Result<(), RuntimeError> {
+        let mut values = self.values.borrow_mut();
+        if values.len() == values.capacity() {
+            let count = values.capacity().saturating_mul(2).max(4);
+            let mut storage = self._storage.borrow_mut();
+            let mut replacement_charge = storage
+                .as_ref()
+                .map(|owner| {
+                    owner.reserve_peer(count.saturating_mul(std::mem::size_of::<ObjectId>()))
+                })
+                .transpose()?;
+            let mut replacement = Vec::new();
+            replacement.try_reserve_exact(count).map_err(|_| {
+                storage
+                    .as_ref()
+                    .map_or(RuntimeError::SchedulingLimit, SharedSchedulingCharge::fail)
+            })?;
+            if let Some(charge) = &mut replacement_charge {
+                charge.resize(host_scheduling::slots(&replacement))?;
+            }
+            replacement.append(&mut values);
+            *values = replacement;
+            if let Some(storage) = storage.as_mut() {
+                let header = std::mem::size_of::<Self>() + 2 * std::mem::size_of::<usize>();
+                storage.release_to(header);
+                storage.absorb(replacement_charge.unwrap())?;
+            }
+        }
+        values.push(id);
+        Ok(())
     }
 }
 
@@ -94,6 +128,19 @@ impl RealmCallInput {
 }
 
 impl Vm {
+    pub(super) fn current_realm_root_owner(
+        &self,
+    ) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        let mut frame = self.realm_call_roots.clone();
+        while let Some(current) = frame {
+            if let Some(owner) = current._storage.borrow().as_ref() {
+                return owner.reserve_peer(0).map(Some);
+            }
+            frame = current.previous.borrow().clone();
+        }
+        Ok(None)
+    }
+
     pub(super) fn realm_call_native_owner(
         &self,
         peer: &Vm,

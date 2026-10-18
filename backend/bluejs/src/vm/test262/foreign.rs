@@ -473,15 +473,26 @@ impl Vm {
         {
             return Ok(Value::Object(*target));
         }
-        let array_values = if self.heap.is_array(source)? {
-            self.array_like_values(&value)?
-                .iter()
-                .map(|value| self.test262_export_foreign_value(realm_id, value))
-                .collect::<Result<Vec<_>, _>>()
-                .map(Some)?
+        if self.heap.is_array(source)? {
+            self.with_array_like_values(&value, |vm, mut values| {
+                for slot in &mut values.values {
+                    let item = std::mem::replace(slot, Value::Undefined);
+                    *slot = vm.test262_export_foreign_value_owned(realm_id, item)?;
+                }
+                vm.test262_transport_prepared_value(realm_id, Value::Object(source), Some(values))
+            })
         } else {
-            None
-        };
+            self.test262_transport_prepared_value(realm_id, value, None)
+        }
+    }
+
+    fn test262_transport_prepared_value(
+        &mut self,
+        realm_id: ObjectId,
+        value: Value,
+        array_values: Option<argument_list_storage::ArgumentValues>,
+    ) -> Result<Value, RuntimeError> {
+        let source = value.object_id().expect("transport input is an object");
         let typed_array_values =
             if self
                 .heap
@@ -664,7 +675,8 @@ impl Vm {
                     }
                     buffer
                 } else if let Some(values) = array_values {
-                    vm.array_from(values)?
+                    values
+                        .into_array(vm)?
                         .object_id()
                         .expect("array construction returns an object")
                 } else if let Some((kind, values)) = typed_array_values {

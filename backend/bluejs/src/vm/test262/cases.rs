@@ -279,37 +279,53 @@ impl Vm {
         &mut self,
         args: &Value,
     ) -> Result<Value, RuntimeError> {
-        let lone = self.get_property(args, &"loneCodePoints".into())?;
-        let ranges = self.get_property(args, &"ranges".into())?;
-        let base = self.stack.len();
-        let result = (|| {
+        let owner = self.argument_list_owner()?;
+        let roots = realm_call_storage::RealmCallRoots::new(3, owner.as_ref())?;
+        if let Some(id) = args.object_id() {
+            roots.push(id);
+        }
+        self.with_realm_call_roots(roots.clone(), |vm| {
+            let lone = vm.get_property(args, &"loneCodePoints".into())?;
+            if let Some(id) = lone.object_id() {
+                roots.push(id);
+            }
+            let ranges = vm.get_property(args, &"ranges".into())?;
+            if let Some(id) = ranges.object_id() {
+                roots.push(id);
+            }
             let mut result = JsString::default();
-            for point in self.array_like_values(&lone)? {
-                result.push_code_point(self.test262_code_point(&point)?);
-            }
-            for range in self.array_like_values(&ranges)? {
-                let range = self.array_like_values(&range)?;
-                if range.len() < 2 {
-                    return Err(RuntimeError::TypeError(
-                        "buildString ranges require a start and end".into(),
-                    ));
+            vm.with_array_like_values(&lone, |vm, points| {
+                for point in &points.values {
+                    result.push_code_point(vm.test262_code_point(point)?);
                 }
-                let start = self.test262_code_point(&range[0])?;
-                let end = self.test262_code_point(&range[1])?;
-                if start > end {
-                    return Err(RuntimeError::RangeError(
-                        "buildString range start exceeds end".into(),
-                    ));
+                Ok(())
+            })?;
+            vm.with_array_like_values(&ranges, |vm, ranges| {
+                for range in &ranges.values {
+                    vm.with_array_like_values(range, |vm, range| {
+                        if range.values.len() < 2 {
+                            return Err(RuntimeError::TypeError(
+                                "buildString ranges require a start and end".into(),
+                            ));
+                        }
+                        let start = vm.test262_code_point(&range.values[0])?;
+                        let end = vm.test262_code_point(&range.values[1])?;
+                        if start > end {
+                            return Err(RuntimeError::RangeError(
+                                "buildString range start exceeds end".into(),
+                            ));
+                        }
+                        for point in start..=end {
+                            result.push_code_point(point);
+                        }
+                        Ok(())
+                    })?;
                 }
-                for point in start..=end {
-                    result.push_code_point(point);
-                }
-            }
-            self.check_string(&Value::String(result.clone()))?;
+                Ok(())
+            })?;
+            vm.check_string(&Value::String(result.clone()))?;
             Ok(Value::String(result))
-        })();
-        self.stack.truncate(base);
-        result
+        })
     }
 
     pub(in super::super) fn test262_test_property_escapes(
@@ -673,18 +689,19 @@ impl Vm {
                 ))
             }
         };
-        let regexps = self.array_like_values(regexps)?;
-        if regexps.is_empty() {
-            return Err(RuntimeError::TypeError(
-                "RegExp class escape fixture requires a RegExp".into(),
-            ));
-        }
-        for regexp in &regexps {
-            if self.test262_regexp_test(regexp, string)? != expected {
-                return Err(self.test262_failure("__bluejsTest262RegExpClassEscape"));
+        self.with_array_like_values(regexps, |vm, regexps| {
+            if regexps.values.is_empty() {
+                return Err(RuntimeError::TypeError(
+                    "RegExp class escape fixture requires a RegExp".into(),
+                ));
             }
-        }
-        Ok(Value::Bool(true))
+            for regexp in &regexps.values {
+                if vm.test262_regexp_test(regexp, string)? != expected {
+                    return Err(vm.test262_failure("__bluejsTest262RegExpClassEscape"));
+                }
+            }
+            Ok(Value::Bool(true))
+        })
     }
 
     /// Executes TypedArray.prototype.set for the staging overlap regression
@@ -871,36 +888,49 @@ impl Vm {
         &mut self,
         args: &Value,
     ) -> Result<Value, RuntimeError> {
-        let regexp = self.get_property(args, &"regExp".into())?;
-        let match_strings = self.get_property(args, &"matchStrings".into())?;
-        let non_match_strings = self.get_property(args, &"nonMatchStrings".into())?;
-        let base = self.stack.len();
-        let result = (|| {
-            let matches = self.array_like_values(&match_strings)?;
-            let all_matches = self.test262_join_strings(&matches)?;
-            if !self.test262_regexp_test(&regexp, &all_matches)? {
-                for string in &matches {
-                    if !self.test262_regexp_test(&regexp, string)? {
-                        return Err(self.test262_failure("testPropertyOfStrings"));
+        let owner = self.argument_list_owner()?;
+        let roots = realm_call_storage::RealmCallRoots::new(4, owner.as_ref())?;
+        if let Some(id) = args.object_id() {
+            roots.push(id);
+        }
+        self.with_realm_call_roots(roots.clone(), |vm| {
+            let regexp = vm.get_property(args, &"regExp".into())?;
+            if let Some(id) = regexp.object_id() {
+                roots.push(id);
+            }
+            let match_strings = vm.get_property(args, &"matchStrings".into())?;
+            if let Some(id) = match_strings.object_id() {
+                roots.push(id);
+            }
+            let non_match_strings = vm.get_property(args, &"nonMatchStrings".into())?;
+            if let Some(id) = non_match_strings.object_id() {
+                roots.push(id);
+            }
+            vm.with_array_like_values(&match_strings, |vm, matches| {
+                let all_matches = vm.test262_join_strings(&matches.values)?;
+                if !vm.test262_regexp_test(&regexp, &all_matches)? {
+                    for string in &matches.values {
+                        if !vm.test262_regexp_test(&regexp, string)? {
+                            return Err(vm.test262_failure("testPropertyOfStrings"));
+                        }
                     }
                 }
-            }
-            if non_match_strings == Value::Undefined {
-                return Ok(Value::Undefined);
-            }
-            let non_matches = self.array_like_values(&non_match_strings)?;
-            let all_non_matches = self.test262_join_strings(&non_matches)?;
-            if self.test262_regexp_test(&regexp, &all_non_matches)? {
-                for string in &non_matches {
-                    if self.test262_regexp_test(&regexp, string)? {
-                        return Err(self.test262_failure("testPropertyOfStrings"));
-                    }
+                if non_match_strings == Value::Undefined {
+                    return Ok(Value::Undefined);
                 }
-            }
-            Ok(Value::Undefined)
-        })();
-        self.stack.truncate(base);
-        result
+                vm.with_array_like_values(&non_match_strings, |vm, non_matches| {
+                    let all_non_matches = vm.test262_join_strings(&non_matches.values)?;
+                    if vm.test262_regexp_test(&regexp, &all_non_matches)? {
+                        for string in &non_matches.values {
+                            if vm.test262_regexp_test(&regexp, string)? {
+                                return Err(vm.test262_failure("testPropertyOfStrings"));
+                            }
+                        }
+                    }
+                    Ok(Value::Undefined)
+                })
+            })
+        })
     }
 
     pub(in super::super) fn test262_eval_script(

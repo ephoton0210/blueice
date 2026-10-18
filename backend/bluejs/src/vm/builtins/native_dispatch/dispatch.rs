@@ -1399,12 +1399,13 @@ impl Vm {
                     return Err(RuntimeError::TypeError("apply requires a callable".into()));
                 }
                 let list = native::argument(&args, 1);
-                let values = if matches!(list, Value::Null | Value::Undefined) {
-                    Vec::new()
+                if matches!(list, Value::Null | Value::Undefined) {
+                    self.call_native(receiver, first.clone(), Vec::new(), false)
                 } else {
-                    self.array_like_values(list)?
-                };
-                self.call_native(receiver, first.clone(), values, false)
+                    self.with_array_like_values(list, |vm, values| {
+                        values.call_native(vm, receiver, first.clone(), false)
+                    })
+                }
             }
             NativeFunction::ReflectApply => {
                 if !self.is_callable(first)? {
@@ -1412,13 +1413,9 @@ impl Vm {
                         "Reflect.apply requires a callable target".into(),
                     ));
                 }
-                let values = self.array_like_values(native::argument(&args, 2))?;
-                self.call_native(
-                    first.clone(),
-                    native::argument(&args, 1).clone(),
-                    values,
-                    false,
-                )
+                self.with_array_like_values(native::argument(&args, 2), |vm, values| {
+                    values.call_native(vm, first.clone(), native::argument(&args, 1).clone(), false)
+                })
             }
             NativeFunction::ReflectConstruct => {
                 let new_target = if args.len() > 2 {
@@ -1431,8 +1428,9 @@ impl Vm {
                         "Reflect.construct requires constructors".into(),
                     ));
                 }
-                let values = self.array_like_values(native::argument(&args, 1))?;
-                self.call_with_target(first.clone(), Value::Undefined, values, true, new_target)
+                self.with_array_like_values(native::argument(&args, 1), |vm, values| {
+                    values.call(vm, first.clone(), Value::Undefined, true, new_target)
+                })
             }
             NativeFunction::FunctionToString => {
                 if !self.is_callable(&receiver)? {

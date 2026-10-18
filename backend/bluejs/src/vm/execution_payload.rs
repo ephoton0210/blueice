@@ -154,6 +154,39 @@ pub(super) struct CallEntryCharge {
 }
 
 impl CallEntryCharge {
+    pub(super) fn replace_argument_control(
+        &mut self,
+        owner: Option<host_scheduling::SharedSchedulingCharge>,
+    ) {
+        assert!(self.control.native.is_some() || !self.control.enabled);
+        self.control.bytes = owner
+            .as_ref()
+            .map_or(0, host_scheduling::SharedSchedulingCharge::bytes);
+        self.control.enabled = owner.is_some();
+        self.control.native = owner;
+    }
+
+    pub(super) fn append_argument_payload(&mut self, value: &Value) -> Result<(), RuntimeError> {
+        if self.payload.enabled {
+            self.payload.resize_entry(
+                self.payload
+                    .bytes
+                    .saturating_add(value_payload_bytes(value)),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// A pure heap consumer admits this same buffer immediately after release,
+    /// without a guest/GC boundary between the two ownership views.
+    pub(super) fn release_argument_payload(&mut self, bytes: usize) {
+        if let Some(owner) = &mut self.payload.native {
+            let retained = self.payload.bytes - bytes;
+            owner.release_to(retained);
+            self.payload.bytes = retained;
+        }
+    }
+
     /// Forwarded metadata can reserve additional slots before VM adoption.
     pub(super) fn add_control_storage(&mut self, bytes: usize) -> Result<(), RuntimeError> {
         if self.control.enabled() {
