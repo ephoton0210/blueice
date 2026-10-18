@@ -15,6 +15,20 @@ pub(super) struct NativeValue {
 }
 
 impl NativeValue {
+    pub(super) fn copied_property_key(
+        key: &PropertyName,
+        owner: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
+        let mut storage = owner
+            .map(|owner| owner.reserve_peer(host_scheduling::property_name_payload_bytes(key)))
+            .transpose()?;
+        let value = key.value();
+        if let Some(storage) = &mut storage {
+            storage.resize(value_payload_bytes(&value))?;
+        }
+        Ok(Self { value, storage })
+    }
+
     /// The caller already produced this value. Retain its storage before any
     /// subsequent guest call or collection; producer staging is separate.
     pub(super) fn adopt(
@@ -128,6 +142,43 @@ impl NativeValue {
     pub(super) fn into_value(self) -> Value {
         drop(self.storage);
         self.value
+    }
+
+    /// Keep the input paid through root preparation, then hand the same value
+    /// to a pure managed-heap consumer without an intermediate guest call.
+    pub(super) fn into_heap<T>(
+        mut self,
+        vm: &mut Vm,
+        operation: impl FnOnce(&mut Heap, Value) -> Result<T, HeapError>,
+    ) -> Result<T, RuntimeError> {
+        let owner = self.owner_view()?;
+        let roots = self
+            .value
+            .object_id()
+            .map(|object| {
+                let roots = RealmCallRoots::new(1, owner.as_ref())?;
+                roots.push(object);
+                Ok::<_, RuntimeError>(roots)
+            })
+            .transpose()?;
+        let mut storage = self.storage.take();
+        let transfer = |vm: &mut Vm| {
+            vm.with_roots(|heap| {
+                if let Some(storage) = &mut storage {
+                    storage.release_to(0);
+                }
+                operation(heap, self.value)
+            })
+        };
+        let result = if let Some(roots) = roots {
+            vm.with_realm_call_roots(roots, transfer)
+        } else {
+            transfer(vm)
+        };
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
     }
 
     /// The destination prepared its slots before this pure move. Borrowed

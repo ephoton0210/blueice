@@ -2114,6 +2114,7 @@ fn reverse_definition_and_deletion_reject_an_inactive_parent() {
                     value: Some(Value::Number(0.0)),
                     ..PropertyDescriptor::default()
                 },
+                &mut None,
             ),
             Err(unavailable.clone())
         );

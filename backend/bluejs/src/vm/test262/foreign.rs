@@ -2,6 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::host_scheduling::SharedSchedulingCharge;
+use super::super::property_definition_storage::{
+    definition_bytes, retain_definition_storage, PropertyDefinitionInput,
+};
 use super::super::realm_call_storage::{RealmCallInput, RealmCallRoots};
 use super::super::realm_reentrancy::{prepare_active_registration, ActiveRegistration};
 use super::super::transport_buffer_storage::{BufferSnapshot, TransportVector};
@@ -719,35 +723,51 @@ impl Vm {
         wrapper: ObjectId,
         key: PropertyName,
         mut descriptor: PropertyDescriptor,
+        storage: &mut Option<SharedSchedulingCharge>,
     ) -> Result<bool, RuntimeError> {
-        let (realm_id, target, _, _) = self
-            .test262_foreign_reference(wrapper)
-            .expect("foreign defineOwnProperty has a membrane record");
-        let typed_buffer = self
-            .test262_realm_handle(realm_id)?
-            .read(self.object_prototype.heap, |vm| {
-                Ok(vm.heap.typed_array_info(target).ok())
-            })?
-            .map(|(buffer, _, _, _)| buffer);
-        if typed_buffer.is_some() {
-            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
-        }
-        for field in [
-            &mut descriptor.value,
-            &mut descriptor.get,
-            &mut descriptor.set,
-        ] {
-            if let Some(value) = field.take() {
-                *field = Some(self.test262_export_foreign_value(realm_id, &value)?);
+        let original = retain_definition_storage(self, &key, &descriptor, storage)?;
+        let result = (|| {
+            let (realm_id, target, _, _) = self
+                .test262_foreign_reference(wrapper)
+                .expect("foreign defineOwnProperty has a membrane record");
+            let typed_buffer = self
+                .test262_realm_handle(realm_id)?
+                .read(self.object_prototype.heap, |vm| {
+                    Ok(vm.heap.typed_array_info(target).ok())
+                })?
+                .map(|(buffer, _, _, _)| buffer);
+            if typed_buffer.is_some() {
+                self.test262_sync_foreign_buffer_mirrors(realm_id)?;
             }
+            for index in 0..3 {
+                let field = match index {
+                    0 => &mut descriptor.value,
+                    1 => &mut descriptor.get,
+                    _ => &mut descriptor.set,
+                };
+                if let Some(value) = field.take() {
+                    *field = Some(self.test262_export_foreign_value_owned(realm_id, value)?);
+                }
+                if let Some(storage) = storage {
+                    storage.resize(definition_bytes(&key, &descriptor))?;
+                }
+            }
+            // Move the same lease into the destination entry. Re-admitting
+            // this descriptor while its source guard remained live would pay
+            // for the same buffers twice and lose neutral ownership hints.
+            let result = self.test262_with_foreign_vm(realm_id, |vm| {
+                PropertyDefinitionInput::from_retained(key, descriptor, storage.take())
+                    .define(vm, target)
+            });
+            if let Some(buffer) = typed_buffer {
+                self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
+            }
+            self.test262_foreign_completion(realm_id, result)
+        })();
+        if let Some(owner) = original {
+            owner.reserve_peer(0)?;
         }
-        let result = self.test262_with_foreign_vm(realm_id, |vm| {
-            vm.object_define_own_property(target, key, descriptor)
-        });
-        if let Some(buffer) = typed_buffer {
-            self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
-        }
-        self.test262_foreign_completion(realm_id, result)
+        result
     }
 
     /// Forwards a foreign facade's [[OwnPropertyKeys]] into its Realm. Keys

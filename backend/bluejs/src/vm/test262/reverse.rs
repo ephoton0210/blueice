@@ -34,6 +34,10 @@
 //! read/edit helpers implement that complementary discipline on the forward
 //! side without extending the active pointer's lifetime.
 
+use super::super::host_scheduling::SharedSchedulingCharge;
+use super::super::property_definition_storage::{
+    definition_bytes, retain_definition_storage, PropertyDefinitionInput,
+};
 use super::super::realm_call_storage::{RealmCallInput, RealmCallRoots};
 use super::super::realm_reentrancy::{register_active, resolve_active};
 use super::*;
@@ -331,35 +335,53 @@ impl Vm {
         wrapper: ObjectId,
         key: PropertyName,
         mut descriptor: PropertyDescriptor,
+        storage: &mut Option<SharedSchedulingCharge>,
     ) -> Result<bool, RuntimeError> {
-        let (home_heap, target, _, _) = self
-            .test262_reverse_reference(wrapper)
-            .expect("reverse defineOwnProperty has a membrane record");
-        let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
-        let _guard = register_active(self)?;
-        // SAFETY: the child is suspended before borrowing its active parent;
-        // no access to self occurs below. See this module's Soundness note.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        let base = parent.stack.len();
+        let original = retain_definition_storage(self, &key, &descriptor, storage)?;
         let result = (|| {
-            for field in [
-                &mut descriptor.value,
-                &mut descriptor.get,
-                &mut descriptor.set,
-            ] {
-                if let Some(value) = field.take() {
-                    let value = parent.test262_import_foreign_value(child_realm_id, value)?;
-                    parent.stack.push(value.clone());
-                    *field = Some(value);
+            let (home_heap, target, _, _) = self
+                .test262_reverse_reference(wrapper)
+                .expect("reverse defineOwnProperty has a membrane record");
+            let self_heap = self.object_prototype.heap;
+            let ptr = self.resolve_reverse_parent(home_heap)?;
+            let _guard = register_active(self)?;
+            // SAFETY: the child is suspended before borrowing its active
+            // parent; no access to self occurs below. See Soundness above.
+            let parent = unsafe { &mut *ptr };
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            let owner = parent.argument_list_owner()?.or(storage
+                .as_ref()
+                .map(|owner| owner.reserve_peer(0))
+                .transpose()?);
+            let roots = RealmCallRoots::new(3, owner.as_ref())?;
+            let result = parent.with_realm_call_roots(roots.clone(), |parent| {
+                for index in 0..3 {
+                    let field = match index {
+                        0 => &mut descriptor.value,
+                        1 => &mut descriptor.get,
+                        _ => &mut descriptor.set,
+                    };
+                    if let Some(value) = field.take() {
+                        let value = parent.test262_import_foreign_value(child_realm_id, value)?;
+                        if let Some(object) = value.object_id() {
+                            roots.push(object);
+                        }
+                        *field = Some(value);
+                    }
+                    if let Some(storage) = storage {
+                        storage.resize(definition_bytes(&key, &descriptor))?;
+                    }
                 }
-            }
-            parent.remaining_instructions = parent.config.instruction_budget;
-            parent.object_define_own_property(target, key, descriptor)
+                parent.remaining_instructions = parent.config.instruction_budget;
+                PropertyDefinitionInput::from_retained(key, descriptor, storage.take())
+                    .define(parent, target)
+            });
+            result.map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
         })();
-        parent.stack.truncate(base);
-        result.map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        if let Some(owner) = original {
+            owner.reserve_peer(0)?;
+        }
+        result
     }
 
     /// `[[Delete]]` likewise delegates to the original object's internal

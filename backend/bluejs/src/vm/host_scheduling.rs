@@ -647,6 +647,15 @@ pub(super) fn value_payload_bytes(value: &Value) -> usize {
         _ => 0,
     }
 }
+
+pub(super) fn property_name_payload_bytes(key: &PropertyName) -> usize {
+    match key {
+        PropertyName::String(text) => text.owned_heap_payload_bytes().unwrap_or(usize::MAX),
+        PropertyName::Symbol(symbol) => symbol.description.as_ref().map_or(0, |text| {
+            text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+        }),
+    }
+}
 pub(super) fn capability_bytes(target: &ReactionTarget) -> usize {
     match target {
         ReactionTarget::Native(_) => 0,

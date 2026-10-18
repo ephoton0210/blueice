@@ -86,6 +86,49 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The property-definition input follow-up (2026-10-18) has an implementation
+checkpoint. Common Array callback producer ownership remains open; map/filter
+need this consumer dependency before their result handoff is completed. The
+unchanged common definition body was extracted behind a production input boundary
+before testing. Original output records three failures and two passing controls:
+128 bytes of input storage lose their charge after VM destruction, a neutral
+consumer accepts a result after the original document fails, and a revoking Proxy
+getter's GC collects the still-required target through public defineProperty.
+
+Dynamic keys and value/getter/setter payloads now retain independent input leases
+through guest-capable routing. Consumer scopes root object IDs instead of copying
+primitive fields into operand-stack roots. Destination admission precedes changing
+ownership; original-owner terminal checks and neutral VM policy are preserved.
+Ordinary definitions release credit at the pure heap-adoption boundary. Delegation
+and both membrane directions move the existing lease; primitive exports move
+their buffers and reverse imports scope object-ID roots. A numerical delegation
+control verifies that one 64-byte payload adds 64 bytes through two Proxy layers.
+Captured target/handler IDs are pinned before GetMethod can revoke or collect;
+fresh traps and descriptor objects remain rooted through preparation and entry.
+Copied keys, argument slots and individual descriptor-object field copies are
+admitted before allocation, with direct heap adoption rather than an unowned batch
+of primitive clones. Missing fields, accessor/symbol identity, false trap results,
+descriptor invariants, proper tail calls and callback error realms are preserved.
+
+All twenty-five new contracts, the previous 469 selected controls and seven finite
+existing descriptor/membrane/ingress controls pass: **501 distinct selected
+tests**, seventeen executable targets and 180 selections. The original expanded
+result is 23/25: two assertions omitted the live VM's 96-byte baseline; corrected
+comparisons include that baseline and verify zero after teardown. Those outputs
+remain separate. A fixture's needless borrow caught by Clippy is corrected before
+freezing and replaying all final selections; earlier green results are not
+substituted for the final source. Formatting, diff checks and offline workspace/
+all-target Clippy pass. Frozen source/artifact and staged/committed Git audits
+bind this checkpoint; the ordinary-library hook adds no measured coverage claim.
+Common Array callback producers, other descriptor/scalar producers, wider heap/
+allocator staging, managed-buffer policy, native ingress and integrated acceptance
+remain open. M1u remains the latest accepted milestone and M1z integrated gates
+stay open. Validation stays local/offline with fixed finite cases; legacy resource/
+allocation/fuel/threshold sweeps, rejected publication/process inspection and
+excluded replay are not run.
+Evidence: `target/property-definition-storage-source-20261018.json`.
+Red evidence: `/private/tmp/blueice-property-definition-storage-red-20261018.{json,tar.gz,log}`.
+
 The common Array index-scan follow-up (2026-10-18) has an implementation
 checkpoint. Three fixed tiny cases reproduce a two-key plan losing all 32 native
 bytes after VM destruction and neutral consumers accepting indices/getter results
@@ -2020,8 +2063,12 @@ work and exposes its retained payload ledger.
       469 relevant selected cases: borrowed integer-key views, admitted candidate
       plans, actual backing retention, atomic epoch/work publication, later policy/
       root loans, neutral post-guest terminal checks and nonretaining receiver
-      semantics. Other Array/scalar producers, wider staging, managed-buffer policy
-      and integrated acceptance stay open.
+      semantics. Property-definition inputs add twenty-five contracts and 501
+      relevant selected cases: independent key/descriptor leases, source-owner
+      validation, destination/heap adoption, captured Proxy target pins, admitted
+      trap/descriptor preparation and moving membrane input handoff. Common Array
+      callback producers, other descriptor/scalar producers, wider staging,
+      managed-buffer policy and integrated acceptance stay open.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

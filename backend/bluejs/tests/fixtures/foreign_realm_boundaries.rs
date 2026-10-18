@@ -49,6 +49,7 @@ fn membrane_argument_exports_reject_handles_owned_by_another_live_heap() {
             object,
             "newValue".into(),
             PropertyDescriptor::data(value.clone(), true, true, true),
+            &mut None,
         )
         .map(|_| ()),
         vm.test262_foreign_set(object, &"value".into(), &value),

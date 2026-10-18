@@ -2,6 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::host_scheduling::SharedSchedulingCharge;
+use super::super::native_value_storage::NativeValue;
+use super::super::property_definition_storage::{
+    retain_definition_storage, validate_definition_storage, PropertyDefinitionInput,
+};
+use super::super::realm_call_storage::RealmCallRoots;
+use super::super::transport_buffer_storage::TransportVector;
 use super::*;
 
 #[cfg(any(test, coverage))]
@@ -99,42 +106,45 @@ impl Vm {
         key: PropertyName,
         descriptor: PropertyDescriptor,
     ) -> Result<bool, RuntimeError> {
+        self.heap.proxy(object)?;
+        super::super::property_definition_storage::PropertyDefinitionInput::new(
+            self, key, descriptor,
+        )?
+        .define(self, object)
+    }
+
+    pub(in super::super) fn object_define_own_property_input(
+        &mut self,
+        object: ObjectId,
+        key: PropertyName,
+        descriptor: PropertyDescriptor,
+        storage: &mut Option<SharedSchedulingCharge>,
+    ) -> Result<bool, RuntimeError> {
         let proxy = self.heap.proxy(object)?.is_some();
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        self.stack.extend(
-            [
-                descriptor.value.as_ref(),
-                descriptor.get.as_ref(),
-                descriptor.set.as_ref(),
-            ]
-            .into_iter()
-            .flatten()
-            .cloned(),
-        );
-        let result = (|| {
-            self.trigger_deferred_namespace(object, Some(&key))?;
-            if proxy {
-                return self.proxy_define_own_property(object, key, descriptor);
+        let triggered = self.trigger_deferred_namespace(object, Some(&key));
+        validate_definition_storage(storage)?;
+        triggered?;
+        if proxy {
+            return self.proxy_define_own_property_input(object, key, descriptor, storage);
+        }
+        let materialized = self.materialize_object_prototype_methods(object, Some(&key));
+        validate_definition_storage(storage)?;
+        materialized?;
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_define_own_property(object, key, descriptor, storage);
+        }
+        if self.test262_reverse_reference(object).is_some() {
+            return self.test262_reverse_define_own_property(object, key, descriptor, storage);
+        }
+        if let Some(numeric) = self.heap.typed_array_numeric_key(object, &key)? {
+            return self.typed_array_define_own_property(object, numeric, descriptor);
+        }
+        self.with_roots(|heap| {
+            if let Some(storage) = storage {
+                storage.release_to(0);
             }
-            self.materialize_object_prototype_methods(object, Some(&key))?;
-            if self.test262_foreign_reference(object).is_some() {
-                return self.test262_foreign_define_own_property(object, key, descriptor);
-            }
-            if self.test262_reverse_reference(object).is_some() {
-                return self.test262_reverse_define_own_property(object, key, descriptor);
-            }
-            if let Some(numeric) = self
-                .heap
-                .typed_array_numeric_key(object, &key)
-                .expect("the receiver remains rooted after its initial heap validation")
-            {
-                return self.typed_array_define_own_property(object, numeric, descriptor);
-            }
-            self.with_roots(|heap| heap.define_own_property(object, key, descriptor))
-        })();
-        self.stack.truncate(base);
-        result
+            heap.define_own_property(object, key, descriptor)
+        })
     }
 
     /// IntegerIndexedElementSet and the compatible portion of
@@ -460,6 +470,13 @@ impl Vm {
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
         let result = self.call_native(callee, receiver, args, false);
+        self.finish_object_callback(result)
+    }
+
+    fn finish_object_callback(
+        &mut self,
+        result: Result<Value, RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
         if !crate::vm::realm_reentrancy::has_foreign_caller(self.object_prototype.heap) {
             return result;
         }
@@ -1317,26 +1334,30 @@ impl Vm {
         &mut self,
         descriptor: &PropertyDescriptor,
     ) -> Result<Value, RuntimeError> {
+        let owner = self.argument_list_owner()?;
+        let roots = RealmCallRoots::new(1, owner.as_ref())?;
         let prototype = self.object_prototype;
         let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        self.stack.push(Value::Object(object));
-        let result = (|| {
+        roots.push(object);
+        self.with_realm_call_roots(roots, |vm| {
+            let writable = descriptor.writable.map(Value::Bool);
+            let enumerable = descriptor.enumerable.map(Value::Bool);
+            let configurable = descriptor.configurable.map(Value::Bool);
             for (name, value) in [
-                ("value", descriptor.value.clone()),
-                ("writable", descriptor.writable.map(Value::Bool)),
-                ("get", descriptor.get.clone()),
-                ("set", descriptor.set.clone()),
-                ("enumerable", descriptor.enumerable.map(Value::Bool)),
-                ("configurable", descriptor.configurable.map(Value::Bool)),
+                ("value", descriptor.value.as_ref()),
+                ("writable", writable.as_ref()),
+                ("get", descriptor.get.as_ref()),
+                ("set", descriptor.set.as_ref()),
+                ("enumerable", enumerable.as_ref()),
+                ("configurable", configurable.as_ref()),
             ] {
                 if let Some(value) = value {
-                    self.with_roots(|heap| heap.set(object, name, value))?;
+                    NativeValue::copied(value, owner.as_ref())?
+                        .into_heap(vm, |heap, value| heap.set(object, name, value))?;
                 }
             }
             Ok(Value::Object(object))
-        })();
-        self.stack.pop();
-        result
+        })
     }
 
     pub(in super::super) fn proxy_get_own_property(
@@ -1433,75 +1454,98 @@ impl Vm {
         key: PropertyName,
         descriptor: PropertyDescriptor,
     ) -> Result<bool, RuntimeError> {
+        self.object_define_own_property(proxy, key, descriptor)
+    }
+
+    fn proxy_define_own_property_input(
+        &mut self,
+        proxy: ObjectId,
+        key: PropertyName,
+        descriptor: PropertyDescriptor,
+        storage: &mut Option<SharedSchedulingCharge>,
+    ) -> Result<bool, RuntimeError> {
+        let owner = retain_definition_storage(self, &key, &descriptor, storage)?;
         let Some((target, handler)) = self.heap.proxy(proxy)? else {
-            return self.with_roots(|heap| heap.define_own_property(proxy, key, descriptor));
+            return self.with_roots(|heap| {
+                if let Some(storage) = storage {
+                    storage.release_to(0);
+                }
+                heap.define_own_property(proxy, key, descriptor)
+            });
         };
-        let trap = self.proxy_trap(handler, "defineProperty")?;
-        if trap == Value::Undefined {
-            return self.object_define_own_property(target, key, descriptor);
-        }
-        if !self
-            .is_callable(&trap)
-            .expect("GetMethod returned a live value in this realm")
-        {
-            return Err(RuntimeError::TypeError(
-                "Proxy defineProperty trap must be callable".into(),
-            ));
-        }
-        // The trap may be a function created by the handler's own `get`, held
-        // nowhere else: keep it alive while the descriptor record is built.
-        let base = self.stack.len();
-        self.stack.push(trap.clone());
-        let descriptor_value = self.descriptor_object(&descriptor);
-        self.stack.truncate(base);
-        let descriptor_value = descriptor_value?;
-        // The descriptor record is observable by the trap. Root it across
-        // the call because a trap can allocate (or invoke assertions that
-        // allocate) before it reads the third argument.
-        self.stack.push(descriptor_value.clone());
-        let trap_result = self.call_object_callback(
-            trap,
-            Value::Object(handler),
-            vec![Value::Object(target), key.value(), descriptor_value],
-        );
-        self.stack.truncate(base);
-        let trap_result = trap_result?;
-        if !self
-            .to_boolean(&trap_result)
-            .expect("ToBoolean cannot fail for the live result of a trap")
-        {
-            return Ok(false);
-        }
-        let target_descriptor = self.object_get_own_property(target, &key)?;
-        let extensible = self.object_is_extensible(target)?;
-        if !compatible_property_descriptor(extensible, target_descriptor.as_ref(), &descriptor) {
-            return Err(RuntimeError::TypeError(
-                "Proxy defineProperty trap reported an incompatible property".into(),
-            ));
-        }
-        if descriptor.configurable == Some(false)
-            && target_descriptor
-                .as_ref()
-                .is_none_or(|current| current.configurable != Some(false))
-        {
-            return Err(RuntimeError::TypeError(
-                "Proxy defineProperty trap reported a new non-configurable property".into(),
-            ));
-        }
-        // A successful defineProperty trap cannot make a non-configurable,
-        // writable target property non-writable. Ordinary descriptor
-        // compatibility permits that transition, so Proxy.[[DefineOwnProperty]]
-        // requires this additional invariant check.
-        if target_descriptor.as_ref().is_some_and(|current| {
-            current.configurable == Some(false)
-                && current.writable == Some(true)
-                && descriptor.writable == Some(false)
-        }) {
-            return Err(RuntimeError::TypeError(
-                "Proxy defineProperty trap made a target property non-writable".into(),
-            ));
-        }
-        Ok(true)
+        // GetMethod can revoke the proxy and collect before returning a trap.
+        let roots = RealmCallRoots::new(4, owner.as_ref())?;
+        roots.push(target);
+        roots.push(handler);
+        self.with_realm_call_roots(roots.clone(), |vm| {
+            let trap = vm.proxy_trap(handler, "defineProperty");
+            validate_definition_storage(storage)?;
+            let trap = trap?;
+            if trap == Value::Undefined {
+                return PropertyDefinitionInput::from_retained(key, descriptor, storage.take())
+                    .define(vm, target);
+            }
+            if !vm.is_callable(&trap)? {
+                return Err(RuntimeError::TypeError(
+                    "Proxy defineProperty trap must be callable".into(),
+                ));
+            }
+            if let Some(object) = trap.object_id() {
+                roots.push(object);
+            }
+            let descriptor_value = vm.descriptor_object(&descriptor);
+            validate_definition_storage(storage)?;
+            let descriptor_value = descriptor_value?;
+            if let Some(object) = descriptor_value.object_id() {
+                roots.push(object);
+            }
+            let mut arguments = TransportVector::with_capacity(3, owner.as_ref())?;
+            arguments.push_owned(NativeValue::adopt(Value::Object(target), owner.as_ref())?)?;
+            arguments.push_owned(NativeValue::copied_property_key(&key, owner.as_ref())?)?;
+            arguments.push_owned(NativeValue::adopt(descriptor_value, owner.as_ref())?)?;
+            let trap_result = arguments.with_arguments(vm, |vm, arguments| {
+                let result = arguments.call_native_borrowed(vm, &trap, &Value::Object(handler));
+                vm.finish_object_callback(result)
+            });
+            validate_definition_storage(storage)?;
+            let trap_result = trap_result?;
+            let accepted = vm.to_boolean(&trap_result)?;
+            drop(trap_result);
+            if !accepted {
+                return Ok(false);
+            }
+            let target_descriptor = vm.object_get_own_property(target, &key)?;
+            let extensible = vm.object_is_extensible(target)?;
+            if !compatible_property_descriptor(extensible, target_descriptor.as_ref(), &descriptor)
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy defineProperty trap reported an incompatible property".into(),
+                ));
+            }
+            if descriptor.configurable == Some(false)
+                && target_descriptor
+                    .as_ref()
+                    .is_none_or(|current| current.configurable != Some(false))
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy defineProperty trap reported a new non-configurable property".into(),
+                ));
+            }
+            // A successful defineProperty trap cannot make a non-configurable,
+            // writable target property non-writable. Ordinary descriptor
+            // compatibility permits that transition, so Proxy.[[DefineOwnProperty]]
+            // requires this additional invariant check.
+            if target_descriptor.as_ref().is_some_and(|current| {
+                current.configurable == Some(false)
+                    && current.writable == Some(true)
+                    && descriptor.writable == Some(false)
+            }) {
+                return Err(RuntimeError::TypeError(
+                    "Proxy defineProperty trap made a target property non-writable".into(),
+                ));
+            }
+            Ok(true)
+        })
     }
 
     pub(in super::super) fn proxy_is_extensible(
