@@ -35,7 +35,7 @@ and BlueTS lines. The baseline descriptions below remain the original gap
 inventory; the dated milestone records identify what has actually been
 implemented and verified on `feature/bluejs-browser-integration-gaps`.
 
-**Architecture priority — updated 2026-10-16.** Scheduling ownership,
+**Architecture priority — reaffirmed 2026-10-18.** Scheduling ownership,
 timer/Promise collectibility, cancellation/navigation cleanup and per-document
 resource containment take precedence over diagnostic-coordinate precision.
 M1r through M1u close the reproduced native-pressure, discarded-realm,
@@ -44,7 +44,12 @@ boundaries. Next come complete native control/task-source/host-buffer
 accounting and native UI/network ingress, then the long-running two-tab
 acceptance. M1q's diagnostic refinements remain parked until these architectural
 dependencies are closed. Its interrupted 191-target replay is incomplete and
-does not constitute a milestone or a new acceptance gate.
+does not constitute a milestone or a new acceptance gate. Timer/Promise roots
+span callbacks and realms, so incorrect ownership can keep a discarded document
+alive or release work that is still pending. Their collection, cancellation and
+ownership invariants remain the first architectural acceptance dependency;
+native snapshot/control accounting supports that dependency. An implementation
+checkpoint does not close the outstanding M1v–M1z integrated gates.
 
 **Validation constraint — reaffirmed 2026-10-18.** Continue architecture work
 with offline static checks and fixed, finite unit/functional cases. Use tiny
@@ -60,6 +65,14 @@ Previously rejected push and process inspection remain excluded; do not retry
 them through different commands, privileges or routes. Local commits may record
 reviewed changes, but outbound publication is outside this validation checkpoint.
 
+The owner's renewed cybersecurity warning (2026-10-18) leaves the specific
+affected operation unidentified. Additional build/test/runtime validation and
+publication are pending that clarification. This warning response only reviewed
+existing local files and logs; it started no new Cargo validation, runtime replay,
+service or network operation. Preserve the unfinished source/tests and their
+existing evidence without treating them as a passing checkpoint. Static review
+and TODO reconciliation can continue within the current local scope.
+
 M1s began with this public ownership failure:
 discarded ShadowRealm instances become unreachable (`WeakRef.deref()` returns
 undefined), but their VM tables retain global Promise results and their native
@@ -71,6 +84,20 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The binary transport snapshot follow-up (2026-10-18) is unfinished. Existing
+corrected-fixture output records **two passed and four failed**: the byte/value
+snapshot ownership cases reproduce missing native credit and its loss after VM
+destruction. The two passing controls preserve cached intrinsic behavior after
+JavaScript global replacement. Two initial fixture assumptions about overridden
+globals were incorrect; their original six-failure output is preserved separately.
+The current source only adds regression scaffolding; no production snapshot fix
+or passing implementation checkpoint is claimed. Planned scope is admitted binary/
+value snapshots, immutable buffer moves and mirror-plan storage/lifetime. BigInt
+payload would follow the existing primitive-byte policy; wider arithmetic/
+allocator staging and integrated acceptance remain open. Additional execution
+validation is pending identification of the renewed cybersecurity warning above.
+Existing corrected evidence: `/private/tmp/blueice-transport-buffer-storage-red-contracts-20261018.{json,tar.gz,log}`.
+
 The common array-like argument-list follow-up (2026-10-18) has an implementation
 checkpoint. Three fixed tiny regressions reproduced primitive copies in operand
 stack roots, 164 unowned native bytes in a Rust-held list, and a leftover stack
