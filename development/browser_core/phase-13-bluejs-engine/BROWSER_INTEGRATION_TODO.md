@@ -68,6 +68,29 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The rejection-notification lifetime follow-up (2026-10-18) has an implementation
+checkpoint. Three tiny owned/shared/nested regressions reproduced VM loss after
+public realm references were discarded, before the document checkpoint published
+the rejection notification. Pending entries already owned their Promise roots and
+requested cleanup, but the collector did not classify those entries as realm work.
+Pending and active rejection batches now retain their VM and discovered access
+route through publication and delivery. An empty tracking profile, untracked
+rejection or outstanding reported bit does not retain an otherwise unreachable VM.
+
+Fourteen new contracts and the previous 154 relevant controls pass: **168 distinct
+selected tests**, five executable targets and 98 selections. Controls cover
+owned/shared/nested delivery, early/late handling, one follow-up notification,
+already-published tasks, busy retry, independent documents, reported-bit weakness
+and document teardown/final native-credit release. Formatting, diff checks and
+offline workspace/all-target Clippy pass. Frozen source/artifact and Git audits
+bind the local checkpoint. An ordinary-library coverage hook is present without
+a new coverage claim. General retained-map growth admission and wider native,
+transport and program ownership remain open; M1u remains latest accepted and
+M1z integrated gates remain open. No quota-boundary, exhaustion, service,
+conformance timer thread or privileged replay was run; rejected push/process
+inspection was not retried. Evidence:
+`target/rejection-lifetime-source-20261018.json`.
+
 The membrane-retention follow-up (2026-10-18) has an implementation
 checkpoint. Eight tiny cases reproduced permanent forward/reverse facade,
 transport-snapshot and buffer-mirror roots retaining discarded objects, callable
@@ -1536,7 +1559,10 @@ work and exposes its retained payload ledger.
       Membrane retention now adds twenty-six contracts and 154 relevant selected
       cases, including conditional pin/identity tracing, discarded owned realms,
       one retained work route, kept-target VM lifetime and temporary constructor
-      return roots. General retained-map growth admission remains open.
+      return roots. Rejection-notification lifetime now adds fourteen contracts
+      and 168 relevant selected cases: pending/active batches preserve the VM
+      and route until delivery; empty profiles and the reported bit do not.
+      General retained-map growth admission remains open.
       Other metadata/control/error replies, incoming decode buffers,
       shared programs' remaining storage, other
       managed-container and scheduling backing buffers,

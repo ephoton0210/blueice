@@ -15,6 +15,10 @@ impl Vm {
         // ClearKeptObjects belongs to the document checkpoint. Its owning
         // VM must survive even after the last public realm facade is dropped.
         !self.kept_weak_objects.is_empty()
+            || self
+                .host_rejections
+                .as_ref()
+                .is_some_and(|state| !state.pending.is_empty() || state.active != 0)
             || !self.promise_jobs.is_empty()
             || !self.browser_tasks.is_empty()
             || !self.host_finalization_tasks.is_empty()

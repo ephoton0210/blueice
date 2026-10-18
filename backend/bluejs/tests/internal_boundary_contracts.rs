@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_realm_rejection_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_realm_rejection_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_realm_membrane_gc_contracts() {
     blueice_bluejs::Vm::verify_realm_membrane_gc_contracts();
 }

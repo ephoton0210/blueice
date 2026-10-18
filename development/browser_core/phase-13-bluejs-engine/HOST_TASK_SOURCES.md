@@ -1622,6 +1622,38 @@ listener/Core/MCP, privileged replay, conformance timer thread, process inspecti
 or killing was resumed. Rejected external push/process inspection was not retried.
 Evidence: `target/realm-membrane-gc-source-20261018.json`.
 
+The rejection-notification lifetime checkpoint (2026-10-18) retains an owner
+across the pre-publication boundary. A tracked rejection admits its pending entry
+and Promise root and requests a document checkpoint. Before that checkpoint,
+it has neither a queued Promise job nor a published browser task. Three tiny
+owned/shared/nested cases reproduced loss of the entire VM when its public
+realm reference was discarded during this interval.
+
+Pending rejection entries and active dispatch batches now contribute realm work.
+Existing agent collection consequently retains the VM and one discovered access
+route until checkpoint publication and notification delivery complete. Published
+notification and late-handler tasks continue to use the existing browser-task
+ownership. A registered but empty profile, untracked rejected Promise record or
+outstanding reported bit does not itself retain a VM. Early handling removes the
+pending entry; any scheduled reaction retains its ordinary job ownership.
+No new storage, admission policy or event-ordering rule is introduced.
+
+Fourteen new contracts and the previous 154 relevant controls pass: 168 distinct
+finite cases, five executable targets and 98 selections. Verification includes
+owned/shared/nested pending owners, early and late handling, one handler-produced
+follow-up rejection, already-published delivery, independent documents, busy
+retry without consumption, weak reported state, and document destruction with
+final native-credit release. All three original lifetime cases failed before
+the fix. Formatting, diff checks and offline workspace/all-target Clippy pass;
+frozen source/artifact and Git audits bind the local checkpoint. The ordinary-
+library hook is present without a new coverage result. General retained-map
+growth admission and wider native/transport/program ownership remain open,
+with M1u latest accepted and M1z integrated gates open. No quota/resource-boundary,
+exhaustion, infinite-input, network/service/listener/Core/MCP, privileged replay,
+conformance timer thread, process inspection or killing was resumed. Rejected
+external push/process inspection was not retried. Evidence:
+`target/rejection-lifetime-source-20261018.json`.
+
 Compiled registries retain immutable snapshots with one document charge for
 their owned header, logical table capacity, key capacities and root code-unit
 buffers. Root vectors include diagnostic instruction owners; constant payloads

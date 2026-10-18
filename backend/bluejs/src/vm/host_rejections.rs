@@ -299,3 +299,7 @@ impl Vm {
         }
     }
 }
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/realm_rejection_lifetime.rs"]
+mod lifetime_tests;
