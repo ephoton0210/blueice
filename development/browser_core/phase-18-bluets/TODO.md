@@ -683,8 +683,17 @@ Entry condition: K.12 and K.13 are closed or each open row is named as a gap in 
     - *Evidence:* PLAN.md, "AC-K14.2 Versioned program/configuration measurement" (2026-10-16):
       12,511 listed assertions; 12,010/12,028 direct agreements, six open and twelve refused;
       100/100 measured suites, Windows 82/82, native tool/JSON verification and complete local workspace gate.
-- [ ] **AC-K14.3 J.6.3 gates** (fmt/Clippy, workspace tests with ignored oracles, coverage) green on every
-  CI platform in one hosted run.
+- [x] **AC-K14.3 Local and Windows VM validation.** Per the user's 2026-10-19 acceptance
+  decision, the Windows x86_64 VM must pass all 82 pinned TypeScript 5.9.3 core oracle tests,
+  and the complete local workspace test suite, every ignored oracle of both BlueTS crates,
+  formatting and warnings-denied all-target workspace Clippy must pass. PLAN.md must record
+  the commands, results, log digests and source binding. Hosted CI results and coverage
+  measurements remain supplementary evidence, not prerequisites for this checkpoint.
+    - *Evidence:* PLAN.md, "AC-K14.3 Accepted local/VM evidence" (2026-10-19): Windows VM
+      82/82, unchanged-source complete native workspace 7,231/7,231 across 568 groups,
+      100 oracle logs / 244 ignored functions reverified, fresh workspace fmt/Clippy,
+      8/8 tool tests and 1,174/1,174 native socket-recovery tests across all six affected
+      crates. The separate sandbox socket-denial run is explicitly not accepted.
 - [ ] **AC-K14.4 Row accounting.** Every inventory row is labelled closed / open / refused with a
   pointer to its evidence. No unlabelled row.
 - [ ] **AC-K14.5 Decision text** written in PLAN.md. "Full parity" stays off while any required row

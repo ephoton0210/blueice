@@ -11379,7 +11379,24 @@ The unchanged refusal inventory reproduces 213 sites in eleven areas.
 No production compiler/runtime or oracle input changed after the measured
 source revision. AC-K14.2 is complete; AC-K14.3–AC-K14.6 remain open.
 
-### AC-K14.3 Hosted gate recheck (in progress, 2026-10-16)
+### AC-K14.3 Local and Windows VM validation (2026-10-19)
+
+On 2026-10-19 the user explicitly selected the Windows x86_64 VM's complete
+82-test pinned core oracle suite plus complete local testing as sufficient
+acceptance for AC-K14.3. This supersedes the former single-hosted-run/all-CI-
+platform requirement. The local gate includes workspace tests, every ignored
+oracle of both BlueTS crates, formatting and warnings-denied all-target
+workspace Clippy. Commands, log digests and their tested-source relationship
+must be recorded before the checkbox is closed or this checkpoint committed.
+Hosted CI and coverage observations remain supplementary; their failures are
+not relabelled as successes. The CI workflow and its own thresholds are not
+changed by this checkpoint's acceptance decision.
+
+The following hosted-run investigation records the former acceptance policy
+and dated observations. Statements below about awaiting a single green hosted
+run are historical, not the current AC-K14.3 acceptance condition.
+
+#### Historical hosted gate investigation (2026-10-16–19)
 
 The first final-source run is
 [38913027056](https://github.com/ephoton0210/blueice/actions/runs/38913027056)
@@ -11471,3 +11488,229 @@ of the Windows VM's final proof reconfirmed its successful 8/8 Node and
 values still match the local repair, so the Windows evidence applies to
 these exact changes. No production source or compatibility data changed
 since that validation.
+
+#### Repaired-source hosted run (2026-10-19; in progress)
+
+The authorized checkout repair is commit
+`9805be9ee6c91c0cc7cc71db2d51e65bbf683c31`, pushed to
+`feature/bluets-integration`. A fresh complete workflow was dispatched as
+[run 39180823440](https://github.com/ephoton0210/blueice/actions/runs/39180823440),
+with that exact head SHA; this is not a retry of the failed `e7a642179` jobs.
+Acceptance requires all 25 build/test/lint platforms, four pinned oracle
+platforms, coverage and the aggregate gate: 31 successful jobs in this run.
+The workflow retains the 90% workspace and independent 88% BlueJS line
+floors and the existing four process-entry exclusions; no gate was relaxed.
+
+At 2026-10-19T01:41:15Z, 24 dependency jobs had succeeded and six were still
+running, with no failures. The aggregate gate had not yet been created.
+All 25 platform checkout-regression steps had passed. All ten RHEL/SUSE
+container jobs had completed successfully; their saved logs each confirm
+all 17 strict inventory tests and the three checkout regressions pass.
+Four Windows platform jobs had completed: Server 2025 x86_64, Server 2025
+VS2026 x86_64, Windows 11 arm64 and Windows 11 VS2026 arm64. Their logs also
+confirm 17/17 inventory tests and all three checkout regressions. The
+previously failing generated-Markdown equality assertions remain unchanged.
+
+The completed Ubuntu and macOS oracle logs each match all 244 selected
+ignored function names from the immutable catalog across 100 nonempty
+suite targets. Their raw log SHA-256 values are respectively
+`4e26d67bf447e06079a6c0c99533fba781de52094603508f6435c4e78f2f164a`
+and `a495c9068ed1ec475b6db7baff977bd183f3a681c530fba56399325323386c1a`.
+The remaining dependency jobs at that observation were Windows Server 2022
+x86_64, both Intel macOS platforms, both Windows oracle platforms, and
+coverage. These are progress observations, not AC-K14.3 acceptance. Its
+checkbox remains open, and this checkpoint must not be committed until
+the same complete repaired-source run has passed every required job.
+
+At 2026-10-19T01:43:56Z, coverage job `117832998670` passed its workspace
+90% line gate and started the independent BlueJS 88% line gate. The job's
+head SHA and run id match this repaired source. This intermediate result
+does not yet establish coverage-job or whole-workflow success.
+
+At 2026-10-19T01:59:17Z, all four oracle jobs had completed successfully
+on the same repaired source. Their logs were checked against the exact
+selected function-name multisets, not just their exit badges:
+
+| Oracle platform | Selected ignored tests / nonempty suite targets | Elapsed job time |
+| --- | ---: | ---: |
+| `ubuntu-24.04` | 244 / 100 | 72m 35s |
+| `macos-15` | 244 / 100 | 67m 08s |
+| `windows-2025` | 243 / 99 | 90m 56s |
+| `windows-11-arm` | 243 / 99 | 89m 20s |
+
+Both Windows logs print all 25 named symlink exclusions. The Unix-only
+`pinned_build_records_owner_gate_difference` function explains the
+one-test/one-suite difference; exclusions are not Windows passes or proof
+that the Unix-scoped 12,511 case observations all ran on Windows. The raw
+Windows x86_64 and arm64 log SHA-256 values are respectively
+`f7ee63ca03598bd97650ec033c842f1c04279930edb447dfb91a733f33612070`
+and `c21a0ab4ea73f6017251511337c8483453b6c17dd764b172b8fa8c2fc0759ca9`.
+The slowest oracle job is 5,456 seconds, below the existing 180-minute
+bound, leaving 62.11% of its 240-minute timeout unused. The five Windows
+build/test/lint jobs have also completed, with all 17 inventory tests and
+both strict generated-Markdown equality assertions verified on each.
+The remaining dependency jobs at this observation are both Intel macOS
+platforms and coverage: 27 succeeded, three still running. The aggregate
+gate and AC-K14.3 remain unaccepted; no checkpoint commit is made for this
+partial result.
+
+At 2026-10-19T02:31:19Z, the macOS 26 x86_64 job `117832999078`
+in run `39180823440` concluded failure. Its
+[GitHub failure annotation](https://github.com/ephoton0210/blueice/actions/runs/39180823440/job/117832999078)
+states: "The hosted runner lost communication with the server."
+The Test step retained `in_progress` with no conclusion; subsequent steps
+were pending, and the downloadable log blob was unavailable. No concrete
+Rust assertion failure was reported or recoverable at this observation.
+This does not establish a code defect or a successful test. The run is
+not accepted for AC-K14.3, regardless of its remaining coverage result.
+
+A fresh complete workflow was dispatched at 2026-10-19T02:34:50Z as
+[run 39190633613](https://github.com/ephoton0210/blueice/actions/runs/39190633613)
+on the same committed `9805be9ee6c91c0cc7cc71db2d51e65bbf683c31` source.
+The source, workflow, platform set and thresholds are unchanged. This is
+a full 31-job retry after an authoritative terminal runner failure, not
+a restart due to an observation timeout or a retry of only the failed
+platform. The existing coverage job was left running. No new commit was
+created, no TODO item was checked, and prior partial successes will not be
+combined with the replacement run to claim a complete hosted gate.
+
+The replacement run's openSUSE Tumbleweed x86_64 job `117862427456`
+failed at `Install SUSE prerequisites` at 2026-10-19T02:40:26Z, before
+checkout or any Rust build/test. Its log records a repository metadata
+download timeout (Curl 28), mirror 404 responses, and zypper exit 106.
+The [official Tumbleweed zypper manual](https://manpages.opensuse.org/Tumbleweed/zypper/zypper.8.en.html)
+defines 106 as `ZYPPER_EXIT_INF_REPOS_SKIPPED`, a repository refresh
+failure. The code is not ignored or reclassified as a passing prerequisite.
+Log SHA-256: `e3d07b05f43ff06007897ee3e652d2acb0d0234af917ed4e5fb99198ec53fe68`.
+
+[GitHub's supported job re-run](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs?tool=cli)
+retains the original SHA/ref; the
+[run id also remains unchanged](https://docs.github.com/en/actions/reference/workflows-and-actions/variables).
+Recovery can therefore rerun this entire failed infrastructure job and its
+dependent gate within `39190633613`, without new source or a commit. The
+acceptance condition remains all 31 configured jobs and the aggregate gate
+successful in that same run; failed attempts are retained and must be
+reported. No result from `39180823440` is imported into this acceptance.
+The first specific-job rerun request was rejected at 02:46 UTC while the
+run remained in progress, with `run_attempt` still 1. No rerun started;
+the current handle remains authoritative until its actual terminal state.
+
+The rejected run `39180823440` subsequently completed with 29 successful
+jobs and two failures (the lost macOS runner and the dependent CI gate).
+Its coverage job passed both floors: workspace 94.54% (218,725 lines,
+11,941 missed), independent BlueJS 99.23% (82,528 lines, 633 missed).
+Coverage log SHA-256:
+`9c6d2b46f2402e2c0a08fa8c5b4df3363419568272aef7660bd2b5670bc61f9e`.
+These are diagnostics of that rejected run, not acceptance evidence for
+the replacement run or a reason to check AC-K14.3.
+
+At 02:55 UTC the raw job-rerun API response confirmed HTTP 403 with
+"The workflow run containing this job is already running". The installed
+CLI 2.97.0 had hidden that response message behind its generic rejection.
+The same run remained `in_progress`, `run_attempt` 1; no rerun was created.
+Recovery therefore waits for the authoritative run's terminal state.
+
+#### AC-K14.3 Accepted local/VM evidence (2026-10-19)
+
+The user reconfirmed that Windows VM 82/82 plus complete local testing is
+sufficient. This checkpoint reuses the existing accepted native/VM executions
+after checking their source relationship; it does not impose another fresh-run
+requirement merely because documentation or checkout configuration changed.
+It makes no claim that all hosted platforms or a hosted aggregate gate passed.
+
+The Windows x86_64 VM evidence is the completed AC-K14.2 execution of
+`cargo test -p blueice-bluets --test typescript_oracle -- --ignored`, using
+Rust 1.95.0 MSVC, the pinned TypeScript 5.9.3 command and normal libtest
+parallelism. All 82 compiled ignored function names match the source inventory
+and the 82 passed names; the six ordinary path/shim tests filtered by
+`--ignored` are not missing oracles. The accepted independent proof is
+`B:/BlueIce/tmp/bluets-k132-20261016-166bzf/k142-core-oracle-validation-accepted.json`;
+the raw `k142-typescript-82-accepted.log` has SHA-256
+`6d4b0242e13f30b406fcce877312e268b62626c890a5378e55f9ef0c1c402d58`.
+The later native Windows checkout validation also passed 17/17 inventory tests,
+8/8 Node tests and both inventory checks. These are the previously verified
+executions, not new VM results from this acceptance update: the attempted
+read-only SSH retrieval on 2026-10-19 did not connect, and a subsequent SSH
+diagnostic was not executed because its automatic approval review failed.
+
+The accepted complete native macOS `cargo test --workspace` execution is
+`/private/tmp/bluets-k142-workspace-accepted.log`. Its actual raw bytes were
+re-read on 2026-10-19: all 568 result groups succeeded, 7,231 tests passed,
+zero failed, and the SHA-256 remains
+`3de79b1f5e8a44f5b53d03457ea1ff8f4156bf1b679e29c14a0933bb8d4a3da7`.
+No group or process-boundary failure is waived in that accepted execution.
+The ordinary run's ignored functions are not counted as passes.
+
+The separate complete pinned-oracle measurement was also re-audited against
+all 100 retained raw logs, every passed function-name set and every per-log
+digest: 524/524 checks, including all 244 selected ignored functions, with no
+failed, still-ignored or filtered selected tests. The 524 include ordinary
+checks and must not be added to the workspace total as disjoint tests.
+`COMPATIBILITY_MEASUREMENT.json` still has SHA-256
+`8d15eb2ffb2222cb2df45eeab1b9038651c4b99b719cf27b9b49c2251acf78a3`.
+
+Evidence applies to the current `9805be9ee6c91c0cc7cc71db2d51e65bbf683c31`
+implementation: `git diff --exit-code e7a642179 HEAD -- backend Cargo.toml
+Cargo.lock .cargo` exits 0, and the current source-graph and case-measurement
+checks both pass (100 suites, 12,511 case observations). The production
+compiler/runtime and original oracle inputs are unchanged from `26a3941b2`;
+the frozen 12,535-input graph is still
+`db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
+The K.14 inventory-tool additions were included in the accepted native run;
+only checkout configuration, regression tooling and documentation changed
+after its tested Rust/Cargo inputs. This reuse is not a claim that a stale
+test run validates changed implementation code.
+
+Fresh local validation on 2026-10-19 additionally succeeds:
+
+- `RUSTFMT=/Users/ephoton/.rustup/toolchains/1.95.0-aarch64-apple-darwin/bin/rustfmt cargo fmt --all -- --check`
+  exits 0. Final log: `/private/tmp/bluets-k143-local-fmt-final-20261019.log`
+  (empty success log, SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`).
+- `cargo clippy --workspace --all-targets --offline -- -D warnings` exits 0
+  under Homebrew Rust 1.98.0 with incremental/dev/test debug growth disabled.
+  Log: `/private/tmp/bluets-k143-local-clippy-20261019.log`, SHA-256
+  `7ad6070a52f055c7a75ee51ee4576501aa9d022b0a1cd7d25e332aed5216796e`.
+- The checkout, measurement and Windows-exclusion Node regression files
+  pass all 8 tests. Log: `/private/tmp/bluets-k143-local-tools-20261019.log`,
+  SHA-256 `ef6d9d59e171ab351ca638076bf6cecab2e9f8f9170e18972556a48ba3c408f1`.
+- `target/debug/examples/compatibility_inventory --check` and `--check-cases`
+  both exit 0; `git diff --check` is clean.
+
+For transparency, the additional restricted-sandbox workspace attempt on
+2026-10-19 is **not accepted as a passing run**: Cargo exits 101 with 6,993
+passed and 238 failed across the same 568 groups. Every group's selected
+test count and ignored count matches the accepted native execution. The log
+contains 233 `Operation not permitted` messages at TCP/Unix socket creation
+and child-server binding, with associated startup/socket-wait failures.
+Log: `/private/tmp/bluets-k143-local-workspace-20261019.log`, SHA-256
+`29d316b840306a6dfdc990caac76c1f93691a84deb1d88c5b7f23f5e3205eadf`.
+A native-environment rerun of all six affected crates was requested, but
+the first automatic permission review timed out and that request did not
+execute. Its one permitted retry subsequently ran in the native local
+environment and **succeeded** (Cargo exit 0): 29 result groups, 1,174 passed,
+zero failed and zero ignored, including the 55 launcher real-process tests.
+The command reruns every ordinary test of all six affected crates, not only
+selected failed functions:
+
+```sh
+cargo test -p blueice-engine -p blueice-extension-host -p blueice-ipc \
+  -p blueice-launcher -p blueice-mcp-server -p blueice-net \
+  --no-fail-fast --offline --quiet
+```
+
+It uses the same disabled incremental/dev/test debug-growth settings and
+explicit `BLUEJS_REGEXP_WORKER` as the restricted attempt. Native retry log:
+`/private/tmp/bluets-k143-local-native-recovery-20261019.log`, SHA-256
+`60304d6243137e11bd2e4c7025d47fa18d727c3f84f4c87272993c46b7b428dd`.
+No implementation, test, fixture, assertion or selection changed between
+these runs; only the test process's OS socket permissions differ. The
+restricted full-run failure remains recorded as a failure, not relabelled
+as a successful single invocation. No failing function was skipped or
+weakened. Acceptance uses the retained complete native/VM successes on
+unchanged inputs, the full-scope restricted attempt and this successful
+all-affected-crate native recovery, not partial hosted jobs. The 1,174
+recovery tests overlap the workspace total and are not additional cases.
+
+AC-K14.3 is complete under the user's local/VM acceptance decision.
+AC-K14.4 through AC-K14.6 remain open. Coverage policy and CI configuration
+remain unchanged, and full parity is still off.
