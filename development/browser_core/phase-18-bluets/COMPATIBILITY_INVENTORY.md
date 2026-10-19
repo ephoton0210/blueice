@@ -12,8 +12,9 @@ hosted oracle legs (Ubuntu, macOS, Windows x86_64 and Windows arm64) in
 [run 38877729768](https://github.com/ephoton0210/blueice/actions/runs/38877729768)
 at `d4b13ff5e`; this is an oracle result, not a claim that the entire workflow
 or the later K.13.4 source has passed that run. AC-K14.2's versioned case-rate
-measurement is complete; the final all-platform gate, row accounting and
-decision remain open.
+measurement is complete. AC-K14.3 uses the user's accepted Windows VM/local gates.
+AC-K14.4 row accounting is complete; the final decision and cross-document
+consistency checks remain open.
 
 The authority for every expectation is the pinned `typescript@5.9.3` executable (`BLUEICE_BLUETSC_ORACLE`),
 not documentation. Section 1 is generated from one committed Git tree using a
@@ -44,108 +45,111 @@ Unix-only tests remain included in this source inventory; platform selection is 
 The complete function names and Git blob ids of each harness's literal include/module closure
 are versioned in [COMPATIBILITY_SUITES.json](COMPATIBILITY_SUITES.json).
 
-| Harness (repository-relative) | Ignored Rust functions |
-| --- | ---: |
-| `backend/bluets-bluejs/tests/async_generator_targets.rs` | 1 |
-| `backend/bluets-bluejs/tests/async_targets.rs` | 1 |
-| `backend/bluets-bluejs/tests/decorators_direct.rs` | 1 |
-| `backend/bluets-bluejs/tests/emitted_target_editions.rs` | 1 |
-| `backend/bluets-bluejs/tests/es5_scope_targets.rs` | 1 |
-| `backend/bluets-bluejs/tests/explicit_this_parameters.rs` | 1 |
-| `backend/bluets-bluejs/tests/exponentiation_targets.rs` | 1 |
-| `backend/bluets-bluejs/tests/jsx_direct.rs` | 1 |
-| `backend/bluets-bluejs/tests/logical_assignment_targets.rs` | 1 |
-| `backend/bluets-bluejs/tests/namespace_parity.rs` | 1 |
-| `backend/bluets-bluejs/tests/optional_targets.rs` | 1 |
-| `backend/bluets-bluejs/tests/rest_array_parameters.rs` | 1 |
-| `backend/bluets-bluejs/tests/target_syntax_profiles.rs` | 2 |
-| `backend/bluets-bluejs/tests/variable_patterns.rs` | 1 |
-| `backend/bluets/tests/ambient_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/async_generator_context.rs` | 1 |
-| `backend/bluets/tests/catch_flow_context.rs` | 1 |
-| `backend/bluets/tests/class_checker_matrix.rs` | 1 |
-| `backend/bluets/tests/class_downlevel_oracle.rs` | 1 |
-| `backend/bluets/tests/class_dynamic_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/class_modifiers.rs` | 1 |
-| `backend/bluets/tests/class_modifiers_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/class_retirement_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/cli_surface.rs` | 2 |
-| `backend/bluets/tests/commonjs_oracle.rs` | 1 |
-| `backend/bluets/tests/compatibility_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/contextual_type_imports.rs` | 1 |
-| `backend/bluets/tests/declaration_inference.rs` | 2 |
-| `backend/bluets/tests/declaration_options.rs` | 2 |
-| `backend/bluets/tests/decorator_residuals.rs` | 2 |
-| `backend/bluets/tests/decorator_targets.rs` | 2 |
-| `backend/bluets/tests/decorator_typing.rs` | 2 |
-| `backend/bluets/tests/decorators_checker_matrix.rs` | 1 |
-| `backend/bluets/tests/decorators_oracle.rs` | 1 |
-| `backend/bluets/tests/default_generators.rs` | 1 |
-| `backend/bluets/tests/diagnostic_source_families.rs` | 1 |
-| `backend/bluets/tests/diagnostics_matrix.rs` | 1 |
-| `backend/bluets/tests/diagnostics_presentation.rs` | 1 |
-| `backend/bluets/tests/diagnostics_projects.rs` | 1 |
-| `backend/bluets/tests/enum_checker_matrix.rs` | 1 |
-| `backend/bluets/tests/enum_oracle.rs` | 1 |
-| `backend/bluets/tests/explicit_this_context.rs` | 1 |
-| `backend/bluets/tests/guards_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/immutable_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/imported_value_checker_matrix.rs` | 3 |
-| `backend/bluets/tests/indexed_call_context.rs` | 1 |
-| `backend/bluets/tests/inference_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/inferred_return_checker_matrix.rs` | 4 |
-| `backend/bluets/tests/json_default_binding.rs` | 1 |
-| `backend/bluets/tests/jsx_checker_matrix.rs` | 1 |
-| `backend/bluets/tests/jsx_oracle.rs` | 1 |
-| `backend/bluets/tests/jsx_runtime_namespace.rs` | 2 |
-| `backend/bluets/tests/jsx_typing_extras.rs` | 2 |
-| `backend/bluets/tests/legacy_decorators_checker_matrix.rs` | 1 |
-| `backend/bluets/tests/legacy_decorators_oracle.rs` | 1 |
-| `backend/bluets/tests/module_exports_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/module_script_helpers.rs` | 1 |
-| `backend/bluets/tests/module_systems.rs` | 2 |
-| `backend/bluets/tests/module_type_resolution.rs` | 1 |
-| `backend/bluets/tests/module_types_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/more_types_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/namespace_checker_matrix.rs` | 1 |
-| `backend/bluets/tests/namespace_declaration_oracle.rs` | 1 |
-| `backend/bluets/tests/namespace_oracle.rs` | 1 |
-| `backend/bluets/tests/narrowing_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/object_method_context.rs` | 1 |
-| `backend/bluets/tests/operators_checker_matrix.rs` | 3 |
-| `backend/bluets/tests/option_combinations_oracle.rs` | 1 |
-| `backend/bluets/tests/output_options.rs` | 2 |
-| `backend/bluets/tests/output_validation.rs` | 2 |
-| `backend/bluets/tests/overloads_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/package_extras.rs` | 2 |
-| `backend/bluets/tests/path_extras.rs` | 2 |
-| `backend/bluets/tests/project_build_corrupt_state.rs` | 3 |
-| `backend/bluets/tests/project_build_equivalence.rs` | 1 |
-| `backend/bluets/tests/project_build_errors.rs` | 1 |
-| `backend/bluets/tests/project_build_freshness.rs` | 2 |
-| `backend/bluets/tests/project_build_invalidation.rs` | 2 |
-| `backend/bluets/tests/project_build_order.rs` | 2 |
-| `backend/bluets/tests/project_build_watch.rs` | 1 |
-| `backend/bluets/tests/project_cache_key.rs` | 1 |
-| `backend/bluets/tests/project_config.rs` | 3 |
-| `backend/bluets/tests/project_reference_owner_gate.rs` | 1 |
-| `backend/bluets/tests/project_referenced_declarations.rs` | 4 |
-| `backend/bluets/tests/project_references.rs` | 2 |
-| `backend/bluets/tests/receiver_parameter_boundaries.rs` | 1 |
-| `backend/bluets/tests/rest_array_context.rs` | 1 |
-| `backend/bluets/tests/source_extras.rs` | 2 |
-| `backend/bluets/tests/source_map_publication.rs` | 1 |
-| `backend/bluets/tests/source_map_tokens_oracle.rs` | 9 |
-| `backend/bluets/tests/standard_library_checker_matrix.rs` | 3 |
-| `backend/bluets/tests/strictness_controls.rs` | 1 |
-| `backend/bluets/tests/strictness_flags.rs` | 2 |
-| `backend/bluets/tests/target_library_options.rs` | 1 |
-| `backend/bluets/tests/target_protocols.rs` | 2 |
-| `backend/bluets/tests/targets_checker_matrix.rs` | 5 |
-| `backend/bluets/tests/template_constant_context.rs` | 1 |
-| `backend/bluets/tests/typescript_oracle.rs` | 82 |
-| `backend/bluets/tests/unknown_name_checker_matrix.rs` | 2 |
-| `backend/bluets/tests/variable_pattern_context.rs` | 1 |
+Row labels apply only to the measured case properties, not every possible program in a harness.
+Without a source-matched complete measurement a source row stays open.
+
+| Harness (repository-relative) | Ignored Rust functions | Status | Evidence |
+| --- | ---: | --- | --- |
+| `backend/bluets-bluejs/tests/async_generator_targets.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/0) |
+| `backend/bluets-bluejs/tests/async_targets.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/1) |
+| `backend/bluets-bluejs/tests/decorators_direct.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/2) |
+| `backend/bluets-bluejs/tests/emitted_target_editions.rs` | 1 | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/3) |
+| `backend/bluets-bluejs/tests/es5_scope_targets.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/4) |
+| `backend/bluets-bluejs/tests/explicit_this_parameters.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/5) |
+| `backend/bluets-bluejs/tests/exponentiation_targets.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/6) |
+| `backend/bluets-bluejs/tests/jsx_direct.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/7) |
+| `backend/bluets-bluejs/tests/logical_assignment_targets.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/8) |
+| `backend/bluets-bluejs/tests/namespace_parity.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/9) |
+| `backend/bluets-bluejs/tests/optional_targets.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/10) |
+| `backend/bluets-bluejs/tests/rest_array_parameters.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/11) |
+| `backend/bluets-bluejs/tests/target_syntax_profiles.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/12) |
+| `backend/bluets-bluejs/tests/variable_patterns.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/13) |
+| `backend/bluets/tests/ambient_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/14) |
+| `backend/bluets/tests/async_generator_context.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/15) |
+| `backend/bluets/tests/catch_flow_context.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/16) |
+| `backend/bluets/tests/class_checker_matrix.rs` | 1 | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/17) |
+| `backend/bluets/tests/class_downlevel_oracle.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/18) |
+| `backend/bluets/tests/class_dynamic_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/19) |
+| `backend/bluets/tests/class_modifiers.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/20) |
+| `backend/bluets/tests/class_modifiers_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/21) |
+| `backend/bluets/tests/class_retirement_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/22) |
+| `backend/bluets/tests/cli_surface.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/23) |
+| `backend/bluets/tests/commonjs_oracle.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/24) |
+| `backend/bluets/tests/compatibility_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/25) |
+| `backend/bluets/tests/contextual_type_imports.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/26) |
+| `backend/bluets/tests/declaration_inference.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/27) |
+| `backend/bluets/tests/declaration_options.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/28) |
+| `backend/bluets/tests/decorator_residuals.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/29) |
+| `backend/bluets/tests/decorator_targets.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/30) |
+| `backend/bluets/tests/decorator_typing.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/31) |
+| `backend/bluets/tests/decorators_checker_matrix.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/32) |
+| `backend/bluets/tests/decorators_oracle.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/33) |
+| `backend/bluets/tests/default_generators.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/34) |
+| `backend/bluets/tests/diagnostic_source_families.rs` | 1 | open | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/35) |
+| `backend/bluets/tests/diagnostics_matrix.rs` | 1 | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/36) |
+| `backend/bluets/tests/diagnostics_presentation.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/37) |
+| `backend/bluets/tests/diagnostics_projects.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/38) |
+| `backend/bluets/tests/enum_checker_matrix.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/39) |
+| `backend/bluets/tests/enum_oracle.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/40) |
+| `backend/bluets/tests/explicit_this_context.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/41) |
+| `backend/bluets/tests/guards_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/42) |
+| `backend/bluets/tests/immutable_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/43) |
+| `backend/bluets/tests/imported_value_checker_matrix.rs` | 3 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/44) |
+| `backend/bluets/tests/indexed_call_context.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/45) |
+| `backend/bluets/tests/inference_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/46) |
+| `backend/bluets/tests/inferred_return_checker_matrix.rs` | 4 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/47) |
+| `backend/bluets/tests/json_default_binding.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/48) |
+| `backend/bluets/tests/jsx_checker_matrix.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/49) |
+| `backend/bluets/tests/jsx_oracle.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/50) |
+| `backend/bluets/tests/jsx_runtime_namespace.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/51) |
+| `backend/bluets/tests/jsx_typing_extras.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/52) |
+| `backend/bluets/tests/legacy_decorators_checker_matrix.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/53) |
+| `backend/bluets/tests/legacy_decorators_oracle.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/54) |
+| `backend/bluets/tests/module_exports_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/55) |
+| `backend/bluets/tests/module_script_helpers.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/56) |
+| `backend/bluets/tests/module_systems.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/57) |
+| `backend/bluets/tests/module_type_resolution.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/58) |
+| `backend/bluets/tests/module_types_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/59) |
+| `backend/bluets/tests/more_types_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/60) |
+| `backend/bluets/tests/namespace_checker_matrix.rs` | 1 | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/61) |
+| `backend/bluets/tests/namespace_declaration_oracle.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/62) |
+| `backend/bluets/tests/namespace_oracle.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/63) |
+| `backend/bluets/tests/narrowing_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/64) |
+| `backend/bluets/tests/object_method_context.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/65) |
+| `backend/bluets/tests/operators_checker_matrix.rs` | 3 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/66) |
+| `backend/bluets/tests/option_combinations_oracle.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/67) |
+| `backend/bluets/tests/output_options.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/68) |
+| `backend/bluets/tests/output_validation.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/69) |
+| `backend/bluets/tests/overloads_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/70) |
+| `backend/bluets/tests/package_extras.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/71) |
+| `backend/bluets/tests/path_extras.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/72) |
+| `backend/bluets/tests/project_build_corrupt_state.rs` | 3 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/73) |
+| `backend/bluets/tests/project_build_equivalence.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/74) |
+| `backend/bluets/tests/project_build_errors.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/75) |
+| `backend/bluets/tests/project_build_freshness.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/76) |
+| `backend/bluets/tests/project_build_invalidation.rs` | 2 | open | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/77) |
+| `backend/bluets/tests/project_build_order.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/78) |
+| `backend/bluets/tests/project_build_watch.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/79) |
+| `backend/bluets/tests/project_cache_key.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/80) |
+| `backend/bluets/tests/project_config.rs` | 3 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/81) |
+| `backend/bluets/tests/project_reference_owner_gate.rs` | 1 | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/82) |
+| `backend/bluets/tests/project_referenced_declarations.rs` | 4 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/83) |
+| `backend/bluets/tests/project_references.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/84) |
+| `backend/bluets/tests/receiver_parameter_boundaries.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/85) |
+| `backend/bluets/tests/rest_array_context.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/86) |
+| `backend/bluets/tests/source_extras.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/87) |
+| `backend/bluets/tests/source_map_publication.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/88) |
+| `backend/bluets/tests/source_map_tokens_oracle.rs` | 9 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/89) |
+| `backend/bluets/tests/standard_library_checker_matrix.rs` | 3 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/90) |
+| `backend/bluets/tests/strictness_controls.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/91) |
+| `backend/bluets/tests/strictness_flags.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/92) |
+| `backend/bluets/tests/target_library_options.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/93) |
+| `backend/bluets/tests/target_protocols.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/94) |
+| `backend/bluets/tests/targets_checker_matrix.rs` | 5 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/95) |
+| `backend/bluets/tests/template_constant_context.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/96) |
+| `backend/bluets/tests/typescript_oracle.rs` | 82 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/97) |
+| `backend/bluets/tests/unknown_name_checker_matrix.rs` | 2 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/98) |
+| `backend/bluets/tests/variable_pattern_context.rs` | 1 | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/99) |
 
 The versioned `typescript_oracle/` corpus has **3392 top-level fixture directories**.
 The shared diagnostic record contains **3182 unique programs, 221 templates, 1855 accepts and 1327 rejects**.
@@ -171,110 +175,136 @@ Explicit configuration axes are expanded. A passing assertion can confirm a docu
 Fixture columns count unique versioned fixture-definition directories (including record files); inline-only programs may have none.
 This measurement is Unix-scoped; Windows exclusions are not silently credited. Full parity remains off.
 
-| Suite | Case assertions | Direct agreement | Open | Refused | Native / owner controls | Fixture dirs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `bluets-bluejs/tests/async_generator_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
-| `bluets-bluejs/tests/async_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
-| `bluets-bluejs/tests/decorators_direct` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 0 |
-| `bluets-bluejs/tests/emitted_target_editions` | 601 / 601 | 600 / 601 | 0 | 1 | 0 / 0 | 601 |
-| `bluets-bluejs/tests/es5_scope_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
-| `bluets-bluejs/tests/explicit_this_parameters` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
-| `bluets-bluejs/tests/exponentiation_targets` | 2 / 2 | 2 / 2 | 0 | 0 | 0 / 0 | 1 |
-| `bluets-bluejs/tests/jsx_direct` | 9 / 9 | 9 / 9 | 0 | 0 | 0 / 0 | 0 |
-| `bluets-bluejs/tests/logical_assignment_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
-| `bluets-bluejs/tests/namespace_parity` | 7 / 7 | 7 / 7 | 0 | 0 | 0 / 0 | 0 |
-| `bluets-bluejs/tests/optional_targets` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
-| `bluets-bluejs/tests/rest_array_parameters` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
-| `bluets-bluejs/tests/target_syntax_profiles` | 605 / 605 | 605 / 605 | 0 | 0 | 0 / 0 | 1 |
-| `bluets-bluejs/tests/variable_patterns` | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/ambient_checker_matrix` | 80 / 80 | 80 / 80 | 0 | 0 | 0 / 0 | 81 |
-| `bluets/tests/async_generator_context` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/catch_flow_context` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/class_checker_matrix` | 523 / 523 | 522 / 523 | 0 | 1 | 0 / 0 | 508 |
-| `bluets/tests/class_downlevel_oracle` | 30 / 30 | 30 / 30 | 0 | 0 | 0 / 0 | 6 |
-| `bluets/tests/class_dynamic_checker_matrix` | 160 / 160 | 160 / 160 | 0 | 0 | 0 / 0 | 161 |
-| `bluets/tests/class_modifiers` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/class_modifiers_checker_matrix` | 95 / 95 | 95 / 95 | 0 | 0 | 0 / 0 | 96 |
-| `bluets/tests/class_retirement_checker_matrix` | 35 / 35 | 35 / 35 | 0 | 0 | 0 / 0 | 36 |
-| `bluets/tests/cli_surface` | 30 / 30 | 30 / 30 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/commonjs_oracle` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 0 |
-| `bluets/tests/compatibility_checker_matrix` | 88 / 88 | 88 / 88 | 0 | 0 | 0 / 0 | 89 |
-| `bluets/tests/contextual_type_imports` | 4 / 4 | 4 / 4 | 0 | 0 | 0 / 0 | 0 |
-| `bluets/tests/declaration_inference` | 84 / 84 | 84 / 84 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/declaration_options` | 48 / 48 | 48 / 48 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/decorator_residuals` | 264 / 264 | 264 / 264 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/decorator_targets` | 880 / 880 | 880 / 880 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/decorator_typing` | 60 / 60 | 60 / 60 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/decorators_checker_matrix` | 32 / 32 | 32 / 32 | 0 | 0 | 0 / 0 | 33 |
-| `bluets/tests/decorators_oracle` | 23 / 23 | 23 / 23 | 0 | 0 | 0 / 0 | 0 |
-| `bluets/tests/default_generators` | 8 / 8 | 8 / 8 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/diagnostic_source_families` | 97 / 97 | 88 / 97 | 3 | 6 | 0 / 0 | 1 |
-| `bluets/tests/diagnostics_matrix` | 3182 / 3182 | 3180 / 3182 | 0 | 2 | 0 / 0 | 3120 |
-| `bluets/tests/diagnostics_presentation` | 22 / 22 | 22 / 22 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/diagnostics_projects` | 867 / 867 | 867 / 867 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/enum_checker_matrix` | 57 / 57 | 57 / 57 | 0 | 0 | 0 / 0 | 51 |
-| `bluets/tests/enum_oracle` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 3 |
-| `bluets/tests/explicit_this_context` | 13 / 13 | 13 / 13 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/guards_checker_matrix` | 75 / 75 | 75 / 75 | 0 | 0 | 0 / 0 | 76 |
-| `bluets/tests/immutable_checker_matrix` | 174 / 174 | 174 / 174 | 0 | 0 | 0 / 0 | 174 |
-| `bluets/tests/imported_value_checker_matrix` | 98 / 98 | 98 / 98 | 0 | 0 | 0 / 0 | 82 |
-| `bluets/tests/indexed_call_context` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/inference_checker_matrix` | 74 / 74 | 74 / 74 | 0 | 0 | 0 / 0 | 75 |
-| `bluets/tests/inferred_return_checker_matrix` | 147 / 147 | 147 / 147 | 0 | 0 | 0 / 0 | 122 |
-| `bluets/tests/json_default_binding` | 2 / 2 | 2 / 2 | 0 | 0 | 0 / 0 | 0 |
-| `bluets/tests/jsx_checker_matrix` | 53 / 53 | 53 / 53 | 0 | 0 | 0 / 0 | 54 |
-| `bluets/tests/jsx_oracle` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 0 |
-| `bluets/tests/jsx_runtime_namespace` | 28 / 28 | 28 / 28 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/jsx_typing_extras` | 60 / 60 | 60 / 60 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/legacy_decorators_checker_matrix` | 19 / 19 | 19 / 19 | 0 | 0 | 0 / 0 | 20 |
-| `bluets/tests/legacy_decorators_oracle` | 18 / 18 | 18 / 18 | 0 | 0 | 0 / 0 | 0 |
-| `bluets/tests/module_exports_checker_matrix` | 74 / 74 | 74 / 74 | 0 | 0 | 0 / 0 | 75 |
-| `bluets/tests/module_script_helpers` | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/module_systems` | 106 / 106 | 106 / 106 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/module_type_resolution` | 2 / 2 | 2 / 2 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/module_types_checker_matrix` | 86 / 86 | 86 / 86 | 0 | 0 | 0 / 0 | 87 |
-| `bluets/tests/more_types_checker_matrix` | 100 / 100 | 100 / 100 | 0 | 0 | 0 / 0 | 101 |
-| `bluets/tests/namespace_checker_matrix` | 76 / 76 | 75 / 76 | 0 | 1 | 0 / 0 | 69 |
-| `bluets/tests/namespace_declaration_oracle` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/namespace_oracle` | 92 / 92 | 92 / 92 | 0 | 0 | 0 / 0 | 46 |
-| `bluets/tests/narrowing_checker_matrix` | 123 / 123 | 123 / 123 | 0 | 0 | 0 / 0 | 124 |
-| `bluets/tests/object_method_context` | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/operators_checker_matrix` | 82 / 82 | 82 / 82 | 0 | 0 | 0 / 0 | 83 |
-| `bluets/tests/option_combinations_oracle` | 768 / 768 | 768 / 768 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/output_options` | 176 / 176 | 176 / 176 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/output_validation` | 18 / 18 | 18 / 18 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/overloads_checker_matrix` | 74 / 74 | 74 / 74 | 0 | 0 | 0 / 0 | 75 |
-| `bluets/tests/package_extras` | 54 / 54 | 54 / 54 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/path_extras` | 46 / 46 | 46 / 46 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/project_build_corrupt_state` | 8 / 8 | 8 / 8 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/project_build_equivalence` | 25 / 25 | 25 / 25 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/project_build_errors` | 3 / 3 | 3 / 3 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/project_build_freshness` | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/project_build_invalidation` | 7 / 7 | 2 / 5 | 3 | 0 | 2 / 0 | 1 |
-| `bluets/tests/project_build_order` | 5 / 5 | 5 / 5 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/project_build_watch` | 5 / 5 | 5 / 5 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/project_cache_key` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/project_config` | 71 / 71 | 70 / 70 | 0 | 0 | 0 / 1 | 1 |
-| `bluets/tests/project_reference_owner_gate` | 2 / 2 | 1 / 2 | 0 | 1 | 0 / 0 | 1 |
-| `bluets/tests/project_referenced_declarations` | 4 / 4 | 4 / 4 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/project_references` | 9 / 9 | 9 / 9 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/receiver_parameter_boundaries` | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/rest_array_context` | 8 / 8 | 8 / 8 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/source_extras` | 28 / 28 | 28 / 28 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/source_map_publication` | 44 / 44 | 44 / 44 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/source_map_tokens_oracle` | 22 / 22 | 22 / 22 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/standard_library_checker_matrix` | 129 / 129 | 129 / 129 | 0 | 0 | 0 / 0 | 124 |
-| `bluets/tests/strictness_controls` | 39 / 39 | 39 / 39 | 0 | 0 | 0 / 0 | 0 |
-| `bluets/tests/strictness_flags` | 34 / 34 | 34 / 34 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/target_library_options` | 30 / 30 | 30 / 30 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/target_protocols` | 22 / 22 | 22 / 22 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/targets_checker_matrix` | 638 / 638 | 638 / 638 | 0 | 0 | 0 / 0 | 639 |
-| `bluets/tests/template_constant_context` | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
-| `bluets/tests/typescript_oracle` | 588 / 588 | 108 / 108 | 0 | 0 | 480 / 0 | 576 |
-| `bluets/tests/unknown_name_checker_matrix` | 109 / 109 | 109 / 109 | 0 | 0 | 0 / 0 | 109 |
-| `bluets/tests/variable_pattern_context` | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
+Every row has a closed/open/refused label and evidence pointer in the schema-2 case inventory.
+Closed means only the asserted finite properties (or explicitly scoped reference/owner controls); it is not whole-feature parity.
+Suite status is open if any case is open, otherwise refused if any case is refused, otherwise closed.
+
+| Suite | Status | Evidence | Case assertions | Direct agreement | Open | Refused | Native / owner controls | Fixture dirs |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `bluets-bluejs/tests/async_generator_targets` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/0) | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/async_targets` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/1) | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/decorators_direct` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/2) | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 0 |
+| `bluets-bluejs/tests/emitted_target_editions` | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/3) | 601 / 601 | 600 / 601 | 0 | 1 | 0 / 0 | 601 |
+| `bluets-bluejs/tests/es5_scope_targets` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/4) | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/explicit_this_parameters` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/5) | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/exponentiation_targets` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/6) | 2 / 2 | 2 / 2 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/jsx_direct` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/7) | 9 / 9 | 9 / 9 | 0 | 0 | 0 / 0 | 0 |
+| `bluets-bluejs/tests/logical_assignment_targets` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/8) | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/namespace_parity` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/9) | 7 / 7 | 7 / 7 | 0 | 0 | 0 / 0 | 0 |
+| `bluets-bluejs/tests/optional_targets` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/10) | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/rest_array_parameters` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/11) | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/target_syntax_profiles` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/12) | 605 / 605 | 605 / 605 | 0 | 0 | 0 / 0 | 1 |
+| `bluets-bluejs/tests/variable_patterns` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/13) | 1 / 1 | 1 / 1 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/ambient_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/14) | 80 / 80 | 80 / 80 | 0 | 0 | 0 / 0 | 81 |
+| `bluets/tests/async_generator_context` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/15) | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/catch_flow_context` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/16) | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/class_checker_matrix` | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/17) | 523 / 523 | 522 / 523 | 0 | 1 | 0 / 0 | 508 |
+| `bluets/tests/class_downlevel_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/18) | 30 / 30 | 30 / 30 | 0 | 0 | 0 / 0 | 6 |
+| `bluets/tests/class_dynamic_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/19) | 160 / 160 | 160 / 160 | 0 | 0 | 0 / 0 | 161 |
+| `bluets/tests/class_modifiers` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/20) | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/class_modifiers_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/21) | 95 / 95 | 95 / 95 | 0 | 0 | 0 / 0 | 96 |
+| `bluets/tests/class_retirement_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/22) | 35 / 35 | 35 / 35 | 0 | 0 | 0 / 0 | 36 |
+| `bluets/tests/cli_surface` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/23) | 30 / 30 | 30 / 30 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/commonjs_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/24) | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/compatibility_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/25) | 88 / 88 | 88 / 88 | 0 | 0 | 0 / 0 | 89 |
+| `bluets/tests/contextual_type_imports` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/26) | 4 / 4 | 4 / 4 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/declaration_inference` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/27) | 84 / 84 | 84 / 84 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/declaration_options` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/28) | 48 / 48 | 48 / 48 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/decorator_residuals` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/29) | 264 / 264 | 264 / 264 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/decorator_targets` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/30) | 880 / 880 | 880 / 880 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/decorator_typing` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/31) | 60 / 60 | 60 / 60 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/decorators_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/32) | 32 / 32 | 32 / 32 | 0 | 0 | 0 / 0 | 33 |
+| `bluets/tests/decorators_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/33) | 23 / 23 | 23 / 23 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/default_generators` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/34) | 8 / 8 | 8 / 8 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/diagnostic_source_families` | open | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/35) | 97 / 97 | 88 / 97 | 3 | 6 | 0 / 0 | 1 |
+| `bluets/tests/diagnostics_matrix` | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/36) | 3182 / 3182 | 3180 / 3182 | 0 | 2 | 0 / 0 | 3120 |
+| `bluets/tests/diagnostics_presentation` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/37) | 22 / 22 | 22 / 22 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/diagnostics_projects` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/38) | 867 / 867 | 867 / 867 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/enum_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/39) | 57 / 57 | 57 / 57 | 0 | 0 | 0 / 0 | 51 |
+| `bluets/tests/enum_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/40) | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 3 |
+| `bluets/tests/explicit_this_context` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/41) | 13 / 13 | 13 / 13 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/guards_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/42) | 75 / 75 | 75 / 75 | 0 | 0 | 0 / 0 | 76 |
+| `bluets/tests/immutable_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/43) | 174 / 174 | 174 / 174 | 0 | 0 | 0 / 0 | 174 |
+| `bluets/tests/imported_value_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/44) | 98 / 98 | 98 / 98 | 0 | 0 | 0 / 0 | 82 |
+| `bluets/tests/indexed_call_context` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/45) | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/inference_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/46) | 74 / 74 | 74 / 74 | 0 | 0 | 0 / 0 | 75 |
+| `bluets/tests/inferred_return_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/47) | 147 / 147 | 147 / 147 | 0 | 0 | 0 / 0 | 122 |
+| `bluets/tests/json_default_binding` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/48) | 2 / 2 | 2 / 2 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/jsx_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/49) | 53 / 53 | 53 / 53 | 0 | 0 | 0 / 0 | 54 |
+| `bluets/tests/jsx_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/50) | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/jsx_runtime_namespace` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/51) | 28 / 28 | 28 / 28 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/jsx_typing_extras` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/52) | 60 / 60 | 60 / 60 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/legacy_decorators_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/53) | 19 / 19 | 19 / 19 | 0 | 0 | 0 / 0 | 20 |
+| `bluets/tests/legacy_decorators_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/54) | 18 / 18 | 18 / 18 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/module_exports_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/55) | 74 / 74 | 74 / 74 | 0 | 0 | 0 / 0 | 75 |
+| `bluets/tests/module_script_helpers` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/56) | 12 / 12 | 12 / 12 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/module_systems` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/57) | 106 / 106 | 106 / 106 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/module_type_resolution` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/58) | 2 / 2 | 2 / 2 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/module_types_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/59) | 86 / 86 | 86 / 86 | 0 | 0 | 0 / 0 | 87 |
+| `bluets/tests/more_types_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/60) | 100 / 100 | 100 / 100 | 0 | 0 | 0 / 0 | 101 |
+| `bluets/tests/namespace_checker_matrix` | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/61) | 76 / 76 | 75 / 76 | 0 | 1 | 0 / 0 | 69 |
+| `bluets/tests/namespace_declaration_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/62) | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/namespace_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/63) | 92 / 92 | 92 / 92 | 0 | 0 | 0 / 0 | 46 |
+| `bluets/tests/narrowing_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/64) | 123 / 123 | 123 / 123 | 0 | 0 | 0 / 0 | 124 |
+| `bluets/tests/object_method_context` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/65) | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/operators_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/66) | 82 / 82 | 82 / 82 | 0 | 0 | 0 / 0 | 83 |
+| `bluets/tests/option_combinations_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/67) | 768 / 768 | 768 / 768 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/output_options` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/68) | 176 / 176 | 176 / 176 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/output_validation` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/69) | 18 / 18 | 18 / 18 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/overloads_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/70) | 74 / 74 | 74 / 74 | 0 | 0 | 0 / 0 | 75 |
+| `bluets/tests/package_extras` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/71) | 54 / 54 | 54 / 54 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/path_extras` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/72) | 46 / 46 | 46 / 46 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_corrupt_state` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/73) | 8 / 8 | 8 / 8 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_equivalence` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/74) | 25 / 25 | 25 / 25 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_errors` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/75) | 3 / 3 | 3 / 3 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_freshness` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/76) | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_invalidation` | open | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/77) | 7 / 7 | 2 / 5 | 3 | 0 | 2 / 0 | 1 |
+| `bluets/tests/project_build_order` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/78) | 5 / 5 | 5 / 5 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_build_watch` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/79) | 5 / 5 | 5 / 5 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_cache_key` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/80) | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_config` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/81) | 71 / 71 | 70 / 70 | 0 | 0 | 0 / 1 | 1 |
+| `bluets/tests/project_reference_owner_gate` | refused | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/82) | 2 / 2 | 1 / 2 | 0 | 1 | 0 / 0 | 1 |
+| `bluets/tests/project_referenced_declarations` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/83) | 4 / 4 | 4 / 4 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/project_references` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/84) | 9 / 9 | 9 / 9 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/receiver_parameter_boundaries` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/85) | 6 / 6 | 6 / 6 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/rest_array_context` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/86) | 8 / 8 | 8 / 8 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/source_extras` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/87) | 28 / 28 | 28 / 28 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/source_map_publication` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/88) | 44 / 44 | 44 / 44 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/source_map_tokens_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/89) | 22 / 22 | 22 / 22 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/standard_library_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/90) | 129 / 129 | 129 / 129 | 0 | 0 | 0 / 0 | 124 |
+| `bluets/tests/strictness_controls` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/91) | 39 / 39 | 39 / 39 | 0 | 0 | 0 / 0 | 0 |
+| `bluets/tests/strictness_flags` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/92) | 34 / 34 | 34 / 34 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/target_library_options` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/93) | 30 / 30 | 30 / 30 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/target_protocols` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/94) | 22 / 22 | 22 / 22 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/targets_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/95) | 638 / 638 | 638 / 638 | 0 | 0 | 0 / 0 | 639 |
+| `bluets/tests/template_constant_context` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/96) | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
+| `bluets/tests/typescript_oracle` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/97) | 588 / 588 | 108 / 108 | 0 | 0 | 480 / 0 | 576 |
+| `bluets/tests/unknown_name_checker_matrix` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/98) | 109 / 109 | 109 / 109 | 0 | 0 | 0 / 0 | 109 |
+| `bluets/tests/variable_pattern_context` | closed | [measurement](COMPATIBILITY_MEASUREMENT.json#/suites/99) | 10 / 10 | 10 / 10 | 0 | 0 | 0 / 0 | 1 |
 
 <!-- END GENERATED K14 CASES -->
+
+### Row accounting maintenance (AC-K14.4)
+
+The two suite tables are views of the same source-matched suite records, not
+separate programs. Schema 2 of `COMPATIBILITY_CASES.json` labels every suite
+and case `closed`, `open` or `refused`. A case's assertion selector and its
+measurement JSON pointer identify the evidence; the referenced suite also
+retains the raw log digest. Reference-only and owner-only controls are closed
+only within their named control scope and never become direct agreements.
+Broad feature rows below stay open even where the measured suite is closed.
+
+The Rust generator owns both generated tables and the case JSON. After its
+suite/case regeneration, `tools/account_inventory_rows.py --write` refreshes
+the reviewed feature labels, direct-profile label and source-derived refusal
+list. Missing/duplicate feature IDs and stale/foreign case evidence are errors.
+From the repository root, check all three boundaries without editing data:
+
+```sh
+cargo run -p blueice-bluets --example compatibility_inventory -- --check
+cargo run -p blueice-bluets --example compatibility_inventory -- --check-cases
+python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --check
+```
 
 ## 2. What the supported subset is (summary)
 
@@ -289,60 +319,61 @@ declarations. The precise per-feature descriptions, with their recorded gaps, ar
 
 ## 3. Open gaps against `tsc` 5.9.3
 
-Every row is a form `tsc` accepts and BlueTS does not (or accepts with different output), by area. All are
+Rows retain stable feature IDs with an explicit status and evidence pointer. The remaining open gaps are
 **required** for a full-parity claim. None is hidden: each is either refused with a diagnostic (a
-section 4 entry) or is a silent divergence listed as such. IDs are stable; closing one means a differential
-suite entry, then removing the row.
+section 4 entry) or is a documented divergence or unmeasured composition. A closed row is retained as an audit anchor only for its explicitly compared subset; it does not close broader type-system or library gaps.
 
 ### 3.1 Type system
 
-| ID | Gap |
-| --- | --- |
-| G-T1 | K.4.1 supplies lexical control-flow facts for the 123 pinned `typeof`/`instanceof`/`in`/literal/nullish/discriminant/truthiness, optional-chain, switch, loop, assignment and closure witnesses. Property facts retain their owning lexical binding and path. The three K.3.3 iterator-flow wording gaps are resolved and their message allowances removed. K.4.2 adds 75 pinned user-defined guard/assertion and exhaustive-completion witnesses, including imported and function-valued signatures, receiver predicates, explicit-call-target diagnostics and known `never` calls. Broader inferred predicate synthesis, exceptional-flow and dotted capture precision remain unmeasured. |
-| G-T2 | K.4.3 adds 74 pinned argument/contextual candidate, widening, constraint/default, explicit argument and generic callable/class/interface witnesses, including imported signatures and dependent defaults. Concrete record `keyof`/indexed projections supply the measured prerequisites, and contextual budget exhaustion remains a precise refusal. Remaining: inference across arbitrary recursive/operator forms, higher-kinded patterns and broader variance; K.4.5/K.4.7 provide measured operator/compatibility relations, and K.5.2 measures generic heritage/methods; unmeasured compositions remain. |
-| G-T3 | K.4.5 supplies 82 pinned record/array key-set, value-query, indexed, distributive/non-distributive conditional, infer, mapped modifier/remap/filter, template product/pattern and recursive-alias witnesses, with three exact runtime/declaration comparisons and six budget controls. Default ES2022 numeric products retain the measured 652-entry native cache order. Remaining: unmeasured nested patterns, overloaded queries, escape normalization and broader primitive/library keys; K.4.6 supplies measured index/readonly/symbol and homomorphic array/tuple composition; K.4.7 supplies measured structural relations; broader combinations remain open. Expansion beyond the configured budget remains a precise refusal. |
-| G-T4 | K.4.4 supplies 74 pinned ordered call/construct/method overload, callback-context, direct literal-priority, merged-interface-group and implementation-compatibility witnesses, with six exact runtime/declaration comparisons. Anonymous signatures retain data members and generic binders, and obsolete two-tag/named-callback restrictions are retired. Remaining: unmeasured candidate/operator/variance interactions and optional chaining/non-null assertion typing in every position. |
-| G-T5 | K.4.6 supplies 100 pinned index-signature, readonly array/tuple, bigint, symbol/unique-symbol, satisfies/const-assertion, tuple metadata, unknown/never, enum and void/undefined witnesses, with six exact runtime/declaration comparisons. Explicit strict unknown preserves legacy opaque compatibility; original Array/ReadonlyArray and homomorphic mapped container forms compose. Remaining: unmeasured computed symbol/index combinations, broader tuple and const/satisfies contexts, unknown/never flow combinations and unmeasured structural combinations beyond K.4.7. |
-| G-T6 | K.4.7 supplies 88 pinned freshness, weak-record, strict function/method variance, optional/undefined, declared variance, rigid generic parameter, predicate/assertion and callable/indexed alias witnesses, with four exact runtime/declaration comparisons. Freshness covers initializer/variable/member/element assignment, direct/member argument and explicit return boundaries, with nested/array/spread/union/generic controls. Existing exactOptionalPropertyTypes/noUncheckedIndexedAccess and readonly write controls remain green. Remaining: unmeasured computed/nested expression contexts, composed variance and broader library structural relations. |
-| G-T7 | K.1.4 adds an original, versioned minimum ECMAScript library selected by target, with owner replacement and no runtime grant. The tested Array/ReadonlyArray, boxed/primitive methods, Object/Function, Promise, collections, Math/JSON/Symbol, errors, iteration and Date/RegExp forms match the same pinned target/lib. Remaining catalogs, constructors, computed iteration, callback result precision and opaque compatibility names are enumerated in `STANDARD_LIBRARY.md`; DOM remains owner supplied. |
-| G-T8 | K.1.5 infers the tested unannotated function/getter/method signatures, unions, void/never completion, async Promise and generator types, with literal widening and a bounded recursion guard. Imports and declaration emit retain those signatures. Remaining: literal freshness and widening in all positions, broader contextual and flow-sensitive inference, unproven unknown getter bodies and declaration precision; K.4/K.8 retain these gaps. |
-| G-T9 | K.5.1 measures abstract classes/members, structural `implements`, `override`, constructor capabilities and imported aliases. K.5.2 measures generic heritage/methods/defaults, static lexical restrictions, named/anonymous class expressions with captured self types and constructor aliases, computed/string/numeric keys, index signatures and `declare` fields in 160 pinned programs, 30 runtime and 36 exact declaration witnesses. Same-named binders preserve declaration identities and TS2208 origins. ES2020 expression wrappers retain per-evaluation private/static stores, computed keys and contextual names; both field modes reach the direct VM. K.5.3 adds 35 pinned imported-base member-kind, accessor read/write, inferred getter, bounded merged-interface heritage and constructor branch/early-return witnesses, with 16 runtime, 17 exact declarations and three direct regressions. Remaining: unresolved getter bodies, generic merged interfaces or heritage outside bounded records; the precise branch-super parameter-property refusal (pinned assignment mode rejects TS2401; ES2022 define output throws before super); generators/auto-accessors, computed heritage expressions, stateful ES2020 expression keys containing await/yield, decorated class expressions and unmeasured combinations (section 4). |
-| G-T10 | K.1.3 supplies checked value types for the tested named/default/namespace and CommonJS import forms, with inferred variable declarations and module-owned type identities. K.6.1 measures 74 pinned default-expression, anonymous/named default declaration and named/star/namespace re-export programs under ESM/CommonJS, including live aliases, snapshot defaults, cycles, conflict/diamond origins and exact declaration output. Direct execution retains anonymous default names and snapshot versus alias semantics; incremental re-exports refresh dependency types. K.6.2 measures whole and inline type-only imports/exports, qualified static namespaces, imported value type queries, runtime/type-only attributes, UMD namespace declarations and contextual import names in its pinned witnesses. K.6.3 measures 80 pinned named/merged/shorthand ambient, module/global augmentation and path/type/lib directive programs, with declaration-local imports, static re-export aliases/stars/qualified/transitive surfaces and constant/function type queries. Referenced roots retain canonical owner bounds, source/edge/depth budgets and cache invalidation; ordinary imports used solely by the measured value queries are elided. Library directives select the owned ES2020/ES2022 subset; the full library set remains in G-L1/K.10. Remaining: `import("specifier")` type expressions, broader declaration merging, implicit import elision beyond the measured query forms and unmeasured type/module compositions. Anonymous ES2020 default classes with private names remain precisely refused: pinned TypeScript accepts them but its output fails under Node in both module/field modes. |
+| ID | Status | Gap / measured scope | Evidence |
+| --- | --- | --- | --- |
+| G-T1 | open | K.4.1 supplies lexical control-flow facts for the 123 pinned `typeof`/`instanceof`/`in`/literal/nullish/discriminant/truthiness, optional-chain, switch, loop, assignment and closure witnesses. Property facts retain their owning lexical binding and path. The three K.3.3 iterator-flow wording gaps are resolved and their message allowances removed. K.4.2 adds 75 pinned user-defined guard/assertion and exhaustive-completion witnesses, including imported and function-valued signatures, receiver predicates, explicit-call-target diagnostics and known `never` calls. Broader inferred predicate synthesis, exceptional-flow and dotted capture precision remain unmeasured. | [evidence](COMPATIBILITY_CASES.json#/suites/64) |
+| G-T2 | open | K.4.3 adds 74 pinned argument/contextual candidate, widening, constraint/default, explicit argument and generic callable/class/interface witnesses, including imported signatures and dependent defaults. Concrete record `keyof`/indexed projections supply the measured prerequisites, and contextual budget exhaustion remains a precise refusal. Remaining: inference across arbitrary recursive/operator forms, higher-kinded patterns and broader variance; K.4.5/K.4.7 provide measured operator/compatibility relations, and K.5.2 measures generic heritage/methods; unmeasured compositions remain. | [evidence](COMPATIBILITY_CASES.json#/suites/46) |
+| G-T3 | open | K.4.5 supplies 82 pinned record/array key-set, value-query, indexed, distributive/non-distributive conditional, infer, mapped modifier/remap/filter, template product/pattern and recursive-alias witnesses, with three exact runtime/declaration comparisons and six budget controls. Default ES2022 numeric products retain the measured 652-entry native cache order. Remaining: unmeasured nested patterns, overloaded queries, escape normalization and broader primitive/library keys; K.4.6 supplies measured index/readonly/symbol and homomorphic array/tuple composition; K.4.7 supplies measured structural relations; broader combinations remain open. Expansion beyond the configured budget remains a precise refusal. | [evidence](COMPATIBILITY_CASES.json#/suites/66) |
+| G-T4 | open | K.4.4 supplies 74 pinned ordered call/construct/method overload, callback-context, direct literal-priority, merged-interface-group and implementation-compatibility witnesses, with six exact runtime/declaration comparisons. Anonymous signatures retain data members and generic binders, and obsolete two-tag/named-callback restrictions are retired. Remaining: unmeasured candidate/operator/variance interactions and optional chaining/non-null assertion typing in every position. | [evidence](COMPATIBILITY_CASES.json#/suites/70) |
+| G-T5 | open | K.4.6 supplies 100 pinned index-signature, readonly array/tuple, bigint, symbol/unique-symbol, satisfies/const-assertion, tuple metadata, unknown/never, enum and void/undefined witnesses, with six exact runtime/declaration comparisons. Explicit strict unknown preserves legacy opaque compatibility; original Array/ReadonlyArray and homomorphic mapped container forms compose. Remaining: unmeasured computed symbol/index combinations, broader tuple and const/satisfies contexts, unknown/never flow combinations and unmeasured structural combinations beyond K.4.7. | [evidence](COMPATIBILITY_CASES.json#/suites/60) |
+| G-T6 | open | K.4.7 supplies 88 pinned freshness, weak-record, strict function/method variance, optional/undefined, declared variance, rigid generic parameter, predicate/assertion and callable/indexed alias witnesses, with four exact runtime/declaration comparisons. Freshness covers initializer/variable/member/element assignment, direct/member argument and explicit return boundaries, with nested/array/spread/union/generic controls. Existing exactOptionalPropertyTypes/noUncheckedIndexedAccess and readonly write controls remain green. Remaining: unmeasured computed/nested expression contexts, composed variance and broader library structural relations. | [evidence](COMPATIBILITY_CASES.json#/suites/25) |
+| G-T7 | open | K.1.4 adds an original, versioned minimum ECMAScript library selected by target, with owner replacement and no runtime grant. The tested Array/ReadonlyArray, boxed/primitive methods, Object/Function, Promise, collections, Math/JSON/Symbol, errors, iteration and Date/RegExp forms match the same pinned target/lib. Remaining catalogs, constructors, computed iteration, callback result precision and opaque compatibility names are enumerated in `STANDARD_LIBRARY.md`; DOM remains owner supplied. | [evidence](COMPATIBILITY_CASES.json#/suites/90) |
+| G-T8 | open | K.1.5 infers the tested unannotated function/getter/method signatures, unions, void/never completion, async Promise and generator types, with literal widening and a bounded recursion guard. Imports and declaration emit retain those signatures. Remaining: literal freshness and widening in all positions, broader contextual and flow-sensitive inference, unproven unknown getter bodies and declaration precision; K.4/K.8 retain these gaps. | [evidence](COMPATIBILITY_CASES.json#/suites/47) |
+| G-T9 | open | K.5.1 measures abstract classes/members, structural `implements`, `override`, constructor capabilities and imported aliases. K.5.2 measures generic heritage/methods/defaults, static lexical restrictions, named/anonymous class expressions with captured self types and constructor aliases, computed/string/numeric keys, index signatures and `declare` fields in 160 pinned programs, 30 runtime and 36 exact declaration witnesses. Same-named binders preserve declaration identities and TS2208 origins. ES2020 expression wrappers retain per-evaluation private/static stores, computed keys and contextual names; both field modes reach the direct VM. K.5.3 adds 35 pinned imported-base member-kind, accessor read/write, inferred getter, bounded merged-interface heritage and constructor branch/early-return witnesses, with 16 runtime, 17 exact declarations and three direct regressions. Remaining: unresolved getter bodies, generic merged interfaces or heritage outside bounded records; the precise branch-super parameter-property refusal (pinned assignment mode rejects TS2401; ES2022 define output throws before super); generators/auto-accessors, computed heritage expressions, stateful ES2020 expression keys containing await/yield, decorated class expressions and unmeasured combinations (section 4). | [evidence](COMPATIBILITY_CASES.json#/suites/19) |
+| G-T10 | open | K.1.3 supplies checked value types for the tested named/default/namespace and CommonJS import forms, with inferred variable declarations and module-owned type identities. K.6.1 measures 74 pinned default-expression, anonymous/named default declaration and named/star/namespace re-export programs under ESM/CommonJS, including live aliases, snapshot defaults, cycles, conflict/diamond origins and exact declaration output. Direct execution retains anonymous default names and snapshot versus alias semantics; incremental re-exports refresh dependency types. K.6.2 measures whole and inline type-only imports/exports, qualified static namespaces, imported value type queries, runtime/type-only attributes, UMD namespace declarations and contextual import names in its pinned witnesses. K.6.3 measures 80 pinned named/merged/shorthand ambient, module/global augmentation and path/type/lib directive programs, with declaration-local imports, static re-export aliases/stars/qualified/transitive surfaces and constant/function type queries. Referenced roots retain canonical owner bounds, source/edge/depth budgets and cache invalidation; ordinary imports used solely by the measured value queries are elided. Library directives select the owned ES2020/ES2022 subset; the full library set remains in G-T7 and `STANDARD_LIBRARY.md`. Remaining: `import("specifier")` type expressions, broader declaration merging, implicit import elision beyond the measured query forms and unmeasured type/module compositions. Anonymous ES2020 default classes with private names remain precisely refused: pinned TypeScript accepts them but its output fails under Node in both module/field modes. | [evidence](COMPATIBILITY_CASES.json#/suites/59) |
 
 ### 3.2 Emit
 
-| ID | Gap |
-| --- | --- |
-| G-E1 | K.7.1 compares all eleven ECMAScript targets in CommonJS and ESM: 638 pinned verdicts, 600 accepted Node/declaration/Acorn observations and 600 actual outputs parsed through BlueJS at the selected edition. Explicit `lib` and `downlevelIteration` are recorded in artifact/cache identity; original versioned helpers implement the measured lexical/default/rest/template/pattern/iteration/spread/class/generator/async forms. Broader computed heritage and `super` use, nested binding patterns, constructor spreads, async arrows/methods, template-contained suspension, complex suspension graphs and other combinations remain unmeasured. Unsupported named ES5 suspension graphs are explicit refusals. K.7.1 complete hosted CI passes all 29 jobs. K.7.2 adds measured AMD/UMD/System bindings, 24 Node16/NodeNext per-file/verbatim configurations and helper/script policies. All 106 native configurations (82 accept, 24 reject), including early System cyclic imported-function calls and default Node module detection without imports/exports, pass execution, declarations, suffixes and primary diagnostics. The final complete leaf gate passes all 1,297 tests, including all 190 ignored oracles; additional module/helper/target combinations remain unmeasured, including ESM Node import-equals lowering and broader helper ABI selection. |
-| G-E2 | K.7.2 measures AMD/UMD/System and owner-selected Node16/NodeNext formats, verbatim policies and helper/script controls in 106 pinned configurations. Broader module/target/helper compositions remain unmeasured, including ESM Node import-equals lowering, helper ABI selection beyond the recorded forms and Node declaration-input contexts. |
-| G-E3 | K.7.4 measures 1,144 standard/legacy decorator configurations across every K.7.1 target, both module modes and both class-field modes. Complete K.0 replay passes all 1,056 native accepted emitted outputs (execution, target/proposal syntax and exact declarations), plus 88 rejected primary diagnostics. Private auto-accessors/setters, replacement-class static field/block/getter/setter super receivers supplement the original computed names, namespaces, default exports and class expressions. All 1,316 K.0 tests pass; final-source hosted CI passes in the 29-job K.10.3 source run 38106557070. Literal decorated names, super in decorated private callables, static-initializer super writes/computed super keys, imported/unresolved metadata types and unmeasured compositions retain precise refusals. |
-| G-E4 | K.7.3 records comment removal, LF/CRLF, BOM, inline source content, source/map roots, declaration documentation/internal stripping and removed-option TS5102 diagnostics in 176 native configurations, plus 18 command/config validation controls. Class, namespace, interface, enum and exported record-alias member witnesses retain exact native declarations. Callable/indexed and empty alias controls reproduce 40 declaration differences before correction; all 176 configurations, 170 actual outputs and exact declarations pass focused verification. Strict helper sites preserve all eight target/newline/BOM controls. The final complete K.0 gate passes format, Clippy, all 1,111 ordinary tests and all 194 ignored oracles; final-source hosted CI passes in the 29-job K.10.3 source run 38106557070. Remaining: nested or inferred declaration-member compositions, `isolatedDeclarations`, field-mode interactions across the full target range (K.7.4), and other unmeasured option compositions. |
-| G-E5 | Source maps retain line-level provenance and measured `sourceRoot`, `mapRoot`, relative sources and optional `sourcesContent` metadata. K.8.2 measures exact declaration maps for annotated top-level scalar variables/functions. Token-level names, complete JavaScript mapping byte parity and broader declaration-map forms remain unmeasured. |
+| ID | Status | Gap / measured scope | Evidence |
+| --- | --- | --- | --- |
+| G-E1 | open | K.7.1 compares all eleven ECMAScript targets in CommonJS and ESM: 638 pinned verdicts, 600 accepted Node/declaration/Acorn observations and 600 actual outputs parsed through BlueJS at the selected edition. Explicit `lib` and `downlevelIteration` are recorded in artifact/cache identity; original versioned helpers implement the measured lexical/default/rest/template/pattern/iteration/spread/class/generator/async forms. Broader computed heritage and `super` use, nested binding patterns, constructor spreads, async arrows/methods, template-contained suspension, complex suspension graphs and other combinations remain unmeasured. Unsupported named ES5 suspension graphs are explicit refusals. K.7.1 complete hosted CI passes all 29 jobs. K.7.2 adds measured AMD/UMD/System bindings, 24 Node16/NodeNext per-file/verbatim configurations and helper/script policies. All 106 native configurations (82 accept, 24 reject), including early System cyclic imported-function calls and default Node module detection without imports/exports, pass execution, declarations, suffixes and primary diagnostics. The final complete leaf gate passes all 1,297 tests, including all 190 ignored oracles; additional module/helper/target combinations remain unmeasured, including ESM Node import-equals lowering and broader helper ABI selection. | [evidence](COMPATIBILITY_CASES.json#/suites/95) |
+| G-E2 | open | K.7.2 measures AMD/UMD/System and owner-selected Node16/NodeNext formats, verbatim policies and helper/script controls in 106 pinned configurations. Broader module/target/helper compositions remain unmeasured, including ESM Node import-equals lowering, helper ABI selection beyond the recorded forms and Node declaration-input contexts. | [evidence](COMPATIBILITY_CASES.json#/suites/57) |
+| G-E3 | open | K.7.4 measures 1,144 standard/legacy decorator configurations across every K.7.1 target, both module modes and both class-field modes. Complete K.0 replay passes all 1,056 native accepted emitted outputs (execution, target/proposal syntax and exact declarations), plus 88 rejected primary diagnostics. Private auto-accessors/setters, replacement-class static field/block/getter/setter super receivers supplement the original computed names, namespaces, default exports and class expressions. All 1,316 K.0 tests pass; final-source hosted CI passes in the 29-job K.10.3 source run 38106557070. Literal decorated names, super in decorated private callables, static-initializer super writes/computed super keys, imported/unresolved metadata types and unmeasured compositions retain precise refusals. | [evidence](COMPATIBILITY_CASES.json#/suites/30) |
+| G-E4 | open | K.7.3 records comment removal, LF/CRLF, BOM, inline source content, source/map roots, declaration documentation/internal stripping and removed-option TS5102 diagnostics in 176 native configurations, plus 18 command/config validation controls. Class, namespace, interface, enum and exported record-alias member witnesses retain exact native declarations. Callable/indexed and empty alias controls reproduce 40 declaration differences before correction; all 176 configurations, 170 actual outputs and exact declarations pass focused verification. Strict helper sites preserve all eight target/newline/BOM controls. The final complete K.0 gate passes format, Clippy, all 1,111 ordinary tests and all 194 ignored oracles; final-source hosted CI passes in the 29-job K.10.3 source run 38106557070. Remaining: nested or inferred declaration-member compositions, `isolatedDeclarations`, field-mode interactions across the full target range (K.7.4), and other unmeasured option compositions. | [evidence](COMPATIBILITY_CASES.json#/suites/68) |
+| G-E5 | open | Source maps retain line-level provenance and measured `sourceRoot`, `mapRoot`, relative sources and optional `sourcesContent` metadata. K.8.2 measures exact declaration maps for annotated top-level scalar variables/functions. K.11 measures decoded token/name mappings, helper versus user attribution, relocated decorator spans and bounded retained-map validation for its frozen matrix. Complete JavaScript mapping byte parity for arbitrary constructs and declaration-map forms beyond the measured subset remain unmeasured. | [evidence](COMPATIBILITY_CASES.json#/suites/89) |
 
 ### 3.3 Declarations
 
-| ID | Gap |
-| --- | --- |
-| G-D1 | K.1.3 compares inferred imported variable declarations, including nested callable/tuple types and unnameable external types. K.1.5 adds 23 exact inferred-return declaration comparisons and two pinned type-equality printing comparisons. K.8.1 records 84 native configurations (77 accepts, seven rejects) covering inferred objects/readonly tuples/arrays, generic functions/classes, overloads, accessor pairs, merged/nested namespaces, export assignments and ambient type-only dependencies. Explicit/const generic and literal annotations retain measured freshness; mutable enum arrays widen to their owning enum. Const parameters on functions and constructor types are accepted; interface/generic alias parameters reject with exact TS1277. The corrected 84-configuration focused replay, live recorder, format and three-crate Clippy pass, including lexical callable and ordered-overload controls; the complete 1,321-test K.0 gate passes, including all 200 ignored oracles. Remaining: broader contextual/const inference, imported/local freshness and arbitrary anonymous object unions, overload compositions and declaration merging beyond these controls. |
-| G-D2 | K.8.2 records 48 configurations (28 accepts, 20 rejects) for declarationDir, declaration-only publication, measured scalar declaration maps and isolated-declaration diagnostics. Exact maps/declarations/artifact inventory and all actual output executions agree; three CLI override/escape/symlink guards pass. Format/Clippy and the complete 1,328-test K.0 gate pass, including all 202 ignored oracles. Broader class/generic/namespace/inferred declaration maps retain a precise refusal, and arbitrary isolated-declaration compositions remain unmeasured. K.7.3 measures `stripInternal` for top-level and named class/namespace/interface/enum/exported record-alias members; broader nested and inferred declaration forms remain unmeasured. The 48 callable/indexed/empty alias controls pass focused correction verification; the complete corrected K.0 gate passes all 1,305 tests. |
+| ID | Status | Gap / measured scope | Evidence |
+| --- | --- | --- | --- |
+| G-D1 | open | K.1.3 compares inferred imported variable declarations, including nested callable/tuple types and unnameable external types. K.1.5 adds 23 exact inferred-return declaration comparisons and two pinned type-equality printing comparisons. K.8.1 records 84 native configurations (77 accepts, seven rejects) covering inferred objects/readonly tuples/arrays, generic functions/classes, overloads, accessor pairs, merged/nested namespaces, export assignments and ambient type-only dependencies. Explicit/const generic and literal annotations retain measured freshness; mutable enum arrays widen to their owning enum. Const parameters on functions and constructor types are accepted; interface/generic alias parameters reject with exact TS1277. The corrected 84-configuration focused replay, live recorder, format and three-crate Clippy pass, including lexical callable and ordered-overload controls; the complete 1,321-test K.0 gate passes, including all 200 ignored oracles. Remaining: broader contextual/const inference, imported/local freshness and arbitrary anonymous object unions, overload compositions and declaration merging beyond these controls. | [evidence](COMPATIBILITY_CASES.json#/suites/27) |
+| G-D2 | open | K.8.2 records 48 configurations (28 accepts, 20 rejects) for declarationDir, declaration-only publication, measured scalar declaration maps and isolated-declaration diagnostics. Exact maps/declarations/artifact inventory and all actual output executions agree; three CLI override/escape/symlink guards pass. Format/Clippy and the complete 1,328-test K.0 gate pass, including all 202 ignored oracles. Broader class/generic/namespace/inferred declaration maps retain a precise refusal, and arbitrary isolated-declaration compositions remain unmeasured. K.7.3 measures `stripInternal` for top-level and named class/namespace/interface/enum/exported record-alias members; broader nested and inferred declaration forms remain unmeasured. The 48 callable/indexed/empty alias controls pass focused correction verification; the complete corrected K.0 gate passes all 1,305 tests. | [evidence](COMPATIBILITY_CASES.json#/suites/28) |
 
 ### 3.4 Modules, packages, projects
 
-| ID | Gap |
-| --- | --- |
-| G-M1 | K.6.2 supports owner-enabled explicit relative JSON data with canonical-root bounds, static types, content/observation identity and raw asset publication; strict-runtime/direct execution still requires a supported data runtime profile. Its per-edge type-only import/require conditions select independently. K.7.2 adds owner-selected Node16/NodeNext per-file formats, `.mts`/`.cts` sources, `.d.mts`/`.d.cts` output suffixes and canonical nearest-package observations. K.9.1's 54 Native controls cover ordered `typesVersions` ranges, exact/wildcard/array-fallback targets, exports precedence, `.d.mts`/`.d.cts`/`.mts`/`.cts` package entries, modern package self-name imports and `moduleResolution: classic` file lookup. Package manifests are confined before body reads and retain canonical/hash cache observations. Unmeasured range/composition cases and broader declaration-input contexts remain open. K.9.2's 46 Native controls cover exact/wildcard/longest-prefix paths, ordered target fallback, baseUrl precedence, rootDirs relative lookup, automatic/scoped @types, explicit/empty types and custom/empty typeRoots. Mapped paths and type libraries remain confined to canonical owner roots; inherited path origins and explicitly authorized external declaration identities are tested. Broader mapping/library compositions and missing-type-library diagnostics remain unmeasured. K.9.3's 28 Native controls cover typed relative JSON assets, owner-enabled relative/root `.js` sources and `allowJs`/`checkJs`, checked inferred assignments, implicit-any diagnostics, unchecked declaration inference and physical emitted execution. Six CLI controls preserve canonical symlink confinement, TypeScript importer checking and sibling precedence, source-option identity and changed-checking behavior. Package/path-mapped JavaScript, JSDoc types and broader source compositions remain unmeasured. K.9.3's complete 1,358-test K.0 gate and final 36-test path-normalization replay pass; all compiler/runtime hashes and Native goldens remain verified. Final-source hosted confirmation passes in the 29-job K.10.3 source run 38106557070. |
-| G-M2 | K.2.1 reads canonical JSONC projects, relative/package inheritance and file selectors with owner overlays. Sibling precedence preserves native Windows parent/prefix paths. K.2.3 provides native project/default discovery, `--project`, `--showConfig`, `--noEmit`, project source/emitted lists, pretty selection and exit codes; 30 pinned observations agree; K.2.4 verifies the supported options together in 768 Cartesian configurations. K.12.1.1 adds owner-confined `--build` reference-graph loading, composite/declaration/file-coverage checks, cycle diagnostics and a simple emitting graph; ordinary `--project` still refuses references/composite. K.12.1.2 orders and emits five root-confined build graphs exactly as pinned `tsc --build --verbose` lists them, with matching declarations and executed exports; its concise verbose messages do not claim exact TypeScript log text. K.12.1.3 matches ten pinned rebuild/no-op scenarios with source-content/config-time fingerprints, declaration-signature propagation, executed outputs and declarations; forged state output paths and a state-file symlink cannot escape the project root. K.12.1.4 maps each selected referenced source to its emitted declaration and optional runtime output through versioned owner-local build state; the four-row pinned matrix matches rebuilt order after editing `.d.ts` independently of `.ts`, while missing or unsafe recorded outputs force a bounded rebuild. A declaration-only output does not authorize a value import. K.12.1.5 matches three pinned `--stopBuildOnErrors` graphs: failed projects block dependents, independent branches continue, and ordered skip reasons plus exit codes match; ordinary `--build` error continuation is not claimed. K.12.1.6 preserves the J.4.3 canonical owner-root boundary: an in-root reference builds and executes, while a symlinked reference outside the root is rejected before outside configuration reads or output with a bounded diagnostic; pinned `tsc` follows the link, an intentional owner-policy divergence. K.12.2.1 matches six pinned cold/changed rebuild rows for source bytes, compiler options and the project reference graph; a same-mtime source edit still changes the owner-local fingerprint. Remaining: default build-error continuation, broader imported/package-input invalidation, `--watch`, `--incremental`/`.tsbuildinfo`, bare-source native CLI invocations, the full installed standard-library file catalog and options beyond the documented compiler/resolver subset. |
-| G-M3 | Windows: all five workspace build/test/lint jobs pass, including replay of the pinned project and CLI matrices and native sibling precedence. The main TypeScript oracle now selects `tsc.cmd` and parses drive, UNC and verbatim diagnostic paths; platform-neutral path tests run on macOS, Linux and a Windows VM, where a `.cmd` shim also launches. Windows CI is wired to print and summarize all 25 known Unix-gated symlink test/oracle exclusions by name and reason; this is explicit skipping, not Windows symlink parity. K.13.1.3 configures x86_64 and arm64 TypeScript oracle legs and is accepted on the Windows x86_64 VM's 82/82 pinned tests plus the complete local K.0 gate. Full hosted all-leg confirmation remains K.13.2; the VM result does not establish arm64 parity. |
+| ID | Status | Gap / measured scope | Evidence |
+| --- | --- | --- | --- |
+| G-M1 | open | K.6.2 supports owner-enabled explicit relative JSON data with canonical-root bounds, static types, content/observation identity and raw asset publication; strict-runtime/direct execution still requires a supported data runtime profile. Its per-edge type-only import/require conditions select independently. K.7.2 adds owner-selected Node16/NodeNext per-file formats, `.mts`/`.cts` sources, `.d.mts`/`.d.cts` output suffixes and canonical nearest-package observations. K.9.1's 54 Native controls cover ordered `typesVersions` ranges, exact/wildcard/array-fallback targets, exports precedence, `.d.mts`/`.d.cts`/`.mts`/`.cts` package entries, modern package self-name imports and `moduleResolution: classic` file lookup. Package manifests are confined before body reads and retain canonical/hash cache observations. Unmeasured range/composition cases and broader declaration-input contexts remain open. K.9.2's 46 Native controls cover exact/wildcard/longest-prefix paths, ordered target fallback, baseUrl precedence, rootDirs relative lookup, automatic/scoped @types, explicit/empty types and custom/empty typeRoots. Mapped paths and type libraries remain confined to canonical owner roots; inherited path origins and explicitly authorized external declaration identities are tested. Broader mapping/library compositions and missing-type-library diagnostics remain unmeasured. K.9.3's 28 Native controls cover typed relative JSON assets, owner-enabled relative/root `.js` sources and `allowJs`/`checkJs`, checked inferred assignments, implicit-any diagnostics, unchecked declaration inference and physical emitted execution. Six CLI controls preserve canonical symlink confinement, TypeScript importer checking and sibling precedence, source-option identity and changed-checking behavior. Package/path-mapped JavaScript, JSDoc types and broader source compositions remain unmeasured. K.9.3's complete 1,358-test K.0 gate and final 36-test path-normalization replay pass; all compiler/runtime hashes and Native goldens remain verified. Final-source hosted confirmation passes in the 29-job K.10.3 source run 38106557070. | [evidence](COMPATIBILITY_CASES.json#/suites/71) |
+| G-M2 | open | K.2.1 reads canonical JSONC projects, relative/package inheritance and file selectors with owner overlays. Sibling precedence preserves native Windows parent/prefix paths. K.2.3 provides native project/default discovery, `--project`, `--showConfig`, `--noEmit`, project source/emitted lists, pretty selection and exit codes; 30 pinned observations agree; K.2.4 verifies the supported options together in 768 Cartesian configurations. K.12.1.1 adds owner-confined `--build` reference-graph loading, composite/declaration/file-coverage checks, cycle diagnostics and a simple emitting graph; ordinary `--project` still refuses references/composite. K.12.1.2 orders and emits five root-confined build graphs exactly as pinned `tsc --build --verbose` lists them, with matching declarations and executed exports; its concise verbose messages do not claim exact TypeScript log text. K.12.1.3 matches ten pinned rebuild/no-op scenarios with source-content/config-time fingerprints, declaration-signature propagation, executed outputs and declarations; forged state output paths and a state-file symlink cannot escape the project root. K.12.1.4 maps each selected referenced source to its emitted declaration and optional runtime output through versioned owner-local build state; the four-row pinned matrix matches rebuilt order after editing `.d.ts` independently of `.ts`, while missing or unsafe recorded outputs force a bounded rebuild. A declaration-only output does not authorize a value import. K.12.1.5 matches three pinned `--stopBuildOnErrors` graphs: failed projects block dependents, independent branches continue, and ordered skip reasons plus exit codes match; ordinary `--build` error continuation is not claimed. K.12.1.6 preserves the J.4.3 canonical owner-root boundary: an in-root reference builds and executes, while a symlinked reference outside the root is rejected before outside configuration reads or output with a bounded diagnostic; pinned `tsc` follows the link, an intentional owner-policy divergence. K.12.2.1 matches six pinned cold/changed rebuild rows for source bytes, compiler options and the project reference graph; a same-mtime source edit still changes the owner-local fingerprint. K.12.2 additionally measures observed-input invalidation, incremental/clean output equivalence, corrupt-state recovery and owner-confined watch cycles. Remaining: default build-error continuation, native `.tsbuildinfo` interchange, broader imported/package/watch compositions, bare-source native CLI invocations, the full installed standard-library catalog and options beyond the documented subset. | [evidence](COMPATIBILITY_CASES.json#/suites/77) |
+| G-M3 | open | Windows: all five workspace build/test/lint jobs pass, including replay of the pinned project and CLI matrices and native sibling precedence. The main TypeScript oracle now selects `tsc.cmd` and parses drive, UNC and verbatim diagnostic paths; platform-neutral path tests run on macOS, Linux and a Windows VM, where a `.cmd` shim also launches. Windows CI is wired to print and summarize all 25 known Unix-gated symlink test/oracle exclusions by name and reason; this is explicit skipping, not Windows symlink parity. K.13.1.3 configures x86_64 and arm64 TypeScript oracle legs and is accepted on the Windows x86_64 VM's 82/82 pinned tests plus the complete local K.0 gate. K.13.2 separately records successful four-platform hosted oracle confirmation at its recorded source. The VM result does not establish arm64 parity, and explicitly excluded Windows symlink cases remain outside the measured claim. | [evidence](COMPATIBILITY_CASES.json#/suites/97) |
 
 ### 3.5 Diagnostics and CLI
 
-| ID | Gap |
-| --- | --- |
-| G-C1 | K.3.1 provides pinned TypeScript codes and message templates through `--diagnostics-json` and the public diagnostic API, preserving BTS aliases and enumerated owner/subset reasons. All 1,398 existing checker entries agree on primary code/template; 97 additional source witnesses cover further diagnostic families. K.3.2 matches primary UTF-16 positions and source module identity across 1,398 language/strictness and 867 project/CLI/option cases. K.3.3 adds related codes/messages/module identity/UTF-16 coordinates, contextual rendered wording, plain/pretty formatting, source and related context, per-file error tables, diagnostics summary fields and measured native exit/emission semantics. K.4.1 resolves the three measured G-T1 wording gaps; `--explainFiles` and the full `tsc` command line remain outside this measured subset. |
-| G-C2 | Closed for the compared subset by K.2.2: parent `strict`, its nine family flags, unused locals/parameters, implicit returns, switch fallthrough, exact optional properties and unchecked indexed reads are independently selectable through projects and `CheckingOptions`. Thirty-two on/off configurations and 39 boundary controls agree with pinned TypeScript; valid JavaScript stays identical and legacy API defaults remain unchanged. Broader type-system behavior remains in G-T1/G-T2 and the other open rows; full `tsc` parity is not claimed. |
-| G-C3 | K.10.1 measures sixty factory-owned JSX configurations: explicit/inferred/defaulted generic function and class tags, ElementType eligibility, LibraryManagedAttributes, function/class defaultProps, IntrinsicClassAttributes, duplicate attributes, children collisions and namespaced attributes. All 26 accepted programs execute and retain exact declarations/inputs/inventory; primary and sixteen related records agree, and nine direct Native/Node programs pass. Its complete 1,363-test K.0 gate passes with unchanged Native goldens. K.10.2 adds 28 package-owned automatic-runtime namespace configurations (16 accept, 12 reject), production/development provider selection, pragma priority, global fallback and per-file identity. Exact declarations/inputs/inventory, all primary and eight related records and all sixteen physical executions agree. Six owner/cache/resource/symlink controls pass, and its complete 1,373-test K.0 gate preserves all 509 Native files. K.10.3 adds sixty standard/legacy replacement/context configurations (32 accept, 28 reject), exact declarations/inputs/inventory, all primary and four related records and 32 actual physical executions. Its complete 1,377-test K.0 gate preserves all 243 Native files. Remaining: broader decorator overload/inference, imported/aliased replacement/context compositions, abstract/generic constructor constraints, customized Symbol.metadata types, unmeasured accessor/receiver compositions, broader JSX overload/union/recursive combinations, conditional/re-exported provider compositions, missing-provider diagnostics, value-bearing/imported global declaration contexts and preserve/native JSX typing. Full parity is not claimed. |
+| ID | Status | Gap / measured scope | Evidence |
+| --- | --- | --- | --- |
+| G-C1 | open | K.3.1 provides pinned TypeScript codes and message templates through `--diagnostics-json` and the public diagnostic API, preserving BTS aliases and enumerated owner/subset reasons. All 1,398 existing checker entries agree on primary code/template; 97 additional source witnesses cover further diagnostic families. K.3.2 matches primary UTF-16 positions and source module identity across 1,398 language/strictness and 867 project/CLI/option cases. K.3.3 adds related codes/messages/module identity/UTF-16 coordinates, contextual rendered wording, plain/pretty formatting, source and related context, per-file error tables, diagnostics summary fields and measured native exit/emission semantics. K.4.1 resolves the three measured G-T1 wording gaps; `--explainFiles` and the full `tsc` command line remain outside this measured subset. | [evidence](COMPATIBILITY_CASES.json#/suites/35) |
+| G-C2 | closed | Closed for the compared subset by K.2.2: parent `strict`, its nine family flags, unused locals/parameters, implicit returns, switch fallthrough, exact optional properties and unchecked indexed reads are independently selectable through projects and `CheckingOptions`. Thirty-two on/off configurations and 39 boundary controls agree with pinned TypeScript; valid JavaScript stays identical and legacy API defaults remain unchanged. Broader type-system behavior remains in G-T1/G-T2 and the other open rows; full `tsc` parity is not claimed. | [evidence](COMPATIBILITY_CASES.json#/suites/92) |
+| G-C3 | open | K.10.1 measures sixty factory-owned JSX configurations: explicit/inferred/defaulted generic function and class tags, ElementType eligibility, LibraryManagedAttributes, function/class defaultProps, IntrinsicClassAttributes, duplicate attributes, children collisions and namespaced attributes. All 26 accepted programs execute and retain exact declarations/inputs/inventory; primary and sixteen related records agree, and nine direct Native/Node programs pass. Its complete 1,363-test K.0 gate passes with unchanged Native goldens. K.10.2 adds 28 package-owned automatic-runtime namespace configurations (16 accept, 12 reject), production/development provider selection, pragma priority, global fallback and per-file identity. Exact declarations/inputs/inventory, all primary and eight related records and all sixteen physical executions agree. Six owner/cache/resource/symlink controls pass, and its complete 1,373-test K.0 gate preserves all 509 Native files. K.10.3 adds sixty standard/legacy replacement/context configurations (32 accept, 28 reject), exact declarations/inputs/inventory, all primary and four related records and 32 actual physical executions. Its complete 1,377-test K.0 gate preserves all 243 Native files. Remaining: broader decorator overload/inference, imported/aliased replacement/context compositions, abstract/generic constructor constraints, customized Symbol.metadata types, unmeasured accessor/receiver compositions, broader JSX overload/union/recursive combinations, conditional/re-exported provider compositions, missing-provider diagnostics, value-bearing/imported global declaration contexts and preserve/native JSX typing. Full parity is not claimed. | [evidence](COMPATIBILITY_CASES.json#/suites/52) |
 
 ### 3.6 Direct runtime (BlueJS) profile
+
+**Row status: open.** [evidence](COMPATIBILITY_CASES.json#/suites/3)
 
 The direct profile (`compile_direct_*`) is a deliberately narrower route than emit and is not part of the
 `tsc` parity claim, but each prerequisite of what it advertises is recorded: its expression subset
@@ -353,251 +384,252 @@ legacy decorators, preserved and automatic JSX are refused with a diagnostic nam
 ## 4. Refusals: what BlueTS knows it does not do
 
 Generated by `tools/inventory_refusals.py` from current production source.
+Each refused label applies to the condition in its diagnostic, not the entire feature.
 
 213 refusal sites in 11 areas
 
 ### bin (1)
 
-- `backend/bluets/src/bin/bluetsc/native_cli/mod.rs:242` — BlueTSC configuration or an explicit owner policy refused this input.
+- **refused** `backend/bluets/src/bin/bluetsc/native_cli/mod.rs:242` — BlueTSC configuration or an explicit owner policy refused this input.
 
 ### checker (24)
 
-- `backend/bluets/src/checker/module/binding/classes/super_calls.rs:96` — Only public and protected methods of the base class are accessible via the 'super' keyword.
-- `backend/bluets/src/checker/module/binding/classes.rs:231` — Private identifiers are only available when targeting ECMAScript 2015 and higher.
-- `backend/bluets/src/checker/module/binding/classes.rs:246` — Properties with the 'accessor' modifier are only available when targeting ECMAScript 2015 and higher.
-- `backend/bluets/src/checker/module/binding/modules.rs:248` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding/modules.rs:238` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
-- `backend/bluets/src/checker/module/binding/classes/expressions.rs:198` — a class expression member has no structured runtime representation
-- `backend/bluets/src/checker/module/binding/enums.rs:216` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
-- `backend/bluets/src/checker/module/decorators.rs:149` — a decorator can only decorate a method implementation, not an overload
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:332` — a field initializer that refers to a later field inside a nested \ function is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:263` — a static block that refers to a later static field inside a nested \ function is not supported yet
-- `backend/bluets/src/checker/module/binding/classes.rs:266` — an anonymous default class with private names on ES2020 is not supported: the pinned TypeScript 5.9.3 output fails at runtime; use a named default class or ES2022
-- `backend/bluets/src/checker/module/binding.rs:282` — an unstructured class member (a generator or auto-accessor) is not supported yet
-- `backend/bluets/src/checker/module/binding/classes/accessors.rs:144` — cannot infer getter `{}` within the supported body boundary
-- `backend/bluets/src/checker/module/binding/classes/visibility.rs:478` — cannot prove that access to `{}` is permitted for this receiver
-- `backend/bluets/src/checker/module/binding/classes/visibility.rs:559` — cannot prove that access to `{}` is permitted for this receiver
-- `backend/bluets/src/checker/module/binding/classes/fields.rs:119` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
-- `backend/bluets/src/checker/module/binding/classes.rs:559` — class tuple rest annotation cannot be specialized within the type budget
-- `backend/bluets/src/checker/module/binding/names.rs:212` — cyclic tuple spread cannot be resolved
-- `backend/bluets/src/checker/module/decorators.rs:128` — decorators are not valid here: they decorate a class or a class member
-- `backend/bluets/src/checker/module/binding.rs:654` — interface heritage {name} must name an interface declaration
-- `backend/bluets/src/checker/module/binding/classes/expressions.rs:54` — merged interface heritage must resolve to a bounded record of instance members
-- `backend/bluets/src/checker/module/binding/namespaces.rs:1051` — namespace `{source}` has no run-time members; import it with `import type`
-- `backend/bluets/src/checker/module/binding/names.rs:216` — tuple spread names an unresolved type
-- `backend/bluets/src/checker/module/binding/names.rs:220` — tuple spread requires one concrete tuple or array type
+- **refused** `backend/bluets/src/checker/module/binding/classes/super_calls.rs:96` — Only public and protected methods of the base class are accessible via the 'super' keyword.
+- **refused** `backend/bluets/src/checker/module/binding/classes.rs:231` — Private identifiers are only available when targeting ECMAScript 2015 and higher.
+- **refused** `backend/bluets/src/checker/module/binding/classes.rs:246` — Properties with the 'accessor' modifier are only available when targeting ECMAScript 2015 and higher.
+- **refused** `backend/bluets/src/checker/module/binding/modules.rs:248` — `export =` cannot be used when the module system is ECMAScript; use `--module commonjs`
+- **refused** `backend/bluets/src/checker/module/binding/modules.rs:238` — `import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`
+- **refused** `backend/bluets/src/checker/module/binding/classes/expressions.rs:198` — a class expression member has no structured runtime representation
+- **refused** `backend/bluets/src/checker/module/binding/enums.rs:216` — a computed initializer that refers to the member `{}` must write it \ as `{}.{}`
+- **refused** `backend/bluets/src/checker/module/decorators.rs:149` — a decorator can only decorate a method implementation, not an overload
+- **refused** `backend/bluets/src/checker/module/binding/classes/fields.rs:332` — a field initializer that refers to a later field inside a nested \ function is not supported yet
+- **refused** `backend/bluets/src/checker/module/binding/classes/fields.rs:263` — a static block that refers to a later static field inside a nested \ function is not supported yet
+- **refused** `backend/bluets/src/checker/module/binding/classes.rs:266` — an anonymous default class with private names on ES2020 is not supported: the pinned TypeScript 5.9.3 output fails at runtime; use a named default class or ES2022
+- **refused** `backend/bluets/src/checker/module/binding.rs:282` — an unstructured class member (a generator or auto-accessor) is not supported yet
+- **refused** `backend/bluets/src/checker/module/binding/classes/accessors.rs:144` — cannot infer getter `{}` within the supported body boundary
+- **refused** `backend/bluets/src/checker/module/binding/classes/visibility.rs:478` — cannot prove that access to `{}` is permitted for this receiver
+- **refused** `backend/bluets/src/checker/module/binding/classes/visibility.rs:559` — cannot prove that access to `{}` is permitted for this receiver
+- **refused** `backend/bluets/src/checker/module/binding/classes/fields.rs:119` — class field `{}` needs a type annotation unless its initializer \ or default is a number, string or boolean literal
+- **refused** `backend/bluets/src/checker/module/binding/classes.rs:559` — class tuple rest annotation cannot be specialized within the type budget
+- **refused** `backend/bluets/src/checker/module/binding/names.rs:212` — cyclic tuple spread cannot be resolved
+- **refused** `backend/bluets/src/checker/module/decorators.rs:128` — decorators are not valid here: they decorate a class or a class member
+- **refused** `backend/bluets/src/checker/module/binding.rs:654` — interface heritage {name} must name an interface declaration
+- **refused** `backend/bluets/src/checker/module/binding/classes/expressions.rs:54` — merged interface heritage must resolve to a bounded record of instance members
+- **refused** `backend/bluets/src/checker/module/binding/namespaces.rs:1051` — namespace `{source}` has no run-time members; import it with `import type`
+- **refused** `backend/bluets/src/checker/module/binding/names.rs:216` — tuple spread names an unresolved type
+- **refused** `backend/bluets/src/checker/module/binding/names.rs:220` — tuple spread requires one concrete tuple or array type
 
 ### compiler (5)
 
-- `backend/bluets/src/compiler/project_builder/references.rs:71` — library reference `{name}` is not supported by the owned declaration profiles
-- `backend/bluets/src/compiler/node_modules.rs:32` — module declaration is incompatible with the selected Node file format
-- `backend/bluets/src/compiler/project_builder.rs:219` — owner must select ESM or CommonJS for a Node file
-- `backend/bluets/src/compiler/project_builder/helper_providers.rs:97` — owner-resolved helper provider does not declare the supported __extends ABI
-- `backend/bluets/src/compiler.rs:738` — strict-runtime JSON assets require a supported runtime profile
+- **refused** `backend/bluets/src/compiler/project_builder/references.rs:71` — library reference `{name}` is not supported by the owned declaration profiles
+- **refused** `backend/bluets/src/compiler/node_modules.rs:32` — module declaration is incompatible with the selected Node file format
+- **refused** `backend/bluets/src/compiler/project_builder.rs:219` — owner must select ESM or CommonJS for a Node file
+- **refused** `backend/bluets/src/compiler/project_builder/helper_providers.rs:97` — owner-resolved helper provider does not declare the supported __extends ABI
+- **refused** `backend/bluets/src/compiler.rs:738` — strict-runtime JSON assets require a supported runtime profile
 
 ### diagnostic (1)
 
-- `backend/bluets/src/diagnostic/mapping.rs:123` — BlueTSC deliberately refuses a documented subset boundary.
+- **refused** `backend/bluets/src/diagnostic/mapping.rs:123` — BlueTSC deliberately refuses a documented subset boundary.
 
 ### emitter (80)
 
-- `backend/bluets/src/emitter/targets/es5.rs:210` — ES5 lowering: {message}
-- `backend/bluets/src/emitter/targets/es5.rs:212` — ES5 lowering: {message}
-- `backend/bluets/src/emitter/targets/es5/templates.rs:57` — ES5 template expressions exceed the token budget
-- `backend/bluets/src/emitter/system.rs:21` — System does not support export assignment
-- `backend/bluets/src/emitter/system.rs:144` — System function body is missing
-- `backend/bluets/src/emitter/system.rs:146` — System function body is unbalanced
-- `backend/bluets/src/emitter/system.rs:159` — System variable binding requires retained names
-- `backend/bluets/src/emitter/decorators.rs:818` — a constructor of a decorated class needs its `super(...)` call as a top-level statement
-- `backend/bluets/src/emitter/decorators.rs:380` — a decorator can only decorate a method implementation, not an overload
-- `backend/bluets/src/emitter/decorators.rs:330` — a decorator expression with a line comment is not lowered
-- `backend/bluets/src/emitter/legacy_decorators.rs:156` — a decorator expression with a line comment is not lowered
-- `backend/bluets/src/emitter/class_lowering.rs:478` — a derived constructor whose class needs statements at its start must have a top-level \ `super(...)` statement to place them after
-- `backend/bluets/src/emitter/class_lowering.rs:134` — a private name in a class inside a namespace is not lowered for this target yet
-- `backend/bluets/src/emitter/class_lowering.rs:487` — a static initializer or block that uses `super` cannot be lowered for this target
-- `backend/bluets/src/emitter/decorators/super_members.rs:51` — a static super property has no key
-- `backend/bluets/src/emitter/class_lowering/expressions.rs:46` — an ES2020 class expression with state and an await/yield key needs lexical suspension lowering
-- `backend/bluets/src/emitter/namespaces.rs:352` — an exported namespace variable with several declarators is not supported yet
-- `backend/bluets/src/emitter/namespaces.rs:367` — an exported namespace variable's name could not be located
-- `backend/bluets/src/emitter/commonjs.rs:315` — an exported variable with several declarators is not supported in CommonJS output yet
-- `backend/bluets/src/emitter/commonjs.rs:333` — an exported variable's name could not be located
-- `backend/bluets/src/emitter/targets/es5.rs:67` — arrow body was not retained
-- `backend/bluets/src/emitter/targets/es5.rs:64` — arrow head was not retained
-- `backend/bluets/src/emitter/legacy_decorators.rs:222` — auto-accessors are not combined with experimentalDecorators
-- `backend/bluets/src/emitter/targets/es5/patterns.rs:49` — binding pattern initializer was not retained
-- `backend/bluets/src/emitter/targets/es5/loops.rs:64` — captured loop completion requires a retained completion record
-- `backend/bluets/src/emitter/targets/es5/classes.rs:64` — class body was not retained
-- `backend/bluets/src/emitter/targets/es5/classes.rs:57` — class heritage requires one retained base binding
-- `backend/bluets/src/emitter/targets/es5/classes.rs:109` — class member requires a retained named method
-- `backend/bluets/src/emitter/targets/es5/classes.rs:118` — class method body was not retained
-- `backend/bluets/src/emitter/targets/es5/objects.rs:52` — computed literal prototype/super semantics require retained home objects
-- `backend/bluets/src/emitter/targets/es5/classes.rs:98` — computed member key was not retained
-- `backend/bluets/src/emitter/decorators.rs:362` — computed or literal member names in decorator lowering are not supported yet
-- `backend/bluets/src/emitter/targets/es5/objects.rs:37` — computed property value was not retained
-- `backend/bluets/src/emitter/targets/es5/spreads.rs:61` — constructor spread requires retained construction semantics
-- `backend/bluets/src/emitter/declaration_maps.rs:262` — declaration maps currently require annotated top-level scalar variables and functions
-- `backend/bluets/src/emitter/declaration_maps.rs:264` — declaration maps currently require annotated top-level scalar variables and functions
-- `backend/bluets/src/emitter/classes.rs:111` — declaration output for this string literal field needs an annotation
-- `backend/bluets/src/emitter/classes.rs:403` — declaration output requires a class field type
-- `backend/bluets/src/emitter/classes.rs:286` — declaration output requires a parameter property type
-- `backend/bluets/src/emitter/classes.rs:546` — declaration output requires an explicit class method return type
-- `backend/bluets/src/emitter/classes.rs:487` — declaration output requires an explicit getter return type
-- `backend/bluets/src/emitter/legacy_decorators.rs:632` — decorator metadata cannot serialize `{name}`: only types declared in this module are supported
-- `backend/bluets/src/emitter/legacy_decorators.rs:481` — decorator metadata needs this accessor's type annotation
-- `backend/bluets/src/emitter/legacy_decorators.rs:429` — decorator metadata needs this field's type
-- `backend/bluets/src/emitter/legacy_decorators.rs:442` — decorator metadata needs this method's return type annotation
-- `backend/bluets/src/emitter/decorators.rs:421` — decorators are not valid here
-- `backend/bluets/src/emitter/legacy_decorators.rs:270` — decorators cannot be applied to both the getter and the setter of the same name
-- `backend/bluets/src/emitter/legacy_decorators.rs:253` — decorators on private names are not valid with experimentalDecorators
-- `backend/bluets/src/emitter/commonjs.rs:265` — default export expression has no initializer
-- `backend/bluets/src/emitter/targets/es5/parameters.rs:33` — default parameter head was not retained
-- `backend/bluets/src/emitter/targets/es5/classes.rs:329` — derived constructor returns require a retained constructor completion
-- `backend/bluets/src/emitter/targets/es5/classes.rs:296` — derived constructor super properties require a retained receiver
-- `backend/bluets/src/emitter/targets/es5/suspension.rs:68` — generator declaration was not retained
-- `backend/bluets/src/emitter/helper_selection.rs:57` — helper selection does not support generated ABI `{name}`
-- `backend/bluets/src/emitter/targets.rs:91` — logical assignment has no right operand
-- `backend/bluets/src/emitter/targets/es5/patterns.rs:78` — object rest was not lowered before ES5 binding projection
-- `backend/bluets/src/emitter/targets/optional.rs:44` — optional receiver is outside the target lowering subset
-- `backend/bluets/src/emitter/targets/es5/spreads.rs:54` — spread callee was not retained
-- `backend/bluets/src/emitter/decorators/super_members.rs:79` — static super property writes need receiver-aware assignment lowering
-- `backend/bluets/src/emitter/decorators/private_members.rs:39` — super in a decorated private callable needs lexical heritage lowering
-- `backend/bluets/src/emitter/targets/es5/classes/super_members.rs:40` — super key was not retained
-- `backend/bluets/src/emitter/targets/es5/classes/super_members.rs:60` — super property writes need receiver-aware assignment lowering
-- `backend/bluets/src/emitter/targets/exponentiation.rs:36` — target exponentiation lowering requires an update or unary operand
-- `backend/bluets/src/emitter/targets/optional.rs:90` — target nullish lowering requires both operands
-- `backend/bluets/src/emitter/targets/object_spread.rs:53` — target object spread does not yet lower prototype setters or super properties
-- `backend/bluets/src/emitter/targets/object_spread.rs:47` — target object spread requires an operand
-- `backend/bluets/src/emitter/targets/object_rest.rs:36` — target object-rest lowering requires an initializer
-- `backend/bluets/src/emitter/targets/optional.rs:53` — target optional lowering requires a named property
-- `backend/bluets/src/emitter/targets/optional.rs:65` — target optional property lowering requires a terminal value read
-- `backend/bluets/src/emitter/private_lowering.rs:657` — the identifier `{helper}` is reserved for the private-name helpers
-- `backend/bluets/src/emitter/private_lowering.rs:167` — the identifier `{variable}` is needed to lower this class's private names but is already used
-- `backend/bluets/src/emitter/decorators.rs:430` — this decorated member shape (computed or literal name, or a form the class parser does not structure) is not lowered
-- `backend/bluets/src/emitter/legacy_decorators.rs:233` — this decorated member shape is not lowered
-- `backend/bluets/src/emitter/decorators.rs:373` — this decorated method shape is not lowered
-- `backend/bluets/src/emitter/private_lowering.rs:326` — this private member could not be located in its own text
-- `backend/bluets/src/emitter/private_lowering.rs:318` — this private member has no lowering
-- `backend/bluets/src/emitter/decorators/super_members.rs:45` — this static super reference needs a retained named property
-- `backend/bluets/src/emitter/targets/es5/classes/super_members.rs:50` — this super reference needs a retained property
-- `backend/bluets/src/emitter/targets/es5/suspension.rs:87` — this suspension control-flow shape cannot be lowered to ES5
-- `backend/bluets/src/emitter/private_lowering.rs:564` — {what} cannot be lowered for a target below ES2022
+- **refused** `backend/bluets/src/emitter/targets/es5.rs:210` — ES5 lowering: {message}
+- **refused** `backend/bluets/src/emitter/targets/es5.rs:212` — ES5 lowering: {message}
+- **refused** `backend/bluets/src/emitter/targets/es5/templates.rs:57` — ES5 template expressions exceed the token budget
+- **refused** `backend/bluets/src/emitter/system.rs:21` — System does not support export assignment
+- **refused** `backend/bluets/src/emitter/system.rs:144` — System function body is missing
+- **refused** `backend/bluets/src/emitter/system.rs:146` — System function body is unbalanced
+- **refused** `backend/bluets/src/emitter/system.rs:159` — System variable binding requires retained names
+- **refused** `backend/bluets/src/emitter/decorators.rs:818` — a constructor of a decorated class needs its `super(...)` call as a top-level statement
+- **refused** `backend/bluets/src/emitter/decorators.rs:380` — a decorator can only decorate a method implementation, not an overload
+- **refused** `backend/bluets/src/emitter/decorators.rs:330` — a decorator expression with a line comment is not lowered
+- **refused** `backend/bluets/src/emitter/legacy_decorators.rs:156` — a decorator expression with a line comment is not lowered
+- **refused** `backend/bluets/src/emitter/class_lowering.rs:478` — a derived constructor whose class needs statements at its start must have a top-level \ `super(...)` statement to place them after
+- **refused** `backend/bluets/src/emitter/class_lowering.rs:134` — a private name in a class inside a namespace is not lowered for this target yet
+- **refused** `backend/bluets/src/emitter/class_lowering.rs:487` — a static initializer or block that uses `super` cannot be lowered for this target
+- **refused** `backend/bluets/src/emitter/decorators/super_members.rs:51` — a static super property has no key
+- **refused** `backend/bluets/src/emitter/class_lowering/expressions.rs:46` — an ES2020 class expression with state and an await/yield key needs lexical suspension lowering
+- **refused** `backend/bluets/src/emitter/namespaces.rs:352` — an exported namespace variable with several declarators is not supported yet
+- **refused** `backend/bluets/src/emitter/namespaces.rs:367` — an exported namespace variable's name could not be located
+- **refused** `backend/bluets/src/emitter/commonjs.rs:315` — an exported variable with several declarators is not supported in CommonJS output yet
+- **refused** `backend/bluets/src/emitter/commonjs.rs:333` — an exported variable's name could not be located
+- **refused** `backend/bluets/src/emitter/targets/es5.rs:67` — arrow body was not retained
+- **refused** `backend/bluets/src/emitter/targets/es5.rs:64` — arrow head was not retained
+- **refused** `backend/bluets/src/emitter/legacy_decorators.rs:222` — auto-accessors are not combined with experimentalDecorators
+- **refused** `backend/bluets/src/emitter/targets/es5/patterns.rs:49` — binding pattern initializer was not retained
+- **refused** `backend/bluets/src/emitter/targets/es5/loops.rs:64` — captured loop completion requires a retained completion record
+- **refused** `backend/bluets/src/emitter/targets/es5/classes.rs:64` — class body was not retained
+- **refused** `backend/bluets/src/emitter/targets/es5/classes.rs:57` — class heritage requires one retained base binding
+- **refused** `backend/bluets/src/emitter/targets/es5/classes.rs:109` — class member requires a retained named method
+- **refused** `backend/bluets/src/emitter/targets/es5/classes.rs:118` — class method body was not retained
+- **refused** `backend/bluets/src/emitter/targets/es5/objects.rs:52` — computed literal prototype/super semantics require retained home objects
+- **refused** `backend/bluets/src/emitter/targets/es5/classes.rs:98` — computed member key was not retained
+- **refused** `backend/bluets/src/emitter/decorators.rs:362` — computed or literal member names in decorator lowering are not supported yet
+- **refused** `backend/bluets/src/emitter/targets/es5/objects.rs:37` — computed property value was not retained
+- **refused** `backend/bluets/src/emitter/targets/es5/spreads.rs:61` — constructor spread requires retained construction semantics
+- **refused** `backend/bluets/src/emitter/declaration_maps.rs:262` — declaration maps currently require annotated top-level scalar variables and functions
+- **refused** `backend/bluets/src/emitter/declaration_maps.rs:264` — declaration maps currently require annotated top-level scalar variables and functions
+- **refused** `backend/bluets/src/emitter/classes.rs:111` — declaration output for this string literal field needs an annotation
+- **refused** `backend/bluets/src/emitter/classes.rs:403` — declaration output requires a class field type
+- **refused** `backend/bluets/src/emitter/classes.rs:286` — declaration output requires a parameter property type
+- **refused** `backend/bluets/src/emitter/classes.rs:546` — declaration output requires an explicit class method return type
+- **refused** `backend/bluets/src/emitter/classes.rs:487` — declaration output requires an explicit getter return type
+- **refused** `backend/bluets/src/emitter/legacy_decorators.rs:632` — decorator metadata cannot serialize `{name}`: only types declared in this module are supported
+- **refused** `backend/bluets/src/emitter/legacy_decorators.rs:481` — decorator metadata needs this accessor's type annotation
+- **refused** `backend/bluets/src/emitter/legacy_decorators.rs:429` — decorator metadata needs this field's type
+- **refused** `backend/bluets/src/emitter/legacy_decorators.rs:442` — decorator metadata needs this method's return type annotation
+- **refused** `backend/bluets/src/emitter/decorators.rs:421` — decorators are not valid here
+- **refused** `backend/bluets/src/emitter/legacy_decorators.rs:270` — decorators cannot be applied to both the getter and the setter of the same name
+- **refused** `backend/bluets/src/emitter/legacy_decorators.rs:253` — decorators on private names are not valid with experimentalDecorators
+- **refused** `backend/bluets/src/emitter/commonjs.rs:265` — default export expression has no initializer
+- **refused** `backend/bluets/src/emitter/targets/es5/parameters.rs:33` — default parameter head was not retained
+- **refused** `backend/bluets/src/emitter/targets/es5/classes.rs:329` — derived constructor returns require a retained constructor completion
+- **refused** `backend/bluets/src/emitter/targets/es5/classes.rs:296` — derived constructor super properties require a retained receiver
+- **refused** `backend/bluets/src/emitter/targets/es5/suspension.rs:68` — generator declaration was not retained
+- **refused** `backend/bluets/src/emitter/helper_selection.rs:57` — helper selection does not support generated ABI `{name}`
+- **refused** `backend/bluets/src/emitter/targets.rs:91` — logical assignment has no right operand
+- **refused** `backend/bluets/src/emitter/targets/es5/patterns.rs:78` — object rest was not lowered before ES5 binding projection
+- **refused** `backend/bluets/src/emitter/targets/optional.rs:44` — optional receiver is outside the target lowering subset
+- **refused** `backend/bluets/src/emitter/targets/es5/spreads.rs:54` — spread callee was not retained
+- **refused** `backend/bluets/src/emitter/decorators/super_members.rs:79` — static super property writes need receiver-aware assignment lowering
+- **refused** `backend/bluets/src/emitter/decorators/private_members.rs:39` — super in a decorated private callable needs lexical heritage lowering
+- **refused** `backend/bluets/src/emitter/targets/es5/classes/super_members.rs:40` — super key was not retained
+- **refused** `backend/bluets/src/emitter/targets/es5/classes/super_members.rs:60` — super property writes need receiver-aware assignment lowering
+- **refused** `backend/bluets/src/emitter/targets/exponentiation.rs:36` — target exponentiation lowering requires an update or unary operand
+- **refused** `backend/bluets/src/emitter/targets/optional.rs:90` — target nullish lowering requires both operands
+- **refused** `backend/bluets/src/emitter/targets/object_spread.rs:53` — target object spread does not yet lower prototype setters or super properties
+- **refused** `backend/bluets/src/emitter/targets/object_spread.rs:47` — target object spread requires an operand
+- **refused** `backend/bluets/src/emitter/targets/object_rest.rs:36` — target object-rest lowering requires an initializer
+- **refused** `backend/bluets/src/emitter/targets/optional.rs:53` — target optional lowering requires a named property
+- **refused** `backend/bluets/src/emitter/targets/optional.rs:65` — target optional property lowering requires a terminal value read
+- **refused** `backend/bluets/src/emitter/private_lowering.rs:657` — the identifier `{helper}` is reserved for the private-name helpers
+- **refused** `backend/bluets/src/emitter/private_lowering.rs:167` — the identifier `{variable}` is needed to lower this class's private names but is already used
+- **refused** `backend/bluets/src/emitter/decorators.rs:430` — this decorated member shape (computed or literal name, or a form the class parser does not structure) is not lowered
+- **refused** `backend/bluets/src/emitter/legacy_decorators.rs:233` — this decorated member shape is not lowered
+- **refused** `backend/bluets/src/emitter/decorators.rs:373` — this decorated method shape is not lowered
+- **refused** `backend/bluets/src/emitter/private_lowering.rs:326` — this private member could not be located in its own text
+- **refused** `backend/bluets/src/emitter/private_lowering.rs:318` — this private member has no lowering
+- **refused** `backend/bluets/src/emitter/decorators/super_members.rs:45` — this static super reference needs a retained named property
+- **refused** `backend/bluets/src/emitter/targets/es5/classes/super_members.rs:50` — this super reference needs a retained property
+- **refused** `backend/bluets/src/emitter/targets/es5/suspension.rs:87` — this suspension control-flow shape cannot be lowered to ES5
+- **refused** `backend/bluets/src/emitter/private_lowering.rs:564` — {what} cannot be lowered for a target below ES2022
 
 ### expression (23)
 
-- `backend/bluets-bluejs/src/expression.rs:377` — a unary expression cannot be the unparenthesized base of exponentiation
-- `backend/bluets-bluejs/src/expression.rs:551` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:562` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression/calls.rs:127` — only a direct identifier receiver may use optional dot access
-- `backend/bluets-bluejs/src/expression/calls.rs:140` — only an identifier property is in the first optional dot subset
-- `backend/bluets-bluejs/src/expression/calls.rs:53` — only constructor calls with parentheses are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression/calls.rs:206` — only direct identifier and property calls are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression/writes.rs:71` — only identifier and property assignment targets are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression/writes.rs:128` — only identifier and property update targets are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression/calls.rs:21` — only identifier constructors are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression/calls.rs:161` — only identifier dot property names are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:674` — only identifier object keys may use shorthand; methods are not in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:656` — only identifier, string, numeric, and computed object property keys are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:432` — only property delete targets are in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/expression.rs:131` — parentheses are required when mixing `??` with `&&` or `||`
-- `backend/bluets-bluejs/src/expression.rs:139` — parentheses are required when mixing `??` with `&&` or `||`
-- `backend/bluets-bluejs/src/expression.rs:904` — unsupported expression token `?.` in a template substitution
-- `backend/bluets-bluejs/src/expression.rs:58` — unsupported expression token `{}`
-- `backend/bluets-bluejs/src/expression.rs:498` — unsupported keyword `{}` in a runtime expression
-- `backend/bluets-bluejs/src/expression.rs:483` — unsupported numeric literal
-- `backend/bluets-bluejs/src/expression.rs:647` — unsupported numeric object key
-- `backend/bluets-bluejs/src/expression.rs:525` — unsupported runtime expression token `{}`
-- `backend/bluets-bluejs/src/expression.rs:777` — unsupported string escape in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression.rs:377` — a unary expression cannot be the unparenthesized base of exponentiation
+- **refused** `backend/bluets-bluejs/src/expression.rs:551` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression.rs:562` — array literals cannot combine holes and spread elements in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression/calls.rs:127` — only a direct identifier receiver may use optional dot access
+- **refused** `backend/bluets-bluejs/src/expression/calls.rs:140` — only an identifier property is in the first optional dot subset
+- **refused** `backend/bluets-bluejs/src/expression/calls.rs:53` — only constructor calls with parentheses are in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression/calls.rs:206` — only direct identifier and property calls are in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression/writes.rs:71` — only identifier and property assignment targets are in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression/writes.rs:128` — only identifier and property update targets are in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression/calls.rs:21` — only identifier constructors are in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression/calls.rs:161` — only identifier dot property names are in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression.rs:674` — only identifier object keys may use shorthand; methods are not in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression.rs:656` — only identifier, string, numeric, and computed object property keys are in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression.rs:432` — only property delete targets are in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/expression.rs:131` — parentheses are required when mixing `??` with `&&` or `||`
+- **refused** `backend/bluets-bluejs/src/expression.rs:139` — parentheses are required when mixing `??` with `&&` or `||`
+- **refused** `backend/bluets-bluejs/src/expression.rs:904` — unsupported expression token `?.` in a template substitution
+- **refused** `backend/bluets-bluejs/src/expression.rs:58` — unsupported expression token `{}`
+- **refused** `backend/bluets-bluejs/src/expression.rs:498` — unsupported keyword `{}` in a runtime expression
+- **refused** `backend/bluets-bluejs/src/expression.rs:483` — unsupported numeric literal
+- **refused** `backend/bluets-bluejs/src/expression.rs:647` — unsupported numeric object key
+- **refused** `backend/bluets-bluejs/src/expression.rs:525` — unsupported runtime expression token `{}`
+- **refused** `backend/bluets-bluejs/src/expression.rs:777` — unsupported string escape in the v1 direct bridge subset
 
 ### jsx_direct (8)
 
-- `backend/bluets-bluejs/src/jsx_direct.rs:116` — JSX needs the `jsx` option
-- `backend/bluets-bluejs/src/jsx_direct.rs:281` — a JSX element has fewer embedded expressions than its syntax
-- `backend/bluets-bluejs/src/jsx_direct.rs:138` — a JSX element is missing its expression group
-- `backend/bluets-bluejs/src/jsx_direct.rs:146` — a JSX element is missing its expression group
-- `backend/bluets-bluejs/src/jsx_direct.rs:156` — a JSX element's expression group is unterminated
-- `backend/bluets-bluejs/src/jsx_direct.rs:119` — cannot use JSX unless the `jsx` option is provided
-- `backend/bluets-bluejs/src/jsx_direct.rs:121` — preserved JSX is not executable; choose `jsx: react` for direct execution
-- `backend/bluets-bluejs/src/jsx_direct.rs:127` — the automatic JSX runtime imports a runtime module, which the direct bridge does not link; use the classic mode with an in-program factory
+- **refused** `backend/bluets-bluejs/src/jsx_direct.rs:116` — JSX needs the `jsx` option
+- **refused** `backend/bluets-bluejs/src/jsx_direct.rs:281` — a JSX element has fewer embedded expressions than its syntax
+- **refused** `backend/bluets-bluejs/src/jsx_direct.rs:138` — a JSX element is missing its expression group
+- **refused** `backend/bluets-bluejs/src/jsx_direct.rs:146` — a JSX element is missing its expression group
+- **refused** `backend/bluets-bluejs/src/jsx_direct.rs:156` — a JSX element's expression group is unterminated
+- **refused** `backend/bluets-bluejs/src/jsx_direct.rs:119` — cannot use JSX unless the `jsx` option is provided
+- **refused** `backend/bluets-bluejs/src/jsx_direct.rs:121` — preserved JSX is not executable; choose `jsx: react` for direct execution
+- **refused** `backend/bluets-bluejs/src/jsx_direct.rs:127` — the automatic JSX runtime imports a runtime module, which the direct bridge does not link; use the classic mode with an in-program factory
 
 ### lib (14)
 
-- `backend/bluets-bluejs/src/lib.rs:756` — BlueTS did not retain a canonical target for this runtime import
-- `backend/bluets-bluejs/src/lib.rs:346` — BlueTS rejected the direct script with {} diagnostic(s)
-- `backend/bluets-bluejs/src/lib.rs:727` — JSON data cannot be a direct executable module-graph entry
-- `backend/bluets-bluejs/src/lib.rs:849` — a declaration module cannot be executed directly
-- `backend/bluets-bluejs/src/lib.rs:696` — a declaration module cannot be the direct module-graph entry
-- `backend/bluets-bluejs/src/lib.rs:733` — a declaration module cannot be the direct module-graph entry
-- `backend/bluets-bluejs/src/lib.rs:806` — the direct bridge executes ECMAScript modules only; a CommonJS project is run as \ `--module commonjs` emitted output in a realm with a host-provided CommonJS loader
-- `backend/bluets-bluejs/src/lib.rs:797` — the direct bridge executes ECMAScript modules only; a {} project requires emitted output and a host-provided {} loader
-- `backend/bluets-bluejs/src/lib.rs:769` — the direct bridge has no JSON data module runtime profile
-- `backend/bluets-bluejs/src/lib.rs:762` — the direct bridge links no installed packages: a runtime import of a package \ needs the host-provided module loader of the `bluetsc build` route
-- `backend/bluets-bluejs/src/lib.rs:843` — the requested entry was not retained in the checked source graph
-- `backend/bluets-bluejs/src/lib.rs:721` — the requested module-graph entry was not retained in the checked source graph
-- `backend/bluets-bluejs/src/lib.rs:832` — the v1 direct bridge supports exactly one executable source module
-- `backend/bluets-bluejs/src/lib.rs:363` — {}:{}:{} cannot lower to the current BlueJS bridge: {message}
+- **refused** `backend/bluets-bluejs/src/lib.rs:756` — BlueTS did not retain a canonical target for this runtime import
+- **refused** `backend/bluets-bluejs/src/lib.rs:346` — BlueTS rejected the direct script with {} diagnostic(s)
+- **refused** `backend/bluets-bluejs/src/lib.rs:727` — JSON data cannot be a direct executable module-graph entry
+- **refused** `backend/bluets-bluejs/src/lib.rs:849` — a declaration module cannot be executed directly
+- **refused** `backend/bluets-bluejs/src/lib.rs:696` — a declaration module cannot be the direct module-graph entry
+- **refused** `backend/bluets-bluejs/src/lib.rs:733` — a declaration module cannot be the direct module-graph entry
+- **refused** `backend/bluets-bluejs/src/lib.rs:806` — the direct bridge executes ECMAScript modules only; a CommonJS project is run as \ `--module commonjs` emitted output in a realm with a host-provided CommonJS loader
+- **refused** `backend/bluets-bluejs/src/lib.rs:797` — the direct bridge executes ECMAScript modules only; a {} project requires emitted output and a host-provided {} loader
+- **refused** `backend/bluets-bluejs/src/lib.rs:769` — the direct bridge has no JSON data module runtime profile
+- **refused** `backend/bluets-bluejs/src/lib.rs:762` — the direct bridge links no installed packages: a runtime import of a package \ needs the host-provided module loader of the `bluetsc build` route
+- **refused** `backend/bluets-bluejs/src/lib.rs:843` — the requested entry was not retained in the checked source graph
+- **refused** `backend/bluets-bluejs/src/lib.rs:721` — the requested module-graph entry was not retained in the checked source graph
+- **refused** `backend/bluets-bluejs/src/lib.rs:832` — the v1 direct bridge supports exactly one executable source module
+- **refused** `backend/bluets-bluejs/src/lib.rs:363` — {}:{}:{} cannot lower to the current BlueJS bridge: {message}
 
 ### lowering (33)
 
-- `backend/bluets-bluejs/src/lowering/classes.rs:50` — BlueJS implements the standard decorators; `experimentalDecorators` programs run as `bluetsc build --experimental-decorators` output
-- `backend/bluets-bluejs/src/lowering.rs:302` — BlueTS did not retain a canonical target for this runtime import
-- `backend/bluets-bluejs/src/lowering.rs:59` — ESM default exports require the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:66` — ESM named exports require the module bridge
-- `backend/bluets-bluejs/src/lowering/classes.rs:334` — a derived constructor needs a top-level super call for the statements that must follow it
-- `backend/bluets-bluejs/src/lowering.rs:674` — a nested function declaration is outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:727` — a nested function declaration is outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:501` — a rest parameter must be the final direct function parameter
-- `backend/bluets-bluejs/src/lowering/namespaces.rs:46` — an ambient const enum needs its uses inlined, which the direct bridge does not do
-- `backend/bluets-bluejs/src/lowering.rs:105` — an exported class requires the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:133` — an exported enum requires the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:111` — an exported namespace requires the module bridge
-- `backend/bluets-bluejs/src/lowering.rs:655` — block-local declarations are outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:680` — body syntax is outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:78` — declared or exported variables require a non-script bridge mode
-- `backend/bluets-bluejs/src/lowering.rs:343` — declared or overloaded functions cannot be lowered to a direct module
-- `backend/bluets-bluejs/src/lowering.rs:337` — declared variables cannot be lowered to a direct module
-- `backend/bluets-bluejs/src/lowering.rs:94` — declared, overloaded, or exported functions require a non-script bridge mode
-- `backend/bluets-bluejs/src/lowering/classes.rs:167` — decorators and auto-accessors need class fields to be defined (the default for ES2022)
-- `backend/bluets-bluejs/src/lowering.rs:495` — destructured parameters are not yet in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/lowering.rs:568` — function body syntax is not yet in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/lowering.rs:733` — loop body syntax is outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:706` — loop-local declarations are outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:661` — loops are outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:562` — nested function declarations are not yet in the v1 direct bridge subset
-- `backend/bluets-bluejs/src/lowering.rs:712` — nested loops are outside the direct while subset
-- `backend/bluets-bluejs/src/lowering.rs:667` — nested try statements are outside the direct try subset
-- `backend/bluets-bluejs/src/lowering.rs:243` — re-exports require a retained module-graph edge
-- `backend/bluets-bluejs/src/lowering.rs:293` — runtime imports require the direct module-graph bridge
-- `backend/bluets-bluejs/src/lowering.rs:72` — runtime imports require the module bridge
-- `backend/bluets-bluejs/src/lowering/classes.rs:199` — this class member has no direct lowering
-- `backend/bluets-bluejs/src/lowering/namespaces.rs:377` — this declaration cannot appear in a namespace body lowered directly
-- `backend/bluets-bluejs/src/lowering.rs:718` — try statements are outside the direct while body subset
+- **refused** `backend/bluets-bluejs/src/lowering/classes.rs:50` — BlueJS implements the standard decorators; `experimentalDecorators` programs run as `bluetsc build --experimental-decorators` output
+- **refused** `backend/bluets-bluejs/src/lowering.rs:302` — BlueTS did not retain a canonical target for this runtime import
+- **refused** `backend/bluets-bluejs/src/lowering.rs:59` — ESM default exports require the module bridge
+- **refused** `backend/bluets-bluejs/src/lowering.rs:66` — ESM named exports require the module bridge
+- **refused** `backend/bluets-bluejs/src/lowering/classes.rs:334` — a derived constructor needs a top-level super call for the statements that must follow it
+- **refused** `backend/bluets-bluejs/src/lowering.rs:674` — a nested function declaration is outside the direct try subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:727` — a nested function declaration is outside the direct while subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:501` — a rest parameter must be the final direct function parameter
+- **refused** `backend/bluets-bluejs/src/lowering/namespaces.rs:46` — an ambient const enum needs its uses inlined, which the direct bridge does not do
+- **refused** `backend/bluets-bluejs/src/lowering.rs:105` — an exported class requires the module bridge
+- **refused** `backend/bluets-bluejs/src/lowering.rs:133` — an exported enum requires the module bridge
+- **refused** `backend/bluets-bluejs/src/lowering.rs:111` — an exported namespace requires the module bridge
+- **refused** `backend/bluets-bluejs/src/lowering.rs:655` — block-local declarations are outside the direct try subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:680` — body syntax is outside the direct try subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:78` — declared or exported variables require a non-script bridge mode
+- **refused** `backend/bluets-bluejs/src/lowering.rs:343` — declared or overloaded functions cannot be lowered to a direct module
+- **refused** `backend/bluets-bluejs/src/lowering.rs:337` — declared variables cannot be lowered to a direct module
+- **refused** `backend/bluets-bluejs/src/lowering.rs:94` — declared, overloaded, or exported functions require a non-script bridge mode
+- **refused** `backend/bluets-bluejs/src/lowering/classes.rs:167` — decorators and auto-accessors need class fields to be defined (the default for ES2022)
+- **refused** `backend/bluets-bluejs/src/lowering.rs:495` — destructured parameters are not yet in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:568` — function body syntax is not yet in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:733` — loop body syntax is outside the direct while subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:706` — loop-local declarations are outside the direct while subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:661` — loops are outside the direct try subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:562` — nested function declarations are not yet in the v1 direct bridge subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:712` — nested loops are outside the direct while subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:667` — nested try statements are outside the direct try subset
+- **refused** `backend/bluets-bluejs/src/lowering.rs:243` — re-exports require a retained module-graph edge
+- **refused** `backend/bluets-bluejs/src/lowering.rs:293` — runtime imports require the direct module-graph bridge
+- **refused** `backend/bluets-bluejs/src/lowering.rs:72` — runtime imports require the module bridge
+- **refused** `backend/bluets-bluejs/src/lowering/classes.rs:199` — this class member has no direct lowering
+- **refused** `backend/bluets-bluejs/src/lowering/namespaces.rs:377` — this declaration cannot appear in a namespace body lowered directly
+- **refused** `backend/bluets-bluejs/src/lowering.rs:718` — try statements are outside the direct while body subset
 
 ### namespace_analysis (1)
 
-- `backend/bluets/src/namespace_analysis.rs:542` — a template literal that reads an exported namespace variable is not lowered directly yet
+- **refused** `backend/bluets/src/namespace_analysis.rs:542` — a template literal that reads an exported namespace variable is not lowered directly yet
 
 ### parser (23)
 
-- `backend/bluets/src/parser/declarations/erasure_audit.rs:83` — TypeScript annotations on functions nested in expressions are not supported yet
-- `backend/bluets/src/parser/declarations.rs:419` — TypeScript assertions outside a supported declaration are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations.rs:313` — `{}` is not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations/class.rs:111` — a computed class heritage expression is not supported yet
-- `backend/bluets/src/parser/declarations.rs:260` — an async enum is not valid
-- `backend/bluets/src/parser/declarations.rs:272` — an async enum is not valid
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:258` — an async generator with a synchronous iterator annotation is not supported yet
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:249` — an async generator without an explicit return annotation is not supported yet
-- `backend/bluets/src/parser/declarations.rs:297` — an async namespace is not valid
-- `backend/bluets/src/parser/declarations/enums.rs:53` — an enum member name with an escape sequence is not supported yet
-- `backend/bluets/src/parser/declarations.rs:167` — an import, `export default`, `export =`, `export *` or export list inside a namespace body is not supported
-- `backend/bluets/src/parser/declarations.rs:245` — declared and async classes are not in the first class form
-- `backend/bluets/src/parser/declarations.rs:328` — decorators and TSX/JSX are not in the initial BlueTS matrix
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:123` — exported or ambient variable binding patterns are not supported yet
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:55` — interface heritage supports only named interface types
-- `backend/bluets/src/parser/declarations/imports_exports.rs:295` — only `export = name;` of a local declaration is supported
-- `backend/bluets/src/parser/declarations/imports_exports.rs:98` — only `import name = require("module")` is supported as an `import =` form
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:146` — optional variables are not valid TypeScript declarations
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:479` — optional, defaulted and rest this parameters are not supported
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:414` — this destructuring pattern is not supported yet
-- `backend/bluets/src/parser/declarations/typed_declarations.rs:135` — this variable binding pattern is not supported yet
-- `backend/bluets/src/parser/type_syntax.rs:362` — tuple rest element must have an array or named tuple annotation
-- `backend/bluets/src/parser/declarations/source_edits.rs:100` — typed arrow parameters are not in the initial BlueTS matrix
+- **refused** `backend/bluets/src/parser/declarations/erasure_audit.rs:83` — TypeScript annotations on functions nested in expressions are not supported yet
+- **refused** `backend/bluets/src/parser/declarations.rs:419` — TypeScript assertions outside a supported declaration are not in the initial BlueTS matrix
+- **refused** `backend/bluets/src/parser/declarations.rs:313` — `{}` is not in the initial BlueTS matrix
+- **refused** `backend/bluets/src/parser/declarations/class.rs:111` — a computed class heritage expression is not supported yet
+- **refused** `backend/bluets/src/parser/declarations.rs:260` — an async enum is not valid
+- **refused** `backend/bluets/src/parser/declarations.rs:272` — an async enum is not valid
+- **refused** `backend/bluets/src/parser/declarations/typed_declarations.rs:258` — an async generator with a synchronous iterator annotation is not supported yet
+- **refused** `backend/bluets/src/parser/declarations/typed_declarations.rs:249` — an async generator without an explicit return annotation is not supported yet
+- **refused** `backend/bluets/src/parser/declarations.rs:297` — an async namespace is not valid
+- **refused** `backend/bluets/src/parser/declarations/enums.rs:53` — an enum member name with an escape sequence is not supported yet
+- **refused** `backend/bluets/src/parser/declarations.rs:167` — an import, `export default`, `export =`, `export *` or export list inside a namespace body is not supported
+- **refused** `backend/bluets/src/parser/declarations.rs:245` — declared and async classes are not in the first class form
+- **refused** `backend/bluets/src/parser/declarations.rs:328` — decorators and TSX/JSX are not in the initial BlueTS matrix
+- **refused** `backend/bluets/src/parser/declarations/typed_declarations.rs:123` — exported or ambient variable binding patterns are not supported yet
+- **refused** `backend/bluets/src/parser/declarations/typed_declarations.rs:55` — interface heritage supports only named interface types
+- **refused** `backend/bluets/src/parser/declarations/imports_exports.rs:295` — only `export = name;` of a local declaration is supported
+- **refused** `backend/bluets/src/parser/declarations/imports_exports.rs:98` — only `import name = require("module")` is supported as an `import =` form
+- **refused** `backend/bluets/src/parser/declarations/typed_declarations.rs:146` — optional variables are not valid TypeScript declarations
+- **refused** `backend/bluets/src/parser/declarations/typed_declarations.rs:479` — optional, defaulted and rest this parameters are not supported
+- **refused** `backend/bluets/src/parser/declarations/typed_declarations.rs:414` — this destructuring pattern is not supported yet
+- **refused** `backend/bluets/src/parser/declarations/typed_declarations.rs:135` — this variable binding pattern is not supported yet
+- **refused** `backend/bluets/src/parser/type_syntax.rs:362` — tuple rest element must have an array or named tuple annotation
+- **refused** `backend/bluets/src/parser/declarations/source_edits.rs:100` — typed arrow parameters are not in the initial BlueTS matrix

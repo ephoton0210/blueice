@@ -4,6 +4,8 @@
 
 //! Regenerate/check the suite inventory from one immutable source revision.
 
+#[path = "../tests/fixtures/compatibility_inventory/accounting.rs"]
+mod accounting;
 #[path = "../tests/fixtures/compatibility_inventory/case_inline.rs"]
 mod case_inline;
 #[path = "../tests/fixtures/compatibility_inventory/case_registry.rs"]
@@ -72,7 +74,9 @@ fn main() -> snapshot::Result<()> {
         Some("--write") if arguments.len() == 2 => {
             let tree = snapshot::Snapshot::read(&root, &arguments[1])?;
             let measured = inventory::generate(&tree)?;
-            let markdown = inventory::markdown(&measured);
+            let report = std::fs::read(directory.join(case_report::MEASUREMENT)).ok()
+                .and_then(|bytes| case_report::generate(&tree, &measured, &bytes).ok());
+            let markdown = inventory::markdown(&measured, report.as_ref());
             let updated =
                 inventory::replace_section(&std::fs::read_to_string(&document)?, &markdown)?;
             std::fs::write(artifact, serde_json::to_string_pretty(&measured)? + "\n")?;
@@ -102,7 +106,9 @@ fn main() -> snapshot::Result<()> {
                 return Err("suite inventory is stale; regenerate at a committed revision".into());
             }
             let original = std::fs::read_to_string(document)?;
-            if inventory::replace_section(&original, &inventory::markdown(&measured))? != original {
+            let report = std::fs::read(directory.join(case_report::MEASUREMENT)).ok()
+                .and_then(|bytes| case_report::generate(&tree, &measured, &bytes).ok());
+            if inventory::replace_section(&original, &inventory::markdown(&measured, report.as_ref()))? != original {
                 return Err("generated Markdown differs from the recorded inventory".into());
             }
             println!(

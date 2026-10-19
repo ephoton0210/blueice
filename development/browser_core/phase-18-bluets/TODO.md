@@ -694,8 +694,13 @@ Entry condition: K.12 and K.13 are closed or each open row is named as a gap in 
       100 oracle logs / 244 ignored functions reverified, fresh workspace fmt/Clippy,
       8/8 tool tests and 1,174/1,174 native socket-recovery tests across all six affected
       crates. The separate sandbox socket-denial run is explicitly not accepted.
-- [ ] **AC-K14.4 Row accounting.** Every inventory row is labelled closed / open / refused with a
+- [x] **AC-K14.4 Row accounting.** Every inventory row is labelled closed / open / refused with a
   pointer to its evidence. No unlabelled row.
+    - *Evidence:* PLAN.md, "AC-K14.4 Scoped row accounting" (2026-10-19): typed status/scope/evidence
+      for 100 suites and 12,511 cases; 23 feature rows, the direct profile and all 213 refusal
+      sites accounted. Schema-1 observation projection is unchanged. Complete K.0 passes 1,542
+      tests, including all 244 ignored oracles; 20 Rust and four Python accounting checks,
+      all-target Clippy and formatting pass. Broad gaps remain open; full parity stays off.
 - [ ] **AC-K14.5 Decision text** written in PLAN.md. "Full parity" stays off while any required row
   is open; the narrower statement must name the tsc version and case count (N cases, 5.9.3).
 - [ ] **AC-K14.6 Consistency.** CLAUDE.md, PLAN.md, TODO.md and COMPATIBILITY_INVENTORY.md state the same

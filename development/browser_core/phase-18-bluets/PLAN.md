@@ -11714,3 +11714,85 @@ recovery tests overlap the workspace total and are not additional cases.
 AC-K14.3 is complete under the user's local/VM acceptance decision.
 AC-K14.4 through AC-K14.6 remain open. Coverage policy and CI configuration
 remain unchanged, and full parity is still off.
+
+### AC-K14.4 Scoped row accounting (2026-10-19)
+
+The case report's schema 2 adds typed `closed` / `open` / `refused` labels,
+explicit case scope and assertion/measurement evidence pointers. Suite
+status gives open cases precedence over refusals; otherwise it is closed
+only for the finite asserted properties. An unmeasured or foreign-source
+suite listing stays open instead of acquiring an unsupported success label.
+Both generated suite tables use these same evidence-bound records.
+
+| Accounted unit | Records | Closed within stated scope | Open | Refused |
+| --- | ---: | ---: | ---: | ---: |
+| Suite records (shown in two views, not added together) | 100 | 93 | 2 | 5 |
+| Suite-qualified case observations | 12,511 | 12,493 | 6 | 12 |
+| Existing G-* feature IDs | 23 | 1 | 22 | 0 |
+| Direct runtime profile (not a `tsc` parity claim) | 1 | 0 | 1 | 0 |
+| Production refusal sites | 213 | 0 | 0 | 213 |
+
+These units overlap and are not summed. The 12,493 closed case rows include
+482 native-only reference controls and one BlueTS-only owner control;
+direct agreement remains 12,010/12,028, not 12,493/12,511. G-C2's closure
+remains limited to its measured strictness controls. Every other broad
+feature row and the unmeasured direct-profile breadth remains open.
+
+The existing refusal scanner now emits each condition with an explicit
+refused label and repository-relative source-line witness. The row accounting
+tool regenerates that entire source-derived section, checks all existing
+feature IDs and resolves each feature's measurement pointer. Its write path
+uses UTF-8/LF explicitly. Rust regressions in the ordinary workspace suite
+independently check every case/suite label, all feature rows and refusal
+source-line locations without adding a Python dependency to platform CI.
+
+Stale G-E5/G-M2/G-M3 prose now records the delivered bounded K.11 source-map,
+K.12 incremental/watch and K.13 hosted-oracle work, while retaining their
+unmeasured breadth and Windows symlink exclusions. The dangling G-L1 reference
+now points to G-T7's actual library inventory. No production compiler/runtime,
+oracle fixture, owner boundary or expected comparison changed.
+
+Removing only the new accounting metadata from schema 2 reproduces the
+previous schema-1 case data at `a4373f003` exactly, including every selector, classification,
+reason, denominator and numerator. The original complete measurement and
+suite catalog remain unchanged, as does the frozen compiler/oracle graph.
+Focused validation passes 20 Rust and four Python tests, including negative
+checks for missing/forged labels and evidence, unknown classifications,
+missing/duplicate feature IDs and unsafe assertion paths.
+
+The complete K.0 command succeeds under native macOS Rust 1.98.0 with the
+existing pinned TypeScript 5.9.3 and Acorn 8.15.0 executables:
+
+```sh
+BLUEICE_BLUETSC_ORACLE=/private/tmp/bluets-k132-local-DY315j/node_modules/typescript/bin/tsc \
+BLUEICE_ACORN_ORACLE=/private/tmp/bluets-k132-local-DY315j/node_modules/acorn/bin/acorn \
+BLUEJS_REGEXP_WORKER="$PWD/target/debug/bluejs-regexp-worker" FORCE_COLOR=0 \
+  cargo test -p blueice-bluets -p blueice-bluets-bluejs \
+    --no-fail-fast --offline -- --include-ignored
+```
+
+Incremental and dev/test debug growth are disabled. All 160 result groups
+succeed: 1,542 passed, zero failed and zero ignored. A separate name audit
+matches every one of the 244 ignored functions to its source-inventoried
+harness across all 100 oracle suites; no selected function is absent or
+duplicated. Log `/private/tmp/bluets-k144-complete-k0.log` has SHA-256
+`1413b3cac44ede08194c91a8d3074eb8133193e059f5793a9ca2b7221a93fd58`.
+
+The sequential all-target two-crate warnings-denied Clippy check and full
+workspace Rust 1.95 rustfmt check both exit 0. Clippy log:
+`/private/tmp/bluets-k144-clippy.log`, SHA-256
+`6b555dafc224fd6e9e0ef5f5b19cc71f3297097c144010906e4eef8aabf2821d`.
+The four Python regressions and all eight existing Node tool regressions
+also pass, and all three documented inventory `--check` commands exit 0.
+No changed source file approaches the 1,200-line review threshold: the expanded
+Rust integration harness is 867 lines and the new typed accounting module
+is 70 lines; the Python row checker is a separate focused module.
+
+The schema-2 case artifact SHA-256 is
+`c1fdccd9f1ea12c1399c60378a0f15bc06d1a56830cfa7696aecbf834d6752fc`.
+The suite catalog and complete measurement retain their original SHA-256
+values `9c54e8ebbaaf8b5fe546ad27c34f1aaea835ccd47a9a95488a34ff383e29a390`
+and `8d15eb2ffb2222cb2df45eeab1b9038651c4b99b719cf27b9b49c2251acf78a3`.
+The frozen compiler/oracle graph remains unchanged. AC-K14.4 is complete;
+the decision and four-document consistency checks (AC-K14.5/AC-K14.6)
+remain open, and full parity stays off.

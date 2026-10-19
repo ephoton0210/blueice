@@ -4,10 +4,10 @@
 
 //! Bind case-level denominators to a complete, source-matched suite run.
 
-use super::case_registry;
 use super::case_sources::{Case, Comparison};
 use super::inventory::{Inventory, Suite};
 use super::snapshot::{Result, Snapshot};
+use super::{accounting, case_registry};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -74,10 +74,12 @@ pub struct Report {
 #[derive(Debug, Serialize)]
 pub struct SuiteReport {
     pub harness: String,
+    pub status: accounting::Status,
+    pub evidence: String,
     pub fixture_directories: Vec<String>,
     pub counts: Counts,
     pub log_sha256: String,
-    pub cases: Vec<Case>,
+    pub cases: Vec<accounting::AccountedCase>,
 }
 
 pub fn digest(bytes: &[u8]) -> String {
@@ -191,23 +193,31 @@ pub fn generate(snapshot: &Snapshot, inventory: &Inventory, bytes: &[u8]) -> Res
             .as_array()
             .ok_or("missing measurement rows")?
             .iter()
-            .find(|row| row["harness"] == suite.harness)
+            .enumerate()
+            .find(|(_, row)| row["harness"] == suite.harness)
             .ok_or("missing measurement row")?;
+        let (index, row) = row;
+        let evidence = format!("{MEASUREMENT}#/suites/{index}");
         let total = Counts::cases(&cases);
         counts.add(&total);
         suites.push(SuiteReport {
             harness: suite.harness.clone(),
+            status: accounting::Status::suite(total.open, total.refused),
+            evidence: evidence.clone(),
             fixture_directories: fixture_directories(snapshot, suite, &cases)?,
             counts: total,
             log_sha256: row["log_sha256"]
                 .as_str()
                 .ok_or("missing evidence hash")?
                 .to_string(),
-            cases,
+            cases: cases
+                .into_iter()
+                .map(|case| accounting::case(case, &evidence))
+                .collect(),
         });
     }
     Ok(Report {
-        schema: 1,
+        schema: 2,
         typescript: inventory.typescript.to_string(),
         source_revision: inventory.source_revision.clone(),
         source_graph_sha256: inventory.source_graph_sha256.clone(),
@@ -319,19 +329,24 @@ pub fn markdown(report: &Report) -> String {
         Explicit configuration axes are expanded. A passing assertion can confirm a documented gap/refusal; it is not an agreement.\n\
         Fixture columns count unique versioned fixture-definition directories (including record files); inline-only programs may have none.\n\
         This measurement is Unix-scoped; Windows exclusions are not silently credited. Full parity remains off.\n\n\
-        | Suite | Case assertions | Direct agreement | Open | Refused | Native / owner controls | Fixture dirs |\n\
-        | --- | ---: | ---: | ---: | ---: | ---: | ---: |\n",
+        Every row has a closed/open/refused label and evidence pointer in the schema-2 case inventory.\n\
+        Closed means only the asserted finite properties (or explicitly scoped reference/owner controls); it is not whole-feature parity.\n\
+        Suite status is open if any case is open, otherwise refused if any case is refused, otherwise closed.\n\n\
+        | Suite | Status | Evidence | Case assertions | Direct agreement | Open | Refused | Native / owner controls | Fixture dirs |\n\
+        | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |\n",
         report.typescript, report.source_revision, report.measured_on,
         total.checked, total.listed, percentage(total.checked,total.listed), total.agreements,total.comparison_cases,
         percentage(total.agreements,total.comparison_cases),total.open,total.refused,total.reference_only,total.boundary_controls);
     for suite in &report.suites {
         let c = &suite.counts;
         text.push_str(&format!(
-            "| `{}` | {} / {} | {} / {} | {} | {} | {} / {} | {} |\n",
+            "| `{}` | {} | [measurement]({}) | {} / {} | {} / {} | {} | {} | {} / {} | {} |\n",
             suite
                 .harness
                 .trim_start_matches("backend/")
                 .trim_end_matches(".rs"),
+            suite.status.as_str(),
+            suite.evidence,
             c.checked,
             c.listed,
             c.agreements,

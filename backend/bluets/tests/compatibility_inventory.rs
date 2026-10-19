@@ -4,6 +4,8 @@
 
 //! Source-derived compatibility inventory tooling (K.14.1).
 
+#[path = "fixtures/compatibility_inventory/accounting.rs"]
+mod accounting;
 #[path = "fixtures/compatibility_inventory/case_inline.rs"]
 mod case_inline;
 #[path = "fixtures/compatibility_inventory/case_registry.rs"]
@@ -20,6 +22,174 @@ mod inventory;
 mod rust_facts;
 #[path = "fixtures/compatibility_inventory/snapshot.rs"]
 mod snapshot;
+
+#[test]
+fn row_accounting_preserves_gaps_refusals_and_control_scope() {
+    use accounting::Status;
+    use case_sources::Comparison;
+    for (comparison, status, scope) in [
+        (Comparison::Compared, Status::Closed, "compared_properties"),
+        (Comparison::Open, Status::Open, "documented_difference"),
+        (Comparison::Refused, Status::Refused, "documented_refusal"),
+        (
+            Comparison::ReferenceOnly,
+            Status::Closed,
+            "native_reference_control_only",
+        ),
+        (
+            Comparison::BoundaryControl,
+            Status::Closed,
+            "bluets_owner_control_only",
+        ),
+    ] {
+        let mut case = case_sources::Case::new("source.rs", "function:sample", "sample", "program");
+        case.comparison = comparison;
+        let row = accounting::case(case, "COMPATIBILITY_MEASUREMENT.json#/suites/0");
+        assert_eq!(row.status, status);
+        assert_eq!(row.scope, scope);
+        assert_eq!(row.evidence.assertion, "source.rs#function:sample");
+        assert_eq!(
+            row.evidence.measurement,
+            "COMPATIBILITY_MEASUREMENT.json#/suites/0"
+        );
+    }
+    assert_eq!(Status::suite(0, 0), Status::Closed);
+    assert_eq!(Status::suite(0, 1), Status::Refused);
+    assert_eq!(Status::suite(1, 0), Status::Open);
+    assert_eq!(Status::suite(1, 1), Status::Open);
+}
+
+#[test]
+fn every_generated_case_and_suite_has_a_typed_status_and_measurement_pointer() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let mut suites = inventory::generate(&tree).unwrap();
+    let bytes = std::fs::read(
+        root.join(inventory::DIRECTORY)
+            .join(case_report::MEASUREMENT),
+    )
+    .unwrap();
+    let measurement: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    suites.source_revision = measurement["source_revision"].as_str().unwrap().into();
+    let report = case_report::generate(&tree, &suites, &bytes).unwrap();
+    let json = serde_json::to_value(&report).unwrap();
+    assert_eq!(json["schema"], 2);
+    let mut labels = std::collections::BTreeMap::<String, usize>::new();
+    for suite in json["suites"].as_array().unwrap() {
+        assert!(matches!(
+            suite["status"].as_str(),
+            Some("closed" | "open" | "refused")
+        ));
+        let pointer = suite["evidence"]
+            .as_str()
+            .unwrap()
+            .split_once('#')
+            .unwrap()
+            .1;
+        assert_eq!(
+            measurement.pointer(pointer).unwrap()["harness"],
+            suite["harness"]
+        );
+        for case in suite["cases"].as_array().unwrap() {
+            let status = case["status"].as_str().unwrap();
+            assert!(matches!(status, "closed" | "open" | "refused"));
+            *labels.entry(status.into()).or_default() += 1;
+            assert_eq!(case["evidence"]["measurement"], suite["evidence"]);
+            assert_eq!(case["evidence"]["assertion"], case["id"]);
+            assert!(!case["scope"].as_str().unwrap().is_empty());
+        }
+    }
+    assert_eq!(
+        labels["closed"],
+        report.counts.agreements + report.counts.reference_only + report.counts.boundary_controls
+    );
+    assert_eq!(labels["open"], report.counts.open);
+    assert_eq!(labels["refused"], report.counts.refused);
+    let plain = inventory::markdown(&suites, None);
+    assert!(plain.contains("| open | [unmeasured source]"));
+    let measured = inventory::markdown(&suites, Some(&report));
+    assert!(measured.contains("| closed | [measurement]"));
+    assert!(measured.contains("| open | [measurement]"));
+    assert!(measured.contains("| refused | [measurement]"));
+}
+
+#[test]
+fn every_feature_and_refusal_row_has_a_scoped_label_and_live_evidence() {
+    use std::collections::BTreeSet;
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let directory = root.join(inventory::DIRECTORY);
+    let document = std::fs::read_to_string(directory.join("COMPATIBILITY_INVENTORY.md")).unwrap();
+    let cases: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.join(case_report::ARTIFACT)).unwrap())
+            .unwrap();
+    let expected: BTreeSet<_> = [("T", 10), ("E", 5), ("D", 2), ("M", 3), ("C", 3)]
+        .into_iter()
+        .flat_map(|(area, count)| (1..=count).map(move |index| format!("G-{area}{index}")))
+        .collect();
+    let mut features = BTreeSet::new();
+    let mut refusals = BTreeSet::new();
+    let mut in_refusals = false;
+    let mut areas = 0;
+    let mut declared = None;
+    for line in document.lines() {
+        if line.starts_with("| G-") {
+            let fields: Vec<_> = line.strip_prefix("| ").unwrap().splitn(3, " | ").collect();
+            assert!(
+                features.insert(fields[0].to_string()),
+                "duplicate feature row"
+            );
+            assert_eq!(
+                fields[1],
+                if fields[0] == "G-C2" {
+                    "closed"
+                } else {
+                    "open"
+                }
+            );
+            let (_, link) = line
+                .rsplit_once("[evidence](COMPATIBILITY_CASES.json#/suites/")
+                .unwrap();
+            let index: usize = link.strip_suffix(") |").unwrap().parse().unwrap();
+            assert!(cases["suites"].as_array().unwrap().get(index).is_some());
+        }
+        in_refusals |= line.starts_with("## 4. Refusals:");
+        if !in_refusals {
+            continue;
+        }
+        if line.contains(" refusal sites in ") {
+            let fields: Vec<_> = line.split_whitespace().collect();
+            declared = Some((
+                fields[0].parse::<usize>().unwrap(),
+                fields[4].parse::<usize>().unwrap(),
+            ));
+        }
+        areas += usize::from(line.starts_with("### "));
+        if !line.starts_with("- ") {
+            continue;
+        }
+        assert!(refusals.insert(line.to_string()), "duplicate refusal row");
+        let (location, message) = line
+            .strip_prefix("- **refused** `")
+            .unwrap()
+            .split_once("` — ")
+            .unwrap();
+        assert!(!message.is_empty());
+        let (path, number) = location.rsplit_once(':').unwrap();
+        assert!(path.starts_with("backend/") && !path.contains("..") && !path.contains('\\'));
+        let source = std::fs::read_to_string(root.join(path)).unwrap();
+        let number: usize = number.parse().unwrap();
+        let witness = source.lines().nth(number.checked_sub(1).unwrap()).unwrap();
+        assert!(
+            witness.contains("unsupported(")
+                || witness.contains("UnsupportedSyntax")
+                || witness.contains("UnsupportedRuntimeTarget"),
+            "dangling refusal source: {location}"
+        );
+    }
+    assert_eq!(features, expected);
+    assert_eq!(declared, Some((refusals.len(), areas)));
+    assert!(document.contains("**Row status: open.** [evidence](COMPATIBILITY_CASES.json#/suites/"));
+}
 
 #[test]
 fn rust_case_facts_preserve_scope_and_ignore_literal_attribute_text() {
@@ -494,13 +664,20 @@ fn recorded_suite_graph_matches_the_current_committed_inputs() {
         "committed source/fixture tree differs from the measured revision"
     );
     assert_eq!(serde_json::to_value(&actual).unwrap(), recorded);
+    let bytes = std::fs::read(
+        root.join(inventory::DIRECTORY)
+            .join(case_report::MEASUREMENT),
+    )
+    .unwrap();
+    let report = case_report::generate(&tree, &actual, &bytes).unwrap();
     let document = std::fs::read_to_string(
         root.join(inventory::DIRECTORY)
             .join("COMPATIBILITY_INVENTORY.md"),
     )
     .unwrap();
     assert_eq!(
-        inventory::replace_section(&document, &inventory::markdown(&actual)).unwrap(),
+        inventory::replace_section(&document, &inventory::markdown(&actual, Some(&report)))
+            .unwrap(),
         document
     );
     let maps = actual

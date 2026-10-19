@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Lists every place BlueTS refuses or defers a TypeScript form, from the source.
 
 A refusal is a diagnostic whose text says a form is not supported, not lowered,
@@ -39,8 +42,7 @@ def messages(text: str):
                 break
 
 
-def main() -> None:
-    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[4]
+def render(root: Path) -> str:
     sources = []
     for crate in ("backend/bluets/src", "backend/bluets-bluejs/src"):
         sources += sorted((root / crate).rglob("*.rs"))
@@ -49,7 +51,7 @@ def main() -> None:
         relative = path.relative_to(root).as_posix()
         if "/tests" in relative or relative.endswith("tests.rs"):
             continue
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         for offset, body in messages(text):
             number = text.count("\n", 0, offset) + 1
             body = " ".join(body.replace('\\"', '"').replace("\\\\", "\\").split())
@@ -59,12 +61,18 @@ def main() -> None:
             area = relative.split("/src/")[1].split("/")[0].removesuffix(".rs")
             groups[area].add((body, f"{relative}:{number}"))
     total = sum(len(v) for v in groups.values())
-    print(f"{total} refusal sites in {len(groups)} areas\n")
+    lines = [f"{total} refusal sites in {len(groups)} areas", ""]
     for area in sorted(groups):
-        print(f"### {area} ({len(groups[area])})\n")
+        lines.extend([f"### {area} ({len(groups[area])})", ""])
         for body, where in sorted(groups[area]):
-            print(f"- `{where}` — {body}")
-        print()
+            lines.append(f"- **refused** `{where}` — {body}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def main() -> None:
+    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[4]
+    print(render(root), end="")
 
 
 if __name__ == "__main__":

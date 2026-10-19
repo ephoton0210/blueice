@@ -190,7 +190,12 @@ fn join_scope(parent: &str, name: &str) -> String {
     }
 }
 
-pub fn markdown(inventory: &Inventory) -> String {
+pub fn markdown(inventory: &Inventory, report: Option<&super::case_report::Report>) -> String {
+    let report = report.filter(|report| {
+        report.source_revision == inventory.source_revision
+            && report.source_graph_sha256 == inventory.source_graph_sha256
+            && report.suites.len() == inventory.suites.len()
+    });
     let ignored: usize = inventory
         .suites
         .iter()
@@ -205,16 +210,37 @@ pub fn markdown(inventory: &Inventory) -> String {
          Unix-only tests remain included in this source inventory; platform selection is separate.\n\
          The complete function names and Git blob ids of each harness's literal include/module closure\n\
          are versioned in [COMPATIBILITY_SUITES.json](COMPATIBILITY_SUITES.json).\n\n\
-         | Harness (repository-relative) | Ignored Rust functions |\n\
-         | --- | ---: |\n",
+         Row labels apply only to the measured case properties, not every possible program in a harness.\n\
+         Without a source-matched complete measurement a source row stays open.\n\n\
+         | Harness (repository-relative) | Ignored Rust functions | Status | Evidence |\n\
+         | --- | ---: | --- | --- |\n",
         revision=inventory.source_revision, version=inventory.typescript,
         digest=inventory.source_graph_sha256, suites=inventory.suites.len()
     );
-    for suite in &inventory.suites {
+    for (index, suite) in inventory.suites.iter().enumerate() {
+        let measured = report.and_then(|report| {
+            report
+                .suites
+                .iter()
+                .find(|row| row.harness == suite.harness)
+        });
+        let (status, evidence, label) = measured.map_or_else(
+            || {
+                (
+                    super::accounting::Status::Open,
+                    format!("{ARTIFACT}#/suites/{index}"),
+                    "unmeasured source",
+                )
+            },
+            |row| (row.status, row.evidence.clone(), "measurement"),
+        );
         result.push_str(&format!(
-            "| `{}` | {} |\n",
+            "| `{}` | {} | {} | [{}]({}) |\n",
             suite.harness,
-            suite.ignored_tests.len()
+            suite.ignored_tests.len(),
+            status.as_str(),
+            label,
+            evidence,
         ));
     }
     result.push_str(&format!(
