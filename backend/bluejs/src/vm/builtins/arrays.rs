@@ -12,6 +12,18 @@ use super::*;
 #[path = "../../../tests/fixtures/array_callback_storage.rs"]
 mod callback_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/array_flatten_storage.rs"]
+mod flatten_storage_tests;
+
+#[derive(Clone, Copy)]
+struct ArrayFlattenFrame {
+    source: ObjectId,
+    len: u64,
+    index: u64,
+    depth: f64,
+}
+
 #[derive(Clone, Copy)]
 enum ArrayCallbackMethod {
     ForEach,
@@ -23,6 +35,24 @@ enum ArrayCallbackMethod {
 }
 
 impl Vm {
+    fn array_flatten_frames(
+        &self,
+        source: ObjectId,
+        len: u64,
+        depth: f64,
+    ) -> Result<TransportVector<ArrayFlattenFrame>, RuntimeError> {
+        let owner = self.argument_list_owner()?;
+        TransportVector::capture(
+            std::iter::once(ArrayFlattenFrame {
+                source,
+                len,
+                index: 0,
+                depth,
+            }),
+            owner.as_ref(),
+        )
+    }
+
     fn array_callback_arguments(
         &self,
         value: NativeValue,
@@ -307,27 +337,7 @@ impl Vm {
         receiver: &Value,
         depth: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        self.stack.push(depth.clone());
-        let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as u64;
-            let depth = if *depth == Value::Undefined {
-                1.0
-            } else {
-                let number = self.coerce_number(depth)?;
-                let integer = if number.is_nan() { 0.0 } else { number.trunc() };
-                integer.max(0.0)
-            };
-            let target = self.array_species_create(object, 0)?;
-            self.stack.push(Value::Object(target));
-            self.array_flatten_into(target, object, length, depth, None)?;
-            Ok(Value::Object(target))
-        })();
-        self.stack.truncate(base);
-        result
+        self.array_flatten_method(receiver, depth, None)
     }
 
     /// `Array.prototype.flatMap`: the mapper's result is flattened one level.
@@ -337,33 +347,79 @@ impl Vm {
         mapper: &Value,
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        self.stack.push(mapper.clone());
-        self.stack.push(this_arg.clone());
-        let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as u64;
-            if !self.is_callable(mapper)? {
-                return Err(RuntimeError::TypeError(
-                    "Array.prototype.flatMap callback must be callable".into(),
-                ));
+        self.array_flatten_method(receiver, &Value::Number(1.0), Some((mapper, this_arg)))
+    }
+
+    fn array_flatten_method(
+        &mut self,
+        receiver: &Value,
+        depth: &Value,
+        mapper: Option<(&Value, &Value)>,
+    ) -> Result<Value, RuntimeError> {
+        let owner = self.argument_list_owner()?;
+        let roots = RealmCallRoots::new(
+            2 + usize::from(depth.object_id().is_some())
+                + mapper.map_or(0, |(mapper, receiver)| {
+                    usize::from(mapper.object_id().is_some())
+                        + usize::from(receiver.object_id().is_some())
+                }),
+            owner.as_ref(),
+        )?;
+        if let Some(receiver) = receiver.object_id() {
+            roots.push(receiver);
+        }
+        if let Some(depth) = depth.object_id() {
+            roots.push(depth);
+        }
+        if let Some((mapper, this_arg)) = mapper {
+            if let Some(mapper) = mapper.object_id() {
+                roots.push(mapper);
             }
-            let target = self.array_species_create(object, 0)?;
-            self.stack.push(Value::Object(target));
-            self.array_flatten_into(target, object, length, 1.0, Some((mapper, this_arg)))?;
+            if let Some(receiver) = this_arg.object_id() {
+                roots.push(receiver);
+            }
+        }
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            let object = vm.coerce_object(receiver)?;
+            if receiver.object_id().is_none() {
+                roots.push(object);
+            }
+            let length = vm.get_property(&Value::Object(object), &"length".into())?;
+            let length = NativeValue::adopt(length, owner.as_ref())?;
+            let count = length.with_value(vm, |vm, value| vm.coerce_length(value))? as u64;
+            drop(length);
+            let depth = if let Some((mapper, _)) = mapper {
+                if !vm.is_callable(mapper)? {
+                    return Err(RuntimeError::TypeError(
+                        "Array.prototype.flatMap callback must be callable".into(),
+                    ));
+                }
+                1.0
+            } else if *depth == Value::Undefined {
+                1.0
+            } else {
+                let number = vm.coerce_number(depth)?;
+                let integer = if number.is_nan() { 0.0 } else { number.trunc() };
+                integer.max(0.0)
+            };
+            // A neutral Vm can perform the coercion under a document loan.
+            // Validate that same document before creating the species result.
+            if let Some(owner) = &owner {
+                owner.reserve_peer(0)?;
+            }
+            let target = vm.array_species_create(object, 0)?;
+            roots.push(target);
+            vm.array_flatten_into(target, object, count, depth, mapper)?;
             Ok(Value::Object(target))
-        })();
-        self.stack.truncate(base);
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
         result
     }
 
-    /// `FlattenIntoArray`, run with an explicit frame list instead of Rust
-    /// recursion so that deeply nested (or cyclic) input is bounded by
-    /// `MAX_FLATTEN_NESTING` and reports a RangeError. Only the outermost
-    /// frame applies `mapper`, exactly as the recursive calls in the
-    /// specification omit it. Every frame's source stays on the VM stack.
+    /// Explicit paid frames replace Rust recursion. Only the outermost frame
+    /// applies the mapper; active source IDs have a parallel scoped root list.
     fn array_flatten_into(
         &mut self,
         target: ObjectId,
@@ -373,83 +429,91 @@ impl Vm {
         mapper: Option<(&Value, &Value)>,
     ) -> Result<(), RuntimeError> {
         const MAX_FLATTEN_NESTING: usize = 10_000;
-        struct Frame {
-            source: ObjectId,
-            len: u64,
-            index: u64,
-            depth: f64,
+        let owner = self.argument_list_owner()?;
+        let root_base = 1 + mapper.map_or(0, |(mapper, receiver)| {
+            usize::from(mapper.object_id().is_some()) + usize::from(receiver.object_id().is_some())
+        });
+        let roots = RealmCallRoots::new(root_base + 1, owner.as_ref())?;
+        roots.push(target);
+        if let Some((mapper, this_arg)) = mapper {
+            if let Some(mapper) = mapper.object_id() {
+                roots.push(mapper);
+            }
+            if let Some(receiver) = this_arg.object_id() {
+                roots.push(receiver);
+            }
         }
-        let base = self.stack.len();
-        self.stack.push(Value::Object(source));
-        let mut frames = vec![Frame {
-            source,
-            len: source_len,
-            index: 0,
-            depth,
-        }];
-        let mut target_index: u64 = 0;
-        let result = (|| {
-            while let Some(frame) = frames.last_mut() {
+        roots.push(source);
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            let mut frames = vm.array_flatten_frames(source, source_len, depth)?;
+            let mut target_index: u64 = 0;
+            loop {
+                frames.validate_owner()?;
+                let Some(frame) = frames.last_mut() else {
+                    break;
+                };
                 if frame.index >= frame.len {
-                    frames.pop();
-                    self.stack.pop();
+                    frames.truncate(frames.len() - 1);
+                    roots.truncate(root_base + frames.len());
                     continue;
                 }
-                self.charge_step()?;
+                vm.charge_step()?;
                 let (source, index, depth) = (frame.source, frame.index, frame.depth);
                 frame.index += 1;
                 let key: PropertyName = index.to_string().into();
-                if !self.has_property(source, &key)? {
+                let present = vm.has_property(source, &key)?;
+                frames.validate_owner()?;
+                if !present {
                     continue;
                 }
-                let step_base = self.stack.len();
-                let mut element = self.get_property(&Value::Object(source), &key)?;
-                self.stack.push(element.clone());
+                let element = vm.get_property(&Value::Object(source), &key)?;
+                let mut element = NativeValue::adopt(element, owner.as_ref())?;
                 if frames.len() == 1 {
                     if let Some((mapper, this_arg)) = mapper {
-                        element = self.call_native(
-                            mapper.clone(),
-                            this_arg.clone(),
-                            vec![element, Value::Number(index as f64), Value::Object(source)],
-                            false,
-                        )?;
-                        self.stack.push(element.clone());
+                        element = vm.array_callback(mapper, this_arg, element, index, source)?;
                     }
                 }
-                if depth > 0.0 && self.is_array(&element)? {
-                    let length = self.get_property(&element, &"length".into())?;
-                    let length = self.coerce_length(&length)? as u64;
-                    let inner = element
-                        .object_id()
-                        .expect("IsArray is only true for objects");
-                    if frames.len() >= MAX_FLATTEN_NESTING {
-                        return Err(RuntimeError::RangeError(
-                            "Array flattening is nested too deeply".into(),
-                        ));
-                    }
-                    self.stack.truncate(step_base);
-                    self.stack.push(Value::Object(inner));
-                    frames.push(Frame {
-                        source: inner,
-                        len: length,
-                        index: 0,
-                        depth: depth - 1.0,
-                    });
+                if depth > 0.0 && vm.is_array(element.value())? {
+                    element.with_owned(vm, |vm, element| {
+                        let length = vm.get_property(element.value(), &"length".into())?;
+                        let length = NativeValue::adopt(length, owner.as_ref())?;
+                        let count =
+                            length.with_value(vm, |vm, value| vm.coerce_length(value))? as u64;
+                        drop(length);
+                        let inner = element
+                            .value()
+                            .object_id()
+                            .expect("IsArray is only true for objects");
+                        if frames.len() >= MAX_FLATTEN_NESTING {
+                            return Err(RuntimeError::RangeError(
+                                "Array flattening is nested too deeply".into(),
+                            ));
+                        }
+                        // No guest call or safepoint separates frame admission
+                        // and publishing its source edge. Failure unwinds both.
+                        frames.push(ArrayFlattenFrame {
+                            source: inner,
+                            len: count,
+                            index: 0,
+                            depth: depth - 1.0,
+                        })?;
+                        roots.push_admitted(inner)?;
+                        Ok(())
+                    })?;
                 } else {
-                    // FlattenIntoArray's `targetIndex >= 2^53 - 1` TypeError is
-                    // not reachable: the target holds every element in the heap.
-                    self.array_create_data_property_or_throw(
+                    vm.array_create_data_property_or_throw_owned(
                         target,
                         target_index.to_string().into(),
                         element,
                     )?;
                     target_index += 1;
-                    self.stack.truncate(step_base);
                 }
             }
             Ok(())
-        })();
-        self.stack.truncate(base);
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
         result
     }
 

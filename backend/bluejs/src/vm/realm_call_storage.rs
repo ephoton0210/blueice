@@ -49,6 +49,11 @@ impl RealmCallRoots {
         values.push(id);
     }
 
+    /// Retire completed temporary edges while retaining their paid backing.
+    pub(super) fn truncate(&self, length: usize) {
+        self.values.borrow_mut().truncate(length);
+    }
+
     /// Unknown getter results grow one prepared root buffer at a time. Admit
     /// the full replacement while the previous allocation is still alive.
     pub(super) fn push_admitted(&self, id: ObjectId) -> Result<(), RuntimeError> {

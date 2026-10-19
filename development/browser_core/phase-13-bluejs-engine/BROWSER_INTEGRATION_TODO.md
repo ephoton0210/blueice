@@ -87,6 +87,53 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The Array flattening follow-up (2026-10-19) has an implementation checkpoint.
+The unchanged frame-vector builder was extracted before testing. Its original
+five fixed tiny cases record three failures: a frame loses all 40 native bytes
+after VM destruction, neutral flat accepts success after terminal depth
+conversion, and neutral flatMap accepts an empty result after the original
+document fails. Getter/GC and hole/depth/mapper-order controls already pass;
+those passing controls are not reproduced failures.
+
+Traversal frame backing now has independent native ownership. Replacement
+buffers are admitted while the previous allocation remains alive; truncation
+retains credit for reusable capacity. A parallel scoped object-ID root list pins
+active sources and retires each completed inner edge before subsequent getters
+can collect. Raw frame metadata does not root its heap. Borrowed receiver/depth/
+mapper/thisArg objects are pinned before boxing, length and species preparation.
+Length values retain storage and roots through coercion, then drop before further
+guest work. Captured-owner checks follow depth conversion and HasProperty before
+any subsequent getter, including empty/terminal paths in a neutral VM.
+
+Mapper arguments/results use the completed owned callback dependency. Inner
+arrays remain rooted through their length getters; leaf values move the same
+lease into property-definition routing. A fixed 64-byte leaf adds exactly 64
+native bytes through a Proxy definition trap. Depth/species ordering, live
+prototype mutation, holes, outermost-only mapping, proper tail calls, native
+callback error realms and one Promise/manual timer continuation remain covered.
+Throw paths restore the original root chain and operand stack without retaining
+primitive copies there. The existing maximum nesting check is preserved without
+running cyclic or resource-boundary probes.
+
+All **25 new contracts** and the previous **530 selected controls** pass on the
+same frozen source: **555 distinct selected tests**, seventeen executable targets
+and 185 selections. The original three-failure result, initial 5/5 implementation,
+expanded 25/25 and final complete selection logs remain separate. Formatting,
+diff checks and offline workspace/all-target Clippy with warnings denied pass.
+The checkpoint binds all 2,064 source/configuration inputs, artifact/executable
+hashes, exact staged paths and committed blobs. The ordinary-library coverage
+hook runs the same fixtures and establishes no new measured coverage.
+
+Other Array/scalar/getter producers, broader heap/allocator staging, managed-
+buffer policy, native ingress and integrated acceptance remain open. M1u remains
+the latest accepted milestone, and M1z integrated gates stay open. Validation
+remains local/offline with fixed tiny cases; rejected publication/process
+inspection and resource/fuel/threshold/exhaustion/infinite-input/service/Core/MCP
+replay are not resumed.
+Evidence: `target/array-flatten-storage-source-20261019.json`.
+Original red evidence: `/private/tmp/blueice-array-flatten-storage-red-20261019.{json,tar.gz,log,result.json}`.
+Post-change evidence: `/private/tmp/blueice-array-flatten-storage-{first,expanded,final}-*20261019.*`.
+
 The common Array callback producer follow-up (2026-10-19) has an implementation
 checkpoint. The unchanged three-argument assembly was extracted at its five
 implementation sites before testing. Its original five-case result records two
