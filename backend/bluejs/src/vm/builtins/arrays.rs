@@ -2,11 +2,61 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::argument_list_storage::ArgumentValues;
 use super::super::native_value_storage::NativeValue;
 use super::super::realm_call_storage::RealmCallRoots;
+use super::super::transport_buffer_storage::TransportVector;
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/array_callback_storage.rs"]
+mod callback_storage_tests;
+
+#[derive(Clone, Copy)]
+enum ArrayCallbackMethod {
+    ForEach,
+    Filter,
+    Map,
+    Every,
+    Some,
+    Find { reverse: bool, return_index: bool },
+}
+
 impl Vm {
+    fn array_callback_arguments(
+        &self,
+        value: NativeValue,
+        index: u64,
+        object: ObjectId,
+    ) -> Result<TransportVector<Value>, RuntimeError> {
+        value.validate_owner()?;
+        let owner = self.argument_list_owner()?.or(value.owner_view()?);
+        let mut arguments = TransportVector::with_capacity(3, owner.as_ref())?;
+        arguments.push_owned(value)?;
+        arguments.push_owned(NativeValue::adopt(
+            Value::Number(index as f64),
+            owner.as_ref(),
+        )?)?;
+        arguments.push_owned(NativeValue::adopt(Value::Object(object), owner.as_ref())?)?;
+        Ok(arguments)
+    }
+
+    fn array_callback(
+        &mut self,
+        callback: &Value,
+        this_arg: &Value,
+        value: NativeValue,
+        index: u64,
+        object: ObjectId,
+    ) -> Result<NativeValue, RuntimeError> {
+        let arguments = self.array_callback_arguments(value, index, object)?;
+        let owner = arguments.owner_view()?;
+        let value = arguments.with_arguments(self, |vm, arguments| {
+            arguments.call_native_borrowed(vm, callback, this_arg)
+        })?;
+        NativeValue::adopt(value, owner.as_ref())
+    }
+
     /// ECMAScript `IsArray`, including the transparent Proxy recursion.
     pub(in super::super) fn is_array(&self, value: &Value) -> Result<bool, RuntimeError> {
         let Value::Object(mut object) = value else {
@@ -534,31 +584,7 @@ impl Vm {
         callback: &Value,
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            let length = self.array_like_length(object)?;
-            if !self.is_callable(callback)? {
-                return Err(RuntimeError::TypeError(
-                    "Array.prototype.forEach callback must be callable".into(),
-                ));
-            }
-            let mut scan = self.index_scan(object, length)?;
-            let mut from = 0;
-            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
-                self.call_native(
-                    callback.clone(),
-                    this_arg.clone(),
-                    vec![value, Value::Number(index as f64), Value::Object(object)],
-                    false,
-                )?;
-                from = index + 1;
-            }
-            Ok(Value::Undefined)
-        })();
-        self.stack.truncate(base);
-        result
+        self.array_callback_method(receiver, callback, this_arg, ArrayCallbackMethod::ForEach)
     }
 
     pub(in super::super) fn array_filter(
@@ -567,53 +593,7 @@ impl Vm {
         callback: &Value,
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            let length = self.array_like_length(object)?;
-            if !self.is_callable(callback)? {
-                return Err(RuntimeError::TypeError(
-                    "Array.prototype.filter callback must be callable".into(),
-                ));
-            }
-            let target = self.array_species_create(object, 0)?;
-            self.stack.push(Value::Object(target));
-            let mut scan = self.index_scan(object, length)?;
-            let mut from = 0;
-            let mut target_index = 0usize;
-            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
-                // The callback may delete the element from the receiver.
-                let step_base = self.stack.len();
-                self.stack.push(value.clone());
-                let selected = self.call_native(
-                    callback.clone(),
-                    this_arg.clone(),
-                    vec![
-                        value.clone(),
-                        Value::Number(index as f64),
-                        Value::Object(object),
-                    ],
-                    false,
-                )?;
-                if self
-                    .to_boolean(&selected)
-                    .expect("the callback result is live")
-                {
-                    self.array_create_data_property_or_throw(
-                        target,
-                        target_index.to_string().into(),
-                        value,
-                    )?;
-                    target_index += 1;
-                }
-                self.stack.truncate(step_base);
-                from = index + 1;
-            }
-            Ok(Value::Object(target))
-        })();
-        self.stack.truncate(base);
-        result
+        self.array_callback_method(receiver, callback, this_arg, ArrayCallbackMethod::Filter)
     }
 
     pub(in super::super) fn array_map(
@@ -622,75 +602,7 @@ impl Vm {
         callback: &Value,
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            let length = self.array_like_length(object)?;
-            if !self.is_callable(callback)? {
-                return Err(RuntimeError::TypeError(
-                    "Array.prototype.map callback must be callable".into(),
-                ));
-            }
-            let target = self.array_species_create(object, length as usize)?;
-            self.stack.push(Value::Object(target));
-            let mut scan = self.index_scan(object, length)?;
-            let mut from = 0;
-            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
-                let mapped = self.call_native(
-                    callback.clone(),
-                    this_arg.clone(),
-                    vec![value, Value::Number(index as f64), Value::Object(object)],
-                    false,
-                )?;
-                self.array_create_data_property_or_throw(target, index.to_string().into(), mapped)?;
-                from = index + 1;
-            }
-            Ok(Value::Object(target))
-        })();
-        self.stack.truncate(base);
-        result
-    }
-
-    fn array_predicate(
-        &mut self,
-        receiver: &Value,
-        callback: &Value,
-        this_arg: &Value,
-        some: bool,
-    ) -> Result<Value, RuntimeError> {
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            let length = self.array_like_length(object)?;
-            if !self.is_callable(callback)? {
-                return Err(RuntimeError::TypeError(
-                    "Array predicate callback must be callable".into(),
-                ));
-            }
-            let mut scan = self.index_scan(object, length)?;
-            let mut from = 0;
-            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
-                let selected = self.call_native(
-                    callback.clone(),
-                    this_arg.clone(),
-                    vec![value, Value::Number(index as f64), Value::Object(object)],
-                    false,
-                )?;
-                if self
-                    .to_boolean(&selected)
-                    .expect("the callback result is live")
-                    == some
-                {
-                    return Ok(Value::Bool(some));
-                }
-                from = index + 1;
-            }
-            Ok(Value::Bool(!some))
-        })();
-        self.stack.truncate(base);
-        result
+        self.array_callback_method(receiver, callback, this_arg, ArrayCallbackMethod::Map)
     }
 
     pub(in super::super) fn array_every(
@@ -699,7 +611,7 @@ impl Vm {
         callback: &Value,
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
-        self.array_predicate(receiver, callback, this_arg, false)
+        self.array_callback_method(receiver, callback, this_arg, ArrayCallbackMethod::Every)
     }
 
     pub(in super::super) fn array_some(
@@ -708,7 +620,7 @@ impl Vm {
         callback: &Value,
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
-        self.array_predicate(receiver, callback, this_arg, true)
+        self.array_callback_method(receiver, callback, this_arg, ArrayCallbackMethod::Some)
     }
 
     pub(in super::super) fn array_find(
@@ -719,55 +631,188 @@ impl Vm {
         reverse: bool,
         return_index: bool,
     ) -> Result<Value, RuntimeError> {
-        let object = self.coerce_object(receiver)?;
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as u64;
-            if !self.is_callable(callback)? {
-                return Err(RuntimeError::TypeError(
-                    "Array.prototype.find callback must be callable".into(),
-                ));
+        self.array_callback_method(
+            receiver,
+            callback,
+            this_arg,
+            ArrayCallbackMethod::Find {
+                reverse,
+                return_index,
+            },
+        )
+    }
+
+    fn array_callback_method(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+        this_arg: &Value,
+        method: ArrayCallbackMethod,
+    ) -> Result<Value, RuntimeError> {
+        let owner = self.argument_list_owner()?;
+        let target_needed = matches!(
+            method,
+            ArrayCallbackMethod::Map | ArrayCallbackMethod::Filter
+        );
+        // Length conversion and species getters can run guest code before the
+        // first callback. Pin all borrowed object inputs before either step.
+        let roots = RealmCallRoots::new(
+            1 + usize::from(callback.object_id().is_some())
+                + usize::from(this_arg.object_id().is_some())
+                + usize::from(target_needed),
+            owner.as_ref(),
+        )?;
+        if let Some(object) = receiver.object_id() {
+            roots.push(object);
+        }
+        if let Some(callback) = callback.object_id() {
+            roots.push(callback);
+        }
+        if let Some(receiver) = this_arg.object_id() {
+            roots.push(receiver);
+        }
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            let object = vm.coerce_object(receiver)?;
+            if receiver.object_id().is_none() {
+                roots.push(object);
             }
-            let indices: Box<dyn Iterator<Item = u64>> = if reverse {
-                Box::new((0..length).rev())
-            } else {
-                Box::new(0..length)
-            };
-            // Unlike map/every/some, find visits holes and passes undefined
-            // to the predicate. This is why it must use [[Get]] directly.
-            for index in indices {
-                self.charge_step()?;
-                let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
-                let selected = self.call_native(
-                    callback.clone(),
-                    this_arg.clone(),
-                    vec![
-                        value.clone(),
-                        Value::Number(index as f64),
-                        Value::Object(object),
-                    ],
-                    false,
-                )?;
-                if self
-                    .to_boolean(&selected)
-                    .expect("the callback result is live")
-                {
-                    return Ok(if return_index {
-                        Value::Number(index as f64)
+            let length = vm.get_property(&Value::Object(object), &"length".into())?;
+            let length = NativeValue::adopt(length, owner.as_ref())?;
+            let count = length.with_value(vm, |vm, value| vm.coerce_length(value))? as u64;
+            drop(length);
+            if !vm.is_callable(callback)? {
+                let message = match method {
+                    ArrayCallbackMethod::ForEach => {
+                        "Array.prototype.forEach callback must be callable"
+                    }
+                    ArrayCallbackMethod::Filter => {
+                        "Array.prototype.filter callback must be callable"
+                    }
+                    ArrayCallbackMethod::Map => "Array.prototype.map callback must be callable",
+                    ArrayCallbackMethod::Every | ArrayCallbackMethod::Some => {
+                        "Array predicate callback must be callable"
+                    }
+                    ArrayCallbackMethod::Find { .. } => {
+                        "Array.prototype.find callback must be callable"
+                    }
+                };
+                return Err(RuntimeError::TypeError(message.into()));
+            }
+            let result_value = |value| NativeValue::adopt(value, owner.as_ref());
+            if let ArrayCallbackMethod::Find {
+                reverse,
+                return_index,
+            } = method
+            {
+                // Find visits holes through Get. Direction arithmetic needs no
+                // boxed iterator or extra unowned native control allocation.
+                for step in 0..count {
+                    let index = if reverse { count - 1 - step } else { step };
+                    vm.charge_step()?;
+                    let value =
+                        vm.get_property(&Value::Object(object), &index.to_string().into())?;
+                    let value = NativeValue::adopt(value, owner.as_ref())?;
+                    if return_index {
+                        let selected =
+                            vm.array_callback(callback, this_arg, value, index, object)?;
+                        if vm.to_boolean(selected.value())? {
+                            return result_value(Value::Number(index as f64));
+                        }
                     } else {
-                        value
-                    });
+                        let (selected, value) = value.with_owned(vm, |vm, value| {
+                            // Find returns the original Get result. Its copy
+                            // enters the predicate under a separate paid lease.
+                            let argument = NativeValue::copied(value.value(), owner.as_ref())?;
+                            let selected =
+                                vm.array_callback(callback, this_arg, argument, index, object)?;
+                            Ok((vm.to_boolean(selected.value())?, value))
+                        })?;
+                        if selected {
+                            return Ok(value);
+                        }
+                    }
                 }
+                return result_value(if return_index {
+                    Value::Number(-1.0)
+                } else {
+                    Value::Undefined
+                });
             }
-            Ok(if return_index {
-                Value::Number(-1.0)
+            let target = if target_needed {
+                let length = if matches!(method, ArrayCallbackMethod::Map) {
+                    count as usize
+                } else {
+                    0
+                };
+                let target = vm.array_species_create(object, length)?;
+                roots.push(target);
+                Some(target)
             } else {
-                Value::Undefined
+                None
+            };
+            let mut scan = vm.index_scan(object, count)?;
+            let mut from = 0;
+            let mut target_index = 0usize;
+            while let Some((index, value)) = vm.array_next_present(&mut scan, object, from)? {
+                let value = NativeValue::adopt(value, owner.as_ref())?;
+                match method {
+                    ArrayCallbackMethod::ForEach => {
+                        vm.array_callback(callback, this_arg, value, index, object)?;
+                    }
+                    ArrayCallbackMethod::Every | ArrayCallbackMethod::Some => {
+                        let some = matches!(method, ArrayCallbackMethod::Some);
+                        let selected =
+                            vm.array_callback(callback, this_arg, value, index, object)?;
+                        if vm.to_boolean(selected.value())? == some {
+                            return result_value(Value::Bool(some));
+                        }
+                    }
+                    ArrayCallbackMethod::Map => {
+                        let mapped = vm.array_callback(callback, this_arg, value, index, object)?;
+                        vm.array_create_data_property_or_throw_owned(
+                            target.unwrap(),
+                            index.to_string().into(),
+                            mapped,
+                        )?;
+                    }
+                    ArrayCallbackMethod::Filter => {
+                        let selected = value.with_owned(vm, |vm, value| {
+                            let argument = NativeValue::copied(value.value(), owner.as_ref())?;
+                            let selected =
+                                vm.array_callback(callback, this_arg, argument, index, object)?;
+                            let keep = vm.to_boolean(selected.value())?;
+                            drop(selected);
+                            if keep {
+                                vm.array_create_data_property_or_throw_owned(
+                                    target.unwrap(),
+                                    target_index.to_string().into(),
+                                    value,
+                                )?;
+                            }
+                            Ok(keep)
+                        })?;
+                        if selected {
+                            target_index += 1;
+                        }
+                    }
+                    ArrayCallbackMethod::Find { .. } => unreachable!(),
+                }
+                from = index + 1;
+            }
+            result_value(match method {
+                ArrayCallbackMethod::ForEach => Value::Undefined,
+                ArrayCallbackMethod::Every => Value::Bool(true),
+                ArrayCallbackMethod::Some => Value::Bool(false),
+                ArrayCallbackMethod::Filter | ArrayCallbackMethod::Map => {
+                    Value::Object(target.unwrap())
+                }
+                ArrayCallbackMethod::Find { .. } => unreachable!(),
             })
-        })();
-        self.stack.pop();
-        result
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result.map(NativeValue::into_value)
     }
 
     pub(in super::super) fn array_reduce(
@@ -1399,43 +1444,57 @@ impl Vm {
         if !self.is_array(&Value::Object(original))? {
             return ordinary_array(self);
         }
-        let original = Value::Object(original);
-        let constructor = self.get_property(&original, &"constructor".into())?;
-        if constructor == Value::Undefined {
-            return ordinary_array(self);
-        }
-        if let Some(constructor) = constructor.object_id() {
-            if self.test262_foreign_intrinsic_constructor(constructor, "Array")? {
-                return ordinary_array(self);
+        let owner = self.argument_list_owner()?;
+        let constructor = self.get_property(&Value::Object(original), &"constructor".into())?;
+        let constructor = NativeValue::adopt(constructor, owner.as_ref())?;
+        constructor.with_value(self, |vm, constructor| {
+            if *constructor == Value::Undefined {
+                return ordinary_array(vm);
             }
+            if let Some(constructor) = constructor.object_id() {
+                if vm.test262_foreign_intrinsic_constructor(constructor, "Array")? {
+                    return ordinary_array(vm);
+                }
+            }
+            if constructor.object_id().is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Array constructor must be an object".into(),
+                ));
+            }
+            let species = vm.get_property(constructor, &JsSymbol::well_known("species").into())?;
+            let species = NativeValue::adopt(species, owner.as_ref())?;
+            species.with_value(vm, |vm, species| {
+                if matches!(species, Value::Undefined | Value::Null) {
+                    return ordinary_array(vm);
+                }
+                if !vm.is_constructor(species)? {
+                    return Err(RuntimeError::TypeError(
+                        "Array species must be a constructor".into(),
+                    ));
+                }
+                let arguments =
+                    ArgumentValues::single(vm, Value::Number(length as f64), owner.as_ref())?;
+                Ok(arguments
+                    .call(vm, species.clone(), Value::Undefined, true, species.clone())?
+                    .object_id()
+                    .expect("Construct returns an object"))
+            })
+        })
+    }
+
+    fn array_create_data_property_or_throw_owned(
+        &mut self,
+        object: ObjectId,
+        key: PropertyName,
+        value: NativeValue,
+    ) -> Result<(), RuntimeError> {
+        if value.into_property_definition(key).define(self, object)? {
+            Ok(())
+        } else {
+            Err(RuntimeError::TypeError(
+                "cannot create Array property".into(),
+            ))
         }
-        if !matches!(constructor, Value::Object(_)) {
-            return Err(RuntimeError::TypeError(
-                "Array constructor must be an object".into(),
-            ));
-        }
-        let species = self.get_property(&constructor, &JsSymbol::well_known("species").into())?;
-        if matches!(species, Value::Undefined | Value::Null) {
-            return ordinary_array(self);
-        }
-        if !self
-            .is_constructor(&species)
-            .expect("Get returned a live local value or an imported facade")
-        {
-            return Err(RuntimeError::TypeError(
-                "Array species must be a constructor".into(),
-            ));
-        }
-        Ok(self
-            .call_with_target(
-                species.clone(),
-                Value::Undefined,
-                vec![Value::Number(length as f64)],
-                true,
-                species,
-            )?
-            .object_id()
-            .expect("Construct returns an object"))
     }
 
     pub(super) fn array_set_or_throw(

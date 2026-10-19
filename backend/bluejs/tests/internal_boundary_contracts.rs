@@ -7,6 +7,12 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_array_callback_storage_contracts() {
+    blueice_bluejs::Vm::verify_array_callback_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_property_definition_storage_contracts() {
     blueice_bluejs::Vm::verify_property_definition_storage_contracts();
 }

@@ -144,6 +144,19 @@ impl NativeValue {
         self.value
     }
 
+    /// Move this same primitive lease into guest-capable property definition;
+    /// its consumer admits the key and retains source terminal-state identity.
+    pub(super) fn into_property_definition(
+        self,
+        key: PropertyName,
+    ) -> super::property_definition_storage::PropertyDefinitionInput {
+        super::property_definition_storage::PropertyDefinitionInput::from_retained(
+            key,
+            PropertyDescriptor::data(self.value, true, true, true),
+            self.storage,
+        )
+    }
+
     /// Keep the input paid through root preparation, then hand the same value
     /// to a pure managed-heap consumer without an intermediate guest call.
     pub(super) fn into_heap<T>(

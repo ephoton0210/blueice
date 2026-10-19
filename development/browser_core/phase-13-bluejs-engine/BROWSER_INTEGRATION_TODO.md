@@ -65,15 +65,16 @@ Previously rejected push and process inspection remain excluded; do not retry
 them through different commands, privileges or routes. Local commits may record
 reviewed changes, but outbound publication is outside this validation checkpoint.
 
-The owner's renewed cybersecurity warning (2026-10-18) leaves the specific
-affected operation unidentified. The initial response conservatively held all
-additional build/test validation and inspected existing files and logs. That
-blanket hold was an agent precaution; it was not an owner instruction prohibiting
-ordinary offline compilation or the previously authorized fixed tiny cases.
-After static review, those local checks can proceed within the constraints above.
-This does not resolve the reported warning or authorize any excluded operation;
-affected broader replay and publication remain pending. Preserve the original
-evidence and do not infer acceptance from an uncompiled or unexecuted draft.
+On 2026-10-19 the owner identified the displayed command/result as an `rg`
+search of `native_dispatch.rs` and `builtins.rs` exiting with code 1. That code
+means no matching text; the calls are in `native_dispatch/dispatch.rs`. This
+ordinary search result does not establish a cybersecurity rejection. The blanket
+build/test hold was an overly broad agent precaution and is lifted for the
+previously authorized offline static checks and fixed tiny finite cases above.
+The existing checkpoint record separately identifies push rejected for source-code
+export and sandbox-denied process inspection. Those operations remain excluded
+and are not retried. Preserve the original evidence and do not infer acceptance
+from an uncompiled or unexecuted draft.
 
 M1s began with this public ownership failure:
 discarded ShadowRealm instances become unreachable (`WeakRef.deref()` returns
@@ -86,10 +87,58 @@ Evidence: `target/orphan-realm-probe-source-20261016.json` and
 `/private/tmp/blueice-orphan-realm-probe-20261016.log`.
 
 **In progress — M1z active execution control storage (2026-10-16).**
+The common Array callback producer follow-up (2026-10-19) has an implementation
+checkpoint. The unchanged three-argument assembly was extracted at its five
+implementation sites before testing. Its original five-case result records two
+failures: 184 bytes of callback argument storage lose their charge after VM
+destruction, and a neutral VM's early `some` return accepts success after the
+original document fails. Three controls already pass: find/filter retain the
+original object through source deletion and explicit collection, and sparse-hole/
+direction visitation preserves callback order. They are not reproduced failures.
+
+All nine methods (forEach/map/filter/every/some/find/findIndex/findLast/
+findLastIndex) now share owned callback argument and result assembly. Three
+argument slots and primitive copies are admitted before allocation. Scoped
+object-ID roots pin receiver/callback/thisArg before length conversion or species
+getters, retain selected originals and result targets through guest calls, and
+restore the outer chain on throws. Find/filter pay for the callback's separate
+copy while preserving the original value. Map/filter move the same result lease
+into property-definition routing; no guest-capable handoff drops that ownership.
+Original-document terminal checks cover early returns without rebinding a
+neutral VM's policy. Find direction arithmetic removes its boxed iterator.
+
+Temporary constructor/species values remain rooted and retain native credit;
+the species length argument uses the owned call-entry path. Shared flat/flatMap/
+concat/slice/splice behavior, Proxy probe order, live mutations, missing values,
+proper tail calls and native callback TypeError provenance in both membrane
+directions remain covered. Promise and one manually driven timer continuation
+exercise the same selection/root lifetime without a timer thread or service.
+
+All **26 new contracts**, the previous **501 selected controls** and three
+reviewed tiny public map/filter/species/find/flatMap controls pass on the final
+frozen source: **530 distinct selected tests**, seventeen executable targets
+and 184 selections. Formatting, diff checks and offline workspace/all-target
+Clippy with warnings denied pass. The first post-change compile identified a
+test adapter error (`uncaught_errors` is a count, not a collection); that log
+is preserved separately, followed by the corrected 26/26 and final complete
+selection run. The original five-case red result remains separate evidence.
+All 2,063 source/configuration inputs, artifacts, executable hashes and staged/
+committed blobs are bound by the checkpoint audit. The ordinary-library hook
+runs the same fixtures in coverage builds and establishes no fresh coverage.
+
+The `rg` no-match clarification above removes the blanket validation hold.
+Rejected publication/process inspection and legacy resource/fuel/threshold/
+exhaustion/infinite-input/service/Core/MCP replay remain excluded. Other Array
+factories and scalar/getter producers, broader heap/allocator staging, managed-
+buffer policy, native ingress and integrated acceptance remain open. M1u remains
+the latest accepted milestone, and the M1z integrated gates stay open.
+Evidence: `target/array-callback-storage-source-20261019.json`.
+Original red evidence: `/private/tmp/blueice-array-callback-storage-red-20261018.{json,tar.gz,log,result.json}`.
+Post-change evidence: `/private/tmp/blueice-array-callback-storage-{first,corrected,final}-*20261019.*`.
+
 The property-definition input follow-up (2026-10-18) has an implementation
-checkpoint. Common Array callback producer ownership remains open; map/filter
-need this consumer dependency before their result handoff is completed. The
-unchanged common definition body was extracted behind a production input boundary
+checkpoint. It supplies the consumer dependency used by the common Array callback producer
+follow-up above. At this earlier checkpoint the unchanged common definition body was extracted behind a production input boundary
 before testing. Original output records three failures and two passing controls:
 128 bytes of input storage lose their charge after VM destruction, a neutral
 consumer accepts a result after the original document fails, and a revoking Proxy
@@ -120,9 +169,9 @@ freezing and replaying all final selections; earlier green results are not
 substituted for the final source. Formatting, diff checks and offline workspace/
 all-target Clippy pass. Frozen source/artifact and staged/committed Git audits
 bind this checkpoint; the ordinary-library hook adds no measured coverage claim.
-Common Array callback producers, other descriptor/scalar producers, wider heap/
-allocator staging, managed-buffer policy, native ingress and integrated acceptance
-remain open. M1u remains the latest accepted milestone and M1z integrated gates
+The Array callback follow-up above now uses that dependency. Other descriptor/
+scalar producers, wider heap/allocator staging, managed-buffer policy, native
+ingress and integrated acceptance remain open. M1u remains the latest accepted milestone and M1z integrated gates
 stay open. Validation stays local/offline with fixed finite cases; legacy resource/
 allocation/fuel/threshold sweeps, rejected publication/process inspection and
 excluded replay are not run.
