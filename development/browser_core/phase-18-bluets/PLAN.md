@@ -5,6 +5,41 @@
 **Delivered-status history** (per-slice evidence and boundaries) lives in
 [PLAN_HISTORY.md](PLAN_HISTORY.md); this file holds the design.
 
+## Current compatibility decision
+
+<!-- BEGIN CURRENT BLUETS STATUS -->
+
+**Current BlueTS / BlueTSC compatibility status (2026-10-19).**
+**Full TypeScript parity: OFF; do not advertise full parity.**
+
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,511 suite-qualified
+case assertions**, not unique programs or a percentage of the TypeScript language.
+
+| Current measurement | Count / scope |
+| --- | --- |
+| Direct agreement | 12,010/12,028 (99.8503%); 6 open, 12 refused observations |
+| Separate controls | 482 native-reference + 1 BlueTS owner = 483; excluded from direct agreement |
+| Case labels | 12,493 scoped closed (including controls), 6 open, 12 refused |
+| Suite inventory | 100 suites / 244 ignored Rust functions; not a case denominator |
+| Suite labels | 93 scoped closed, 2 open, 5 refused |
+| Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
+| Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
+| Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
+
+All 12,511 recorded case expectations pass; expected differences/refusals are not
+agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
+Accepted runtime evidence (AC-K14.3): Windows x86_64 VM **82/82** core oracles
+plus the complete local test gate. Hosted CI and coverage are supplementary,
+not prerequisites. This consistency check does not rerun those runtime gates.
+
+Compiler/oracle source: `26a3941b2625ab924db9de824a83b49ac8085172`.
+Input graph SHA-256: `db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
+Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
+and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
+Older dated measurements below retain their original scope; they are not this current summary.
+
+<!-- END CURRENT BLUETS STATUS -->
+
 ## Objective
 
 Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifact, while also providing BlueTSC for projects that need to compile TypeScript to portable JavaScript. Both paths preserve the reasons to author code in TypeScript: deterministic static diagnostics, source-level debugging, and—where data crosses a trust boundary—runtime validation of an explicit, reifiable contract.
@@ -11870,3 +11905,66 @@ comparison records and all G-* labels. No implementation, fixture, oracle,
 measurement, refusal rule or runtime grant changed; the completed AC-K14.4
 K.0 evidence therefore remains applicable. AC-K14.5 is complete. AC-K14.6
 still owns the four-document current-number consistency check.
+
+### AC-K14.6 Current-status consistency (2026-10-19)
+
+The unique current-status blocks in root `CLAUDE.md`, this plan, `TODO.md`
+and `COMPATIBILITY_INVENTORY.md` now state the same evidence-derived numbers
+and scope. `tools/check_compatibility_status.py --check` recomputes the
+summary from the validated schema-2 cases, source-bound suite catalog,
+SHA-256-bound complete measurement, all feature labels and the current
+production-source refusal inventory. It rejects missing/duplicate markers,
+changed numbers, foreign evidence and widened parity/platform claims.
+It is a consistency checker, not a replacement for runtime validation.
+
+The shared summary reports TypeScript 5.9.3, N = 12,511 suite-qualified
+assertions, 12,010/12,028 direct agreements (99.8503%), six open and twelve
+refused observations, and 483 separate controls. It also distinguishes
+12,493 scoped closed case rows from the agreement numerator, 100 suites
+and 244 ignored functions from case counts, 22 broader open feature rows
+from the measured observations, and 213 refusal sites in 11 source areas
+from failing programs. Full parity remains OFF. Windows VM 82/82 plus the
+complete local gate remains the accepted AC-K14.3 criterion; hosted CI
+and coverage remain supplementary.
+
+The previously missing BlueTS summary in `CLAUDE.md` is now present. Stale
+current-work/decision descriptions in TODO and the inventory are corrected.
+Earlier measurements remain dated and scoped rather than globally replacing
+old numbers in their historical evidence. The generated suite/case tables,
+versioned JSON, compiler/oracle inputs and all 23 stable feature IDs are
+unchanged. No new checklist item is introduced.
+
+Test-first validation first failed for the absent checker, then for the
+four absent status blocks. After implementation, these commands exit 0:
+
+```sh
+python3 -m unittest discover -s development/browser_core/phase-18-bluets/tools -p 'test_*.py' -v
+python3 development/browser_core/phase-18-bluets/tools/check_compatibility_status.py --check
+python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --check
+target/debug/examples/compatibility_inventory --check
+target/debug/examples/compatibility_inventory --check-cases
+env CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test -p blueice-bluets --test compatibility_inventory --offline
+node --test development/browser_core/phase-18-bluets/tools/*.test.cjs
+env CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo clippy -p blueice-bluets -p blueice-bluets-bluejs --all-targets --offline -- -D warnings
+env RUSTFMT=/Users/ephoton/.rustup/toolchains/1.95.0-aarch64-apple-darwin/bin/rustfmt cargo fmt --all -- --check
+git diff --check
+```
+
+Results: ten Python tests (six new consistency regressions), 20 Rust
+inventory tests and 13 Node tool tests pass; no ignored or filtered Rust
+inventory tests. Negative cases cover changed numerator/denominator,
+version, parity, platform scope, markers, source binding, suite selection,
+case counts, feature labels and refusal counts; historical text outside
+the current block remains permitted. Formatting and warnings-denied
+all-target two-crate Clippy pass.
+
+This leaf changes only documentation and its isolated Python checker/tests.
+No Rust source, Cargo input, fixture, oracle, measurement, refusal policy or
+runtime authority changes. The complete AC-K14.4 K.0 runtime evidence and
+AC-K14.3's accepted complete local/Windows VM evidence remain applicable;
+they are not represented as newly executed by this documentation check.
+All existing worklist items are complete within their recorded scope.
+A final diff audit preserves all 89 existing checklist entries and changes
+only AC-K14.6 from unchecked to checked; no checkpoint is added or removed.
+AC-K14.6 is complete; a completed phase checklist does not close the broader
+required gaps or authorize a full-parity claim.

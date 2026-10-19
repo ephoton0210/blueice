@@ -7,14 +7,14 @@ outside it is refused with a diagnostic (section 4) or is listed as an open gap 
 claim "full parity" is the conjunction of J.6.1 to J.6.3 *and* no open required gap; section 3
 has required gaps open, so it stays closed.
 
-K.1–K.13 are complete within their measured subsets. K.13.2 confirms the four
+K.1–K.14 are complete within their measured subsets and decision scope. K.13.2 confirms the four
 hosted oracle legs (Ubuntu, macOS, Windows x86_64 and Windows arm64) in
 [run 38877729768](https://github.com/ephoton0210/blueice/actions/runs/38877729768)
 at `d4b13ff5e`; this is an oracle result, not a claim that the entire workflow
 or the later K.13.4 source has passed that run. AC-K14.2's versioned case-rate
 measurement is complete. AC-K14.3 uses the user's accepted Windows VM/local gates.
-AC-K14.4 row accounting is complete; the final decision and cross-document
-consistency checks remain open.
+AC-K14.4 row accounting, AC-K14.5's scoped decision and AC-K14.6's four-document
+consistency verification are complete. Broader required G-* gaps remain open.
 
 The authority for every expectation is the pinned `typescript@5.9.3` executable (`BLUEICE_BLUETSC_ORACLE`),
 not documentation. Section 1 is generated from one committed Git tree using a
@@ -29,6 +29,39 @@ An agreement is limited to the properties asserted by that named suite
 not universal byte-for-byte output or language-wide equivalence.
 Broader unmeasured gaps in section 3 remain outside this finite case set;
 the agreement percentage does not close them.
+
+<!-- BEGIN CURRENT BLUETS STATUS -->
+
+**Current BlueTS / BlueTSC compatibility status (2026-10-19).**
+**Full TypeScript parity: OFF; do not advertise full parity.**
+
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,511 suite-qualified
+case assertions**, not unique programs or a percentage of the TypeScript language.
+
+| Current measurement | Count / scope |
+| --- | --- |
+| Direct agreement | 12,010/12,028 (99.8503%); 6 open, 12 refused observations |
+| Separate controls | 482 native-reference + 1 BlueTS owner = 483; excluded from direct agreement |
+| Case labels | 12,493 scoped closed (including controls), 6 open, 12 refused |
+| Suite inventory | 100 suites / 244 ignored Rust functions; not a case denominator |
+| Suite labels | 93 scoped closed, 2 open, 5 refused |
+| Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
+| Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
+| Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
+
+All 12,511 recorded case expectations pass; expected differences/refusals are not
+agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
+Accepted runtime evidence (AC-K14.3): Windows x86_64 VM **82/82** core oracles
+plus the complete local test gate. Hosted CI and coverage are supplementary,
+not prerequisites. This consistency check does not rerun those runtime gates.
+
+Compiler/oracle source: `26a3941b2625ab924db9de824a83b49ac8085172`.
+Input graph SHA-256: `db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
+Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
+and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
+Older dated measurements below retain their original scope; they are not this current summary.
+
+<!-- END CURRENT BLUETS STATUS -->
 
 ## 1. What is compared with `tsc`, and how
 
@@ -298,12 +331,13 @@ The Rust generator owns both generated tables and the case JSON. After its
 suite/case regeneration, `tools/account_inventory_rows.py --write` refreshes
 the reviewed feature labels, direct-profile label and source-derived refusal
 list. Missing/duplicate feature IDs and stale/foreign case evidence are errors.
-From the repository root, check all three boundaries without editing data:
+From the repository root, check all four boundaries without editing data:
 
 ```sh
 cargo run -p blueice-bluets --example compatibility_inventory -- --check
 cargo run -p blueice-bluets --example compatibility_inventory -- --check-cases
 python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --check
+python3 development/browser_core/phase-18-bluets/tools/check_compatibility_status.py --check
 ```
 
 ## 2. What the supported subset is (summary)

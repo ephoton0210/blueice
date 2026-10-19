@@ -18,15 +18,51 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current status (2026-10-16):** Sections A–J and K.1–K.13 are complete within their measured subsets
-(last full-workflow confirmation: run 38644556735 at `f7ba9641c`, 29/29 jobs; workspace lines 94.56%, BlueJS 99.23%).
-K.13.2's four-platform oracle confirmation is run `38877729768` at `d4b13ff5e`.
-**Open work, in order:** K.14.
+<!-- BEGIN CURRENT BLUETS STATUS -->
+
+**Current BlueTS / BlueTSC compatibility status (2026-10-19).**
+**Full TypeScript parity: OFF; do not advertise full parity.**
+
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,511 suite-qualified
+case assertions**, not unique programs or a percentage of the TypeScript language.
+
+| Current measurement | Count / scope |
+| --- | --- |
+| Direct agreement | 12,010/12,028 (99.8503%); 6 open, 12 refused observations |
+| Separate controls | 482 native-reference + 1 BlueTS owner = 483; excluded from direct agreement |
+| Case labels | 12,493 scoped closed (including controls), 6 open, 12 refused |
+| Suite inventory | 100 suites / 244 ignored Rust functions; not a case denominator |
+| Suite labels | 93 scoped closed, 2 open, 5 refused |
+| Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
+| Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
+| Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
+
+All 12,511 recorded case expectations pass; expected differences/refusals are not
+agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
+Accepted runtime evidence (AC-K14.3): Windows x86_64 VM **82/82** core oracles
+plus the complete local test gate. Hosted CI and coverage are supplementary,
+not prerequisites. This consistency check does not rerun those runtime gates.
+
+Compiler/oracle source: `26a3941b2625ab924db9de824a83b49ac8085172`.
+Input graph SHA-256: `db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
+Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
+and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
+Older dated measurements below retain their original scope; they are not this current summary.
+
+<!-- END CURRENT BLUETS STATUS -->
+
+**Current work (2026-10-19):** Sections A–J and K.1–K.14 are complete within
+their measured scope; no unchecked worklist item remains. Broader G-* gaps
+remain open and full TypeScript parity stays OFF.
+**Historical hosted evidence:** full workflow run `38644556735` at `f7ba9641c` passed 29/29
+jobs (workspace lines 94.56%, BlueJS 99.23%); K.13.2's four-platform oracle run is
+`38877729768` at `d4b13ff5e`. These retain their original scope, not the later source's full gate.
 Dated evidence journals live in `PLAN_HISTORY.md`; this file keeps only checklists, acceptance criteria and
 one-line evidence pointers.
 
 Sections A to J are complete (summarized below); J.6 closed in its measured
-form (`COMPATIBILITY_INVENTORY.md`). Section K closes the inventory gaps.
+form (`COMPATIBILITY_INVENTORY.md`). Section K implements measured extensions
+and records the remaining breadth; completed leaves do not close broader G-* gaps.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -707,5 +743,9 @@ Entry condition: K.12 and K.13 are closed or each open row is named as a gap in 
       approved statement names TypeScript 5.9.3 and N = 12,511 assertions, separates 12,028
       direct comparisons and 483 controls, retains all six open/twelve refused observations
       and 22 broader open feature rows, and preserves owner/platform scope.
-- [ ] **AC-K14.6 Consistency.** CLAUDE.md, PLAN.md, TODO.md and COMPATIBILITY_INVENTORY.md state the same
+- [x] **AC-K14.6 Consistency.** CLAUDE.md, PLAN.md, TODO.md and COMPATIBILITY_INVENTORY.md state the same
   numbers (checked by a script or an explicit diff review).
+    - *Evidence:* PLAN.md, "AC-K14.6 Current-status consistency" (2026-10-19): all four current
+      summaries match validated case/suite/measurement data; the consistency checker, ten Python
+      tests, 20 Rust inventory tests, 13 Node tool tests, all-target Clippy and formatting pass.
+      Historical measurements retain their dated scope; no runtime/source/fixture change.

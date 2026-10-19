@@ -2,6 +2,44 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## BlueTS / BlueTSC current status
+
+<!-- BEGIN CURRENT BLUETS STATUS -->
+
+**Current BlueTS / BlueTSC compatibility status (2026-10-19).**
+**Full TypeScript parity: OFF; do not advertise full parity.**
+
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,511 suite-qualified
+case assertions**, not unique programs or a percentage of the TypeScript language.
+
+| Current measurement | Count / scope |
+| --- | --- |
+| Direct agreement | 12,010/12,028 (99.8503%); 6 open, 12 refused observations |
+| Separate controls | 482 native-reference + 1 BlueTS owner = 483; excluded from direct agreement |
+| Case labels | 12,493 scoped closed (including controls), 6 open, 12 refused |
+| Suite inventory | 100 suites / 244 ignored Rust functions; not a case denominator |
+| Suite labels | 93 scoped closed, 2 open, 5 refused |
+| Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
+| Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
+| Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
+
+All 12,511 recorded case expectations pass; expected differences/refusals are not
+agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
+Accepted runtime evidence (AC-K14.3): Windows x86_64 VM **82/82** core oracles
+plus the complete local test gate. Hosted CI and coverage are supplementary,
+not prerequisites. This consistency check does not rerun those runtime gates.
+
+Compiler/oracle source: `26a3941b2625ab924db9de824a83b49ac8085172`.
+Input graph SHA-256: `db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
+Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
+and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
+Older dated measurements below retain their original scope; they are not this current summary.
+
+<!-- END CURRENT BLUETS STATUS -->
+
+See [Phase 18 TODO](development/browser_core/phase-18-bluets/TODO.md) and
+[decision/evidence](development/browser_core/phase-18-bluets/PLAN.md) for scope and validation.
+
 ## Project status
 
 **Phase 3 (Rust core engine skeleton) is done.** Every pipeline crate under `backend/core/` is a real implementation, end to end — HTML in, a paint-command display list out:
