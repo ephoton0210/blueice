@@ -11378,3 +11378,96 @@ The complete local workspace log SHA-256 is
 The unchanged refusal inventory reproduces 213 sites in eleven areas.
 No production compiler/runtime or oracle input changed after the measured
 source revision. AC-K14.2 is complete; AC-K14.3–AC-K14.6 remain open.
+
+### AC-K14.3 Hosted gate recheck (in progress, 2026-10-16)
+
+The first final-source run is
+[38913027056](https://github.com/ephoton0210/blueice/actions/runs/38913027056)
+at `e7a64217918a00dcb74c82a465813cb0e8b4297f`. It is **not accepted**:
+two independent checkout issues have been identified. Container workspace
+tests fail before the inventory can inspect its source tree. The openSUSE
+Tumbleweed x86_64 job `117013355544` and RHEL UBI 10 arm64
+job `117013355352` both show eight inventory-test failures with
+`fatal: detected dubious ownership in repository at '/__w/blueice/blueice'`.
+This is a checkout/provisioning failure, not a changed case denominator or
+a reason to skip the source-graph checks. Ubuntu 24.04 x86_64 job
+`117013355373` passes its complete build/test/lint job at this source.
+All remaining jobs and the aggregate gate still require their own result.
+At the 14:55 UTC observation, seven container jobs have failed. Their saved
+job logs each contain the same eight ownership errors and no other failed
+Rust test suite: RHEL UBI 9 arm64, RHEL UBI 10 arm64, SLE BCI 15.7 on both
+architectures, openSUSE Leap 15.6 arm64 and openSUSE Tumbleweed on both
+architectures. The successful Ubuntu log explicitly confirms all 17
+inventory tests pass. This localizes the observed failures to container
+checkout trust rather than relaxing any inventory expectation.
+
+Windows 11 VS2026 arm64 job `117013355321` passes 15/17 inventory tests but
+fails the two generated-Markdown equality checks. Its checked-out
+`COMPATIBILITY_INVENTORY.md` has CRLF endings; replacing a generated section
+produces LF in that section. Both reported left/right values are identical
+after CRLF normalization, proving the mismatch is line endings rather than
+changed numbers or source inputs. The fix pins this exact generated Markdown
+file to LF in `.gitattributes`, alongside the already-pinned JSON artifacts.
+The Rust byte-exact comparisons are unchanged.
+
+Container commands run as root against a runner-owned workspace. The
+checkout action grants `safe.directory` only in its temporary HOME; later
+Cargo processes do not retain that action-local exception. The proposed
+workflow fix grants the **exact** `$GITHUB_WORKSPACE` path in the ephemeral
+container job's persistent global Git configuration, before the inventory
+tests run. The snapshot reader's ownership protection is unchanged.
+
+The new `ci_inventory_checkout.test.cjs` regression first reproduces Git's
+different-owner refusal with `GIT_TEST_ASSUME_DIFFERENT_OWNER=1`, then applies
+the exact-path trust command. The selected repository becomes readable;
+an untrusted sibling remains denied. Its global-config file is isolated in
+a unique test directory, so the test does not modify the user's Git
+settings. A third regression reads the canonical blobs of all three JSON
+artifacts and the Markdown from Git, creates an isolated repository with
+the actual attributes, and performs a real `core.autocrlf=true` checkout.
+Before the Markdown rule it reproduces the failure; with the rule all four
+artifacts remain byte-identical. Reading immutable blobs prevents an
+already-converted working copy from becoming its own false expectation.
+The workflow runs these regressions before the expensive Rust build.
+
+The final local Node suite passes 8/8, workflow YAML parses with a command
+or action for every step, and both suite/case `--check` commands still pass.
+The Windows x86_64 VM passes the same final 8/8 under Node 24.21.0, all
+17/17 Rust inventory tests, and native suite/case `--check` commands. Its
+temporary repository uses the actual original `e7a642179` commit/tree
+metadata, with the old `26a3941b2` ref retained; the four canonical artifact
+blobs match that source and the compiler/oracle graph remains unchanged.
+All four final validation inputs match macOS SHA-256: the attributes,
+workflow, regression source and generated Markdown. The regression source
+hash is `717107f2f239d0f53c4c2f2de1bc4e61ebb116952ad840784d186345d2297021`.
+Windows proof is `k143-checkout-final.json` plus
+`k143-checkout-final-proof.json`; its four step logs are
+`k143-checkout-{node-tests,rust-tests,suite-check,case-check}.log` under the
+existing isolated `bluets-k132-20261016-166bzf` validation root. No Rust,
+compiler/runtime, case-list, oracle-input, refusal policy or test comparison
+was weakened or changed.
+
+On 2026-10-19 the user explicitly authorized the narrowly scoped checkout
+repair, regression tests and this evidence record to be committed and pushed
+before AC-K14.3 completion, so the repaired workflow can start a new hosted
+run. This is an authorized CI-repair exception, not an additional checkpoint
+or acceptance of AC-K14.3. That item remains unchecked until a single
+repaired-source hosted run passes all required platforms, ignored oracles,
+format/Clippy and coverage gates.
+
+The original run completed at 2026-10-16T16:12:18Z with a failed aggregate
+gate: ten native Linux/macOS build/test/lint jobs, all four oracle jobs and
+coverage succeeded; all ten container jobs and all five Windows
+build/test/lint jobs failed. The last two Windows logs (jobs `117013355393`
+and `117013355624`) also show exactly the two Markdown checks failing with
+15/17 inventory tests passing; both equality pairs differ only by CRLF.
+Partial successes from this run do not satisfy the single-run requirement.
+
+Before the authorized repair commit on 2026-10-19, the local 8/8 Node
+regressions, YAML syntax/step validation, Rust 1.95 formatting, and native
+suite/case checks passed again (100 suites, 12,511 cases). A read-only check
+of the Windows VM's final proof reconfirmed its successful 8/8 Node and
+17/17 Rust tests plus both CLI checks. All four validated input SHA-256
+values still match the local repair, so the Windows evidence applies to
+these exact changes. No production source or compatibility data changed
+since that validation.

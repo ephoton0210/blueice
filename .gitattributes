@@ -50,3 +50,4 @@ backend/bluets/src/emitter/system_helpers.v1.js text eol=lf
 # K.14 binds the case report to the raw measurement JSON SHA-256. Keep all
 # generated compatibility JSON byte-identical after native Windows checkout.
 development/browser_core/phase-18-bluets/COMPATIBILITY_*.json text eol=lf
+development/browser_core/phase-18-bluets/COMPATIBILITY_INVENTORY.md text eol=lf
