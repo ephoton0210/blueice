@@ -701,7 +701,11 @@ Entry condition: K.12 and K.13 are closed or each open row is named as a gap in 
       sites accounted. Schema-1 observation projection is unchanged. Complete K.0 passes 1,542
       tests, including all 244 ignored oracles; 20 Rust and four Python accounting checks,
       all-target Clippy and formatting pass. Broad gaps remain open; full parity stays off.
-- [ ] **AC-K14.5 Decision text** written in PLAN.md. "Full parity" stays off while any required row
+- [x] **AC-K14.5 Decision text** written in PLAN.md. "Full parity" stays off while any required row
   is open; the narrower statement must name the tsc version and case count (N cases, 5.9.3).
+    - *Evidence:* PLAN.md, "AC-K14.5 Compatibility decision" (2026-10-19): full parity OFF;
+      approved statement names TypeScript 5.9.3 and N = 12,511 assertions, separates 12,028
+      direct comparisons and 483 controls, retains all six open/twelve refused observations
+      and 22 broader open feature rows, and preserves owner/platform scope.
 - [ ] **AC-K14.6 Consistency.** CLAUDE.md, PLAN.md, TODO.md and COMPATIBILITY_INVENTORY.md state the same
   numbers (checked by a script or an explicit diff review).

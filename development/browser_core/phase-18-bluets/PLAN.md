@@ -11796,3 +11796,77 @@ and `8d15eb2ffb2222cb2df45eeab1b9038651c4b99b719cf27b9b49c2251acf78a3`.
 The frozen compiler/oracle graph remains unchanged. AC-K14.4 is complete;
 the decision and four-document consistency checks (AC-K14.5/AC-K14.6)
 remain open, and full parity stays off.
+
+### AC-K14.5 Compatibility decision (2026-10-19)
+
+<!-- BEGIN K14 COMPATIBILITY DECISION -->
+
+**Decision: full TypeScript parity is OFF and must not be advertised.**
+The completed phase work establishes a checked, measured subset, not a
+drop-in replacement for every `tsc` language form, option or platform.
+Closing this worklist does not change that decision while required open
+gaps or non-agreeing/refused comparisons remain.
+
+The approved narrower statement is:
+
+> For pinned TypeScript 5.9.3, BlueTS/BlueTSC has 12,511 versioned,
+> suite-qualified case assertions: 12,028 direct comparison observations
+> plus 482 native-reference controls and one BlueTS-only owner control.
+> Recorded expectations pass for all 12,511 assertions. Direct agreement
+> is 12,010/12,028 (99.8503%), with six documented open differences and
+> twelve refused comparisons. This is a checked, measured subset;
+> full TypeScript parity is not claimed.
+
+Here **N = 12,511** counts versioned assertions, not unique programs or
+all directly paired compiler comparisons. Observations may overlap across
+suites and explicit configurations. Passing an assertion can confirm a
+known difference or refusal; it does not make that observation agree.
+The 12,493 scoped closed case rows include 483 reference/owner controls;
+they are not another agreement numerator or a language-wide percentage.
+
+The evidence is `COMPATIBILITY_CASES.json` schema 2 and its bound complete
+`COMPATIBILITY_MEASUREMENT.json` at source
+`26a3941b2625ab924db9de824a83b49ac8085172`, with the unchanged frozen graph
+`db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
+The 100 suites and 244 selected ignored Rust functions are harness/function
+counts, not additional program denominators. AC-K14.4 independently checks
+every case/suite status and evidence pointer; its fresh complete K.0 run
+passes all 1,542 tests, including every selected oracle.
+
+Non-agreements remain explicit in those versioned records:
+
+- Three `diagnostic_source_families` observations return no BlueTS diagnostic
+  for the recorded TypeScript tuple-index and empty/newline-throw errors.
+- Three `project_build_invalidation` observations intentionally refresh
+  owner-current manifest, nearer-package or repointed-symlink inputs where
+  the pinned default TypeScript reuse policy retains recorded stale output.
+- Twelve refused comparison observations retain their exact reasons and
+  selectors, covering the documented language/diagnostic/lowering subset
+  boundaries and the canonical reference-owner escape. Some forms appear
+  in more than one suite; these are not twelve independent language features.
+
+Beyond those finite comparisons, 22 of the 23 stable G-* feature rows remain
+open for broader unmeasured behavior. G-C2 is closed only for its compared
+strictness subset. The direct BlueJS runtime profile has a separately open
+scope and is not a `tsc` parity claim. The 213 diagnostic refusal sites in
+11 source areas are condition-specific source locations, not 213 measured
+failing programs and not another case denominator.
+
+The complete case measurement is Unix-scoped (`darwin-arm64`). The accepted
+Windows x86_64 VM 82/82 core oracle result and complete local testing satisfy
+the user's AC-K14.3 decision; they do not establish that all 12,511 Unix
+observations ran on Windows, Windows symlink parity or arm64 parity. Historical
+hosted observations keep their original source/platform scope. A green test
+or CI badge, scoped row closure or a completed TODO cannot promote this
+decision to full parity. Owner-root confinement, default-denied metadata,
+opaque-handle boundaries and runtime budgets retain their existing authority.
+
+<!-- END K14 COMPATIBILITY DECISION -->
+
+This is a documentation-only decision leaf. Review re-ran the source/case
+inventory checks and complete row-accounting check, recomputed the ratio from
+the versioned numerator/denominator, and read every one of the 18 non-agreeing
+comparison records and all G-* labels. No implementation, fixture, oracle,
+measurement, refusal rule or runtime grant changed; the completed AC-K14.4
+K.0 evidence therefore remains applicable. AC-K14.5 is complete. AC-K14.6
+still owns the four-document current-number consistency check.
