@@ -1,22 +1,10 @@
 # Phase 18 — BlueTS / BlueTSC completion worklist
 
-[← Plan](PLAN.md) · [integration contract](INTEGRATION_CONTRACT.md) · [test interface](TEST_INTERFACE.md) · [DOM/event decision](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md)
+[← Plan](PLAN.md) · [compatibility inventory](COMPATIBILITY_INVENTORY.md) · [integration contract](INTEGRATION_CONTRACT.md) · [test interface](TEST_INTERFACE.md)
 
-The goal is a supported BlueTS page that runs, interacts, debugs, and enforces
-its declared boundaries through the real BlueIce processes. [PLAN.md](PLAN.md)
-holds design history and delivered evidence. This file holds the ordered work
-and its acceptance checks; checked leaves show prerequisites for the next step.
-
-Work one leaf at a time, in the order below. Finish its implementation and
-public-boundary test before checking it off. For the BlueTS modularity audit
-C3.1.3.4.7.5, finish the entire audit and all required splits, run the full
-workspace gate, then make one English-message commit; do not commit interim
-leaves. Any over-1,300-line file proposed as unsuitable for splitting must be
-reported together and discussed with the user before it can be an exception.
-A design-only leaf needs a reviewable decision instead of a runtime test.
-Headings show dependencies; they are not tasks to finish in one commit.
-Keep design history in PLAN.md and defer capabilities or syntax that do not
-close the current leaf.
+This file keeps the completed baseline concise and tracks the remaining work
+against pinned TypeScript 5.9.3. Design and delivered evidence belong in
+[PLAN.md](PLAN.md) and [PLAN_HISTORY.md](PLAN_HISTORY.md).
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
@@ -51,701 +39,332 @@ Older dated measurements below retain their original scope; they are not this cu
 
 <!-- END CURRENT BLUETS STATUS -->
 
-**Current work (2026-10-19):** Sections A–J and K.1–K.14 are complete within
-their measured scope; no unchecked worklist item remains. Broader G-* gaps
-remain open and full TypeScript parity stays OFF.
-**Historical hosted evidence:** full workflow run `38644556735` at `f7ba9641c` passed 29/29
-jobs (workspace lines 94.56%, BlueJS 99.23%); K.13.2's four-platform oracle run is
-`38877729768` at `d4b13ff5e`. These retain their original scope, not the later source's full gate.
-Dated evidence journals live in `PLAN_HISTORY.md`; this file keeps only checklists, acceptance criteria and
-one-line evidence pointers.
+**Current work (2026-10-19):** A–J and K.1–K.14 are the completed baseline,
+not a full-parity claim. Phase L below adds the 22 existing open G-* areas:
+21 implementation/compatibility work packages and one deferred platform
+evidence package (G-M3). None of the new items is implemented or checked off
+by this worklist refresh. **Next: G-C1.**
 
-Sections A to J are complete (summarized below); J.6 closed in its measured
-form (`COMPATIBILITY_INVENTORY.md`). Section K implements measured extensions
-and records the remaining breadth; completed leaves do not close broader G-* gaps.
-Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
-messages and PLAN.md cite
-these IDs, and a parent is checked only when all its steps are.
+## Completed baseline (condensed)
 
+The 89 checked entries in the pre-refresh worklist remain completed only
+within their recorded scope. Their original criteria, sub-items and evidence
+are retained in the [full TODO at commit 2115412ca](https://github.com/ephoton0210/blueice/blob/2115412ca1e71baf5a7ed229e165ba15544ea105/development/browser_core/phase-18-bluets/TODO.md),
+[PLAN.md](PLAN.md) and [PLAN_HISTORY.md](PLAN_HISTORY.md). A–J's earlier
+leaf-level history is also retained at `1f3dbc935`; it is not repeated here.
 
-## Completed work (summary)
+| Completed IDs | Delivered scope / evidence location |
+| --- | --- |
+| A–G | Supervised page host and IPC, owner-selected DOM/events, capability-scoped debugger metadata and opaque handles, contracts, sealed compiler/MCP service and real-process acceptance; PLAN / PLAN_HISTORY sections A–G. |
+| H–J | Bounded control flow, functions, classes, modules, JSX/decorators and the first compatibility inventory; PLAN sections H–J. |
+| K.1–K.3, M6–M7 | Name/mutation/import checking, minimum library, return inference, project configuration, independent checking flags and diagnostic presentation; dated milestone evidence in PLAN / PLAN_HISTORY. |
+| K.4–K.6, M8 | Measured type-system, class and module extensions; all recorded source splits and milestone gates. |
+| K.7–K.10 | Measured target/module/helper output, declarations, resolution, JSX and decorator configurations. |
+| K.11 / AC-K11.A–F | Frozen 11-row decoded source-map matrix and real launcher/core/child debugger acceptance, including malformed/substituted-map rejection and helper-frame non-disclosure; PLAN K.11 and archived K.11 journal. |
+| K.12 | Owner-confined project references, ordered builds, declaration dependencies, invalidation, clean/incremental equivalence, corrupt-state recovery and bounded watch tests. |
+| K.13 | Windows command/path handling and explicit symlink exclusions, historical four-leg oracle evidence, launcher diagnostics and per-file coverage; historical results keep their source/platform scope. |
+| AC-K14.1–AC-K14.6 | Source-derived inventory, versioned case measurement, accepted local/VM evidence, scoped row accounting, full-parity-OFF decision and four-document consistency; PLAN AC-K14.1–AC-K14.6. |
 
-The leaf-by-leaf acceptance records for A to J (about 650 checked items) were condensed here on
-2026-10-04. The full text is in git history (`git log -p -- development/browser_core/phase-18-bluets/TODO.md`,
-last full version at commit `1f3dbc935`) and the delivered evidence, designs and measurements are in
-[PLAN.md](PLAN.md), [PLAN_HISTORY.md](PLAN_HISTORY.md) and [COMPATIBILITY_INVENTORY.md](COMPATIBILITY_INVENTORY.md).
-Every item below is checked; nothing in A to J is open.
+The current acceptance criterion remains **Windows x86_64 VM 82/82 core
+TypeScript oracles plus the complete local test gate**. AC-K14.3 records
+commands, revisions and log digests; AC-K14.4 records the later complete
+two-crate K.0 run. Hosted CI/coverage remain supplementary, not a new
+all-platform or single-run prerequisite.
 
-### P0 — interactive and debuggable pages
+## Execution and acceptance rules
 
-- **A. Child connected to the live core DOM.** The script socket (IPC v3) requires the exact
-  document generation on every request and a launcher-issued, per-core child capability; a stale
-  generation, wrong tab or predecessor core is denied before any mutation. The core serves bounded
-  DOM calls while the child executes (capped calls and wait time, unrelated traffic untouched), and
-  each request/reply is bound to the live tab and document and revoked on reload, tab close and core
-  cutover.
-- **B. First DOM and event profile.** Node wrappers and their roots live in the child and are
-  rejected after removal, reload or realm close. Implemented: `document.getElementById`,
-  `textContent` get/set, `createElement`, `createTextNode`, `appendChild`, click listeners rooted in
-  the child VM with a core click dispatched before default navigation, and the first event-loop
-  semantics. Host typings are generated only for implemented members; the event object's `readonly`
-  shape is enforced; a supported BlueTS page runs through it.
-- **C. Source debugging and metadata lifetime.** Pause/resume/step for module roots and nested frames
-  with distinct identities, bounded source-free Stack and Scopes, authorized values within fixed
-  budgets, exceptions reported at the original BlueTS position (debugger v39), nested/module
-  locations, breakpoints, symbols and types mapped to the original source, metadata invalidated on
-  reload, close, cache eviction and hibernation, and the whole route tested through launcher, core
-  and child.
-- **D. Direct-page acceptance.** Real supervised-child fixtures for classic and ESM graphs (type-only
-  import elision, authorized resolver identity, original coordinates); a contract failure on a real
-  page produces a bounded report that leaks no page body or script source; multiple tabs, reload,
-  policy isolation and per-tab/child resource attribution are proven through real sockets.
+1. **Use the existing G-ID and stated scope.** The 22 entries below are the
+   remaining areas, not 22 independent bugs. Work in priority/dependency order;
+   do not invent unrelated features or extra checkpoints. A dependency-driven
+   scope split needs an explicit reviewed checklist update, not an improvised
+   definition of done.
+2. **Freeze a finite oracle matrix before implementation.** For each stated
+   form, name the source/configuration, target/lib/module/field/checking flags,
+   accepted and rejected controls, and compared properties. Record N from the
+   versioned list; “more combinations” or a green suite is not acceptance.
+   Only pinned-5.9.3 programs establish TypeScript requirements.
+3. **Test first, commit after completion.** Reproduce the failing public-boundary
+   test locally, implement, and finish all acceptance checks before ticking the
+   item or committing. Do not commit an unfinished/failing replay. A reviewed
+   documentation-only decision is not a claim that a runtime gap was fixed.
+4. **Compare the relevant observable boundary.** Checker work compares verdicts,
+   primary/related codes, messages and UTF-16 module positions. Emit work adds
+   Node exit/stdout/stderr and selected-edition syntax checks. Declaration work
+   compares exact output and checks a consumer with pinned TypeScript. Map work
+   compares complete decoded segments/metadata, not raw VLQ or selected tokens.
+5. **No hidden successes.** Remove a known-gap/refusal allowance only after its
+   actual behavior agrees. Native-accepted language forms must not pass merely
+   because BlueTS's old refusal was asserted. Keep case selectors, controls,
+   reasons and evidence; regenerate counts, never hand-edit the denominator.
+6. **Keep authority and deliberate policy boundaries.** Canonical owner roots,
+   symlink confinement, default-denied metadata, opaque handles, runtime budgets
+   and helper provenance stay enforced. The three observed-input rebuild
+   differences and reference-owner escape are not bugs to erase for a pass rate.
+   Document genuine native-runtime defects separately; do not copy unsafe output.
+7. **Implementation gates.** Run focused regressions, both BlueTS crates' complete
+   tests and every ignored oracle with `BLUEICE_BLUETSC_ORACLE=<tsc 5.9.3>`,
+   `BLUEICE_ACORN_ORACLE=<acorn 8.15.0>` and `FORCE_COLOR=0`, plus workspace
+   rustfmt and warnings-denied two-crate all-target Clippy. Run Cargo commands
+   sequentially on the shared target. Final/milestone validation also needs the
+   complete local workspace tests/all-target Clippy and the accepted Windows VM
+   82 core oracles; do not add a mandatory GitHub Actions gate. Existing coverage
+   thresholds/exclusions are not weakened.
+8. **Evidence, status and commits.** Record source-bound commands/results and
+   remaining limitations in PLAN. Update affected inventory/refusal accounting;
+   publish new measurements only when actually measured and source-bound.
+   Checking a scoped item does not automatically close its broader inventory row
+   or turn full parity ON. Make one coherent English commit for a completed
+   checklist item, cite its ID, then automatically push as authorized.
+9. **Maintainability.** Review production files at 1,200 lines and split near or
+   above 1,300 before adding responsibilities; exceptions require user approval.
+   Preserve behavior/provenance and MPL-2.0 headers. No new blanket-refusal,
+   `any`/`unknown` fallback or budget increase may substitute for the promised
+   behavior. Documentation-only changes run the relevant consistency/tool checks;
+   they must not claim old runtime results as a fresh test run.
 
-### P1 — strict contracts and compiler service
+## Phase L — remaining compatibility work
 
-- **E. Runtime contracts.** Copied document-text and origin results have named contracts; every
-  ingress/egress records owner and position; strict-runtime rejects a missing or unchecked
-  boundary. A pure bounded validator runs before data enters the VM, cost is attributed to the
-  initiating tab, valid/malformed/cyclic/deep/oversized inputs are tested, and the emitted
-  strict helper is versioned and bound to the artifact so direct and emitted ESM reject the same
-  value.
-- **F. Registered projects and MCP.** Canonical input/config/output roots and a closed source graph
-  are pinned per project; only owner-exposed projects reach a client; build results are bound to
-  generation and fingerprint, bounded, staged atomically and absent on compiler error. The MCP
-  adapter negotiates exact session/project/generation capabilities, exposes build only with explicit
-  output-write authority, and was exercised through a real MCP client.
+The source of truth is [inventory section 3](COMPATIBILITY_INVENTORY.md#3-open-gaps-against-tsc-593).
+G-C2 remains closed for its measured strictness subset and is not reopened.
+The separate direct BlueJS runtime profile is not a twenty-third TypeScript
+gap and is not broadened by this worklist.
 
-### Release gate
+Each **Pass** below includes the common rules above. Freeze the actual case
+list before coding; a newly found unsupported named form must remain visible.
+If a package cannot meet its stated scope, leave it unchecked and request a
+reviewed split instead of silently declaring a smaller success.
 
-- **G. Closure without exclusions.** `cargo test --workspace`, real-process suites, `cargo fmt`,
-  all-target Clippy, the pinned TypeScript oracle and the workspace coverage gate (90.22% lines in
-  CI run 36341770960) passed. The run exposed and fixed cross-platform defects: Windows verbatim
-  path aliases, macOS non-blocking fixture streams, the debugger pending-admission race (public
-  debugger v43 admission hold), a private child socket start-up race, and Windows Clippy/size
-  findings. Only the oracle suites were `#[ignore]`d, and CI ran them explicitly.
+### P0 — reproducible wrong acceptance, rejection and diagnostics
 
-### P2 — compatibility after the page gate
+- [ ] **G-C1 — Known diagnostic differences and bounded CLI explanations.**
+  - **Scope:** the nine existing source-family observations: `tuple-index`,
+    `throw-newline`, `throw-empty`; native-accepted `rest-alias`,
+    `compatible-function-field`, `setter-destructure`; and `catch-type`,
+    `name-type`, `name-area`. Add `--explainFiles` for explicit-file,
+    import, reference and library inclusion reasons within an authorized project.
+  - **Pass:** the three missing diagnostics match TS2493/TS1142/TS1109 with exact
+    positions; the three native-accepted forms compile; the other three match
+    recorded primary/related diagnostics rather than an unmapped subset refusal.
+    All nine leave their old gap/refusal allowance only after agreement.
+    CLI reason lists/exit codes match the pinned matrix after path normalization,
+    without leaking outside-root paths or source bodies.
 
-- **H. Control flow and functions.** One form at a time, each through checker, emitter, direct
-  execution, safe points and the pinned-`tsc` oracle: braced `while`; `try`/`catch`/`finally` with one
-  identifier catch binding; immutable-local `typeof` narrowing with residual-flow return paths; and
-  a two-tag callback method overload with ambiguity diagnostics.
-- **I. Expressions.** First form: `local?.field` reads from an annotated record-or-nullish local,
-  lowered to BlueJS `OptionalMember`, with provenance, debugger and contract evidence.
-- **J. Toward pinned `tsc` 5.9.3.**
-  - *J.1/J.2*: lowering, authority, debugger, contract and conformance decisions recorded per feature.
-  - *J.3*: classes (constructors, inheritance, fields, visibility, parameter properties, accessors,
-    `#private` names, static blocks, `useDefineForClassFields`, downlevel emit below ES2022), enums and
-    `const enum` with the option set, runtime namespaces and declaration merging, tuple-literal context
-    in every position, and nested function forms (arrows, function expressions, object methods,
-    local functions, `catch` annotations, async/generators/yield).
-  - *J.4*: module-kind selection and CommonJS (`import = require`, `export =`, interop, cycles);
-    `node10`/`node16`/`bundler` package resolution with `exports`/`imports` conditions and `@types`,
-    bound to canonical roots with symlink/escape refusal and exact fingerprints; pinned remote
-    declarations fetched only by an explicit command.
-  - *J.5*: `.tsx` in every `jsx` mode with factory/import-source options and pragmas; standard
-    decorators (ES2022 shape, versioned helpers, metadata); legacy decorators with parameter
-    decorators and `emitDecoratorMetadata`. Classic JSX and standard decorators run in the direct
-    runtime.
-  - *J.6*: inventory of every open gap (`COMPATIBILITY_INVENTORY.md`), 19 differential suites all
-    passing, workspace gates green, 92.23% line coverage for the BlueTS crates. "Full parity" stays off.
+### P1 — core type behavior and usable standard-library precision
 
-### Milestones M1 to M5 (all reached)
+Order: G-T1 → G-T3 → G-T2 → G-T5 → G-T6 → G-T4 → G-T8 → G-T7.
+Existing measured behavior is reused; it is not implemented again.
 
-M1 classes in a real page; M2 everyday class/enum/namespace features; M3 modules and packages;
-M4 JSX and decorators; M5 a measured compatibility claim. Each closed on its observable exit test.
+- [ ] **G-T1 — Inferred predicates and exceptional/captured flow.**
+  - **Scope:** boolean-returning named functions/arrows without explicit predicates;
+    `try/catch/finally` exit/assignment flow; dotted captures with mutable aliases.
+  - **Pass:** inferred predicates and narrowed expression/declaration types agree
+    with 5.9.3 for every listed form, with negative controls for reassignment,
+    shadowing, escaping closures and exceptional exits; no stale narrowing escapes
+    its owning lexical binding.
 
-**Stop-loss rule kept from J.3 (2026-09-29):** a leaf that reaches deep nesting while chasing `tsc`
-edge cases instead of page-facing behavior is closed at its last useful step and its siblings are
-completed or recorded as inventory rows; do not open a new leaf for a corner nobody can observe.
+- [ ] **G-T3 — Composed type operators and key/query precision.**
+  - **Scope:** nested conditional/mapped/indexed types, template-`infer` and escaped
+    template patterns, overloaded callable queries, primitive/library/symbol keys.
+  - **Pass:** frozen operator compositions agree on accepted/rejected assignments
+    and declarations; diagnostic spans and escape normalization agree. Below/above
+    depth/expansion controls retain bounded, precise failures rather than widening
+    the budget or silently substituting `unknown`.
 
-## Current boundary
+- [ ] **G-T2 — Recursive/contextual generic candidate inference.**
+  - **Scope:** recursive record/operator arguments, callback return context,
+    dependent defaults/constraints and competing covariant/contravariant candidates.
+    “Higher-kinded patterns” must be concrete pinned-TypeScript programs, not a
+    newly invented language feature.
+  - **Pass:** inferred type arguments, selected signatures, constraint diagnostics
+    and exported types agree across the frozen candidate/context matrix, including
+    rejected candidates and budget controls.
 
-The supervised child runs authorized JavaScript and supported BlueTS classic
-and module graphs. Ordinary pages expose copied document text and origin,
-with no general live DOM or event API. Separate owner-only HTTP profiles
-expose boolean/opaque lookup probes or the exact typed `document` lookup and
-`textContent` slice; neither grants creation or events. Classic-root
-pause/resume and bounded BlueTS source-span stepping work; nested-frame
-pause/step/resume now have distinct public identities and capabilities.
-Bounded, source-free Stack and Scopes inspection is available on the opt-in
-debugger socket; original BlueTS frame coordinates and bounded runtime values
-require separate owner/client grants and same-stream receipts. The
-compiler/MCP route supports sealed projects and read-only queries, with no
-client registration, build output, or write authority.
+- [ ] **G-T5 — Computed symbols, tuple and const/satisfies compositions.**
+  - **Scope:** computed symbol/index access, optional/rest/named and variadic tuple
+    combinations, nested `as const`/`satisfies` and `unknown`/`never` flow.
+  - **Pass:** read/write and assignment verdicts, tuple positions and declarations
+    agree with native controls, including readonly, optional and unchecked-index
+    flag pairs; the discarded tuple-read diagnostic from G-C1 remains fixed.
 
+- [ ] **G-T6 — Structural compatibility across nested expression boundaries.**
+  - **Scope:** computed/conditional/spread expressions at assignment, argument and
+    return boundaries; nested generic callback variance and structural protocols.
+  - **Pass:** freshness and variance agree with strictFunctionTypes on/off and
+    exactOptionalPropertyTypes/noUncheckedIndexedAccess controls; native-accepted
+    programs stay accepted and native-rejected programs are not hidden by opaque
+    compatibility types.
 
-## Phase K — close the gaps in the J.6 inventory
+- [ ] **G-T4 — Overload selection with generic/optional call chains.**
+  - **Scope:** call/construct/method overloads combined with generic callbacks,
+    variance, optional calls and non-null assertions; merged declaration ordering.
+  - **Pass:** selected result types, no-match/implementation diagnostics and
+    declarations agree for both signature-order controls; accepted calls execute
+    identically and retain receiver/evaluation-order semantics.
 
-**Goal.** Turn the rows of `COMPATIBILITY_INVENTORY.md` section 3 into tested behavior, in an order that
-makes every later measurement trustworthy. Phase K does not claim "full parity"; K.14 decides that from
-fresh evidence.
+- [ ] **G-T8 — Contextual return/getter inference and literal freshness.**
+  - **Scope:** local/imported literal freshness, contextual object/union returns,
+    getter/method bodies, async/generator results and recursive local functions.
+  - **Pass:** inferred declarations and downstream consumer diagnostics agree;
+    every fixture with a concrete native result retains that precision instead of
+    an accidental `any`/`unknown` fallback. Recursive/resource failures stay bounded.
 
-**State at the start of K (2026-10-04).** BlueTSC checks and emits a defined subset. Inside it every form
-agrees with the pinned `typescript@5.9.3` (19 differential suites, 760 recorded verdicts, about 120 emit
-programs). Outside it a form is refused with a precise message, with three kinds of exception that are
-*not* refusals and are the most dangerous gaps: an undeclared identifier is not diagnosed, a value imported
-from another module is typed `unknown`, and a `const` is not protected from reassignment everywhere.
+- [ ] **G-T7 — Expand the original standard-library API manifest.**
+  - **Scope:** freeze the remaining constructor/overload/member/protocol list from
+    STANDARD_LIBRARY omissions: Array/ReadonlyArray callbacks, Promise aggregates
+    and chaining, collections/iteration, primitive/Object/Function utilities,
+    Math/JSON, Symbol, errors, Date/RegExp, Reflect/Intl/BigInt and buffer/typed-array/
+    Atomics typing. DOM/host APIs remain owner supplied.
+  - **Pass:** every manifest entry has native accept/reject and inferred-result
+    coverage under its eligible target/lib; generic map/chaining and declared
+    constructors no longer rely on the recorded opaque fallbacks. Owner replacement,
+    content/version fingerprints and no-runtime-grant controls pass. Correct
+    STANDARD_LIBRARY.md's stale v1/construct-signature claims against the existing
+    v2 profiles/parser before adding declarations; do not reimplement existing forms.
 
-### K.0 Rules that apply to every leaf
+### P2 — modules, packages, classes, declarations and projects
 
-1. **Test first, from `tsc`.** Record the form's accepted/rejected verdicts from the pinned compiler into
-   a `*-checker-matrix.tsv` (use `BLUEICE_WRITE_<NAME>_MATRIX=1`), commit the failing replay, then
-   implement. A form that emits code also gets an emit-and-run oracle (build with `bluetsc` and `tsc`,
-   run both under Node, compare) and, where it has a `.d.ts` form, a declaration comparison.
-2. **Fixtures are named so no other matrix claims them.** Matrices discover directories by name; a name
-   containing `class` is swept into the class matrix. Use a unique prefix per leaf (`unknown-name-*`,
-   `narrow-typeof-*`, …) and avoid the words `class`, `enum`, `namespace`, `jsx`, `decorators`, `legacy`
-   in a prefix that does not belong to that matrix.
-3. **Refusals stay precise.** Never weaken an existing refusal to make a test pass. When a leaf makes a
-   refusal obsolete, delete the refusal and move its fixtures to the matrix in the same commit.
-4. **Inventory is regenerated, not edited by hand.** Each leaf deletes or narrows its `G-*` row and
-   re-runs `python3 tools/inventory_refusals.py`; `COMPATIBILITY_INVENTORY.md` section 4 is replaced by
-   its output.
-5. **Gates per leaf.** `cargo fmt`, `cargo clippy -p blueice-bluets -p blueice-bluets-bluejs --all-targets
-   -- -D warnings`, the two crates' tests, and every ignored oracle with
-   `BLUEICE_BLUETSC_ORACLE=<tsc 5.9.3>` and `FORCE_COLOR=0`. Run cargo commands one at a time on the
-   shared target (concurrent runs rebuild `bluetsc` under running tests). The full workspace gate and
-   coverage run once per milestone, not per leaf.
-6. **Authority does not widen.** Nothing in K adds a filesystem, network or runtime API grant. Any leaf
-   that reads files (K.2, K.9, K.12) goes through the canonical-root and fingerprint rules of J.4.3.
-7. **One commit per leaf**, English message citing the ID, then a short PLAN.md section (`### K.n …`)
-   recording design, evidence and recorded gaps, as J.3 to J.6 did.
-8. **Track source size.** Review a production source at 1,200 lines. When it approaches or exceeds
-   1,300 lines, finish the current change's tests, commit and push the verified change, then record
-   and execute a focused split before adding more responsibilities to that file. Refactoring gets
-   its own tested commit and push; preserve behavior and source provenance.
+- [ ] **G-T10 — Import type expressions and remaining module/type compositions.**
+  - **Scope:** `import('specifier').Type`, `typeof import('specifier')`, qualified/
+    generic projections, remaining merged declaration/import-elision forms and the
+    recorded value import of a type-only namespace.
+  - **Pass:** the frozen ESM/CommonJS type/value matrix matches native verdicts,
+    declarations, import retention/elision and execution. Newly discovered type
+    dependencies enter the authorized graph, budgets and fingerprints; a type
+    expression never grants runtime or outside-root access.
 
-### Execution order and dependencies
+- [ ] **G-M1 — Package/mapped JavaScript, JSDoc and resolver compositions.**
+  - **Scope:** package and paths-mapped `allowJs/checkJs` inputs, JSDoc types,
+    combined exports/typesVersions/conditions/rootDirs/typeRoots selection and
+    missing-type-library diagnostics.
+  - **Pass:** selected canonical files, diagnostics, emitted/runtime suffixes,
+    declarations and execution agree for the frozen resolution matrix; changed/
+    missing manifests invalidate correctly. Include owner escape, symlink, ordered
+    fallback and TypeScript-sibling precedence controls before any outside read.
 
+- [ ] **G-T9 — Remaining class representation and checking.**
+  - **Scope:** unresolved getter bodies, generic merged interfaces/heritage,
+    computed heritage, generator/auto-accessor members, and stateful class-expression
+    keys involving await/yield. Setter-destructuring and compatible method/property
+    false rejections fixed by G-C1 remain regression controls.
+  - **Pass:** native verdicts, declarations and high-target execution agree for the
+    named forms. Parameter-property/branch-super cases cover both field modes and
+    retain the documented native-runtime defect boundary rather than publishing
+    unsafe output. Decorator-specific and low-target lowering combinations belong
+    to G-E3/G-E1 and are not counted twice as new class work.
+
+- [ ] **G-D1 — Anonymous, contextual and cross-module declaration precision.**
+  - **Scope:** anonymous object unions, imported/local freshness, const/contextual
+    inference, overload combinations and merged declaration surfaces.
+  - **Pass:** exact declarations and a separate pinned-TypeScript consumer agree
+    for each named form, including inaccessible/unnameable external-type diagnostics;
+    import retention and stable symbol identities survive repeated builds.
+
+- [ ] **G-D2 — Non-scalar declaration maps and isolated-declaration checking.**
+  - **Scope:** class, generic, namespace, inferred and merged declaration maps,
+    plus their `isolatedDeclarations`/declaration-only output combinations.
+  - **Pass:** complete decoded maps, names/source metadata, declarations and artifact
+    inventories match native fixtures; unsupported scalar-only refusals are removed
+    only for implemented forms. CLI output-root/symlink and corrupt-map bounds stay
+    enforced; accepted declarations compile in the native consumer.
+
+- [ ] **G-M2 — Native build continuation, state interchange and watch integration.**
+  - **Scope:** default `--build` error continuation (distinct from
+    `--stopBuildOnErrors`), pinned native `.tsbuildinfo` interchange, direct source-file
+    CLI invocations, and imported/package watch edit/add/delete/burst sequences.
+  - **Pass:** ordered build/skip events, exit codes, outputs and declarations agree;
+    native/BlueTS state cross-use is demonstrated, not assumed from a filename.
+    Foreign/unverifiable state rebuilds safely. Watch results equal clean builds,
+    and bare-source options follow the frozen CLI matrix. Keep owner-current
+    manifest/nearer-package/repointed-symlink invalidation and owner-escape refusal
+    as explicit policy differences, not weakened success criteria.
+
+### P3 — remaining emit, mapping and JSX/decorator combinations
+
+- [ ] **G-E1 — Unsupported downlevel control-flow and class combinations.**
+  - **Scope:** the recorded `opaque-generator-es5` graph; computed heritage/`super`,
+    constructor spreads, nested binding patterns, async arrows/methods,
+    template-contained suspension and combined suspension/exception paths.
+  - **Pass:** every frozen supported target configuration matches native Node
+    completion/stdout/stderr and declarations, and parses at its selected edition;
+    include rejected shapes, iterator/finally completion and helper-collision controls.
+    Remove the named ES5 refusal only after real execution agrees.
+
+- [ ] **G-E2 — Node ESM import-equals and module/helper ABI combinations.**
+  - **Scope:** ESM Node import-equals lowering, Node declaration inputs and the
+    currently unmeasured module/target/importHelpers/noEmitHelpers combinations.
+  - **Pass:** loader execution, live/cyclic bindings, helper imports/ABI, output
+    suffixes, declarations and rejection diagnostics match the frozen configurations;
+    helper source/version and cache identity remain bound to the artifact.
+
+- [ ] **G-E3 — Literal/private-super decorators and imported metadata.**
+  - **Scope:** literal decorated names, super in decorated private callables,
+    static-initializer super writes/computed super keys, decorated class expressions,
+    and imported/aliased legacy metadata types.
+  - **Pass:** frozen standard/legacy × target × field-mode configurations agree on
+    evaluation/replacement/initializer order, receivers, execution, declarations and
+    diagnostics; imported metadata resolves through existing owner authorization.
+    Preserve versioned helper identity, source provenance and precise remaining refusals.
+
+- [ ] **G-E4 — Nested declaration and output-option interactions.**
+  - **Scope:** nested/inferred declaration members with `stripInternal`,
+    `isolatedDeclarations`, newline/BOM/comment options and class-field modes.
+  - **Pass:** exact declarations, artifact lists/bytes where specified, and actual
+    execution agree across the frozen option products. Strict-runtime helper
+    fingerprints and publication bounds remain unchanged; declaration-map coverage
+    itself is owned by G-D2/G-E5 rather than duplicated here.
+
+- [ ] **G-E5 — Maps for newly supported constructs and generated helpers.**
+  - **Scope:** every new class/async/generator/module/decorator lowering admitted
+    by G-E1–G-E3 and the non-scalar declaration forms admitted by G-D2.
+  - **Pass:** complete decoded token/name/mapped-unmapped transitions, metadata,
+    UTF-16/CRLF/astral coordinates and repeated builds agree with pinned native maps.
+    Re-run K.11's real-process positive/negative matrix: stale/substituted/corrupt
+    maps cannot arm a breakpoint or disclose source, and helper frames never acquire
+    user-source coordinates. Do not reopen already-complete metadata authorization.
+
+- [ ] **G-C3 — Remaining JSX provider and decorator-type compositions.**
+  - **Scope:** JSX overload/union/recursive props, conditional/re-exported and missing
+    runtime providers, imported/global declaration contexts, preserve/native JSX;
+    decorator replacement/context inference, abstract/generic constraints and
+    customized Symbol.metadata/accessor receiver types.
+  - **Pass:** verdicts, primary/related diagnostics, inferred declarations and
+    execution of emitted modes agree with the frozen fixtures; preserved JSX is
+    validated as preserved syntax, not falsely reported as directly executable.
+    Provider loading, metadata typing and helper use acquire no additional authority.
+
+### Deferred — broader platform evidence, not a new release gate
+
+- [ ] **G-M3 — Optional platform/symlink parity evidence.**
+  - **Status:** deferred unless the user requests a broader platform claim.
+    Windows VM 82 core oracles plus complete local tests remain sufficient;
+    neither Windows arm64 nor hosted all-leg success becomes mandatory here.
+  - **Scope / pass if activated:** inventory the current named Unix-only symlink
+    exclusions (currently 25), run the explicitly authorized applicable cases on
+    the requested platform, and record exact revision, toolchain, selected names,
+    results and skip reasons. A skipped test is not parity evidence; historical
+    hosted runs do not prove a later source. Do not enable VM privileges or broaden
+    filesystem authority merely to change a skip into a pass.
+
+## Measurement and policy notes
+
+- The 22 G-* areas overlap; their evidence tables are not independent case counts.
+  The present six open observations are three missing diagnostics plus three
+  deliberate rebuild-policy differences. Twelve refused observations include
+  duplicate suite observations, language/diagnostic limits and an owner-policy
+  refusal; they are not twelve unique missing language features.
+- Preserve scoped controls and historical source bindings. A future complete
+  measurement must regenerate the case/suite artifacts and update the current
+  numeric block in CLAUDE.md, PLAN.md, TODO.md and COMPATIBILITY_INVENTORY.md
+  together. This worklist edit changes no measurement, source grant or parity claim.
+- Feature-row labels are reviewed policy, not inferred from a green harness:
+  `account_inventory_rows.py` currently closes only G-C2. Change a row's policy
+  only with evidence for its declared scope; never relabel it to manufacture parity.
+- From the repository root, check documentation/accounting without recording
+  a fresh runtime result:
+
+```sh
+python3 development/browser_core/phase-18-bluets/tools/check_compatibility_status.py --check
+python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --check
+cargo run -p blueice-bluets --example compatibility_inventory -- --check
+cargo run -p blueice-bluets --example compatibility_inventory -- --check-cases
 ```
-M6  K.1.1 → K.1.2 → K.1.3 → K.1.4 → K.1.5          (no silent wrong answers)
-M7  K.2.1 → K.2.2 → K.2.3 → K.2.4;  K.3.1 → K.3.2 → K.3.3   (real projects, TS codes)
-M8  K.4.1 → K.4.2 → K.4.3 → K.4.4 → K.4.5 → K.4.6 → K.4.7
-    K.5.1 → K.5.2 → K.5.3          (needs K.4.3 for generic classes)
-    K.6.1 → K.6.2 → K.6.3
-M9  K.7.1 → K.7.2 → K.7.3 → K.7.4;  K.8.1 (needs K.1.5) → K.8.2
-    K.9.1 → K.9.2 → K.9.3;  K.10.1 → K.10.2 → K.10.3;  K.11
-M10 K.12.1 → K.12.2 (needs K.2 and K.9);  K.13.1 → K.13.2 → K.13.3 → K.13.4
-M11 K.14
-```
-
-*Why this order.* K.1 first because each of its rows makes the checker accept or mistype a program `tsc`
-rejects, which would silently inflate every pass rate measured after it. K.2 and K.3 next because a
-real-project corpus and code-level comparison are the only way to measure K.4 to K.9 against `tsc`
-instead of against hand-written fixtures. K.4 before K.5 and K.8 because generic classes, inferred
-declarations and most real code depend on inference and narrowing. Emit breadth (K.7) comes after the
-type system because a new target should be validated on programs that now type-check as `tsc` would.
-K.13 is placed late but its items are independent and may be taken at any time a CI run is waiting.
-Sizes: S about a day, M a few days, L about a week or more, XL a multi-week piece of `tsc` itself.
-
----
-
-### K.1 Remove silent divergences — M6 — gaps G-T7, G-T8 and the recorded unknown-name/`const`/imported-type gaps
-
-*Why it is first:* after K.1 a program the checker accepts is one `tsc` accepts for the name, mutation
-and import rules.
-
-- [x] **K.1.1 Undeclared identifiers (L).**
-  - *Initial gap:* an unknown name in a value or type position was accepted unless a page profile enabled
-    `require_declared_global_calls` (calls only). `PLAN.md` records it as a known gap.
-  - *Work:* build a scope model shared by the checker passes (module scope, function/block scope,
-    parameters, catch bindings, class members via `this`, namespace bodies, imports, ambient host
-    declarations, enum members); resolve every identifier token in expressions and every named type
-    in annotations; hoisting (`var`, function declarations), the temporal dead zone for `let`/`const`/
-    class (TS2448, TS2449), `typeof x` in types, shadowing; globals come from K.1.4's library set and
-    owner declarations.
-  - *Risk:* false positives on valid programs. Mitigate by running the whole corpus (1090
-    fixture directories, 20 suites) and requiring zero new rejections of an accepted entry.
-  - *Done when:* a 40+ form accepted/rejected matrix (`unknown-name-*`) agrees with `tsc` and the
-    existing suites are unchanged.
-- [x] **K.1.2 Mutation of immutables (M).**
-  - *Today:* `readonly` properties and some enum members are checked; assignment to a `const`, an
-    imported binding, or a `for (const …)` variable is not diagnosed everywhere.
-  - *Work:* TS2588 (const), TS2632 (import), TS2540 (readonly), compound assignment, `++`/`--`,
-    destructuring targets, `for…of`/`for…in` heads, and the same inside nested functions and class
-    members.
-  - *Done when:* `immutable-*` matrix agrees with `tsc`.
-- [x] **K.1.3 Types of imported values (M).**
-  - *Today:* `import { x } from "./m"` types a value `x` as `unknown`; `.d.ts` output prints `unknown`.
-  - *Work:* export the checked type of every exported variable, function, class and enum from the
-    module checker (the project is already checked in dependency order), bind it at the import site for
-    named, default, namespace and `import = require`/`export =` forms in ESM and CommonJS; handle cycles
-    (a binding used before its module finishes gets its declared type or the annotation requirement
-    `tsc` reports as TS7022-style circularity).
-  - *Done when:* `imported-type-*` matrix and a declaration comparison (`import-decl-*`) agree with `tsc`.
-- [x] **K.1.4 Minimal standard library (L).**
-  - *Today:* no `lib.d.ts`; host types come only from owner declarations.
-  - *Work:* write, from the specified ECMAScript surface and not by copying `lib.*.d.ts`, a versioned
-    declaration set (`Array`, `ReadonlyArray`, `String`, `Number`, `Boolean`, `Object`, `Function`,
-    `Promise`, `Map`, `Set`, `WeakMap`, `Math`, `JSON`, `Symbol`, `Error` family, `Iterable`/`Iterator`/
-    `Generator`, `Date`, `RegExp`) selected by `target`, never emitted, never a runtime grant, and
-    replaceable by the owner. It must parse under BlueTS's own declaration subset (which forces
-    K.4 items such as overloads and index signatures to be introduced first or the set to stay small;
-    record each omission).
-  - *Done when:* programs using only these types have verdicts equal to `tsc` with `--lib` set to the
-    same subset (`lib-*` matrix); the set's version is in the fingerprint and manifest.
-- [x] **K.1.5 Inferred return types (M).**
-  - *Today:* getters, methods and exported functions without a return annotation are refused where the
-    type is needed (declaration output, accessor pairs); inference exists only for some expression forms.
-  - *Work:* infer from `return` expressions (union of returns, `void`, `never`, async wrapping in
-    `Promise`, generator `Generator<Y,R,N>`), literal freshness and widening rules, recursion guard.
-  - *Done when:* `infer-return-*` matrix, plus declaration output for functions without annotations
-    equal to `tsc`'s.
-
-#### K.1 source refactoring queue
-
-- [x] **K.1.R.1 Split existing near-limit compiler/runtime sources after the K.1.2 gate.**
-  The 2026-10-05 baseline audit found the production sources below. Split them by the listed
-  responsibilities, preserve behavior, run K.0's two-crate gate, then commit and push before K.1.3.
-
-  | Source | Lines before K.1.2 | Planned split |
-  | --- | ---: | --- |
-  | `backend/bluets/src/checker/module/binding.rs` | 1205 | Import and export binding |
-  | `backend/bluets/src/checker/module/binding/classes.rs` | 1520 | Constructor/body checks and class type helpers |
-  | `backend/bluets/src/checker/module/binding/classes/overrides.rs` | 1487 | Inheritance and signature compatibility helpers |
-  | `backend/bluets/src/bin/bluetsc.rs` | 1693 | Command/options/config parsing |
-  | `backend/bluets-bluejs/src/expression.rs` | 1234 | Call/construction and assignment lowering |
-  | `backend/bluets-bluejs/src/lowering.rs` | 1340 | Class and module lowering helpers |
-
-#### M6 milestone gate
-
-- [x] **M6 Close K.1 with the complete workspace and coverage gates.**
-  K.1.1 to K.1.5 and K.1.R.1 are implemented and passed their two-crate gates.
-  Run the existing CI workflow on the pushed K.1.5 commit, including full workspace
-  build/test/lint, every pinned oracle, workspace line coverage at least 90%, and
-  the independent BlueJS 88% line floor. Record the exact revision and run in PLAN.md.
-  Completed on `8343929b7`; CI run [37387952696](https://github.com/ephoton0210/blueice/actions/runs/37387952696)
-  passed all 29 jobs. Workspace lines: 90.48%; independent BlueJS lines: 93.00%.
-
-### K.2 Read real project configuration — M7 — gaps G-M2, G-C2
-
-- [x] **K.2.1 `tsconfig.json` (L).**
-  - *Evidence:* 2 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Portability correction (2026-10-06).
-  - *Work:* a JSONC reader (comments, trailing commas); `compilerOptions` that map to existing options
-    (`target`, `module`, `moduleResolution`, `jsx*`, `experimentalDecorators`, `emitDecoratorMetadata`,
-    `esModuleInterop`, `useDefineForClassFields`, `preserveConstEnums`, `isolatedModules`, `outDir`,
-    `declaration`, `sourceMap`, `strict`…); `files`/`include`/`exclude` globs; `extends` (relative and
-    package, merged as `tsc` merges); unknown options are an error naming the option. Every path goes
-    through the canonical-root checks; `bluetsc.json` remains for owner-only settings (import maps,
-    package roots, remote declarations, strict boundaries) and is merged on top.
-  - *Done when:* a corpus of 25+ real-world-shaped configs (`config-*` directories) produces the same file
-    set and option interpretation as `tsc --showConfig`, compared as normalized JSON.
-- [x] **K.2.2 Independent strictness flags (L).**
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-06).
-  - *Work:* `strict` family flags individually selectable; each flag changes diagnostics only (never
-    emit); `noImplicitAny` and `strictNullChecks` are the large ones because the checker currently
-    assumes both. Add `noUnusedLocals`/`noUnusedParameters`/`noImplicitReturns`/
-    `noFallthroughCasesInSwitch`/`exactOptionalPropertyTypes`/`noUncheckedIndexedAccess`/
-    `useUnknownInCatchVariables`.
-  - *Done when:* each flag has an on/off matrix pair agreeing with `tsc`, and the default (all strict)
-    behavior of every existing suite is unchanged.
-- [x] **K.2.3 CLI surface (S).**
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-06).
-  - *Work:* `--noEmit`, `--showConfig`, `--listFiles`, `--listEmittedFiles`,
-  `--pretty`, `--project`, exit codes; compared with `tsc` on the same project directory.
-- [x] **K.2.4 Option-combination oracle (S).**
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-06).
-  - *Work:* Extend `option_combinations_oracle.rs` with the new options;
-  keep it the template: one multi-feature program × the cartesian product of emit-affecting options.
-
-### K.3 TypeScript diagnostic codes — M7 — gap G-C1
-
-*Before K.4 so that every type-system leaf can compare codes and spans, not only a verdict.*
-
-- *Baseline (2026-10-07):* pinned codes, message templates, related information and UTF-16 spans recorded for all 1,398 entries of the eleven language checker matrices and strictness matrix; 135 observed templates. The first failing structured-diagnostic replay and explicit subset-refusal list are committed before implementation.
-
-- *Source audit baseline:* 72 further pinned diagnostic witnesses cover lexical errors and semantic families outside the language matrix; their failing replay is recorded before the remaining mappings. The language corpus alone does not close K.3.1.
-
-- [x] **K.3.1 Code and message mapping (M).** A table from every BlueTSC diagnostic to the `TSnnnn` code
-  and message template recorded from the pinned compiler (`tools/` script that runs `tsc` over the
-  fixture corpus and extracts the first code per entry); `BTSnnnn` stays as an alias in machine-readable
-  output. Diagnostics with no `tsc` counterpart are listed explicitly.
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-07).
-- [x] **K.3.2 Position parity (M).** Compare line, column and length of the primary span with `tsc` in
-  every accepted/rejected matrix; each mismatch is a tracked row until zero (expect many: BlueTS spans
-  are statement-granular in places).
-  - *Evidence:* 2 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-07).
-- [x] **K.3.3 Presentation (S).** Related information, `--pretty` output, `--diagnostics`-style summary,
-  and exit codes as pinned `tsc`: 0 on success, 1 when diagnostics block outputs through
-  `noEmitOnError`, and 2 for ordinary diagnostic completion (including `noEmit`).
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Test-first baseline (2026-10-07).
-
-  - *Measured type-fact gaps:* `presentation-type-fact-gaps.json` retains exactly three source-hashed G-T1/K.4.1 iterator-flow witnesses. Codes, positions and related metadata agree; BlueTSC's checked `string | number` and TypeScript's narrowed `string` are both asserted exactly. All other rendered messages require equality. K.0 passes after the affected recorder replay; final M7 closure is recorded below.
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-07).
-- [x] **M7 Close K.2/K.3 with fresh final-source workspace/platform/coverage evidence.** Run the existing CI workflow on the pushed implementation SHA: complete workspace build/test/fmt/all-target Clippy, every pinned oracle, all platform jobs, workspace line coverage at least 90% and independent BlueJS line coverage at least 88%, with no new exclusions. Earlier K.2 CI evidence does not close this final K.3 gate.
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-07).
-
-### K.4 Type system — M8 — gaps G-T1 to G-T6
-
-*Order matters: each leaf builds on the previous. The checker's flat string-keyed maps (`types`, `values`,
-`functions`) were built for a subset; K.4.1 should start with a short design leaf that decides whether
-narrowing needs a flow graph or can stay structural, recorded in PLAN.md before code.*
-
-- [x] **K.4.1 Narrowing (XL).** `typeof`, `instanceof`, `in`, `===`/`!==` against literals and `null`/
-  `undefined`, discriminant property checks, truthiness, optional chaining, `switch`, early return and
-  `throw`, loops and assignments that reset narrowing, closures that capture narrowed `const` vs `let`.
-  *Verified scope:* bounded lexical control-flow facts, documented below.
-  - *Evidence:* 5 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-07).
-- [x] **K.4.2 Guards and assertions (M).** `x is T`, `this is T`, `asserts x`, `asserts x is T`, `never`
-  exhaustiveness (TS2366, TS2678).
-  - *Evidence:* 3 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-07).
-- [x] **K.4.3 Generic inference (XL).** Inference from arguments (candidates, unification, widening),
-  from return position and contextual types, constraints (`extends`, `keyof`), defaults, explicit
-  arguments, generic function types, generic classes and interfaces; the `instantiate_named` budget
-  (`max_type_expansions`) stays and its exhaustion remains a precise diagnostic.
-  - *Evidence:* 4 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-08).
-- [x] **K.4.4 Overloads (L).** Call/construct/method overload selection in `tsc` order, contextual
-  signature selection for callbacks, ambiguity and no-match diagnostics with the right code, implementation
-  signature compatibility (TS2394).
-  - *Evidence:* 3 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-08).
-- [x] **K.4.5 Type operators (XL).** `keyof`, `typeof`, indexed access, conditional types (distributive),
-  `infer`, mapped types with `readonly`/`?` modifiers and `as` clauses, template-literal types, recursive
-  aliases within a depth budget; each operator needs the assignability relation extended.
-  - *Evidence:* 3 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-08).
-- [x] **K.4.6 More types (L).** Index signatures, readonly arrays/tuples, `bigint`, `symbol`/`unique
-  symbol`, `satisfies`, `as const`, optional/rest/named tuple elements, `unknown`/`never` flow rules,
-  `enum`-literal inference, `void` vs `undefined` rules.
-  - *Evidence:* 3 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-08).
-- [x] **K.4.7 Compatibility details (L).** Excess-property checks in every position, weak types,
-  `strictFunctionTypes` vs method bivariance, optional vs `undefined`, variance annotations (`in`/`out`),
-  `exactOptionalPropertyTypes`.
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Failing baseline (2026-10-08).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Position baseline (2026-10-08).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-08).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Fixture provenance (2026-10-08).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: CI bootstrap correction (2026-10-08).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Final K.3/K.4 verification (2026-10-08).
-
-### K.5 Remaining class forms — M8 — gap G-T9
-
-- [x] **K.5.1 Abstract and implements (M).** `abstract` classes/members/constructors, `implements`
-  (checked structurally), `override` and `noImplicitOverride`; emit erases all of them.
-  - *Evidence:* 4 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Final CI verification (2026-10-09).
-- [x] **K.5.2 Generic and dynamic classes (L; needs K.4.3).** `class C<T> extends B<T>`, generic methods
-  and static members rules, class expressions (named and anonymous, `NamedEvaluation`), computed and
-  string-literal member names, index-signature members, `declare` fields.
-  - *Evidence:* 11 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Hosted CI correction (2026-10-09).
-- [x] **K.5.3 Retire class refusals (S).** Remove the refusals K.5.1/K.5.2 make obsolete (redeclaring a
-  member of an imported base, accessor type mismatch, definite assignment through a branch, getter without
-  annotation) and move their fixtures into the class matrix.
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Failing baseline (2026-10-09).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-09).
-
-### K.6 Module syntax — M8 — gap G-T10
-
-- [x] **K.6.1 Default and re-exports (M).** `export default <expression>`, anonymous default function and
-  class, `export { x } from`, `export * from`, `export * as ns from`; ESM and CommonJS emit (including
-  live bindings through re-export and the `__exportStar`-style semantics written from the spec).
-  - *Evidence:* 5 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Hosted CI fixture correction (2026-10-09).
-- [x] **K.6.2 Type-only and attributes (S).** All `import type`/`export type` forms, inline `type`
-  modifiers, import attributes (`with { type: "json" }`), `export as namespace`.
-  - *Evidence:* 9 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-09).
-- [x] **K.6.3 Ambient and augmentation (L).** `declare module "x" { … }` (ambient and augmentation),
-  `declare global`, global augmentation from a module, triple-slash `reference path/types/lib`,
-  shorthand ambient modules; all under the J.4 authority rules (a declaration never creates a runtime
-  binding).
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Failing baseline (2026-10-09).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Imported-global baseline supplement (2026-10-09).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Global augmentation cache baseline (2026-10-09).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Global augmentation cache draft (2026-10-09).
-
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Static graph/cache baseline (2026-10-09).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Reference cache/library baseline (2026-10-09).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Identical referenced-root baseline (2026-10-09).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Ambient re-export baseline (2026-10-09).
-
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Exported ambient value baseline (2026-10-09).
-
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Exported-type correction draft gate (2026-10-09).
-
-
-#### K.6 source refactoring queue
-
-- [x] **K.6.CI.R Split native debugger execution control.** The CI root-refusal repair leaves `backend/core/engine/src/script/javascript/debugger_support.rs` at 1,266 lines, near the requested 1,300-line limit. Commit/push the verified refusal repair first, then move entry/root execution-control methods into a focused child module without changing opaque identities, validation, scheduling, capability grants or source-free replies. Test and commit/push this refactor separately before more production work.
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-09).
-
-- [x] **K.6.R.2 Split closed-project loading and fingerprint construction.** K.6.2's production audit measures `compiler.rs` at 1,224 lines, past the 1,200-line review threshold. Finish and commit/push the verified K.6.2 leaf first. Then move `ProjectBuilder` and graph-loading state into a focused compiler child module and fingerprint construction into another child module, preserving public APIs, canonical owner bounds, per-edge resolution modes, observation identity, incremental reuse and source provenance. Run the complete K.0 gate and commit/push the refactor separately before K.6.3.
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-09).
-
-- [x] **K.6.R.1 Split module-declaration AST records and declaration emission.** After the verified K.6.1 implementation commit/push, move those responsibilities out of `parser.rs` (1,207 lines) and `emitter.rs` (1,208 lines), preserving the public API, emission and source provenance. Run K.0's complete two-crate gate, then make a separate English refactor commit and push before K.6.2.
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-09).
-
-**M8 final verification is complete (2026-10-10).** Final source `1f76ff28c`
-passes the frozen Linux workspace gate: all-target build, 6,861 tests in 504
-groups, three Intl Node matrices, all-target workspace Clippy and format;
-all 5,493 backend/build inputs match. K.6.3's separate K.0 gate runs every
-158 BlueTS/bridge oracle (1,212 passing tests). Original final-source CI
-[37949582570](https://github.com/ephoton0210/blueice/actions/runs/37949582570)
-passes all 29 jobs, with all required build/test/lint/Intl/format steps across
-25 platforms, both pinned oracle jobs, coverage and the final gate. Each
-hosted oracle executes all 158 tests with zero failures and zero ignored.
-Workspace line coverage is 94.77% (201,590 lines, 10,552 missed); independent
-BlueJS is 99.53% (81,248 lines, 384 missed), with no new coverage exclusion.
-The per-face font change preserves selection, metrics and navigation
-assertions/timeouts. Earlier K.6.3 source `e75d62128` also passes all 29 original
-CI jobs. Successful isolated/full font diagnostics do not establish the prior
-timeout's inner cause or prove the font change necessary. See PLAN.md and
-`blueice-font-cold-workspace-report.json`,
-`blueice-font-cold-final-source-ci-final-report.json` and the hosted oracle/
-coverage/required-step proofs. K.7 through K.10 remain open.
-
-### K.7 Emit breadth — M9 — gaps G-E1 to G-E4
-
-- [x] **K.7.1 Targets (XL).** `ES2015`–`ES2019`, `ES2021`, `ES2023`, `ESNext`, then `ES5`; helpers
-  (`__awaiter`, `__generator`, `__spreadArray`, `__values`, `__read`, class/destructuring/rest lowering)
-  written from the specified semantics, versioned like the class and decorator helpers, recorded in the
-  manifest and fingerprint. Validate each target by running its output under a Node build or a VM
-  profile that rejects newer syntax (use BlueJS's parser at the matching edition as the syntax check).
-  - *Evidence:* 10 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Complete CI storage failure (2026-10-10).
-- [x] **K.7.2 Module systems (L).** `AMD`, `UMD`, `System`, per-file module kind for `node16`/`nodenext`
-  with `.mts`/`.cts`, `verbatimModuleSyntax`, `importHelpers`, `noEmitHelpers`.
-  - *Evidence:* 7 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified hosted CI fixture repair (2026-10-10).
-- [x] **K.7.3 Output options (M).** `removeComments`, `newLine`, `emitBOM`, `inlineSources`, `sourceRoot`,
-  `mapRoot`, `downlevelIteration`, `stripInternal`, `preserveValueImports`/`importsNotUsedAsValues`.
-  - *Evidence:* 9 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Member and strict-format correction; map-root baseline (2026-10-10):.
-- [x] **K.7.4 Decorators on new targets (M).** Standard decorators, auto-accessors and legacy decorators on
-  every K.7.1 target, plus the standard forms still refused (decorated private members, computed names,
-  classes in namespaces, `export default @d class`, `super` in static members, decorated class
-  expressions).
-  - *Evidence:* 2 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Complete 880-configuration focused replay (2026-10-11).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Private-accessor/static-super supplement (2026-10-11).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-11).
-
-### K.8 Declarations — M9 — gaps G-D1, G-D2
-
-- [x] **K.8.1 Inferred `.d.ts` (L; needs K.1.5).** Declaration output from inferred types, generic
-  declarations, overloads of any shape, merged namespaces, `export =`, `declare module`, accessor pairs.
-  - *Evidence:* 8 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-11).
-- [x] **K.8.2 Declaration options (S).** `declarationDir`, `emitDeclarationOnly`, `declarationMap`,
-  `isolatedDeclarations` (with its own diagnostics).
-  - *Evidence:* 2 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Focused corrected replay (2026-10-11).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-11).
-
-### K.9 Resolution extras — M9 — gap G-M1
-
-*All under the canonical-root, symlink-refusal and fingerprint rules of J.4.3; each new input file read
-goes into the resolver's observation record.*
-
-- [x] **K.9.1 Package features (M).** `typesVersions`, `.d.mts`/`.d.cts`/`.mts`/`.cts` entry points,
-  package self-name imports, `moduleResolution: classic`.
-  - *Evidence:* 5 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-11).
-- [x] **K.9.2 Path mapping (M).** `paths`, `baseUrl`, `rootDirs`, `types`/`typeRoots` and automatic `@types`
-  inclusion; the owner's roots bound every mapped path.
-  - *Evidence:* 6 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Windows assertion correction (2026-10-11).
-- [x] **K.9.3 JSON and JavaScript sources (L).** `resolveJsonModule` (typed from the JSON), `allowJs`/
-  `checkJs` with `.js` files treated through the supported subset and no JSDoc types.
-  - *Evidence:* 3 dated journal entries moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Existing CLI diagnostic regression (2026-10-11).
-
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Verified (2026-10-11).
-
-### K.10 JSX and decorator residuals — M9 — gap G-C3
-
-- [x] **K.10.1 JSX typing (L; needs K.4.3).** Type arguments on tags, generic components,
-  `JSX.ElementType`, `LibraryManagedAttributes`, `IntrinsicClassAttributes`, `defaultProps`, duplicate
-  attribute and `children`-specified-twice diagnostics, namespaced attribute typing.
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Native baseline and focused replay (2026-10-11).
-- [x] **K.10.2 Runtime JSX namespace (M).** Read the automatic runtime's `JSX` namespace from
-  `<jsxImportSource>/jsx-runtime` through package resolution.
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Native baseline and focused implementation (2026-10-11).
-- [x] **K.10.3 Decorator typing (M).** Return-type compatibility of a replacement with the decorated
-  element (standard and legacy), `lib.decorators.d.ts`-equivalent context types.
-  - *Evidence:* 1 dated journal entry moved to `PLAN_HISTORY.md` ("Archived from TODO.md: K.1–K.10 journals"); latest: Native baseline and focused replay (2026-10-11).
-
-### K.11 Source maps — M9 — gap G-E5 (L)
-
-Token-level mappings with `names`/`sourcesContent`, compared with pinned `tsc` 5.9.3 by decoding both maps
-(not text), plus debugger mappings for generated helper frames and relocated decorator text. This is a
-bounded claim for the frozen 11-row matrix, not parity for every construct. Detailed evidence and the dated
-journal are in `PLAN_HISTORY.md` ("Archived from TODO.md: K.11"); the acceptance checks are spelled out here.
-
-- [x] **K.11.1 Frozen oracle matrix** — 11 rows (copied, erased, standard method decorator, compacted
-  relocation, erasure inside relocation, composed decorators, legacy, parameter+metadata, non-decorator
-  helper, System wrapper, CRLF+astral) run through the public API and CLI.
-- [x] **K.11.2 Complete decoded-mapping comparison** — every token and mapped/unmapped transition, no raw VLQ text.
-- [x] **K.11.3 Metadata and publication** — version/file/sourceRoot/sources/names/sourcesContent, external and
-  inline, `inlineSources` on/off, UTF-16 columns, bounded failure.
-- [x] **K.11.5 Executable and regression behavior** — Node exit/stdout/stderr equality, stable repeated builds.
-- [x] **K.11.4 Generated and relocated debugger positions.**
-  - Done: map bound to generation-bound page-host artifact; exact AST/bytecode safe points; decorator and
-    three-frame System pauses; exact-source positive path (pause, step, stack, original location, resume,
-    helper definitions unbound) for all 11 rows; default-denied same-stream receipted operations.
-  - [x] **AC-K11.A Malformed retained map, out-of-process.** Real launcher/core/child session, >= 3
-    corruption kinds (bad VLQ, non-monotonic column, out-of-range source/name index). *Pass when:* resolution,
-    arming and paused projection each refuse, disclose no partial source, retain no breakpoint, and the
-    page still runs to completion.
-  - [x] **AC-K11.B Substituted artifact/map, out-of-process.** Other-generation map, map for different
-    JavaScript hash, externally asserted map. *Pass when:* each is refused with a distinct outcome and
-    retains no breakpoint.
-  - [x] **AC-K11.C Helper-frame non-disclosure.** *Pass when:* one test iterates all 11 rows and fails if
-    any helper-body frame is labelled with a user-source coordinate.
-  - [x] **AC-K11.D Tick rule.** Check K.11.4 only when A–C pass in `out_of_process_debugger` and the new
-    test count is recorded.
-- [x] **K.11.6 Final-source gate (AC-K11.E).** On one committed hash: fmt, warnings-denied all-target Clippy,
-  workspace tests with ignored oracles, line coverage >= 90%, plus hosted build/test/lint,
-  `typescript-oracle`, coverage and final CI gate. *Pass when:* PLAN.md records hash, commands, fixture
-  count, coverage and hosted run id, and no later commit changed production source.
-  - *Evidence:* PLAN.md, "K.11.6 AC-K11.E final-source gate" (2026-10-15).
-
-**Exit rule (AC-K11.F):** check K.11 when K.11.1–K.11.6 are all checked. Unsupported source-map forms stay
-named gaps. Do not add further positive-path debugger cases; they no longer move this item.
-
-### K.12 Projects — M10 — gap G-M2
-
-Entry condition: AC-K11.F is closed. Depends on K.2 and K.9. Each item uses a committed multi-project
-fixture set run against pinned `tsc` 5.9.3 `--build`, comparing *what is rebuilt and in what order*,
-not `.tsbuildinfo` bytes.
-
-- [x] **K.12.1 References and build (XL).**
-  - [x] **AC-K12.1.1 Reference graph.** `references` + `composite` load a project graph; `composite`
-    violations (missing `declaration`, file not covered by `include`) and cyclic references produce
-    TS-coded diagnostics. *Pass when:* >= 8 reject fixtures match `tsc` primary code/position.
-    - *Evidence:* PLAN.md, "K.12.1.1 Reference graph" (2026-10-15): 8/8 pinned rejects, 1 accepted emitting chain, K.0 two-crate gate.
-  - [x] **AC-K12.1.2 Build order.** `--build` orders a diamond graph, a chain and independent leaves
-    identically to `tsc`. *Pass when:* >= 5 graphs, the ordered project list equals `tsc --build --verbose`.
-    - *Evidence:* PLAN.md, "K.12.1.2 Build order" (2026-10-15): 5/5 pinned ordered lists and actual build events, emit/run plus declarations, K.0 two-crate gate.
-  - [x] **AC-K12.1.3 Up-to-date decisions.** No-op rebuild skips every project; touching one source
-    rebuilds exactly it and its dependents; touching only a comment/whitespace in a dependency's
-    declaration output behaves as `tsc` does. *Pass when:* rebuilt-set equality on >= 6 scenarios.
-    - *Evidence:* PLAN.md, "K.12.1.3 Up-to-date decisions" (2026-10-15): 10/10 pinned rebuilt sets, emitted execution and declarations at every step, 16/16 focused tests, K.0 two-crate gate.
-  - [x] **AC-K12.1.4 Referenced declarations.** A dependent project type-checks against the referenced
-    project's emitted `.d.ts`, not its sources. *Pass when:* an error that exists only in the referenced
-    source is not reported in the dependent, and deleting the `.d.ts` is reported.
-    - *Evidence:* PLAN.md, "K.12.1.4 Referenced declarations" (2026-10-15): four-row pinned rebuild matrix, 11/11 focused integration tests, source-only error and missing-output controls, K.0 two-crate gate.
-  - [x] **AC-K12.1.5 Build errors.** With pinned `tsc --build --stopBuildOnErrors`, a failing
-    project stops its dependents while independent projects continue; exit code and skipped-project
-    reporting match `tsc`. The default `--build` mode can still attempt dependents after errors.
-    *Pass when:* >= 3 fixtures.
-    - *Evidence:* PLAN.md, "K.12.1.5 Build errors" (2026-10-15): three pinned ordered-event fixtures, exact blocked/skip reasons and exit codes, K.0 two-crate gate.
-  - [x] **AC-K12.1.6 Gate.** Owner-only root rules (J.4.3) hold: a reference outside the canonical root
-    is refused. *Pass when:* a symlink-escape fixture is refused with a bounded diagnostic.
-    - *Evidence:* PLAN.md, "K.12.1.6 Reference owner gate" (2026-10-15): pinned two-row build-order matrix, internal emit/run control, symlink escape refused before outside read or emission with a bounded diagnostic, K.0 two-crate gate.
-- [x] **K.12.2 Incremental and watch (L).**
-  - [x] **AC-K12.2.1 Cache key.** Key binds source hashes, compiler options and graph/configuration
-    fingerprint (J.4.3). *Pass when:* changing any one of the three misses the cache (3 tests).
-    - *Evidence:* PLAN.md, "K.12.2.1 Cache key" (2026-10-15): six pinned ordered rebuild rows, three public cache-miss tests, same-mtime source-byte hash unit test, K.0 two-crate gate.
-  - [x] **AC-K12.2.2 Invalidation.** Changed manifest, nearer package, repointed symlink and changed
-    `paths`/`types` each invalidate. *Pass when:* 4 named tests, plus one test that an unrelated file
-    does not invalidate.
-    - *Evidence:* PLAN.md, "K.12.2.2 Observed-input invalidation" (2026-10-15): five-case pinned ordered matrix, four named invalidation tests plus unrelated-file no-op, forced-rebuild stale-output control, K.0 two-crate gate.
-  - [x] **AC-K12.2.3 Equivalence.** Incremental output is byte-identical to a clean build over a
-    randomized edit sequence. *Pass when:* >= 20 steps over >= 3 projects, zero differences.
-    - *Evidence:* PLAN.md, "K.12.2.3 Incremental/clean equivalence" (2026-10-15): fixed-seed 24 edits across 3 projects, 25 pinned ordered rows, zero JavaScript/declaration byte differences, K.0 two-crate gate.
-  - [x] **AC-K12.2.4 Corrupt state.** A truncated or foreign `.tsbuildinfo` falls back to a clean build
-    with a diagnostic, never a wrong result.
-    - *Evidence:* PLAN.md, "K.12.2.4 Corrupt build state" (2026-10-15): eight pinned ordered rows, wrong-output repair, actual TypeScript-state injection, bounded diagnostic, independent state paths, K.0 two-crate gate.
-  - [x] **AC-K12.2.5 Watch.** `--watch` re-emits on edit, add and delete of a file, debounces bursts, and
-    shuts down cleanly. *Pass when:* a bounded-time integration test (no sleeps > 5 s) covers the three
-    events and one burst.
-    - *Evidence:* PLAN.md, "K.12.2.5 Watch" (2026-10-16): five pinned ordered rebuild rows, seven focused tests including a bounded process-level watch cycle and safe stale-output cleanup, warnings-denied Clippy, and K.0 two-crate gate with an explicitly built BlueJS regex worker.
-
-### K.13 Platforms and test health — M10 — gap G-M3 and recorded flakes
-
-Items are independent; may be taken any time.
-
-- [x] **K.13.1 Windows oracle (M).**
-  - [x] **AC-K13.1.1** Harness launches `tsc.cmd` and handles drive, UNC and verbatim (`\\?\`) paths.
-    *Pass when:* path-normalization unit tests cover all three on every OS.
-    - *Evidence:* PLAN.md, "K.13.1.1 Windows oracle path and command handling" (2026-10-16): five platform-neutral path/command tests on macOS and Linux, six on Windows VM including actual `.cmd` launch, 87-test pinned oracle suite, K.0 two-crate gate.
-  - [x] **AC-K13.1.2** Symlink tests run, or skip with a printed reason and are listed in the report.
-    - *Evidence:* PLAN.md, "K.13.1.2 Windows symlink test visibility" (2026-10-16): 25 named skip reasons, CI log/summary wiring, three report tests, K.0 two-crate gate.
-  - [x] **AC-K13.1.3** `typescript-oracle` matrix gains windows x86_64 and arm64 legs; the comment in
-    `ci.yml` saying Windows is excluded is removed. *Pass when:* the pinned Windows x86_64 VM oracle
-    suite passes all 82 ignored tests and the complete local two-crate K.0 suite passes. Hosted
-    all-leg confirmation is separately required by K.13.2.
-    - *Evidence:* PLAN.md, "K.13.1.3 Windows oracle matrix" (2026-10-16): Windows x86_64 VM 82/82,
-      macOS complete K.0 suite including 87/87 `typescript_oracle`, three Node command tests,
-      diagnostic recorders, rustfmt and warnings-denied two-crate Clippy.
-- [x] **K.13.2 Hosted CI confirmation (S).**
-  - [x] **AC-K13.2.1** Full extended `typescript-oracle` job passes on GitHub for every matrix leg.
-  - [x] **AC-K13.2.2** Runtime of the slowest leg is recorded and stays at or below 180 minutes,
-    leaving at least 25% of the explicit 240-minute job timeout unused.
-  - [x] **AC-K13.2.3** Run id and commit hash are written to PLAN.md.
-    - *Evidence:* PLAN.md, "K.13.2 Hosted CI confirmation" (2026-10-16): run `38877729768`
-      at `d4b13ff5e4b54360096e6affb4e703c22a62a740`, all four oracle legs passed;
-      slowest 98m 04s, with 59.14% of the 240-minute timeout unused.
-- [x] **K.13.3 Launcher start-up flake (M).**
-  - [x] **AC-K13.3.1** Harness captures the launcher's stderr and prints it on early exit or start-up timeout.
-  - [x] **AC-K13.3.2** Not reproduced: 200 runs, 33 in parallel, 0 failures (2026-10-16). The only failure
-    mode found is a missing sibling `blueice-core` when only `-p blueice-launcher` is built, now diagnosed by
-    a precondition check. Whether this was the original single failure is not established.
-  - [x] **AC-K13.3.3** No retry added. The harness now fails with the real cause, so a recurrence is reported
-    with its stderr rather than silenced.
-  - [x] **AC-K13.3.4** `launcher_relates_nested_parent_roots_but_not_child_local_slots`: 200 consecutive
-    runs under 33-way parallel load, all passed.
-- [x] **K.13.4 Per-file coverage (M).**
-  - [x] **AC-K13.4.1** Each of `emitter/decorators.rs`, `emitter/legacy_decorators.rs`, `emitter/jsx.rs`,
-    `package_resolution.rs`, `bluets-bluejs/src/jsx_direct.rs` >= 90% line coverage (five separate
-    measured numbers).
-  - [x] **AC-K13.4.2** Added tests assert behavior (diagnostics/output), not just execute lines; reviewed
-    in the test-review pass of the Definition of Done.
-  - [x] **AC-K13.4.3** `llvm-tools` setup (`LLVM_COV`/`LLVM_PROFDATA`) documented and verified on a clean
-    checkout.
-    - *Evidence:* PLAN.md, "K.13.4 Per-file coverage evidence" (2026-10-16): five separate
-      production-file measurements above 90%, behavior test-review pass, clean-checkout LLVM
-      setup (252/252 smoke tests), Windows changed-test suites (33/33), complete K.0 and workspace tests.
-
-### K.14 Re-measure and decide — M11
-
-Entry condition: K.12 and K.13 are closed or each open row is named as a gap in the decision.
-
-- [x] **AC-K14.1 Inventory regenerated** from suites at one commit; no hand-edited counts.
-    - *Evidence:* PLAN.md, "AC-K14.1 Source-derived suite inventory" (2026-10-16):
-      `COMPATIBILITY_SUITES.json` at `26a3941b2`, 100 suites / 244 ignored Rust functions,
-      identical Windows/macOS generation, seven tool tests on each OS and complete local workspace gate.
-- [x] **AC-K14.2 Pass rate** recomputed over the versioned case list (fixture directories and programs, per
-  suite) with numerator and denominator printed per suite.
-    - *Evidence:* PLAN.md, "AC-K14.2 Versioned program/configuration measurement" (2026-10-16):
-      12,511 listed assertions; 12,010/12,028 direct agreements, six open and twelve refused;
-      100/100 measured suites, Windows 82/82, native tool/JSON verification and complete local workspace gate.
-- [x] **AC-K14.3 Local and Windows VM validation.** Per the user's 2026-10-19 acceptance
-  decision, the Windows x86_64 VM must pass all 82 pinned TypeScript 5.9.3 core oracle tests,
-  and the complete local workspace test suite, every ignored oracle of both BlueTS crates,
-  formatting and warnings-denied all-target workspace Clippy must pass. PLAN.md must record
-  the commands, results, log digests and source binding. Hosted CI results and coverage
-  measurements remain supplementary evidence, not prerequisites for this checkpoint.
-    - *Evidence:* PLAN.md, "AC-K14.3 Accepted local/VM evidence" (2026-10-19): Windows VM
-      82/82, unchanged-source complete native workspace 7,231/7,231 across 568 groups,
-      100 oracle logs / 244 ignored functions reverified, fresh workspace fmt/Clippy,
-      8/8 tool tests and 1,174/1,174 native socket-recovery tests across all six affected
-      crates. The separate sandbox socket-denial run is explicitly not accepted.
-- [x] **AC-K14.4 Row accounting.** Every inventory row is labelled closed / open / refused with a
-  pointer to its evidence. No unlabelled row.
-    - *Evidence:* PLAN.md, "AC-K14.4 Scoped row accounting" (2026-10-19): typed status/scope/evidence
-      for 100 suites and 12,511 cases; 23 feature rows, the direct profile and all 213 refusal
-      sites accounted. Schema-1 observation projection is unchanged. Complete K.0 passes 1,542
-      tests, including all 244 ignored oracles; 20 Rust and four Python accounting checks,
-      all-target Clippy and formatting pass. Broad gaps remain open; full parity stays off.
-- [x] **AC-K14.5 Decision text** written in PLAN.md. "Full parity" stays off while any required row
-  is open; the narrower statement must name the tsc version and case count (N cases, 5.9.3).
-    - *Evidence:* PLAN.md, "AC-K14.5 Compatibility decision" (2026-10-19): full parity OFF;
-      approved statement names TypeScript 5.9.3 and N = 12,511 assertions, separates 12,028
-      direct comparisons and 483 controls, retains all six open/twelve refused observations
-      and 22 broader open feature rows, and preserves owner/platform scope.
-- [x] **AC-K14.6 Consistency.** CLAUDE.md, PLAN.md, TODO.md and COMPATIBILITY_INVENTORY.md state the same
-  numbers (checked by a script or an explicit diff review).
-    - *Evidence:* PLAN.md, "AC-K14.6 Current-status consistency" (2026-10-19): all four current
-      summaries match validated case/suite/measurement data; the consistency checker, ten Python
-      tests, 20 Rust inventory tests, 13 Node tool tests, all-target Clippy and formatting pass.
-      Historical measurements retain their dated scope; no runtime/source/fixture change.
