@@ -79,27 +79,10 @@ impl Parser {
             }
             if self.consume("throw") {
                 let throw_token = self.previous().clone();
-                let line_terminator_after_throw = self
-                    .source
-                    .get(throw_token.end..self.current().start)
-                    .is_some_and(|gap| gap.contains('\n') || gap.contains('\r'));
+                self.diagnose_throw_operand(self.index - 1);
                 let expression_start = self.index;
                 let tokens = self.collect_until_function_statement_end();
                 self.collect_expression_type_edits(expression_start, self.index);
-                if line_terminator_after_throw {
-                    self.error_at(
-                        throw_token.span(&self.id),
-                        DiagnosticCode::ParseError,
-                        "a line terminator is not permitted after `throw`",
-                    );
-                }
-                if tokens.is_empty() {
-                    self.error_at(
-                        throw_token.span(&self.id),
-                        DiagnosticCode::ParseError,
-                        "expected an expression after `throw`",
-                    );
-                }
                 self.consume(";");
                 body.push(FunctionBodyItem::Throw {
                     tokens,
@@ -272,7 +255,7 @@ impl Parser {
             self.bump();
             let annotation_start = self.current().start;
             let annotation = if self.consume(":") {
-                let span_start = self.previous().start;
+                let span_start = self.current().start;
                 let value = self.parse_type_until(&[")"]);
                 let span_end = self.previous().end;
                 self.edits.push(TextEdit {

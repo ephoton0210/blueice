@@ -86,6 +86,11 @@ impl ModuleChecker<'_> {
         ) {
             bound = expanded;
         }
-        signatures::callable_signatures(&bound, construct)
+        signatures::callable_signatures(&bound, construct).map(|signatures| {
+            signatures
+                .into_iter()
+                .map(|signature| self.canonical_rest_signature(signature))
+                .collect()
+        })
     }
 }

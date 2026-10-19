@@ -42,16 +42,16 @@ fn main() -> snapshot::Result<()> {
             std::fs::write(document, updated)?;
             println!("Regenerated {} cases in {} measured suites", report.counts.listed, report.suites.len());
         }
-        Some("--check-cases") if arguments.len() == 1 => {
+        Some("--check-cases" | "--check-cases-staged") if arguments.len() == 1 => {
             let recorded: serde_json::Value = serde_json::from_slice(&std::fs::read(directory.join(case_report::ARTIFACT))?)?;
             let measurement = std::fs::read(directory.join(case_report::MEASUREMENT))?;
-            let tree = snapshot::Snapshot::read(&root, "HEAD")?;
+            let tree = check_snapshot(&root, &recorded, arguments[0].ends_with("-staged"))?;
             let mut suites = inventory::generate(&tree)?;
             if recorded["source_graph_sha256"] != suites.source_graph_sha256 {
                 return Err("case input graph differs from the measured tree".into());
             }
             suites.source_revision = recorded["source_revision"].as_str().filter(|revision|
-                revision.len() == 40 && revision.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                snapshot::valid_revision(revision))
                 .ok_or("invalid recorded case revision")?.to_string();
             let report = case_report::generate(&tree, &suites, &measurement)?;
             if serde_json::to_value(&report)? != recorded {
@@ -87,23 +87,23 @@ fn main() -> snapshot::Result<()> {
                 measured.source_revision
             );
         }
-        Some("--check") if arguments.len() == 1 => {
+        Some("--check" | "--check-staged") if arguments.len() == 1 => {
             let recorded: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(artifact)?)?;
             // A shallow CI checkout may not contain the measured parent commit.
             // Compare every relevant tree blob to HEAD via the graph digest,
             // then retain the original evidence revision in the rendered text.
-            let tree = snapshot::Snapshot::read(&root, "HEAD")?;
+            let tree = check_snapshot(&root, &recorded, arguments[0].ends_with("-staged"))?;
             let mut measured = inventory::generate(&tree)?;
             measured.source_revision = recorded["source_revision"]
                 .as_str()
                 .filter(|revision| {
-                    revision.len() == 40 && revision.bytes().all(|b| b.is_ascii_hexdigit())
+                    snapshot::valid_revision(revision)
                 })
                 .ok_or("invalid recorded source revision")?
                 .to_string();
             if serde_json::to_value(&measured)? != recorded {
-                return Err("suite inventory is stale; regenerate at a committed revision".into());
+                return Err("suite inventory is stale; regenerate at an immutable source revision".into());
             }
             let original = std::fs::read_to_string(document)?;
             let report = std::fs::read(directory.join(case_report::MEASUREMENT)).ok()
@@ -117,9 +117,25 @@ fn main() -> snapshot::Result<()> {
             );
         }
         _ => return Err(
-            "usage: compatibility_inventory --write <commit> | --check | --cases-audit <commit> | --write-cases <commit> <measurement.json> | --check-cases"
+            "usage: compatibility_inventory --write <revision> | --check[-staged] | --cases-audit <revision> | --write-cases <revision> <measurement.json> | --check-cases[-staged]"
                 .into(),
         ),
     }
     Ok(())
+}
+
+fn check_snapshot(
+    root: &std::path::Path,
+    recorded: &serde_json::Value,
+    staged: bool,
+) -> snapshot::Result<snapshot::Snapshot> {
+    if staged {
+        let revision = recorded["source_revision"]
+            .as_str()
+            .ok_or("missing source revision")?;
+        snapshot::Snapshot::read_staged(root, revision)
+    } else {
+        // Published/CI checks still compare the actual committed HEAD graph.
+        snapshot::Snapshot::read(root, "HEAD")
+    }
 }

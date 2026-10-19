@@ -23,6 +23,21 @@ mod rust_facts;
 #[path = "fixtures/compatibility_inventory/snapshot.rs"]
 mod snapshot;
 
+fn repository_snapshot(root: &std::path::Path) -> snapshot::Snapshot {
+    let catalog: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(root.join(inventory::DIRECTORY).join(inventory::ARTIFACT)).unwrap(),
+    )
+    .unwrap();
+    let revision = catalog["source_revision"].as_str().unwrap();
+    if revision.starts_with("backend-tree:") {
+        // Pre-commit fixtures must match both the immutable tree and real files.
+        // The published CLI --check separately retains strict HEAD comparison.
+        snapshot::Snapshot::read_staged(root, revision).unwrap()
+    } else {
+        snapshot::Snapshot::read(root, "HEAD").unwrap()
+    }
+}
+
 #[test]
 fn row_accounting_preserves_gaps_refusals_and_control_scope() {
     use accounting::Status;
@@ -62,7 +77,7 @@ fn row_accounting_preserves_gaps_refusals_and_control_scope() {
 #[test]
 fn every_generated_case_and_suite_has_a_typed_status_and_measurement_pointer() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let tree = repository_snapshot(&root);
     let mut suites = inventory::generate(&tree).unwrap();
     let bytes = std::fs::read(
         root.join(inventory::DIRECTORY)
@@ -250,7 +265,7 @@ fn malformed_rust_is_an_inventory_error() {
 #[test]
 fn measurement_binding_rejects_partial_forged_or_foreign_evidence() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let tree = repository_snapshot(&root);
     let inventory = inventory::generate(&tree).unwrap();
     let rows: Vec<_> = inventory
         .suites
@@ -328,7 +343,7 @@ fn measurement_binding_rejects_partial_forged_or_foreign_evidence() {
 fn recorded_case_rates_regenerate_from_the_source_and_complete_measurement() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let directory = root.join(inventory::DIRECTORY);
-    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let tree = repository_snapshot(&root);
     let mut suites = inventory::generate(&tree).unwrap();
     let recorded: serde_json::Value =
         serde_json::from_slice(&std::fs::read(directory.join(case_report::ARTIFACT)).unwrap())
@@ -449,7 +464,7 @@ fn known_gaps_and_refusals_remain_in_the_denominator_but_not_the_agreement_numer
 #[test]
 fn source_family_adapter_counts_the_actual_known_gaps_and_refusals() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let tree = repository_snapshot(&root);
     let suites = inventory::generate(&tree).unwrap();
     let suite = suites
         .suites
@@ -462,12 +477,11 @@ fn source_family_adapter_counts_the_actual_known_gaps_and_refusals() {
         ("known_checker_gaps", case_sources::Comparison::Open),
         ("subset_refusals", case_sources::Comparison::Refused),
     ] {
-        let expected = &facts
+        let expected = facts
             .arrays
             .iter()
             .find(|array| array.binding == binding)
-            .unwrap()
-            .labels;
+            .map_or(&[][..], |array| array.labels.as_slice());
         assert_eq!(
             cases
                 .iter()
@@ -492,7 +506,7 @@ fn source_family_adapter_counts_the_actual_known_gaps_and_refusals() {
 #[test]
 fn case_source_audit_accounts_for_each_suite_without_publishing_a_partial_pass_rate() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let tree = repository_snapshot(&root);
     let inventory = inventory::generate(&tree).unwrap();
     let audit = case_registry::audit(&tree, &inventory.suites).unwrap();
     assert_eq!(audit["publishable"], false);
@@ -526,7 +540,7 @@ fn repository_paths_cannot_escape_or_use_host_specific_roots() {
 #[test]
 fn native_only_core_controls_never_inflate_direct_agreement() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let tree = repository_snapshot(&root);
     let inventory = inventory::generate(&tree).unwrap();
     let suite = inventory
         .suites
@@ -563,7 +577,7 @@ fn native_only_core_controls_never_inflate_direct_agreement() {
 #[test]
 fn supplementary_cases_distinguish_comparison_sides_and_owner_only_controls() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let tree = repository_snapshot(&root);
     let inventory = inventory::generate(&tree).unwrap();
     let project = inventory
         .suites
@@ -607,7 +621,7 @@ fn supplementary_cases_distinguish_comparison_sides_and_owner_only_controls() {
 #[test]
 fn map_configuration_products_keep_their_versioned_matrix_origin() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let tree = repository_snapshot(&root);
     let inventory = inventory::generate(&tree).unwrap();
     for stem in ["source_map_publication", "source_map_tokens_oracle"] {
         let suite = inventory
@@ -650,7 +664,7 @@ fn generated_section_is_idempotent_and_rejects_broken_markers() {
 #[test]
 fn recorded_suite_graph_matches_the_current_committed_inputs() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tree = snapshot::Snapshot::read(&root, "HEAD").unwrap();
+    let tree = repository_snapshot(&root);
     let mut actual = inventory::generate(&tree).unwrap();
     let recorded: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(root.join(inventory::DIRECTORY).join(inventory::ARTIFACT))

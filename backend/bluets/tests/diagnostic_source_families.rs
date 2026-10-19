@@ -40,15 +40,6 @@ fn lexical_error_families_use_the_recorded_typescript_template() {
 fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
     let reference: Value =
         serde_json::from_str(include_str!("fixtures/diagnostics/source-families.json")).unwrap();
-    let known_checker_gaps = ["tuple-index", "throw-newline", "throw-empty"];
-    let subset_refusals = [
-        "rest-alias",
-        "catch-type",
-        "name-type",
-        "name-area",
-        "compatible-function-field",
-        "setter-destructure",
-    ];
     for case in reference["cases"].as_array().unwrap() {
         let id = case["id"].as_str().unwrap();
         let suffix = id.strip_prefix("diagnostics-other-").unwrap();
@@ -66,20 +57,13 @@ fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
             &MapLoader::from([ModuleSource::new("memory:///witness.ts", source)]),
             options,
         );
-        if case["accepts"] == true && matches!(suffix, "apply-array" | "argument-spread-rest") {
+        if case["accepts"] == true {
             assert!(
                 result.diagnostics.is_empty(),
                 "{id}: {:?}",
                 result.diagnostics
             );
-            continue;
-        }
-        if known_checker_gaps.contains(&suffix) {
-            assert!(
-                result.diagnostics.is_empty(),
-                "recorded checker gap changed: {id}: {:?}",
-                result.diagnostics
-            );
+            assert!(result.output.is_some(), "{id}");
             continue;
         }
         let primary = result
@@ -87,13 +71,7 @@ fn source_witnesses_have_precise_counterparts_or_recorded_subset_reasons() {
             .first()
             .unwrap_or_else(|| panic!("missing diagnostic: {id}"));
         let json = primary.to_json();
-        if subset_refusals.contains(&suffix) {
-            assert!(json["typescript"].is_null(), "{id}: {json}");
-            assert!(
-                json["noTypeScriptCounterpart"].as_str().is_some(),
-                "{id}: {json}"
-            );
-        } else {
+        {
             let counterpart = primary
                 .typescript
                 .as_ref()

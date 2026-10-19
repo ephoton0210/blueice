@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "globals": "interface Array<T> {}\ninterface Boolean {}\ninterface Function {}\ninterface IArguments {}\ninterface Number {}\ninterface Object {}\ninterface RegExp {}\ninterface String {}\n",
+  "options": {"target": "es2020", "module": "commonjs", "lib": [], "types": [], "noEmit": true},
+  "cases": [
+    {
+      "id": "explicit-files",
+      "files": {"globals.d.ts": "@globals", "entry.ts": "export const value: number = 1;\n"},
+      "config": {"files": ["globals.d.ts", "entry.ts"]}
+    },
+    {
+      "id": "import",
+      "files": {"globals.d.ts": "@globals", "entry.ts": "import { value } from './dep';\nexport const result: number = value;\n", "dep.ts": "export const value: number = 1;\n"},
+      "config": {"files": ["globals.d.ts", "entry.ts"]}
+    },
+    {
+      "id": "reference-path",
+      "files": {"globals.d.ts": "@globals", "entry.ts": "/// <reference path=\"./shared.d.ts\" />\nexport const value: Marker = { id: 1 };\n", "shared.d.ts": "interface Marker { id: number }\n"},
+      "config": {"files": ["globals.d.ts", "entry.ts"]}
+    },
+    {
+      "id": "type-library",
+      "files": {"types/owned/index.d.ts": "@globals\ninterface Marker { id: number }\n", "entry.ts": "export const value: Marker = { id: 1 };\n"},
+      "config": {"compilerOptions": {"types": ["owned"], "typeRoots": ["./types"]}, "files": ["entry.ts"]}
+    }
+  ]
+}

@@ -26,6 +26,10 @@ impl Parser {
     fn collect_runtime_type_edits(&mut self, start: usize, end: usize, statement_range: bool) {
         let mut index = start;
         while index < end {
+            if let Some(next) = self.collect_catch_annotation(index, end) {
+                index = next;
+                continue;
+            }
             if let Some(next) = self.try_parse_class_expression(index, end) {
                 index = next;
                 continue;

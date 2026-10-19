@@ -522,7 +522,7 @@ impl Parser {
             (None, None)
         };
         // The accessor grammar: a getter has no parameters; a setter has one
-        // plain parameter, no default, and no result annotation.
+        // value parameter (possibly destructured), no default or result annotation.
         let receiver_error = self.reject_receiver_parameters(
             &parameters,
             2784,
@@ -536,8 +536,8 @@ impl Parser {
             Some("a setter cannot have a return type annotation")
         } else if parameters.len() != 1 {
             Some("a setter must have exactly one parameter")
-        } else if parameters[0].rest || parameters[0].optional || parameters[0].pattern.is_some() {
-            Some("a setter parameter cannot be a rest, optional, defaulted or destructured parameter")
+        } else if parameters[0].rest || parameters[0].optional || parameters[0].default.is_some() {
+            Some("a setter parameter cannot be a rest, optional or defaulted parameter")
         } else {
             None
         };
@@ -560,11 +560,9 @@ impl Parser {
                 } else {
                     None
                 };
-                diagnostic = if let Some(code) = code {
-                    diagnostic.with_typescript(code, Vec::new())
-                } else {
-                    diagnostic.blue_only("BlueTSC's class setter subset does not accept destructured parameters; TypeScript permits them.")
-                };
+                if let Some(code) = code {
+                    diagnostic = diagnostic.with_typescript(code, Vec::new());
+                }
             }
             self.diagnostics.push(diagnostic);
         }

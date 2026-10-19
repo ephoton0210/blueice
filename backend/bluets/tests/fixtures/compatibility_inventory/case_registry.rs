@@ -13,6 +13,15 @@ use serde_json::Value;
 pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> {
     let file = suite.harness.rsplit('/').next().ok_or("invalid harness")?;
     let stem = file.strip_suffix(".rs").ok_or("not a Rust harness")?;
+    if stem == "gc1_source_diagnostics" {
+        let path = "backend/bluets/tests/fixtures/diagnostics/source-families.json";
+        return gc1_source_cases(
+            snapshot.source(&suite.harness)?,
+            snapshot.source(path)?,
+            snapshot.source("backend/bluets/tests/fixtures/gc1_source_controls/reference.json")?,
+        )
+        .map(Some);
+    }
     if let Some(relative) = json_record(stem) {
         let path = format!("backend/bluets/tests/fixtures/{relative}");
         let text = snapshot.source(&path)?;
@@ -55,16 +64,20 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
                     .iter()
                     .filter(|array| array.binding == binding)
                     .collect();
-                if arrays.len() != 1 {
-                    return Err(format!("missing/ambiguous classification array: {binding}").into());
+                if arrays.len() > 1 {
+                    return Err(format!("ambiguous classification array: {binding}").into());
                 }
-                case_sources::classify(
-                    &mut cases,
-                    &arrays[0].labels,
-                    "diagnostics-other-",
-                    comparison,
-                    reason,
-                )?;
+                // A repaired public-boundary test no longer has an allowance
+                // array. Historical snapshots retain their actual exclusions.
+                if let Some(array) = arrays.first() {
+                    case_sources::classify(
+                        &mut cases,
+                        &array.labels,
+                        "diagnostics-other-",
+                        comparison,
+                        reason,
+                    )?;
+                }
             }
         }
         if stem == "diagnostics_matrix" {
@@ -142,6 +155,38 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
     Ok(None)
 }
 
+fn gc1_source_cases(
+    harness: &str,
+    source_record: &str,
+    controls_record: &str,
+) -> Result<Vec<Case>> {
+    let facts = rust_facts::parse(harness)?;
+    let selected = super::case_inline::array(&facts, "", "CASES")?;
+    if selected.labels.is_empty() {
+        return Err("empty G-C1 source selection".into());
+    }
+    let path = "backend/bluets/tests/fixtures/diagnostics/source-families.json";
+    let mut cases =
+        case_sources::json_cases(path, source_record, "/cases", "program/configuration")?;
+    cases.retain(|case| {
+        selected
+            .labels
+            .iter()
+            .any(|name| case.label == format!("diagnostics-other-{name}"))
+    });
+    if cases.len() != selected.labels.len() {
+        return Err("G-C1 selected source observations are missing or ambiguous".into());
+    }
+    let path = "backend/bluets/tests/fixtures/gc1_source_controls/reference.json";
+    cases.extend(case_sources::json_cases(
+        path,
+        controls_record,
+        "/cases",
+        "program/configuration",
+    )?);
+    Ok(cases)
+}
+
 pub fn cases(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let primary = match primary(snapshot, suite)? {
         Some(cases) => cases,
@@ -199,6 +244,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "decorator_targets" => "decorator_targets/reference.json",
         "decorator_typing" => "decorator_typing/reference.json",
         "diagnostic_source_families" => "diagnostics/source-families.json",
+        "gc1_explain_files" => "gc1_explain/reference.json",
         "diagnostics_matrix" => "diagnostics/reference.json",
         "diagnostics_presentation" => "diagnostics/presentation-reference.json",
         "diagnostics_projects" => "diagnostics/project-positions.json",
@@ -267,4 +313,33 @@ fn tsv_suite(stem: &str) -> bool {
             | "target_syntax_profiles"
             | "unknown_name_checker_matrix"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gc1_selection_accounts_for_nine_repaired_observations_and_all_controls() {
+        let harness = include_str!("../../gc1_source_diagnostics.rs");
+        let source = include_str!("../diagnostics/source-families.json");
+        let controls = include_str!("../gc1_source_controls/reference.json");
+        let cases = gc1_source_cases(harness, source, controls).unwrap();
+        assert_eq!(cases.len(), 27);
+        assert!(cases
+            .iter()
+            .all(|case| case.comparison == Comparison::Compared));
+        let mut missing: Value = serde_json::from_str(source).unwrap();
+        missing["cases"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|row| row["id"] != "diagnostics-other-tuple-index");
+        assert!(gc1_source_cases(harness, &missing.to_string(), controls).is_err());
+        assert!(gc1_source_cases(
+            &harness.replace("\"tuple-index\"", "\"missing-id\""),
+            source,
+            controls
+        )
+        .is_err());
+    }
 }

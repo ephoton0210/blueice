@@ -8,7 +8,8 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-const STATE_VERSION: u8 = 4;
+// G-C1 changes checking verdicts: do not reuse pre-fix successful build state.
+const STATE_VERSION: u8 = 5;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 

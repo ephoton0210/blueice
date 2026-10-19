@@ -493,13 +493,18 @@ impl ModuleChecker<'_> {
             "class defines `{}` as a property but the base class defines it as a method",
             field.name,
         );
+        if self
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.span == field.name_span && diagnostic.message == message)
+        {
+            return;
+        }
         let base_name = class.extends_name.as_deref().unwrap_or_default();
         let incompatible = class_field_type(field)
             .zip(self.inherited_class_member(class, &field.name, field.is_static))
-            .is_some_and(|(own, inherited)| {
-                !self.is_assignable_bounded(&own, &inherited, &field.span)
-            });
-        if incompatible {
+            .map(|(own, inherited)| !self.is_assignable_bounded(&own, &inherited, &field.span));
+        if incompatible == Some(true) {
             let (code, arguments) = if field.is_static {
                 (
                     2417,
@@ -521,10 +526,10 @@ impl ModuleChecker<'_> {
                 code,
                 arguments,
             );
-        } else {
+        } else if incompatible.is_none() {
             self.blue_only_type_error(
                 &field.name_span, message, DiagnosticCode::TypeMismatch,
-                "BlueTSC refuses a field in place of a base method even where TypeScript permits a compatible function property.",
+                "BlueTSC cannot prove this unannotated field's signature is compatible with the inherited method; add an explicit callable annotation.",
             );
         }
     }

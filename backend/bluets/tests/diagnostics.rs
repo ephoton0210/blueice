@@ -112,29 +112,15 @@ fn a_valid_computed_member_emits_without_a_subset_diagnostic() {
 }
 
 #[test]
-fn a_compatible_function_field_refusal_does_not_invent_an_override_error() {
+fn a_compatible_function_field_does_not_invent_an_override_error() {
     let source = "function work(): number { return 1; } class Parent { run(): number { return 1; } } class Child extends Parent { run: () => number = work; }";
     let result = compile(
         "memory:///override.ts",
         &MapLoader::from([ModuleSource::new("memory:///override.ts", source)]),
         CompilerOptions::default(),
     );
-    let refusals = result
-        .diagnostics
-        .iter()
-        .filter(|diagnostic| {
-            diagnostic
-                .message
-                .contains("as a property but the base class defines it as a method")
-        })
-        .collect::<Vec<_>>();
-    assert!(!refusals.is_empty(), "{:?}", result.diagnostics);
-    for diagnostic in refusals {
-        assert!(diagnostic.typescript.is_none(), "{diagnostic:?}");
-        assert!(diagnostic.to_json()["noTypeScriptCounterpart"]
-            .as_str()
-            .is_some());
-    }
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert!(result.output.is_some());
 }
 
 #[test]

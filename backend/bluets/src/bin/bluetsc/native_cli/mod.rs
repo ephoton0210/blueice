@@ -8,6 +8,7 @@ use super::*;
 use blueice_bluets::{Diagnostic, Project};
 use serde_json::Value;
 mod args;
+mod explanations;
 mod output;
 pub(crate) mod presentation;
 mod source_maps;
@@ -123,6 +124,7 @@ fn run_with_mode(
     let no_emit_on_error = enabled("noEmitOnError");
     let show_diagnostics = enabled("diagnostics") && !diagnostics_json;
     let list_files = enabled("listFiles");
+    let explain_files = enabled("explainFiles");
     let list_emitted = enabled("listEmittedFiles");
     if show_config {
         let mut shown = project.show();
@@ -169,6 +171,7 @@ fn run_with_mode(
         sources,
         emit_blocked,
         mut statistics,
+        explanations,
     } = compile_project(&invocation, &loader, !no_emit && !no_emit_on_error);
     for diagnostic in &diagnostics {
         if diagnostics_json {
@@ -182,6 +185,9 @@ fn run_with_mode(
         for file in &files {
             println!("{}", file.display());
         }
+    }
+    if explain_files {
+        print!("{explanations}");
     }
     if summary.has_errors && ((!no_emit && no_emit_on_error) || emit_blocked) {
         if show_diagnostics {
@@ -312,6 +318,7 @@ struct CompiledProject {
     sources: BTreeMap<String, String>,
     emit_blocked: bool,
     statistics: statistics::Statistics,
+    explanations: String,
 }
 fn compile_project(
     invocation: &Invocation,
@@ -329,6 +336,11 @@ fn compile_project(
     let mut sources = BTreeMap::new();
     let mut emit_blocked = false;
     let mut statistics = statistics::Statistics::default();
+    let mut explanations = explanations::Explanations::default();
+    let explain_files = invocation
+        .project_config
+        .as_ref()
+        .is_some_and(|config| config.options.get("explainFiles") == Some(&Value::Bool(true)));
     let has_runtime_entries = invocation
         .entries
         .iter()
@@ -348,6 +360,9 @@ fn compile_project(
             options.strict_runtime_boundaries.clear();
         }
         let mut result = compile(&module, loader, options.clone());
+        if explain_files {
+            explanations.collect(&result.project, invocation, loader);
+        }
         statistics.add(&result);
         if emit_errors && result.has_errors() && result.output.is_none() {
             let emit_started = std::time::Instant::now();
@@ -420,6 +435,11 @@ fn compile_project(
         sources,
         emit_blocked,
         statistics,
+        explanations: if explain_files {
+            explanations.render(invocation, loader)
+        } else {
+            String::new()
+        },
     }
 }
 fn ordered_sources(

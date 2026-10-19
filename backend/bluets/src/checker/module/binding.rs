@@ -19,6 +19,7 @@ mod modules;
 mod names;
 mod predicates;
 mod reexports;
+mod rest_parameters;
 mod return_types;
 mod standard_library;
 mod variable_patterns;
@@ -131,6 +132,7 @@ impl<'a> ModuleChecker<'a> {
         self.bind_declarations();
         self.bind_ambient_declarations();
         self.bind_standard_library();
+        self.canonicalize_rest_signatures();
         self.bind_jsx_runtime_namespace();
         self.infer_module_return_signatures();
         self.validate_function_overloads();
@@ -795,6 +797,7 @@ impl<'a> ModuleChecker<'a> {
         if tokens.is_empty() {
             return;
         }
+        self.check_tuple_index_reads(tokens, scope, span);
         if self.check_class_expression(tokens, scope) {
             return;
         }

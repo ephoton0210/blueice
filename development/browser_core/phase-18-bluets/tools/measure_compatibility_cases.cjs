@@ -46,7 +46,12 @@ function command(executable, args, options = {}) {
   return result.stdout;
 }
 
-async function measure(output, root = path.resolve(__dirname, '../../../..')) {
+function toolHashes(directory = __dirname) {
+  return Object.fromEntries(fs.readdirSync(directory).filter(name => /\.(cjs|py)$/.test(name)).sort()
+    .map(name => [name, crypto.createHash('sha256').update(fs.readFileSync(path.join(directory, name))).digest('hex')]));
+}
+
+async function measure(output, root = path.resolve(__dirname, '../../../..'), staged = false) {
   // Windows's explicit Unix exclusions are validated separately. A reduced
   // platform run must never be published as the complete case denominator.
   if (!['darwin', 'linux'].includes(process.platform)) throw Error('complete case measurement requires macOS/Linux');
@@ -61,14 +66,20 @@ async function measure(output, root = path.resolve(__dirname, '../../../..')) {
   if (!fs.existsSync(output)) fs.mkdirSync(output);
   if (fs.readdirSync(output).length) throw Error('output directory must be empty: ' + output);
   const cargo = process.env.CARGO || 'cargo';
-  command(cargo, ['run', '-p', 'blueice-bluets', '--example', 'compatibility_inventory', '--locked', '--offline', '--', '--check'], { cwd: root });
-  const inventory = JSON.parse(fs.readFileSync(path.join(root, 'development/browser_core/phase-18-bluets/COMPATIBILITY_SUITES.json'), 'utf8'));
+  const checkSource = () => command(cargo, ['run', '-p', 'blueice-bluets', '--example', 'compatibility_inventory', '--locked', '--offline', '--', staged ? '--check-staged' : '--check'], { cwd: root });
+  checkSource();
+  const inventoryPath = path.join(root, 'development/browser_core/phase-18-bluets/COMPATIBILITY_SUITES.json');
+  const inventoryBytes = fs.readFileSync(inventoryPath, 'utf8');
+  const inventory = JSON.parse(inventoryBytes);
+  const tools = toolHashes();
   const artifacts = command(cargo, ['test', '-p', 'blueice-bluets', '-p', 'blueice-bluets-bluejs',
     '--no-run', '--locked', '--offline', '--message-format=json'], { cwd: root });
   const binaries = executables(artifacts.split(/\r?\n/).filter(Boolean).map(JSON.parse), inventory);
   const report = { schema: 1, typescript: version, source_revision: inventory.source_revision,
     source_graph_sha256: inventory.source_graph_sha256,
-    runner_revision: command('git', ['rev-parse', 'HEAD'], { cwd: root }).trim(),
+    runner_base_revision: command('git', ['rev-parse', 'HEAD'], { cwd: root }).trim(),
+    oracle_tools_sha256: tools,
+    source_mode: staged ? 'immutable-staged-backend-tree' : 'committed-head',
     platform: process.platform + '-' + process.arch,
     rustc: command('rustc', ['--version']).trim(), started_at: new Date().toISOString(),
     finished_at: null, conclusion: 'in_progress', suites: [] };
@@ -109,15 +120,20 @@ async function measure(output, root = path.resolve(__dirname, '../../../..')) {
     save();
     console.log(`PASS ${index + 1}/${binaries.length} ${suite.harness}: ${counts.passed}/${all.length}`);
   }
+  // Do not publish a green run if its source/index or catalog changed meanwhile.
+  checkSource();
+  if (fs.readFileSync(inventoryPath, 'utf8') !== inventoryBytes) throw Error('suite catalog changed during measurement');
+  if (JSON.stringify(toolHashes()) !== JSON.stringify(tools)) throw Error('oracle tooling changed during measurement');
   report.finished_at = new Date().toISOString(); report.conclusion = 'success'; save();
   console.log(`COMPLETE ${report.suites.length}/${binaries.length} suites: ${path.join(output, 'measurement.json')}`);
   return report;
 }
 
-module.exports = { executables, testNames, summary };
+module.exports = { executables, testNames, summary, toolHashes };
 
 if (require.main === module) {
-  if (process.argv.length !== 4 || process.argv[2] !== '--output-dir') {
-    console.error('usage: node measure_compatibility_cases.cjs --output-dir <empty-directory>'); process.exitCode = 1;
-  } else measure(process.argv[3]).catch(error => { console.error(error); process.exitCode = 1; });
+  if (![4, 5].includes(process.argv.length) || process.argv[2] !== '--output-dir' ||
+      (process.argv.length === 5 && process.argv[4] !== '--staged-source')) {
+    console.error('usage: node measure_compatibility_cases.cjs --output-dir <empty-directory> [--staged-source]'); process.exitCode = 1;
+  } else measure(process.argv[3], undefined, process.argv[4] === '--staged-source').catch(error => { console.error(error); process.exitCode = 1; });
 }

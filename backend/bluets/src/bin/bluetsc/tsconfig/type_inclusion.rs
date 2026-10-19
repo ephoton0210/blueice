@@ -70,6 +70,7 @@ pub(super) fn files(invocation: &mut Invocation) -> Result<Vec<PathBuf>, String>
         .map(|settings| package_resolver(&invocation.root, settings))
         .unwrap_or_else(|| relative_resolver(&invocation.root));
     let mut files = Vec::new();
+    let mut selected_libraries = BTreeMap::new();
     for name in names {
         let encoded = if let Some(scoped) = name.strip_prefix('@') {
             scoped.replace('/', "__")
@@ -99,8 +100,10 @@ pub(super) fn files(invocation: &mut Invocation) -> Result<Vec<PathBuf>, String>
                 Err(error) => return Err(error.to_string()),
             }
         }
-        files
-            .push(found.ok_or_else(|| format!("cannot resolve configured type library `{name}`"))?);
+        let file =
+            found.ok_or_else(|| format!("cannot resolve configured type library `{name}`"))?;
+        selected_libraries.insert(file.clone(), name);
+        files.push(file);
     }
     files.sort();
     files.dedup();
@@ -108,5 +111,6 @@ pub(super) fn files(invocation: &mut Invocation) -> Result<Vec<PathBuf>, String>
         .options
         .resolver_fingerprint
         .push_str(&format!("+types:{}", resolver.fingerprint()));
+    invocation.project_config.as_mut().unwrap().type_libraries = selected_libraries;
     Ok(files)
 }

@@ -13,7 +13,7 @@ pub(super) const RULES: &[(&str, &str, u32)] = &[
     ("BTS1000", "a parameter property cannot be a rest parameter or a binding pattern", 1187),
     ("BTS1000", "a setter cannot have a return type annotation", 1095),
     ("BTS1000", "a setter must have exactly one parameter", 1049),
-    ("BTS1000", "a setter parameter cannot be a rest, optional, defaulted or destructured parameter", 1051),
+    ("BTS1000", "a setter parameter cannot be a rest, optional or defaulted parameter", 1051),
     ("BTS1000", "an accessibility modifier cannot be used with a private identifier", 18010),
     ("BTS1000", "decorators are not valid here; they decorate a class or a class member", 1206),
     ("BTS1000", "expected an interface field name", 1131),

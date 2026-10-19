@@ -26,7 +26,7 @@ impl Args {
                     ));
                 }
                 "--noEmit" | "--showConfig" | "--listFiles" | "--listEmittedFiles" | "--pretty"
-                | "--diagnostics-json" => {
+                | "--diagnostics-json" | "--explainFiles" => {
                     let value = match args.peek().map(String::as_str) {
                         Some("true") => {
                             args.next();

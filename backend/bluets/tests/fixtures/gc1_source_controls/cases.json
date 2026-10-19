@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {"id":"rest-alias-runtime","runtime":true,"source":"type Values = number[]; function size(...values: Values): number { return values.length; } console.log(size(1, 2, 3));"},
+    {"id":"rest-alias-wrong-call","source":"type Values = number[]; function size(...values: Values): number { return values.length; } size('wrong');"},
+    {"id":"compatible-field-runtime","runtime":true,"source":"function work(): number { return 7; } class Parent { run(): number { return 1; } } class Child extends Parent { run: () => number = work; } console.log(new Child().run());"},
+    {"id":"incompatible-field","source":"class Parent { run(): number { return 1; } } class Child extends Parent { run: () => string = () => 'wrong'; }"},
+    {"id":"setter-pattern-runtime","runtime":true,"source":"class Box { stored: number = 0; set value({ input }: { input: number }) { this.stored = input; } } const box = new Box(); box.value = { input: 9 }; console.log(box.stored);"},
+    {"id":"setter-pattern-wrong-body","source":"class Box { stored: number = 0; set value({ input }: { input: number }) { this.stored = 'wrong'; } }"},
+    {"id":"tuple-in-range","source":"function run(values: [number]): void { values[0]; }"},
+    {"id":"tuple-alias-out-of-range","source":"type Values = [number]; function run(values: Values): void { values[1]; }"},
+    {"id":"property-index-does-not-use-local-tuple","source":"function run(values: [number], holder: { values: number[] }): void { holder.values[3]; }"},
+    {"id":"throw-function-empty","source":"function run(): void { throw; }"},
+    {"id":"throw-function-crlf","source":"function run(): void { throw\r\n1; }"},
+    {"id":"throw-line-separator","source":"throw\u20281;"},
+    {"id":"catch-unknown","source":"try {} catch (error: unknown) {}"},
+    {"id":"catch-any","source":"try {} catch (error: any) {}"},
+    {"id":"method-named-catch","source":"const handler = { catch(error: number): number { return error; } };"},
+    {"id":"ordinary-type-alias","source":"type Value = number; export const value: Value = 1;"},
+    {"id":"contextual-type-value","source":"let type = 1; type = 2;"},
+    {"id":"named-namespace","source":"namespace Area { export const value: number = 1; }"}
+  ]
+}

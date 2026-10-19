@@ -11,6 +11,26 @@ use std::process::{Command, Stdio};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+#[path = "staged_snapshot.rs"]
+mod staged_snapshot;
+
+const SOURCE_ROOTS: [&str; 4] = [
+    "backend/bluets/src",
+    "backend/bluets/tests",
+    "backend/bluets-bluejs/src",
+    "backend/bluets-bluejs/tests",
+];
+
+pub fn valid_revision(revision: &str) -> bool {
+    let hash = revision.strip_prefix("backend-tree:").unwrap_or(revision);
+    hash.len() == 40 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn excluded(path: &str) -> bool {
+    path.starts_with("backend/bluets/tests/fixtures/compatibility_inventory/")
+        || path == "backend/bluets/tests/compatibility_inventory.rs"
+}
+
 pub struct Snapshot {
     pub revision: String,
     pub blobs: BTreeMap<String, String>,
@@ -19,27 +39,31 @@ pub struct Snapshot {
 
 impl Snapshot {
     pub fn read(root: &Path, revision: &str) -> Result<Self> {
-        let revision = git(
-            root,
-            &["rev-parse", "--verify", &format!("{revision}^{{commit}}")],
-        )?
-        .trim()
-        .to_string();
-        let tree = git(
-            root,
-            &[
-                "ls-tree",
-                "-r",
-                "-z",
-                "--full-tree",
-                &revision,
-                "--",
-                "backend/bluets/src",
-                "backend/bluets/tests",
-                "backend/bluets-bluejs/src",
-                "backend/bluets-bluejs/tests",
-            ],
-        )?;
+        let backend_tree = revision.starts_with("backend-tree:");
+        let (revision, object) = if let Some(hash) = revision.strip_prefix("backend-tree:") {
+            if !valid_revision(revision) || git(root, &["cat-file", "-t", hash])?.trim() != "tree" {
+                return Err("invalid immutable backend tree".into());
+            }
+            (revision.to_string(), hash.to_string())
+        } else {
+            let commit = git(
+                root,
+                &["rev-parse", "--verify", &format!("{revision}^{{commit}}")],
+            )?
+            .trim()
+            .to_string();
+            (commit.clone(), commit)
+        };
+        let paths = SOURCE_ROOTS.map(|path| {
+            if backend_tree {
+                path.strip_prefix("backend/").unwrap()
+            } else {
+                path
+            }
+        });
+        let mut args = vec!["ls-tree", "-r", "-z", "--full-tree", &object, "--"];
+        args.extend(paths);
+        let tree = git(root, &args)?;
         let mut blobs = BTreeMap::new();
         for line in tree.split('\0').filter(|line| !line.is_empty()) {
             let (metadata, path) = line.split_once('\t').ok_or("invalid git ls-tree row")?;
@@ -47,10 +71,13 @@ impl Snapshot {
             if fields.len() != 3 || fields[0] != "100644" || fields[1] != "blob" {
                 return Err(format!("unexpected tree entry: {line}").into());
             }
+            let path = if backend_tree {
+                format!("backend/{path}")
+            } else {
+                path.to_string()
+            };
             // The inventory's own tests are not pinned compiler oracle inputs.
-            if path.starts_with("backend/bluets/tests/fixtures/compatibility_inventory/")
-                || path == "backend/bluets/tests/compatibility_inventory.rs"
-            {
+            if excluded(&path) {
                 continue;
             }
             blobs.insert(path.to_string(), fields[2].to_string());
@@ -90,6 +117,10 @@ impl Snapshot {
             blobs,
             sources,
         })
+    }
+
+    pub fn read_staged(root: &Path, revision: &str) -> Result<Self> {
+        staged_snapshot::read(root, revision)
     }
 
     pub fn source(&self, path: &str) -> Result<&str> {

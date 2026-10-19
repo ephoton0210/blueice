@@ -58,7 +58,19 @@ pub(crate) fn check_incremental(
             "RegExp",
             "String",
         ] {
-            if !ambient.types.contains_key(name) {
+            let declared_here = project.modules.get(&project.entry).is_some_and(|module| {
+                !project.is_external_module(module)
+                    && module
+                        .declarations
+                        .iter()
+                        .any(|declaration| match declaration {
+                            Declaration::Interface(interface) => interface.name == name,
+                            Declaration::TypeAlias(alias) => alias.name == name,
+                            Declaration::Class(class) => class.name == name,
+                            _ => false,
+                        })
+            });
+            if !ambient.types.contains_key(name) && !declared_here {
                 diagnostics.push(
                     Diagnostic::error(
                         DiagnosticCode::UnknownType,

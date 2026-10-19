@@ -192,8 +192,8 @@ impl ModuleLoader for FileLoader {
                 error @ (ResolveError::NotFound { .. } | ResolveError::JavaScriptOnly { .. }) => {
                     format!("cannot resolve `{specifier}` from `{from_module}`: {error}")
                 }
-                error @ ResolveError::OutsideRoots { .. } => format!(
-                    "specifier `{specifier}` resolves outside the declared project root: {error}"
+                ResolveError::OutsideRoots { .. } => format!(
+                    "specifier `{specifier}` resolves outside the declared project root (outside the authorized package roots)"
                 ),
                 error => format!("`{specifier}` from `{from_module}`: {error}"),
             })?;

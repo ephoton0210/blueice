@@ -4205,7 +4205,6 @@ fn syntax_errors_carry_a_precise_expectation() {
         ("interface A<T extends> { a: T }", "expected a type"),
         ("interface A<T = > { a: T }", "expected a type"),
         ("interface A<T { a: T }", "expected `>`"),
-        ("type = number;", "expected a type alias name"),
         ("type A<T> = ;", "expected a type"),
         ("type A = ", "expected a type"),
         ("function () {}", "expected a function name"),
@@ -4230,6 +4229,8 @@ fn syntax_errors_carry_a_precise_expectation() {
     ] {
         assert_rejected(source, "BTS1000", message);
     }
+    // Bare `type` is a contextual value here, not a malformed alias declaration.
+    assert_rejected("type = number;", "BTS3001", "cannot find name `type`");
     // A flat destructured parameter is valid; a nested one is unsupported syntax.
     assert_accepted("declare type A = number; const answer: A = 42;");
     assert_accepted("function f({ a }: { a: number }): number { return a; }");

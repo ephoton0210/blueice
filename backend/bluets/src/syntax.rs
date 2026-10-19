@@ -243,10 +243,32 @@ fn lex_range(
             index += 1;
             continue;
         }
+        let character = source[index..].chars().next().expect("index is in source");
+        if matches!(
+            character,
+            '\u{00a0}' | '\u{1680}' | '\u{2000}'
+                ..='\u{200a}'
+                    | '\u{2028}'
+                    | '\u{2029}'
+                    | '\u{202f}'
+                    | '\u{205f}'
+                    | '\u{3000}'
+                    | '\u{feff}'
+        ) {
+            index += character.len_utf8();
+            continue;
+        }
         if source[index..].starts_with("//") {
             index += 2;
-            while index < bytes.len() && bytes[index] != b'\n' && bytes[index] != b'\r' {
-                index += 1;
+            while index < bytes.len() {
+                let character = source[index..]
+                    .chars()
+                    .next()
+                    .expect("comment cursor is in source");
+                if matches!(character, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                    break;
+                }
+                index += character.len_utf8();
             }
             continue;
         }

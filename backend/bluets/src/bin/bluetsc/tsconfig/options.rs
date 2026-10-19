@@ -60,6 +60,7 @@ const BOOLEAN: &[&str] = &[
     "diagnostics",
     "pretty",
     "listFiles",
+    "explainFiles",
     "listEmittedFiles",
     "skipLibCheck",
     "forceConsistentCasingInFileNames",

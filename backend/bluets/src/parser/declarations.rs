@@ -9,6 +9,8 @@ use super::*;
 
 #[path = "declarations/ambient.rs"]
 mod ambient;
+#[path = "declarations/statement_diagnostics.rs"]
+mod statement_diagnostics;
 
 impl Parser {
     pub(crate) fn new(
@@ -193,7 +195,14 @@ impl Parser {
                     self.error_here(DiagnosticCode::ParseError, "an import cannot be exported");
                 }
                 self.parse_import(start);
-            } else if self.consume("type") {
+            } else if self.peek("type")
+                && self.tokens.get(self.index + 1).is_some_and(|token| {
+                    token.kind == TokenKind::Identifier
+                        || matches!(token.text.as_str(), "of" | "type" | "asserts" | "is")
+                        || (exported && (token.is("{") || token.is("*")))
+                })
+            {
+                self.bump();
                 if exported && (self.peek("{") || self.peek("*")) {
                     self.parse_type_export(start);
                 } else {
@@ -303,6 +312,14 @@ impl Parser {
                         self.bump();
                         self.parse_namespace(start, exported, declared);
                     }
+                } else if self.peek("namespace")
+                    && self
+                        .tokens
+                        .get(self.index + 1)
+                        .is_some_and(|token| token.is("{"))
+                {
+                    self.diagnose_missing_namespace_name();
+                    self.skip_statement();
                 } else if self.peek_any(&[
                     "namespace",
                     "module",
@@ -392,6 +409,9 @@ impl Parser {
 
     pub(super) fn parse_raw(&mut self, start: usize) {
         let raw_start = self.index;
+        if self.peek("throw") {
+            self.diagnose_throw_operand(raw_start);
+        }
         let (end_index, next_index, end) = if let Some(end) =
             raw_boundaries::end(&self.tokens, raw_start, self.tokens.len() - 1)
         {

@@ -24,6 +24,10 @@ pub(super) struct ProjectConfig {
     pub(super) options: Map<String, Value>,
     pub(super) mappings: Option<file_loader::PathMappings>,
     pub(super) files: Vec<PathBuf>,
+    pub(super) file_order: Vec<PathBuf>,
+    pub(super) explicit_files: BTreeSet<PathBuf>,
+    pub(super) type_libraries: BTreeMap<PathBuf, String>,
+    pub(super) config_path: PathBuf,
     pub(super) directory: PathBuf,
     pub(super) emit_root: PathBuf,
     pub(super) fingerprint: String,
@@ -32,6 +36,19 @@ pub(super) struct ProjectConfig {
 }
 
 impl ProjectConfig {
+    pub(super) fn inclusion_pattern(&self, file: &Path) -> Option<&str> {
+        self.selectors
+            .get("include")
+            .and_then(Value::as_array)
+            .and_then(|patterns| {
+                patterns
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .find(|pattern| discovery::matches(&self.directory.join(pattern), file, false))
+            })
+            .or_else(|| (!self.selectors.contains_key("include")).then_some("**/*"))
+    }
+
     pub(super) fn show(&self) -> Value {
         let files = self
             .files
@@ -282,7 +299,22 @@ pub(super) fn resolve(
     if let Some(path) = owner_path {
         config_inputs.push(path.to_path_buf());
     }
+    let mut file_order = document.files.clone().unwrap_or_default();
+    for file in &files {
+        if !file_order.contains(file) {
+            file_order.push(file.clone());
+        }
+    }
     let project = ProjectConfig {
+        file_order,
+        explicit_files: document
+            .files
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+        type_libraries: BTreeMap::new(),
+        config_path: path.to_path_buf(),
         mappings: file_loader::PathMappings::from_options(
             &document.options,
             document.paths_origin.as_deref().unwrap_or(&directory),

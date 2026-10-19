@@ -168,7 +168,7 @@ fn could_contain(pattern: &Path, directory: &Path) -> bool {
             .is_some_and(|parent| directory.starts_with(parent))
 }
 
-fn matches(pattern: &Path, path: &Path, directory: bool) -> bool {
+pub(super) fn matches(pattern: &Path, path: &Path, directory: bool) -> bool {
     let text = |path: &Path| {
         path.components()
             .filter_map(|component| match component {

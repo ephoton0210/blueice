@@ -12,28 +12,30 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-19).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 12,511 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,543 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,010/12,028 (99.8503%); 6 open, 12 refused observations |
-| Separate controls | 482 native-reference + 1 BlueTS owner = 483; excluded from direct agreement |
-| Case labels | 12,493 scoped closed (including controls), 6 open, 12 refused |
-| Suite inventory | 100 suites / 244 ignored Rust functions; not a case denominator |
-| Suite labels | 93 scoped closed, 2 open, 5 refused |
+| Direct agreement | 12,050/12,059 (99.9254%); 3 open, 6 refused observations |
+| Separate controls | 482 native-reference + 2 BlueTS owner = 484; excluded from direct agreement |
+| Case labels | 12,534 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 102 suites / 247 ignored Rust functions; not a case denominator |
+| Suite labels | 96 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 12,511 recorded case expectations pass; expected differences/refusals are not
+All 12,543 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
-Accepted runtime evidence (AC-K14.3): Windows x86_64 VM **82/82** core oracles
-plus the complete local test gate. Hosted CI and coverage are supplementary,
-not prerequisites. This consistency check does not rerun those runtime gates.
+Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
+x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
+a new Windows run for the compiler/oracle source below. Hosted CI and coverage
+are supplementary, not prerequisites. This consistency check does not rerun
+those runtime gates.
 
-Compiler/oracle source: `26a3941b2625ab924db9de824a83b49ac8085172`.
-Input graph SHA-256: `db2181d2f945df56e5d52729e93cc7dd9ced4f77626f0932460f035c6b67204d`.
+Compiler/oracle source: `backend-tree:1352de76d7b75e448a8b0186efddc2cb85bd3aab`.
+Input graph SHA-256: `24778a4ba7a79d7f7dc42943da41974524bdf757792d67208ae9428b85662288`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -11968,3 +11970,181 @@ A final diff audit preserves all 89 existing checklist entries and changes
 only AC-K14.6 from unchecked to checked; no checkpoint is added or removed.
 AC-K14.6 is complete; a completed phase checklist does not close the broader
 required gaps or authorize a full-parity claim.
+
+## Phase L — G-C1 implementation
+
+Started from `debb6893f5c255083e12bbfb66da2edd99db6c19`, the committed and
+pushed TODO refresh. Implementation and its immutable-tree measurement are
+prepared together before committing either. Final acceptance is recorded below;
+the finite scope does not establish full diagnostics/CLI parity.
+
+### Frozen comparisons
+
+- The existing `diagnostics/source-families.json` supplies the nine G-C1
+  observations named in TODO. `gc1_source_diagnostics.rs` compares their
+  entire primary diagnostic arrays (codes, messages, positions and lengths)
+  and output verdicts, with the original strict ES2022 configuration.
+- `gc1_source_controls/cases.json` and its native-produced `reference.json`
+  define 18 positive/negative controls at strict ES2020/ESNext. They include
+  the three newly accepted forms, wrong-type uses, tuple aliases, contextual
+  names, valid/invalid catch annotations and line-terminator controls.
+  All three runtime programs compare actual Node exit/stdout/stderr with
+  native output; Acorn 8.15.0 parses the BlueTS output at ES2020.
+- `gc1_explain/cases.json` and its native-produced `reference.json` define
+  four owner-local projects: ordered explicit files, imports, path references
+  and an explicitly selected owned type library. The target/module are
+  ES2020/CommonJS, with `noEmit`, `lib: []` and owned global declarations.
+  Complete CLI stdout/stderr and exits are compared, normalizing paths and
+  line endings only. This is not the physical default TypeScript library
+  catalog, external package tracing or full CLI parity.
+
+The finite new comparison scope is 9 + 18 + 4 = 31 program/configuration
+observations, not a new language-wide agreement denominator. Separate CLI
+controls cover configuration/false overrides, owner confinement and invalidation
+of pre-fix build-state version 4; they are not additional TypeScript agreements.
+
+### Implementation and regression history
+
+Shared statement diagnostics handle throw operands and catch annotations;
+tuple reads retain TS2493 even when discarded. Array aliases are resolved for
+rest argument checking without losing generic binders. Proven compatible
+function fields and setter destructuring no longer incur their former false
+refusals. Unknown compatibility and existing resource/owner policies remain
+bounded. Contextual `type`/`asserts` aliases retain their native acceptance.
+
+`native_cli/explanations.rs` consumes only the already-authorized project graph
+and configuration provenance; it does not open files or grant resolver access.
+New responsibilities are separate modules. Changed production files remain
+below 1,000 lines; `parser.rs` (1,191) and `compiler.rs` (1,006) are unchanged.
+Build-state version 5 prevents reusing successful checks from before this fix.
+
+The new focused binaries, built by the complete-gate invocation below, pass
+**9/9** with no failures/ignored tests: five CLI tests and four source tests.
+This includes live TypeScript 5.9.3, three native/BlueTS Node executions,
+Acorn 8.15.0 and cold/warm/old-epoch cache behavior. Logs:
+`/private/tmp/bluets-gc1-focused-explain.log` and
+`/private/tmp/bluets-gc1-focused-source.log`.
+
+The initial ordinary regression run failed six integration targets; it is not
+accepted evidence. It exposed a genuine contextual-type-alias regression,
+obsolete false-refusal expectations and stale refusal source lines. Those
+issues were corrected without changing the valid-program goldens. The initial
+failed log remains `/private/tmp/bluets-gc1-ordinary.log`.
+
+The six previously failing ordinary integration binaries were rebuilt and
+replayed: **160 passed, 0 failed, 5 ignored**. Those five ignored functions
+are not credited as live oracles by this replay; the complete gate includes
+them. The existing inventory Python tests pass 10/10 and the selected Node
+inventory/selection/checkout/shard tooling tests pass 13/13.
+
+The first complete two-crate gate finished **1,550 passed, 1 failed, 0 ignored**
+and is not accepted. Its one failure was an obsolete expected build-state
+version 4 in `project_referenced_declarations`; the corrected target subsequently
+passed all 14 tests with ignored oracles included. Command:
+
+```sh
+env CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  BLUEICE_BLUETSC_ORACLE=/private/tmp/bluets-k132-local-DY315j/node_modules/typescript/bin/tsc \
+  BLUEICE_ACORN_ORACLE=/private/tmp/bluets-k132-local-DY315j/node_modules/acorn/bin/acorn \
+  BLUEJS_REGEXP_WORKER=/Users/ephoton/git/blueice-bluets/target/debug/bluejs-regexp-worker \
+  FORCE_COLOR=0 cargo test -p blueice-bluets -p blueice-bluets-bluejs \
+  --offline --no-fail-fast -- --include-ignored
+```
+
+Its failed log is `/private/tmp/bluets-gc1-complete-k0.log`. Rebuilt focused
+tests then passed **48/48**, with no failures or ignored tests, in
+`/private/tmp/bluets-gc1-final-focused.log`: 22 inventory/immutable-tree tests,
+three source-family tests, five CLI tests, four G-C1 source tests and 14
+referenced-declaration tests. The stronger outside-path assertion initially
+exposed a genuine loader disclosure: an OutsideRoots error appended the
+resolved external path. The CLI now keeps the authority denial without that
+physical path. The empty-related-diagnostic assertions also pass.
+
+A preliminary ordinary two-crate regression passed **1,306 tests, 0 failed,
+247 ignored** in `/private/tmp/bluets-gc1-final-ordinary.log`. This does not
+credit ignored functions as oracle passes. The source-frozen complete
+measurement then passed **533/533 Rust tests across 102/102 suites**, including
+all **247** selected ignored functions. Every suite has zero failures, ignored
+tests and filtered tests. The source, suite catalog and 55 oracle-tool hashes
+are unchanged across execution. Log: `/private/tmp/bluets-gc1-measurement-run.log`;
+per-suite logs: `/private/tmp/bluets-gc1-measurement-diV7B1/`.
+
+### Atomic source binding and measured accounting
+
+The user requires implementation and corresponding measurement to be ready
+before either is committed. Pre-commit measurement therefore supports
+`backend-tree:<40-digit Git tree id>`: freeze the staged backend subtree,
+then require the relevant index blobs and working files to match it exactly.
+The implementation/data commit must contain that same backend tree; this is not a synthetic
+source commit or a measurement attributed to the old HEAD. The measurement
+runner checks source/catalog consistency both before and after execution.
+The normal published `--check` / `--check-cases` still compare committed HEAD;
+explicit `--check-staged` / `--check-cases-staged` are pre-commit checks only.
+
+Frozen source: `backend-tree:1352de76d7b75e448a8b0186efddc2cb85bd3aab`;
+input graph SHA-256:
+`24778a4ba7a79d7f7dc42943da41974524bdf757792d67208ae9428b85662288`.
+The staged-source check passes and the finite-source audit finds 102 suites,
+247 ignored functions and no missing case provider. The completed measurement records 12,543
+suite-qualified observations: the old 12,511 are retained, plus the new
+27 source comparisons, four CLI comparisons and one separate owner control.
+An old/new case-identity audit confirms **zero removals** and unchanged source,
+selector, label and unit for all 12,511 old rows. Exactly nine old observations
+change comparison: the three documented missing diagnostics and six former
+refusals now agree. No native-reference control is silently upgraded.
+The runner also content-hashes the actual oracle
+tool scripts before/after execution instead of attributing uncommitted
+tool changes to the old HEAD.
+
+Regenerated artifacts report **12,050/12,059 direct agreements (99.9254%)**,
+three open and six refused observations, plus **482 native-reference / two
+owner controls** excluded from that ratio. The remaining three open rebuild
+policy observations and six refusals retain their original scope. Source
+refusal accounting remains 213 sites in 11 areas, not 213 failing programs.
+Both staged suite/case checks and the four-document consistency check pass.
+The broad G-C1 feature row stays open for unmeasured CLI/default-library tracing
+and diagnostic-recovery compositions; this does not invalidate the explicitly
+finite TODO acceptance. Full parity remains OFF.
+
+Measurement JSON SHA-256:
+`fa9821ca2854de013b01f672239dbb7c91810bdecd69b42c5639ab9321142717`.
+Complete oracle-run log SHA-256:
+`1a7fb420378ad8f18f4859f742ccaa8b61ecdea0eb44746942e78cf84f41fd41`.
+
+### Final scoped acceptance (2026-10-19)
+
+The ordinary two-crate replay against the regenerated data passes **1,306
+tests, 0 failures, 247 ignored**, across 162 libtest summaries. Its log is
+`/private/tmp/bluets-gc1-accepted-ordinary.log`, SHA-256
+`e004861c2aee3fa939f1fa9f2977620837310cc0c17cbe552f66933d0c5ad24a`.
+Together with the complete 102-suite cohort (including all 247 ignored
+functions), every test in both crates is covered on the frozen source. The
+533 cohort tests include 286 ordinary tests also present in the ordinary run;
+do not add overlapping runs as independent test counts.
+
+Final gates all pass:
+
+- `cargo test -p blueice-bluets -p blueice-bluets-bluejs --offline --no-fail-fast`
+  with the common no-incremental/no-debug environment and the existing regexp worker.
+- `node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs
+  --output-dir /private/tmp/bluets-gc1-measurement-diV7B1 --staged-source` with
+  the pinned TypeScript/Acorn commands and `FORCE_COLOR=0`; 102/102 suites,
+  533/533 tests, zero failures/ignored/filtered, all 247 selected ignored tests.
+- Workspace rustfmt check with Rust 1.95 rustfmt; two-crate all-target Clippy
+  with `-D warnings` (log `/private/tmp/bluets-gc1-accepted-clippy.log`).
+- 22 Rust inventory/immutable-tree tests in the ordinary gate; 11 Python
+  status/accounting tests and 15 Node tooling tests. Both staged inventory
+  checks, refusal accounting, four-document consistency and `git diff --check`.
+- All 55 recorded oracle-tool hashes still match; the backend working files
+  match the frozen index. No prior failing run is credited as acceptance.
+
+The complete measurement is **darwin-arm64**, Rust 1.98.0 / TypeScript 5.9.3;
+its UTC execution interval is 09:08:43–09:41:01 on 2026-10-19. This is the
+G-C1 leaf gate, not a new full-workspace/Windows milestone run. AC-K14.3's
+Windows VM 82-core / local-workspace evidence retains its original source;
+final/milestone requirements are unchanged and hosted CI is supplementary.
+
+G-C1's frozen checklist scope is complete. Only that existing Phase L item
+is checked. Implementation, regressions and corresponding measurement data
+are ready together before one coherent commit; no implementation or measurement
+commit was made in advance. The next unchecked implementation item is G-T1.

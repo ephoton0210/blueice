@@ -6,6 +6,72 @@
 
 use super::*;
 
+impl ModuleChecker<'_> {
+    pub(in crate::checker::module) fn check_tuple_index_reads(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let execution = self
+            .scopes
+            .as_ref()
+            .map(|scopes| scopes.flow_execution(span.start));
+        for open in 1..tokens.len() {
+            let receiver = &tokens[open - 1];
+            if !tokens[open].is("[")
+                || receiver.kind != TokenKind::Identifier
+                || open
+                    .checked_sub(2)
+                    .is_some_and(|previous| tokens[previous].is(".") || tokens[previous].is("?."))
+                || self
+                    .scopes
+                    .as_ref()
+                    .is_some_and(|scopes| Some(scopes.flow_execution(receiver.start)) != execution)
+            {
+                continue;
+            }
+            let Some(close) = crate::checker::scopes::targets::close(tokens, open) else {
+                continue;
+            };
+            let Some(index) = canonical_index_key(&tokens[open + 1..close]) else {
+                continue;
+            };
+            let original = self.infer_expression(&tokens[open - 1..open], scope);
+            let mut value = original.clone();
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            let mut visited = HashSet::new();
+            while let Some(expanded) =
+                instantiate_named(&value, &self.types, &mut visited, &mut budget, "tuple read")
+            {
+                value = expanded;
+            }
+            let tuple = match &value {
+                Type::Readonly(value) => value.as_ref(),
+                value => value,
+            };
+            let Type::Tuple(elements) = tuple else {
+                continue;
+            };
+            if index < elements.len() || elements.iter().any(|element| element.rest) {
+                continue;
+            }
+            let label = type_label(&original);
+            self.typescript_type_error(
+                &SourceSpan::new(
+                    &self.module.id,
+                    tokens[open + 1].start,
+                    tokens[close - 1].end,
+                ),
+                format!("tuple type `{label}` has no element at index {index}"),
+                DiagnosticCode::TypeMismatch,
+                2493,
+                vec![label, elements.len().to_string(), index.to_string()],
+            );
+        }
+    }
+}
+
 /// Preserve every declared possibility rather than losing readonly types in
 /// an inferred local alias. A canonical index selects one tuple element;
 /// otherwise a heterogeneous container yields a union of its value types.

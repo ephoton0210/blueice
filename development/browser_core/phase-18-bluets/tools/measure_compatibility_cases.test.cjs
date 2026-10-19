@@ -4,7 +4,9 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { executables, testNames, summary } = require('./measure_compatibility_cases.cjs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const { executables, testNames, summary, toolHashes } = require('./measure_compatibility_cases.cjs');
 
 test('Cargo artifact matching uses the full source path, not duplicate target basenames', () => {
   const inventory = { suites: [{ harness: 'backend/bluets/tests/example.rs' },
@@ -27,4 +29,28 @@ test('libtest names and final counts cannot silently accept an empty or partial 
     'test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out;']) {
     assert.throws(() => summary(text, 2));
   }
+});
+
+test('staged-source CLI is explicit and retains the pinned-oracle requirement', () => {
+  const script = path.join(__dirname, 'measure_compatibility_cases.cjs');
+  const env = { ...process.env };
+  delete env.BLUEICE_BLUETSC_ORACLE;
+  for (const name of Object.keys(env)) {
+    if (name.startsWith('BLUEICE_WRITE_') || name.startsWith('BLUETS_')) delete env[name];
+  }
+  const valid = spawnSync(process.execPath, [script, '--output-dir', 'unused-gc1-output', '--staged-source'], { env, encoding: 'utf8' });
+  assert.equal(valid.status, 1);
+  assert.match(valid.stderr, /set BLUEICE_BLUETSC_ORACLE/);
+  const invalid = spawnSync(process.execPath, [script, '--output-dir', 'unused-gc1-output', '--skip-source-check'], { env, encoding: 'utf8' });
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stderr, /usage:/);
+});
+
+test('the actual oracle scripts are content-bound rather than attributed to an old HEAD', () => {
+  const hashes = toolHashes();
+  for (const name of ['measure_compatibility_cases.cjs', 'record_gc1_sources.cjs', 'record_gc1_explain.cjs', 'account_inventory_rows.py']) {
+    assert.match(hashes[name], /^[a-f0-9]{64}$/);
+  }
+  assert.deepEqual(Object.keys(hashes), Object.keys(hashes).sort());
+  assert.deepEqual(toolHashes(), hashes);
 });

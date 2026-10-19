@@ -24,10 +24,13 @@ impl ModuleChecker<'_> {
             annotation = expanded;
         }
         let message = "the bounded rest-parameter rule requires an array annotation".to_string();
-        if matches!(annotation, Type::Array(_) | Type::Tuple(_)) {
+        if matches!(annotation, Type::Array(_)) {
+            return;
+        }
+        if matches!(annotation, Type::Tuple(_)) {
             self.blue_only_type_error(
                 &parameter.span, message, DiagnosticCode::TypeMismatch,
-                "BlueTSC's function rest subset requires a direct array annotation; TypeScript also accepts array aliases and tuples.",
+                "BlueTSC resolves array aliases for rest parameters; tuple rest annotations remain outside this bounded function rule.",
             );
         } else {
             self.type_error(&parameter.span, message, DiagnosticCode::TypeMismatch);

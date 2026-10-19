@@ -40,7 +40,7 @@ def render_status(data, catalog, measurement, inventory, refusals, proof):
     rows.require(catalog.get("schema") == 1, "unsupported suite catalog")
     for key in ("typescript", "source_revision", "source_graph_sha256"):
         rows.require(catalog.get(key) == data[key], f"foreign suite catalog {key}")
-    rows.require(re.fullmatch(r"[a-f0-9]{40}", data["source_revision"])
+    rows.require(re.fullmatch(r"(?:backend-tree:)?[a-f0-9]{40}", data["source_revision"])
                  and re.fullmatch(r"[a-f0-9]{64}", data["source_graph_sha256"]), "invalid source binding")
     suites = catalog["suites"]
     names = [suite["harness"] for suite in suites]
@@ -92,9 +92,11 @@ case assertions**, not unique programs or a percentage of the TypeScript languag
 
 All {counts['checked']:,} recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **{data['measured_on']}**, not all-platform proof.
-Accepted runtime evidence (AC-K14.3): Windows x86_64 VM **82/82** core oracles
-plus the complete local test gate. Hosted CI and coverage are supplementary,
-not prerequisites. This consistency check does not rerun those runtime gates.
+Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
+x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
+a new Windows run for the compiler/oracle source below. Hosted CI and coverage
+are supplementary, not prerequisites. This consistency check does not rerun
+those runtime gates.
 
 Compiler/oracle source: `{data['source_revision']}`.
 Input graph SHA-256: `{data['source_graph_sha256']}`.
@@ -111,15 +113,33 @@ def check_document(document, expected, name):
     rows.require(document[start:end] == expected, f"{name}: current BlueTS status is stale or inconsistent")
 
 
+def replace_status(document, expected, name):
+    rows.require(document.count(BEGIN) == document.count(END) == 1,
+                 f"{name}: missing or duplicate current-status block")
+    start, end = document.index(BEGIN), document.index(END) + len(END)
+    rows.require(start < end - len(END), f"{name}: reversed current-status block")
+    updated = document[:start] + expected + document[end:]
+    check_document(updated, expected, name)
+    return updated
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", required=True)
+    modes = parser.add_mutually_exclusive_group(required=True)
+    modes.add_argument("--check", action="store_true")
+    modes.add_argument("--write", action="store_true")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[4])
     options = parser.parse_args()
     root = options.root.resolve()
     block = render_status(*load_inputs(root))
     for relative in DOCUMENTS:
-        check_document((root / relative).read_text(encoding="utf-8"), block, relative)
+        target = root / relative
+        document = target.read_text(encoding="utf-8")
+        if options.write:
+            with target.open("w", encoding="utf-8", newline="\n") as stream:
+                stream.write(replace_status(document, block, relative))
+        else:
+            check_document(document, block, relative)
     print(f"Current BlueTS status matches validated case/suite/measurement evidence in all {len(DOCUMENTS)} documents")
 
 

@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "explicit-files",
+      "exit": 0,
+      "stdout": "globals.d.ts\n  Part of 'files' list in tsconfig.json\nentry.ts\n  Part of 'files' list in tsconfig.json\n",
+      "stderr": ""
+    },
+    {
+      "id": "import",
+      "exit": 0,
+      "stdout": "globals.d.ts\n  Part of 'files' list in tsconfig.json\ndep.ts\n  Imported via './dep' from file 'entry.ts'\nentry.ts\n  Part of 'files' list in tsconfig.json\n",
+      "stderr": ""
+    },
+    {
+      "id": "reference-path",
+      "exit": 0,
+      "stdout": "globals.d.ts\n  Part of 'files' list in tsconfig.json\nshared.d.ts\n  Referenced via './shared.d.ts' from file 'entry.ts'\nentry.ts\n  Part of 'files' list in tsconfig.json\n",
+      "stderr": ""
+    },
+    {
+      "id": "type-library",
+      "exit": 0,
+      "stdout": "entry.ts\n  Part of 'files' list in tsconfig.json\ntypes/owned/index.d.ts\n  Entry point of type library 'owned' specified in compilerOptions\n",
+      "stderr": ""
+    }
+  ]
+}
