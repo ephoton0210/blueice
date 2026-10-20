@@ -264,7 +264,10 @@ impl<'a> ModuleChecker<'a> {
     }
 }
 
-fn record_member_end(tokens: &[Token], start: usize) -> Option<usize> {
+pub(in crate::checker::module::expressions) fn record_member_end(
+    tokens: &[Token],
+    start: usize,
+) -> Option<usize> {
     let mut depth = 0usize;
     for (index, token) in tokens.iter().enumerate().skip(start) {
         match token.text.as_str() {

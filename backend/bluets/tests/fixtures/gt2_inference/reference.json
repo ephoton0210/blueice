@@ -1,0 +1,1585 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "nested-record-accept",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\nfunction read<T>(x: {inner: {value: T}}): T { return x.inner.value; }\nexport const value = read({inner: {value: 7}});\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "7\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "nested-record-reject",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\nfunction read<T>(x: {inner: {value: T}}): T { return x.inner.value; }\nexport const value = read({inner: {value: 7}});\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 153,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "recursive-alias-accept",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Link<T> = {value: T; next?: Link<T>}; declare function read<T>(x: Link<T>): T; const source: Link<number> = {value: 7};\nexport const value = read(source);\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "recursive-alias-reject",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Link<T> = {value: T; next?: Link<T>}; declare function read<T>(x: Link<T>): T; const source: Link<number> = {value: 7};\nexport const value = read(source);\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 195,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "recursive-structural-accept",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Link<T> = {value: T; next?: Link<T>}; declare function read<T>(x: Link<T>): T;\nexport const value = read({value: 1, next: {value: 2}});\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "recursive-structural-reject",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Link<T> = {value: T; next?: Link<T>}; declare function read<T>(x: Link<T>): T;\nexport const value = read({value: 1, next: {value: 2}});\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 176,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-array-record-accept",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ndeclare function read<T>(x: {items: {value: T}[]}): T;\nexport const value = read({items: [{value: 2}]});\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "nested-array-record-reject",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ndeclare function read<T>(x: {items: {value: T}[]}): T;\nexport const value = read({items: [{value: 2}]});\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 140,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "indexed-argument-accept",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Box<T> = {item: T}; declare function read<T>(x: Box<T>['item']): T;\nexport const value = read({value: 2});\nexport const checked: {value: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    value: number;\n};\nexport declare const checked: {\n    value: number;\n};\n"
+    },
+    {
+      "id": "indexed-argument-reject",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Box<T> = {item: T}; declare function read<T>(x: Box<T>['item']): T;\nexport const value = read({value: 2});\nexport const checked: {value: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ value: number; }' is not assignable to type '{ value: string; }'.\n  Types of property 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 147,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "reverse-mapped-accept",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Wrap<T> = {[K in keyof T]: {value: T[K]}}; declare function unwrap<T>(x: Wrap<T>): T;\nexport const value = unwrap({a: {value: 1}, b: {value: 'b'}});\nexport const checked: {a: number; b: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    a: number;\n    b: string;\n};\nexport declare const checked: {\n    a: number;\n    b: string;\n};\n"
+    },
+    {
+      "id": "reverse-mapped-reject",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Wrap<T> = {[K in keyof T]: {value: T[K]}}; declare function unwrap<T>(x: Wrap<T>): T;\nexport const value = unwrap({a: {value: 1}, b: {value: 'b'}});\nexport const checked: {a: string; b: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ a: number; b: string; }' is not assignable to type '{ a: string; b: number; }'.\n  Types of property 'a' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 189,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "noninferable-conditional-accept",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Conditional<T> = T extends string ? {value: T} : never; declare function read<T>(x: Conditional<T>): T;\nexport const value = read({value: 'a'});\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: \"a\";\nexport declare const checked: unknown;\n"
+    },
+    {
+      "id": "noninferable-conditional-reject",
+      "area": "recursive",
+      "source": "// UTF-16 control: 😀\ntype Conditional<T> = T extends string ? {value: T} : never; declare function read<T>(x: Conditional<T>): T;\nexport const value = read({value: 'a'});\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 185,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "callback-first-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\nfunction apply<T, R>(fn: (x: T) => R, x: T): R { return fn(x); }\nexport const value = apply(x => x + 1, 2);\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "3\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "callback-first-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\nfunction apply<T, R>(fn: (x: T) => R, x: T): R { return fn(x); }\nexport const value = apply(x => x + 1, 2);\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 143,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "callback-last-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\nfunction apply<T, R>(x: T, fn: (x: T) => R): R { return fn(x); }\nexport const value = apply(2, x => x + 1);\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "3\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "callback-last-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\nfunction apply<T, R>(x: T, fn: (x: T) => R): R { return fn(x); }\nexport const value = apply(2, x => x + 1);\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 143,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "producer-consumer-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(produce: () => T, consume: (value: T) => void): T;\nexport const value = run(() => 5, value => { const n: number = value; });\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "producer-consumer-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(produce: () => T, consume: (value: T) => void): T;\nexport const value = run(() => 5, value => { const n: number = value; });\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 184,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "object-callbacks-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(handlers: {produce: () => T; consume: (value: T) => void}): T;\nexport const value = run({produce: () => 5, consume: value => { const n: number = value; }});\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "object-callbacks-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(handlers: {produce: () => T; consume: (value: T) => void}): T;\nexport const value = run({produce: () => 5, consume: value => { const n: number = value; }});\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 216,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "object-callbacks-reversed-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(handlers: {consume: (value: T) => void; produce: () => T}): T;\nexport const value = run({consume: value => { const n: number = value; }, produce: () => 5});\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "object-callbacks-reversed-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(handlers: {consume: (value: T) => void; produce: () => T}): T;\nexport const value = run({consume: value => { const n: number = value; }, produce: () => 5});\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 216,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "contextual-return-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T>(): T;\nexport const value: {x: number} = make();\nexport const checked: {x: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    x: number;\n};\nexport declare const checked: {\n    x: number;\n};\n"
+    },
+    {
+      "id": "contextual-return-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T>(): T;\nexport const value: {x: number} = make();\nexport const checked: {x: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ x: number; }' is not assignable to type '{ x: string; }'.\n  Types of property 'x' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 108,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "contextual-callback-return-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T>(factory: () => T): T;\nexport const value: {count: number} = make(() => ({count: 1}));\nexport const checked: {count: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    count: number;\n};\nexport declare const checked: {\n    count: number;\n};\n"
+    },
+    {
+      "id": "contextual-callback-return-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T>(factory: () => T): T;\nexport const value: {count: number} = make(() => ({count: 1}));\nexport const checked: {count: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ count: number; }' is not assignable to type '{ count: string; }'.\n  Types of property 'count' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 146,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "concrete-compose-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ntype Mapper<A, B> = (value: A) => B; declare function compose<A, B, C>(first: Mapper<A, B>, second: Mapper<B, C>): Mapper<A, C>; const first = (value: number) => value + 1;\nexport const value = compose(first, value => value.toString());\nexport const checked: (value: number) => string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Mapper<A, B> = (value: A) => B;\nexport declare const value: Mapper<number, string>;\nexport declare const checked: (value: number) => string;\nexport {};\n"
+    },
+    {
+      "id": "concrete-compose-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ntype Mapper<A, B> = (value: A) => B; declare function compose<A, B, C>(first: Mapper<A, B>, second: Mapper<B, C>): Mapper<A, C>; const first = (value: number) => value + 1;\nexport const value = compose(first, value => value.toString());\nexport const checked: (value: number) => number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Mapper<number, string>' is not assignable to type '(value: number) => number'.\n  Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 272,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "dependent-default-empty-accept",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T = number, U = T[]>(value?: T): U;\nexport const value = make();\nexport const checked: number[] = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number[];\nexport declare const checked: number[];\n"
+    },
+    {
+      "id": "dependent-default-empty-reject",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T = number, U = T[]>(value?: T): U;\nexport const value = make();\nexport const checked: string[] = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number[]' is not assignable to type 'string[]'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 122,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "dependent-default-candidate-accept",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T = number, U = T[]>(value?: T): U;\nexport const value = make('x');\nexport const checked: string[] = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string[];\nexport declare const checked: string[];\n"
+    },
+    {
+      "id": "dependent-default-candidate-reject",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T = number, U = T[]>(value?: T): U;\nexport const value = make('x');\nexport const checked: number[] = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string[]' is not assignable to type 'number[]'.\n  Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 125,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "dependent-key-accept",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\nfunction get<T, K extends keyof T>(value: T, key: K): T[K] { return value[key]; }\nexport const value = get({a: 1, b: 'b'}, 'b');\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string;\nexport declare const checked: string;\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "b\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "dependent-key-reject",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\nfunction get<T, K extends keyof T>(value: T, key: K): T[K] { return value[key]; }\nexport const value = get({a: 1, b: 'b'}, 'b');\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 164,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "dependent-record-constraint-accept",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T, U extends {value: T}>(value: T, wrapped: U): U;\nexport const value = choose(1, {value: 2, name: 'x'});\nexport const checked: {value: number; name: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    value: number;\n    name: string;\n};\nexport declare const checked: {\n    value: number;\n    name: string;\n};\n"
+    },
+    {
+      "id": "dependent-record-constraint-reject",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T, U extends {value: T}>(value: T, wrapped: U): U;\nexport const value = choose(1, {value: 2, name: 'x'});\nexport const checked: {value: string; name: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ value: number; name: string; }' is not assignable to type '{ value: string; name: string; }'.\n  Types of property 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 165,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "literal-constraint-accept",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T extends 'a' | 'b'>(value: T): T;\nexport const value = choose('a');\nexport const checked: 'a' = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: \"a\";\nexport declare const checked: 'a';\n"
+    },
+    {
+      "id": "literal-constraint-reject",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T extends 'a' | 'b'>(value: T): T;\nexport const value = choose('a');\nexport const checked: 'b' = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"a\"' is not assignable to type '\"b\"'.",
+          "module": "entry.ts",
+          "start": 128,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "rejected-dependent-key-accept",
+      "area": "constraints",
+      "source": "// UTF-16 control: 😀\ndeclare function get<T, K extends keyof T>(value: T, key: K): T[K];\nexport const value = get({a: 1}, 'a');\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "rejected-dependent-key-reject",
+      "area": "constraints",
+      "source": "// UTF-16 control: 😀\ndeclare function get<T, K extends keyof T>(value: T, key: K): T[K];\nexport const value = get({a: 1}, 'missing');\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '\"missing\"' is not assignable to parameter of type '\"a\"'.",
+          "module": "entry.ts",
+          "start": 123,
+          "length": 9,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "rejected-record-constraint-accept",
+      "area": "constraints",
+      "source": "// UTF-16 control: 😀\ndeclare function take<T extends {value: number}>(input: T): T;\nexport const value = take({value: 1});\nexport const checked: {value: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    value: number;\n};\nexport declare const checked: {\n    value: number;\n};\n"
+    },
+    {
+      "id": "rejected-record-constraint-reject",
+      "area": "constraints",
+      "source": "// UTF-16 control: 😀\ndeclare function take<T extends {value: number}>(input: T): T;\nexport const value = take({value: 'wrong'});\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 112,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value: number; }'",
+              "module": "entry.ts",
+              "start": 55,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "string-covariant-union-accept",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(left: T, right: T): T;\nexport const value = choose('left', 'right');\nexport const checked: 'left' | 'right' = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string;\nexport declare const checked: 'left' | 'right';\n"
+    },
+    {
+      "id": "string-covariant-union-reject",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(left: T, right: T): T;\nexport const value = choose('left', 'right');\nexport const checked: 'left' = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"left\" | \"right\"' is not assignable to type '\"left\"'.\n  Type '\"right\"' is not assignable to type '\"left\"'.",
+          "module": "entry.ts",
+          "start": 131,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "number-covariant-union-accept",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(left: T, right: T): T;\nexport const value = choose(1, 2);\nexport const checked: 1 | 2 = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: 1 | 2;\n"
+    },
+    {
+      "id": "number-covariant-union-reject",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(left: T, right: T): T;\nexport const value = choose(1, 2);\nexport const checked: 1 = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '1 | 2' is not assignable to type '1'.\n  Type '2' is not assignable to type '1'.",
+          "module": "entry.ts",
+          "start": 120,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "contravariant-records-accept",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function meet<T>(left: (value: T) => void, right: (value: T) => void): T; const left = (value: {left: number}) => {}; const right = (value: {left: number; right: string}) => {};\nexport const value = meet(left, right);\nexport const checked: {left: number; right: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    left: number;\n    right: string;\n};\nexport declare const checked: {\n    left: number;\n    right: string;\n};\n"
+    },
+    {
+      "id": "contravariant-records-reject",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function meet<T>(left: (value: T) => void, right: (value: T) => void): T; const left = (value: {left: number}) => {}; const right = (value: {left: number; right: string}) => {};\nexport const value = meet(left, right);\nexport const checked: {left: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ left: number; right: string; }' is not assignable to type '{ left: string; }'.\n  Types of property 'left' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 261,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "contravariant-literal-accept",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function meet<T>(left: (value: T) => void, right: (value: T) => void): T; const left = (value: string) => {}; const right = (value: 'a') => {};\nexport const value = meet(left, right);\nexport const checked: 'a' = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: \"a\";\nexport declare const checked: 'a';\n"
+    },
+    {
+      "id": "contravariant-literal-reject",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function meet<T>(left: (value: T) => void, right: (value: T) => void): T; const left = (value: string) => {}; const right = (value: 'a') => {};\nexport const value = meet(left, right);\nexport const checked: 'b' = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"a\"' is not assignable to type '\"b\"'.",
+          "module": "entry.ts",
+          "start": 227,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "covariant-contravariant-accept",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(value: T, consume: (value: T) => void): T; const consume = (value: string | number) => {};\nexport const value = choose('s', consume);\nexport const checked: 's' = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value = \"s\";\nexport declare const checked: 's';\n"
+    },
+    {
+      "id": "covariant-contravariant-reject",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(value: T, consume: (value: T) => void): T; const consume = (value: string | number) => {};\nexport const value = choose('s', consume);\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 196,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "mutable-record-candidates-accept",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(left: {value: T}, right: {value: T}): T;\nexport const value = choose({value: 'a'}, {value: 'b'});\nexport const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string;\nexport declare const checked: string;\n"
+    },
+    {
+      "id": "mutable-record-candidates-reject",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(left: {value: T}, right: {value: T}): T;\nexport const value = choose({value: 'a'}, {value: 'b'});\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 160,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "rejected-conflicting-candidate-accept",
+      "area": "constraints",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(left: T, right: T): T;\nexport const value = choose(1, 2);\nexport const checked: 1 | 2 = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: 1 | 2;\n"
+    },
+    {
+      "id": "rejected-conflicting-candidate-reject",
+      "area": "constraints",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(left: T, right: T): T;\nexport const value = choose(1, 'wrong');\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '\"wrong\"' is not assignable to parameter of type '1'.",
+          "module": "entry.ts",
+          "start": 103,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "selected-record-signature-accept",
+      "area": "selection",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(value: {value: T}): {kind: 'box'; value: T}; declare function choose<T>(value: T[]): {kind: 'array'; value: T};\nexport const value = choose({value: 4});\nexport const checked: {kind: 'box'; value: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    kind: \"box\";\n    value: number;\n};\nexport declare const checked: {\n    kind: 'box';\n    value: number;\n};\n"
+    },
+    {
+      "id": "selected-record-signature-reject",
+      "area": "selection",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(value: {value: T}): {kind: 'box'; value: T}; declare function choose<T>(value: T[]): {kind: 'array'; value: T};\nexport const value = choose({value: 4});\nexport const checked: {kind: 'array'; value: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ kind: \"box\"; value: number; }' is not assignable to type '{ kind: \"array\"; value: number; }'.\n  Types of property 'kind' are incompatible.\n    Type '\"box\"' is not assignable to type '\"array\"'.",
+          "module": "entry.ts",
+          "start": 215,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "selected-array-signature-accept",
+      "area": "selection",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(value: T[]): {kind: 'array'; value: T}; declare function choose<T>(value: {value: T}): {kind: 'box'; value: T};\nexport const value = choose([4]);\nexport const checked: {kind: 'array'; value: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    kind: \"array\";\n    value: number;\n};\nexport declare const checked: {\n    kind: 'array';\n    value: number;\n};\n"
+    },
+    {
+      "id": "selected-array-signature-reject",
+      "area": "selection",
+      "source": "// UTF-16 control: 😀\ndeclare function choose<T>(value: T[]): {kind: 'array'; value: T}; declare function choose<T>(value: {value: T}): {kind: 'box'; value: T};\nexport const value = choose([4]);\nexport const checked: {kind: 'box'; value: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ kind: \"array\"; value: number; }' is not assignable to type '{ kind: \"box\"; value: number; }'.\n  Types of property 'kind' are incompatible.\n    Type '\"array\"' is not assignable to type '\"box\"'.",
+          "module": "entry.ts",
+          "start": 208,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "contravariant-records-reversed-accept",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function meet<T>(left: (value: T) => void, right: (value: T) => void): T; const left = (value: {left: number}) => {}; const right = (value: {left: number; right: string}) => {};\nexport const value = meet(right, left);\nexport const checked: {left: number; right: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    left: number;\n    right: string;\n};\nexport declare const checked: {\n    left: number;\n    right: string;\n};\n"
+    },
+    {
+      "id": "contravariant-records-reversed-reject",
+      "area": "candidates",
+      "source": "// UTF-16 control: 😀\ndeclare function meet<T>(left: (value: T) => void, right: (value: T) => void): T; const left = (value: {left: number}) => {}; const right = (value: {left: number; right: string}) => {};\nexport const value = meet(right, left);\nexport const checked: {right: number} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ left: number; right: string; }' is not assignable to type '{ right: number; }'.\n  Types of property 'right' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 261,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "rejected-contravariant-candidate-accept",
+      "area": "constraints",
+      "source": "// UTF-16 control: 😀\ndeclare function meet<T>(left: (value: T) => void, right: (value: T) => void): T; const left = (value: {left: number}) => {}; const right = (value: {left: number; right: string}) => {}; const bad = (value: {right: string}) => {};\nexport const value = meet(left, right);\nexport const checked: {left: number; right: string} = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    left: number;\n    right: string;\n};\nexport declare const checked: {\n    left: number;\n    right: string;\n};\n"
+    },
+    {
+      "id": "rejected-contravariant-candidate-reject",
+      "area": "constraints",
+      "source": "// UTF-16 control: 😀\ndeclare function meet<T>(left: (value: T) => void, right: (value: T) => void): T; const left = (value: {left: number}) => {}; const right = (value: {left: number; right: string}) => {}; const bad = (value: {right: string}) => {};\nexport const value = meet(left, bad);\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: { right: string; }) => void' is not assignable to parameter of type '(value: { left: number; }) => void'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Property 'right' is missing in type '{ left: number; }' but required in type '{ right: string; }'.",
+          "module": "entry.ts",
+          "start": 284,
+          "length": 3,
+          "related": [
+            {
+              "code": 2728,
+              "message": "'right' is declared here.",
+              "module": "entry.ts",
+              "start": 229,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "no-candidate-unknown-accept",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T>(): T;\nexport const value = make();\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: unknown;\nexport declare const checked: unknown;\n"
+    },
+    {
+      "id": "no-candidate-unknown-reject",
+      "area": "defaults",
+      "source": "// UTF-16 control: 😀\ndeclare function make<T>(): T;\nexport const value = make();\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 95,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "callback-body-first-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function apply<T, R>(fn: (value: T) => R, value: T): R;\nexport const value = apply(value => { const n: number = value; return value; }, 2);\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "callback-body-first-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function apply<T, R>(fn: (value: T) => R, value: T): R;\nexport const value = apply(value => { const n: string = value; return value; }, 2);\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 130,
+          "length": 1,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "callback-body-last-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function apply<T, R>(value: T, fn: (value: T) => R): R;\nexport const value = apply(2, value => { const n: number = value; return value; });\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "callback-body-last-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function apply<T, R>(value: T, fn: (value: T) => R): R;\nexport const value = apply(2, value => { const n: string = value; return value; });\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 133,
+          "length": 1,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "object-callback-body-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(handlers: {produce: () => T; consume: (value: T) => void}): T;\nexport const value = run({produce: () => 5, consume: value => { const n: number = value; }});\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "object-callback-body-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(handlers: {produce: () => T; consume: (value: T) => void}): T;\nexport const value = run({produce: () => 5, consume: value => { const n: string = value; }});\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 179,
+          "length": 1,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "object-callback-body-reversed-accept",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(handlers: {consume: (value: T) => void; produce: () => T}): T;\nexport const value = run({consume: value => { const n: number = value; }, produce: () => 5});\nexport const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "object-callback-body-reversed-reject",
+      "area": "context",
+      "source": "// UTF-16 control: 😀\ndeclare function run<T>(handlers: {consume: (value: T) => void; produce: () => T}): T;\nexport const value = run({consume: value => { const n: string = value; }, produce: () => 5});\nexport const checked: unknown = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 161,
+          "length": 1,
+          "related": []
+        }
+      ]
+    }
+  ],
+  "budget_controls": [
+    {
+      "id": "recursive-candidates",
+      "kind": "expansion",
+      "source": "type Link<T> = {value: T; next?: Link<T>}; declare function read<T>(value: Link<T>): T; const source: Link<number> = {value: 1}; export const value = read(source);"
+    },
+    {
+      "id": "contextual-candidates",
+      "kind": "expansion",
+      "source": "declare function apply<T, R>(value: T, fn: (value: T) => R): R; export const value = apply(1, n => n + 1);"
+    },
+    {
+      "id": "nested-candidate-depth",
+      "kind": "depth",
+      "source": "declare function read<T>(value: {one: {two: {three: T}}}): T; export const value = read({one: {two: {three: 1}}});"
+    }
+  ]
+}

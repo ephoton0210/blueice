@@ -236,6 +236,11 @@ impl ModuleChecker<'_> {
         }
         let a = self.compatibility_shape(actual);
         let e = self.compatibility_shape(expected);
+        if matches!((&a, &e), (Type::Function { .. }, Type::Function { .. }))
+            && (&a != actual || &e != expected)
+        {
+            return Some(crate::diagnostic::type_text::detail(&a, &e, self.project));
+        }
         if let (
             Type::CallableRecord {
                 signatures: actual, ..

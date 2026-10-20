@@ -35,6 +35,7 @@ mod decorators;
 mod enums;
 mod global_declarations;
 mod helper_selection;
+mod inference_literals;
 mod inferred_declarations;
 mod inferred_returns;
 mod jsx;

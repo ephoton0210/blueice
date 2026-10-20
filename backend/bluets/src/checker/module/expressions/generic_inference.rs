@@ -114,6 +114,11 @@ impl ModuleChecker<'_> {
                 )));
             }
         }
-        Some(substitute_type(&signature.return_type, &substitutions).runtime_result())
+        Some(crate::checker::inference::result_type(
+            &signature.return_type,
+            &substitutions,
+            &self.types,
+            &mut budget,
+        ))
     }
 }

@@ -10,6 +10,7 @@ mod arrays;
 mod invocations;
 mod records;
 mod template_constants;
+pub(super) use records::record_member_end;
 
 impl<'a> ModuleChecker<'a> {
     /// The type of a top-level chain of `+`/`-` or of `*`/`/`/`%`, folded from the

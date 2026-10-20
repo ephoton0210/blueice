@@ -7,6 +7,8 @@
 use super::*;
 
 mod call_presentation;
+mod conditional_inputs;
+mod contextual_calls;
 mod diagnostics;
 mod flow_checks;
 mod freshness;
@@ -71,7 +73,12 @@ impl<'a> ModuleChecker<'a> {
             &mut budget,
         )
         .expect("selected function signature has valid substitutions");
-        substitute_type(&signature.return_type, &substitutions).runtime_result()
+        crate::checker::inference::result_type(
+            &signature.return_type,
+            &substitutions,
+            &self.types,
+            &mut budget,
+        )
     }
 
     pub(super) fn check_function_call(
@@ -454,6 +461,7 @@ impl<'a> ModuleChecker<'a> {
             })
         });
         let signatures = ordered.as_slice();
+        let seeds = self.generic_argument_seeds(arguments, scope, signatures);
         let mut actuals = Vec::new();
         let mut positions_known = true;
         for argument in arguments {
@@ -512,7 +520,15 @@ impl<'a> ModuleChecker<'a> {
                         || token.is("{")
                         || self.module.nested_functions.contains_key(&token.start)
                 }))
-            .then(|| self.contextual_argument_type(argument, scope, &actuals, signatures))
+            .then(|| {
+                self.contextual_argument_type(
+                    argument,
+                    scope,
+                    &actuals,
+                    signatures,
+                    seeds.as_deref(),
+                )
+            })
             .flatten();
             match contextual {
                 Some(actual) => actuals.push(actual),
@@ -528,6 +544,7 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         actuals: &[Type],
         signatures: &[FunctionSignature],
+        seeds: Option<&[Type]>,
     ) -> Option<Type> {
         let mut rejected = None;
         for signature in signatures {
@@ -536,8 +553,12 @@ impl<'a> ModuleChecker<'a> {
             };
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             budget.checking = self.checking;
+            let mut evidence = seeds.unwrap_or(actuals).to_vec();
+            for (slot, actual) in evidence.iter_mut().zip(actuals) {
+                *slot = actual.clone();
+            }
             let substitutions =
-                infer_call_substitutions(signature, actuals, &self.types, &mut budget);
+                infer_call_substitutions(signature, &evidence, &self.types, &mut budget);
             if actuals.iter().enumerate().any(|(index, actual)| {
                 let Some(parameter) = function_parameter_for_argument(signature, index) else {
                     return true;
@@ -553,7 +574,13 @@ impl<'a> ModuleChecker<'a> {
                 continue;
             }
             let expected = call_parameter_expected_type(parameter, &substitutions);
-            let actual = self.infer_in_context(argument, scope, &expected);
+            let actual = parameter
+                .annotation
+                .as_ref()
+                .and_then(|annotation| {
+                    self.conditional_argument(argument, scope, annotation, signature, &mut budget)
+                })
+                .unwrap_or_else(|| self.infer_in_context(argument, scope, &expected));
             if is_assignable(
                 &actual,
                 &expected,

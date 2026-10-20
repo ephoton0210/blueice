@@ -7,6 +7,27 @@
 use super::*;
 
 impl ModuleChecker<'_> {
+    pub(in crate::checker) fn inferred_fresh_variables(&self) -> BTreeSet<usize> {
+        self.module
+            .declarations
+            .iter()
+            .filter_map(|declaration| {
+                let Declaration::Variable(variable) = declaration else {
+                    return None;
+                };
+                (variable.annotation.is_none()
+                    && variable.kind == crate::parser::VariableKind::Const
+                    && self.fresh_array_element(
+                        &variable.initializer,
+                        &self.values,
+                        &mut BTreeSet::new(),
+                        0,
+                    ))
+                .then_some(variable.span.start)
+            })
+            .collect()
+    }
+
     pub(super) fn array_element_type(
         &self,
         tokens: &[Token],
@@ -107,10 +128,9 @@ impl ModuleChecker<'_> {
             return false;
         };
         if !type_arguments.is_empty()
-            || !signature
-                .type_parameters
-                .iter()
-                .any(|parameter| parameter.name == *name && !parameter.is_const)
+            || !signature.type_parameters.iter().any(|parameter| {
+                parameter.name == *name && !parameter.is_const && parameter.constraint.is_none()
+            })
         {
             return false;
         }

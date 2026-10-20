@@ -7,6 +7,7 @@
 use super::*;
 mod compatibility;
 mod constructors;
+mod inference_candidates;
 mod more_types;
 mod operators;
 mod records;
@@ -359,6 +360,7 @@ impl ModuleChecker<'_> {
     ) {
         if self.enforce_types {
             let origin = self.parameter_constraint_origin(actual, expected);
+            let missing = self.inference_missing_parameter_property(actual, expected);
             let detail = self
                 .compatibility_detail(actual, expected)
                 .unwrap_or_else(|| {
@@ -371,6 +373,9 @@ impl ModuleChecker<'_> {
             {
                 if matches!(counterpart.code, 2322 | 2345 | 2375 | 2719) {
                     counterpart.message.push_str(&detail);
+                    if let Some(related) = missing {
+                        counterpart.related_information.push(related);
+                    }
                     if let Some((name, span)) = origin {
                         let related = crate::TypeScriptRelatedInformation {
                             code: 2208,

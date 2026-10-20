@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-10-20).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 12,817 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,896 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,261/12,270 (99.9267%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 10 BlueTS owner = 547; excluded from direct agreement |
-| Case labels | 12,808 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 105 suites / 253 ignored Rust functions; not a case denominator |
-| Suite labels | 99 scoped closed, 1 open, 5 refused |
+| Direct agreement | 12,337/12,346 (99.9271%); 3 open, 6 refused observations |
+| Separate controls | 537 native-reference + 13 BlueTS owner = 550; excluded from direct agreement |
+| Case labels | 12,887 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 106 suites / 255 ignored Rust functions; not a case denominator |
+| Suite labels | 100 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 12,817 recorded case expectations pass; expected differences/refusals are not
+All 12,896 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:320bc0f44243235a9dd0f1accd06b5381f3ec75f`.
-Input graph SHA-256: `e81ed2d16823bed49217e6105905eda8b0b8a2d79fa030a5693b176b0888c853`.
+Compiler/oracle source: `backend-tree:f7812ea669944e6e3885ac308cc5a05758da0171`.
+Input graph SHA-256: `f8a0a51890b8c93e8b60936c9760f100e36fc1ffa47d10f15b4c292d8a30b7f8`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -44,8 +44,8 @@ Older dated measurements below retain their original scope; they are not this cu
 **Current work (2026-10-20):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, both
-G-T1 stages and G-T3 are complete for their scopes below; 19 packages remain
-unchecked. Next: G-T2.**
+G-T1 stages, G-T3 and G-T2 are complete for their scopes below; 18 packages
+remain unchecked. Next: G-T5.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -232,7 +232,7 @@ Existing measured behavior is reused; it is not implemented again.
     inventory row stays open for unmeasured compositions; full parity stays OFF.
     [Matrix and evidence](PLAN.md#phase-l--g-t3-implementation).
 
-- [ ] **G-T2 — Recursive/contextual generic candidate inference.**
+- [x] **G-T2 — Recursive/contextual generic candidate inference.**
   - **Scope:** recursive record/operator arguments, callback return context,
     dependent defaults/constraints and competing covariant/contravariant candidates.
     “Higher-kinded patterns” must be concrete pinned-TypeScript programs, not a
@@ -240,6 +240,19 @@ Existing measured behavior is reused; it is not implemented again.
   - **Pass:** inferred type arguments, selected signatures, constraint diagnostics
     and exported types agree across the frozen candidate/context matrix, including
     rejected candidates and budget controls.
+  - **Frozen acceptance:** 76 strict ES2022 programs (38 accepted/rejected pairs)
+    across recursive/operator structures, callback context and body checks,
+    dependent defaults/constraints, directed candidates and selected signatures.
+    Require complete primary/related diagnostics with UTF-16 positions, 38 raw
+    byte-exact declarations and bidirectional native consumers, selected-edition
+    syntax, four executions, and three separately counted owner budget controls.
+  - **Completed (2026-10-20):** candidate/cycle/context fixes pass complete
+    source-frozen replay: 106 suites / 555 tests, including all 255 ignored
+    functions. All 12,817 prior assertions and original 66 native rows remain
+    unchanged. Final no-exclusion two-crate gate passes 1,320 tests. Workspace
+    formatting, warnings-denied Clippy and tool/evidence/document checks pass.
+    The broader inventory row stays open; full parity remains OFF.
+    [Matrix and evidence](PLAN.md#phase-l--g-t2-implementation).
 
 - [ ] **G-T5 — Computed symbols, tuple and const/satisfies compositions.**
   - **Scope:** computed symbol/index access, optional/rest/named and variadic tuple

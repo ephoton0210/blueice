@@ -169,6 +169,25 @@ fn parameter_reason(
     project: &Project,
     depth: usize,
 ) -> String {
+    if let (Type::Record(source_fields), Type::Record(target_fields)) = (source, target) {
+        if let Some(field) = target_fields
+            .iter()
+            .find(|f| !f.optional && !source_fields.iter().any(|s| s.name == f.name))
+        {
+            return relations::line(
+                depth,
+                format!("Types of parameters '{a}' and '{e}' are incompatible."),
+            ) + &relations::line(
+                depth + 1,
+                format!(
+                    "Property '{}' is missing in type '{}' but required in type '{}'.",
+                    field.name,
+                    render_in(source, project),
+                    render_in(target, project)
+                ),
+            );
+        }
+    }
     relations::line(
         depth,
         format!("Types of parameters '{a}' and '{e}' are incompatible."),

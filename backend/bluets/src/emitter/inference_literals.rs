@@ -1,0 +1,30 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Only checker-proven fresh generic literal unions widen in declarations.
+use super::*;
+
+pub(super) fn declaration_union(value: Type, fresh: bool) -> Type {
+    if fresh {
+        if let Type::Union(parts) = &value {
+            let widened: Vec<_> = parts
+                .iter()
+                .map(|part| match part {
+                    Type::Literal(text) if text.starts_with(['\'', '"', '`']) => Type::String,
+                    Type::Literal(text) if text.parse::<f64>().is_ok() => Type::Number,
+                    Type::Literal(text) if matches!(text.as_str(), "true" | "false") => {
+                        Type::Boolean
+                    }
+                    value => value.clone(),
+                })
+                .collect();
+            if let Some(first) = widened.first() {
+                if widened.iter().all(|value| value == first) {
+                    return first.clone();
+                }
+            }
+        }
+    }
+    value
+}

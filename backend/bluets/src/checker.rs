@@ -18,7 +18,7 @@ pub use crate::parser::Type;
 
 mod interfaces;
 use interfaces::merge_interface_values;
-mod inference;
+pub(crate) mod inference;
 use inference::infer_call_substitutions;
 
 mod checking;
@@ -83,6 +83,9 @@ pub struct CheckedModule {
     /// Return types inferred without changing source annotations or runtime policy.
     pub(crate) inferred_returns: BTreeMap<usize, Type>,
     pub(crate) inferred_parameters: BTreeMap<usize, Type>,
+    /// Fresh literal call results keep their precision for checking, but widen
+    /// mutable declaration unions just as literal initializers do.
+    pub(crate) fresh_variables: BTreeSet<usize>,
     pub(crate) class_expression_surfaces: BTreeMap<String, ClassExpressionSurface>,
     /// The namespaces the module exports, as an importer binds them.
     pub(crate) namespace_exports: BTreeMap<String, NamespaceExport>,

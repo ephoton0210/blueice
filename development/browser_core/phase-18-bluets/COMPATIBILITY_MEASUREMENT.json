@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:320bc0f44243235a9dd0f1accd06b5381f3ec75f",
-  "source_graph_sha256": "e81ed2d16823bed49217e6105905eda8b0b8a2d79fa030a5693b176b0888c853",
-  "runner_base_revision": "be63fdf748dafa4e9ba13bd06e11a8bc1a12bd74",
+  "source_revision": "backend-tree:f7812ea669944e6e3885ac308cc5a05758da0171",
+  "source_graph_sha256": "f8a0a51890b8c93e8b60936c9760f100e36fc1ffa47d10f15b4c292d8a30b7f8",
+  "runner_base_revision": "f91b636ecd14598d72033913cd003e5cad410745",
   "oracle_tools_sha256": {
     "account_inventory_rows.py": "c9cf204cbfea75f52d662dfd6db426d5b93699401b966dca0329ddcab383a4af",
     "check_compatibility_status.py": "9f5d340edfa26799fc36ef250e97415b182f2e07e15a7bd41f719f03a94abd6d",
@@ -34,6 +34,7 @@
     "record_gc1_sources.cjs": "611cab2ebf86574187b04804c2e7fef5adf25056f238c10e94abd6ae24faf162",
     "record_gt1_declaration_order.cjs": "be021be434df9bb45b2dba75a910570bf733a6ffa7df27271155bfc77f67d469",
     "record_gt1_flow.cjs": "3efd4e7ffbf847f2fa2c632b0ff9476d30b8ab7ef1de2b7e28434ce544152fd3",
+    "record_gt2_inference.cjs": "53f3cc41c97c1e4e8d410911bf035daa362fcb3b9e1050771c0a7430741edc1c",
     "record_gt3_key_profiles.cjs": "4b08e30bb18e9561885ab962b5b342a47aa187c3773d1c921d33f6d745f386e2",
     "record_gt3_operators.cjs": "aa60542dce63749b818f9f2157910ed7672961db51fbc659eaea076978db948d",
     "record_guards.cjs": "f94656e55dfa6d1edf54102e46fcf852729e9616d61659cf2637b9db0de1433d",
@@ -68,8 +69,8 @@
   "source_mode": "immutable-staged-backend-tree",
   "platform": "darwin-arm64",
   "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18) (Homebrew)",
-  "started_at": "2026-10-20T04:35:38.442Z",
-  "finished_at": "2026-10-20T05:17:37.179Z",
+  "started_at": "2026-10-20T06:24:18.116Z",
+  "finished_at": "2026-10-20T06:55:39.115Z",
   "conclusion": "success",
   "suites": [
     {
@@ -85,9 +86,9 @@
       "test_names": [
         "async_generator_targets_match_native_effects_declarations_and_syntax"
       ],
-      "seconds": 0.48,
+      "seconds": 0.293,
       "log": "000-backend_bluets-bluejs_tests_async_generator_targets_rs.log",
-      "log_sha256": "6aeb0ac50e5c02308d05995d8fd1f48b05b50170dfe38f1adb651892bcdea7f2"
+      "log_sha256": "4dc065c549f459a228f967656097958706610639bea7ce1c99dbc22bd0264cef"
     },
     {
       "harness": "backend/bluets-bluejs/tests/async_targets.rs",
@@ -102,9 +103,9 @@
       "test_names": [
         "async_targets_match_effects_declarations_and_syntax"
       ],
-      "seconds": 0.639,
+      "seconds": 0.336,
       "log": "001-backend_bluets-bluejs_tests_async_targets_rs.log",
-      "log_sha256": "7f55c2d046b8dbaf0044d43a2ababa727df635e0d095de8badfad5b6205c58dc"
+      "log_sha256": "6baf18cf9155d4ddbbb3649cd5829c3206276ecafeeb211ee67b8b2c940bcadb"
     },
     {
       "harness": "backend/bluets-bluejs/tests/decorators_direct.rs",
@@ -121,9 +122,9 @@
         "experimental_decorators_are_refused_naming_the_build_route",
         "the_direct_bridge_runs_standard_decorators_to_the_value_typescript_and_node_compute"
       ],
-      "seconds": 5.595,
+      "seconds": 2.407,
       "log": "002-backend_bluets-bluejs_tests_decorators_direct_rs.log",
-      "log_sha256": "5f95d6f2c4bafe4258c1497f78a8c56fd09d36f57b34d7bf36264d54add5c904"
+      "log_sha256": "022c646512dd18ae11b753c5e0e809622ccc10716c6837bf110c212add5b66d4"
     },
     {
       "harness": "backend/bluets-bluejs/tests/emitted_target_editions.rs",
@@ -140,9 +141,9 @@
         "refused_suspension_has_a_pinned_native_positive_control",
         "unsupported_suspension_refuses_es5_output"
       ],
-      "seconds": 3.65,
+      "seconds": 2.258,
       "log": "003-backend_bluets-bluejs_tests_emitted_target_editions_rs.log",
-      "log_sha256": "c61dfb6369b8aa4ed04df14c6e2966b4d7d4057ed7d0a740ca6fb8de46319ec8"
+      "log_sha256": "2d0abc28619279c9decf1afe47104f1c6ee9565764da6b7974f9dd5f6e615f17"
     },
     {
       "harness": "backend/bluets-bluejs/tests/es5_scope_targets.rs",
@@ -157,9 +158,9 @@
       "test_names": [
         "es5_scope_targets_match_native_execution_declarations_and_syntax"
       ],
-      "seconds": 0.376,
+      "seconds": 0.318,
       "log": "004-backend_bluets-bluejs_tests_es5_scope_targets_rs.log",
-      "log_sha256": "c20d2f46e4ae02158832e29d60d4d2f0eef530beb2ac07083d498dea6d3d4147"
+      "log_sha256": "4b5169787fd9e41a4cc83bd68e89db319d5988c18cbccb8b4f82f957a66419ef"
     },
     {
       "harness": "backend/bluets-bluejs/tests/explicit_this_parameters.rs",
@@ -175,9 +176,9 @@
         "direct_functions_erase_the_receiver_parameter",
         "emitted_receiver_parameters_match_node_and_declarations"
       ],
-      "seconds": 0.361,
+      "seconds": 0.278,
       "log": "005-backend_bluets-bluejs_tests_explicit_this_parameters_rs.log",
-      "log_sha256": "5bc4f20dc82d57fbff94694ffd31b8db28f7fbe4f33928746e829f6a1827a42b"
+      "log_sha256": "43a747b4366facca4a5c2b63df08ee7dcf336fcbde933fddab1f2ee1b11bec42"
     },
     {
       "harness": "backend/bluets-bluejs/tests/exponentiation_targets.rs",
@@ -193,9 +194,9 @@
         "power_effects_match_pinned_typescript_and_native_exponentiation",
         "power_effects_parse_at_the_selected_bluejs_edition"
       ],
-      "seconds": 0.33,
+      "seconds": 0.283,
       "log": "006-backend_bluets-bluejs_tests_exponentiation_targets_rs.log",
-      "log_sha256": "86fcf322621ec945db7d1a7398c80836061a788d5b7b2bcb307beffbddfca3e7"
+      "log_sha256": "b87c6bb0b181bd8a18510d1999133ad703ccdc3a16b864587cb99c10c2d3fa77"
     },
     {
       "harness": "backend/bluets-bluejs/tests/jsx_direct.rs",
@@ -219,9 +220,9 @@
         "runtime_pragmas_choose_classic_execution_or_refuse_automatic_imports",
         "the_direct_bridge_runs_classic_jsx_to_the_value_typescript_and_node_compute"
       ],
-      "seconds": 4.054,
+      "seconds": 3.468,
       "log": "007-backend_bluets-bluejs_tests_jsx_direct_rs.log",
-      "log_sha256": "5114e9b19388c93d83e60d85922c59d03e7ecae488e47e07ce01ded1e4b91c05"
+      "log_sha256": "305e01b031bbfc67bec38b4fcdb8f5a526b89c7d7a0f394612151b0d79427ae3"
     },
     {
       "harness": "backend/bluets-bluejs/tests/logical_assignment_targets.rs",
@@ -237,9 +238,9 @@
         "binding_effects_match_pinned_typescript_and_native_assignments",
         "emitted_logical_assignments_parse_at_the_selected_bluejs_edition"
       ],
-      "seconds": 0.232,
+      "seconds": 0.211,
       "log": "008-backend_bluets-bluejs_tests_logical_assignment_targets_rs.log",
-      "log_sha256": "ad1bcc23b60ab586b15de08f0022ec0503272e8f64dcf138a9f8890923be7fe3"
+      "log_sha256": "cf510b6038d54dbc265e6edd755db0cbf2bf3ce4d017c11b25d42b2e9b88e859"
     },
     {
       "harness": "backend/bluets-bluejs/tests/namespace_parity.rs",
@@ -257,9 +258,9 @@
         "direct_execution_refuses_owner_loaded_module_wrappers",
         "the_direct_bridge_runs_namespaces_to_the_value_typescript_and_node_compute"
       ],
-      "seconds": 2.812,
+      "seconds": 2.649,
       "log": "009-backend_bluets-bluejs_tests_namespace_parity_rs.log",
-      "log_sha256": "c5882a1a213542126cc4dbb10465089e96a58cbb69e8f8289b4b3bd86aa8069e"
+      "log_sha256": "6b5afb5055089f4c5a65d734323f47674b46e04a4a8d377debd298ba95b96f1e"
     },
     {
       "harness": "backend/bluets-bluejs/tests/optional_targets.rs",
@@ -274,9 +275,9 @@
       "test_names": [
         "optional_targets_match_effects_declarations_and_syntax"
       ],
-      "seconds": 0.337,
+      "seconds": 0.321,
       "log": "010-backend_bluets-bluejs_tests_optional_targets_rs.log",
-      "log_sha256": "8dbe16de84e5c1ea74006f3f92d3d4b20ca00abc0d07b39e54971935acbadce0"
+      "log_sha256": "0560007378834a5a9039c02d1c8b95650ee85a2c271c3098b3ba2dcd37f354d0"
     },
     {
       "harness": "backend/bluets-bluejs/tests/rest_array_parameters.rs",
@@ -292,9 +293,9 @@
         "direct_functions_accept_array_rest_arguments",
         "rest_arrays_match_node_and_declarations"
       ],
-      "seconds": 0.32,
+      "seconds": 0.278,
       "log": "011-backend_bluets-bluejs_tests_rest_array_parameters_rs.log",
-      "log_sha256": "5426de385cf8fa47f1444051b3d6f4bd05faf7946e9c4a43e5e0abfac878edfd"
+      "log_sha256": "88d39c88e9e3ea43d5554bd186f4e9cda4bc965393cf423ec22f1f3c47cff246"
     },
     {
       "harness": "backend/bluets-bluejs/tests/target_syntax_profiles.rs",
@@ -314,9 +315,9 @@
         "selected_bluejs_editions_match_every_independent_syntax_observation",
         "syntax_edition_observations_match_the_pinned_independent_parser"
       ],
-      "seconds": 0.091,
+      "seconds": 0.084,
       "log": "012-backend_bluets-bluejs_tests_target_syntax_profiles_rs.log",
-      "log_sha256": "2220fb42966fc58d2900ee58873074c5eb85ba51ba98974b711e5ab7c87b8c91"
+      "log_sha256": "e5837abd47895bc4e9525a5c76eaa2ec0e5234ae6acf44c0e830e5facd2937e6"
     },
     {
       "harness": "backend/bluets-bluejs/tests/variable_patterns.rs",
@@ -332,9 +333,9 @@
         "direct_variable_patterns_bind_each_name",
         "variable_patterns_match_node_and_declarations"
       ],
-      "seconds": 0.303,
+      "seconds": 0.283,
       "log": "013-backend_bluets-bluejs_tests_variable_patterns_rs.log",
-      "log_sha256": "bcb84d7b455aec1cc2d779f397533e37a7f32b7165c5141dae70f852aea00f10"
+      "log_sha256": "c096ee45e08d4d0b09870f22dc722bcf065d8cfe14316a50652a92e6baf971d7"
     },
     {
       "harness": "backend/bluets/tests/ambient_checker_matrix.rs",
@@ -353,9 +354,9 @@
         "matrix_covers_every_ambient_fixture",
         "recorded_ambient_match_pinned_typescript"
       ],
-      "seconds": 32.404,
+      "seconds": 20.271,
       "log": "014-backend_bluets_tests_ambient_checker_matrix_rs.log",
-      "log_sha256": "f45a38a7afcc4818afd6b016fd0fc4936594a2e581717933047137168563ae53"
+      "log_sha256": "d63cb98f16f92df79129f341c157ad89b32aa8db44132a5bfefedf1b83285e5b"
     },
     {
       "harness": "backend/bluets/tests/async_generator_context.rs",
@@ -371,9 +372,9 @@
         "async_generator_reference_matches_live_typescript",
         "async_generator_yields_and_returns_match_pinned_diagnostics"
       ],
-      "seconds": 1.379,
+      "seconds": 0.612,
       "log": "015-backend_bluets_tests_async_generator_context_rs.log",
-      "log_sha256": "9d2a01f1016f3baf997af9f4baee269ba9c1b371e55e76fa21d80385130f5302"
+      "log_sha256": "0a11f6abf87c86df597348d89313a6670c6885acd4f912f1dbe99a7b5c6d37f6"
     },
     {
       "harness": "backend/bluets/tests/catch_flow_context.rs",
@@ -389,9 +390,9 @@
         "catch_flow_matches_pinned_diagnostics",
         "catch_flow_reference_matches_live_typescript"
       ],
-      "seconds": 6.19,
+      "seconds": 2.817,
       "log": "016-backend_bluets_tests_catch_flow_context_rs.log",
-      "log_sha256": "1f00d5a608794c12bd01466cd25e71fde0bd990fd958aaeb00d8d6d153f319b8"
+      "log_sha256": "72217a6919a2dc0453e857cbe5dd345916ce809b6e53da20030587e2a89a5665"
     },
     {
       "harness": "backend/bluets/tests/class_checker_matrix.rs",
@@ -410,9 +411,9 @@
         "matrix_lists_every_class_fixture_entry",
         "recorded_verdicts_match_the_pinned_typescript_compiler"
       ],
-      "seconds": 285.206,
+      "seconds": 198.016,
       "log": "017-backend_bluets_tests_class_checker_matrix_rs.log",
-      "log_sha256": "aa9c77a3b1cb039d63453a92b1999433d2e998d6c9fa969b1463929ba40df51b"
+      "log_sha256": "e2ac7cceff707874bba6dea4b16d75bb55a3349f99e1e27e14cf5dd4e8b84a8a"
     },
     {
       "harness": "backend/bluets/tests/class_downlevel_oracle.rs",
@@ -427,9 +428,9 @@
       "test_names": [
         "pinned_class_downlevel_emit_prints_what_typescript_prints_in_every_mode"
       ],
-      "seconds": 13.789,
+      "seconds": 13.534,
       "log": "018-backend_bluets_tests_class_downlevel_oracle_rs.log",
-      "log_sha256": "8263ac026806c62468615d4699640df6ca6999851ec25ab91f393d31444d4ce7"
+      "log_sha256": "ac5fe86b250a3e8ada106813523ecb1842ec6d36f09886102f1636d556e63bdd"
     },
     {
       "harness": "backend/bluets/tests/class_dynamic_checker_matrix.rs",
@@ -448,9 +449,9 @@
         "matrix_covers_every_class_dynamic_fixture",
         "recorded_class_dynamic_match_pinned_typescript"
       ],
-      "seconds": 20.443,
+      "seconds": 20.303,
       "log": "019-backend_bluets_tests_class_dynamic_checker_matrix_rs.log",
-      "log_sha256": "37380ccf19f74b0912c1318fdaaa821257d14840877a6fbee4227f4cbf3b411e"
+      "log_sha256": "e75a6d4fad0881e44c033d9ea69d9d9b0b54777ca444aa9d0af7ac2da2c3add1"
     },
     {
       "harness": "backend/bluets/tests/class_modifiers.rs",
@@ -472,9 +473,9 @@
         "override_policy_is_independent_and_reabstracting_requires_the_modifier",
         "parameter_property_override_errors_retain_the_entire_declaration"
       ],
-      "seconds": 2.974,
+      "seconds": 2.994,
       "log": "020-backend_bluets_tests_class_modifiers_rs.log",
-      "log_sha256": "44e7c1e2241dbd348a62860dd3db6eb8313aaf0ec9878761dad1a49fc0f7dce9"
+      "log_sha256": "e96aa72bd228913d92f123cc65fc0e52dde326a6d827d643d7bf2f1c6fcc8e82"
     },
     {
       "harness": "backend/bluets/tests/class_modifiers_checker_matrix.rs",
@@ -493,9 +494,9 @@
         "matrix_covers_every_class_modifier_fixture",
         "recorded_class_modifiers_match_pinned_typescript"
       ],
-      "seconds": 15.362,
+      "seconds": 13.308,
       "log": "021-backend_bluets_tests_class_modifiers_checker_matrix_rs.log",
-      "log_sha256": "1999c5167f30914441ec9372930a3265bb4447d9804940999cc9d61a153bd195"
+      "log_sha256": "18ba43d93072cbd862b2eea90e07bac79b9fd8497cd882042991e6d861f8c1bd"
     },
     {
       "harness": "backend/bluets/tests/class_retirement_checker_matrix.rs",
@@ -514,9 +515,9 @@
         "matrix_covers_every_class_retirement_fixture",
         "recorded_class_retirement_match_pinned_typescript"
       ],
-      "seconds": 11.815,
+      "seconds": 13.486,
       "log": "022-backend_bluets_tests_class_retirement_checker_matrix_rs.log",
-      "log_sha256": "edd493a205a4db4fb4397a2f96141f4a4f8f009d8ee9dfa8e879d9a20f600033"
+      "log_sha256": "379d821be0bc9ab1a61ef1cdcfce31bc261c947c76eb2d94581f2dd67b80c8fa"
     },
     {
       "harness": "backend/bluets/tests/cli_surface.rs",
@@ -539,9 +540,9 @@
         "recorded_native_cli_observations_match_pinned_typescript",
         "serialized_project_paths_normalize_windows_roots"
       ],
-      "seconds": 9.615,
+      "seconds": 6.931,
       "log": "023-backend_bluets_tests_cli_surface_rs.log",
-      "log_sha256": "cd1b7a80d47a95cb28765cd2442482bf0ed22efb50692064b5204dd3c81e0002"
+      "log_sha256": "19d525342c40201f4678ad2e55791ca15b2a174cc9174d4bf87019623a533e37"
     },
     {
       "harness": "backend/bluets/tests/commonjs_oracle.rs",
@@ -565,9 +566,9 @@
         "the_module_kind_is_part_of_the_project_fingerprint",
         "top_level_await_is_refused_in_a_commonjs_module"
       ],
-      "seconds": 6.03,
+      "seconds": 2.938,
       "log": "024-backend_bluets_tests_commonjs_oracle_rs.log",
-      "log_sha256": "8b78e49df5a61f4845f0caabbc745b9180b197f37cfe49f5c956d1467b993f15"
+      "log_sha256": "b38ad22fa41b4774547a5ac0e7688e4d2b4bbdf05ee76fbedfa77c56fd0b61e5"
     },
     {
       "harness": "backend/bluets/tests/compatibility_checker_matrix.rs",
@@ -586,9 +587,9 @@
         "matrix_covers_every_compatibility_fixture",
         "recorded_compatibility_matches_pinned_typescript"
       ],
-      "seconds": 23.543,
+      "seconds": 11.266,
       "log": "025-backend_bluets_tests_compatibility_checker_matrix_rs.log",
-      "log_sha256": "f0568b1592897dac09407ac03c851b7479c62f4059c51ac790b4e56aad54b544"
+      "log_sha256": "0401b926cea7b52a5929d638799b6b2c4890b539421f2e21aa7302f6565b401e"
     },
     {
       "harness": "backend/bluets/tests/contextual_type_imports.rs",
@@ -603,9 +604,9 @@
       "test_names": [
         "contextual_type_default_and_equals_bindings_match_pinned_execution_and_declarations"
       ],
-      "seconds": 4.067,
+      "seconds": 1.911,
       "log": "026-backend_bluets_tests_contextual_type_imports_rs.log",
-      "log_sha256": "0bb0a9b819251ed9d8557ae5f967428a954f2372776651b6844791f43edb5299"
+      "log_sha256": "1f28b48ff82eaf60759afb29c55a6d80a1bcc8c4fe5358d52529e6e213627a9a"
     },
     {
       "harness": "backend/bluets/tests/declaration_inference.rs",
@@ -625,9 +626,9 @@
         "emitted_declarations_preserve_native_execution_declarations_and_target_syntax",
         "recorded_declaration_inference_match_the_live_native_compiler"
       ],
-      "seconds": 16.447,
+      "seconds": 12.959,
       "log": "027-backend_bluets_tests_declaration_inference_rs.log",
-      "log_sha256": "b10bf6c740d4b52edba7e8bee2770c9cb878c043dad09d24265b5ca5e0cd79e6"
+      "log_sha256": "04a5d8b99eb5024e91d744474c4b6da3d4e5dfafb98db2ac9c9e87b045f18dba"
     },
     {
       "harness": "backend/bluets/tests/declaration_options.rs",
@@ -646,9 +647,9 @@
         "emitted_declarations_preserve_native_execution_declarations_and_target_syntax",
         "recorded_declaration_options_match_the_live_native_compiler"
       ],
-      "seconds": 6.871,
+      "seconds": 7.063,
       "log": "028-backend_bluets_tests_declaration_options_rs.log",
-      "log_sha256": "d0e354b48594790622d00b0f32f0f86d4ee04dc039782c73d0e514174b895077"
+      "log_sha256": "ce2d1318dd82717fc1dd1d0dc766d72f3dc1238b78b4e2bf5864fb1ce8d91778"
     },
     {
       "harness": "backend/bluets/tests/decorator_residuals.rs",
@@ -667,9 +668,9 @@
         "emitted_decorators_preserve_native_execution_declarations_and_target_syntax",
         "recorded_decorator_residuals_match_the_live_native_compiler"
       ],
-      "seconds": 56.478,
+      "seconds": 39.771,
       "log": "029-backend_bluets_tests_decorator_residuals_rs.log",
-      "log_sha256": "5346a373fee0ea9d0218c8266316bfc351bbe551f0476103941c6fceb09c246e"
+      "log_sha256": "dde0f5e67977b2072ebd99f381d06ec5a6991221a70ed2ef2199db74e898f319"
     },
     {
       "harness": "backend/bluets/tests/decorator_targets.rs",
@@ -688,9 +689,9 @@
         "emitted_decorators_preserve_native_execution_declarations_and_target_syntax",
         "recorded_decorator_targets_match_the_live_native_compiler"
       ],
-      "seconds": 184.369,
+      "seconds": 128.076,
       "log": "030-backend_bluets_tests_decorator_targets_rs.log",
-      "log_sha256": "e5c388847ea5e9ce47d5ea11e57157866a45b57d1ef00c163c720250586eaa4e"
+      "log_sha256": "b084ccfcd1fcf39fc4c3b3b3272bcb8dc412bf05343990ad7a9d07a683444d49"
     },
     {
       "harness": "backend/bluets/tests/decorator_typing.rs",
@@ -709,9 +710,9 @@
         "emitted_decorators_preserve_native_execution_declarations_and_es2022_syntax",
         "recorded_decorator_typing_match_the_live_native_compiler"
       ],
-      "seconds": 8.902,
+      "seconds": 9.113,
       "log": "031-backend_bluets_tests_decorator_typing_rs.log",
-      "log_sha256": "45e2b03e9e16f543657ed2fccbe66fcac6bc9972c41342607847ed1a4110be0e"
+      "log_sha256": "365e5fdf2c5ab502397fe9c12fdb2863f4e6186ee926053dca80b32cd85a0423"
     },
     {
       "harness": "backend/bluets/tests/decorators_checker_matrix.rs",
@@ -730,9 +731,9 @@
         "matrix_lists_every_decorator_fixture_entry",
         "recorded_verdicts_match_the_pinned_typescript_compiler"
       ],
-      "seconds": 10.96,
+      "seconds": 10.687,
       "log": "032-backend_bluets_tests_decorators_checker_matrix_rs.log",
-      "log_sha256": "baa283cfa0801316b74e48c6eac1a18ee74a3e50bbeb317d46c08af7e2edb8db"
+      "log_sha256": "0e4b91977f446d6c43a243633a89c443f9ea4be74ebe65a755264442067ba47a"
     },
     {
       "harness": "backend/bluets/tests/decorators_oracle.rs",
@@ -747,9 +748,9 @@
       "test_names": [
         "pinned_standard_decorators_print_what_typescript_prints"
       ],
-      "seconds": 6.579,
+      "seconds": 6.164,
       "log": "033-backend_bluets_tests_decorators_oracle_rs.log",
-      "log_sha256": "51143a97dd7ff290e5a5576b31077e3f73f3f37a2a10910bed2cb152d638f293"
+      "log_sha256": "56a9c15ad7909e25ed5e1e821e5cb09baf7881cd157e4601ea247922b8613ce0"
     },
     {
       "harness": "backend/bluets/tests/default_generators.rs",
@@ -764,9 +765,9 @@
       "test_names": [
         "default_generators_match_pinned_execution_names_and_declarations"
       ],
-      "seconds": 4.153,
+      "seconds": 3.574,
       "log": "034-backend_bluets_tests_default_generators_rs.log",
-      "log_sha256": "a27937db7e2754a7897f1f9e23be8cbd0594940948f676aa0bd1d79fbfbaf001"
+      "log_sha256": "044f6231be44b6051068b6f5fdc51b1732de2de8460a33cad85776583430f1dd"
     },
     {
       "harness": "backend/bluets/tests/diagnostic_source_families.rs",
@@ -783,9 +784,9 @@
         "source_witnesses_have_precise_counterparts_or_recorded_subset_reasons",
         "source_witnesses_match_pinned_typescript"
       ],
-      "seconds": 13.327,
+      "seconds": 10.967,
       "log": "035-backend_bluets_tests_diagnostic_source_families_rs.log",
-      "log_sha256": "00e715d6bafd32f94403538f81cd7392f423b594d29ef9eed29f81ccd0d15457"
+      "log_sha256": "cb9af842b4353d3fadc8c08cc813c5060a40af2320e8cb0afa534a8522902eb4"
     },
     {
       "harness": "backend/bluets/tests/diagnostics_matrix.rs",
@@ -803,9 +804,9 @@
         "record_covers_every_existing_checker_matrix",
         "recorded_codes_messages_and_spans_match_pinned_typescript"
       ],
-      "seconds": 370.422,
+      "seconds": 274.581,
       "log": "036-backend_bluets_tests_diagnostics_matrix_rs.log",
-      "log_sha256": "3bcd3cdd8bca5c5f4d5ad06d08d4bcdfaa24ec2a3eab2a9a84cb181c0f124fa4"
+      "log_sha256": "11a1da48a422c3ea1977f3f30ab1d36befe6894e37e0df03a0e9acf419cdd319"
     },
     {
       "harness": "backend/bluets/tests/diagnostics_presentation.rs",
@@ -821,9 +822,9 @@
         "cli_presentation_and_emission_match_pinned_observations",
         "recorded_presentation_matches_pinned_typescript"
       ],
-      "seconds": 7.946,
+      "seconds": 8.113,
       "log": "037-backend_bluets_tests_diagnostics_presentation_rs.log",
-      "log_sha256": "bff178f858b6e5d87a04a9524c3944d1776b8d12637709d0fb45d89e99098cb6"
+      "log_sha256": "d53801066c4554f814a3a10132d92ae2c8f991b6cef71d087d770b8a88657c55"
     },
     {
       "harness": "backend/bluets/tests/diagnostics_projects.rs",
@@ -842,9 +843,9 @@
         "public_coordinates_count_utf16_and_original_line_breaks",
         "recorded_project_positions_match_pinned_typescript"
       ],
-      "seconds": 28.782,
+      "seconds": 27.187,
       "log": "038-backend_bluets_tests_diagnostics_projects_rs.log",
-      "log_sha256": "68d5ac2721c646561a180adcbdbe1654d1cf1d4f15bc61eb726831939684501f"
+      "log_sha256": "528f0ee9cf0556f0474be07f2d3bd24afa05b0d59a64a7d5579523d395d57796"
     },
     {
       "harness": "backend/bluets/tests/enum_checker_matrix.rs",
@@ -863,9 +864,9 @@
         "matrix_lists_every_enum_fixture_entry",
         "recorded_verdicts_match_the_pinned_typescript_compiler"
       ],
-      "seconds": 19.904,
+      "seconds": 21.537,
       "log": "039-backend_bluets_tests_enum_checker_matrix_rs.log",
-      "log_sha256": "c0b3f1fdba025924307fc531ec230afda079b3e276c41276255b2fcbc59a76f8"
+      "log_sha256": "8f651c268f4a85b6d3a331563b97fecef3f7c44afdfd5e955f060d8f0957afba"
     },
     {
       "harness": "backend/bluets/tests/enum_oracle.rs",
@@ -880,9 +881,9 @@
       "test_names": [
         "pinned_enum_emit_prints_what_typescript_prints_in_every_const_enum_mode"
       ],
-      "seconds": 5.217,
+      "seconds": 5.237,
       "log": "040-backend_bluets_tests_enum_oracle_rs.log",
-      "log_sha256": "52a04555f448a0074b9067671e0d0e475bb473bf8dac80d46908326759fb34a7"
+      "log_sha256": "927806a14c3f4f157ac5b1432001feeb7bc2cdc9a67ac97888a4bf780017fc57"
     },
     {
       "harness": "backend/bluets/tests/explicit_this_context.rs",
@@ -898,9 +899,9 @@
         "explicit_this_parameters_match_pinned_diagnostics",
         "explicit_this_reference_matches_live_typescript"
       ],
-      "seconds": 1.133,
+      "seconds": 1.149,
       "log": "041-backend_bluets_tests_explicit_this_context_rs.log",
-      "log_sha256": "f74997bfd1bb030c36fc4cdf3eff61d7a775a11377257767b5e63295be7d6239"
+      "log_sha256": "845aff8464655c211e94b4ffed9739b35d1590c03e4d414e423600f07b14794b"
     },
     {
       "harness": "backend/bluets/tests/gc1_explain_files.rs",
@@ -919,7 +920,7 @@
         "explain_files_observations_match_live_pinned_typescript",
         "pre_fix_build_state_cannot_bypass_the_new_checker"
       ],
-      "seconds": 0.372,
+      "seconds": 0.377,
       "log": "042-backend_bluets_tests_gc1_explain_files_rs.log",
       "log_sha256": "94ee7a2606f98a67de6a6ca9d7b960a03501f55b36a466cdf59a932eb0c39b8e"
     },
@@ -940,9 +941,9 @@
         "source_controls_match_live_pinned_typescript_and_execution",
         "source_form_controls_preserve_types_and_native_execution"
       ],
-      "seconds": 2.595,
+      "seconds": 2.571,
       "log": "043-backend_bluets_tests_gc1_source_diagnostics_rs.log",
-      "log_sha256": "361bf25b2a7571f070e205e80b65d26d541be490cf35cc1253cbd5255bd01103"
+      "log_sha256": "d0c402c66d4a5aeeb1302cc9b4895e49dbdc3c4a1468c0758fd424b98b075462"
     },
     {
       "harness": "backend/bluets/tests/gt1_declaration_order.rs",
@@ -961,9 +962,9 @@
         "matrix_retains_all_frozen_forms_and_profile_controls",
         "native_declarations_and_library_allocation_facts_are_reproducible"
       ],
-      "seconds": 8.355,
+      "seconds": 8.222,
       "log": "044-backend_bluets_tests_gt1_declaration_order_rs.log",
-      "log_sha256": "dc856287463a263fd384cbb85e10aa1e6f6ca067592a8f5b894fcfdf40b782a3"
+      "log_sha256": "315fecc795715d6d1186a0aab44c5e759e8735466680c0e63872a32d9d85552b"
     },
     {
       "harness": "backend/bluets/tests/gt1_flow.rs",
@@ -985,9 +986,31 @@
         "union_order::union_order_guard_accepts_only_the_same_literal_members",
         "union_order::union_order_guard_rejects_every_non_permutation_change"
       ],
-      "seconds": 9.076,
+      "seconds": 9.429,
       "log": "045-backend_bluets_tests_gt1_flow_rs.log",
-      "log_sha256": "c5e1e8c8f4329bbd9b4450983fd92d4ffc2a20427f4469acd2e2cc6347ef971b"
+      "log_sha256": "a0f449cce86a1b1106f457b499872b0436ee358a0b772089e923c6c1848758b9"
+    },
+    {
+      "harness": "backend/bluets/tests/gt2_inference.rs",
+      "conclusion": "success",
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 0,
+      "pinned_tests": [
+        "gt2_exact_declarations_have_native_consumers_syntax_and_execution",
+        "gt2_native_observations_are_reproducible"
+      ],
+      "test_names": [
+        "gt2_exact_declarations_have_native_consumers_syntax_and_execution",
+        "gt2_native_observations_are_reproducible",
+        "inference_work_and_depth_limits_fail_without_output_or_invented_diagnostics",
+        "matrix_retains_every_native_pair_and_configuration",
+        "recursive_contextual_candidates_match_complete_native_observations"
+      ],
+      "seconds": 9.828,
+      "log": "046-backend_bluets_tests_gt2_inference_rs.log",
+      "log_sha256": "b4b355665f4e2d2217fbf8a5f14326fc33762958bde52368995ce932f4c57933"
     },
     {
       "harness": "backend/bluets/tests/gt3_operators.rs",
@@ -1008,9 +1031,9 @@
         "library_key_facts_do_not_grant_runtime_binding_authority",
         "operator_work_and_parser_depth_limits_fail_without_output_or_widening"
       ],
-      "seconds": 27.051,
-      "log": "046-backend_bluets_tests_gt3_operators_rs.log",
-      "log_sha256": "7a81b1138b41bc7d8e3779b6f46015624235948bd01eb023009e43d37358ea6c"
+      "seconds": 14.388,
+      "log": "047-backend_bluets_tests_gt3_operators_rs.log",
+      "log_sha256": "9cc857fc88a495cc81882ff79fd8d72113bb80ff94ed26cfaa30d0ea2aaa1707"
     },
     {
       "harness": "backend/bluets/tests/guards_checker_matrix.rs",
@@ -1029,9 +1052,9 @@
         "matrix_covers_every_guards_fixture",
         "recorded_guards_matches_pinned_typescript"
       ],
-      "seconds": 10.252,
-      "log": "047-backend_bluets_tests_guards_checker_matrix_rs.log",
-      "log_sha256": "04321d24e74a879476dc66749b838b5dd5370f2ef562aa976979807f3137456f"
+      "seconds": 9.442,
+      "log": "048-backend_bluets_tests_guards_checker_matrix_rs.log",
+      "log_sha256": "2669cf3fe02b4873665f251d381228c53d77cfeb1e6db1a9797600995b1e2dae"
     },
     {
       "harness": "backend/bluets/tests/immutable_checker_matrix.rs",
@@ -1050,9 +1073,9 @@
         "mutable_program_preserves_execution_and_declarations",
         "recorded_verdicts_match_pinned_typescript"
       ],
-      "seconds": 62.572,
-      "log": "048-backend_bluets_tests_immutable_checker_matrix_rs.log",
-      "log_sha256": "242ee3f26c73edd9d03cae21f5ee722710da0a5833a702f38f6366b4ee94d71b"
+      "seconds": 73.324,
+      "log": "049-backend_bluets_tests_immutable_checker_matrix_rs.log",
+      "log_sha256": "7b8e98424ce1bc06fed2fc5a8d5add62a02d75a58443fc3b2992310339f3acd2"
     },
     {
       "harness": "backend/bluets/tests/imported_value_checker_matrix.rs",
@@ -1073,9 +1096,9 @@
         "matrix_covers_every_fixture",
         "recorded_verdicts_match_pinned_typescript"
       ],
-      "seconds": 43.76,
-      "log": "049-backend_bluets_tests_imported_value_checker_matrix_rs.log",
-      "log_sha256": "4ee3b01278a637fad8b9e1e1f4804fbf0d829c8328251f58f4da0f3c18182e19"
+      "seconds": 40.348,
+      "log": "050-backend_bluets_tests_imported_value_checker_matrix_rs.log",
+      "log_sha256": "997e9565600585ab7ee3588130baa19e8bf00d871a487d605faa7c86dd72291e"
     },
     {
       "harness": "backend/bluets/tests/indexed_call_context.rs",
@@ -1091,8 +1114,8 @@
         "indexed_call_reference_matches_live_typescript",
         "indexed_calls_match_pinned_diagnostics"
       ],
-      "seconds": 1.765,
-      "log": "050-backend_bluets_tests_indexed_call_context_rs.log",
+      "seconds": 1.761,
+      "log": "051-backend_bluets_tests_indexed_call_context_rs.log",
       "log_sha256": "76f1a55b3b0d60e7e37970ae17bef02516cdaffaac45bdc3150ef172034d63d6"
     },
     {
@@ -1113,9 +1136,9 @@
         "matrix_covers_every_inference_fixture",
         "recorded_inference_matches_pinned_typescript"
       ],
-      "seconds": 9.51,
-      "log": "051-backend_bluets_tests_inference_checker_matrix_rs.log",
-      "log_sha256": "50f527bec0446132de8874910215ac54d3f4812e4ce48894626c7b267052b3d9"
+      "seconds": 9.857,
+      "log": "052-backend_bluets_tests_inference_checker_matrix_rs.log",
+      "log_sha256": "e89e80e5c45c2fce213a1ac40098bebaac7853677353730f1189b9e86caef79a"
     },
     {
       "harness": "backend/bluets/tests/inferred_return_checker_matrix.rs",
@@ -1138,9 +1161,9 @@
         "recorded_verdicts_match_pinned_typescript",
         "union_declarations_have_the_same_types_despite_literal_intern_order"
       ],
-      "seconds": 18.301,
-      "log": "052-backend_bluets_tests_inferred_return_checker_matrix_rs.log",
-      "log_sha256": "a5119f15a81cc27f3732b5e46babc483c10d4bd7156a53c0bcf9811ed34080e3"
+      "seconds": 20.8,
+      "log": "053-backend_bluets_tests_inferred_return_checker_matrix_rs.log",
+      "log_sha256": "64d48b96905af7913a32d2002c2b7c524df9cc082d19a62c8ee5f4fd9b1087fc"
     },
     {
       "harness": "backend/bluets/tests/json_default_binding.rs",
@@ -1156,9 +1179,9 @@
         "json_default_property_keeps_pinned_inference_execution_and_assignment_diagnostic",
         "namespaced_windows_diagnostic_path_is_relative_to_fixture"
       ],
-      "seconds": 0.909,
-      "log": "053-backend_bluets_tests_json_default_binding_rs.log",
-      "log_sha256": "1c11bf0fee41f89ecc1568fd5353e9370dac2f1ac9a91978cea627df3bf53159"
+      "seconds": 1.002,
+      "log": "054-backend_bluets_tests_json_default_binding_rs.log",
+      "log_sha256": "c2558a36a1165073465571aad49e8928e0d0ffc0df12d87471fdecd5b0fc014c"
     },
     {
       "harness": "backend/bluets/tests/jsx_checker_matrix.rs",
@@ -1177,9 +1200,9 @@
         "matrix_lists_every_jsx_fixture_entry",
         "recorded_verdicts_match_the_pinned_typescript_compiler"
       ],
-      "seconds": 19.055,
-      "log": "054-backend_bluets_tests_jsx_checker_matrix_rs.log",
-      "log_sha256": "997f8b6ebd00e64400b153d4ad110d0070473ec3d7825664d67b1a5e96f3efd0"
+      "seconds": 18.146,
+      "log": "055-backend_bluets_tests_jsx_checker_matrix_rs.log",
+      "log_sha256": "01eb0e7d7cf2fcebb080bbd7df7757f172eb59696e4a78b07483ddcb3f3140f2"
     },
     {
       "harness": "backend/bluets/tests/jsx_oracle.rs",
@@ -1194,9 +1217,9 @@
       "test_names": [
         "pinned_jsx_emit_prints_what_typescript_prints_in_every_mode"
       ],
-      "seconds": 5.115,
-      "log": "055-backend_bluets_tests_jsx_oracle_rs.log",
-      "log_sha256": "07f0b7bd1ec1fcb8f50348eb9168e9b0605acb55c4fc061814a8973fe6125b01"
+      "seconds": 3.254,
+      "log": "056-backend_bluets_tests_jsx_oracle_rs.log",
+      "log_sha256": "38cdeff97283024acd24405e904175c5eac7d544d1cd54f22d41465decca4b3c"
     },
     {
       "harness": "backend/bluets/tests/jsx_runtime_namespace.rs",
@@ -1215,9 +1238,9 @@
         "recorded_jsx_runtime_namespace_match_the_live_native_compiler",
         "runtime_namespace_verdicts_selected_inputs_and_origins_match_native_typescript"
       ],
-      "seconds": 9.26,
-      "log": "056-backend_bluets_tests_jsx_runtime_namespace_rs.log",
-      "log_sha256": "b342d1d53971429e623d16cf8e7e0581f38c995fcb2082c8ef3a20126cbfe0e2"
+      "seconds": 5.87,
+      "log": "057-backend_bluets_tests_jsx_runtime_namespace_rs.log",
+      "log_sha256": "ae0677691534683e4bfad843d6c74d5beba21d63a3ece8b722575266dc26ead5"
     },
     {
       "harness": "backend/bluets/tests/jsx_typing_extras.rs",
@@ -1237,9 +1260,9 @@
         "path_verdicts_selected_inputs_and_primary_origins_match_native_typescript",
         "recorded_jsx_typing_extras_match_the_live_native_compiler"
       ],
-      "seconds": 13.342,
-      "log": "057-backend_bluets_tests_jsx_typing_extras_rs.log",
-      "log_sha256": "b09375e0ab9a45bf8a917a0054735f3771eca6ef7aa9307371d50939fbeb7fc4"
+      "seconds": 9.621,
+      "log": "058-backend_bluets_tests_jsx_typing_extras_rs.log",
+      "log_sha256": "9584cb8be3cf96d1daeb22afe438b55598bc4e845b78452aaf77036756f32c29"
     },
     {
       "harness": "backend/bluets/tests/legacy_decorators_checker_matrix.rs",
@@ -1258,9 +1281,9 @@
         "matrix_lists_every_legacy_decorator_fixture_entry",
         "recorded_verdicts_match_the_pinned_typescript_compiler"
       ],
-      "seconds": 7.381,
-      "log": "058-backend_bluets_tests_legacy_decorators_checker_matrix_rs.log",
-      "log_sha256": "737f6c38aaef5dc8dcec74501ca4a0efb35c043d3d043ab00ef93138511bfac1"
+      "seconds": 6.581,
+      "log": "059-backend_bluets_tests_legacy_decorators_checker_matrix_rs.log",
+      "log_sha256": "e09cc7ab3d787c336cbb2c3c232d86c570ab830f4537d184ec288d9aad52d6c5"
     },
     {
       "harness": "backend/bluets/tests/legacy_decorators_oracle.rs",
@@ -1275,9 +1298,9 @@
       "test_names": [
         "pinned_legacy_decorators_print_what_typescript_prints"
       ],
-      "seconds": 5.596,
-      "log": "059-backend_bluets_tests_legacy_decorators_oracle_rs.log",
-      "log_sha256": "2e32eb621394ba65ef5c75c0397de84ad331b711acc7ddedff296465731b72b2"
+      "seconds": 5.295,
+      "log": "060-backend_bluets_tests_legacy_decorators_oracle_rs.log",
+      "log_sha256": "edd25fd8e43b85fe098c15af2a1a470a5da407a62af9636d1482aeea5eb0ca17"
     },
     {
       "harness": "backend/bluets/tests/module_exports_checker_matrix.rs",
@@ -1298,9 +1321,9 @@
         "module_exports_preserve_execution_and_declarations",
         "recorded_module_exports_match_pinned_typescript"
       ],
-      "seconds": 21.779,
-      "log": "060-backend_bluets_tests_module_exports_checker_matrix_rs.log",
-      "log_sha256": "dc29df31b000331e7d99e08ada2ecf4025c9f76f8119aecb9f504abf50b7a98c"
+      "seconds": 22.74,
+      "log": "061-backend_bluets_tests_module_exports_checker_matrix_rs.log",
+      "log_sha256": "16ef3402c71622cd9f556a88dc07d29c1bbdd753a1553247f432642ae05ab1f0"
     },
     {
       "harness": "backend/bluets/tests/module_script_helpers.rs",
@@ -1316,9 +1339,9 @@
         "helper_imports_and_module_wrappers_leave_scripts_global",
         "script_helper_observations_match_pinned_typescript"
       ],
-      "seconds": 0.759,
-      "log": "061-backend_bluets_tests_module_script_helpers_rs.log",
-      "log_sha256": "9ab48bc3083d166007d0c934cde8c55a8c5fd4a7e342b286c7101f808de8d35e"
+      "seconds": 0.906,
+      "log": "062-backend_bluets_tests_module_script_helpers_rs.log",
+      "log_sha256": "caf072312de273bc8bf5ada760ff6f12c9ec98f82768db00ab248ae7c5a6b881"
     },
     {
       "harness": "backend/bluets/tests/module_systems.rs",
@@ -1339,9 +1362,9 @@
         "recorded_module_decisions_and_declarations_match_native_typescript",
         "system_interop_policy_preserves_native_import_bindings"
       ],
-      "seconds": 5.929,
-      "log": "062-backend_bluets_tests_module_systems_rs.log",
-      "log_sha256": "0b4ba0b093820cf8a9602c73ee0ef1190d5dd79ececcf550a09036f7e102cafa"
+      "seconds": 6.781,
+      "log": "063-backend_bluets_tests_module_systems_rs.log",
+      "log_sha256": "2aed66e58131736beb9af16f74c12840da6313c88ba6811b1011f9cb73c6c1e0"
     },
     {
       "harness": "backend/bluets/tests/module_type_resolution.rs",
@@ -1356,9 +1379,9 @@
       "test_names": [
         "type_only_imports_and_reexports_select_distinct_conditions_for_the_same_specifier"
       ],
-      "seconds": 0.986,
-      "log": "063-backend_bluets_tests_module_type_resolution_rs.log",
-      "log_sha256": "1d323f17245f9fdbd36780b7a358bf3446bb1999ca025c4244b85fd7715766e5"
+      "seconds": 0.934,
+      "log": "064-backend_bluets_tests_module_type_resolution_rs.log",
+      "log_sha256": "b988a56205d233f110c9c3c4ab4bad5ea279febab79a0c947656ff02c899ea77"
     },
     {
       "harness": "backend/bluets/tests/module_types_checker_matrix.rs",
@@ -1377,9 +1400,9 @@
         "module_types_preserve_execution_and_declarations",
         "recorded_module_types_match_pinned_typescript"
       ],
-      "seconds": 38.898,
-      "log": "064-backend_bluets_tests_module_types_checker_matrix_rs.log",
-      "log_sha256": "e5d3e520bf4d9abb8318ae4eaf7011fc6421f1cecf2c33cd77cda81cbb0e5931"
+      "seconds": 27.034,
+      "log": "065-backend_bluets_tests_module_types_checker_matrix_rs.log",
+      "log_sha256": "838c6713a36723a7906d864802d5d468a278d325d559f9f3005790fa04004ffd"
     },
     {
       "harness": "backend/bluets/tests/more_types_checker_matrix.rs",
@@ -1398,9 +1421,9 @@
         "more_types_preserves_execution_and_declarations",
         "recorded_more_types_matches_pinned_typescript"
       ],
-      "seconds": 26.798,
-      "log": "065-backend_bluets_tests_more_types_checker_matrix_rs.log",
-      "log_sha256": "c6951fe52e5a1323bc258344d699dabcfa7594cec275701d5bb89698a2cb0611"
+      "seconds": 21.414,
+      "log": "066-backend_bluets_tests_more_types_checker_matrix_rs.log",
+      "log_sha256": "9328324c504fb8395c578c5f97f0e04c370a8ac05c1e05dae1b4b17994487163"
     },
     {
       "harness": "backend/bluets/tests/namespace_checker_matrix.rs",
@@ -1419,9 +1442,9 @@
         "matrix_lists_every_namespace_fixture_entry",
         "recorded_verdicts_match_the_pinned_typescript_compiler"
       ],
-      "seconds": 35.541,
-      "log": "066-backend_bluets_tests_namespace_checker_matrix_rs.log",
-      "log_sha256": "f069420b962d9444bda7e5bbb93e30cfea6899e72e063a78248ae7e1568d967e"
+      "seconds": 30.765,
+      "log": "067-backend_bluets_tests_namespace_checker_matrix_rs.log",
+      "log_sha256": "59cf421c9195cfb8a20e7725e2a1f498ced6a42372464e68caf4270f1cef4003"
     },
     {
       "harness": "backend/bluets/tests/namespace_declaration_oracle.rs",
@@ -1436,9 +1459,9 @@
       "test_names": [
         "the_declaration_bluetsc_prints_for_namespaces_is_valid_and_means_the_same_to_a_consumer"
       ],
-      "seconds": 3.766,
-      "log": "067-backend_bluets_tests_namespace_declaration_oracle_rs.log",
-      "log_sha256": "87ba155bd0c71608a49d00400af5cf80c9198747998214c0b9e11db7469d9f08"
+      "seconds": 3.805,
+      "log": "068-backend_bluets_tests_namespace_declaration_oracle_rs.log",
+      "log_sha256": "0e34daa113c84505786f0e9d24ce330b6af52b0445a3a7348bd141470ee0b7e3"
     },
     {
       "harness": "backend/bluets/tests/namespace_oracle.rs",
@@ -1453,9 +1476,9 @@
       "test_names": [
         "pinned_namespace_emit_prints_what_typescript_prints_for_every_target"
       ],
-      "seconds": 42.796,
-      "log": "068-backend_bluets_tests_namespace_oracle_rs.log",
-      "log_sha256": "a5185570ee58a99798400dabecf636b04d9c8a09bded841b695ae46ea860b863"
+      "seconds": 48.771,
+      "log": "069-backend_bluets_tests_namespace_oracle_rs.log",
+      "log_sha256": "6a9c4e187eb8aa368be01aece891d9fac830e862a2c1b460d4e8ea8697111748"
     },
     {
       "harness": "backend/bluets/tests/narrowing_checker_matrix.rs",
@@ -1474,9 +1497,9 @@
         "narrowing_preserves_execution_and_declarations",
         "recorded_narrowing_matches_pinned_typescript"
       ],
-      "seconds": 30.282,
-      "log": "069-backend_bluets_tests_narrowing_checker_matrix_rs.log",
-      "log_sha256": "127d8e02dfd23ab9f08b423d820d2b1d7ed4c8d787ce2418b3350979f184d10f"
+      "seconds": 17.38,
+      "log": "070-backend_bluets_tests_narrowing_checker_matrix_rs.log",
+      "log_sha256": "fade0411fbbd2707fda2318a9d41a49ad1f13973a09133912d80a6e2a2138163"
     },
     {
       "harness": "backend/bluets/tests/object_method_context.rs",
@@ -1492,9 +1515,9 @@
         "object_receiver_reference_matches_live_typescript",
         "object_receivers_and_nested_functions_match_pinned_this_diagnostics"
       ],
-      "seconds": 1.758,
-      "log": "070-backend_bluets_tests_object_method_context_rs.log",
-      "log_sha256": "47ae51a588b77989d0f4662ef8faee0b1fd8e62688d26b7a0ba3a50052a91912"
+      "seconds": 0.964,
+      "log": "071-backend_bluets_tests_object_method_context_rs.log",
+      "log_sha256": "cb0304eec1926af1e16463873992a9e805598a443de4c3c15ca683919a7a53bc"
     },
     {
       "harness": "backend/bluets/tests/operators_checker_matrix.rs",
@@ -1516,9 +1539,9 @@
         "recorded_operator_literal_initialization_matches_pinned_typescript",
         "recorded_operators_matches_pinned_typescript"
       ],
-      "seconds": 19.223,
-      "log": "071-backend_bluets_tests_operators_checker_matrix_rs.log",
-      "log_sha256": "3616419996f9c8380b1f295de25b5fef1c8923d4c1aa78dfeb3d24400b0fb302"
+      "seconds": 11.15,
+      "log": "072-backend_bluets_tests_operators_checker_matrix_rs.log",
+      "log_sha256": "279d954db1ae7f55e8f48229545d32b38f4e1e9a2dd6d05091b2c15c17ba0fd8"
     },
     {
       "harness": "backend/bluets/tests/option_combinations_oracle.rs",
@@ -1535,9 +1558,9 @@
         "every_project_option_combination_replays_the_recorded_verdict",
         "recorded_matrix_covers_the_complete_cartesian_product"
       ],
-      "seconds": 137.076,
-      "log": "072-backend_bluets_tests_option_combinations_oracle_rs.log",
-      "log_sha256": "1c717ac555de05a17b3459120b8bd067929651235919a4eba18598e5a0cfe61e"
+      "seconds": 106.954,
+      "log": "073-backend_bluets_tests_option_combinations_oracle_rs.log",
+      "log_sha256": "9f0102fcf8b8e2a8f0ccd3c590317ebf9310de26335e879de8fcd39c0f5a1840"
     },
     {
       "harness": "backend/bluets/tests/output_options.rs",
@@ -1557,9 +1580,9 @@
         "recorded_output_options_match_live_typescript",
         "source_map_path_normalization_preserves_cross_platform_evidence"
       ],
-      "seconds": 21.548,
-      "log": "073-backend_bluets_tests_output_options_rs.log",
-      "log_sha256": "8e54abe5b195fe43cd9dc9d336a022956d38bbcd790040309bca370b49b968e9"
+      "seconds": 12.008,
+      "log": "074-backend_bluets_tests_output_options_rs.log",
+      "log_sha256": "19639d908114adfc04cd47249b3d3c8f26d328dd184af808332bb2ea50281ba4"
     },
     {
       "harness": "backend/bluets/tests/output_validation.rs",
@@ -1578,9 +1601,9 @@
         "output_validation_overrides_match_execution_and_declarations",
         "output_validation_verdicts_and_diagnostic_origins_match_typescript"
       ],
-      "seconds": 7.059,
-      "log": "074-backend_bluets_tests_output_validation_rs.log",
-      "log_sha256": "debcc4950625e8d05464c0bb0a0447c91940adbf7234fab65d8e5665d4193395"
+      "seconds": 3.528,
+      "log": "075-backend_bluets_tests_output_validation_rs.log",
+      "log_sha256": "a30356df04c3b591c7d615b9aff4362cb6ae6a02f48cb865f8c4a9bfad96f211"
     },
     {
       "harness": "backend/bluets/tests/overloads_checker_matrix.rs",
@@ -1599,9 +1622,9 @@
         "overloads_preserves_execution_and_declarations",
         "recorded_overloads_matches_pinned_typescript"
       ],
-      "seconds": 14.079,
-      "log": "075-backend_bluets_tests_overloads_checker_matrix_rs.log",
-      "log_sha256": "9a6badf1e3b8e0c43698b8852c5fde33b877354daaae19647f1de70a34f892f4"
+      "seconds": 8.86,
+      "log": "076-backend_bluets_tests_overloads_checker_matrix_rs.log",
+      "log_sha256": "2df77e65f4f3312cb46b38e9f230e60529edd799a3ceeae0a67eeedfc421588b"
     },
     {
       "harness": "backend/bluets/tests/package_extras.rs",
@@ -1620,9 +1643,9 @@
         "package_verdicts_selected_inputs_and_primary_origins_match_native_typescript",
         "recorded_package_extras_match_the_live_native_compiler"
       ],
-      "seconds": 8.071,
-      "log": "076-backend_bluets_tests_package_extras_rs.log",
-      "log_sha256": "2fa5f75dbe04f867e020c8962980ff3fc82fff1cfd1c90757e2b0de0e5b5ed17"
+      "seconds": 8.28,
+      "log": "077-backend_bluets_tests_package_extras_rs.log",
+      "log_sha256": "f98f678ca3b19c12a9c77494b41a277f685270938810b4b6a318f4499e3a0cc0"
     },
     {
       "harness": "backend/bluets/tests/path_extras.rs",
@@ -1641,9 +1664,9 @@
         "path_verdicts_selected_inputs_and_primary_origins_match_native_typescript",
         "recorded_path_extras_match_the_live_native_compiler"
       ],
-      "seconds": 6.178,
-      "log": "077-backend_bluets_tests_path_extras_rs.log",
-      "log_sha256": "97b73f06d3718a79fcef4c53ced3eaa5dc67090ad2b653e6c220392253bef8dc"
+      "seconds": 7.086,
+      "log": "078-backend_bluets_tests_path_extras_rs.log",
+      "log_sha256": "6d04872a5390b9d6cb083fee858adf084ce9a8fc3d488436f647024bdbfb14d0"
     },
     {
       "harness": "backend/bluets/tests/project_build_corrupt_state.rs",
@@ -1669,9 +1692,9 @@
         "truncated_dependency_state_rebuilds_the_dependent_conservatively",
         "truncated_state_rebuilds_without_reusing_wrong_output"
       ],
-      "seconds": 3.001,
-      "log": "078-backend_bluets_tests_project_build_corrupt_state_rs.log",
-      "log_sha256": "f8531f12890ae8448c79a94b3afd540e4801f7a4988e725fc5dc59188c303430"
+      "seconds": 3.289,
+      "log": "079-backend_bluets_tests_project_build_corrupt_state_rs.log",
+      "log_sha256": "d8af87dbae3dd38fec4455da30639edf4929a9157ba8b3ef637df4b74a0be8ff"
     },
     {
       "harness": "backend/bluets/tests/project_build_equivalence.rs",
@@ -1691,9 +1714,9 @@
         "project_paths::tests::strips_forward_slash_paths_under_a_backslash_root",
         "recorded_matrix_has_a_cold_build_and_24_edits"
       ],
-      "seconds": 56.731,
-      "log": "079-backend_bluets_tests_project_build_equivalence_rs.log",
-      "log_sha256": "6fa10843d45caa30701d50d3646ea36b40e7c6a0e10f580ccb66bf830d0b7792"
+      "seconds": 49.628,
+      "log": "080-backend_bluets_tests_project_build_equivalence_rs.log",
+      "log_sha256": "3ee07712965499d246a42806e5f7c1976206d010876703ff064ddc3447761eaa"
     },
     {
       "harness": "backend/bluets/tests/project_build_errors.rs",
@@ -1712,9 +1735,9 @@
         "public_build_project_error_behavior",
         "record_pinned_project_error_behavior"
       ],
-      "seconds": 2.94,
-      "log": "080-backend_bluets_tests_project_build_errors_rs.log",
-      "log_sha256": "93bb56afbce4187a19400bc31c441c443c974ed34076a4f0efe3c0a389da6b6c"
+      "seconds": 1.501,
+      "log": "081-backend_bluets_tests_project_build_errors_rs.log",
+      "log_sha256": "16f49ea90f9a533112141b513581d8fcce52ee64559d851bee1681ada1bd083b"
     },
     {
       "harness": "backend/bluets/tests/project_build_freshness.rs",
@@ -1738,9 +1761,9 @@
         "recorded_rebuilds_match_pinned_typescript",
         "selective_rebuilds_execute_and_declare_like_typescript"
       ],
-      "seconds": 21.277,
-      "log": "081-backend_bluets_tests_project_build_freshness_rs.log",
-      "log_sha256": "38161af68504af8052cb1a79e88fa330428de388ce55097dcd31657d3c0075d8"
+      "seconds": 18.887,
+      "log": "082-backend_bluets_tests_project_build_freshness_rs.log",
+      "log_sha256": "8f5b8c2923a5317dd881845d205c6262a1a9affa7e95101b3cd20ce73549ddcd"
     },
     {
       "harness": "backend/bluets/tests/project_build_invalidation.rs",
@@ -1766,9 +1789,9 @@
         "repointed_symlink_invalidates_even_with_identical_bytes",
         "unrelated_file_does_not_invalidate"
       ],
-      "seconds": 7.255,
-      "log": "082-backend_bluets_tests_project_build_invalidation_rs.log",
-      "log_sha256": "b8802a48d732cde5ed9af9f5457e2f3f1d5a372f8ed01ce915d99d7901adcb53"
+      "seconds": 3.485,
+      "log": "083-backend_bluets_tests_project_build_invalidation_rs.log",
+      "log_sha256": "fd37bb59947f968329f077b38cc98c4dee39f96581b2fac1e0f52565fb38139e"
     },
     {
       "harness": "backend/bluets/tests/project_build_order.rs",
@@ -1787,9 +1810,9 @@
         "public_build_lists_and_compiles_projects_in_pinned_order",
         "recorded_build_order_matches_pinned_typescript_verbose"
       ],
-      "seconds": 6.473,
-      "log": "083-backend_bluets_tests_project_build_order_rs.log",
-      "log_sha256": "d6c401d0c7ad25d350b2049a98ead7f9257d210178666a077216dff9688021ec"
+      "seconds": 4.16,
+      "log": "084-backend_bluets_tests_project_build_order_rs.log",
+      "log_sha256": "d0413356d8b486df7258aebb47323d4d4ed4223c9fb183a3fc5593e5e5664006"
     },
     {
       "harness": "backend/bluets/tests/project_build_watch.rs",
@@ -1813,9 +1836,9 @@
         "public_build_edit_add_burst_delete_order",
         "watch_reemits_edit_add_delete_debounces_burst_and_stops"
       ],
-      "seconds": 5.932,
-      "log": "084-backend_bluets_tests_project_build_watch_rs.log",
-      "log_sha256": "d9457d05951042e8d181726a8ed3dc4271fd4f150460efbd0abf1e232a6a7c70"
+      "seconds": 5.75,
+      "log": "085-backend_bluets_tests_project_build_watch_rs.log",
+      "log_sha256": "081dd43ea796b8bd780577b399bbc5009381a065b26a7a6d78c9a2e8b317cb7f"
     },
     {
       "harness": "backend/bluets/tests/project_cache_key.rs",
@@ -1836,9 +1859,9 @@
         "project_paths::tests::strips_forward_slash_paths_under_a_backslash_root",
         "source_bytes_change_misses_build_state"
       ],
-      "seconds": 2.724,
-      "log": "085-backend_bluets_tests_project_cache_key_rs.log",
-      "log_sha256": "6c4a03571a63913162dd3ff399a8be9bab20ee53d80b5741039cbd1768dde2d1"
+      "seconds": 2.417,
+      "log": "086-backend_bluets_tests_project_cache_key_rs.log",
+      "log_sha256": "adda3e49cb3122c96017a0d05ac80b1cdaa23cb6595052367cc690c48e62069b"
     },
     {
       "harness": "backend/bluets/tests/project_config.rs",
@@ -1865,9 +1888,9 @@
         "the_complete_source_graph_determines_default_output_root",
         "unknown_options_name_the_option"
       ],
-      "seconds": 3.665,
-      "log": "086-backend_bluets_tests_project_config_rs.log",
-      "log_sha256": "7f4744d7aeb058c0f5f61933c618cd8b7a71287ce5c8a42e77c309d4dd84c225"
+      "seconds": 3.597,
+      "log": "087-backend_bluets_tests_project_config_rs.log",
+      "log_sha256": "c2c82cf423fa90a1caf8c1e5ffd5e4e387ecced1e92eb56f67674ef45cfa271a"
     },
     {
       "harness": "backend/bluets/tests/project_reference_owner_gate.rs",
@@ -1884,9 +1907,9 @@
         "pinned_build_records_owner_gate_difference",
         "symlinked_reference_outside_owner_root_is_refused_before_read_or_emit"
       ],
-      "seconds": 1.006,
-      "log": "087-backend_bluets_tests_project_reference_owner_gate_rs.log",
-      "log_sha256": "af6dad0ec18fc81fce6332a33973278dc6e6cb5a807d96083cc645c113399ef8"
+      "seconds": 0.925,
+      "log": "088-backend_bluets_tests_project_reference_owner_gate_rs.log",
+      "log_sha256": "1b3c9ca2f06f46fcc45c7dcbc546de3af7a3be5c791e64f2673058a3a7f5872d"
     },
     {
       "harness": "backend/bluets/tests/project_referenced_declarations.rs",
@@ -1917,9 +1940,9 @@
         "public_build_uses_custom_referenced_declaration_layout",
         "symlinked_referenced_declaration_cannot_escape_the_owner_root"
       ],
-      "seconds": 1.967,
-      "log": "088-backend_bluets_tests_project_referenced_declarations_rs.log",
-      "log_sha256": "95d1f38bcd256b3cc0c1f4a060617dccd95d541f9cba80b02cd803ad1e79317c"
+      "seconds": 1.692,
+      "log": "089-backend_bluets_tests_project_referenced_declarations_rs.log",
+      "log_sha256": "e71e9b283ba0603e16d1ce6d1e64739644d678f53111cc20da43c785f70ca50c"
     },
     {
       "harness": "backend/bluets/tests/project_references.rs",
@@ -1940,9 +1963,9 @@
         "reference_graph_matrix_has_eight_rejects_and_a_positive_graph",
         "valid_reference_graph_emits_the_same_executable_exports_as_typescript"
       ],
-      "seconds": 2.949,
-      "log": "089-backend_bluets_tests_project_references_rs.log",
-      "log_sha256": "d3ce24eb9a7c5658e0076d3aeee960fd34f996b1fe7e27b95a6f483b8cf1657c"
+      "seconds": 2.739,
+      "log": "090-backend_bluets_tests_project_references_rs.log",
+      "log_sha256": "ce72b5f420f99552da803a4daf13d9d2409c44bf0d9119721038e6d6f7fc4dc0"
     },
     {
       "harness": "backend/bluets/tests/receiver_parameter_boundaries.rs",
@@ -1958,9 +1981,9 @@
         "receiver_parameter_boundaries_match_live_typescript",
         "receiver_parameter_boundaries_match_pinned_diagnostics"
       ],
-      "seconds": 0.619,
-      "log": "090-backend_bluets_tests_receiver_parameter_boundaries_rs.log",
-      "log_sha256": "2089cc0e9db4afdfbe0d3d614033025968aa7c25dad1b4cce1ff93b375188cc2"
+      "seconds": 0.594,
+      "log": "091-backend_bluets_tests_receiver_parameter_boundaries_rs.log",
+      "log_sha256": "150aa9a9d2393756a60da64f3745c9797c8715f9fbce7048b875cf7e6bcdbbfe"
     },
     {
       "harness": "backend/bluets/tests/rest_array_context.rs",
@@ -1976,9 +1999,9 @@
         "rest_array_reference_matches_live_typescript",
         "rest_arrays_and_reduce_match_pinned_diagnostics"
       ],
-      "seconds": 0.784,
-      "log": "091-backend_bluets_tests_rest_array_context_rs.log",
-      "log_sha256": "3e8604a5e05b538a1c3c061a0da004c9a98f7878088ae8139a2c024337127e8e"
+      "seconds": 0.754,
+      "log": "092-backend_bluets_tests_rest_array_context_rs.log",
+      "log_sha256": "16f169efc03e8570f44de6d50ff4a06cb71ce63780e3d43806713a7b96ea61ca"
     },
     {
       "harness": "backend/bluets/tests/source_extras.rs",
@@ -1997,9 +2020,9 @@
         "recorded_source_extras_match_the_live_native_compiler",
         "source_extras_matrix_retains_all_cartesian_configurations"
       ],
-      "seconds": 4.328,
-      "log": "092-backend_bluets_tests_source_extras_rs.log",
-      "log_sha256": "87a3e4a1cf0c1e570f2ebf553bc0463d2cd1e106a8749dc3f9dce25f3d5b3967"
+      "seconds": 4.471,
+      "log": "093-backend_bluets_tests_source_extras_rs.log",
+      "log_sha256": "a02b84e61d2d86542b599a45bea5eea56b8a133badcb5078087d3321b4adcb84"
     },
     {
       "harness": "backend/bluets/tests/source_map_publication.rs",
@@ -2016,9 +2039,9 @@
         "managed_build_switches_inline_and_external_publication",
         "mutually_exclusive_map_modes_publish_nothing"
       ],
-      "seconds": 18.758,
-      "log": "093-backend_bluets_tests_source_map_publication_rs.log",
-      "log_sha256": "c6dcb13259581af9e51c2e370db3c4521420c2c82c665b194f2a89ef10a30885"
+      "seconds": 19.622,
+      "log": "094-backend_bluets_tests_source_map_publication_rs.log",
+      "log_sha256": "130985346fd87b5b6fa43f0d26a5030c3be564d1403881a552864b7c6ea84e66"
     },
     {
       "harness": "backend/bluets/tests/source_map_tokens_oracle.rs",
@@ -2063,9 +2086,9 @@
         "non_decorator::object_spread_helper_frames_match_native",
         "system_wrapper::system_wrapper_frames_match_native"
       ],
-      "seconds": 10.542,
-      "log": "094-backend_bluets_tests_source_map_tokens_oracle_rs.log",
-      "log_sha256": "ae44f05bed5607e7732157d635e644bad3b361ee7832652bfa898eff65258ac8"
+      "seconds": 11.867,
+      "log": "095-backend_bluets_tests_source_map_tokens_oracle_rs.log",
+      "log_sha256": "02854a5e5acf45e726ed5eaffd8ebad4a9f116a42f86aa8eeb6f8bfb7a43f041"
     },
     {
       "harness": "backend/bluets/tests/standard_library_checker_matrix.rs",
@@ -2087,9 +2110,9 @@
         "matrix_covers_every_fixture",
         "recorded_verdicts_match_pinned_typescript"
       ],
-      "seconds": 18.061,
-      "log": "095-backend_bluets_tests_standard_library_checker_matrix_rs.log",
-      "log_sha256": "4bc04a7cccb5f165fe3d94a34749f04088998a193ae046115f00197e71bcf115"
+      "seconds": 18.432,
+      "log": "096-backend_bluets_tests_standard_library_checker_matrix_rs.log",
+      "log_sha256": "19997da27c650d898ca70c7801196e58cfb5ea9bd701b4d0fb2672a4dd4d2fe9"
     },
     {
       "harness": "backend/bluets/tests/strictness_controls.rs",
@@ -2111,9 +2134,9 @@
         "unused_checks_resolve_shadowing_exports_and_underscore_parameters",
         "valid_diagnostic_policies_change_cache_identity_without_changing_javascript"
       ],
-      "seconds": 2.816,
-      "log": "096-backend_bluets_tests_strictness_controls_rs.log",
-      "log_sha256": "4a9b6c29010972f3a3868ab4d76b7bd1ce1b58f6c9f08a550bcc575a0f7e1955"
+      "seconds": 3.192,
+      "log": "097-backend_bluets_tests_strictness_controls_rs.log",
+      "log_sha256": "ecd58ca2f984408a53ccfa2bca5075120c09b21ce5d8e41df132aaeaa2cd73f2"
     },
     {
       "harness": "backend/bluets/tests/strictness_flags.rs",
@@ -2133,9 +2156,9 @@
         "recorded_strictness_matrix_matches_pinned_typescript",
         "strict_and_relaxed_valid_programs_print_the_same_result"
       ],
-      "seconds": 5.28,
-      "log": "097-backend_bluets_tests_strictness_flags_rs.log",
-      "log_sha256": "78ba0f493e3f4a94c9d69d7d6a05e2784606326236b29a27e8b92c5a7bad1b4f"
+      "seconds": 5.401,
+      "log": "098-backend_bluets_tests_strictness_flags_rs.log",
+      "log_sha256": "b174814d4bf26c9e740078e4f28581026e297169da7bc5dfab653a32f8cd6e05"
     },
     {
       "harness": "backend/bluets/tests/target_library_options.rs",
@@ -2154,9 +2177,9 @@
         "library_selection_is_recorded_independently_in_artifact_identity",
         "selected_libraries_and_syntax_targets_match_pinned_verdicts"
       ],
-      "seconds": 0.642,
-      "log": "098-backend_bluets_tests_target_library_options_rs.log",
-      "log_sha256": "7972d7a925e256f9721806bf3e720c1f77127d89dce8c63b49aea9aa1f7ce97a"
+      "seconds": 0.622,
+      "log": "099-backend_bluets_tests_target_library_options_rs.log",
+      "log_sha256": "fc6471427f63e157a7b5851d6fecc330dbc75c83a1301ba673116b1030bb3d54"
     },
     {
       "harness": "backend/bluets/tests/target_protocols.rs",
@@ -2174,9 +2197,9 @@
         "protocol_projects_emit_the_pinned_declarations",
         "recorded_protocol_observations_match_pinned_tools"
       ],
-      "seconds": 3.231,
-      "log": "099-backend_bluets_tests_target_protocols_rs.log",
-      "log_sha256": "1c5a8ab78d03b52bf98aa676d008a3f3ca37ee82855dccf8991f75952c37b23e"
+      "seconds": 3.125,
+      "log": "100-backend_bluets_tests_target_protocols_rs.log",
+      "log_sha256": "904c04e31ee32d097ff40562ca1e03bf31e8b4bc2071c03e7e60df999b4d6562"
     },
     {
       "harness": "backend/bluets/tests/targets_checker_matrix.rs",
@@ -2204,9 +2227,9 @@
         "target_projects_emit_the_pinned_declarations_without_optional_tools",
         "target_projects_match_pinned_verdicts_and_primary_diagnostics"
       ],
-      "seconds": 119.795,
-      "log": "100-backend_bluets_tests_targets_checker_matrix_rs.log",
-      "log_sha256": "d3bd2f30bae0f81183894063714445f10f2cdd24f26ec1100d66540d8818e88c"
+      "seconds": 88.416,
+      "log": "101-backend_bluets_tests_targets_checker_matrix_rs.log",
+      "log_sha256": "3bd413eb3d33e10b4dfe29563008a7884f3562215e2def68d380fb1cea1a94a3"
     },
     {
       "harness": "backend/bluets/tests/template_constant_context.rs",
@@ -2222,9 +2245,9 @@
         "template_constant_reference_matches_live_typescript",
         "template_constants_match_pinned_diagnostics"
       ],
-      "seconds": 2.348,
-      "log": "101-backend_bluets_tests_template_constant_context_rs.log",
-      "log_sha256": "1a4a1af23511a8671bbe418feeaf98dbe16d651442ee0085530471836f92a282"
+      "seconds": 2.471,
+      "log": "102-backend_bluets_tests_template_constant_context_rs.log",
+      "log_sha256": "6d5d6a7af4911214c90ad2e1504e9c23b9947cf3ddf704ba44d607d0f0002cc8"
     },
     {
       "harness": "backend/bluets/tests/typescript_oracle.rs",
@@ -2406,9 +2429,9 @@
         "windows_paths::tests::verbatim_paths_are_parsed_on_every_os",
         "windows_paths::tests::windows_oracle_uses_the_cmd_shim_without_changing_explicit_programs"
       ],
-      "seconds": 157.599,
-      "log": "102-backend_bluets_tests_typescript_oracle_rs.log",
-      "log_sha256": "f99c53b1cd6621edf1ee2dc750f99f1e92cc3d801a03be9edea8c69a49f430da"
+      "seconds": 94.454,
+      "log": "103-backend_bluets_tests_typescript_oracle_rs.log",
+      "log_sha256": "57252dcc08e5e44955d23060d0368a9ae690ab639999f963fd099708e3dc923f"
     },
     {
       "harness": "backend/bluets/tests/unknown_name_checker_matrix.rs",
@@ -2427,9 +2450,9 @@
         "recorded_verdicts_match_pinned_typescript",
         "resolved_scopes_preserve_execution_and_declarations"
       ],
-      "seconds": 50.362,
-      "log": "103-backend_bluets_tests_unknown_name_checker_matrix_rs.log",
-      "log_sha256": "d8900d72930821194ae6b6418b0f2d9ed2d9175098e82406232b896513c6938a"
+      "seconds": 36.952,
+      "log": "104-backend_bluets_tests_unknown_name_checker_matrix_rs.log",
+      "log_sha256": "2f3062337dc61d5de300a7084507b045d194d42a9d9a03d61b7fd157a716d208"
     },
     {
       "harness": "backend/bluets/tests/variable_pattern_context.rs",
@@ -2446,9 +2469,9 @@
         "variable_pattern_reference_matches_live_typescript",
         "variable_patterns_match_pinned_diagnostics"
       ],
-      "seconds": 4.493,
-      "log": "104-backend_bluets_tests_variable_pattern_context_rs.log",
-      "log_sha256": "195dbefa2ce17c01e534daa7630972e171357a0bb6ef42937bb9935f9465c085"
+      "seconds": 2.374,
+      "log": "105-backend_bluets_tests_variable_pattern_context_rs.log",
+      "log_sha256": "27403483cf4cf629db5e09b465a1ac118cc172e4a92394f34338281ea30cd29e"
     }
   ]
 }

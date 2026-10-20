@@ -84,6 +84,10 @@ impl<'a> Context<'a> {
                 &variable.span,
             )?;
             let expanded = order.variable(module, variable, &expanded);
+            let expanded = super::inference_literals::declaration_union(
+                expanded,
+                checked.fresh_variables.contains(&variable.span.start),
+            );
             let value = &expanded;
             let value = if variable.kind == VariableKind::Const
                 && matches!(value, Type::Named { name, arguments } if name == "symbol" && arguments.is_empty())
@@ -112,6 +116,7 @@ impl<'a> Context<'a> {
                 && !module.declarations.iter().any(|declaration| matches!(declaration,
                     Declaration::DefaultExport(export) if export.expression && export.name == variable.name))
                 && (!primitive
+                    || checked.fresh_variables.contains(&variable.span.start)
                     || fresh_variable(module, variable, project, &mut BTreeSet::new(), 0));
             context
                 .variables

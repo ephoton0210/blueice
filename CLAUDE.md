@@ -9,21 +9,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Current BlueTS / BlueTSC compatibility status (2026-10-20).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 12,817 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,896 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,261/12,270 (99.9267%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 10 BlueTS owner = 547; excluded from direct agreement |
-| Case labels | 12,808 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 105 suites / 253 ignored Rust functions; not a case denominator |
-| Suite labels | 99 scoped closed, 1 open, 5 refused |
+| Direct agreement | 12,337/12,346 (99.9271%); 3 open, 6 refused observations |
+| Separate controls | 537 native-reference + 13 BlueTS owner = 550; excluded from direct agreement |
+| Case labels | 12,887 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 106 suites / 255 ignored Rust functions; not a case denominator |
+| Suite labels | 100 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 12,817 recorded case expectations pass; expected differences/refusals are not
+All 12,896 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -31,8 +31,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:320bc0f44243235a9dd0f1accd06b5381f3ec75f`.
-Input graph SHA-256: `e81ed2d16823bed49217e6105905eda8b0b8a2d79fa030a5693b176b0888c853`.
+Compiler/oracle source: `backend-tree:f7812ea669944e6e3885ac308cc5a05758da0171`.
+Input graph SHA-256: `f8a0a51890b8c93e8b60936c9760f100e36fc1ffa47d10f15b4c292d8a30b7f8`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
