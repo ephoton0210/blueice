@@ -165,6 +165,9 @@ pub(crate) fn check_incremental(
         checked_modules.insert(
             module_id.clone(),
             CheckedModule {
+                checking: policy
+                    .checking
+                    .unwrap_or_else(crate::CheckingOptions::legacy),
                 module: module.clone(),
                 symbols,
                 inferred_returns,

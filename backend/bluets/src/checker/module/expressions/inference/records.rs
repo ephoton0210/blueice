@@ -87,9 +87,29 @@ impl<'a> ModuleChecker<'a> {
                 index = member_end.saturating_add(1);
                 continue;
             }
-            let name = tokens[index].text.clone();
-            let (value, value_end) = if tokens.get(index + 1).is_some_and(|token| token.is(":")) {
-                let value_start = index + 2;
+            let (name, name_end) = if tokens[index].is("[") {
+                let Some(close) = crate::checker::scopes::targets::close(tokens, index) else {
+                    return Type::Unknown;
+                };
+                let key = &tokens[index + 1..close];
+                let key_type = self.infer_expression(key, scope);
+                let name = match key_type {
+                    Type::UniqueSymbol(_) => crate::symbol_keys::name(
+                        &self.module.id,
+                        &key.iter()
+                            .map(|token| token.text.as_str())
+                            .collect::<String>(),
+                    ),
+                    Type::Literal(text) => text.trim_matches(['\'', '"']).to_string(),
+                    _ => return Type::Unknown,
+                };
+                (name, close)
+            } else {
+                (tokens[index].text.clone(), index)
+            };
+            let (value, value_end) = if tokens.get(name_end + 1).is_some_and(|token| token.is(":"))
+            {
+                let value_start = name_end + 2;
                 let Some(value_end) = record_member_end(tokens, value_start) else {
                     return Type::Unknown;
                 };

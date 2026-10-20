@@ -112,14 +112,18 @@ pub(super) fn emit_declaration(
                 output.push('\n');
             }
             Declaration::Variable(variable)
-                if !variable.declared
+                if (!variable.declared
+                    || inferred.is_some_and(|context| context.retained(&variable.name)))
                     && (variable.exported
                         || is_default_export_name(module, &variable.name)
                         || is_value_export_name(module, &variable.name)
-                        || computed_key_dependencies.contains(&variable.name)) =>
+                        || computed_key_dependencies.contains(&variable.name)
+                        || inferred.is_some_and(|context| context.retained(&variable.name))) =>
             {
-                private_alias |=
-                    !variable.exported && computed_key_dependencies.contains(&variable.name);
+                private_alias |= !variable.exported
+                    && (computed_key_dependencies.contains(&variable.name)
+                        || (!explicit_export_name(module, &variable.name)
+                            && inferred.is_some_and(|context| context.retained(&variable.name))));
                 if variable.exported && module.id.ends_with(".js") {
                     output.push_str("export ");
                 } else if variable.exported {

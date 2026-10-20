@@ -56,7 +56,10 @@ impl ModuleChecker<'_> {
             if index < elements.len() || elements.iter().any(|element| element.rest) {
                 continue;
             }
-            let label = type_label(&original);
+            let label = crate::diagnostic::type_text::render_in(
+                &crate::checker::tuple_compositions::display_type(&original, self.checking),
+                self.project,
+            );
             self.typescript_type_error(
                 &SourceSpan::new(
                     &self.module.id,
@@ -103,9 +106,9 @@ pub(in crate::checker::module) fn indexed_value_type(
                 else {
                     return Type::Unknown;
                 };
-                alternatives_type(tuple_indexed_candidates(&expanded, index))
+                tuple_read_type(&expanded, index, budget.checking)
             } else {
-                alternatives_type(tuple_indexed_candidates(values, index))
+                tuple_read_type(values, index, budget.checking)
             }
         }
         Type::Record(fields) if index.is_none() => alternatives_type(
@@ -135,6 +138,42 @@ pub(in crate::checker::module) fn indexed_value_type(
             }
         }
         _ => Type::Unknown,
+    }
+}
+
+fn tuple_read_type(
+    values: &[TupleTypeElement],
+    index: Option<usize>,
+    checking: crate::CheckingOptions,
+) -> Type {
+    let mut candidates = tuple_indexed_candidates(values, index);
+    if checking.no_unchecked_indexed_access
+        && (index.is_none()
+            || values
+                .iter()
+                .position(|element| element.rest)
+                .is_some_and(|rest| index.is_some_and(|index| index >= rest)))
+    {
+        candidates.push(Type::Undefined);
+    }
+    let value = crate::checker::type_operators::union(candidates);
+    if let Type::Union(mut parts) = value {
+        if parts.iter().all(|part| {
+            matches!(
+                part,
+                Type::String | Type::Number | Type::Boolean | Type::Undefined
+            )
+        }) {
+            parts.sort_by_key(|part| match part {
+                Type::String => 0,
+                Type::Number => 1,
+                Type::Boolean => 2,
+                _ => 3,
+            });
+        }
+        Type::Union(parts)
+    } else {
+        value
     }
 }
 

@@ -272,7 +272,7 @@ fn legacy_v3_state_rebuilds_with_output_hashes() {
     assert_eq!(rebuilt.built, vec!["dep/tsconfig.json", "tsconfig.json"]);
     assert!(report(&output).contains("invalid or foreign .tsbuildinfo"));
     let state: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    assert_eq!(state["version"], 10);
+    assert_eq!(state["version"], 12);
     assert!(state["output_hashes"].as_object().unwrap().len() >= 2);
     fs::remove_dir_all(root).unwrap();
 }

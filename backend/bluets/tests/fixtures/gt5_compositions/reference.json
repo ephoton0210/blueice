@@ -1,0 +1,1825 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "symbol-index-read-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; label: string }; declare const bag: Bag; declare const key: symbol;\nexport const value = bag[key]; export const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "symbol-index-read-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; label: string }; declare const bag: Bag; declare const key: symbol;\nexport const value = bag[key]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 170,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "symbol-index-unchecked-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; label: string }; declare const bag: Bag; declare const key: symbol;\nexport const value = bag[key]; export const checked: number | undefined = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number | undefined;\nexport declare const checked: number | undefined;\n"
+    },
+    {
+      "id": "symbol-index-unchecked-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; label: string }; declare const bag: Bag; declare const key: symbol;\nexport const value = bag[key]; export const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 170,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "symbol-index-write-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; label: string }; declare const bag: Bag; declare const key: symbol;\nbag[key] = 2; export const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\n"
+    },
+    {
+      "id": "symbol-index-write-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; label: string }; declare const bag: Bag; declare const key: symbol;\nbag[key] = 'bad'; export const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 126,
+          "length": 8,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "symbol-readonly-index-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { readonly [key: symbol]: number }; declare const bag: Bag; declare const key: symbol;\nexport const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\n"
+    },
+    {
+      "id": "symbol-readonly-index-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { readonly [key: symbol]: number }; declare const bag: Bag; declare const key: symbol;\nbag[key] = 2; export const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2542,
+          "message": "Index signature in type 'Bag' only permits reading.",
+          "module": "entry.ts",
+          "start": 120,
+          "length": 8,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unique-computed-read-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); const bag = {[key]: 7, label: 'x'};\nexport const value = bag[key]; export const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const key: unique symbol;\nexport declare const value: number;\nexport declare const checked: number;\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "7\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "unique-computed-read-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); const bag = {[key]: 7, label: 'x'};\nexport const value = bag[key]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 134,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unique-computed-type-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { [key]: number; label: string }; const bag: Bag = {[key]: 7, label: 'x'};\nexport const value = bag[key]; export const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const key: unique symbol;\nexport declare const value: number;\nexport declare const checked: number;\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "7\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "unique-computed-type-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { [key]: number; label: string }; const bag: Bag = {[key]: 7, label: 'x'};\nexport const value = bag[key]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 184,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unique-computed-write-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); const bag = {[key]: 7};\nbag[key] = 8; export const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const key: unique symbol;\nexport declare const value: number;\n"
+    },
+    {
+      "id": "unique-computed-write-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); const bag = {[key]: 7};\nbag[key] = 'bad'; export const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 78,
+          "length": 8,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unique-key-projection-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { [key]: number };\nexport const value: Bag[typeof key] = 7;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const key: unique symbol;\ntype Bag = {\n    [key]: number;\n};\nexport declare const value: Bag[typeof key];\nexport {};\n"
+    },
+    {
+      "id": "unique-key-projection-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { [key]: number };\nexport const value: Bag[typeof key] = 'bad';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 97,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "named-optional-read-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\nexport const value = tuple[1]; export const checked: string | undefined = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string | undefined;\nexport declare const checked: string | undefined;\n"
+    },
+    {
+      "id": "named-optional-read-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\nexport const value = tuple[1]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | undefined' is not assignable to type 'string'.\n  Type 'undefined' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 118,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "named-optional-exact-read-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\nexport const value = tuple[1]; export const checked: string | undefined = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "exactOptionalPropertyTypes": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string | undefined;\nexport declare const checked: string | undefined;\n"
+    },
+    {
+      "id": "named-optional-exact-read-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\nexport const value = tuple[1]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "exactOptionalPropertyTypes": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | undefined' is not assignable to type 'string'.\n  Type 'undefined' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 118,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-write-legacy-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\ntuple[1] = undefined; export const value = tuple;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "exactOptionalPropertyTypes": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: [head: number, tail?: string | undefined];\n"
+    },
+    {
+      "id": "optional-write-legacy-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\ntuple[1] = 5; export const value = tuple;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "exactOptionalPropertyTypes": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 74,
+          "length": 8,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-write-exact-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\ntuple[1] = 'ok'; export const value = tuple;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "exactOptionalPropertyTypes": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: [head: number, tail?: string];\n"
+    },
+    {
+      "id": "optional-write-exact-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\ntuple[1] = undefined; export const value = tuple;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "exactOptionalPropertyTypes": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'undefined' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 74,
+          "length": 8,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "named-rest-read-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, ...tail: string[]];\nexport const value = tuple[3]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string;\nexport declare const checked: string;\n"
+    },
+    {
+      "id": "named-rest-read-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, ...tail: string[]];\nexport const value = tuple[3]; export const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 122,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "named-rest-unchecked-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, ...tail: string[]];\nexport const value = tuple[3]; export const checked: string | undefined = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string | undefined;\nexport declare const checked: string | undefined;\n"
+    },
+    {
+      "id": "named-rest-unchecked-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, ...tail: string[]];\nexport const value = tuple[3]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | undefined' is not assignable to type 'string'.\n  Type 'undefined' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 122,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "variadic-position-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ntype Join<T extends unknown[]> = [head: number, ...T, tail: boolean]; declare const tuple: Join<[name: string, count?: number]>;\nexport const value = tuple[1]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string;\nexport declare const checked: string;\n"
+    },
+    {
+      "id": "variadic-position-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ntype Join<T extends unknown[]> = [head: number, ...T, tail: boolean]; declare const tuple: Join<[name: string, count?: number]>;\nexport const value = tuple[1]; export const checked: boolean = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'boolean'.",
+          "module": "entry.ts",
+          "start": 195,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "variadic-assignment-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ntype Join<T extends unknown[]> = [head: number, ...T, tail: boolean];\nexport const value: Join<[name: string]> = [1, 'x', true];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Join<T extends unknown[]> = [head: number, ...T, tail: boolean];\nexport declare const value: Join<[name: string]>;\nexport {};\n",
+      "invoke": "console.log(value.join('|'));",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1|x|true\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "variadic-assignment-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ntype Join<T extends unknown[]> = [head: number, ...T, tail: boolean];\nexport const value: Join<[name: string]> = [1, false, true];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 139,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "leading-rest-position-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [...head: string[], tail: boolean];\nexport const value = tuple[1]; export const checked: string | boolean = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string | boolean;\nexport declare const checked: string | boolean;\n"
+    },
+    {
+      "id": "leading-rest-position-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [...head: string[], tail: boolean];\nexport const value = tuple[1]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | boolean' is not assignable to type 'string'.\n  Type 'boolean' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 123,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "dynamic-tuple-unchecked-off-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail: string]; declare const index: number;\nexport const value = tuple[index]; export const checked: number | string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string | number;\nexport declare const checked: number | string;\n"
+    },
+    {
+      "id": "dynamic-tuple-unchecked-off-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail: string]; declare const index: number;\nexport const value = tuple[index]; export const checked: boolean = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'boolean'.\n  Type 'string' is not assignable to type 'boolean'.",
+          "module": "entry.ts",
+          "start": 150,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "dynamic-tuple-unchecked-on-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail: string]; declare const index: number;\nexport const value = tuple[index]; export const checked: number | string | undefined = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string | number | undefined;\nexport declare const checked: number | string | undefined;\n"
+    },
+    {
+      "id": "dynamic-tuple-unchecked-on-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail: string]; declare const index: number;\nexport const value = tuple[index]; export const checked: number | string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number | undefined' is not assignable to type 'string | number'.\n  Type 'undefined' is not assignable to type 'string | number'.",
+          "module": "entry.ts",
+          "start": 150,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "readonly-tuple-write-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: readonly [head: number, tail?: string];\nexport const value = tuple[0];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\n"
+    },
+    {
+      "id": "readonly-tuple-write-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: readonly [head: number, tail?: string];\ntuple[0] = 5; export const value = tuple[0];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2540,
+          "message": "Cannot assign to '0' because it is a read-only property.",
+          "module": "entry.ts",
+          "start": 89,
+          "length": 1,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "readonly-tuple-assignment-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: readonly [head: number, tail?: string];\nexport const value: readonly [head: number, tail?: string] = tuple;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: readonly [head: number, tail?: string];\n"
+    },
+    {
+      "id": "readonly-tuple-assignment-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: readonly [head: number, tail?: string];\nexport const value: [head: number, tail?: string] = tuple;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 4104,
+          "message": "The type 'readonly [head: number, tail?: string | undefined]' is 'readonly' and cannot be assigned to the mutable type '[head: number, tail?: string | undefined]'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "discarded-tuple-read-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\ntuple[1]; export const value = tuple[0];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\n"
+    },
+    {
+      "id": "discarded-tuple-read-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, tail?: string];\ntuple[2]; export const value = tuple[0];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2493,
+          "message": "Tuple type '[head: number, tail?: string | undefined]' of length '2' has no element at index '2'.",
+          "module": "entry.ts",
+          "start": 80,
+          "length": 1,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-const-satisfies-accept",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\nconst config = {items: [1, 'x'], meta: {tag: 'ok'}} as const satisfies {items: readonly [number, string]; meta: {tag: string}};\nexport const value = config.items[1]; export const checked: 'x' = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: \"x\";\nexport declare const checked: 'x';\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "x\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "nested-const-satisfies-reject",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\nconst config = {items: [1, 'x'], meta: {tag: 'ok'}} as const satisfies {items: readonly [number, string]; meta: {tag: string}};\nexport const value = config.items[1]; export const checked: 'y' = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"x\"' is not assignable to type '\"y\"'.",
+          "module": "entry.ts",
+          "start": 201,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-const-declaration-accept",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\n\nexport const value = {items: [1, 'x'], meta: {tag: 'ok'}} as const satisfies {items: readonly [number, string]; meta: {tag: string}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    readonly items: readonly [1, \"x\"];\n    readonly meta: {\n        readonly tag: \"ok\";\n    };\n};\n",
+      "invoke": "console.log(value.meta.tag);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "ok\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "nested-const-declaration-reject",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\n\nexport const value = {items: [1, 'x'], meta: {tag: 'ok'}} as const satisfies {items: readonly [number, number]; meta: {tag: string}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 56,
+          "length": 3,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-satisfies-tuple-accept",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\nconst config = {items: [1, 'x'] satisfies [number, string]};\nexport const value = config.items[1]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string;\nexport declare const checked: string;\n"
+    },
+    {
+      "id": "nested-satisfies-tuple-reject",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\nconst config = {items: [1, 'x'] satisfies [number, string]};\nexport const value = config.items[1]; export const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 134,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-const-readonly-accept",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\nconst config = {inner: {value: 1}} as const;\nexport const value = config.inner.value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: 1;\n"
+    },
+    {
+      "id": "nested-const-readonly-reject",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\nconst config = {inner: {value: 1}} as const;\nconfig.inner.value = 2; export const value = config.inner.value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2540,
+          "message": "Cannot assign to 'value' because it is a read-only property.",
+          "module": "entry.ts",
+          "start": 80,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unknown-typeof-flow-accept",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\n\nexport function value(input: unknown): string { if (typeof input === 'string') { const checked: string = input; return checked; } return ''; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function value(input: unknown): string;\n",
+      "invoke": "console.log(value('ok'));",
+      "runtime": {
+        "exit": 0,
+        "stdout": "ok\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "unknown-typeof-flow-reject",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\n\nexport function value(input: unknown): string { if (typeof input === 'string') { const checked: number = input; return ''; } return ''; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 110,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unknown-union-flow-accept",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\n\nexport function value(input: unknown | number): number { if (typeof input === 'number') { const checked: number = input; return checked; } return 0; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function value(input: unknown | number): number;\n"
+    },
+    {
+      "id": "unknown-union-flow-reject",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\n\nexport function value(input: unknown | number): number { const checked: number = input; return checked; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 86,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "never-exhaustive-flow-accept",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\n\nexport function value(input: string | number): void { if (typeof input === 'string') return; if (typeof input === 'number') return; const checked: never = input; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function value(input: string | number): void;\n"
+    },
+    {
+      "id": "never-exhaustive-flow-reject",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\n\nexport function value(input: string | number): void { if (typeof input === 'string') return; const checked: never = input; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "module": "entry.ts",
+          "start": 122,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unknown-never-projection-accept",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\ntype Present<T> = T extends unknown ? T extends undefined ? never : T : never; declare const tuple: [head: unknown, tail?: never];\nexport const value: Present<typeof tuple[1]> = (undefined as never);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Present<T> = T extends unknown ? T extends undefined ? never : T : never;\ndeclare const tuple: [head: unknown, tail?: never];\nexport declare const value: Present<typeof tuple[1]>;\nexport {};\n"
+    },
+    {
+      "id": "unknown-never-projection-reject",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\ntype Present<T> = T extends unknown ? T extends undefined ? never : T : never; declare const tuple: [head: unknown, tail?: never];\nexport const value: Present<typeof tuple[1]> = undefined;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'undefined' is not assignable to type 'never'.",
+          "module": "entry.ts",
+          "start": 166,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "separate-index-domains-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; [key: string]: string }; declare const bag: Bag; declare const key: symbol;\nexport const value = bag[key]; export const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "separate-index-domains-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; [key: string]: string }; declare const bag: Bag; declare const key: symbol;\nexport const value = bag[key]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 178,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "separate-readonly-domains-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; readonly [key: string]: string }; declare const bag: Bag; declare const key: symbol;\nbag[key] = 2; export const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\n"
+    },
+    {
+      "id": "separate-readonly-domains-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number; readonly [key: string]: string }; declare const bag: Bag; declare const key: symbol;\nbag['label'] = 'bad'; export const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2542,
+          "message": "Index signature in type 'Bag' only permits reading.",
+          "module": "entry.ts",
+          "start": 143,
+          "length": 12,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unique-computed-readonly-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { readonly [key]: number }; declare const bag: Bag;\nexport const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const key: unique symbol;\nexport declare const value: number;\n"
+    },
+    {
+      "id": "unique-computed-readonly-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { readonly [key]: number }; declare const bag: Bag;\nbag[key] = 2; export const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2540,
+          "message": "Cannot assign to '[key]' because it is a read-only property.",
+          "module": "entry.ts",
+          "start": 121,
+          "length": 3,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unique-computed-keys-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { [key]: number };\nexport const value: keyof Bag = key;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const key: unique symbol;\ntype Bag = {\n    [key]: number;\n};\nexport declare const value: keyof Bag;\nexport {};\n"
+    },
+    {
+      "id": "unique-computed-keys-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { [key]: number };\nexport const value: keyof Bag = 'key';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"key\"' is not assignable to type 'unique symbol'.",
+          "module": "entry.ts",
+          "start": 97,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "required-rest-prefix-unchecked-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, ...tail: string[]];\nexport const value = tuple[0]; export const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "required-rest-prefix-unchecked-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ndeclare const tuple: [head: number, ...tail: string[]];\nexport const value = tuple[0]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 122,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "readonly-variadic-optional-accept",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ntype Join<T extends unknown[]> = readonly [head: number, ...T, tail: boolean]; declare const tuple: Join<[name?: string]>;\nexport const value = tuple[1]; export const checked: string | undefined = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string | undefined;\nexport declare const checked: string | undefined;\n"
+    },
+    {
+      "id": "readonly-variadic-optional-reject",
+      "area": "tuple",
+      "source": "// UTF-16 control: 😀\ntype Join<T extends unknown[]> = readonly [head: number, ...T, tail: boolean]; declare const tuple: Join<[name?: string]>;\nexport const value = tuple[1]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | undefined' is not assignable to type 'string'.\n  Type 'undefined' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 189,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-assertion-chain-accept",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\n\nexport const value = {inner: {items: [1, 2] satisfies [number, number]}} as const satisfies {inner: {items: readonly [number, number]}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: {\n    readonly inner: {\n        readonly items: [number, number];\n    };\n};\n"
+    },
+    {
+      "id": "nested-assertion-chain-reject",
+      "area": "const",
+      "source": "// UTF-16 control: 😀\n\nexport const value = {inner: {items: [1, 'x'] satisfies [number, number]}} as const satisfies {inner: {items: readonly [number, number]}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, string]' is not assignable to type 'readonly [number, number]'.\n  Type at position 1 in source is not compatible with type at position 1 in target.\n    Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 53,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'items' which is declared here on type '{ items: readonly [number, number]; }'",
+              "module": "entry.ts",
+              "start": 126,
+              "length": 5,
+              "related": []
+            }
+          ]
+        },
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 64,
+          "length": 3,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unknown-never-narrowed-tuple-accept",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\n\nexport function value(tuple: [head: unknown, tail?: never]): string { const item = tuple[0]; if (typeof item === 'string') return item; return ''; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function value(tuple: [head: unknown, tail?: never]): string;\n"
+    },
+    {
+      "id": "unknown-never-narrowed-tuple-reject",
+      "area": "flow",
+      "source": "// UTF-16 control: 😀\n\nexport function value(tuple: [head: unknown, tail?: never]): string { const item = tuple[0]; return item; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 116,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unique-key-identity-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('same'); export const other = Symbol('same'); type Bag = {[key]: number}; declare const bag: Bag;\nexport const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const key: unique symbol;\nexport declare const other: unique symbol;\nexport declare const value: number;\n"
+    },
+    {
+      "id": "unique-key-identity-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('same'); export const other = Symbol('same'); type Bag = {[key]: number}; declare const bag: Bag;\nexport const value = bag[other];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 7053,
+          "message": "Element implicitly has an 'any' type because expression of type 'unique symbol' can't be used to index type 'Bag'.\n  Property '[\"./entry\".other]' does not exist on type 'Bag'.",
+          "module": "entry.ts",
+          "start": 167,
+          "length": 10,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "computed-key-type-authority-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\n\ndeclare const key: unique symbol; export type Bag = {[key]: number};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "declare const key: unique symbol;\nexport type Bag = {\n    [key]: number;\n};\nexport {};\n",
+      "consumer": "type Candidate = import('./candidate').Bag; declare const input: Candidate; declare const key: keyof Candidate; const read: number = input[key]; declare const reversed: {[K in keyof Candidate]: number}; const back: Candidate = reversed;"
+    },
+    {
+      "id": "computed-key-type-authority-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\n\ndeclare const key: boolean; export type Bag = {[key]: number};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2464,
+          "message": "A computed property name must be of type 'string', 'number', 'symbol', or 'any'.",
+          "module": "entry.ts",
+          "start": 70,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "broad-computed-symbol-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ndeclare const key: symbol; type Bag = {[key]: number}; declare const bag: Bag;\nexport const value = bag[key]; export const checked: number = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: number;\nexport declare const checked: number;\n"
+    },
+    {
+      "id": "broad-computed-symbol-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ndeclare const key: symbol; type Bag = {[key]: number}; declare const bag: Bag;\nexport const value = bag[key]; export const checked: string = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 145,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "named-readonly-before-string-index-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { readonly label: string; [key: string]: string }; declare const bag: Bag;\nexport const value = bag['label'];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: string;\n"
+    },
+    {
+      "id": "named-readonly-before-string-index-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { readonly label: string; [key: string]: string }; declare const bag: Bag;\nbag['label'] = 'bad'; export const value = bag['label'];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2540,
+          "message": "Cannot assign to 'label' because it is a read-only property.",
+          "module": "entry.ts",
+          "start": 112,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "named-readonly-before-symbol-index-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { readonly [key]: number; [index: symbol]: number }; declare const bag: Bag;\nexport const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const key: unique symbol;\nexport declare const value: number;\n"
+    },
+    {
+      "id": "named-readonly-before-symbol-index-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\nexport const key = Symbol('k'); type Bag = { readonly [key]: number; [index: symbol]: number }; declare const bag: Bag;\nbag[key] = 2; export const value = bag[key];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2540,
+          "message": "Cannot assign to '[key]' because it is a read-only property.",
+          "module": "entry.ts",
+          "start": 146,
+          "length": 3,
+          "related": []
+        }
+      ]
+    }
+  ],
+  "budget_controls": [
+    {
+      "id": "variadic-expansion",
+      "kind": "expansion",
+      "source": "type Join<T extends unknown[]> = [number, ...T, boolean]; export const value: Join<[string]> = [1, 'x', true];"
+    },
+    {
+      "id": "nested-composition-depth",
+      "kind": "depth",
+      "source": "type Box<T> = {value: T}; export const value: Box<Box<Box<number>>> = {value: {value: {value: 1}}};"
+    }
+  ],
+  "readonly_controls": [
+    {
+      "id": "never-cast-array-qualifier",
+      "source": "export function write(host: readonly number[]): void { const erased = host as never; const value = undefined as never; erased[0] = value; }",
+      "mutable": "export function write(host: number[]): void { const erased = host as never; const value = undefined as never; erased[0] = value; }"
+    },
+    {
+      "id": "never-cast-nested-qualifier",
+      "source": "export function write(host: {nested: readonly number[]}): void { const erased = host as never; const value = undefined as never; erased['nested'][0] = value; }",
+      "mutable": "export function write(host: {nested: number[]}): void { const erased = host as never; const value = undefined as never; erased['nested'][0] = value; }"
+    },
+    {
+      "id": "never-cast-opaque-qualifier",
+      "source": "export function write(input: unknown, host: {readonly token: number}): void { const erased = input as never; const value = undefined as never; erased[0] = value; }",
+      "mutable": "export function write(input: unknown, host: {token: number}): void { const erased = input as never; const value = undefined as never; erased[0] = value; }"
+    }
+  ]
+}

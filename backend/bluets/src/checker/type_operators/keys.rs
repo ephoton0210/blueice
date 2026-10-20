@@ -86,7 +86,11 @@ pub(super) fn keyof(
         Type::Unknown | Type::StrictUnknown => Some(Type::Never),
         Type::Never => Some(Type::Union(vec![Type::String, Type::Number, Type::Symbol])),
         Type::Record(fields) | Type::CallableRecord { fields, .. } => {
-            Some(union(fields.iter().map(|field| literal_key(&field.name))))
+            Some(union(fields.iter().map(|field| {
+                crate::checker::computed_keys::key(&field.name, aliases)
+                    .cloned()
+                    .unwrap_or_else(|| literal_key(&field.name))
+            })))
         }
         Type::Union(parts) => {
             let mut sets = Vec::new();
@@ -254,8 +258,10 @@ pub(super) fn indexed(
             .get(key_name(&index)?.parse::<usize>().ok()?)
             .map(TupleTypeElement::indexed_type),
         Type::Record(fields) | Type::CallableRecord { fields, .. } => {
-            let key = key_name(&index)?;
-            let field = fields.iter().find(|field| field.name == key)?;
+            let field = fields.iter().find(|field| {
+                crate::checker::computed_keys::key(&field.name, aliases) == Some(&index)
+                    || key_name(&index).is_some_and(|key| field.name == key)
+            })?;
             Some(if field.optional {
                 union([field.value.clone(), Type::Undefined])
             } else {

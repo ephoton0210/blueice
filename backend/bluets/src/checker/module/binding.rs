@@ -9,6 +9,7 @@ use super::*;
 mod array_diagnostics;
 mod checking_flags;
 mod classes;
+mod computed_keys;
 mod diagnostics;
 mod enums;
 mod functions;
@@ -132,6 +133,7 @@ impl<'a> ModuleChecker<'a> {
         self.bind_declarations();
         self.bind_ambient_declarations();
         self.bind_standard_library();
+        self.bind_computed_key_values();
         self.canonicalize_rest_signatures();
         self.bind_jsx_runtime_namespace();
         self.infer_module_return_signatures();
@@ -740,6 +742,7 @@ impl<'a> ModuleChecker<'a> {
                 .unwrap_or_else(|| self.infer_variable_type(variable, &scope));
             self.values.insert(variable.name.clone(), inferred.clone());
             self.refresh_variable_symbol(variable, inferred);
+            self.bind_computed_key_values();
         }
     }
 
@@ -798,6 +801,7 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         self.check_tuple_index_reads(tokens, scope, span);
+        self.check_computed_symbol_reads(tokens, scope, span);
         if self.check_class_expression(tokens, scope) {
             return;
         }

@@ -33,8 +33,7 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
     ) -> Result<bool, ()> {
         let inferred = self.infer_expression(receiver, scope);
-        if inferred != Type::Unknown && (self.explicit_checking || inferred != Type::StrictUnknown)
-        {
+        if !matches!(inferred, Type::Unknown | Type::StrictUnknown) {
             return Ok(false);
         }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
@@ -286,7 +285,7 @@ fn push_type(
     Ok(())
 }
 
-const MAX_READONLY_TAINT_DEPTH: usize = 16;
+pub(super) const MAX_READONLY_TAINT_DEPTH: usize = 16;
 
 /// Deep, bounded search for a readonly member anywhere reachable through
 /// arrays, tuples, records, unions and named types.

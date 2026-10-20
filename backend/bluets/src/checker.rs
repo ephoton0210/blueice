@@ -36,6 +36,8 @@ pub(crate) use scopes::emission::{lexical_emission, LexicalEmission};
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
 pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v4";
+mod computed_keys;
+pub(crate) mod tuple_compositions;
 mod type_operators;
 mod type_relations;
 use properties::{
@@ -78,6 +80,7 @@ pub struct Symbol {
 
 #[derive(Debug, Clone)]
 pub struct CheckedModule {
+    pub(crate) checking: crate::CheckingOptions,
     pub module: Module,
     pub symbols: Vec<Symbol>,
     /// Return types inferred without changing source annotations or runtime policy.

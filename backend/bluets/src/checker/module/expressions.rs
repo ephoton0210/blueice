@@ -6,7 +6,10 @@
 
 use super::*;
 
+mod assertion_qualifiers;
 mod call_presentation;
+mod composition_diagnostics;
+mod computed_indices;
 mod conditional_inputs;
 mod contextual_calls;
 mod diagnostics;
@@ -25,6 +28,7 @@ mod property_diagnostics;
 mod readonly;
 mod receivers;
 pub(super) mod signatures;
+mod symbol_diagnostics;
 
 pub(super) use indexing::indexed_value_type;
 use indexing::{canonical_index_key, tuple_indexed_candidates};

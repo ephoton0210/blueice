@@ -83,6 +83,8 @@ impl<'a> Context<'a> {
                 &checked.class_expression_surfaces,
                 &variable.span,
             )?;
+            let expanded =
+                crate::checker::tuple_compositions::display_type(&expanded, checked.checking);
             let expanded = order.variable(module, variable, &expanded);
             let expanded = super::inference_literals::declaration_union(
                 expanded,
@@ -397,6 +399,9 @@ impl<'a> Context<'a> {
             }
             Type::Record(fields) => {
                 for field in fields {
+                    if let Some(entity) = crate::symbol_keys::entity(&field.name) {
+                        self.retain(entity);
+                    }
                     self.references(&field.value);
                 }
             }

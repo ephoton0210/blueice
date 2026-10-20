@@ -68,7 +68,12 @@ impl Parser {
                 });
             } else {
                 let readonly = self.consume("readonly");
-                if self.consume("[") {
+                let computed = self.peek("[")
+                    && self
+                        .tokens
+                        .get(self.index + 2)
+                        .is_none_or(|token| !token.is(":"));
+                if !computed && self.consume("[") {
                     let name = self.require_identifier("expected an index parameter name");
                     self.expect(":");
                     let key_start = self.current().start;
@@ -89,7 +94,18 @@ impl Parser {
                     self.consume(",");
                     continue;
                 }
-                let name = self.require_property_name(field_expectation);
+                let name = if computed {
+                    self.bump();
+                    let mut entity = self.require_identifier("expected a computed entity name");
+                    while self.consume(".") {
+                        entity.push('.');
+                        entity.push_str(&self.require_identifier("expected an entity member"));
+                    }
+                    self.expect("]");
+                    crate::symbol_keys::name(&self.id, &entity)
+                } else {
+                    self.require_property_name(field_expectation)
+                };
                 let optional = self.consume("?");
                 let method = self.peek("(") || self.peek("<");
                 let value = if method {

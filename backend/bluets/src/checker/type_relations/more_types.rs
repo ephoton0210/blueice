@@ -9,6 +9,9 @@ pub(in crate::checker) fn normalized(
     value: &Type,
     aliases: &BTreeMap<String, TypeDefinition>,
 ) -> Option<Type> {
+    if let Some(value) = crate::checker::computed_keys::broad_indices(value, aliases) {
+        return Some(value);
+    }
     match value {
         Type::Named { name, arguments }
             if arguments.len() == 1
@@ -99,7 +102,7 @@ pub(super) fn assignable(
             };
             Some(indices.iter().all(|index| {
                 fields.iter().all(|field| {
-                    if index.key == Type::Number && field.name.parse::<f64>().is_err() {
+                    if !crate::checker::computed_keys::applies(&field.name, &index.key) {
                         return true;
                     }
                     if !budget.consume() {

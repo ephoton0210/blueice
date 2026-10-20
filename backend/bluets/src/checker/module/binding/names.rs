@@ -242,6 +242,7 @@ impl ModuleChecker<'_> {
             }
             Type::Record(fields) => {
                 for field in fields {
+                    self.check_computed_type_key(field);
                     self.check_type(&field.value, &field.span);
                 }
             }

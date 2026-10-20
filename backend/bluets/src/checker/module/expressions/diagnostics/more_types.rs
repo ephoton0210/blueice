@@ -25,7 +25,22 @@ impl ModuleChecker<'_> {
             )
         };
         let source = expanded(actual, &mut budget);
-        let target = expanded(expected, &mut budget);
+        let mut target = expanded(expected, &mut budget);
+        if let Type::Tuple(elements) = &target {
+            if elements
+                .iter()
+                .any(|element| element.rest && !matches!(element.annotation, Type::Array(_)))
+            {
+                if let Ok(elements) = expand_concrete_tuple_spreads(
+                    elements,
+                    &self.types,
+                    &mut HashSet::new(),
+                    &mut budget,
+                ) {
+                    target = Type::Tuple(elements);
+                }
+            }
+        }
         if budget.exhausted {
             return false;
         }
@@ -56,14 +71,33 @@ impl ModuleChecker<'_> {
             .find(|pair| matches!(pair[0].text.as_str(), "const" | "let" | "var"))
             .map(|pair| pair[1].span(&self.module.id))
             .unwrap_or_else(|| span.clone());
+        if matches!(target, Type::UniqueSymbol(_))
+            && crate::checker::type_operators::is_operator_context(expected, &self.types)
+        {
+            self.additional_assignment_diagnostic(
+                (span, message, code),
+                2322,
+                vec![
+                    crate::diagnostic::type_text::render(actual),
+                    "unique symbol".into(),
+                ],
+                &name_span,
+                None,
+            );
+            return true;
+        }
         if matches!(source, Type::Readonly(_)) && matches!(target, Type::Array(_) | Type::Tuple(_))
         {
             self.additional_assignment_diagnostic(
                 (span, message, code),
                 4104,
                 vec![
-                    crate::diagnostic::type_text::render(&source),
-                    crate::diagnostic::type_text::render(&target),
+                    crate::diagnostic::type_text::render(
+                        &crate::checker::tuple_compositions::display_type(&source, self.checking),
+                    ),
+                    crate::diagnostic::type_text::render(
+                        &crate::checker::tuple_compositions::display_type(&target, self.checking),
+                    ),
                 ],
                 &name_span,
                 None,
@@ -103,7 +137,7 @@ impl ModuleChecker<'_> {
         if let (Type::Record(fields), Type::IndexedRecord { indices, .. }) = (&source, &target) {
             for field in fields {
                 for index in indices {
-                    if index.key == Type::Number && field.name.parse::<f64>().is_err() {
+                    if !crate::checker::computed_keys::applies(&field.name, &index.key) {
                         continue;
                     }
                     if !is_assignable(

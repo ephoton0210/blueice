@@ -202,7 +202,10 @@ fn property_type_with_access(
         Type::Record(fields) | Type::CallableRecord { fields, .. } => {
             let mut values = Vec::new();
             let mut readonly = false;
-            for field in fields.iter().filter(|field| field.name == property) {
+            for field in fields
+                .iter()
+                .filter(|field| super::computed_keys::same(&field.name, property, aliases))
+            {
                 // Keep every same-named signature in declaration order. The
                 // first field preserves the existing simple-lookup budget.
                 if !values.is_empty() && !budget.consume() {

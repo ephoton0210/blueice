@@ -20,6 +20,9 @@ pub(crate) fn render_in(value: &Type, project: &crate::Project) -> String {
 }
 
 fn field_name(field: &crate::parser::TypeField, project: Option<&crate::Project>) -> String {
+    if let Some(name) = crate::symbol_keys::display(&field.name) {
+        return name;
+    }
     if let Some(source) = project.and_then(|p| p.source(&field.span.module)) {
         if let Some(text) = source.get(field.span.start..field.span.end) {
             let text = text.trim_start();

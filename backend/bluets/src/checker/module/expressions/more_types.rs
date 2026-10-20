@@ -38,6 +38,9 @@ impl ModuleChecker<'_> {
         if depth >= 128 || tokens.is_empty() {
             return Type::Unknown;
         }
+        if erased_assertion_operand(tokens).is_some() {
+            return self.infer_expression(tokens, scope);
+        }
         if let [literal] = tokens {
             if matches!(
                 literal.kind,
@@ -83,6 +86,9 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) -> bool {
+        if self.check_computed_assignment(tokens, scope, span) {
+            return true;
+        }
         let operand = strip_outer_parentheses(erased_assertion_operand(tokens).unwrap_or(tokens));
         let literal = match operand {
             [sign, literal, ..] if sign.is("-") || sign.is("+") => Some(literal),
@@ -169,6 +175,9 @@ impl ModuleChecker<'_> {
                     }
                 } else if marker.is("satisfies") {
                     self.check_type(&annotation, span);
+                    if self.literal_composition_error(operand, &annotation, scope, 0) {
+                        return true;
+                    }
                     let actual = self.infer_in_context(operand, scope, &annotation);
                     let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
                     let expected = crate::checker::type_operators::expanded(

@@ -382,6 +382,14 @@ impl<'a> ModuleChecker<'a> {
                         .unwrap_or(annotation),
                     value => value,
                 };
+                if *target == Type::Never {
+                    let actual = self.infer_expression(value, scope);
+                    return if self.assertion_preserves_runtime_qualifiers(&actual) {
+                        actual
+                    } else {
+                        annotation.clone()
+                    };
+                }
                 if matches!(target, Type::Literal(_))
                     || target.operator_children().is_some()
                     || matches!(target, Type::KeyOf(_) | Type::IndexedAccess { .. })
@@ -495,6 +503,9 @@ impl<'a> ModuleChecker<'a> {
             if property.is_none() && tokens.last().is_some_and(|token| token.is("]")) {
                 let inside = &tokens[receiver.len() + 1..tokens.len() - 1];
                 if let Some(result) = self.enum_index_type(&owner, inside, scope) {
+                    return result;
+                }
+                if let Some(result) = self.computed_read_type(&owner, inside, scope) {
                     return result;
                 }
             }

@@ -80,7 +80,7 @@ pub(in crate::checker) fn record_fields_assignable(
     expected.iter().all(|expected| {
         actual
             .iter()
-            .find(|field| field.name == expected.name)
+            .find(|field| crate::checker::computed_keys::same(&field.name, &expected.name, aliases))
             .map_or(expected.optional, |actual| {
                 if actual.optional && !expected.optional {
                     return false;

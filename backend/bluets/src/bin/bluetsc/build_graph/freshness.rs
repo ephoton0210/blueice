@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 
 // G-T2 changes inference and declarations: older state must rebuild.
-const STATE_VERSION: u8 = 10;
+const STATE_VERSION: u8 = 12;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 

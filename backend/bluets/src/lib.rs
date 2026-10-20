@@ -34,6 +34,7 @@ mod performance;
 pub mod remote_declarations;
 pub mod standard_library;
 mod strict_boundaries;
+mod symbol_keys;
 mod syntax;
 mod type_operator_profiles;
 

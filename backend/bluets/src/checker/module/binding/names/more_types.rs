@@ -72,7 +72,7 @@ impl ModuleChecker<'_> {
                         object.as_ref()
                     {
                         for field in fields {
-                            if index.key == Type::Number && field.name.parse::<f64>().is_err() {
+                            if !crate::checker::computed_keys::applies(&field.name, &index.key) {
                                 continue;
                             }
                             if !is_assignable(

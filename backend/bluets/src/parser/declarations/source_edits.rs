@@ -406,7 +406,7 @@ impl Parser {
             &self.tokens,
             type_start,
             end,
-            &[";", ",", ")", "]", "}", "&&", "||"],
+            &[";", ",", ")", "]", "}", "&&", "||", "as", "satisfies"],
         );
         // Assertions are erased, but their named types still need lexical
         // resolution. Parse through the same type grammar as annotations.
@@ -415,7 +415,7 @@ impl Parser {
         let annotation = if self.tokens[index].is("as") && self.consume("const") {
             Type::ConstAssertion
         } else {
-            self.parse_type_until(&[";", ",", ")", "]", "}", "&&", "||"])
+            self.parse_type_until(&[";", ",", ")", "]", "}", "&&", "||", "as", "satisfies"])
         };
         self.type_assertions.insert(edit_start, annotation);
         self.index = saved_index;

@@ -52,7 +52,7 @@ impl<'a> ModuleChecker<'a> {
             &self.types,
         ) && (matches!(
             literal_display,
-            Type::Literal(_) | Type::Never | Type::TemplateLiteral(_)
+            Type::Literal(_) | Type::Never | Type::TemplateLiteral(_) | Type::UniqueSymbol(_)
         ) || matches!(&literal_display, Type::Union(parts) if parts.iter().any(|part| matches!(part, Type::Literal(_)))));
         if literal_context {
             if let [literal] = strip_outer_parentheses(tokens) {
@@ -227,6 +227,23 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         expected: &[TupleTypeElement],
     ) -> Option<Type> {
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let expanded;
+        let expected = if expected
+            .iter()
+            .any(|element| element.rest && !matches!(element.annotation, Type::Array(_)))
+        {
+            expanded = expand_concrete_tuple_spreads(
+                expected,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            )
+            .ok()?;
+            &expanded
+        } else {
+            expected
+        };
         if tokens.first().is_none_or(|token| !token.is("["))
             || tokens.last().is_none_or(|token| !token.is("]"))
         {

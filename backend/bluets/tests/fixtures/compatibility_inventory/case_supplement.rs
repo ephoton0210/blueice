@@ -33,6 +33,31 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt5_compositions" => {
+            let path = "backend/bluets/tests/fixtures/gt5_compositions/reference.json";
+            let mut controls = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/budget_controls",
+                "owner-budget-control",
+            )?;
+            for case in &mut controls {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("BlueTS's below/above tuple-composition expansion and parser-depth limits; default native acceptance is not agreement on owner-selected budgets.".into());
+            }
+            let mut readonly = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/readonly_controls",
+                "owner-readonly-control",
+            )?;
+            for case in &mut readonly {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("BlueTS deliberately retains runtime readonly/opaque qualifiers through never assertions, in strict and legacy modes; native acceptance of these casts is not TypeScript agreement on the owner policy.".into());
+            }
+            controls.extend(readonly);
+            controls
+        }
         "gt2_inference" => {
             let path = "backend/bluets/tests/fixtures/gt2_inference/reference.json";
             let mut controls = super::case_sources::json_cases(

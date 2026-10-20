@@ -190,6 +190,9 @@ pub(super) fn render_with_indent(
 }
 
 fn property_name(name: &str) -> String {
+    if let Some(name) = crate::symbol_keys::display(name) {
+        return name;
+    }
     let mut characters = name.chars();
     let identifier = characters
         .next()

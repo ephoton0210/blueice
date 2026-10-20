@@ -20,6 +20,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::diagnostic::DIAGNOSTICS_VERSION);
     add(crate::checker::FLOW_VERSION);
     add(crate::checker::inference::VERSION);
+    add(crate::symbol_keys::VERSION);
     add(crate::type_operator_profiles::VERSION);
     add(crate::checker::CLASS_SURFACE_VERSION);
     add(crate::checker::MODULE_EXPORTS_VERSION);
