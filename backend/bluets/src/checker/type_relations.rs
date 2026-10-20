@@ -778,6 +778,8 @@ pub(super) fn instantiate_named(
     if !budget.consume() {
         return None;
     }
+    let arguments =
+        super::type_operators::arguments::prepare(definition, arguments, aliases, visited, budget)?;
     let substitutions = definition
         .parameters
         .iter()
@@ -849,14 +851,14 @@ pub(crate) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
             }
         }
     }
-    if let Some(value) = value.map_operator(|value, bound| {
+    if let Some(mapped) = value.map_operator(|value, bound| {
         let mut substitutions = substitutions.clone();
         for name in bound {
             substitutions.remove(name);
         }
         substitute_type(value, &substitutions)
     }) {
-        return value;
+        return mapped;
     }
 
     match value {

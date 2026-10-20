@@ -83,6 +83,29 @@ pub(super) fn resolve(
         }
     }
     let keys = expanded(constraint, aliases, &mut visited.clone(), budget);
+    if matches!(keys, Type::String | Type::Number | Type::Symbol) && value.name_type.is_none() {
+        let substitutions = BTreeMap::from([(value.parameter.name.clone(), keys.clone())]);
+        let mut property = expanded(
+            &substitute_type(&value.value, &substitutions),
+            aliases,
+            &mut visited.clone(),
+            budget,
+        );
+        if value.optional == MappedModifier::Add {
+            property = union([property, Type::Undefined]);
+        }
+        return Some(Type::IndexedRecord {
+            object: Box::new(Type::Record(vec![])),
+            indices: vec![crate::parser::IndexSignature {
+                name: value.parameter.name.clone(),
+                key: keys,
+                value: property,
+                readonly: modifier(value.readonly, false),
+                span: value.span.clone(),
+                key_span: value.parameter.span.clone(),
+            }],
+        });
+    }
     let keys = match keys {
         Type::Never => vec![],
         Type::Union(keys) => keys,

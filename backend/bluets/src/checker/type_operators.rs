@@ -7,6 +7,7 @@
 use super::*;
 use crate::parser::{ConditionalType, MappedModifier, MappedType, TemplateLiteralType};
 
+pub(super) mod arguments;
 mod conditional;
 mod keys;
 mod literal_order;
@@ -106,7 +107,9 @@ pub(super) fn diagnostic_type(
     loop {
         if let Type::KeyOf(operand) = &value {
             let operand = expanded(operand, aliases, &mut HashSet::new(), budget);
-            if matches!(operand, Type::Array(_) | Type::Tuple(_)) {
+            if matches!(operand, Type::Array(_) | Type::Tuple(_))
+                || matches!(&operand, Type::Readonly(inner) if matches!(inner.as_ref(),Type::Array(_) | Type::Tuple(_)))
+            {
                 return Type::KeyOf(Box::new(operand));
             }
         }
@@ -150,6 +153,11 @@ pub(super) fn diagnostic_type(
             .map(|part| diagnostic_type(&part, aliases, budget))
             .collect::<Vec<_>>();
         value = union(parts);
+    }
+    if let Type::Union(parts) = &mut value {
+        if let Some(keys) = aliases.get(&crate::type_operator_profiles::alias_name("String")) {
+            crate::type_operator_profiles::order_strings(parts, &keys.value);
+        }
     }
     if matches!(
         value,

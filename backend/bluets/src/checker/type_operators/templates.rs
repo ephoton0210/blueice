@@ -7,7 +7,10 @@ use super::*;
 
 fn literal_text(value: &Type) -> Option<String> {
     match value {
-        Type::Literal(value) => Some(value.trim_matches(['\'', '"']).to_string()),
+        Type::Literal(value) if value.starts_with(['\'', '"']) => {
+            crate::enum_eval::decode_plain_string(value)
+        }
+        Type::Literal(value) => Some(value.clone()),
         Type::Null => Some("null".into()),
         Type::Undefined => Some("undefined".into()),
         _ => None,
@@ -41,8 +44,9 @@ pub(super) fn resolve(
     _visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<Type> {
-    let mut products = vec![value.head.clone()];
+    let mut products = vec![cooked(&value.head)?];
     for (part, tail) in &value.spans {
+        let tail = cooked(tail)?;
         let part = normalize(part, aliases, budget);
         let mut alternatives = match part {
             Type::Union(parts) => parts,
@@ -85,10 +89,25 @@ pub(super) fn matches(
     let Some(actual) = literal_text(actual) else {
         return false;
     };
-    let Some(rest) = actual.strip_prefix(&value.head) else {
+    let Some(head) = cooked(&value.head) else {
         return false;
     };
-    match_spans(rest, &value.spans, bindings, aliases, budget)
+    let Some(rest) = actual.strip_prefix(&head) else {
+        return false;
+    };
+    let Some(spans): Option<Vec<_>> = value
+        .spans
+        .iter()
+        .map(|(value, tail)| Some((value.clone(), cooked(tail)?)))
+        .collect()
+    else {
+        return false;
+    };
+    match_spans(rest, &spans, bindings, aliases, budget)
+}
+
+fn cooked(raw: &str) -> Option<String> {
+    crate::enum_eval::decode_plain_string(&format!("`{raw}`"))
 }
 
 fn match_spans(
@@ -125,10 +144,29 @@ fn match_spans(
             Type::String | Type::Any => true,
             Type::Number => !part.trim().is_empty() && part.parse::<f64>().is_ok(),
             Type::Infer(parameter) => {
-                let literal = Type::Literal(format!("{part:?}"));
+                let literal = match parameter.constraint.as_ref() {
+                    Some(Type::Number) => {
+                        let Ok(number) = part.parse::<f64>() else {
+                            continue;
+                        };
+                        if !number.is_finite() {
+                            continue;
+                        }
+                        if crate::enum_eval::js_number_text(number) == part {
+                            Type::Literal(part.into())
+                        } else {
+                            Type::Number
+                        }
+                    }
+                    _ => Type::Literal(format!("{part:?}")),
+                };
                 if parameter.constraint.as_ref().is_none_or(|constraint| {
                     is_assignable(&literal, constraint, aliases, &mut HashSet::new(), budget)
                 }) {
+                    let literal = match candidate.get(&parameter.name) {
+                        Some(previous) => union([previous.clone(), literal]),
+                        None => literal,
+                    };
                     candidate.insert(parameter.name.clone(), literal);
                     true
                 } else {

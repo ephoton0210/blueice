@@ -10,6 +10,7 @@ use crate::parser::{BindingPattern, ClassDeclaration, TypeParameter, VariableDec
 impl ScopeModel<'_> {
     pub(super) fn declarations(&mut self, declarations: &[Declaration], scope: ScopeId) {
         let cyclic = cyclic_classes(declarations);
+        let overloads = super::function_queries::overloads(declarations);
         for declaration in declarations {
             let name = match declaration {
                 Declaration::Function(d) => Some(&d.name),
@@ -50,7 +51,10 @@ impl ScopeModel<'_> {
                         0,
                         false,
                         false,
-                        function_type(&function.parameters, &result),
+                        overloads
+                            .get(&function.name)
+                            .cloned()
+                            .unwrap_or_else(|| function_type(&function.parameters, &result)),
                     );
                     self.binding_kind(scope, &function.name, BindingKind::Function);
                     self.function(function, scope);

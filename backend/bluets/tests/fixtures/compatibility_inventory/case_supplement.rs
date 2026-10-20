@@ -33,6 +33,44 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt3_operators" => {
+            let path = "backend/bluets/tests/fixtures/gt3_operators/reference.json";
+            let mut controls = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/budget_controls",
+                "owner-budget-control",
+            )?;
+            for case in &mut controls {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("BlueTS's below/above type-expansion and parser-depth budgets; native acceptance at its default budget is not agreement on BlueTS limits.".into());
+            }
+            let path = "backend/bluets/tests/fixtures/gt3_operators/key-profiles.json";
+            let mut profiles = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/controls",
+                "native-key-profile",
+            )?;
+            for case in &mut profiles {
+                case.comparison = Comparison::ReferenceOnly;
+                case.reason = Some("Pinned native primitive/library key sets and regular literal order, independently reproduced; not an extra public compiler agreement.".into());
+            }
+            controls.extend(profiles);
+            let path = "backend/bluets/tests/fixtures/gt3_operators/cases.json";
+            let mut authority = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/capability_controls",
+                "owner-authority-control",
+            )?;
+            for case in &mut authority {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("Key facts install no runtime global; an explicitly supplied owner declaration is still required for the call. This is an authority control, not TypeScript agreement.".into());
+            }
+            controls.extend(authority);
+            controls
+        }
         "gt1_declaration_order" => {
             let path = "backend/bluets/tests/fixtures/gt1_declaration_order/reference.json";
             let mut controls = super::case_sources::json_cases(

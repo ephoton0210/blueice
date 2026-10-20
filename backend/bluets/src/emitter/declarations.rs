@@ -144,7 +144,7 @@ pub(super) fn emit_declaration(
                         continue;
                     }
                 }
-                let inferred = symbols
+                let inferred_value = symbols
                     .iter()
                     .find(|symbol| {
                         symbol.kind == crate::checker::SymbolKind::Variable
@@ -152,7 +152,7 @@ pub(super) fn emit_declaration(
                             && symbol.span == variable.span
                     })
                     .and_then(|symbol| symbol.value_type.as_ref());
-                let value_type = variable.annotation.as_ref().or(inferred);
+                let value_type = variable.annotation.as_ref().or(inferred_value);
                 if variable.annotation.is_none()
                     && variable.kind == crate::parser::VariableKind::Const
                     && matches!(value_type, Some(Type::Literal(_)))
@@ -163,13 +163,19 @@ pub(super) fn emit_declaration(
                 }
                 output.push_str(
                     &value_type
-                        .map(declaration_type_to_ts)
+                        .map(|value| {
+                            inferred
+                                .and_then(|context| context.annotation(variable.span.start))
+                                .map(str::to_string)
+                                .unwrap_or_else(|| declaration_type_to_ts(value))
+                        })
                         .unwrap_or_else(|| "unknown".to_string()),
                 );
                 output.push_str(";\n");
             }
             Declaration::Function(function)
                 if (function.exported
+                    || inferred.is_some_and(|context| context.retained(&function.name))
                     || is_default_export_name(module, &function.name)
                     || is_value_export_name(module, &function.name))
                     && (function.overload
@@ -181,6 +187,9 @@ pub(super) fn emit_declaration(
                             )
                         })) =>
             {
+                private_alias |= !function.exported
+                    && !explicit_export_name(module, &function.name)
+                    && inferred.is_some_and(|context| context.retained(&function.name));
                 if function.default_export {
                     output.push_str("export default function ");
                 } else if function.exported && module.id.ends_with(".js") {

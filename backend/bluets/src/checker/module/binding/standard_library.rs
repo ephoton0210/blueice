@@ -164,6 +164,22 @@ impl ModuleChecker<'_> {
                 }
             }
         }
+        if let Some(target) = self.library_target {
+            for (owner, value) in crate::type_operator_profiles::keys(target) {
+                if self.types.get(&owner).is_some_and(|definition| {
+                    definition.kind == TypeDefinitionKind::LibraryInterface
+                }) {
+                    self.types.insert(
+                        crate::type_operator_profiles::alias_name(&owner),
+                        TypeDefinition {
+                            kind: TypeDefinitionKind::Alias,
+                            parameters: vec![],
+                            value,
+                        },
+                    );
+                }
+            }
+        }
         // BlueTS currently represents these primitive keywords as named types.
         // Their adapters consume the original declarations above, without API names.
         self.types

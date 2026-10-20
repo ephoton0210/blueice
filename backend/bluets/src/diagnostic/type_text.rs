@@ -43,6 +43,9 @@ fn field_name(field: &crate::parser::TypeField, project: Option<&crate::Project>
 }
 
 fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String {
+    if let Some(display) = crate::type_operator_profiles::diagnostic(value) {
+        return display.to_string();
+    }
     if depth >= 128 {
         return "...".into();
     }

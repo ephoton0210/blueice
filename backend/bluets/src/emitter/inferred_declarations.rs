@@ -14,6 +14,7 @@ pub(super) struct Context<'a> {
     project: &'a Project,
     used_imports: BTreeSet<String>,
     variables: BTreeMap<usize, (String, bool)>,
+    annotations: BTreeMap<usize, String>,
     value_types: BTreeMap<String, Type>,
     return_types: BTreeMap<usize, String>,
     parameter_types: BTreeMap<usize, String>,
@@ -32,6 +33,7 @@ impl<'a> Context<'a> {
             project,
             used_imports: BTreeSet::new(),
             variables: BTreeMap::new(),
+            annotations: BTreeMap::new(),
             value_types: checked
                 .symbols
                 .iter()
@@ -63,6 +65,8 @@ impl<'a> Context<'a> {
             }
             if let Some(annotation) = &variable.annotation {
                 context.references(annotation);
+                let text = context.render(annotation, 0, &variable.span)?;
+                context.annotations.insert(variable.span.start, text);
                 continue;
             }
             let value = checked
@@ -267,6 +271,10 @@ impl<'a> Context<'a> {
         self.variables.get(&variable.span.start)
     }
 
+    pub(super) fn annotation(&self, start: usize) -> Option<&str> {
+        self.annotations.get(&start).map(String::as_str)
+    }
+
     /// A broad computed method name is represented as a function-valued property.
     pub(super) fn computed_method_property(
         &self,
@@ -440,6 +448,26 @@ impl<'a> Context<'a> {
         indent: usize,
         span: &SourceSpan,
     ) -> Option<Result<String, Diagnostic>> {
+        if let Type::IndexedRecord { object, indices } = value {
+            return Some((|| {
+                let mut indices = indices.clone();
+                for index in &mut indices {
+                    index.key = Type::Literal(self.render(&index.key, indent + 4, span)?);
+                    index.value = Type::Literal(self.render(&index.value, indent + 4, span)?);
+                }
+                let fields = match object.as_ref() {
+                    Type::Record(fields) => fields,
+                    _ => return Ok(type_to_ts(value)),
+                };
+                let fields = self.render_fields(fields, indent, span)?;
+                Ok(callable_objects::render_with_indent(
+                    &fields,
+                    &[],
+                    &indices,
+                    indent,
+                ))
+            })());
+        }
         let mut failure = None;
         let mapped = value.map_operator(|child, _| {
             match self.render(
@@ -552,7 +580,10 @@ impl<'a> Context<'a> {
                 }
             }
             Type::Named { name, arguments } => {
-                let name = if name.starts_with("#typeparam@") {
+                let name = if name.starts_with("typeof ") {
+                    self.retain(name);
+                    crate::parser::source_type_name(name).to_string()
+                } else if name.starts_with("#typeparam@") {
                     crate::parser::source_type_name(name).to_string()
                 } else if let Some((bare, id)) = name.split_once('@') {
                     let (root, suffix) = bare
@@ -608,7 +639,10 @@ impl<'a> Context<'a> {
                     "{}[]",
                     if matches!(
                         element.as_ref(),
-                        Type::Union(_) | Type::Intersection(_) | Type::Function { .. }
+                        Type::Union(_)
+                            | Type::Intersection(_)
+                            | Type::Function { .. }
+                            | Type::Infer(_)
                     ) {
                         format!("({text})")
                     } else {
@@ -670,13 +704,27 @@ impl<'a> Context<'a> {
             }
             Type::Union(options) | Type::Intersection(options) => options
                 .iter()
-                .map(|option| self.render(option, indent, span))
+                .map(|option| {
+                    self.render(option, indent, span).map(|text| {
+                        if matches!(option, Type::Function { .. } | Type::GenericFunction { .. }) {
+                            format!("({text})")
+                        } else {
+                            text
+                        }
+                    })
+                })
                 .collect::<Result<Vec<_>, _>>()?
                 .join(if matches!(value, Type::Union(_)) {
                     " | "
                 } else {
                     " & "
                 }),
+            Type::KeyOf(value) => format!("keyof {}", self.render(value, indent, span)?),
+            Type::IndexedAccess { object, index, .. } => format!(
+                "{}[{}]",
+                self.render(object, indent, span)?,
+                self.render(index, indent, span)?
+            ),
             Type::Literal(name) => {
                 self.retain(name);
                 name.clone()

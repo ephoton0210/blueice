@@ -1,0 +1,1570 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "conditional-mapped-filter-accept",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Select<T> = { [K in keyof T as T[K] extends string ? K : never]: T[K] };\nexport const value: Select<{name: string; count: number}> = {name: 'ok'};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Select<T> = {\n    [K in keyof T as T[K] extends string ? K : never]: T[K];\n};\nexport declare const value: Select<{\n    name: string;\n    count: number;\n}>;\nexport {};\n"
+    },
+    {
+      "id": "conditional-mapped-filter-reject",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Select<T> = { [K in keyof T as T[K] extends string ? K : never]: T[K] };\nexport const value: Select<{name: string; count: number}> = {name: 1};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 161,
+          "length": 4,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'name' which is declared here on type 'Select<{ name: string; count: number; }>'",
+              "module": "entry.ts",
+              "start": 128,
+              "length": 4,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mapped-indexed-values-accept",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Values<T> = { [K in keyof T]: T[K] }[keyof T];\nexport const value: Values<{name: string; count: number}> = 'ok';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Values<T> = {\n    [K in keyof T]: T[K];\n}[keyof T];\nexport declare const value: Values<{\n    name: string;\n    count: number;\n}>;\nexport {};\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "ok\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "mapped-indexed-values-reject",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Values<T> = { [K in keyof T]: T[K] }[keyof T];\nexport const value: Values<{name: string; count: number}> = false;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'Values<{ name: string; count: number; }>'.",
+          "module": "entry.ts",
+          "start": 87,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "conditional-infer-projection-accept",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Leaf<T> = T extends {items: (infer U)[]} ? U extends {value: infer V} ? V : never : never;\nexport const value: Leaf<{items: {value: number}[]}> = 7;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Leaf<T> = T extends {\n    items: (infer U)[];\n} ? U extends {\n    value: infer V;\n} ? V : never : never;\nexport declare const value: Leaf<{\n    items: {\n        value: number;\n    }[];\n}>;\nexport {};\n"
+    },
+    {
+      "id": "conditional-infer-projection-reject",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Leaf<T> = T extends {items: (infer U)[]} ? U extends {value: infer V} ? V : never : never;\nexport const value: Leaf<{items: {value: number}[]}> = 'bad';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 131,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "distributed-indexed-input-accept",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Kind<T> = T extends string ? 'text' : 'other'; type Kinds<T> = Kind<T[keyof T]>;\nexport const value: Kinds<{a: string; b: number}> = 'other';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Kind<T> = T extends string ? 'text' : 'other';\ntype Kinds<T> = Kind<T[keyof T]>;\nexport declare const value: Kinds<{\n    a: string;\n    b: number;\n}>;\nexport {};\n"
+    },
+    {
+      "id": "distributed-indexed-input-reject",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Kind<T> = T extends string ? 'text' : 'other'; type Kinds<T> = Kind<T[keyof T]>;\nexport const value: Kinds<{a: string; b: number}> = 'bad';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"bad\"' is not assignable to type '\"other\" | \"text\"'.",
+          "module": "entry.ts",
+          "start": 121,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-remap-projection-accept",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Getters<T> = { [K in keyof T as `get_${K & string}`]: T[K] };\nexport const value: Getters<{name: string}>['get_name'] = 'ok';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Getters<T> = {\n    [K in keyof T as `get_${K & string}`]: T[K];\n};\nexport declare const value: Getters<{\n    name: string;\n}>['get_name'];\nexport {};\n"
+    },
+    {
+      "id": "nested-remap-projection-reject",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Getters<T> = { [K in keyof T as `get_${K & string}`]: T[K] };\nexport const value: Getters<{name: string}>['get_name'] = 5;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 102,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-required-projection-accept",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype RequiredValues<T> = { [K in keyof T]-?: T[K] }; type Defined<T> = T extends undefined ? never : T;\nexport const value: Defined<RequiredValues<{a?: number}>['a']> = 3;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type RequiredValues<T> = {\n    [K in keyof T]-?: T[K];\n};\ntype Defined<T> = T extends undefined ? never : T;\nexport declare const value: Defined<RequiredValues<{\n    a?: number;\n}>['a']>;\nexport {};\n"
+    },
+    {
+      "id": "nested-required-projection-reject",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype RequiredValues<T> = { [K in keyof T]-?: T[K] }; type Defined<T> = T extends undefined ? never : T;\nexport const value: Defined<RequiredValues<{a?: number}>['a']> = undefined;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'undefined' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 139,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-unicode-head-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `\\u0061_${T}`;\nexport const value: Tag<'x'> = 'a_x';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Tag<T extends string> = `\\u0061_${T}`;\nexport declare const value: Tag<'x'>;\nexport {};\n"
+    },
+    {
+      "id": "template-unicode-head-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `\\u0061_${T}`;\nexport const value: Tag<'x'> = 'b_x';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"b_x\"' is not assignable to type '\"a_x\"'.",
+          "module": "entry.ts",
+          "start": 79,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-hex-tail-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `${T}_\\x62`;\nexport const value: Tag<'x'> = 'x_b';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Tag<T extends string> = `${T}_\\x62`;\nexport declare const value: Tag<'x'>;\nexport {};\n"
+    },
+    {
+      "id": "template-hex-tail-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `${T}_\\x62`;\nexport const value: Tag<'x'> = 'x_c';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"x_c\"' is not assignable to type '\"x_b\"'.",
+          "module": "entry.ts",
+          "start": 77,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-escaped-dollar-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `\\${fixed}_${T}`;\nexport const value: Tag<'x'> = '${fixed}_x';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Tag<T extends string> = `\\${fixed}_${T}`;\nexport declare const value: Tag<'x'>;\nexport {};\n"
+    },
+    {
+      "id": "template-escaped-dollar-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `\\${fixed}_${T}`;\nexport const value: Tag<'x'> = 'fixed_x';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"fixed_x\"' is not assignable to type '\"${fixed}_x\"'.",
+          "module": "entry.ts",
+          "start": 82,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-escaped-backtick-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `a\\`_${T}`;\nexport const value: Tag<'x'> = 'a`_x';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Tag<T extends string> = `a\\`_${T}`;\nexport declare const value: Tag<'x'>;\nexport {};\n"
+    },
+    {
+      "id": "template-escaped-backtick-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `a\\`_${T}`;\nexport const value: Tag<'x'> = 'a_x';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"a_x\"' is not assignable to type '\"a`_x\"'.",
+          "module": "entry.ts",
+          "start": 76,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-infer-escaped-delimiter-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Part<T> = T extends `pre\\u007c${infer U}` ? U : never;\nexport const value: Part<'pre|ok'> = 'ok';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Part<T> = T extends `pre\\u007c${infer U}` ? U : never;\nexport declare const value: Part<'pre|ok'>;\nexport {};\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "ok\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "template-infer-escaped-delimiter-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Part<T> = T extends `pre\\u007c${infer U}` ? U : never;\nexport const value: Part<'pre|ok'> = 'bad';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"bad\"' is not assignable to type '\"ok\"'.",
+          "module": "entry.ts",
+          "start": 95,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-substitution-escape-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `pre_${T}`;\nexport const value: Tag<'\\u0062'> = 'pre_b';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Tag<T extends string> = `pre_${T}`;\nexport declare const value: Tag<'\\u0062'>;\nexport {};\n"
+    },
+    {
+      "id": "template-substitution-escape-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Tag<T extends string> = `pre_${T}`;\nexport const value: Tag<'\\u0062'> = 'pre_c';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"pre_c\"' is not assignable to type '\"pre_b\"'.",
+          "module": "entry.ts",
+          "start": 76,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-adjacent-infer-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype First<T> = T extends `${infer A}${infer B}` ? A : never;\nexport const value: First<'abc'> = 'a';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type First<T> = T extends `${infer A}${infer B}` ? A : never;\nexport declare const value: First<'abc'>;\nexport {};\n"
+    },
+    {
+      "id": "template-adjacent-infer-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype First<T> = T extends `${infer A}${infer B}` ? A : never;\nexport const value: First<'abc'> = 'ab';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"ab\"' is not assignable to type '\"a\"'.",
+          "module": "entry.ts",
+          "start": 97,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-number-infer-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Numeric<T> = T extends `${infer N extends number}` ? N : never;\nexport const value: Numeric<'42'> = 42;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Numeric<T> = T extends `${infer N extends number}` ? N : never;\nexport declare const value: Numeric<'42'>;\nexport {};\n"
+    },
+    {
+      "id": "template-number-infer-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Numeric<T> = T extends `${infer N extends number}` ? N : never;\nexport const value: Numeric<'42'> = 41;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '41' is not assignable to type '42'.",
+          "module": "entry.ts",
+          "start": 104,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-repeated-infer-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Parts<T> = T extends `${infer U}-${infer U}` ? U : never;\nexport const value: Parts<'left-right'> = 'right';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Parts<T> = T extends `${infer U}-${infer U}` ? U : never;\nexport declare const value: Parts<'left-right'>;\nexport {};\n"
+    },
+    {
+      "id": "template-repeated-infer-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Parts<T> = T extends `${infer U}-${infer U}` ? U : never;\nexport const value: Parts<'left-right'> = 'other';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"other\"' is not assignable to type '\"left\" | \"right\"'.",
+          "module": "entry.ts",
+          "start": 98,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "template-recursive-path-accept",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Last<T> = T extends `${infer H}/${infer R}` ? Last<R> : T;\nexport const value: Last<'a/b/c'> = 'c';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Last<T> = T extends `${infer H}/${infer R}` ? Last<R> : T;\nexport declare const value: Last<'a/b/c'>;\nexport {};\n"
+    },
+    {
+      "id": "template-recursive-path-reject",
+      "area": "template",
+      "source": "// UTF-16 control: 😀\ntype Last<T> = T extends `${infer H}/${infer R}` ? Last<R> : T;\nexport const value: Last<'a/b/c'> = 'a';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"a\"' is not assignable to type '\"c\"'.",
+          "module": "entry.ts",
+          "start": 99,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "query-overload-return-accept",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\nfunction choose(x: string): number; function choose(x: number): string; function choose(x: string | number): string | number { return x; } type Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<typeof choose> = 'ok';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "declare function choose(x: string): number;\ndeclare function choose(x: number): string;\ntype Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport declare const value: Result<typeof choose>;\nexport {};\n"
+    },
+    {
+      "id": "query-overload-return-reject",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\nfunction choose(x: string): number; function choose(x: number): string; function choose(x: string | number): string | number { return x; } type Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<typeof choose> = 1;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 242,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "query-overload-return-reversed-accept",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\nfunction choose(x: number): string; function choose(x: string): number; function choose(x: string | number): string | number { return x; } type Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<typeof choose> = 1;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "declare function choose(x: number): string;\ndeclare function choose(x: string): number;\ntype Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport declare const value: Result<typeof choose>;\nexport {};\n"
+    },
+    {
+      "id": "query-overload-return-reversed-reject",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\nfunction choose(x: number): string; function choose(x: string): number; function choose(x: string | number): string | number { return x; } type Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<typeof choose> = 'bad';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 242,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "query-callable-return-accept",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\ntype Over = { (x: string): number; (x: number): string }; type Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<Over> = 'ok';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Over = {\n    (x: string): number;\n    (x: number): string;\n};\ntype Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport declare const value: Result<Over>;\nexport {};\n"
+    },
+    {
+      "id": "query-callable-return-reject",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\ntype Over = { (x: string): number; (x: number): string }; type Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<Over> = 1;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 161,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "query-intersection-return-accept",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\ntype Over = ((x: string) => number) & ((x: number) => string); type Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<Over> = 'ok';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Over = ((x: string) => number) & ((x: number) => string);\ntype Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport declare const value: Result<Over>;\nexport {};\n"
+    },
+    {
+      "id": "query-intersection-return-reject",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\ntype Over = ((x: string) => number) & ((x: number) => string); type Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<Over> = 1;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 166,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "query-callable-parameters-accept",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\ntype Over = { (x: string): number; (x: number): string }; type Args<T> = T extends (...args: infer P) => any ? P : never;\nexport const value: Args<Over> = [1];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Over = {\n    (x: string): number;\n    (x: number): string;\n};\ntype Args<T> = T extends (...args: infer P) => any ? P : never;\nexport declare const value: Args<Over>;\nexport {};\n"
+    },
+    {
+      "id": "query-callable-parameters-reject",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\ntype Over = { (x: string): number; (x: number): string }; type Args<T> = T extends (...args: infer P) => any ? P : never;\nexport const value: Args<Over> = [true];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 178,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "query-function-parameters-accept",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\nfunction choose(x: string): number; function choose(x: number): string; function choose(x: string | number): string | number { return x; } type Args<T> = T extends (...args: infer P) => any ? P : never;\nexport const value: Args<typeof choose> = [1];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "declare function choose(x: string): number;\ndeclare function choose(x: number): string;\ntype Args<T> = T extends (...args: infer P) => any ? P : never;\nexport declare const value: Args<typeof choose>;\nexport {};\n"
+    },
+    {
+      "id": "query-function-parameters-reject",
+      "area": "query",
+      "source": "// UTF-16 control: 😀\nfunction choose(x: string): number; function choose(x: number): string; function choose(x: string | number): string | number { return x; } type Args<T> = T extends (...args: infer P) => any ? P : never;\nexport const value: Args<typeof choose> = [true];\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 268,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "primitive-number-keys-accept",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof number = 'toFixed';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: keyof number;\n"
+    },
+    {
+      "id": "primitive-number-keys-reject",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof number = 'missing';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"missing\"' is not assignable to type '\"toString\" | \"valueOf\" | \"toLocaleString\" | \"toFixed\" | \"toExponential\" | \"toPrecision\"'.",
+          "module": "entry.ts",
+          "start": 36,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "primitive-string-keys-accept",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof string = 'charAt';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: keyof string;\n"
+    },
+    {
+      "id": "primitive-string-keys-reject",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof string = 'missing';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"missing\"' is not assignable to type 'number | unique symbol | \"length\" | \"toString\" | \"charAt\" | \"charCodeAt\" | \"concat\" | \"indexOf\" | \"lastIndexOf\" | \"localeCompare\" | \"match\" | \"replace\" | \"search\" | \"slice\" | ... 36 more ... | \"at\"'.",
+          "module": "entry.ts",
+          "start": 36,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "primitive-boolean-keys-accept",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof boolean = 'valueOf';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: keyof boolean;\n"
+    },
+    {
+      "id": "primitive-boolean-keys-reject",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof boolean = 'toFixed';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"toFixed\"' is not assignable to type '\"valueOf\"'.",
+          "module": "entry.ts",
+          "start": 36,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "primitive-bigint-keys-accept",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof bigint = 'toString';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: keyof bigint;\n"
+    },
+    {
+      "id": "primitive-bigint-keys-reject",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof bigint = 'toFixed';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"toFixed\"' is not assignable to type 'unique symbol | \"toString\" | \"valueOf\" | \"toLocaleString\"'.",
+          "module": "entry.ts",
+          "start": 36,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "primitive-symbol-keys-accept",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof symbol = 'valueOf';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: keyof symbol;\n"
+    },
+    {
+      "id": "primitive-symbol-keys-reject",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof symbol = 'toFixed';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"toFixed\"' is not assignable to type 'unique symbol | unique symbol | \"toString\" | \"valueOf\" | \"description\"'.",
+          "module": "entry.ts",
+          "start": 36,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "library-array-keys-accept",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof number[] = 'at';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: keyof number[];\n"
+    },
+    {
+      "id": "library-array-keys-reject",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof number[] = 'missing';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"missing\"' is not assignable to type 'keyof number[]'.",
+          "module": "entry.ts",
+          "start": 36,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "library-readonly-array-keys-accept",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof readonly number[] = 'map';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: keyof readonly number[];\n"
+    },
+    {
+      "id": "library-readonly-array-keys-reject",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof readonly number[] = 'push';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"push\"' is not assignable to type 'keyof readonly number[]'.",
+          "module": "entry.ts",
+          "start": 36,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "primitive-indexed-method-accept",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\ntype Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<number['toFixed']> = 'ok';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport declare const value: Result<number['toFixed']>;\nexport {};\n"
+    },
+    {
+      "id": "primitive-indexed-method-reject",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\ntype Result<T> = T extends (...args: any[]) => infer R ? R : never;\nexport const value: Result<number['toFixed']> = 1;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 103,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "library-es2020-key-gate-accept",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof number[] = 'map';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2020",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const value: keyof number[];\n"
+    },
+    {
+      "id": "library-es2020-key-gate-reject",
+      "area": "keys",
+      "source": "// UTF-16 control: 😀\n\nexport const value: keyof number[] = 'at';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2020",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"at\"' is not assignable to type 'keyof number[]'.",
+          "module": "entry.ts",
+          "start": 36,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "symbol-index-keys-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number };\nexport const value: keyof Bag = Symbol('key');\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Bag = {\n    [key: symbol]: number;\n};\nexport declare const value: keyof Bag;\nexport {};\n"
+    },
+    {
+      "id": "symbol-index-keys-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number };\nexport const value: keyof Bag = 'key';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'symbol'.",
+          "module": "entry.ts",
+          "start": 73,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "symbol-index-projection-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number };\nexport const value: Bag[symbol] = 7;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Bag = {\n    [key: symbol]: number;\n};\nexport declare const value: Bag[symbol];\nexport {};\n"
+    },
+    {
+      "id": "symbol-index-projection-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [key: symbol]: number };\nexport const value: Bag[symbol] = 'bad';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 73,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "symbol-mapped-projection-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [K in symbol]: number };\nexport const value: Bag[symbol] = 7;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Bag = {\n    [K in symbol]: number;\n};\nexport declare const value: Bag[symbol];\nexport {};\n",
+      "invoke": "console.log(value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "7\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "symbol-mapped-projection-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Bag = { [K in symbol]: number };\nexport const value: Bag[symbol] = 'bad';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 73,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "concrete-check-nondistribution-accept",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Input = string | number; type Choice = Input extends string ? 'yes' : 'no';\nexport const value: Choice = 'no';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Input = string | number;\ntype Choice = Input extends string ? 'yes' : 'no';\nexport declare const value: Choice;\nexport {};\n"
+    },
+    {
+      "id": "concrete-check-nondistribution-reject",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Input = string | number; type Choice = Input extends string ? 'yes' : 'no';\nexport const value: Choice = 'yes';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"yes\"' is not assignable to type '\"no\"'.",
+          "module": "entry.ts",
+          "start": 116,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "indexed-check-nondistribution-accept",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Choice<T> = T[keyof T] extends string ? 'yes' : 'no';\nexport const value: Choice<{a: string; b: number}> = 'no';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Choice<T> = T[keyof T] extends string ? 'yes' : 'no';\nexport declare const value: Choice<{\n    a: string;\n    b: number;\n}>;\nexport {};\n"
+    },
+    {
+      "id": "indexed-check-nondistribution-reject",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Choice<T> = T[keyof T] extends string ? 'yes' : 'no';\nexport const value: Choice<{a: string; b: number}> = 'yes';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"yes\"' is not assignable to type '\"no\"'.",
+          "module": "entry.ts",
+          "start": 94,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "distributed-branch-keeps-member-accept",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Keep<T> = T extends string ? T : never; type Source = {a: 'left'; b: 5};\nexport const value: Keep<Source[keyof Source]> = 'left';\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Keep<T> = T extends string ? T : never;\ntype Source = {\n    a: 'left';\n    b: 5;\n};\nexport declare const value: Keep<Source[keyof Source]>;\nexport {};\n"
+    },
+    {
+      "id": "distributed-branch-keeps-member-reject",
+      "area": "nested",
+      "source": "// UTF-16 control: 😀\ntype Keep<T> = T extends string ? T : never; type Source = {a: 'left'; b: 5};\nexport const value: Keep<Source[keyof Source]> = 5;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '5' is not assignable to type '\"left\"'.",
+          "module": "entry.ts",
+          "start": 113,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "shared-well-known-symbol-identity-accept",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Symbols<T> = T extends symbol ? T : never; type Shared = Symbols<keyof string> extends Symbols<keyof number[]> ? true : false;\nexport const value: Shared = true;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Symbols<T> = T extends symbol ? T : never;\ntype Shared = Symbols<keyof string> extends Symbols<keyof number[]> ? true : false;\nexport declare const value: Shared;\nexport {};\n"
+    },
+    {
+      "id": "shared-well-known-symbol-identity-reject",
+      "area": "symbol",
+      "source": "// UTF-16 control: 😀\ntype Symbols<T> = T extends symbol ? T : never; type Shared = Symbols<keyof string> extends Symbols<keyof number[]> ? true : false;\nexport const value: Shared = false;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "LF",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'false' is not assignable to type 'true'.",
+          "module": "entry.ts",
+          "start": 167,
+          "length": 5,
+          "related": []
+        }
+      ]
+    }
+  ],
+  "budget_controls": [
+    {
+      "id": "nested-expansion",
+      "kind": "expansion",
+      "source": "type Values<T> = { [K in keyof T]: T[K] }[keyof T]; export const value: Values<{a: string; b: number}> = 'ok';"
+    },
+    {
+      "id": "recursive-template-expansion",
+      "kind": "expansion",
+      "source": "type Last<T> = T extends `${infer H}/${infer R}` ? Last<R> : T; export const value: Last<'a/b/c'> = 'c';"
+    },
+    {
+      "id": "nested-type-depth",
+      "kind": "depth",
+      "source": "type Box<T> = {value: T}; export const value: Box<Box<Box<number>>> = {value: {value: {value: 1}}};"
+    }
+  ]
+}

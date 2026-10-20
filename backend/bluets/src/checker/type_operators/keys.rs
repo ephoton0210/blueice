@@ -27,6 +27,42 @@ pub(super) fn keyof(
     budget: &mut TypeExpansionBudget,
 ) -> Option<Type> {
     let value = expanded(value, aliases, visited, budget);
+    let owner = match &value {
+        Type::String => Some("String"),
+        Type::Number => Some("Number"),
+        Type::Boolean => Some("Boolean"),
+        Type::BigInt => Some("BigInt"),
+        Type::Symbol | Type::UniqueSymbol(_) => Some("Symbol"),
+        Type::Literal(text) if text.starts_with(['\'', '"']) => Some("String"),
+        Type::Array(_) | Type::Tuple(_) => Some("Array"),
+        Type::Readonly(inner) if matches!(inner.as_ref(), Type::Array(_) | Type::Tuple(_)) => {
+            Some("ReadonlyArray")
+        }
+        _ => None,
+    };
+    if let Some(definition) =
+        owner.and_then(|owner| aliases.get(&crate::type_operator_profiles::alias_name(owner)))
+    {
+        let mut result = definition.value.clone();
+        let tuple = match &value {
+            Type::Tuple(items) => Some(items),
+            Type::Readonly(inner) => {
+                if let Type::Tuple(items) = inner.as_ref() {
+                    Some(items)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        if let Some(items) = tuple {
+            result = union(
+                std::iter::once(result)
+                    .chain((0..items.len()).map(|i| Type::Literal(format!("\"{i}\"")))),
+            );
+        }
+        return Some(result);
+    }
     match value {
         Type::Readonly(value) => keyof(&value, aliases, visited, budget),
         Type::IndexedRecord { object, indices } => {
@@ -141,6 +177,25 @@ pub(super) fn indexed(
 ) -> Option<Type> {
     let object = expanded(object, aliases, &mut visited.clone(), budget);
     let index = expanded(index, aliases, &mut visited.clone(), budget);
+    if !matches!(
+        object,
+        Type::Record(_)
+            | Type::CallableRecord { .. }
+            | Type::IndexedRecord { .. }
+            | Type::Array(_)
+            | Type::Tuple(_)
+            | Type::Readonly(_)
+            | Type::Union(_)
+            | Type::Intersection(_)
+    ) {
+        if let Some(key) = key_name(&index) {
+            if let PropertyType::Found { value, .. } =
+                property_type(&object, &key, aliases, &mut visited.clone(), budget)
+            {
+                return Some(value);
+            }
+        }
+    }
     if let Type::Union(indices) = &index {
         let mut values = Vec::new();
         for index in indices {

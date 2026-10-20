@@ -35,6 +35,7 @@ pub mod remote_declarations;
 pub mod standard_library;
 mod strict_boundaries;
 mod syntax;
+mod type_operator_profiles;
 
 pub use authorized_loader::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleLoaderError,

@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "controls": [
+    {
+      "id": "es5-default",
+      "sha256": "bcaa20792bb8678b2a41df1c05621b2275b1ac00a355a154269e096c4264db9b"
+    },
+    {
+      "id": "es5-explicit",
+      "sha256": "c6afea0617a4b9f529f6b596082e35d4bc2ef11588fb96f1b0525d81299761c0"
+    },
+    {
+      "id": "es2015-default",
+      "sha256": "c464d623b9ffc9a4834f82c588c43abfe8293cd8b33dac8e26efb3b6d0802d7e"
+    },
+    {
+      "id": "es2015-explicit",
+      "sha256": "01ed40cbb0ddb3f99a3b6e6b9e4031a1bce043b90e52fe0f6e20d91de2d9c62a"
+    },
+    {
+      "id": "es2016-default",
+      "sha256": "6687e9c40183f42237a7def071dc9054f427260063b20bcc1d20a638eaa4e10d"
+    },
+    {
+      "id": "es2016-explicit",
+      "sha256": "958d6cb941d7728b670ffa5f5fa9217ba2e5dbd12b8713f2e32e5b5667e32dc7"
+    },
+    {
+      "id": "es2017-default",
+      "sha256": "e7ccd7980c4f0961b25cbbaec71782a4be8a3fdbbd8f9da891eca880fa74bdbc"
+    },
+    {
+      "id": "es2017-explicit",
+      "sha256": "4c10b64c7bad39075f0f80277e1680fea5ba5c7ad34904615c41c9e761fa09f4"
+    },
+    {
+      "id": "es2018-default",
+      "sha256": "d7b6281088a4d30a1a685368b3463290a2fa6b034055333398961fa5173a1f4b"
+    },
+    {
+      "id": "es2018-explicit",
+      "sha256": "b46f2bf1d1d0a9b12ad5897c8522851ee7df1f289b5521b41e0d1d4f93d14072"
+    },
+    {
+      "id": "es2019-default",
+      "sha256": "b9a3f642430aee40ce27182e3209feefbcd0c3f3b772696258d57836d6973267"
+    },
+    {
+      "id": "es2019-explicit",
+      "sha256": "5ad8ee44ac8366a76de6e9194dd23839b30e29cc4cf84fcc80a2b9fd8fea75ef"
+    },
+    {
+      "id": "es2020-default",
+      "sha256": "fcba70be0caaee2d3f531a798d09ccef66a93a026f3df52bb4a0d5d4e80e673a"
+    },
+    {
+      "id": "es2020-explicit",
+      "sha256": "f40659b139e9129dd3ecb030650b66b9ee36fd1c27d03336a1737e7f31a987a6"
+    },
+    {
+      "id": "es2021-default",
+      "sha256": "3e87c40e5fefdf8efcb58b96969ad27e8e770cdb4ca573e00cb7f0ef6595dc08"
+    },
+    {
+      "id": "es2021-explicit",
+      "sha256": "fb20c4d471ddc99055bc98212e03c18dd9cbdd073e565f389d0ccd9428c49e60"
+    },
+    {
+      "id": "es2022-default",
+      "sha256": "84e4a4e207dfcee80f68bafea2e562c5c37acc5582917eaba2831e448526ed81"
+    },
+    {
+      "id": "es2022-explicit",
+      "sha256": "515dce38748c31ad4b8e76046f0c4a652ea6854b825873fa1594cb97ffdefc21"
+    },
+    {
+      "id": "es2023-default",
+      "sha256": "6aa05174289f1570558dd6b5572bb81e32394c80cb9ba5ecbf701a046bd68ff8"
+    },
+    {
+      "id": "es2023-explicit",
+      "sha256": "4c6f237c58b5c06d86680882cc8b9478156f0590eea45e051e584c433c928235"
+    },
+    {
+      "id": "esnext-default",
+      "sha256": "50009b8cd28af135224b49cdefcfffe7b19e2e6669804204ae6cc83489322b5f"
+    },
+    {
+      "id": "esnext-explicit",
+      "sha256": "701d916b0676914e3898158eeb8703e9d5926f14ced410140482b14af4e91c5c"
+    }
+  ]
+}

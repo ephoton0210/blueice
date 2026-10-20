@@ -35,6 +35,43 @@ pub(super) fn matches(
         return false;
     }
     let actual = expanded(actual, aliases, &mut HashSet::new(), budget);
+    let callable = match &actual {
+        Type::CallableRecord { signatures, .. } => signatures
+            .iter()
+            .rev()
+            .find(|s| !s.construct)
+            .map(|s| s.function_type()),
+        Type::Intersection(parts) => parts
+            .iter()
+            .rev()
+            .find(|part| {
+                matches!(
+                    part,
+                    Type::Function { .. }
+                        | Type::GenericFunction { .. }
+                        | Type::CallableRecord { .. }
+                )
+            })
+            .cloned(),
+        Type::GenericFunction {
+            type_parameters,
+            parameters,
+            result,
+            ..
+        } if type_parameters.is_empty() => Some(Type::Function {
+            parameters: parameters.clone(),
+            result: result.clone(),
+        }),
+        _ => None,
+    };
+    if matches!(
+        pattern,
+        Type::Function { .. } | Type::GenericFunction { .. }
+    ) {
+        if let Some(callable) = callable {
+            return matches(&callable, pattern, bindings, aliases, budget);
+        }
+    }
     if let Type::Infer(parameter) = pattern {
         if parameter.constraint.as_ref().is_some_and(|constraint| {
             !is_assignable(&actual, constraint, aliases, &mut HashSet::new(), budget)
@@ -110,6 +147,29 @@ pub(super) fn matches(
             },
         ) => {
             if pattern.len() == 1 && pattern[0].rest {
+                if let Some(Type::Infer(parameter)) = &pattern[0].annotation {
+                    let tuple = Type::Tuple(
+                        actual
+                            .iter()
+                            .filter(|p| p.name != "this")
+                            .map(|p| TupleTypeElement {
+                                annotation: p.annotation.clone().unwrap_or(Type::Any),
+                                optional: p.optional,
+                                label: Some(p.name.clone()),
+                                rest: p.rest,
+                            })
+                            .collect(),
+                    );
+                    if !matches(
+                        &tuple,
+                        &Type::Infer(parameter.clone()),
+                        bindings,
+                        aliases,
+                        budget,
+                    ) {
+                        return false;
+                    }
+                }
                 return matches(result, expected, bindings, aliases, budget);
             }
             actual.len() == pattern.len()

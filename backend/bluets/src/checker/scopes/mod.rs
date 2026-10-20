@@ -7,6 +7,7 @@
 //! an inferred `unknown`. All bindings are collected before resolving uses.
 
 use super::*;
+mod function_queries;
 use crate::parser::{NestedFunctionBody, VariableDeclaration, VariableKind};
 
 mod checking_flags;

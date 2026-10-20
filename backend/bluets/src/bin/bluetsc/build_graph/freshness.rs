@@ -8,8 +8,8 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-// G-T1 stage two changes declaration order: stage-one state must rebuild too.
-const STATE_VERSION: u8 = 7;
+// G-T3 changes operator checking and declarations: older state must rebuild.
+const STATE_VERSION: u8 = 9;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 
