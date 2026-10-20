@@ -1,0 +1,1046 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "options": {
+    "strict": true,
+    "module": "ESNext",
+    "newLine": "LF"
+  },
+  "owned_globals": "interface Array<T> {} interface Boolean {} interface Function {} interface CallableFunction extends Function {} interface NewableFunction extends Function {} interface IArguments {} interface Number {} interface Object {} interface RegExp {} interface String {}",
+  "cases": [
+    {
+      "id": "finally-return-order-es2020-default",
+      "form": "finally-return-order",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read() { try { return 'discarded'; } finally { return 1; } }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(): 1 | \"discarded\";\n"
+    },
+    {
+      "id": "library-one-order-es2020-default",
+      "form": "library-one-order",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 'one'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | \"one\";\n"
+    },
+    {
+      "id": "new-number-first-es2020-default",
+      "form": "new-number-first",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new-unique-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-unique-text\";\n"
+    },
+    {
+      "id": "new-string-first-es2020-default",
+      "form": "new-string-first",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 'new-unique-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-unique-text\" | 42;\n"
+    },
+    {
+      "id": "numeric-fresh-order-es2020-default",
+      "form": "numeric-fresh-order",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 2; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | 2;\n"
+    },
+    {
+      "id": "zero-fresh-order-es2020-default",
+      "form": "zero-fresh-order",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 'discarded'; return 0; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 0 | \"discarded\";\n"
+    },
+    {
+      "id": "arrow-library-order-es2020-default",
+      "form": "arrow-library-order",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export const read = (flag: boolean) => { if (flag) return 1; return 'one'; };",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const read: (flag: boolean) => 1 | \"one\";\n"
+    },
+    {
+      "id": "prefix-string-expression-es2020-default",
+      "form": "prefix-string-expression",
+      "target": "ES2020",
+      "library": "default",
+      "source": "const prefix = 'new-prefix-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-prefix-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-prefix-text\" | 42;\n"
+    },
+    {
+      "id": "prefix-number-expression-es2020-default",
+      "form": "prefix-number-expression",
+      "target": "ES2020",
+      "library": "default",
+      "source": "const prefix = 42; export function read(flag: boolean) { if (flag) return 'new-prefix-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-prefix-text\";\n"
+    },
+    {
+      "id": "unused-type-does-not-seed-es2020-default",
+      "form": "unused-type-does-not-seed",
+      "target": "ES2020",
+      "library": "default",
+      "source": "type Marker = 'new-type-only-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-type-only-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-type-only-text\";\n"
+    },
+    {
+      "id": "property-name-does-not-seed-es2020-default",
+      "form": "property-name-does-not-seed",
+      "target": "ES2020",
+      "library": "default",
+      "source": "const box = {'new-property-text': 1}; export function read(flag: boolean) { if (flag) return 42; return 'new-property-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-property-text\";\n"
+    },
+    {
+      "id": "explicit-annotation-order-es2020-default",
+      "form": "explicit-annotation-order",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read(flag: boolean): 'discarded' | 1 { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "quoted-pipe-member-es2020-default",
+      "form": "quoted-pipe-member",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new|member'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new|member\";\n"
+    },
+    {
+      "id": "escaped-string-member-es2020-default",
+      "form": "escaped-string-member",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return '\\u0062-new'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"b-new\";\n"
+    },
+    {
+      "id": "overload-annotation-order-es2020-default",
+      "form": "overload-annotation-order",
+      "target": "ES2020",
+      "library": "default",
+      "source": "export function read(flag: boolean): 'discarded' | 1; export function read(flag: boolean) { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "finally-return-order-es2020-explicit",
+      "form": "finally-return-order",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read() { try { return 'discarded'; } finally { return 1; } }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(): 1 | \"discarded\";\n"
+    },
+    {
+      "id": "library-one-order-es2020-explicit",
+      "form": "library-one-order",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 'one'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"one\" | 1;\n"
+    },
+    {
+      "id": "new-number-first-es2020-explicit",
+      "form": "new-number-first",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new-unique-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-unique-text\";\n"
+    },
+    {
+      "id": "new-string-first-es2020-explicit",
+      "form": "new-string-first",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 'new-unique-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-unique-text\" | 42;\n"
+    },
+    {
+      "id": "numeric-fresh-order-es2020-explicit",
+      "form": "numeric-fresh-order",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 2; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | 2;\n"
+    },
+    {
+      "id": "zero-fresh-order-es2020-explicit",
+      "form": "zero-fresh-order",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 'discarded'; return 0; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 0 | \"discarded\";\n"
+    },
+    {
+      "id": "arrow-library-order-es2020-explicit",
+      "form": "arrow-library-order",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export const read = (flag: boolean) => { if (flag) return 1; return 'one'; };",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const read: (flag: boolean) => \"one\" | 1;\n"
+    },
+    {
+      "id": "prefix-string-expression-es2020-explicit",
+      "form": "prefix-string-expression",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "const prefix = 'new-prefix-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-prefix-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-prefix-text\" | 42;\n"
+    },
+    {
+      "id": "prefix-number-expression-es2020-explicit",
+      "form": "prefix-number-expression",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "const prefix = 42; export function read(flag: boolean) { if (flag) return 'new-prefix-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-prefix-text\";\n"
+    },
+    {
+      "id": "unused-type-does-not-seed-es2020-explicit",
+      "form": "unused-type-does-not-seed",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "type Marker = 'new-type-only-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-type-only-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-type-only-text\";\n"
+    },
+    {
+      "id": "property-name-does-not-seed-es2020-explicit",
+      "form": "property-name-does-not-seed",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "const box = {'new-property-text': 1}; export function read(flag: boolean) { if (flag) return 42; return 'new-property-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-property-text\";\n"
+    },
+    {
+      "id": "explicit-annotation-order-es2020-explicit",
+      "form": "explicit-annotation-order",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read(flag: boolean): 'discarded' | 1 { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "quoted-pipe-member-es2020-explicit",
+      "form": "quoted-pipe-member",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new|member'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new|member\";\n"
+    },
+    {
+      "id": "escaped-string-member-es2020-explicit",
+      "form": "escaped-string-member",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return '\\u0062-new'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"b-new\";\n"
+    },
+    {
+      "id": "overload-annotation-order-es2020-explicit",
+      "form": "overload-annotation-order",
+      "target": "ES2020",
+      "library": "explicit",
+      "source": "export function read(flag: boolean): 'discarded' | 1; export function read(flag: boolean) { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "finally-return-order-es2020-none",
+      "form": "finally-return-order",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read() { try { return 'discarded'; } finally { return 1; } }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(): \"discarded\" | 1;\n"
+    },
+    {
+      "id": "library-one-order-es2020-none",
+      "form": "library-one-order",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 'one'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | \"one\";\n"
+    },
+    {
+      "id": "new-number-first-es2020-none",
+      "form": "new-number-first",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new-unique-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-unique-text\";\n"
+    },
+    {
+      "id": "new-string-first-es2020-none",
+      "form": "new-string-first",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 'new-unique-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-unique-text\" | 42;\n"
+    },
+    {
+      "id": "numeric-fresh-order-es2020-none",
+      "form": "numeric-fresh-order",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 2; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | 2;\n"
+    },
+    {
+      "id": "zero-fresh-order-es2020-none",
+      "form": "zero-fresh-order",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 'discarded'; return 0; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"discarded\" | 0;\n"
+    },
+    {
+      "id": "arrow-library-order-es2020-none",
+      "form": "arrow-library-order",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export const read = (flag: boolean) => { if (flag) return 1; return 'one'; };",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const read: (flag: boolean) => 1 | \"one\";\n"
+    },
+    {
+      "id": "prefix-string-expression-es2020-none",
+      "form": "prefix-string-expression",
+      "target": "ES2020",
+      "library": "none",
+      "source": "const prefix = 'new-prefix-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-prefix-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-prefix-text\" | 42;\n"
+    },
+    {
+      "id": "prefix-number-expression-es2020-none",
+      "form": "prefix-number-expression",
+      "target": "ES2020",
+      "library": "none",
+      "source": "const prefix = 42; export function read(flag: boolean) { if (flag) return 'new-prefix-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-prefix-text\";\n"
+    },
+    {
+      "id": "unused-type-does-not-seed-es2020-none",
+      "form": "unused-type-does-not-seed",
+      "target": "ES2020",
+      "library": "none",
+      "source": "type Marker = 'new-type-only-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-type-only-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-type-only-text\";\n"
+    },
+    {
+      "id": "property-name-does-not-seed-es2020-none",
+      "form": "property-name-does-not-seed",
+      "target": "ES2020",
+      "library": "none",
+      "source": "const box = {'new-property-text': 1}; export function read(flag: boolean) { if (flag) return 42; return 'new-property-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-property-text\";\n"
+    },
+    {
+      "id": "explicit-annotation-order-es2020-none",
+      "form": "explicit-annotation-order",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read(flag: boolean): 'discarded' | 1 { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "quoted-pipe-member-es2020-none",
+      "form": "quoted-pipe-member",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new|member'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new|member\";\n"
+    },
+    {
+      "id": "escaped-string-member-es2020-none",
+      "form": "escaped-string-member",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return '\\u0062-new'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"b-new\";\n"
+    },
+    {
+      "id": "overload-annotation-order-es2020-none",
+      "form": "overload-annotation-order",
+      "target": "ES2020",
+      "library": "none",
+      "source": "export function read(flag: boolean): 'discarded' | 1; export function read(flag: boolean) { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "finally-return-order-es2022-default",
+      "form": "finally-return-order",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read() { try { return 'discarded'; } finally { return 1; } }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(): 1 | \"discarded\";\n"
+    },
+    {
+      "id": "library-one-order-es2022-default",
+      "form": "library-one-order",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 'one'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | \"one\";\n"
+    },
+    {
+      "id": "new-number-first-es2022-default",
+      "form": "new-number-first",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new-unique-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-unique-text\";\n"
+    },
+    {
+      "id": "new-string-first-es2022-default",
+      "form": "new-string-first",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 'new-unique-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-unique-text\" | 42;\n"
+    },
+    {
+      "id": "numeric-fresh-order-es2022-default",
+      "form": "numeric-fresh-order",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 2; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | 2;\n"
+    },
+    {
+      "id": "zero-fresh-order-es2022-default",
+      "form": "zero-fresh-order",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 'discarded'; return 0; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 0 | \"discarded\";\n"
+    },
+    {
+      "id": "arrow-library-order-es2022-default",
+      "form": "arrow-library-order",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export const read = (flag: boolean) => { if (flag) return 1; return 'one'; };",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const read: (flag: boolean) => 1 | \"one\";\n"
+    },
+    {
+      "id": "prefix-string-expression-es2022-default",
+      "form": "prefix-string-expression",
+      "target": "ES2022",
+      "library": "default",
+      "source": "const prefix = 'new-prefix-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-prefix-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-prefix-text\" | 42;\n"
+    },
+    {
+      "id": "prefix-number-expression-es2022-default",
+      "form": "prefix-number-expression",
+      "target": "ES2022",
+      "library": "default",
+      "source": "const prefix = 42; export function read(flag: boolean) { if (flag) return 'new-prefix-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-prefix-text\";\n"
+    },
+    {
+      "id": "unused-type-does-not-seed-es2022-default",
+      "form": "unused-type-does-not-seed",
+      "target": "ES2022",
+      "library": "default",
+      "source": "type Marker = 'new-type-only-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-type-only-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-type-only-text\";\n"
+    },
+    {
+      "id": "property-name-does-not-seed-es2022-default",
+      "form": "property-name-does-not-seed",
+      "target": "ES2022",
+      "library": "default",
+      "source": "const box = {'new-property-text': 1}; export function read(flag: boolean) { if (flag) return 42; return 'new-property-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-property-text\";\n"
+    },
+    {
+      "id": "explicit-annotation-order-es2022-default",
+      "form": "explicit-annotation-order",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read(flag: boolean): 'discarded' | 1 { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "quoted-pipe-member-es2022-default",
+      "form": "quoted-pipe-member",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new|member'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new|member\";\n"
+    },
+    {
+      "id": "escaped-string-member-es2022-default",
+      "form": "escaped-string-member",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return '\\u0062-new'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"b-new\";\n"
+    },
+    {
+      "id": "overload-annotation-order-es2022-default",
+      "form": "overload-annotation-order",
+      "target": "ES2022",
+      "library": "default",
+      "source": "export function read(flag: boolean): 'discarded' | 1; export function read(flag: boolean) { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "finally-return-order-es2022-explicit",
+      "form": "finally-return-order",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read() { try { return 'discarded'; } finally { return 1; } }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(): 1 | \"discarded\";\n"
+    },
+    {
+      "id": "library-one-order-es2022-explicit",
+      "form": "library-one-order",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 'one'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"one\" | 1;\n"
+    },
+    {
+      "id": "new-number-first-es2022-explicit",
+      "form": "new-number-first",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new-unique-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-unique-text\";\n"
+    },
+    {
+      "id": "new-string-first-es2022-explicit",
+      "form": "new-string-first",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 'new-unique-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-unique-text\" | 42;\n"
+    },
+    {
+      "id": "numeric-fresh-order-es2022-explicit",
+      "form": "numeric-fresh-order",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 2; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | 2;\n"
+    },
+    {
+      "id": "zero-fresh-order-es2022-explicit",
+      "form": "zero-fresh-order",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 'discarded'; return 0; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 0 | \"discarded\";\n"
+    },
+    {
+      "id": "arrow-library-order-es2022-explicit",
+      "form": "arrow-library-order",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export const read = (flag: boolean) => { if (flag) return 1; return 'one'; };",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const read: (flag: boolean) => \"one\" | 1;\n"
+    },
+    {
+      "id": "prefix-string-expression-es2022-explicit",
+      "form": "prefix-string-expression",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "const prefix = 'new-prefix-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-prefix-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-prefix-text\" | 42;\n"
+    },
+    {
+      "id": "prefix-number-expression-es2022-explicit",
+      "form": "prefix-number-expression",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "const prefix = 42; export function read(flag: boolean) { if (flag) return 'new-prefix-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-prefix-text\";\n"
+    },
+    {
+      "id": "unused-type-does-not-seed-es2022-explicit",
+      "form": "unused-type-does-not-seed",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "type Marker = 'new-type-only-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-type-only-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-type-only-text\";\n"
+    },
+    {
+      "id": "property-name-does-not-seed-es2022-explicit",
+      "form": "property-name-does-not-seed",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "const box = {'new-property-text': 1}; export function read(flag: boolean) { if (flag) return 42; return 'new-property-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-property-text\";\n"
+    },
+    {
+      "id": "explicit-annotation-order-es2022-explicit",
+      "form": "explicit-annotation-order",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read(flag: boolean): 'discarded' | 1 { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "quoted-pipe-member-es2022-explicit",
+      "form": "quoted-pipe-member",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new|member'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new|member\";\n"
+    },
+    {
+      "id": "escaped-string-member-es2022-explicit",
+      "form": "escaped-string-member",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return '\\u0062-new'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"b-new\";\n"
+    },
+    {
+      "id": "overload-annotation-order-es2022-explicit",
+      "form": "overload-annotation-order",
+      "target": "ES2022",
+      "library": "explicit",
+      "source": "export function read(flag: boolean): 'discarded' | 1; export function read(flag: boolean) { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "finally-return-order-es2022-none",
+      "form": "finally-return-order",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read() { try { return 'discarded'; } finally { return 1; } }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(): \"discarded\" | 1;\n"
+    },
+    {
+      "id": "library-one-order-es2022-none",
+      "form": "library-one-order",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 'one'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | \"one\";\n"
+    },
+    {
+      "id": "new-number-first-es2022-none",
+      "form": "new-number-first",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new-unique-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-unique-text\";\n"
+    },
+    {
+      "id": "new-string-first-es2022-none",
+      "form": "new-string-first",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 'new-unique-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-unique-text\" | 42;\n"
+    },
+    {
+      "id": "numeric-fresh-order-es2022-none",
+      "form": "numeric-fresh-order",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 1; return 2; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 1 | 2;\n"
+    },
+    {
+      "id": "zero-fresh-order-es2022-none",
+      "form": "zero-fresh-order",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 'discarded'; return 0; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"discarded\" | 0;\n"
+    },
+    {
+      "id": "arrow-library-order-es2022-none",
+      "form": "arrow-library-order",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export const read = (flag: boolean) => { if (flag) return 1; return 'one'; };",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const read: (flag: boolean) => 1 | \"one\";\n"
+    },
+    {
+      "id": "prefix-string-expression-es2022-none",
+      "form": "prefix-string-expression",
+      "target": "ES2022",
+      "library": "none",
+      "source": "const prefix = 'new-prefix-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-prefix-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): \"new-prefix-text\" | 42;\n"
+    },
+    {
+      "id": "prefix-number-expression-es2022-none",
+      "form": "prefix-number-expression",
+      "target": "ES2022",
+      "library": "none",
+      "source": "const prefix = 42; export function read(flag: boolean) { if (flag) return 'new-prefix-text'; return 42; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-prefix-text\";\n"
+    },
+    {
+      "id": "unused-type-does-not-seed-es2022-none",
+      "form": "unused-type-does-not-seed",
+      "target": "ES2022",
+      "library": "none",
+      "source": "type Marker = 'new-type-only-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-type-only-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-type-only-text\";\n"
+    },
+    {
+      "id": "property-name-does-not-seed-es2022-none",
+      "form": "property-name-does-not-seed",
+      "target": "ES2022",
+      "library": "none",
+      "source": "const box = {'new-property-text': 1}; export function read(flag: boolean) { if (flag) return 42; return 'new-property-text'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new-property-text\";\n"
+    },
+    {
+      "id": "explicit-annotation-order-es2022-none",
+      "form": "explicit-annotation-order",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read(flag: boolean): 'discarded' | 1 { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    },
+    {
+      "id": "quoted-pipe-member-es2022-none",
+      "form": "quoted-pipe-member",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return 'new|member'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"new|member\";\n"
+    },
+    {
+      "id": "escaped-string-member-es2022-none",
+      "form": "escaped-string-member",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read(flag: boolean) { if (flag) return 42; return '\\u0062-new'; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 42 | \"b-new\";\n"
+    },
+    {
+      "id": "overload-annotation-order-es2022-none",
+      "form": "overload-annotation-order",
+      "target": "ES2022",
+      "library": "none",
+      "source": "export function read(flag: boolean): 'discarded' | 1; export function read(flag: boolean) { if (flag) return 'discarded'; return 1; }",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(flag: boolean): 'discarded' | 1;\n"
+    }
+  ],
+  "profile_controls": [
+    {
+      "id": "es5-default",
+      "sha256": "2058740a221150f3eb01168a4ae3c8b20b405e2a1a1b9b82267fee29b5b08f8a"
+    },
+    {
+      "id": "es5-explicit",
+      "sha256": "dfc86b74ee55be1aad097023f6a984471428bc0e8684e66bd2ea4549d9b11ec3"
+    },
+    {
+      "id": "es5-none",
+      "sha256": "a1c1982f6280876d02506b1b93a7dbea46e6ec649dbe798bbd173de88e4d0aba"
+    },
+    {
+      "id": "es2015-default",
+      "sha256": "ca3fc5ad19fb778cf778ea48db86a3fc02506c4585a1e6e79285638eea035807"
+    },
+    {
+      "id": "es2015-explicit",
+      "sha256": "20d03b770ac414435c16ce5f5afed87618d2c41663fe1a40af1e601e655e8b18"
+    },
+    {
+      "id": "es2015-none",
+      "sha256": "db8ee6fbb0dd8b93bca36e8fd5cff662343faf1c8e59bfe502b6175eff74dd38"
+    },
+    {
+      "id": "es2016-default",
+      "sha256": "4f27c805f785b9ef894d75e79f9dbb50d7c4c08f90fe829691349eaa4d132129"
+    },
+    {
+      "id": "es2016-explicit",
+      "sha256": "29a7ce584235f9f3e3d353fe9fd31603b057931b48954aa543b64cf2c742b81f"
+    },
+    {
+      "id": "es2016-none",
+      "sha256": "34f5db02e466b9c35fcd4fedd4b060564bbfb7058798f7ed27c1461513cda915"
+    },
+    {
+      "id": "es2017-default",
+      "sha256": "3470fdff989636d0e16f3034699e7c63a24ff17bbff17a84a39652264746655c"
+    },
+    {
+      "id": "es2017-explicit",
+      "sha256": "82dccebcc1a415e2f5f570e469827fbeba6c5fe8af7b49847244f38c19e05253"
+    },
+    {
+      "id": "es2017-none",
+      "sha256": "c28712f31303877423b592ec38b51e91ee2f2e0641b385aff6ed61f32a5d2070"
+    },
+    {
+      "id": "es2018-default",
+      "sha256": "2edc06bbb8ee785f6c64d9441745c9ad3108a16726bb833019483f9c91111cc7"
+    },
+    {
+      "id": "es2018-explicit",
+      "sha256": "6efe51244e105b46e5039e5a00c69830793d6f4caa76f62ce389b7a0093cd476"
+    },
+    {
+      "id": "es2018-none",
+      "sha256": "f4890b156499767cd6b81578bcc451d58d965a34880ae4f1918f40f059bde3e3"
+    },
+    {
+      "id": "es2019-default",
+      "sha256": "53922ed5545c3baeb5c3d48881a7b021c27fc3bbc8b756313989c98a49f8bd87"
+    },
+    {
+      "id": "es2019-explicit",
+      "sha256": "6e2f08f0d19ba33d5d13944acdfb1074d9f76128ab07cd64d8575cfa89989e98"
+    },
+    {
+      "id": "es2019-none",
+      "sha256": "79145564887999052e041cf2bd0a3fecb79e5678ad0e15abbf41992da8456627"
+    },
+    {
+      "id": "es2020-default",
+      "sha256": "dff3370cfa9a158f64fab8b8762d8f368ccd8295d5f111aeb2a7f1afd24cd59e"
+    },
+    {
+      "id": "es2020-explicit",
+      "sha256": "7ade70aa2f845ec9297bde845e6ff59cd091d89c858b058450eaef57fceb4e46"
+    },
+    {
+      "id": "es2020-none",
+      "sha256": "5873d0d4d5396b72ab0644903b4bc9fc60cd5b75146f634ea4c53a75aefd22b4"
+    },
+    {
+      "id": "es2021-default",
+      "sha256": "8dda59948b2647a16f8ed167450f24065e34becf18e0eaa0c5f211238154ab1f"
+    },
+    {
+      "id": "es2021-explicit",
+      "sha256": "2f45bb73acd8d229737ab27c45ef28111d2c5d1bca5069dd3b8a991e3ff111c3"
+    },
+    {
+      "id": "es2021-none",
+      "sha256": "4616728b42818c3ede33690f3567b4da21ca8b25599af0a9618190ef23b9f8ba"
+    },
+    {
+      "id": "es2022-default",
+      "sha256": "d3727a9ee34f27a63461c4ddd31f25011428761b7498c1a33c6a3e43f7e7db18"
+    },
+    {
+      "id": "es2022-explicit",
+      "sha256": "ea8d52856adb44486ac9b5aa19b2d4f03a07b1e3b17d95fbddb0b20c69860c69"
+    },
+    {
+      "id": "es2022-none",
+      "sha256": "2f38f4d7a09f2acc12df4b7b5c89eadbd600f0481308cd73461cfe485a0a734e"
+    },
+    {
+      "id": "es2023-default",
+      "sha256": "71bb696117d2e8b132313b5ba479e321285952763de12729d2e15892f0e0645d"
+    },
+    {
+      "id": "es2023-explicit",
+      "sha256": "cb438a5f13e2ee6944a0c5b92c33e48e6f26732422eb22eebe6076cbf40fc2a3"
+    },
+    {
+      "id": "es2023-none",
+      "sha256": "e12ea3a4b0a782bfc2a3e671019b2b57a2fab9a0925c441d8874fcfca0ded4f9"
+    },
+    {
+      "id": "esnext-default",
+      "sha256": "207e8b33e2bb6c93c3a90bb4b1676da9ada6b23e072a92e2c542e428f7acd945"
+    },
+    {
+      "id": "esnext-explicit",
+      "sha256": "352df89ceaadf47940384edce489dd7e8d845b060e368532dd926f834ef4b6d5"
+    },
+    {
+      "id": "esnext-none",
+      "sha256": "e3ccd0d413c8634aac342bf9540003ce33a2c9958f036dab53475b609c1904be"
+    }
+  ]
+}

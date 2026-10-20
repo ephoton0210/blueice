@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 
 pub use decorators::DECORATOR_HELPER_V1_VERSION;
 pub use legacy_decorators::LEGACY_DECORATOR_HELPER_V1_VERSION;
+pub(crate) use literal_order::VERSION as LITERAL_ORDER_VERSION;
 pub(crate) use module_wrappers::VERSION as MODULE_WRAPPERS_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
 pub use source_map_lookup::{SourceMapLookupError, SourceMapOriginalPosition};
@@ -38,6 +39,7 @@ mod inferred_declarations;
 mod inferred_returns;
 mod jsx;
 mod legacy_decorators;
+mod literal_order;
 mod module_wrappers;
 mod namespaces;
 mod output_options;
@@ -198,9 +200,11 @@ pub(crate) fn emit(
             let declaration = options
                 .declaration
                 .then(|| {
-                    let context = inferred_declarations::Context::new(checked_module, project)?;
+                    let order = literal_order::Order::new(&checked_module.module, options)?;
+                    let context =
+                        inferred_declarations::Context::new(checked_module, project, &order)?;
                     emit_declaration(
-                        &inferred_returns::declaration_module(checked_module),
+                        &inferred_returns::declaration_module(checked_module, &order),
                         &checked_module.symbols,
                         Some(&context),
                         options,

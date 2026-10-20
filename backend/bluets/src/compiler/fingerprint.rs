@@ -56,6 +56,9 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(options.module_kind.as_str());
     add("bluets-output-options/1");
     add("bluets-declaration-options/1");
+    if options.declaration {
+        add(crate::emitter::LITERAL_ORDER_VERSION);
+    }
     add(&options.declaration_map.to_string());
     add(&options.emit_declaration_only.to_string());
     add(&options.isolated_declarations.to_string());

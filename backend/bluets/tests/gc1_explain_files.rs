@@ -182,11 +182,11 @@ fn pre_fix_build_state_cannot_bypass_the_new_checker() {
     );
     let state_path = root.join("tsconfig.bluetsc.tsbuildinfo");
     let mut state: Value = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
-    assert_eq!(state["version"], 6);
+    assert_eq!(state["version"], 7);
     let warm = run();
     assert!(warm.status.success());
     assert!(!String::from_utf8_lossy(&warm.stdout).contains("Building project:"));
-    for old_epoch in [4, 5] {
+    for old_epoch in [4, 5, 6] {
         state["version"] = Value::from(old_epoch);
         fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
         let rebuilt = run();
@@ -198,7 +198,7 @@ fn pre_fix_build_state_cannot_bypass_the_new_checker() {
         );
         assert!(String::from_utf8_lossy(&rebuilt.stdout).contains("Building project:"));
         let current: Value = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
-        assert_eq!(current["version"], 6);
+        assert_eq!(current["version"], 7);
     }
     fs::remove_dir_all(root).unwrap();
 }

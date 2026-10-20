@@ -7,12 +7,13 @@
 use super::*;
 use crate::checker::CheckedModule;
 
-pub(super) fn declaration_module(checked: &CheckedModule) -> Module {
+pub(super) fn declaration_module(checked: &CheckedModule, order: &literal_order::Order) -> Module {
     let mut module = checked.module.clone();
     apply(
         &mut module.declarations,
         &checked.inferred_returns,
         &checked.inferred_parameters,
+        order,
     );
     module
 }
@@ -21,11 +22,14 @@ fn apply(
     declarations: &mut [Declaration],
     inferred: &BTreeMap<usize, Type>,
     parameters: &BTreeMap<usize, Type>,
+    order: &literal_order::Order,
 ) {
     for declaration in declarations {
         match declaration {
             Declaration::Function(function) if function.return_type.is_none() => {
-                function.return_type = inferred.get(&function.span.start).map(canonical);
+                function.return_type = inferred
+                    .get(&function.span.start)
+                    .map(|value| order.function(function, value));
                 for parameter in &mut function.parameters {
                     if parameter.annotation.is_none() {
                         parameter.annotation = parameters.get(&parameter.span.start).cloned();
@@ -58,7 +62,9 @@ fn apply(
                     }
                 }
             }
-            Declaration::Namespace(namespace) => apply(&mut namespace.body, inferred, parameters),
+            Declaration::Namespace(namespace) => {
+                apply(&mut namespace.body, inferred, parameters, order)
+            }
             _ => {}
         }
     }

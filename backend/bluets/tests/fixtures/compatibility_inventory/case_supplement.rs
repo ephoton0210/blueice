@@ -33,6 +33,20 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt1_declaration_order" => {
+            let path = "backend/bluets/tests/fixtures/gt1_declaration_order/reference.json";
+            let mut controls = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/profile_controls",
+                "native-library-profile",
+            )?;
+            for case in &mut controls {
+                case.comparison = Comparison::ReferenceOnly;
+                case.reason = Some("Pinned native library fresh-literal allocation facts; independently reproduced, not additional public compiler agreement.".into());
+            }
+            controls
+        }
         "gt1_flow" => {
             let scope = "finalizer_duplication_respects_the_owner_work_budget";
             if !facts.calls.iter().any(|call| call.scope == scope) {

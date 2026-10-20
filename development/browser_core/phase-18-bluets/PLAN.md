@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-20).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 12,590 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,713 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,094/12,104 (99.9174%); 4 open, 6 refused observations |
-| Separate controls | 482 native-reference + 4 BlueTS owner = 486; excluded from direct agreement |
-| Case labels | 12,580 scoped closed (including controls), 4 open, 6 refused |
-| Suite inventory | 103 suites / 249 ignored Rust functions; not a case denominator |
-| Suite labels | 96 scoped closed, 2 open, 5 refused |
+| Direct agreement | 12,185/12,194 (99.9262%); 3 open, 6 refused observations |
+| Separate controls | 515 native-reference + 4 BlueTS owner = 519; excluded from direct agreement |
+| Case labels | 12,704 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 104 suites / 251 ignored Rust functions; not a case denominator |
+| Suite labels | 98 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 12,590 recorded case expectations pass; expected differences/refusals are not
+All 12,713 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:b23a336fae6eac305f82d034cceb8a85d82bdeb4`.
-Input graph SHA-256: `4abe00d07c5396d163146f173bed6e3028c679ad0dc7481a3fc5a8b84d678641`.
+Compiler/oracle source: `backend-tree:d438921836da6f3212f64e5952baa00aae596597`.
+Input graph SHA-256: `32972eee1f43a32ef6e9fc4cad308c52ccde64b2f52ea4b007801ca899f15f8b`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -12420,3 +12420,141 @@ after. Log SHA-256 values:
 These facts and the implementation are submitted together, not as an advance
 source-only commit. This leaf does not replace final workspace/VM milestone
 acceptance or broaden the inventory's still-open feature scope.
+
+### Second-stage exact declaration implementation (2026-10-20)
+
+First stage is committed/pushed as `d16d69c90`. Stage two adds the frozen
+`gt1_declaration_order/cases.json` matrix before implementing presentation:
+15 forms × ES2020/ES2022 × default/explicit/no-library = 90 programs. Native
+5.9.3 accepts all 90. The forms cover both competing library-sensitive orders,
+new string/number first occurrences, numeric fresh literals, zero, arrows,
+prior runtime expressions, unused type-only aliases and quoted property names,
+explicit return/overload annotations, embedded pipes and escaped strings.
+The no-library profile receives the same ten owner-supplied global interfaces
+on both sides; it grants no runtime binding.
+
+`tools/record_gt1_declaration_order.cjs` independently derives native declarations
+and 33 library allocation profiles (11 targets × three library modes). Metadata
+stores ordered literal values and SHA-256 library identities, not TypeScript
+source code, fixture-specific return tables or a runtime TypeScript dependency.
+The cutoff is frozen before introspection, and uses existing **fresh**, not
+regular, literal type identities. The native reference/profile files exactly
+match the earlier independent temporary prototype, SHA-256 respectively
+`0834c9bf2e94c34268f02e3f602d10a58c65f26d519ed8e21829bc0d6a95856f` and
+`bf6507b0cd12b96723fa058cf2a29c5e2bd1fce5299bc02c6b3369bc8edea2db`.
+All 33 profiles are separately labelled native-reference controls, not extra
+public compiler agreements.
+
+The first exploratory test exposed a harness setup error (no-library BlueTS
+was missing those owner interfaces), not evidence of a declaration fix. After
+correcting the harness, leaving the new ordering operation unimplemented
+reproduces 52 exact-output failures in `/private/tmp/bluets-gt1-stage2-red.log`.
+The implemented operation then passes all 90 in
+`/private/tmp/bluets-gt1-stage2-green.log`; these focused runs alone are not final
+acceptance.
+
+The separate `emitter/literal_order.rs` module seeds the selected library's
+observed fresh-literal precedence, then the source's runtime literal occurrence
+order. Erased type-only spans and static specifiers are excluded; property-name
+literals do not allocate runtime expression types. Only an unannotated named
+function or directly initialized block-bodied function with a proven pure
+literal return union is reordered. Nested owners are excluded, nonliteral or
+unproven returns retain existing presentation, and the exact returned member set
+must match. Both declaration emission paths use the same order. Explicit
+annotations, overload order, getters, tuples, intersections, checker identities,
+runtime output and host permissions are unchanged. The existing parser limits
+bound lexing; no new unbounded evaluator or normalization comparator is added.
+Declaration fingerprints include the new producer version; build-state epoch 7
+forces pre-stage-two (4/5/6) caches cold.
+
+The original 45 flow cases and their native reference bytes remain intact.
+Their public comparator is now unconditional byte equality: the named stage-one
+exception is removed. Raw `stage1-order.json` and its negative structural guards
+remain historical/control evidence, never an alternative expected output.
+All 90 new declarations additionally have pinned bidirectional type consumers
+and unchanged-JavaScript checks with declaration emission on/off.
+
+The first existing exact-return replay found a real oracle setup mismatch:
+BlueTS CLI used the default library, while native `tsc` used explicit ES2022.
+Those profiles legitimately differ (`1 | "one"` versus `"one" | 1`). The
+legacy exact-return test now supplies the native target/library explicitly to
+BlueTS too; its original cases/expectations are retained. Default and explicit
+profiles are each compared independently in the new matrix. The two formerly
+type-only `unreachable`/`finally` controls now additionally require raw byte
+equality, preserving their historical identities and consumer checks.
+
+Full source-frozen measurement, ordinary two-crate tests, final Clippy/rustfmt
+and evidence accounting are still required. Stage two and the parent G-T1
+remain unchecked; no stage-two implementation/data commit is made in advance.
+Other declaration/global-interning compositions remain in G-T8/G-E4, broader
+unmeasured inferred-flow compositions remain open in the G-T1 inventory row,
+and full TypeScript parity remains OFF.
+
+Preflight passes all 56 tests across G-C1 CLI, G-T1 flow, G-T1 declaration order,
+inferred returns, corrupt-state, watch and referenced declarations, including
+their selected native oracles. Warnings-denied two-crate all-target Clippy,
+workspace Rust 1.95 formatting, all 15 Node tools and all 13 Python tools pass.
+The Python recheck exposed a documentation-only first-stage omission after its
+publication: the manually revised G-T1 prose lacked the row generator's exact
+evidence-link suffix. `account_inventory_rows.py --write` restores that suffix;
+no compiler/native/measurement input changes. Subsequent Python checks pass.
+
+The stage-two source is frozen at
+`backend-tree:d438921836da6f3212f64e5952baa00aae596597`, input graph SHA-256
+`32972eee1f43a32ef6e9fc4cad308c52ccde64b2f52ea4b007801ca899f15f8b`.
+Staged-source validation passes, with 104 suites / 251 selected ignored
+functions and no missing provider. The complete run has passed at
+`/private/tmp/bluets-gt1-stage2-measurement-C6lN7p/`, with aggregate log
+`/private/tmp/bluets-gt1-stage2-measurement-run.log`: 104/104 suites, 544/544 Rust
+tests, including all 251 selected ignored functions, zero failed/ignored/filtered.
+It finished at `2026-10-20T02:40:25.962Z` on darwin-arm64 / Rust 1.98.0. The local
+82-test core oracle passes; this is not a new Windows VM run. Compiler inputs,
+the catalog and all 57 oracle-tool bodies were stable throughout the run and
+still match their recorded hashes afterward.
+
+Generated authorities record N = 12,713: 12,185/12,194 direct agreements,
+three open and six refused observations, 515 native-reference controls and four
+owner controls. Suite labels are 98 scoped closed, one open and five refused.
+All 12,590 first-stage suite-qualified identities are retained, with no lost
+source/selector/label/unit fields. Exactly one comparison changes: the original
+`finally-return-override` row goes from open to compared only after actual raw
+byte agreement. The 123 additions are the 90 public programs and 33 separate
+native profile controls. The original flow input/native/raw-history files are
+unchanged. The first-stage inventory prose's "44 declarations" is corrected:
+44 were program observations (including rejected programs); there were 35
+accepted declarations, of which one differed at that stage. Stage two compares
+all 35 exactly, plus the 90 added configurations.
+
+The complete ordinary two-crate replay passes in
+`/private/tmp/bluets-gt1-stage2-ordinary.log`: 1,313 passed, zero failed, 251
+ignored (all independently executed in the full native cohort), zero filtered.
+Workspace Rust 1.95 rustfmt, warnings-denied two-crate all-target Clippy,
+staged suite/case/source checks, source refusal/row accounting, all four current
+status summaries, 13 Python and 15 Node tool tests and whitespace checks pass.
+All per-suite log hashes and test counts match the completed measurement.
+
+Both reviewed stages and the parent finite G-T1 package are accepted. The
+first-stage commit remains `d16d69c90`; stage-two implementation and its own
+measurement are submitted together, with no advance source-only commit. The
+broader inventory row stays open for unmeasured compositions, full parity stays
+OFF, and the next finite package is G-T3. These leaf gates do not claim a new
+workspace-wide/Windows milestone or add a hosted-CI prerequisite.
+
+Reproduction uses the same sequential Cargo and pinned tools as stage one:
+
+```sh
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs --output-dir /private/tmp/bluets-gt1-stage2-measurement-C6lN7p --staged-source
+cargo test -p blueice-bluets -p blueice-bluets-bluejs --offline --no-fail-fast
+cargo clippy -p blueice-bluets -p blueice-bluets-bluejs --all-targets --offline -- -D warnings
+```
+
+Log/file SHA-256 values:
+
+| Evidence | SHA-256 |
+| --- | --- |
+| Red exact-order baseline | `0bf801c3589fe9f07f03c9650dec550e750c4a474781b6339c5d0af55f34b4ec` |
+| Final 56-test focused replay | `43436aecc8866135fd0d354a8b13c139be3bc0a0107552f03ba7de8280e584f5` |
+| Full cohort log | `298a62eb68845c7a444d37cb2c10542ba3caf81676f8d012bd743f083d7f4f70` |
+| Ordinary test log | `22aa7d0bbcd92e3c9df6c65fc087967c046e4a250dee83de2bc2c1884a9646ee` |
+| Final Clippy log | `c3ddc282413c3edde53c5023b0b217f1ea090c816945cb68e99838024bc781bc` |
+| Versioned measurement | `d3d53db36dc80de404db028872dffa9bdd0b3278d7ee834dbf2b6b7bb25a9332` |

@@ -242,7 +242,15 @@ fn inferred_return_declarations_match_typescript() {
         let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
             .arg("build")
             .arg(&entry)
-            .args(["--declaration", "--out-dir"])
+            // Compare the same library profile, not default DOM vs explicit ES.
+            .args([
+                "--target",
+                "ES2022",
+                "--lib",
+                "ES2022",
+                "--declaration",
+                "--out-dir",
+            ])
             .arg(&blue)
             .output()
             .unwrap();
@@ -287,7 +295,14 @@ fn union_declarations_have_the_same_types_despite_literal_intern_order() {
         let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
             .arg("build")
             .arg(&entry)
-            .args(["--declaration", "--out-dir"])
+            .args([
+                "--target",
+                "ES2022",
+                "--lib",
+                "ES2022",
+                "--declaration",
+                "--out-dir",
+            ])
             .arg(&blue)
             .output()
             .unwrap();
@@ -312,6 +327,12 @@ fn union_declarations_have_the_same_types_despite_literal_intern_order() {
             .output()
             .unwrap();
         assert!(built.status.success(), "{}", report(&built));
+        // Keep the historical function/case identity, but no order allowance.
+        assert_eq!(
+            fs::read_to_string(blue.join("main.d.ts")).unwrap(),
+            fs::read_to_string(reference.join("main.d.ts")).unwrap(),
+            "{name}"
+        );
         let consumer = root.join(name).join("consumer.ts");
         fs::write(&consumer, "import type * as Blue from './blue/main';\nimport type * as Reference from './reference/main';\ntype Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;\nconst equal: Equal<typeof Blue.count, typeof Reference.count> = true;\n").unwrap();
         let checked = Command::new(&tsc)

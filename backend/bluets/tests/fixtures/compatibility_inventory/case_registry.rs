@@ -36,8 +36,16 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
         let mut cases = case_sources::json_cases(&path, text, pointer, "program/configuration")?;
         if stem == "gt1_flow" {
             let facts = rust_facts::parse(snapshot.source(&suite.harness)?)?;
-            let order_only = super::case_inline::array(&facts, "", "ORDER_ONLY_CASES")?;
-            if !order_only.labels.is_empty() {
+            // Historical stage-one snapshots retain their real allowance.
+            let arrays: Vec<_> = facts
+                .arrays
+                .iter()
+                .filter(|array| array.binding == "ORDER_ONLY_CASES")
+                .collect();
+            if arrays.len() > 1 {
+                return Err("ambiguous G-T1 order allowance".into());
+            }
+            if let Some(order_only) = arrays.first() {
                 case_sources::classify(&mut cases, &order_only.labels, "", Comparison::Open,
                     "Stage-one native type equivalence and literal-union permutation agree, but raw .d.ts member order differs; exact output is still required by stage two.")?;
             }
@@ -259,6 +267,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "explicit_this_context" => "explicit-this-context-reference.json",
         "guards_checker_matrix" => "typescript_oracle/guards-reference.json",
         "gt1_flow" => "gt1_flow/reference.json",
+        "gt1_declaration_order" => "gt1_declaration_order/reference.json",
         "indexed_call_context" => "indexed-call-context-reference.json",
         "inference_checker_matrix" => "typescript_oracle/inference-reference.json",
         "jsx_runtime_namespace" => "jsx_runtime_namespace/reference.json",

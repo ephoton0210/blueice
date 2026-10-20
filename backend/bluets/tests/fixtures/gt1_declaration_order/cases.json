@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "targets": ["ES2020", "ES2022"],
+  "libraries": ["default", "explicit", "none"],
+  "strict": true,
+  "module": "ESNext",
+  "newLine": "LF",
+  "forms": [
+    {"id":"finally-return-order","source":"export function read() { try { return 'discarded'; } finally { return 1; } }"},
+    {"id":"library-one-order","source":"export function read(flag: boolean) { if (flag) return 1; return 'one'; }"},
+    {"id":"new-number-first","source":"export function read(flag: boolean) { if (flag) return 42; return 'new-unique-text'; }"},
+    {"id":"new-string-first","source":"export function read(flag: boolean) { if (flag) return 'new-unique-text'; return 42; }"},
+    {"id":"numeric-fresh-order","source":"export function read(flag: boolean) { if (flag) return 1; return 2; }"},
+    {"id":"zero-fresh-order","source":"export function read(flag: boolean) { if (flag) return 'discarded'; return 0; }"},
+    {"id":"arrow-library-order","source":"export const read = (flag: boolean) => { if (flag) return 1; return 'one'; };"},
+    {"id":"prefix-string-expression","source":"const prefix = 'new-prefix-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-prefix-text'; }"},
+    {"id":"prefix-number-expression","source":"const prefix = 42; export function read(flag: boolean) { if (flag) return 'new-prefix-text'; return 42; }"},
+    {"id":"unused-type-does-not-seed","source":"type Marker = 'new-type-only-text'; export function read(flag: boolean) { if (flag) return 42; return 'new-type-only-text'; }"},
+    {"id":"property-name-does-not-seed","source":"const box = {'new-property-text': 1}; export function read(flag: boolean) { if (flag) return 42; return 'new-property-text'; }"},
+    {"id":"explicit-annotation-order","source":"export function read(flag: boolean): 'discarded' | 1 { if (flag) return 'discarded'; return 1; }"},
+    {"id":"quoted-pipe-member","source":"export function read(flag: boolean) { if (flag) return 42; return 'new|member'; }"},
+    {"id":"escaped-string-member","source":"export function read(flag: boolean) { if (flag) return 42; return '\\u0062-new'; }"},
+    {"id":"overload-annotation-order","source":"export function read(flag: boolean): 'discarded' | 1; export function read(flag: boolean) { if (flag) return 'discarded'; return 1; }"}
+  ]
+}

@@ -24,6 +24,7 @@ impl<'a> Context<'a> {
     pub(super) fn new(
         checked: &'a CheckedModule,
         project: &'a Project,
+        order: &literal_order::Order,
     ) -> Result<Self, Diagnostic> {
         let module = &checked.module;
         let mut context = Self {
@@ -78,7 +79,7 @@ impl<'a> Context<'a> {
                 &checked.class_expression_surfaces,
                 &variable.span,
             )?;
-            let expanded = super::inferred_returns::canonical(&expanded);
+            let expanded = order.variable(module, variable, &expanded);
             let value = &expanded;
             let value = if variable.kind == VariableKind::Const
                 && matches!(value, Type::Named { name, arguments } if name == "symbol" && arguments.is_empty())
@@ -152,7 +153,7 @@ impl<'a> Context<'a> {
                         }
                     } else if let Some(value) = checked.inferred_returns.get(&function.span.start) {
                         let value = super::class_expressions::declaration_type(
-                            &super::inferred_returns::canonical(value),
+                            &order.function(function, value),
                             &checked.class_expression_surfaces,
                             &function.span,
                         )?;

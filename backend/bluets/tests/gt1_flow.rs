@@ -13,8 +13,6 @@ use std::process::{Command, Stdio};
 #[path = "oracle_support/union_order.rs"]
 mod union_order;
 
-const ORDER_ONLY_CASES: [&str; 1] = ["finally-return-override"];
-
 fn observations() -> (Value, Value) {
     let input = serde_json::from_str(include_str!("fixtures/gt1_flow/cases.json")).unwrap();
     let reference = serde_json::from_str(include_str!("fixtures/gt1_flow/reference.json")).unwrap();
@@ -28,7 +26,7 @@ fn first_stage_retains_raw_native_and_bluets_order_observations() {
     assert_eq!(raw["typescript"], "5.9.3");
     let (_, reference) = observations();
     let row = &raw["observations"][0];
-    assert_eq!(row["id"], ORDER_ONLY_CASES[0]);
+    assert_eq!(row["id"], "finally-return-override");
     let native = reference["cases"]
         .as_array()
         .unwrap()
@@ -50,9 +48,6 @@ fn predicates_exceptional_flow_and_captures_match_native_types() {
     assert_eq!(input["cases"].as_array().unwrap().len(), 45);
     assert_eq!(reference["cases"].as_array().unwrap().len(), 45);
     let mut failures = Vec::new();
-    let mut order_observations = Vec::new();
-    let raw: Value =
-        serde_json::from_str(include_str!("fixtures/gt1_flow/stage1-order.json")).unwrap();
     for (case, expected) in input["cases"]
         .as_array()
         .unwrap()
@@ -99,20 +94,6 @@ fn predicates_exceptional_flow_and_captures_match_native_types() {
                 .as_deref()
                 .expect("declaration output");
             if declaration != expected["declaration"].as_str().unwrap() {
-                let id = case["id"].as_str().unwrap();
-                if ORDER_ONLY_CASES.contains(&id) {
-                    let row = &raw["observations"][0];
-                    assert_eq!(case["id"], row["id"]);
-                    assert_eq!(declaration, row["bluets"].as_str().unwrap());
-                    assert_eq!(expected["declaration"], row["native"]);
-                    if union_order::only_literal_return_union_order(
-                        declaration,
-                        expected["declaration"].as_str().unwrap(),
-                    ) {
-                        order_observations.push(id);
-                        continue;
-                    }
-                }
                 failures.push(format!(
                     "{}: declaration expected {:?}, got {:?}",
                     case["id"], expected["declaration"], declaration
@@ -125,10 +106,6 @@ fn predicates_exceptional_flow_and_captures_match_native_types() {
         "{} G-T1 mismatches:\n{}",
         failures.len(),
         failures.join("\n")
-    );
-    assert_eq!(
-        order_observations, ORDER_ONLY_CASES,
-        "An exact-output repair must explicitly retire its stage-one exception"
     );
 }
 

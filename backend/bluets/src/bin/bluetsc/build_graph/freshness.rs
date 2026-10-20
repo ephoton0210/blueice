@@ -8,8 +8,8 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-// G-T1 changes flow diagnostics and declarations: pre-fix state cannot bypass it.
-const STATE_VERSION: u8 = 6;
+// G-T1 stage two changes declaration order: stage-one state must rebuild too.
+const STATE_VERSION: u8 = 7;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 
