@@ -7,6 +7,7 @@
 use super::*;
 
 mod arrays;
+mod invocations;
 mod records;
 mod template_constants;
 
@@ -149,6 +150,9 @@ impl<'a> ModuleChecker<'a> {
             return Type::Unknown;
         }
         let tokens = strip_outer_parentheses(tokens);
+        if let Some(result) = self.infer_immediate_call(tokens, scope) {
+            return result;
+        }
         if let Some(value) = self
             .flow
             .as_ref()

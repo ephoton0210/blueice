@@ -1,0 +1,382 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2020",
+    "module": "ESNext",
+    "declaration": true
+  },
+  "cases": [
+    {
+      "id": "predicate-named-unknown",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: unknown): value is string;\n"
+    },
+    {
+      "id": "predicate-named-union",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: string | number): value is string;\n"
+    },
+    {
+      "id": "predicate-arrow-concise",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const isText: (value: unknown) => value is string;\n"
+    },
+    {
+      "id": "predicate-arrow-block",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const isText: (value: string | number) => value is string;\n"
+    },
+    {
+      "id": "predicate-function-expression",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const isText: (value: unknown) => value is string;\n"
+    },
+    {
+      "id": "predicate-nonnull",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function present(value: string | null | undefined): value is string;\n"
+    },
+    {
+      "id": "predicate-negated",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function notText(value: string | number): value is number;\n"
+    },
+    {
+      "id": "predicate-second-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(tag: number, value: unknown): value is string;\n"
+    },
+    {
+      "id": "predicate-boolean-identity",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function truth(value: boolean): boolean;\n"
+    },
+    {
+      "id": "predicate-reassigned",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: string | number): boolean;\n"
+    },
+    {
+      "id": "predicate-nested-write",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: string | number): boolean;\n"
+    },
+    {
+      "id": "predicate-explicit-boolean",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: unknown): boolean;\n"
+    },
+    {
+      "id": "predicate-multiple-returns",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: unknown): boolean;\n"
+    },
+    {
+      "id": "predicate-implicit-return",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: unknown): true | undefined;\n"
+    },
+    {
+      "id": "predicate-bare-return",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: unknown): boolean | undefined;\n"
+    },
+    {
+      "id": "predicate-one-sided",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function longText(value: string | number): boolean;\n"
+    },
+    {
+      "id": "predicate-truthy-primitive",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const truthy: (value: string | null) => boolean;\n"
+    },
+    {
+      "id": "predicate-local-alias",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: string | number): value is string;\n"
+    },
+    {
+      "id": "predicate-shadowed-write",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function isText(value: string | number): value is string;\n"
+    },
+    {
+      "id": "predicate-call-positive",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(value: string | number): string;\n",
+      "runtime": {
+        "exit": 0,
+        "stdout": "ok \n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "predicate-call-negative",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(value: string | number): number;\n"
+    },
+    {
+      "id": "predicate-arrow-call",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(value: string | number): string;\n"
+    },
+    {
+      "id": "predicate-reassigned-call-error",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 171,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "try-normal-assignment",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(value: string | number): string;\n"
+    },
+    {
+      "id": "try-catch-join",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(value: string | number): string;\n"
+    },
+    {
+      "id": "try-catch-exception-error",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 83,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "try-finally-assignment",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(value: string | number): number;\n",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1 1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "try-finally-normal-only",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(value: string | number): string | 0;\n"
+    },
+    {
+      "id": "finally-return-override",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(): 1 | \"discarded\";\n",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "finally-throw-override",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(): string;\n"
+    },
+    {
+      "id": "finally-return-narrowing-error",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 112,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "try-catch-shadow",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(value: string | number): string;\n"
+    },
+    {
+      "id": "nested-finally-assignment",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(value: string | number): string;\n"
+    },
+    {
+      "id": "finally-break",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 122,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "capture-dotted-delayed-error",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 114,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "capture-dotted-iife",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(box: {\n    value: string | number;\n}): string;\n"
+    },
+    {
+      "id": "capture-stable-local",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function make(box: {\n    value: string | number;\n}): () => string;\n"
+    },
+    {
+      "id": "capture-later-reassignment-error",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 107,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "capture-escaping-writer-error",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 138,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "capture-alias-dotted-error",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'string'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 133,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "alias-write-other-binding",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function read(box: {\n    value: string | number;\n}): string;\n"
+    },
+    {
+      "id": "alias-write-own-reset-error",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 135,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "capture-shadowed-binding",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function make(value: string | number): () => string;\n"
+    },
+    {
+      "id": "capture-const-snapshot",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function make(box: {\n    value: string | number;\n}): () => string;\n",
+      "runtime": {
+        "exit": 0,
+        "stdout": "ok\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "capture-iife-write-error",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 129,
+          "length": 4,
+          "related": []
+        }
+      ]
+    }
+  ]
+}

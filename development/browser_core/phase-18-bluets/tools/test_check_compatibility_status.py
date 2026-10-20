@@ -23,6 +23,21 @@ class CurrentStatusTests(unittest.TestCase):
                 document = (self.root / relative).read_text(encoding="utf-8")
                 status.check_document(document, self.block, relative)
 
+    def test_report_header_uses_completed_measurement_date(self):
+        measured_date = self.inputs[2]["finished_at"].split("T", 1)[0]
+        self.assertIn(f"compatibility status ({measured_date})", self.block)
+
+    def test_missing_invalid_or_non_utc_measurement_dates_fail(self):
+        import hashlib
+        import json
+        for timestamp in (None, "", "2026-02-31T01:02:03Z", "2026-10-20", "2026-10-20T01:02:03+08:00"):
+            inputs = list(copy.deepcopy(self.inputs))
+            inputs[2]["finished_at"] = timestamp
+            inputs[5] = (json.dumps(inputs[2]) + "\n").encode()
+            inputs[0]["measurement_sha256"] = hashlib.sha256(inputs[5]).hexdigest()
+            with self.subTest(timestamp=timestamp), self.assertRaises(ValueError):
+                status.render_status(*inputs)
+
     def test_changed_counts_version_parity_and_platform_scope_fail(self):
         counts = self.inputs[0]["counts"]
         ratio = Decimal(counts["agreements"]) * 100 / Decimal(counts["comparison_cases"])

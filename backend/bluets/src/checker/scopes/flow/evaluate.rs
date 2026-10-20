@@ -88,9 +88,15 @@ fn run_graph(
                 }
             }
         }
+        let mut transfer_only = FlowModel::default();
+        let observations = if node.record_facts {
+            &mut *model
+        } else {
+            &mut transfer_only
+        };
         let state = expression(
             scopes,
-            model,
+            observations,
             &node.tokens,
             &preferred_state,
             node.expression_statement,
@@ -155,21 +161,7 @@ fn run_graph(
     graph
         .exits
         .iter()
-        .filter_map(|exit| {
-            incoming[*exit].as_ref().map(|state| {
-                expression(
-                    scopes,
-                    model,
-                    &graph.nodes[*exit].tokens,
-                    state,
-                    graph.nodes[*exit].expression_statement,
-                    infer,
-                    graph.execution,
-                    depth + 1,
-                    remaining,
-                )
-            })
-        })
+        .filter_map(|exit| outgoing[*exit].clone())
         .reduce(|left, right| join(scopes, &left, &right))
         .unwrap_or_else(|| {
             let mut dead = seed;

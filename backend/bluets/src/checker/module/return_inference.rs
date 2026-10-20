@@ -8,6 +8,7 @@ use super::*;
 use crate::parser::{NestedFunction, NestedFunctionBody, VariableKind};
 use std::cell::RefCell;
 mod completion;
+mod predicates;
 pub(super) use completion::has_return;
 
 #[derive(Default)]
@@ -174,6 +175,25 @@ impl ModuleChecker<'_> {
             ..BodyResults::default()
         };
         self.infer_body_items(body, &mut scope, &mut fresh, &mut found);
+        if let Some(flow) = &self.flow {
+            let returned = flow.returned_in(span.start, span);
+            if !returned.is_empty() {
+                found.returns.clear();
+                found.bare = flow.has_bare_return(span.start);
+                found.fresh = true;
+                for tokens in returned {
+                    if tokens.is_empty() {
+                        found.bare = true;
+                    } else {
+                        found.fresh &= self.fresh_return(&tokens, &fresh);
+                        found.returns.push(
+                            crate::parser::widen_literal_tokens(&tokens, true)
+                                .unwrap_or_else(|| self.infer_expression(&tokens, &scope)),
+                        );
+                    }
+                }
+            }
+        }
         if found.returns.is_empty() {
             let provisional = if asynchronous {
                 Type::Named {
@@ -188,8 +208,14 @@ impl ModuleChecker<'_> {
                 .borrow_mut()
                 .insert(span.start, provisional);
         }
-        let falls_through = (found.returns.is_empty() && !expression)
-            || self.inference_body_completes(body, &scope);
+        let falls_through = self
+            .flow
+            .as_ref()
+            .and_then(|flow| flow.completes(span.start))
+            .unwrap_or_else(|| {
+                (found.returns.is_empty() && !expression)
+                    || self.inference_body_completes(body, &scope)
+            });
         let mut result = if found.returns.is_empty() {
             if expression && !found.bare && !falls_through {
                 Type::Never
@@ -207,6 +233,11 @@ impl ModuleChecker<'_> {
                 value
             }
         };
+        if !asynchronous && !generator && result == Type::Boolean {
+            if let Some(predicate) = self.infer_result_predicate(parameters, span) {
+                result = predicate;
+            }
+        }
         if generator {
             result = Type::Named {
                 name: "Generator".to_string(),
@@ -744,11 +775,20 @@ fn joined(values: Vec<Type>) -> Type {
     }
     let broad = parts.clone();
     parts.retain(|part| !matches!(part, Type::Literal(_)) || !broad.contains(&widen(part.clone())));
+    if parts.contains(&Type::Literal("true".into()))
+        && parts.contains(&Type::Literal("false".into()))
+    {
+        parts.retain(
+            |part| !matches!(part, Type::Literal(text) if text == "true" || text == "false"),
+        );
+        parts.push(Type::Boolean);
+    }
     parts.sort_by_key(|part| match part {
-        Type::Literal(text) if text.starts_with(['\'', '"', '`']) => 0,
-        Type::Literal(text) if text.parse::<f64>().is_ok() => 1,
+        Type::String | Type::Number | Type::Boolean => 0,
+        Type::Literal(text) if text.starts_with(['\'', '"', '`']) => 1,
+        Type::Literal(text) if text.parse::<f64>().is_ok() => 2,
         Type::Undefined => 9,
-        _ => 2,
+        _ => 3,
     });
     match parts.len() {
         0 => Type::Never,

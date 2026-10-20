@@ -11,10 +11,11 @@ mod assignments;
 mod calls;
 mod evaluate;
 mod graph;
+mod inferred_predicates;
 mod predicates;
 mod properties;
 
-pub(crate) const VERSION: &str = "lexical-flow-v9";
+pub(crate) const VERSION: &str = "lexical-flow-v10";
 #[derive(Clone, Debug, PartialEq)]
 struct State {
     reachable: bool,
@@ -75,6 +76,12 @@ impl FlowModel {
         self.returns
             .get(&start)
             .is_some_and(|returned| !returned.is_empty())
+    }
+
+    pub(in crate::checker) fn has_bare_return(&self, start: usize) -> bool {
+        self.returns
+            .get(&start)
+            .is_some_and(|returned| returned.iter().any(Vec::is_empty))
     }
 
     pub(in crate::checker) fn completes(&self, start: usize) -> Option<bool> {

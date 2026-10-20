@@ -9,24 +9,24 @@
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-19).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-20).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 12,543 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,590 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,050/12,059 (99.9254%); 3 open, 6 refused observations |
-| Separate controls | 482 native-reference + 2 BlueTS owner = 484; excluded from direct agreement |
-| Case labels | 12,534 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 102 suites / 247 ignored Rust functions; not a case denominator |
-| Suite labels | 96 scoped closed, 1 open, 5 refused |
+| Direct agreement | 12,094/12,104 (99.9174%); 4 open, 6 refused observations |
+| Separate controls | 482 native-reference + 4 BlueTS owner = 486; excluded from direct agreement |
+| Case labels | 12,580 scoped closed (including controls), 4 open, 6 refused |
+| Suite inventory | 103 suites / 249 ignored Rust functions; not a case denominator |
+| Suite labels | 96 scoped closed, 2 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 12,543 recorded case expectations pass; expected differences/refusals are not
+All 12,590 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:1352de76d7b75e448a8b0186efddc2cb85bd3aab`.
-Input graph SHA-256: `24778a4ba7a79d7f7dc42943da41974524bdf757792d67208ae9428b85662288`.
+Compiler/oracle source: `backend-tree:b23a336fae6eac305f82d034cceb8a85d82bdeb4`.
+Input graph SHA-256: `4abe00d07c5396d163146f173bed6e3028c679ad0dc7481a3fc5a8b84d678641`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -12148,3 +12148,275 @@ G-C1's frozen checklist scope is complete. Only that existing Phase L item
 is checked. Implementation, regressions and corresponding measurement data
 are ready together before one coherent commit; no implementation or measurement
 commit was made in advance. The next unchecked implementation item is G-T1.
+
+## Phase L — G-T1 implementation
+
+### Frozen matrix and baseline (2026-10-20)
+
+The finite matrix is `backend/bluets/tests/fixtures/gt1_flow/cases.json`:
+44 strict ES2020/ESNext programs, TypeScript 5.9.3, declaration output on,
+default ES2020 libraries, no explicit predicate annotation on inferred cases.
+`tools/record_gt1_flow.cjs` obtains expectations independently from the pinned
+native compiler; `reference.json` records complete primary/related UTF-16
+module diagnostics and exact accepted declarations. The public compiler
+test checks output presence as well as every diagnostic and declaration.
+
+- 22 predicate observations: named functions, concise/braced arrows and a
+  function expression; unknown/union/non-null/negated/second-parameter forms;
+  local boolean aliases and lexical shadowing. Negative inference controls
+  include reassignment, a nested writer, explicit boolean, multiple/implicit
+  returns, a one-sided conjunction, primitive truthiness and boolean identity.
+  Positive/negative call branches check both expression assignments and
+  inferred exported return types; a reassigned-parameter call must still fail.
+- 11 exceptional-flow observations: normal and handler assignment/exit joins,
+  an exceptional-entry negative control, finalizer writes, normal-only
+  continuation, return/throw overrides, return-path narrowing rejection,
+  catch shadowing, nested finalizers and a loop break through a finalizer.
+- 11 capture observations: delayed dotted reads, IIFE reads/writes, stable
+  locals, later reassignment, escaping writers, mutable dotted aliases,
+  alias-local versus other-owner writes, shadowing and a const snapshot.
+
+The first failing replay found 28 mismatches, before implementation. Three
+fixture locals were then renamed from the contextual type keyword `number`
+to `amount` so the flow matrix does not depend on unrelated declaration-name
+parsing. The row count/forms were not reduced. The cross-alias row was renamed
+to describe its actual native behavior: TypeScript retains the other binding's
+property narrowing after an alias write. Likewise, native declaration
+inference includes try return types even when finally overrides them; this
+matrix records native behavior, not a replacement control-flow language.
+Four existing accepted rows additionally record actual native Node executions.
+
+Implementation and acceptance are in progress. G-T1 remains unchecked; no
+new aggregate compatibility measurement or completed-gate claim is made here.
+
+### Current implementation and outstanding acceptance
+
+Predicate synthesis uses the existing bounded lexical flow algebra and proves
+both positive and negative implications for the same unmodified parameter.
+Boolean parameters, explicit result annotations, asynchronous/generator results,
+multiple/implicit returns and one-sided truthiness are not silently promoted.
+Const boolean aliases are followed only while their referenced bindings remain
+unmodified. Captures keep their lexical identities; delayed dotted properties
+are not copied into a closure, while proven IIFEs share the actual call state.
+
+Return inference is republished after flow construction instead of reusing
+binding-time results. It consumes retained graph returns, including opaque
+unbraced statements, and expression-local facts. Finalizers have a broad
+all-completion observation path plus a normal-only transfer copy; an abrupt
+try exit cannot become a downstream continuation just because finally returns
+normally. Transfer-only copies do not overwrite the finalizer's broad local
+facts. Graph-node expansion stays within the existing work budget. Cache state
+epoch 6 and `lexical-flow-v10` prevent reuse of pre-fix diagnostics/declarations;
+both old state epochs 4 and 5 are forced through a cold rebuild.
+
+The original 44-row matrix now matches every verdict and complete diagnostic.
+One exact declaration still differs: `finally-return-override` emits
+`"discarded" | 1`, while pinned TypeScript emits `1 | "discarded"`.
+All 34 accepted outputs pass independent pinned-TypeScript import/type-equality
+consumers, Acorn ES2020 parsing and four actual Node execution comparisons.
+The consumer has a deliberately widened-predicate mutation control which must
+fail with native TS2344; it cannot equate a boolean result with a predicate.
+The exact-output test remains strict and failing for that one observation.
+
+A global numeric-first literal sort was tested and rejected: it breaks the
+existing exact `infer-return-decl-unions` oracle (`"one" | 1`). The old string
+literal priority is restored; only broad primitive precedence is corrected.
+A separate native probe confirms that the default library's literal interning
+changes these orders: with `noLib`, the two unions print in source order;
+with ES2020 libraries, `"one"` precedes 1 and 1 precedes `"discarded"`.
+No source-specific literal table, raw-oracle rewrite or silent normalization
+has been added. At this checkpoint an explicit question asked whether this
+nonsemantic ordering could use a documented native type-equivalence exception.
+The later reviewed decision below allows only a first stage; final exact-output
+compatibility remains required and G-T1 is still unchecked.
+
+An additional bare-return control was discovered during return-inference
+review and appended transparently (`predicate-bare-return`), bringing the
+case list to 45 rather than dropping an unsupported form. Native expectations
+are recorded before fixing that control. It checks that a graph's value-return
+facts cannot erase an earlier bare return and lose `undefined`.
+
+Focused evidence so far (not complete acceptance):
+
+- `/private/tmp/bluets-gt1-flow-focused.log` exposed the consumer virtual-directory
+  issue and the rejected global union sort. Neither failing run is credited.
+- `/private/tmp/bluets-gt1-regression-order.log`: all six existing inferred-return
+  matrix tests, including their live native oracles, pass after restoring the
+  literal priority. The G-T1 exact-output mismatch remains.
+- `/private/tmp/bluets-gt1-final-focused.log`: G-C1 CLI 5/5, corrupt-state 10/10,
+  watch 10/10 and referenced-declaration 14/14 pass, including selected ignored
+  oracles. G-T1 has three passing tests (native recorder, consumer/syntax/runtime
+  plus negative mutation, and below/above graph-budget control), and its strict
+  diagnostic/declaration matrix fails only on the literal union order.
+- `/private/tmp/bluets-gt1-clippy.log`: two-crate all-target Clippy with
+  `-D warnings` passes on the then-current source. Later source changes require
+  another run. Production responsibilities are split into dedicated predicate
+  and immediate-call modules; no modified production file exceeds 1,200 lines.
+
+The first ordinary two-crate exploratory run was interrupted after subsequent
+source edits made it stale; its log is
+`/private/tmp/bluets-gt1-ordinary-initial.log`. It is not a complete gate. The
+old G-C1 aggregate artifacts have not been replaced with partial successes.
+No G-T1 implementation/data commit or push has been made.
+
+The appended bare-return case reproduces a second mismatch in
+`/private/tmp/bluets-gt1-bare-before.log`, before its fix. Return inference now
+queries whether its owning graph contains a bare return rather than resetting
+that fact while replacing value-return candidates. The replay in
+`/private/tmp/bluets-gt1-current-focused.log` confirms that this control is
+repaired. The 45-row matrix has **44 exact agreements and one exact declaration
+ordering mismatch**; all verdicts and full diagnostic arrays agree. All 35
+accepted declarations pass pinned native type-equivalence consumers, syntax
+checks and the four recorded executions, including the negative consumer
+mutation control. The graph-budget control and all four public return-inference
+regressions pass. The aggregate test run is still **failed**, not accepted,
+because its strict matrix retains the ordering difference. No complete current
+two-crate/all-oracle measurement is claimed.
+
+Final local hygiene on this WIP passes workspace rustfmt (Rust 1.95), two-crate
+all-target Clippy `-D warnings`, Node syntax checking and `git diff --check`.
+Current focused log SHA-256:
+`617ffedf8f02ca32d2c6c56df3129d1c32a56e5aee6d7fa7c8358905e9bebcb9`.
+Current Clippy log (`/private/tmp/bluets-gt1-current-clippy.log`) SHA-256:
+`a96c0a7eee3c14c1c0d032843706b4816664c1d6366f812fa1b59c951ccd8185`.
+The 45-row input/reference SHA-256 values are respectively
+`917d57d8800f5b3d49264b2b86066d543f7a6897c243408c0cd2b1a9c8763302`
+and `0b09fdc69ba1838ad5812b56c43ab85fda5be7a39dcfece0085b1807e89e6aca`.
+These identify local WIP evidence, not an immutable backend-tree complete
+measurement. No G-T1 source or measurement has been staged or committed.
+
+### Reviewed two-stage acceptance (2026-10-20)
+
+The user permits union-order/type-equivalence acceptance **as a first stage**,
+but explicitly requires `.d.ts` to become byte-for-byte compatible. This is a
+reviewed sequencing decision, not deletion or completion of the exact-output
+gap. The parent G-T1 checkbox stays open until both stages meet their gates.
+The existing 45 native inputs and raw expectations remain unchanged.
+
+**First stage — bounded type agreement.** Keep exact acceptance/rejection and
+complete primary/related diagnostics, all existing source, runtime, syntax and
+owner-budget controls. The only temporary exception is the named
+`finally-return-override` declaration. Require both:
+
+1. A bounded structural/text check proving that the difference is solely a
+   permutation of the same union members, preserving member text, grouping and
+   all surrounding declaration text. No member addition/removal/widening, alias
+   substitution or other formatting difference is accepted. Tuple, parameter,
+   overload and intersection ordering must never be normalized by this rule.
+2. Independently compiled TypeScript 5.9.3 consumers proving type equivalence,
+   with negative controls which reject a widened predicate or changed union
+   member. A successful `typeof import(...)` consumer alone does not establish
+   arbitrary declaration-file equivalence or cover pure type-only exports.
+
+Retain both raw declarations and classify the byte mismatch as **open** in
+exact-output accounting. Record stage-one type agreement separately; do not
+inflate byte-for-byte agreement or claim full parity. A first-stage checkbox
+or coherent implementation/data commit requires the complete common gates and
+source-frozen measurements; it does not check the parent G-T1 item. No such
+stage completion or commit is claimed by this documentation update.
+
+**Second stage — exact `.d.ts` compatibility, still mandatory.** Fix declaration
+ordering and remove the temporary exception. All accepted entries in the matrix
+and existing exact-declaration regressions must match the pinned native output
+under the same options. Do not replace actual output with sorted snapshots,
+change native expectations, or accept type equivalence as final evidence.
+Existing explicitly documented platform normalization remains unchanged; no new
+normalization is introduced to hide declaration differences. Include regression
+coverage for the competing literal orders already observed, so repairing
+`1 | "discarded"` cannot regress the existing `"one" | 1` output. Repeat full
+common gates and source-bound measurement before checking G-T1. Broader `.d.ts`
+compositions and the full-parity claim remain subject to their open inventory
+scopes; this finite matrix does not certify every TypeScript declaration.
+
+This turn records the approved sequence only. It does not modify the compiler,
+test comparator, native oracle bytes, generated compatibility measurements or
+existing test results, and makes no new runtime-pass claim. Both stages remain
+unchecked pending their implementation and evidence.
+
+### First-stage implementation and source-frozen replay
+
+The ordinary public-boundary matrix now checks every diagnosis/verdict exactly.
+The sole named order exception additionally requires the exact raw BlueTS/native
+pair in `gt1_flow/stage1-order.json` and a bounded lexical proof: exactly two
+distinct literal return members exchange positions, while surrounding bytes and
+the ` | ` separator are unchanged. The guard rejects member removal/addition,
+widening, substitution, duplicates, grouping, tuple/intersection replacements,
+signature/name changes, whitespace/newline/comment changes and extra exports.
+A quoted pipe remains part of its string member. The 4-KiB guard limit fails
+closed. This test helper changes no production declaration or native snapshot.
+
+The pinned consumer checks the exported value surface in both directions, with
+separate mutations proving that a widened predicate and a changed union member
+fail with native TS2344. The exact mismatch remains open in case accounting;
+the two guard/graph-budget controls remain separate from TypeScript agreement.
+No native expectation or original 45-row case identity was removed.
+
+The deliberately empty first implementation of the guard reproduces three
+failures in `/private/tmp/bluets-gt1-stage1-guard-before.log`. The implemented
+guard then passes all 28 focused tests, including selected ignored native
+oracles, in `/private/tmp/bluets-gt1-stage1-focused.log`. The six suites are
+catch flow, G-C1 CLI, G-T1, guards, inferred returns and lexical narrowing.
+Preliminary all-target two-crate Clippy passes; the full final replay remains
+required after generated data is ready.
+
+Preflight found and corrected a case-adapter assumption about calls inside
+assert macros: the union guard's actual negative-case array is now the source
+of its control evidence. This occurred before measurement began. The final
+frozen source is `backend-tree:b23a336fae6eac305f82d034cceb8a85d82bdeb4`, graph
+SHA-256 `4abe00d07c5396d163146f173bed6e3028c679ad0dc7481a3fc5a8b84d678641`.
+The exact staged-source check passes. The source audit finds 103 suites,
+249 selected ignored functions, no missing provider, and 47 G-T1 observations:
+44 direct comparisons, one open raw-order difference and two separate controls.
+These are source-audit counts, not a completed measurement or pass-rate claim.
+
+The complete source-frozen run has passed, log
+`/private/tmp/bluets-gt1-stage1-measurement-run.log` and per-suite evidence in
+`/private/tmp/bluets-gt1-stage1-measurement-pxGf3A/`: 103/103 suites and 540/540
+Rust tests, including all 249 selected ignored oracle functions, with no failed,
+ignored or filtered tests. It finished at `2026-10-20T01:44:38.624Z` on
+darwin-arm64 / Rust 1.98.0. The local 82-test core oracle passes in this cohort;
+this is not a new Windows VM run.
+
+All compiler inputs and oracle tools were unchanged throughout the run. The
+measurement preserves its actual 56 before/after tool hashes. After completion,
+only the unused documentation formatter `check_compatibility_status.py` and its
+tests changed: current-status dates now derive from the completed measurement
+instead of the hardcoded previous day. Their recorded bodies remain available
+in `runner_base_revision`; the other 54 tools still match their recorded hashes.
+The measurement hashes have not been rewritten. All 13 Python and 15 Node tool
+tests pass after this documentation-only correction.
+
+Generated case/suite/measurement evidence now records N = 12,590: 12,094/12,104
+direct agreements, four open and six refused observations, 482 native-reference
+and four owner controls. All 12,543 original suite-qualified identities and
+their source/selector/label/unit/comparison fields are retained; 47 are added.
+The ordinary two-crate replay passes: 1,311 passed, zero failed, 249 ignored
+(all separately executed in the complete cohort). Workspace Rust 1.95 rustfmt,
+two-crate all-target Clippy `-D warnings`, staged source/case checks, row
+accounting, all four status summaries and `git diff --check` pass. First-stage
+acceptance is complete. The second-stage and parent checkboxes remain open;
+the single raw exact-output difference is not counted as agreement.
+
+Reproduction commands use one shared target, sequential Cargo invocations,
+`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0`:
+
+```sh
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs --output-dir /private/tmp/bluets-gt1-stage1-measurement-pxGf3A --staged-source
+cargo test -p blueice-bluets -p blueice-bluets-bluejs --offline --no-fail-fast
+cargo clippy -p blueice-bluets -p blueice-bluets-bluejs --all-targets --offline -- -D warnings
+```
+
+The cohort additionally sets pinned TypeScript/Acorn paths, `FORCE_COLOR=0`
+and the built `BLUEJS_REGEXP_WORKER`; its producer validates source before and
+after. Log SHA-256 values:
+
+| Evidence | SHA-256 |
+| --- | --- |
+| Full cohort log | `753c98c4964f1b82bdae4c549f408e372a724bf6813c5ed88d860af25645de5f` |
+| Ordinary test log | `d920a6c02a819b33d96b16d9ee0cd106156e021396d582ad752e829163a5e95c` |
+| Final Clippy log | `5d9cd10c4e26fdf7c5c37f711099068bc3580f84594fef14f01443588ffa8f35` |
+| Versioned measurement | `88d086383682dcbfdf525a45c5d791126c8db78f09d44eb4c4b034c9ded56050` |
+
+These facts and the implementation are submitted together, not as an advance
+source-only commit. This leaf does not replace final workspace/VM milestone
+acceptance or broaden the inventory's still-open feature scope.

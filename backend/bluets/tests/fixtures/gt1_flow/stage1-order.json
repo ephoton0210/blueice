@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "observations": [
+    {
+      "id": "finally-return-override",
+      "native": "export declare function read(): 1 | \"discarded\";\n",
+      "bluets": "export declare function read(): \"discarded\" | 1;\n",
+      "exact_output": "open",
+      "reason": "Stage one permits only an unchanged union-member permutation plus an independent native consumer; final byte compatibility remains required."
+    }
+  ]
+}

@@ -34,6 +34,14 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
             "/observations"
         };
         let mut cases = case_sources::json_cases(&path, text, pointer, "program/configuration")?;
+        if stem == "gt1_flow" {
+            let facts = rust_facts::parse(snapshot.source(&suite.harness)?)?;
+            let order_only = super::case_inline::array(&facts, "", "ORDER_ONLY_CASES")?;
+            if !order_only.labels.is_empty() {
+                case_sources::classify(&mut cases, &order_only.labels, "", Comparison::Open,
+                    "Stage-one native type equivalence and literal-union permutation agree, but raw .d.ts member order differs; exact output is still required by stage two.")?;
+            }
+        }
         if stem == "emitted_target_editions" {
             let rows = root
                 .pointer(pointer)
@@ -250,6 +258,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "diagnostics_projects" => "diagnostics/project-positions.json",
         "explicit_this_context" => "explicit-this-context-reference.json",
         "guards_checker_matrix" => "typescript_oracle/guards-reference.json",
+        "gt1_flow" => "gt1_flow/reference.json",
         "indexed_call_context" => "indexed-call-context-reference.json",
         "inference_checker_matrix" => "typescript_oracle/inference-reference.json",
         "jsx_runtime_namespace" => "jsx_runtime_namespace/reference.json",

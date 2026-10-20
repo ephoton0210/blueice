@@ -11,6 +11,7 @@ unchanged. This checks documentation consistency, not a new runtime test run.
 import argparse
 import json
 import re
+from datetime import datetime
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
@@ -37,6 +38,11 @@ def load_inputs(root):
 
 def render_status(data, catalog, measurement, inventory, refusals, proof):
     labels = rows.validate_cases(data, measurement, proof)
+    finished = measurement.get("finished_at")
+    rows.require(isinstance(finished, str) and re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z", finished),
+        "missing or non-UTC completed measurement date")
+    measured_date = datetime.fromisoformat(finished.replace("Z", "+00:00")).date().isoformat()
     rows.require(catalog.get("schema") == 1, "unsupported suite catalog")
     for key in ("typescript", "source_revision", "source_graph_sha256"):
         rows.require(catalog.get(key) == data[key], f"foreign suite catalog {key}")
@@ -73,7 +79,7 @@ def render_status(data, catalog, measurement, inventory, refusals, proof):
     rows.require(data.get("measured_on") == measurement.get("platform"), "foreign measurement platform")
     return f"""{BEGIN}
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-19).**
+**Current BlueTS / BlueTSC compatibility status ({measured_date}).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
 Pinned compiler: **TypeScript {data['typescript']}**. **N = {counts['listed']:,} suite-qualified

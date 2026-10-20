@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-19).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-20).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 12,543 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 12,590 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,050/12,059 (99.9254%); 3 open, 6 refused observations |
-| Separate controls | 482 native-reference + 2 BlueTS owner = 484; excluded from direct agreement |
-| Case labels | 12,534 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 102 suites / 247 ignored Rust functions; not a case denominator |
-| Suite labels | 96 scoped closed, 1 open, 5 refused |
+| Direct agreement | 12,094/12,104 (99.9174%); 4 open, 6 refused observations |
+| Separate controls | 482 native-reference + 4 BlueTS owner = 486; excluded from direct agreement |
+| Case labels | 12,580 scoped closed (including controls), 4 open, 6 refused |
+| Suite inventory | 103 suites / 249 ignored Rust functions; not a case denominator |
+| Suite labels | 96 scoped closed, 2 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 12,543 recorded case expectations pass; expected differences/refusals are not
+All 12,590 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:1352de76d7b75e448a8b0186efddc2cb85bd3aab`.
-Input graph SHA-256: `24778a4ba7a79d7f7dc42943da41974524bdf757792d67208ae9428b85662288`.
+Compiler/oracle source: `backend-tree:b23a336fae6eac305f82d034cceb8a85d82bdeb4`.
+Input graph SHA-256: `4abe00d07c5396d163146f173bed6e3028c679ad0dc7481a3fc5a8b84d678641`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -99,6 +99,8 @@ all-platform or single-run prerequisite.
    Node exit/stdout/stderr and selected-edition syntax checks. Declaration work
    compares exact output and checks a consumer with pinned TypeScript. Map work
    compares complete decoded segments/metadata, not raw VLQ or selected tokens.
+   The reviewed G-T1 first-stage exception below is temporary: it does not
+   replace the final `.d.ts` exact-output requirement or complete G-T1.
 5. **No hidden successes.** Remove a known-gap/refusal allowance only after its
    actual behavior agrees. Native-accepted language forms must not pass merely
    because BlueTS's old refusal was asserted. Keep case selectors, controls,
@@ -171,7 +173,38 @@ Existing measured behavior is reused; it is not implemented again.
   - **Pass:** inferred predicates and narrowed expression/declaration types agree
     with 5.9.3 for every listed form, with negative controls for reassignment,
     shadowing, escaping closures and exceptional exits; no stale narrowing escapes
-    its owning lexical binding.
+    its owning lexical binding. Final acceptance also requires exact `.d.ts`
+    output under the same pinned compiler/options; type equivalence alone is
+    not final declaration compatibility.
+  - [x] **First stage — bounded type agreement (user-approved).** For the pinned
+    45-program list, retain exact verdicts and complete diagnostics. Only the
+    recorded `finally-return-override` declaration may temporarily differ in
+    union-member order: a structural check must prove an exact permutation of
+    unchanged members, with every other part of the declaration unchanged,
+    and TypeScript 5.9.3 consumers must independently confirm type equivalence.
+    Adding/removing/widening a member, changing grouping, or reordering tuples,
+    parameters, overloads or intersection members must fail. Preserve raw native
+    and BlueTS declarations and report this as an open exact-output observation,
+    not a byte-for-byte agreement. Run the common complete implementation gates
+    and source-bound measurements before checking or committing this stage;
+    implementation and its corresponding measurement stay in the same commit.
+  - [ ] **Second stage — exact `.d.ts` compatibility (required).** Repair the
+    declaration ordering, remove the temporary exception, and require exact
+    output for every accepted program in the matrix plus the existing exact
+    declaration regressions. Retain all raw observations and negative controls;
+    do not substitute semantic normalization, sorted snapshots or rewritten
+    native expectations. Existing explicitly documented platform normalization
+    rules are not broadened. Repeat the complete gates and source-bound
+    measurements. Only then may the parent G-T1 item be checked; the broader
+    inventory/full-parity claim still needs its own evidence.
+  - **First stage accepted (2026-10-20):** all 45 verdict/diagnostic observations,
+    35 accepted native consumers, four executions, bounded permutation and
+    negative controls pass. Source-frozen replay: 103 suites / 540 tests,
+    including all 249 ignored functions; ordinary two-crate gate: 1,311 passed.
+    Formatting, warnings-denied Clippy and evidence consistency pass. The sole
+    raw declaration-order difference remains open, not byte agreement. Second
+    stage and parent G-T1 remain unchecked.
+    [Evidence and reviewed two-stage acceptance](PLAN.md#phase-l--g-t1-implementation).
 
 - [ ] **G-T3 — Composed type operators and key/query precision.**
   - **Scope:** nested conditional/mapped/indexed types, template-`infer` and escaped

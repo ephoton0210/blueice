@@ -61,6 +61,10 @@ impl ModuleChecker<'_> {
         );
         self.diagnostics.extend(flow.diagnostics.iter().cloned());
         self.flow = Some(flow);
+        // Binding-time inference has no expression-local flow facts. Publish
+        // again only after those facts exist, never reuse provisional results.
+        self.return_inference.results.borrow_mut().clear();
+        self.infer_module_return_signatures();
     }
 
     pub(crate) fn dedupe_name_diagnostics(&mut self) {

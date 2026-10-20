@@ -14,6 +14,9 @@ pub(super) struct Node {
     pub(super) edges: Vec<Edge>,
     pub(super) preferred: Option<Vec<Token>>,
     pub(super) expression_statement: bool,
+    /// A finalizer's normal-only copy propagates effects, not narrower local
+    /// observations: its original body already observes every abrupt path.
+    pub(super) record_facts: bool,
 }
 
 pub(super) struct Graph {
@@ -72,6 +75,7 @@ pub(super) fn execution(scopes: &ScopeModel<'_>, id: ScopeId) -> Option<Graph> {
             edges: Vec::new(),
             preferred: None,
             expression_statement: false,
+            record_facts: true,
         }],
         breaks: Vec::new(),
         continues: Vec::new(),
@@ -136,6 +140,7 @@ impl Builder<'_, '_> {
             edges: Vec::new(),
             preferred: None,
             expression_statement: false,
+            record_facts: true,
         });
         for previous in incoming {
             self.edge(*previous, id, None);
@@ -156,6 +161,20 @@ impl Builder<'_, '_> {
 
     fn statement(&mut self, incoming: Vec<usize>) -> Vec<usize> {
         if self.index >= self.tokens.len() {
+            return incoming;
+        }
+        if self.nodes.len()
+            > self
+                .scopes
+                .max_type_expansions
+                .saturating_mul(1024)
+                .max(1024)
+        {
+            self.scopes.flow_limit(
+                &self.tokens[self.index..self.index + 1],
+                "control-flow graph exceeds its bounded node limit",
+            );
+            self.index = self.tokens.len();
             return incoming;
         }
         self.depth += 1;
@@ -414,10 +433,6 @@ impl Builder<'_, '_> {
     }
 
     fn try_statement(&mut self, incoming: Vec<usize>) -> Vec<usize> {
-        // Structured completion still owns exceptional exits and finally's
-        // return override. Retain local flow edges without asserting that this
-        // adapter has a complete model of function completion.
-        self.completion_known = false;
         self.index += 1;
         let entry = self.node(&[], &incoming);
         let first = self.nodes.len();
@@ -456,7 +471,21 @@ impl Builder<'_, '_> {
             // The finalizer also runs during throws and returns. Its local
             // facts must include those paths, even when they do not continue.
             let finalizer = self.node(&[], &exceptional);
-            outgoing = self.statement(vec![finalizer]);
+            let start = self.index;
+            self.statement(vec![finalizer]);
+            let end = self.index;
+            // A throw/return entering the finalizer never becomes a normal
+            // continuation merely because the finalizer completes. Re-evaluate
+            // its transfers on only the normal predecessors for downstream flow.
+            let first = self.nodes.len();
+            let returns = self.returns.len();
+            self.index = start;
+            outgoing = self.statement(outgoing);
+            self.index = end;
+            self.returns.truncate(returns);
+            for node in &mut self.nodes[first..] {
+                node.record_facts = false;
+            }
         }
         outgoing
     }

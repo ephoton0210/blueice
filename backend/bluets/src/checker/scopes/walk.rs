@@ -34,13 +34,23 @@ impl ScopeModel<'_> {
                 }
                 Declaration::Variable(variable) => self.variable(variable, scope),
                 Declaration::Function(function) => {
+                    let result = function.return_type.clone().or_else(|| {
+                        (scope == 0)
+                            .then(|| {
+                                self.scopes[0]
+                                    .values
+                                    .get(&function.name)
+                                    .map(|binding| binding.declared_type.clone())
+                            })
+                            .flatten()
+                    });
                     self.value(
                         scope,
                         &function.name,
                         0,
                         false,
                         false,
-                        function_type(&function.parameters, &function.return_type),
+                        function_type(&function.parameters, &result),
                     );
                     self.binding_kind(scope, &function.name, BindingKind::Function);
                     self.function(function, scope);

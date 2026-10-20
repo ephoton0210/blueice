@@ -141,6 +141,38 @@ fn narrow_at(
         return Some(next);
     }
     if let [literal] = tokens {
+        if let Some(id) = scopes.flow_binding(&literal.text, literal.start) {
+            if let Some(alias) = scopes.flow_alias(&id) {
+                if alias.iter().any(|token| {
+                    matches!(
+                        token.text.as_str(),
+                        "typeof" | "===" | "!==" | "==" | "!=" | "&&" | "||" | "!"
+                    )
+                }) {
+                    let mutated = alias.iter().any(|token| {
+                        scopes
+                            .flow_binding(&token.text, token.start)
+                            .is_some_and(|root| {
+                                scopes.mutations.iter().any(|mutation| {
+                                    token.start < mutation.operator.start
+                                        && mutation.operator.start < literal.start
+                                        && scopes
+                                            .flow_binding(&root.1, mutation.operator.start)
+                                            .as_ref()
+                                            == Some(&root)
+                                        && mutation
+                                            .target
+                                            .first()
+                                            .is_some_and(|token| token.text == root.1)
+                                })
+                            })
+                    });
+                    if !mutated {
+                        return narrow_at(scopes, state, &alias, positive, depth + 1);
+                    }
+                }
+            }
+        }
         if matches!(
             literal.text.as_str(),
             "true" | "false" | "null" | "undefined"

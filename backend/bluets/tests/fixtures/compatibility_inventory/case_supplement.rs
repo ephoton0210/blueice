@@ -33,6 +33,35 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt1_flow" => {
+            let scope = "finalizer_duplication_respects_the_owner_work_budget";
+            if !facts.calls.iter().any(|call| call.scope == scope) {
+                return Err("missing G-T1 owner-work-budget control".into());
+            }
+            let mut case = Case::new(source, &format!("function:{scope}"), scope, "owner-control");
+            case.comparison = Comparison::BoundaryControl;
+            case.reason = Some("BlueTS's below/above owner work budget for finalizer graph expansion; not TypeScript agreement.".into());
+            let guard = "union_order::union_order_guard_rejects_every_non_permutation_change";
+            let support = "backend/bluets/tests/oracle_support/union_order.rs";
+            let guard_facts = rust_facts::parse(snapshot.source(support)?)?;
+            let mutations = array(
+                &guard_facts,
+                "union_order_guard_rejects_every_non_permutation_change",
+                "for@0",
+            )?;
+            if mutations.labels.is_empty() {
+                return Err("missing G-T1 union-order boundary control".into());
+            }
+            let mut guard_case = Case::new(
+                support,
+                "function:union_order_guard_rejects_every_non_permutation_change",
+                guard,
+                "owner-control",
+            );
+            guard_case.comparison = Comparison::BoundaryControl;
+            guard_case.reason = Some("BlueTS's bounded declaration comparator rejects member, grouping and non-union mutations; not an extra native program agreement.".into());
+            vec![case, guard_case]
+        }
         "gc1_explain_files" => {
             let scope = "explain_files_does_not_follow_or_describe_outside_owner_input";
             if !facts.calls.iter().any(|call| call.scope == scope) {
