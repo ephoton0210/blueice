@@ -274,14 +274,18 @@ fn promise_reaction_storage_complete_job_replacement_refunds_old_backing() {
     for _ in 0..4 {
         job_slot(&mut vm);
     }
-    let _peer = leave_room(&mut vm, 8 * std::mem::size_of::<PromiseJob>() + 8);
+    let _peer = leave_room(
+        &mut vm,
+        8 * std::mem::size_of::<promise_job_storage::QueuedPromiseJob>() + 8,
+    );
     register(&mut vm, promise, target);
     assert!(vm.promises[&promise].handled);
     assert_eq!(vm.promise_jobs.len(), 5);
     assert_eq!(vm.promise_jobs.capacity(), 8);
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
-        MAX_HOST_SCHEDULING_BYTES - 4 * std::mem::size_of::<PromiseJob>()
+        MAX_HOST_SCHEDULING_BYTES
+            - 4 * std::mem::size_of::<promise_job_storage::QueuedPromiseJob>()
     );
 }
 #[cfg_attr(test, test)]

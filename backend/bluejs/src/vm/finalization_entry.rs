@@ -57,26 +57,29 @@ impl Vm {
         if self.config.instruction_budget == 0 {
             return Err(RuntimeError::InstructionLimit);
         }
-        self.admit_scheduling_work(HostSchedulingUsage {
-            payload_bytes: bytes.saturating_add(std::mem::size_of::<Value>()),
-            ..Default::default()
+        let owner = self.finalization_queue_owner(None)?;
+        let mut prepared = PreparedFinalizationEntry {
+            arguments: Vec::new(),
+            references,
+            payload: self.charge_execution_payload(0),
+            control: self.charge_execution_control(0),
+        };
+        prepared.payload.retain_entry(self, bytes, owner.as_ref())?;
+        prepared
+            .control
+            .retain_entry(self, std::mem::size_of::<Value>(), owner.as_ref())?;
+        prepared.arguments.try_reserve_exact(1).map_err(|_| {
+            owner.as_ref().map_or(
+                RuntimeError::SchedulingLimit,
+                host_scheduling::SharedSchedulingCharge::fail,
+            )
         })?;
-        let payload = self.charge_execution_payload(bytes);
-        let mut arguments = Vec::<Value>::new();
-        arguments.try_reserve_exact(1).map_err(|_| {
-            self.host_scheduling
-                .as_ref()
-                .map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail)
-        })?;
-        let control = self.charge_execution_control(host_scheduling::slots(&arguments));
+        prepared
+            .control
+            .resize_entry(host_scheduling::slots(&prepared.arguments))?;
         self.synchronize_scheduling_usage()?;
         self.prepare_async_frame_root_slots(references.iter().flatten().count())?;
-        Ok(Some(PreparedFinalizationEntry {
-            arguments,
-            references,
-            payload,
-            control,
-        }))
+        Ok(Some(prepared))
     }
 }
 

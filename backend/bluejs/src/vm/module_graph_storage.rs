@@ -30,6 +30,14 @@ fn fail(scope: Option<&SchedulingScope>) -> RuntimeError {
     scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail)
 }
 impl ModuleRecords {
+    pub(super) fn owner_view(&self) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        self.charge
+            .borrow()
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()
+    }
+
     pub(super) fn attach_values(&self, scope: &SchedulingScope) -> Result<(), RuntimeError> {
         for record in self.values() {
             if let Some(value) = &record.completion {

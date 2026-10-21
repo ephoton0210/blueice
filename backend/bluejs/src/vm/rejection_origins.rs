@@ -20,6 +20,12 @@ impl PromiseJob {
 }
 
 impl Vm {
+    pub(super) fn rejection_origin_storage_can_join(&self, scope: &SchedulingScope) -> bool {
+        self.promise_origin_override_storage
+            .as_ref()
+            .is_none_or(|storage| storage.belongs_to(scope))
+    }
+
     pub(super) fn current_rejection_origin_payload_bytes(&self) -> usize {
         if let Some(origin) = &self.promise_origin_override {
             origin.payload_bytes()
@@ -35,10 +41,14 @@ impl Vm {
         &mut self,
     ) -> Result<(ThrowOrigin, Option<host_scheduling::SharedSchedulingCharge>), RuntimeError> {
         self.synchronize_scheduling_usage()?;
-        let mut charge = self
-            .host_scheduling
+        let owner = if let Some(storage) = &self.promise_origin_override_storage {
+            Some(storage.reserve_peer(0)?)
+        } else {
+            self.argument_list_owner()?
+        };
+        let mut charge = owner
             .as_ref()
-            .map(|scope| scope.shared_charge(self.current_rejection_origin_payload_bytes()))
+            .map(|owner| owner.reserve_peer(self.current_rejection_origin_payload_bytes()))
             .transpose()?;
         let origin = self.current_rejection_origin();
         if let Some(charge) = &mut charge {
@@ -95,22 +105,59 @@ impl Vm {
         charge: Option<host_scheduling::SharedSchedulingCharge>,
         callback: impl FnOnce(&mut Self) -> Result<T, RuntimeError>,
     ) -> Result<T, RuntimeError> {
+        let validation = (|| {
+            for storage in [&self.promise_origin_override_storage, &charge]
+                .into_iter()
+                .flatten()
+            {
+                storage.reserve_peer(0)?;
+                if let Some(scope) = &self.host_scheduling {
+                    if !storage.belongs_to(scope) {
+                        return Err(scope.fail());
+                    }
+                }
+            }
+            Ok(())
+        })();
+        if let Err(error) = validation {
+            drop(origin);
+            drop(charge);
+            return Err(error);
+        }
         let previous = std::mem::replace(&mut self.promise_origin_override, origin);
-        drop(charge);
-        let bytes = previous.as_ref().map_or(0, ThrowOrigin::payload_bytes);
+        let previous_storage = std::mem::replace(&mut self.promise_origin_override_storage, charge);
+        let bytes = if previous_storage.is_some() {
+            0
+        } else {
+            previous.as_ref().map_or(0, ThrowOrigin::payload_bytes)
+        };
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(bytes);
-        let added_bytes = self
-            .promise_origin_override
-            .as_ref()
-            .map_or(0, ThrowOrigin::payload_bytes);
+        let added_bytes = if self.promise_origin_override_storage.is_some() {
+            0
+        } else {
+            self.promise_origin_override
+                .as_ref()
+                .map_or(0, ThrowOrigin::payload_bytes)
+        };
         let result = if added_bytes == 0 {
             callback(self)
         } else {
             self.synchronize_scheduling_usage()
                 .and_then(|()| callback(self))
         };
+        let original_owner = self
+            .promise_origin_override_storage
+            .as_ref()
+            .map(|storage| storage.reserve_peer(0))
+            .transpose();
+        // Destroy the incoming data before returning its credit. Displaced
+        // native credit never joins the VM-field counter, including in a
+        // neutral callback or while JavaScript masks its ambient provenance.
         self.promise_origin_override = previous;
+        self.promise_origin_override_storage = previous_storage;
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(bytes);
+        self.reconcile_scheduling_ownership();
+        original_owner?;
         result
     }
 

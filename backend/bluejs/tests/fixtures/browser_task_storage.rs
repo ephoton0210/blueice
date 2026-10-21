@@ -96,7 +96,10 @@ fn browser_task_storage_drag_refuses_net_only_replacement_allowance() {
     fill_roots(&mut vm, 1);
     let roots = vm.heap.root_storage_state();
     let next = serial(&vm);
-    let _peer = leave_room(&mut vm, 4 * std::mem::size_of::<BrowserTask>());
+    let _peer = leave_room(
+        &mut vm,
+        4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>(),
+    );
     assert_eq!(
         vm.queue_drag_string_task(callback, "".into()),
         Err(RuntimeError::SchedulingLimit)
@@ -265,7 +268,11 @@ impl Fixture {
     }
     fn extra_bytes(&self) -> usize {
         match self.producer {
-            Producer::Read => std::mem::size_of::<crate::heap::FileReaderState>(),
+            // The independent reader copy plus the call's temporary realm roots.
+            Producer::Read => {
+                std::mem::size_of::<crate::heap::FileReaderState>() + realm_roots_bytes(4)
+            }
+            Producer::Timeout => realm_roots_bytes(0),
             Producer::Handled => std::mem::size_of::<host_rejections::PendingRejection>(),
             _ => 0,
         }
@@ -300,6 +307,11 @@ fn root_bytes(vm: &Vm) -> usize {
         (len + 1).max(len * 2),
     ))
 }
+fn realm_roots_bytes(count: usize) -> usize {
+    crate::vm::realm_call_storage::RealmCallRoots::new(count, None)
+        .unwrap()
+        .retained_bytes()
+}
 fn observer(vm: &Vm) -> Vm {
     Vm {
         host_scheduling: Some(vm.host_scheduling.as_ref().unwrap().child()),
@@ -312,7 +324,8 @@ fn browser_task_storage_all_producers_refuse_net_only_growth() {
     for producer in PRODUCERS {
         let mut fixture = Fixture::new(producer, 4);
         fill_roots(&mut fixture.vm, 1);
-        let room = 4 * std::mem::size_of::<BrowserTask>() + fixture.extra_bytes();
+        let room = 4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>()
+            + fixture.extra_bytes();
         let roots = fixture.vm.heap.root_storage_state();
         let next = serial(&fixture.vm);
         let _peer = leave_room(&mut fixture.vm, room);
@@ -339,7 +352,7 @@ fn browser_task_storage_full_growth_allowance_refunds_old_backing_and_reader_cop
         let mut fixture = Fixture::new(producer, 4);
         fill_roots(&mut fixture.vm, 1);
         let extra = fixture.extra_bytes();
-        let old = 4 * std::mem::size_of::<BrowserTask>();
+        let old = 4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>();
         let _peer = leave_room(&mut fixture.vm, 2 * old + extra);
         fixture.append().unwrap();
         assert_eq!(
@@ -353,7 +366,8 @@ fn browser_task_storage_full_growth_allowance_refunds_old_backing_and_reader_cop
             fixture.vm.host_scheduling_snapshot().payload_bytes,
             MAX_HOST_SCHEDULING_BYTES
                 - old
-                - if matches!(producer, Producer::Read) {
+                - if matches!(producer, Producer::Read | Producer::Timeout) {
+                    // The reader copy and temporary realm roots are all refunded.
                     extra
                 } else {
                     0
@@ -367,7 +381,9 @@ fn browser_task_storage_one_byte_short_growth_refunds_all_preparations() {
     for producer in PRODUCERS {
         let mut fixture = Fixture::new(producer, 4);
         fill_roots(&mut fixture.vm, 1);
-        let room = 8 * std::mem::size_of::<BrowserTask>() + fixture.extra_bytes() - 1;
+        let room = 8 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>()
+            + fixture.extra_bytes()
+            - 1;
         let roots = fixture.vm.heap.root_storage_state();
         let next = serial(&fixture.vm);
         let _peer = leave_room(&mut fixture.vm, room);
@@ -410,7 +426,8 @@ fn browser_task_storage_spare_slots_admit_only_new_owners() {
         assert_eq!(
             fixture.vm.host_scheduling_snapshot().payload_bytes,
             MAX_HOST_SCHEDULING_BYTES
-                - if matches!(producer, Producer::Read) {
+                - if matches!(producer, Producer::Read | Producer::Timeout) {
+                    // The reader copy and temporary realm roots are all refunded.
                     extra
                 } else {
                     0
@@ -505,7 +522,7 @@ fn browser_task_storage_joint_root_refusal_preserves_queue_and_reader_state() {
     for producer in [Producer::Drag, Producer::Read, Producer::Handled] {
         let mut fixture = Fixture::new(producer, 0);
         fill_roots(&mut fixture.vm, 0);
-        let room = 4 * std::mem::size_of::<BrowserTask>()
+        let room = 4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>()
             + fixture.extra_bytes()
             + root_bytes(&fixture.vm)
             - 1;
@@ -540,7 +557,9 @@ fn browser_task_storage_exact_joint_root_allowance_transfers_each_owner_once() {
         fill_roots(&mut fixture.vm, 0);
         let extra = fixture.extra_bytes();
         let old = fixture.vm.heap.root_storage_bytes();
-        let room = 4 * std::mem::size_of::<BrowserTask>() + extra + root_bytes(&fixture.vm);
+        let room = 4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>()
+            + extra
+            + root_bytes(&fixture.vm);
         let _peer = leave_room(&mut fixture.vm, room);
         fixture.append().unwrap();
         assert_eq!(
@@ -554,7 +573,8 @@ fn browser_task_storage_exact_joint_root_allowance_transfers_each_owner_once() {
             fixture.vm.host_scheduling_snapshot().payload_bytes,
             MAX_HOST_SCHEDULING_BYTES
                 - old
-                - if matches!(producer, Producer::Read) {
+                - if matches!(producer, Producer::Read | Producer::Timeout) {
+                    // The reader copy and temporary realm roots are all refunded.
                     extra
                 } else {
                     0
@@ -591,7 +611,7 @@ fn browser_task_storage_rust_held_candidate_keeps_its_document_lease_after_vm_dr
     drop(vm);
     assert_eq!(
         observed.host_scheduling_snapshot().payload_bytes,
-        4 * std::mem::size_of::<BrowserTask>() + 8
+        4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>() + 8
     );
     drop(text);
     drop(prepared);
@@ -601,7 +621,10 @@ fn browser_task_storage_rust_held_candidate_keeps_its_document_lease_after_vm_dr
 fn browser_task_storage_drag_payload_exact_allowance_transfers_owned_text() {
     let (mut vm, callback) = drag_fixture(0);
     fill_roots(&mut vm, 1);
-    let _peer = leave_room(&mut vm, 4 * std::mem::size_of::<BrowserTask>() + 8);
+    let _peer = leave_room(
+        &mut vm,
+        4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>() + 8,
+    );
     vm.queue_drag_string_task(callback, "tiny".into()).unwrap();
     let BrowserTask::DragString { text, .. } = &vm.browser_tasks[0] else {
         panic!("drag task")
@@ -615,7 +638,7 @@ fn browser_task_storage_drag_payload_exact_allowance_transfers_owned_text() {
 #[cfg_attr(test, test)]
 fn browser_task_storage_completion_payload_refusal_keeps_the_wait_unqueued() {
     let mut fixture = Fixture::new(Producer::Completion, 0);
-    let room = 4 * std::mem::size_of::<BrowserTask>() + 7;
+    let room = 4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>() + 7;
     let next = serial(&fixture.vm);
     let _peer = leave_room(&mut fixture.vm, room);
     assert_eq!(
@@ -664,16 +687,22 @@ fn browser_task_storage_reader_listener_copy_exact_allowance_refunds_nested_owne
     let copied = std::mem::size_of::<crate::heap::FileReaderState>()
         + std::mem::size_of::<crate::heap::WebListener>()
         + 8;
-    let _peer = leave_room(&mut vm, 4 * std::mem::size_of::<BrowserTask>() + copied);
+    let _peer = leave_room(
+        &mut vm,
+        4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>()
+            + copied
+            + realm_roots_bytes(4),
+    );
     start_read(&mut vm, reader, blob).unwrap();
     assert_eq!(
         vm.heap.file_reader(reader).unwrap().target.listeners.len(),
         1
     );
     assert_eq!(vm.heap.file_reader(reader).unwrap().ready, 1);
+    // The copy and the call's temporary roots are all refunded.
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
-        MAX_HOST_SCHEDULING_BYTES - copied
+        MAX_HOST_SCHEDULING_BYTES - copied - realm_roots_bytes(4)
     );
 }
 #[cfg_attr(test, test)]
@@ -692,7 +721,8 @@ fn browser_task_storage_reader_listener_copy_refusal_preserves_original_backing(
     let copied = std::mem::size_of::<crate::heap::FileReaderState>()
         + std::mem::size_of::<crate::heap::WebListener>()
         + 8;
-    let room = 4 * std::mem::size_of::<BrowserTask>() + copied - 1;
+    let room =
+        4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>() + copied - 1;
     let roots = vm.heap.root_storage_state();
     let next = serial(&vm);
     let _peer = leave_room(&mut vm, room);
@@ -722,7 +752,9 @@ fn browser_task_storage_reader_epoch_refusal_precedes_task_admission() {
         .unwrap();
     let next = serial(&vm);
     let roots = vm.heap.root_storage_state();
-    let _peer = leave_room(&mut vm, 0);
+    // Room for the call's temporary roots only: the epoch is refused before
+    // any task slot or reader copy is admitted.
+    let _peer = leave_room(&mut vm, realm_roots_bytes(4));
     assert!(matches!(
         start_read(&mut vm, reader, blob),
         Err(RuntimeError::RangeError(_))

@@ -11,6 +11,10 @@ fn execute(vm: &mut Vm, source: &str) {
     vm.execute_script(&code).unwrap();
 }
 
+/// Retained source text is charged too, so the plain argument is padded to the
+/// literal's length: only the runtime payload differs between the two runs.
+const PLAIN_AND_PAYLOAD: [&str; 2] = ["0        ", "'payload'"];
+
 fn observed_vm() -> (Vm, Rc<RefCell<Vec<usize>>>) {
     let mut vm = Vm::default();
     vm.use_bounded_host_microtask_checkpoints().unwrap();
@@ -49,14 +53,20 @@ fn timer_payload_handoff_charges_one_frame_copy_and_releases_it_before_jobs() {
         (true, false, false, true, vec![42, 14]),
     ] {
         let mut runs = Vec::new();
-        for argument in ["0", "'payload'"] {
+        for with_payload in [false, true] {
             let (mut vm, observed) = observed_vm();
             vm.install_host_timer_functions().unwrap();
+            let global = vm.global("globalThis").unwrap().object_id().unwrap();
+            vm.heap
+                .set(global, "withPayload", Value::Bool(with_payload))
+                .unwrap();
             let cancel = if clear { "clearInterval(id);" } else { "" };
             let throw = if throws { "throw 7;" } else { "" };
             let timer = if repeat { "setInterval" } else { "setTimeout" };
             let parameter = if parameter { "value" } else { "" };
-            execute(&mut vm, &format!("function callback({parameter}) {{ {cancel} observe(); Promise.resolve().then(() => observe()); {throw} }} var id = {timer}(callback, 1, {argument}); 0;"));
+            // Compare the same retained program, varying only its runtime
+            // argument. Source-buffer differences are independent owners.
+            execute(&mut vm, &format!("function callback({parameter}) {{ {cancel} observe(); Promise.resolve().then(() => observe()); {throw} }} var id = {timer}(callback, 1, withPayload ? 'payload' : 0); 0;"));
             let run = vm.run_due_host_timers(1).unwrap();
             assert_eq!(run.tasks_run, 1);
             assert_eq!(run.uncaught_errors, u32::from(throws));
@@ -102,7 +112,7 @@ fn drag_payload_handoff_transfers_text_to_the_callback_frame() {
 fn finalization_payload_handoff_releases_holdings_before_checkpoint_jobs() {
     for throws in [false, true] {
         let mut runs = Vec::new();
-        for holdings in ["0", "'payload'"] {
+        for holdings in PLAIN_AND_PAYLOAD {
             let (mut vm, observed) = observed_vm();
             let completion = if throws {
                 "throw 7;"
@@ -129,7 +139,7 @@ fn reaction_payload_handoff_preserves_only_live_result_and_frame_owners() {
         (false, false, false, true, vec![42, 28]),
     ] {
         let mut runs = Vec::new();
-        for argument in ["0", "'payload'"] {
+        for argument in PLAIN_AND_PAYLOAD {
             let (mut vm, observed) = observed_vm();
             let method = if rejected { "reject" } else { "resolve" };
             let parameter = if parameter { "value" } else { "" };
@@ -153,7 +163,7 @@ fn reaction_payload_handoff_preserves_only_live_result_and_frame_owners() {
 fn species_payload_handoff_keeps_gc_roots_without_primitive_copies() {
     for throws in [false, true] {
         let mut runs = Vec::new();
-        for argument in ["0", "'payload'"] {
+        for argument in PLAIN_AND_PAYLOAD {
             let (mut vm, observed) = observed_vm();
             let completion = if throws {
                 "throw value;"
@@ -174,7 +184,7 @@ fn species_payload_handoff_keeps_gc_roots_without_primitive_copies() {
 fn awaited_payload_handoff_transfers_input_to_the_resumed_frame() {
     for generator in [false, true] {
         let mut runs = Vec::new();
-        for argument in ["0", "'payload'"] {
+        for argument in PLAIN_AND_PAYLOAD {
             let (mut vm, observed) = observed_vm();
             let star = if generator { "*" } else { "" };
             let completion = if generator { "yield 0;" } else { "return 0;" };
@@ -247,7 +257,7 @@ fn host_completion_payload_handoff_preserves_settled_and_running_owners() {
 #[cfg_attr(test, test)]
 fn generator_yield_payload_handoff_releases_input_before_successor_requests() {
     let mut runs = Vec::new();
-    for argument in ["0", "'payload'"] {
+    for argument in PLAIN_AND_PAYLOAD {
         let (mut vm, observed) = observed_vm();
         execute(&mut vm, &format!("var source = Promise.resolve({argument}); async function* f() {{ yield source; observe(); }} var iterator = f(); iterator.next(); iterator.next().then(() => observe()); 0;"));
         vm.run_promise_jobs().unwrap();
@@ -260,7 +270,7 @@ fn generator_yield_payload_handoff_releases_input_before_successor_requests() {
 #[cfg_attr(test, test)]
 fn generator_delegate_payload_handoff_discards_invalid_results_before_resuming() {
     let mut runs = Vec::new();
-    for argument in ["0", "'payload'"] {
+    for argument in PLAIN_AND_PAYLOAD {
         let (mut vm, observed) = observed_vm();
         execute(&mut vm, &format!("var source = Promise.resolve({argument}); async function* f() {{ try {{ yield* {{ [Symbol.asyncIterator]() {{ return {{ next() {{ return source; }} }}; }} }}; }} catch {{ observe(); }} }} f().next().then(() => observe()); 0;"));
         vm.run_promise_jobs().unwrap();
@@ -297,40 +307,54 @@ fn legacy_cleanup_payload_handoff_transfers_holdings_into_the_callback() {
 
 #[cfg_attr(test, test)]
 fn import_payload_handoff_keeps_borrowed_loader_strings_through_module_execution() {
-    let (mut vm, observed) = observed_vm();
-    let counter = vm.displaced_execution_bytes.clone();
-    let output = observed.clone();
-    vm.install_host_function("observeLease", 0, move |_args: &[HostValue]| {
-        output.borrow_mut().push(counter.get());
-        Ok(HostValue::Undefined)
-    })
-    .unwrap();
-    let code = crate::compile_module(
-        &crate::parse_module("observeLease(); export const value = 0;").unwrap(),
-    )
-    .unwrap();
-    vm.set_module_loader_context(
-        "dir/main.js",
-        HashMap::from([("dir/entry.js".into(), code)]),
-    );
-    execute(&mut vm, "import('./entry.js'); 0;");
-    let expected = match vm.promise_jobs.front().unwrap() {
-        PromiseJob::DynamicImport {
-            referrer,
-            specifier,
-            ..
-        } => referrer.capacity() + specifier.capacity(),
-        _ => panic!("the import must enqueue its real loader job"),
+    // Charged while the module executes and released with the job, measured
+    // as the difference between two runs whose loader strings differ in length.
+    // Everything else the run charges is identical and cancels out.
+    let run = |specifier: &str| {
+        let (mut vm, observed) = observed_vm();
+        let account = vm.host_scheduling.as_ref().unwrap().account.clone();
+        let output = observed.clone();
+        vm.install_host_function("observeLease", 0, move |_args: &[HostValue]| {
+            output
+                .borrow_mut()
+                .push(account.borrow().usage.payload_bytes);
+            Ok(HostValue::Undefined)
+        })
+        .unwrap();
+        let code = crate::compile_module(
+            &crate::parse_module("observeLease(); export const value = 0;").unwrap(),
+        )
+        .unwrap();
+        vm.set_module_loader_context(
+            "dir/main.js",
+            HashMap::from([(format!("dir/{specifier}"), code)]),
+        );
+        execute(&mut vm, &format!("import('./{specifier}'); 0;"));
+        let strings = match vm.promise_jobs.front().unwrap() {
+            PromiseJob::DynamicImport {
+                referrer,
+                specifier,
+                ..
+            } => referrer.capacity() + specifier.capacity(),
+            _ => panic!("the import must enqueue its real loader job"),
+        };
+        vm.run_promise_jobs().unwrap();
+        let after = vm.host_scheduling_snapshot().payload_bytes;
+        assert_eq!(observed.borrow().len(), 1);
+        assert_eq!(vm.displaced_execution_bytes.get(), 0);
+        let held = observed.borrow()[0] - after;
+        (held, strings)
     };
-    vm.run_promise_jobs().unwrap();
-    assert_eq!(*observed.borrow(), vec![expected]);
-    assert_eq!(vm.displaced_execution_bytes.get(), 0);
+    let (short_held, short_strings) = run("entry.js");
+    let (long_held, long_strings) = run("entry-with-a-longer-name.js");
+    assert!(long_strings > short_strings);
+    assert_eq!(long_held - short_held, long_strings - short_strings);
 }
 
 #[cfg_attr(test, test)]
 fn module_await_payload_handoff_transfers_exported_values_into_managed_cells() {
     let mut runs = Vec::new();
-    for argument in ["0", "'payload'"] {
+    for argument in PLAIN_AND_PAYLOAD {
         let (mut vm, observed) = observed_vm();
         let code = crate::compile_module(
             &crate::parse_module("export const value = await globalThis.source; observe();")

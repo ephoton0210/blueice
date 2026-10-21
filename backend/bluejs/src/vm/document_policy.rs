@@ -141,7 +141,31 @@ impl Plan {
                 if !vm.heap.can_join_document_heap_budget(managed) {
                     return Err(scope.fail());
                 }
-                if !vm.membrane_storage_can_join(scope) {
+                if !vm.membrane_storage_can_join(scope)
+                    || !vm
+                        .heap
+                        .async_generator_counts_can_join(&scope.heap_native_budget())
+                    || !vm.active_native_storage_can_join(scope)
+                    || !vm.intrinsic_storage_can_join(scope)
+                    || !vm.host_listener_storage_can_join(scope)
+                    || !vm.host_family_storage_can_join(scope)
+                    || !vm.host_registration_storage_can_join(scope)
+                    || !vm.promise_map_storage_can_join(scope)
+                    || !vm.rejection_origin_storage_can_join(scope)
+                    || !vm.module_import_storage_can_join(scope)
+                    || !vm.deferred_import_waiters.can_join(scope)
+                    || !vm.browser_tasks.can_join(scope)
+                    || !vm.host_timers.can_join(scope)
+                    || !vm.host_finalization_tasks.can_join(scope)
+                    || vm
+                        .host_console
+                        .as_ref()
+                        .is_some_and(|console| !console.can_join(scope))
+                    || vm
+                        .host_rejections
+                        .as_ref()
+                        .is_some_and(|state| !state.can_join(scope))
+                {
                     return Err(scope.fail());
                 }
                 if node.path.is_empty()
@@ -265,8 +289,8 @@ impl Plan {
             self.members[task.node].edit(root, |vm| {
                 let serial = first + offset as u64;
                 match task.kind {
-                    TaskKind::Timer => vm.host_timers[task.index].serial = serial,
-                    TaskKind::Browser => vm.browser_tasks[task.index].set_serial(serial),
+                    TaskKind::Timer => vm.host_timers.set_serial(task.index, serial),
+                    TaskKind::Browser => vm.browser_tasks.set_serial(task.index, serial),
                     TaskKind::Finalization => {
                         vm.host_finalization_tasks[task.index].serial = serial
                     }
@@ -294,6 +318,21 @@ impl Plan {
 impl Vm {
     fn attach_document_policy_storage(&mut self) -> Result<(), RuntimeError> {
         self.attach_linked_module_cells();
+        let scope = self.host_scheduling.as_ref().unwrap().child();
+        self.attach_active_native_storage(&scope)?;
+        self.attach_intrinsic_storage(&scope)?;
+        self.attach_host_listener_storage(&scope)?;
+        self.attach_host_family_storage(&scope)?;
+        self.attach_host_registration_storage(&scope)?;
+        let owner = scope.shared_charge(0)?;
+        self.console_owners(Some(&owner))?;
+        self.retain_host_wait_counts(Some(&owner))?;
+        self.browser_queue_owner(Some(&owner))?;
+        self.timer_table_owner(Some(&owner))?;
+        self.finalization_queue_owner(Some(&owner))?;
+        self.pending_rejection_owner()?;
+        self.module_import_owner()?;
+        self.deferred_import_owner(Some(&owner))?;
         let scope = self
             .host_scheduling
             .as_ref()
@@ -330,7 +369,7 @@ impl Vm {
         if self.document_policy_ready {
             return self.attach_document_policy_storage();
         }
-        if realm_reentrancy::resolve_active(self.object_prototype.heap).is_some() {
+        if realm_reentrancy::is_active(self.object_prototype.heap) {
             return Err(RuntimeError::Unsupported(BUSY));
         }
         let scope = self

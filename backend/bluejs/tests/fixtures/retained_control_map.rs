@@ -67,6 +67,7 @@ fn collision_map() -> CollisionMap {
     RetainedControlMap {
         data,
         allocation_bytes,
+        storage: None,
     }
 }
 fn sparse_map() -> CollisionMap {

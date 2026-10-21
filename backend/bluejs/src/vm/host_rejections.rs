@@ -6,6 +6,7 @@
 //! delivery owns roots; the outstanding notification bit never roots a Promise.
 //! https://html.spec.whatwg.org/multipage/webappapis.html#unhandled-promise-rejections
 
+use super::host_scheduling::SharedSchedulingCharge;
 use super::*;
 use host_console::formatting::Output;
 
@@ -18,9 +19,155 @@ pub(super) struct PendingRejection {
 pub(super) struct HostRejections {
     pub(super) pending: Vec<PendingRejection>,
     pub(super) active: usize,
+    pub(super) active_owned: usize,
+    // Pending records and backing die before their count/storage credit.
+    pending_storage: Option<SharedSchedulingCharge>,
+}
+
+impl HostRejections {
+    pub(super) fn can_join(&self, scope: &SchedulingScope) -> bool {
+        self.pending_storage
+            .as_ref()
+            .is_none_or(|owner| owner.belongs_to(scope))
+    }
+    pub(super) fn unowned_count(&self) -> usize {
+        if self.pending_storage.is_none() {
+            self.pending.len()
+        } else {
+            0
+        }
+    }
+    pub(super) fn unowned_bytes(&self) -> usize {
+        if self.pending_storage.is_none() {
+            host_scheduling::slots(&self.pending)
+        } else {
+            0
+        }
+    }
+    fn take_pending(&mut self) -> PendingRejectionTransfer {
+        let entries = std::mem::take(&mut self.pending);
+        let storage = self.pending_storage.as_mut().map(|owner| {
+            let mut storage = owner.split_off(host_scheduling::slots(&entries));
+            storage
+                .absorb(owner.split_reactions(entries.len()))
+                .expect("pending batch has one owner");
+            storage
+        });
+        PendingRejectionTransfer { entries, storage }
+    }
+}
+
+pub(super) struct PendingRejectionTransfer {
+    pub(super) entries: Vec<PendingRejection>,
+    pub(super) storage: Option<SharedSchedulingCharge>,
+}
+
+struct PreparedPendingRejection {
+    growth: promise_queue_storage::PreparedVec<PendingRejection>,
+    count: Option<SharedSchedulingCharge>,
+}
+impl PreparedPendingRejection {
+    fn commit(self, vm: &mut Vm, promise: ObjectId, root: RootId) {
+        let state = vm.host_rejections.as_mut().expect("pending notifications");
+        if let Some(backing) = self.growth.commit_owned(&mut state.pending) {
+            let storage = state
+                .pending_storage
+                .as_mut()
+                .expect("prepared pending owner");
+            storage.release_to(0);
+            storage
+                .absorb(backing)
+                .expect("pending backing shares its account");
+        }
+        if let Some(count) = self.count {
+            state
+                .pending_storage
+                .as_mut()
+                .expect("prepared pending owner")
+                .absorb(count)
+                .expect("pending count shares its account");
+        }
+        state.pending.push(PendingRejection { promise, root });
+        vm.reconcile_scheduling_ownership();
+    }
 }
 
 impl Vm {
+    pub(super) fn pending_rejection_owner(
+        &mut self,
+    ) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        if self.host_rejections.is_none() {
+            return Ok(None);
+        }
+        let current = self.argument_list_owner()?;
+        let original = self
+            .host_rejections
+            .as_ref()
+            .unwrap()
+            .pending_storage
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()?;
+        if let Some(scope) = &self.host_scheduling {
+            if !self.host_rejections.as_ref().unwrap().can_join(scope) {
+                return Err(scope.fail());
+            }
+        }
+        let Some(owner) = original.as_ref().or(current.as_ref()) else {
+            return Ok(None);
+        };
+        if self
+            .host_rejections
+            .as_ref()
+            .unwrap()
+            .pending_storage
+            .is_none()
+        {
+            self.synchronize_scheduling_usage()?;
+            let state = self.host_rejections.as_ref().unwrap();
+            let bytes = host_scheduling::slots(&state.pending);
+            let count = state.pending.len();
+            let storage = match &mut self.host_scheduling {
+                Some(scope) => {
+                    let mut storage = scope.detach_owned_payload(bytes);
+                    storage
+                        .absorb(scope.detach_owned_reactions(count))
+                        .expect("published pending notifications share their document");
+                    storage
+                }
+                None => {
+                    let mut storage = owner.reserve_peer(bytes)?;
+                    storage.absorb(owner.reserve_reactions(count)?)?;
+                    storage
+                }
+            };
+            self.host_rejections.as_mut().unwrap().pending_storage = Some(storage);
+        }
+        owner.reserve_peer(0).map(Some)
+    }
+
+    fn prepare_pending_rejection(&mut self) -> Result<PreparedPendingRejection, RuntimeError> {
+        let owner = self.pending_rejection_owner()?;
+        self.admit_scheduling_work(HostSchedulingUsage {
+            pending_reactions: 1,
+            ..Default::default()
+        })?;
+        self.heap.check_root_registration_count(1)?;
+        let count = owner
+            .as_ref()
+            .map(|owner| owner.reserve_reactions(1))
+            .transpose()?;
+        let growth = promise_queue_storage::PreparedVec::for_push_owned(
+            &self
+                .host_rejections
+                .as_ref()
+                .expect("pending notifications")
+                .pending,
+            owner.as_ref(),
+        )?;
+        Ok(PreparedPendingRejection { growth, count })
+    }
+
     /// Specifications such as Streams mark internal promises handled
     /// directly, without performing a user-visible Then or a handle hook.
     pub(super) fn set_promise_handled(&mut self, promise: ObjectId) {
@@ -98,22 +245,12 @@ impl Vm {
             return;
         }
         let result = (|| {
-            self.admit_scheduling_work(HostSchedulingUsage {
-                pending_reactions: 1,
-                ..Default::default()
-            })?;
-            self.heap.check_root_registration_count(1)?;
-            let growth = promise_queue_storage::PreparedVec::for_push(
-                &self.host_rejections.as_ref().unwrap().pending,
-                self.host_scheduling.as_ref(),
-            )?;
+            let prepared = self.prepare_pending_rejection()?;
             let objects = [promise];
             let roots = self.heap.prepare_root_batch(&objects)?;
             self.check_scheduling_failure()?;
             let root = self.heap.commit_single_root(roots);
-            let pending = &mut self.host_rejections.as_mut().unwrap().pending;
-            growth.commit(pending);
-            pending.push(PendingRejection { promise, root });
+            prepared.commit(self, promise, root);
             Ok::<(), RuntimeError>(())
         })();
         if result.is_err() {
@@ -147,6 +284,9 @@ impl Vm {
             .position(|entry| entry.promise == promise)
         {
             let entry = state.pending.remove(index);
+            if let Some(storage) = &mut state.pending_storage {
+                storage.release_reactions_to(state.pending.len());
+            }
             self.release_root(entry.root);
             self.promises.get_mut(&promise).unwrap().rejection_notified = false;
         } else if notified {
@@ -202,17 +342,10 @@ impl Vm {
         {
             return Ok(());
         }
-        let prepared = self.prepare_browser_task(HostSchedulingUsage::default())?;
+        let prepared = self.prepare_browser_rejection_transfer()?;
         let serial = self.next_host_task_serial()?;
-        let entries = std::mem::take(&mut self.host_rejections.as_mut().unwrap().pending);
-        prepared.commit(
-            self,
-            browser_tasks::BrowserTask::PromiseRejections {
-                serial,
-                entries,
-                handled: false,
-            },
-        );
+        let entries = self.host_rejections.as_mut().unwrap().take_pending();
+        prepared.commit_pending_rejections(self, serial, entries);
         self.synchronize_scheduling_usage()
     }
 
@@ -220,6 +353,7 @@ impl Vm {
         &mut self,
         entries: Vec<PendingRejection>,
         handled: bool,
+        native: bool,
         prepared: rejection_batch_entry::PreparedRejectionBatch,
     ) -> Result<(), RuntimeError> {
         let count = entries.len();
@@ -227,6 +361,9 @@ impl Vm {
             .as_mut()
             .expect("notification owner")
             .active += count;
+        if native {
+            self.host_rejections.as_mut().unwrap().active_owned += count;
+        }
         let result = self.run_host_event_turn(|vm| {
             let mut batch = prepared;
             vm.synchronize_scheduling_usage()?;
@@ -261,8 +398,11 @@ impl Vm {
                     let not_canceled =
                         vm.dispatch_web_target_event(global, event, true)? == Value::Bool(true);
                     if !handled && not_canceled {
-                        let mut output = Output::message("Uncaught (in promise) ");
-                        vm.console_preview(&entry.reason, &mut output)?;
+                        let owners = vm.console_owners(entry.source_charge.as_ref())?;
+                        let mut output =
+                            Output::message_owned("Uncaught (in promise) ", owners.owner.as_ref())?;
+                        let preview = vm.console_preview(&entry.reason, &mut output);
+                        owners.validate().and(preview)?;
                         vm.console_emit_with_leased_source(
                             ConsoleFunction::Error,
                             "error",
@@ -289,6 +429,9 @@ impl Vm {
         });
         self.discard_host_rejection_entries(entries);
         self.host_rejections.as_mut().unwrap().active -= count;
+        if native {
+            self.host_rejections.as_mut().unwrap().active_owned -= count;
+        }
         self.synchronize_scheduling_usage()?;
         result
     }
@@ -303,3 +446,7 @@ impl Vm {
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/realm_rejection_lifetime.rs"]
 mod lifetime_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/pending_rejection_lifetime.rs"]
+mod pending_lifetime_tests;

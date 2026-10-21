@@ -52,7 +52,10 @@ fn import_waiter_storage_new_key_requires_old_and_new_tables_together() {
             .unwrap();
     }
     let old = host_scheduling::map_slots(&vm.module_import_waiters);
-    let candidate = host_scheduling::map_slots(&HashMap::<String, Vec<ObjectId>>::with_capacity(4));
+    let candidate = host_scheduling::map_slots(&HashMap::<
+        String,
+        crate::vm::import_waiters::ModuleImportWaiterGroup,
+    >::with_capacity(4));
     let room = candidate - old + 4 * std::mem::size_of::<ObjectId>() + 1;
     let _peer = leave_room(&mut vm, room);
     assert_eq!(
@@ -111,7 +114,10 @@ fn import_waiter_storage_existing_slot_discards_the_temporary_key_before_prepara
     let mut lookup = String::with_capacity(32);
     lookup.push_str("entry");
     vm.enqueue_module_import_waiter(lookup, promise).unwrap();
-    assert_eq!(vm.module_import_waiters["entry"], [promise, promise]);
+    assert_eq!(
+        vm.module_import_waiters["entry"].as_slice(),
+        [promise, promise]
+    );
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
         MAX_HOST_SCHEDULING_BYTES
@@ -126,7 +132,8 @@ fn import_waiter_storage_new_key_exact_coexisting_candidates_preserve_old_target
             .unwrap();
     }
     let old = vm.module_import_waiters.retained_bytes();
-    let bytes = 7 * std::mem::size_of::<(String, Vec<ObjectId>)>()
+    let bytes = 7
+        * std::mem::size_of::<(String, crate::vm::import_waiters::ModuleImportWaiterGroup)>()
         + 4 * std::mem::size_of::<ObjectId>()
         + 1;
     let _peer = leave_room(&mut vm, bytes);
@@ -134,7 +141,7 @@ fn import_waiter_storage_new_key_exact_coexisting_candidates_preserve_old_target
         .unwrap();
     assert_eq!(vm.module_import_waiters.len(), 4);
     for name in ["a", "b", "c", "d"] {
-        assert_eq!(vm.module_import_waiters[name], [promise]);
+        assert_eq!(vm.module_import_waiters[name].as_slice(), [promise]);
     }
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
@@ -145,8 +152,9 @@ fn import_waiter_storage_new_key_exact_coexisting_candidates_preserve_old_target
 fn import_waiter_storage_new_key_one_byte_short_keeps_live_capacity_and_roots() {
     let mut vm = page();
     let promise = target(&mut vm);
-    let bytes =
-        3 * std::mem::size_of::<(String, Vec<ObjectId>)>() + 4 * std::mem::size_of::<ObjectId>();
+    let bytes = 3
+        * std::mem::size_of::<(String, crate::vm::import_waiters::ModuleImportWaiterGroup)>()
+        + 4 * std::mem::size_of::<ObjectId>();
     let roots = vm.heap.root_storage_state();
     let _peer = leave_room(&mut vm, bytes);
     assert_eq!(
@@ -391,7 +399,7 @@ fn import_waiter_storage_import_map_compaction_retains_live_keys_and_targets() {
     drop(peer);
     vm.reclaim_import_waiter_storage();
     assert_eq!(vm.module_import_waiters.capacity(), 3);
-    assert_eq!(vm.module_import_waiters["m6"], [promise]);
+    assert_eq!(vm.module_import_waiters["m6"].as_slice(), [promise]);
 }
 
 impl Vm {

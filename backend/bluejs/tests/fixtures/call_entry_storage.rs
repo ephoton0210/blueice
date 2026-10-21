@@ -85,22 +85,17 @@ fn call_entry_storage_host_conversion_owns_its_vector_and_string_copy() {
         false,
     )
     .unwrap();
-    let minimum = std::mem::size_of::<Value>() + std::mem::size_of::<HostValue>() + 8;
-    assert!(
-        observed.borrow()[0] >= minimum,
-        "observed={:?}",
-        observed.borrow()
-    );
+    // The input Vec stays in the call-entry counter. Converted primitive
+    // copies now have independent native credit (host_marshalling_storage
+    // checks that credit at callback entry and after VM destruction).
+    assert_eq!(*observed.borrow(), vec![std::mem::size_of::<Value>()]);
 }
 
 #[cfg_attr(test, test)]
 fn call_entry_storage_bound_arguments_use_one_final_buffer_and_conversion_owner() {
     let (mut vm, observed) = observed_vm();
     execute(&mut vm, "observe.bind(null,1,2).bind(null,3)(4);0;");
-    assert_eq!(
-        *observed.borrow(),
-        vec![4 * std::mem::size_of::<Value>() + 4 * std::mem::size_of::<HostValue>()]
-    );
+    assert_eq!(*observed.borrow(), vec![4 * std::mem::size_of::<Value>()]);
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
 }
 
@@ -213,9 +208,6 @@ fn call_entry_storage_tail_calls_reuse_the_carrier_allocation() {
         &mut vm,
         "function f(a,b){'use strict';return observe(a,b);} f(1,2);0;",
     );
-    assert_eq!(
-        *observed.borrow(),
-        vec![4 * std::mem::size_of::<Value>() + 4 * std::mem::size_of::<HostValue>()]
-    );
+    assert_eq!(*observed.borrow(), vec![4 * std::mem::size_of::<Value>()]);
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
 }

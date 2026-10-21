@@ -545,6 +545,8 @@ fn module_dependency_resource_abort_refunds_walk_leases() {
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
+            + vm.owned_promise_storage_bytes()
+            + vm.host_functions.owned_bytes()
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_registry.retained_bytes()
@@ -627,6 +629,8 @@ fn module_dependency_collector_storage_follows_later_dependency_callbacks() {
             vm.host_scheduling_snapshot().payload_bytes,
             vm.own_scheduling_usage().payload_bytes
                 + vm.module_value_storage_bytes()
+                + vm.owned_promise_storage_bytes()
+                + vm.host_functions.owned_bytes()
                 + vm.heap.collector_storage_bytes()
                 + vm.heap.root_storage_bytes()
                 + vm.module_registry.retained_bytes()

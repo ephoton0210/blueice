@@ -25,11 +25,6 @@ pub(crate) struct WebTargetData {
 }
 
 impl WebTargetData {
-    pub fn references(&self) -> Vec<ObjectId> {
-        let mut ids = Vec::new();
-        self.visit_references(&mut |id| ids.push(id));
-        ids
-    }
     pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         self.listeners
             .iter()
@@ -38,13 +33,28 @@ impl WebTargetData {
     }
 
     pub fn bytes(&self) -> usize {
-        self.listeners
-            .iter()
-            .fold(size_of::<Self>(), |bytes, listener| {
-                bytes
-                    .saturating_add(size_of::<WebListener>())
-                    .saturating_add(listener.name.byte_len())
-            })
+        size_of::<Self>().saturating_add(self.owned_buffer_bytes())
+    }
+
+    pub(crate) fn owned_buffer_bytes(&self) -> usize {
+        self.listeners.iter().fold(
+            self.listeners.capacity() * size_of::<WebListener>(),
+            |bytes, listener| {
+                bytes.saturating_add(
+                    listener
+                        .name
+                        .owned_heap_payload_bytes()
+                        .unwrap_or(usize::MAX),
+                )
+            },
+        )
+    }
+
+    pub(crate) fn copied_buffer_bytes(&self) -> usize {
+        self.listeners.iter().fold(
+            self.listeners.len() * size_of::<WebListener>(),
+            |bytes, listener| bytes.saturating_add(listener.name.byte_len()),
+        )
     }
 }
 
@@ -91,14 +101,18 @@ impl Heap {
     ) -> Result<(), HeapError> {
         let previous = self.web_event_target(object)?.bytes();
         let bytes = state.bytes();
-        let references = state.references();
-        for reference in &references {
-            self.object(*reference)?;
-        }
-        let protected: Vec<_> = std::iter::once(object)
-            .chain(references.iter().copied())
-            .collect();
-        self.ensure_room(bytes.saturating_sub(previous), &protected)?;
+        let mut valid = Ok(());
+        state.visit_references(&mut |id| {
+            valid = valid.and_then(|()| self.object(id).map(|_| ()));
+        });
+        valid?;
+        self.ensure_room_protected(
+            bytes.saturating_sub(previous),
+            ProtectedRoots::WebTarget(object, &state),
+        )?;
+        // This borrowed candidate remains live through collection. Record its
+        // barriers before the pure move, without an extra reference snapshot.
+        state.visit_references(&mut |id| self.write_barrier(object, Some(id)));
         let entry = self
             .objects
             .get_mut(&object)
@@ -112,8 +126,47 @@ impl Heap {
         entry.bytes = entry.bytes - previous + bytes;
         self.managed_bytes
             .set(self.managed_bytes.get() - previous + bytes);
-        for reference in references {
-            self.write_barrier(object, Some(reference));
+        Ok(())
+    }
+
+    /// Once-listener retirement allocates nothing and preserves paid slots.
+    pub(crate) fn remove_web_listener(
+        &mut self,
+        object: ObjectId,
+        serial: u64,
+    ) -> Result<(), HeapError> {
+        let previous = self.web_event_target(object)?.bytes();
+        let entry = self.objects.get_mut(&object).expect("validated target");
+        let state = match &mut entry.kind {
+            ObjectKind::WebEventTarget(state) => state.as_mut(),
+            ObjectKind::WebFileReader(state) => &mut state.target,
+            ObjectKind::WebAbortSignal(state) => &mut state.target,
+            _ => unreachable!("validated target"),
+        };
+        state.listeners.retain(|listener| listener.serial != serial);
+        let bytes = state.bytes();
+        entry.bytes = entry.bytes - previous + bytes;
+        self.managed_bytes.sub(previous - bytes);
+        Ok(())
+    }
+
+    /// No guest call separates a new registration from its final root refresh.
+    /// A refused publication can therefore retire that exact serial in place.
+    pub(crate) fn rollback_web_listener(
+        &mut self,
+        object: ObjectId,
+        serial: u64,
+    ) -> Result<(), HeapError> {
+        self.remove_web_listener(object, serial)?;
+        let entry = self.objects.get_mut(&object).expect("validated target");
+        let state = match &mut entry.kind {
+            ObjectKind::WebEventTarget(state) => state.as_mut(),
+            ObjectKind::WebFileReader(state) => &mut state.target,
+            ObjectKind::WebAbortSignal(state) => &mut state.target,
+            _ => unreachable!("validated target"),
+        };
+        if state.next_serial == serial {
+            state.next_serial -= 1;
         }
         Ok(())
     }

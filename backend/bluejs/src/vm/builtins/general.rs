@@ -4,6 +4,47 @@
 
 use super::*;
 
+/// Numeric text copies held across a user-visible radix/ToString callback are
+/// charged to the document that owns the entry, and released on drop.
+struct NumericTextCredit {
+    owner: Option<host_scheduling::SharedSchedulingCharge>,
+    utf16: Option<host_scheduling::SharedSchedulingCharge>,
+    utf8: Option<host_scheduling::SharedSchedulingCharge>,
+}
+
+impl NumericTextCredit {
+    fn utf16(&mut self, string: &JsString) -> Result<(), RuntimeError> {
+        if let Some(owner) = &self.owner {
+            self.utf16 = Some(owner.reserve_peer(string.as_code_units().len() * 2)?);
+        }
+        Ok(())
+    }
+
+    fn utf8(&mut self, text: &str) -> Result<(), RuntimeError> {
+        if let Some(owner) = &self.owner {
+            self.utf8 = Some(owner.reserve_peer(text.len())?);
+        }
+        Ok(())
+    }
+}
+
+impl Vm {
+    /// Only a realm that has a document (or console) owner pays for numeric
+    /// text. The owner is validated before any user code can run.
+    fn numeric_text_credit(&mut self) -> Result<NumericTextCredit, RuntimeError> {
+        let owner = if self.host_console.is_some() || self.host_scheduling.is_some() {
+            self.console_owners(None)?.owner
+        } else {
+            None
+        };
+        Ok(NumericTextCredit {
+            owner,
+            utf16: None,
+            utf8: None,
+        })
+    }
+}
+
 impl Vm {
     pub fn install_test262_done(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
@@ -141,10 +182,13 @@ impl Vm {
         value: &Value,
         radix: &Value,
     ) -> Result<Value, RuntimeError> {
+        let mut credit = self.numeric_text_credit()?;
         let string = self.coerce_string(value)?;
+        credit.utf16(&string)?;
         // A lone surrogate is not a digit, a sign or whitespace: it simply
         // ends the numeric prefix, exactly as U+FFFD does.
         let string = String::from_utf16_lossy(string.as_code_units());
+        credit.utf8(&string)?;
         let mut input = string.trim_start_matches(primitive::whitespace);
         let negative = input.starts_with('-');
         if matches!(input.as_bytes().first(), Some(b'+' | b'-')) {
@@ -193,10 +237,13 @@ impl Vm {
     /// decimal/Infinity prefix after StringTrim; hexadecimal and binary text
     /// therefore stop after their leading decimal zero.
     pub(in super::super) fn parse_float(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let mut credit = self.numeric_text_credit()?;
         let string = self.coerce_string(value)?;
+        credit.utf16(&string)?;
         // A lone surrogate is not part of any numeric literal: it simply ends
         // the prefix, exactly as U+FFFD does.
         let input = String::from_utf16_lossy(string.as_code_units());
+        credit.utf8(&input)?;
         let input = input.trim_start_matches(primitive::whitespace);
         let sign_end = usize::from(matches!(input.as_bytes().first(), Some(b'+' | b'-')));
         let negative = input.starts_with('-');

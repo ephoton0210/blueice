@@ -19,6 +19,19 @@ pub(super) struct ArgumentValues {
 }
 
 impl ArgumentValues {
+    pub(super) fn single_retained(
+        vm: &mut Vm,
+        input: native_value_storage::NativeValue,
+    ) -> Result<Self, RuntimeError> {
+        let owner = input.owner_view()?;
+        let mut result = Self::new(vm, owner.as_ref())?;
+        result.reserve_capacity(1)?;
+        result
+            .entry
+            .push_retained_argument(&mut result.values, input)?;
+        Ok(result)
+    }
+
     pub(super) fn adopt_retained(
         values: Vec<Value>,
         entry: execution_payload::CallEntryCharge,
@@ -167,13 +180,13 @@ impl ArgumentValues {
         self.values
             .iter()
             .filter_map(Value::object_id)
-            .for_each(|id| roots.push(id));
+            .try_for_each(|id| roots.push(&vm.heap, id))?;
         let result = vm.with_realm_call_roots(roots.clone(), |vm| {
             let prototype = vm.array_create_prototype()?;
-            roots.push(prototype);
+            roots.push(&vm.heap, prototype)?;
             let array =
                 vm.with_roots(|heap| heap.alloc_array(self.values.len() as u32, Some(prototype)))?;
-            roots.push(array);
+            roots.push(&vm.heap, array)?;
             let mut values = self.values.into_iter();
             for (index, value) in values.by_ref().enumerate() {
                 let bytes = host_scheduling::value_payload_bytes(&value);
@@ -199,12 +212,14 @@ impl Vm {
     pub(super) fn argument_list_owner(
         &self,
     ) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        let root = self.current_realm_root_owner()?;
         if let Some(scope) = self.host_scheduling.as_ref() {
             scope.shared_charge(0).map(Some)
-        } else if let Some(owner) = realm_reentrancy::reserve_active_native(0)? {
-            Ok(Some(owner))
         } else {
-            self.current_realm_root_owner()
+            // A suspended caller still supplies a terminal-state guard, while
+            // an explicit native loan owns preparation inside its root frame.
+            let ambient = realm_reentrancy::reserve_active_native(0)?;
+            Ok(root.or(ambient))
         }
     }
 
@@ -220,7 +235,7 @@ impl Vm {
         };
         let owner = self.argument_list_owner()?;
         let input_roots = RealmCallRoots::new(1, owner.as_ref())?;
-        input_roots.push(source);
+        input_roots.push(&self.heap, source)?;
         let result = self.with_realm_call_roots(input_roots, |vm| {
             let length = vm.get_property(value, &"length".into())?;
             let length = vm.coerce_length(&length)? as u64;
@@ -234,7 +249,7 @@ impl Vm {
                     arguments.prepare_push()?;
                     let value = vm.get_property(value, &index.to_string().into())?;
                     if let Some(id) = value.object_id() {
-                        roots.push_admitted(id)?;
+                        roots.push_admitted(&vm.heap, id)?;
                     }
                     arguments.push(value)?;
                 }

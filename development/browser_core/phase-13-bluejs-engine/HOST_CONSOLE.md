@@ -97,11 +97,11 @@ provenance for typed/module/queued work and complete external host-buffer
 accounting remain separate TODO items. M1o supplies uncaught exceptions; M1p supplies rejection notifications
 and uncanceled `Uncaught (in promise) ` diagnostics through the same route.
 The rejection follow-up's final gates are tracked in the
-[milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 M1o's follow-up is accepted. Its v15 profile inherits this complete
 console surface and sends uncanceled page exceptions through the same bounded
 `error` records and untrusted Core/MCP route. Error events/cancellation,
 recursive reporting and retained values stay inside the realm; no wire field
 or protocol version changes. See [the error contract](HOST_ERROR_REPORTING.md)
-and the [live acceptance record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+and the [live acceptance record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).

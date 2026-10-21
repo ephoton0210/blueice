@@ -6,15 +6,20 @@
 
 use super::*;
 use host_scheduling::{capability_bytes, slots, value_payload_bytes, SharedSchedulingCharge};
-use promise_queue_storage::PreparedDeque;
+use promise_job_storage::PreparedPromiseJobs;
 
 struct PreparedPromiseSettlement {
     promise: ObjectId,
     status: PromiseStatus,
     origin: ThrowOrigin,
     jobs: Vec<PromiseJob>,
-    queue: PreparedDeque<PromiseJob>,
+    queue: PreparedPromiseJobs,
     charge: Option<SharedSchedulingCharge>,
+    input: Option<SharedSchedulingCharge>,
+}
+
+struct PreparedPromiseStatus {
+    status: PromiseStatus,
     input: Option<SharedSchedulingCharge>,
 }
 
@@ -95,8 +100,9 @@ impl Vm {
         &mut self,
         promise: ObjectId,
         status: PromiseStatus,
-        mut input: Option<SharedSchedulingCharge>,
+        input: Option<SharedSchedulingCharge>,
     ) -> Result<Option<PreparedPromiseSettlement>, RuntimeError> {
+        let mut settled = PreparedPromiseStatus { status, input };
         let record = self
             .promises
             .get(&promise)
@@ -104,7 +110,7 @@ impl Vm {
         if !matches!(record.status, PromiseStatus::Pending) {
             return Ok(None);
         }
-        let (fulfilled, value) = match &status {
+        let (fulfilled, value) = match &settled.status {
             PromiseStatus::Fulfilled(value) => (true, value),
             PromiseStatus::Rejected(value) => (false, value),
             PromiseStatus::Pending => {
@@ -117,26 +123,36 @@ impl Vm {
         let copied_reactions = record.reactions.iter().fold(0usize, |bytes, reaction| {
             bytes.saturating_add(reaction.settlement_copy_bytes(fulfilled))
         });
+        if let Some(input) = &settled.input {
+            input.reserve_peer(0)?;
+            if let Some(scope) = &self.host_scheduling {
+                if !input.belongs_to(scope) {
+                    return Err(scope.fail());
+                }
+            }
+        }
+        self.retain_promise_table_storage(settled.input.as_ref())?;
+        let owner = self.promises[&promise].status_owner()?;
         self.admit_scheduling_work(HostSchedulingUsage {
             pending_microtasks: count,
             ..Default::default()
         })?;
         let value_bytes = value_payload_bytes(value);
-        if let Some(input) = &mut input {
-            if self
-                .host_scheduling
+        if let Some(owner) = &owner {
+            if settled
+                .input
                 .as_ref()
-                .is_some_and(|scope| !input.belongs_to(scope))
+                .is_some_and(|input| input.same_owner(owner))
             {
-                return Err(self.host_scheduling.as_ref().unwrap().fail());
+                settled.input.as_mut().unwrap().resize(value_bytes)?;
+            } else {
+                // Admit the original record's account before releasing a
+                // caller's incoming credit. Neutral VMs retain that identity.
+                let input = owner.reserve_peer(value_bytes)?;
+                settled.input = Some(input);
             }
+        } else if let Some(input) = &mut settled.input {
             input.resize(value_bytes)?;
-        } else {
-            input = self
-                .host_scheduling
-                .as_ref()
-                .map(|scope| scope.shared_charge(value_bytes))
-                .transpose()?;
         }
         // Borrow the source before admitting its first clone. An override
         // with unknown source still wins over the active diagnostic frame.
@@ -151,9 +167,10 @@ impl Vm {
                 .saturating_add(count.saturating_add(1).saturating_mul(origin_bytes))
         };
         let scope = self.host_scheduling.as_ref();
-        let mut charge = scope
-            .map(|scope| {
-                scope.shared_charge(
+        let mut charge = owner
+            .as_ref()
+            .map(|owner| {
+                owner.reserve_peer(
                     count
                         .saturating_mul(std::mem::size_of::<PromiseJob>())
                         .saturating_add(payload(origin_bytes)),
@@ -200,15 +217,19 @@ impl Vm {
                 )?;
             }
         }
-        let queue = PreparedDeque::for_additional(&self.promise_jobs, count, scope)?;
+        let queue = self.prepare_promise_jobs(count, owner.as_ref())?;
+        if let (Some(input), Some(charge)) = (&mut settled.input, &mut charge) {
+            let mut origin_storage = charge.split_off(origin.payload_bytes());
+            input.absorb_from(&mut origin_storage)?;
+        }
         Ok(Some(PreparedPromiseSettlement {
             promise,
-            status,
+            status: settled.status,
             origin,
             jobs,
             queue,
             charge,
-            input,
+            input: settled.input,
         }))
     }
 
@@ -243,10 +264,10 @@ impl PreparedPromiseSettlement {
             origin,
             mut jobs,
             queue,
-            charge,
+            mut charge,
             input,
         } = self;
-        queue.commit(&mut vm.promise_jobs);
+        let mut counts = queue.commit(&mut vm.promise_jobs);
         let rejected = matches!(status, PromiseStatus::Rejected(_));
         let record = vm
             .promises
@@ -254,11 +275,17 @@ impl PreparedPromiseSettlement {
             .expect("prepared Promise owner");
         record.status = status;
         record.rejection_origin = origin;
-        record.reactions = Vec::new();
+        record.status_storage = input;
+        record.release_reactions();
         let notify = rejected && !record.handled;
-        vm.promise_jobs.extend(jobs.drain(..));
+        for job in jobs.drain(..) {
+            let input = charge
+                .as_mut()
+                .map(|charge| charge.split_off(job.scheduling_payload_bytes()));
+            let count = counts.as_mut().map(|counts| counts.split_microtasks(1));
+            vm.promise_jobs.push_prepared(job, input, count);
+        }
         drop(jobs);
-        drop(input);
         drop(charge);
         vm.reconcile_scheduling_ownership();
         if notify {
@@ -270,3 +297,6 @@ impl PreparedPromiseSettlement {
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/promise_settlement.rs"]
 mod ownership_tests;
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/promise_status_storage.rs"]
+mod status_storage_tests;

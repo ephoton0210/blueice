@@ -244,9 +244,15 @@ fn suspension_storage_execution_handoff_keeps_the_parent_prefix_active() {
     assert_eq!(execution.stack, vec![Value::String("frame".into())]);
     assert_eq!(execution.bindings, vec![Some(Value::Number(42.0))]);
     let expected = execution.control_bytes() + execution.payload_bytes();
+    // The captured frame carries its own control and payload charges; the
+    // displaced counters must not hold a second copy of them.
+    assert_eq!(
+        execution.control_charge.bytes() + execution.payload_charge.bytes(),
+        expected
+    );
     assert_eq!(
         vm.displaced_execution_control_bytes.get() + vm.displaced_execution_bytes.get(),
-        expected
+        0
     );
     drop(execution);
     vm.reconcile_scheduling_ownership();

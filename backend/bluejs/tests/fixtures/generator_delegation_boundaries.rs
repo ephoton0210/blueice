@@ -102,12 +102,18 @@ fn async_request_turns_separate_awaited_operands_and_reject_resumption_after_com
         let mut control = vm.heap.async_generator_control(generator).unwrap().unwrap();
         control.status = AsyncGeneratorStatus::Completed;
         control.next_request_id = 2;
-        control.requests.push_back(AsyncGeneratorRequest {
-            id: 1,
-            target,
-            completion,
-            origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
-        });
+        control
+            .push_request(AsyncGeneratorRequest {
+                value_storage: None,
+                scheduling: crate::vm::HeapReactionLease::unowned(),
+                id: 1,
+                target,
+                completion,
+                origin: crate::heap::AsyncGeneratorOrigin::unowned(
+                    crate::diagnostics::ThrowOrigin::default(),
+                ),
+            })
+            .unwrap();
         vm.heap
             .set_async_generator_control(generator, control)
             .unwrap();

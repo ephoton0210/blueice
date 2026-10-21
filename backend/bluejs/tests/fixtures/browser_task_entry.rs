@@ -315,8 +315,18 @@ fn browser_task_entry_terminal_refusal_preserves_every_active_task_kind() {
             work.vm.run_own_browser_task(0),
             Err(RuntimeError::SchedulingLimit)
         );
-        work.assert_queued_state();
-        assert_eq!(work.vm.heap.root_storage_state(), roots);
+        if matches!(kind, Kind::Completion) {
+            // A failed owner retires its external request instead of keeping
+            // the completion queued for a document that can no longer run it.
+            assert!(work.vm.browser_tasks.is_empty());
+            assert!(work.vm.host_promises.pending.is_empty());
+            // Retirement releases the request's one root; capacity is kept.
+            let after = work.vm.heap.root_storage_state();
+            assert_eq!((after.0 + 1, after.1), (roots.0, roots.1));
+        } else {
+            work.assert_queued_state();
+            assert_eq!(work.vm.heap.root_storage_state(), roots);
+        }
         assert_eq!(work.vm.remaining_instructions, 73);
     }
 }

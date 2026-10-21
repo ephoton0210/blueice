@@ -60,7 +60,7 @@ fn array_scan_storage_neutral_plan_keeps_original_terminal_identity() {
     let mut neutral = Vm::default();
     let object = run(&mut neutral, "({2:7,5:9});").object_id().unwrap();
     let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&neutral.heap, object).unwrap();
     let mut scan = neutral
         .with_realm_call_roots(roots, |vm| Ok(planned(vm, object)))
         .unwrap();
@@ -89,7 +89,7 @@ fn array_scan_storage_neutral_getter_checks_original_owner_after_guest() {
         .object_id()
         .unwrap();
     let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&neutral.heap, object).unwrap();
     let mut scan = neutral
         .with_realm_call_roots(roots, |vm| Ok(planned(vm, object)))
         .unwrap();
@@ -130,7 +130,7 @@ fn array_scan_storage_public_holes_preserve_includes_and_index_search() {
 fn loaned(vm: &mut Vm, source: &Vm, object: ObjectId) -> IndexScan {
     let owner = source.argument_list_owner().unwrap();
     let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&vm.heap, object).unwrap();
     vm.with_realm_call_roots(roots, |vm| Ok(planned(vm, object)))
         .unwrap()
 }
@@ -161,7 +161,7 @@ fn array_scan_storage_late_root_loan_adopts_existing_capacity() {
     let epoch = scan.epoch;
     assert!(scan.owner.is_none());
     let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&neutral.heap, object).unwrap();
     neutral
         .with_realm_call_roots(roots, |vm| {
             assert_eq!(vm.scan_next(&mut scan, object, 0)?, Some(2));

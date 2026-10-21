@@ -870,8 +870,10 @@ fn queued_async_generator_source_names_join_heap_accounting() {
     let long = format!("memory:///{}.js", "x".repeat(4096));
     let (short_heap, short_native) = usage(short);
     let (long_heap, long_native) = usage(&long);
-    assert_eq!(long_heap - short_heap, long.len() - short.len());
-    assert_eq!(long_native, short_native);
+    // A queued request's origin now owns one native copy of the source name
+    // (shared provenance); the managed heap no longer holds a second one.
+    assert_eq!(long_heap, short_heap);
+    assert_eq!(long_native - short_native, long.len() - short.len());
 }
 
 #[test]
@@ -1248,7 +1250,10 @@ fn paused_debugger_handlers_keep_exact_native_origin_charges() {
     let short = "memory:///a.js";
     let long = format!("memory:///{}.js", "x".repeat(4096));
     let mut failures = Vec::new();
-    for (kind, copies) in [(0, 1), (1, 2), (2, 3), (3, 1), (4, 2)] {
+    // Handler origins share their provenance: a frame whose origin is the
+    // compiled source map's own borrows it (no native copy at all), and the
+    // others hold one shared native copy however many handlers reference it.
+    for (kind, copies) in [(0, 0), (1, 0), (2, 0), (3, 1), (4, 1)] {
         let (short_retained, short_released) = usage(short, kind);
         let (long_retained, long_released) = usage(&long, kind);
         let actual = long_retained - short_retained;

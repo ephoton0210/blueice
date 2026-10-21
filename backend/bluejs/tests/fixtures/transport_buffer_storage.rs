@@ -480,7 +480,7 @@ fn transport_buffer_storage_existing_root_owner_covers_neutral_snapshot() {
         .object_id()
         .unwrap();
     let roots = realm_call_storage::RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&neutral.heap, object).unwrap();
     let snapshot = neutral
         .with_realm_call_roots(roots, |vm| {
             assert!(vm.host_scheduling.is_none());

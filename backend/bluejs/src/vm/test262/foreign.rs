@@ -870,7 +870,7 @@ impl Vm {
         let registration = self.prepare_foreign_active_registration(realm_id)?;
         let child = self.test262_realm_handle(realm_id)?;
         let caller = self.object_prototype.heap;
-        let guard = registration.publish(self);
+        let guard = registration.publish(self)?;
         let result = child.edit(caller, |vm| {
             if reset_fuel {
                 vm.remaining_instructions = vm.config.instruction_budget;
@@ -1103,7 +1103,7 @@ impl Vm {
             .collect::<Result<Vec<_>, _>>()?;
         let child = self.test262_realm_handle(realm_id)?;
         let caller = self.object_prototype.heap;
-        let _guard = registration.publish(self);
+        let _guard = registration.publish(self)?;
         let result = child.edit(caller, |child| {
             child.remaining_instructions = child.config.instruction_budget;
             let result = child.native_call(function, Value::Object(target), args, construct);
@@ -1158,7 +1158,7 @@ impl Vm {
             .collect::<Result<Vec<_>, _>>()?;
         let child = self.test262_realm_handle(realm_id)?;
         let caller = self.object_prototype.heap;
-        let _guard = registration.publish(self);
+        let _guard = registration.publish(self)?;
         let result = child.edit(caller, |child| {
             child.remaining_instructions = child.config.instruction_budget;
             let result = child.native_call(function, Value::Object(target), args, construct);
@@ -1745,6 +1745,9 @@ impl Vm {
                 };
                 let runs_here = match runs_where_its_operands_live(method) {
                     None => false,
+                    Some(OperandPolicy::LocalReceiver) => this_value
+                        .object_id()
+                        .is_none_or(|object| self.test262_foreign_reference(object).is_none()),
                     Some(OperandPolicy::Receiver) => foreign_to_callee(self, this_value),
                     Some(OperandPolicy::FirstArgument) => arguments
                         .first()
@@ -1961,7 +1964,9 @@ impl Vm {
             owner.as_ref(),
         )?;
         let roots = RealmCallRoots::new(input.objects().count(), owner.as_ref())?;
-        input.objects().for_each(|id| roots.push(id));
+        input
+            .objects()
+            .try_for_each(|id| roots.push(&self.heap, id))?;
         // Original source operands keep their conditional membrane edges live
         // while conversion creates destination objects. No active VM window moves.
         let result = self.with_realm_call_roots(roots, |source| {
@@ -2004,7 +2009,7 @@ impl Vm {
         }
         let child = self.test262_realm_handle(realm_id)?;
         let caller = self.object_prototype.heap;
-        let _guard = registration.publish(self);
+        let _guard = registration.publish(self)?;
         let result = child.edit(caller, |child| {
             child.remaining_instructions = child.config.instruction_budget;
             child.construct_completion_check_failed = false;
@@ -2132,7 +2137,7 @@ impl Vm {
             .collect::<Result<Vec<_>, _>>()?;
         let child = self.test262_realm_handle(realm_id)?;
         let caller = self.object_prototype.heap;
-        let _guard = registration.publish(self);
+        let _guard = registration.publish(self)?;
         let result = child.edit(caller, |child| {
             child.remaining_instructions = child.config.instruction_budget;
             let receiver = Value::Object(target);
@@ -2303,6 +2308,9 @@ fn foreign_constructor_intrinsic(function: NativeFunction) -> Option<&'static st
 /// Which operands of a built-in of another Realm decide that it must run in
 /// the calling Realm's `Vm` (see `runs_where_its_operands_live`).
 enum OperandPolicy {
+    /// A branded getter can inspect a local receiver's slots without transport.
+    /// Foreign facades keep their existing owning-realm transport path.
+    LocalReceiver,
     /// The function checks its receiver's internal slots or accessors, so it
     /// runs here only when the receiver is not the callee Realm's own.
     Receiver,
@@ -2323,6 +2331,17 @@ enum OperandPolicy {
 fn runs_where_its_operands_live(function: NativeFunction) -> Option<OperandPolicy> {
     Some(match function {
         NativeFunction::Atomics(_) => OperandPolicy::FirstArgument,
+        // These getters never read indexed properties or copy buffer bytes.
+        // Snapshotting a local Array before its brand check would execute its
+        // getters, possibly re-entering the accessor currently being called.
+        NativeFunction::ArrayBufferByteLength
+        | NativeFunction::ArrayBufferDetached
+        | NativeFunction::ArrayBufferMaxByteLength
+        | NativeFunction::ArrayBufferResizable
+        | NativeFunction::ArrayBufferImmutable
+        | NativeFunction::SharedArrayBufferByteLength
+        | NativeFunction::SharedArrayBufferMaxByteLength
+        | NativeFunction::SharedArrayBufferGrowable => OperandPolicy::LocalReceiver,
         NativeFunction::ArrayAt
         | NativeFunction::ArrayFill
         | NativeFunction::ArrayCopyWithin

@@ -38,7 +38,7 @@ impl<'a, K, V> IntoIterator for &'a MembraneMap<K, V> {
     }
 }
 impl<K: Eq + Hash, V> MembraneMap<K, V> {
-    fn unowned_bytes(&self) -> usize {
+    pub(super) fn unowned_bytes(&self) -> usize {
         if self.owner.is_none() {
             self.data.retained_bytes()
         } else {
@@ -49,6 +49,50 @@ impl<K: Eq + Hash, V> MembraneMap<K, V> {
         self.owner
             .as_ref()
             .is_none_or(|owner| owner.belongs_to(scope))
+    }
+    pub(super) fn can_join_owner(&self, owner: &SharedSchedulingCharge) -> bool {
+        self.owner
+            .as_ref()
+            .is_none_or(|current| current.same_owner(owner))
+    }
+    pub(super) fn attach_owner(
+        &mut self,
+        owner: &SharedSchedulingCharge,
+    ) -> Result<(), RuntimeError> {
+        if !self.can_join_owner(owner) {
+            return Err(owner.fail());
+        }
+        if self.owner.is_none() && self.data.retained_bytes() != 0 {
+            self.owner = Some(owner.reserve_peer(self.data.retained_bytes())?);
+        }
+        Ok(())
+    }
+    pub(super) fn prepare_insert_owned(
+        &mut self,
+        hint: Option<&SharedSchedulingCharge>,
+    ) -> Result<PreparedMap<K, V>, RuntimeError> {
+        if self.owner.is_none() {
+            if let Some(owner) = hint {
+                self.attach_owner(owner)?;
+            }
+        }
+        PreparedMap::for_additional_owned(&self.data, 1, self.owner.as_ref().or(hint))
+    }
+    pub(super) fn prepare_set_owned(
+        &mut self,
+        key: &K,
+        hint: Option<&SharedSchedulingCharge>,
+    ) -> Result<PreparedMap<K, V>, RuntimeError> {
+        if self.owner.is_none() {
+            if let Some(owner) = hint {
+                self.attach_owner(owner)?;
+            }
+        }
+        PreparedMap::for_additional_owned(
+            &self.data,
+            usize::from(!self.data.contains_key(key)),
+            self.owner.as_ref().or(hint),
+        )
     }
     pub(super) fn attach(&mut self, scope: &SchedulingScope) -> Result<(), RuntimeError> {
         if !self.can_join(scope) {

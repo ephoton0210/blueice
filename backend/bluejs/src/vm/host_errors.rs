@@ -9,7 +9,10 @@
 use super::*;
 use crate::heap::WebListener;
 use crate::native::{HostErrorNative, TargetNative};
+use error_input_storage::utf16_from_utf8;
 use host_console::formatting::Output;
+use host_report_storage::{ConsoleOwners, PreparedReportEvent, ReportOrigin};
+use native_value_storage::NativeValue;
 
 impl Vm {
     pub(super) fn report_pending_host_module_errors(&mut self) -> Result<(), RuntimeError> {
@@ -17,7 +20,10 @@ impl Vm {
             return Ok(());
         }
         self.dispatch_pending_host_module_errors(|vm, error| {
-            vm.report_host_error_value(error.value.clone(), error.origin.source.clone())
+            let owners = vm.console_owners(None)?;
+            let value = NativeValue::copied(&error.value, owners.owner.as_ref())?;
+            let origin = ReportOrigin::copied(error.origin.source.as_ref(), owners.owner.as_ref())?;
+            vm.report_host_error_prepared(value, origin, owners)
         })
     }
 
@@ -134,8 +140,15 @@ impl Vm {
                         "reportError requires an argument".into(),
                     ));
                 };
-                let origin = self.current_diagnostic_source_location();
-                self.report_host_error_value(value.clone(), origin)?;
+                let owners = self.console_owners(None)?;
+                let value = NativeValue::copied(value, owners.owner.as_ref())?;
+                let origin = ReportOrigin::copied(
+                    self.active_diagnostic_frame
+                        .as_ref()
+                        .and_then(|frame| frame.location()),
+                    owners.owner.as_ref(),
+                )?;
+                self.report_host_error_prepared(value, origin, owners)?;
                 Ok(Value::Undefined)
             }
             HostErrorNative::Handler(set) => {
@@ -197,7 +210,16 @@ impl Vm {
         &mut self,
         error: &RuntimeError,
     ) -> Result<(), RuntimeError> {
-        self.report_host_exception_with_origin(error, self.pending_diagnostic_origin.clone())
+        if self.host_error_reporting.is_none() || !host_timers::is_page_exception(error) {
+            return Ok(());
+        }
+        let owners = self.console_owners(None)?;
+        let origin = ReportOrigin::copied(
+            self.pending_diagnostic_origin.as_ref(),
+            owners.owner.as_ref(),
+        )?;
+        let value = self.copy_error_value(error, owners.owner.as_ref())?;
+        self.report_host_error_prepared(value, origin, owners)
     }
 
     pub(super) fn report_host_exception_with_origin(
@@ -208,12 +230,10 @@ impl Vm {
         if self.host_error_reporting.is_none() || !host_timers::is_page_exception(error) {
             return Ok(());
         }
-        let mut origin_charge =
-            self.charge_diagnostic_payload(Self::diagnostic_origin_bytes(&origin));
-        self.synchronize_scheduling_usage()?;
-        let value = self.error_value(error.clone())?;
-        origin_charge.set_bytes(0);
-        self.report_host_error_value(value, origin)
+        let owners = self.console_owners(None)?;
+        let origin = ReportOrigin::adopt(origin, owners.owner.as_ref())?;
+        let value = self.copy_error_value(error, owners.owner.as_ref())?;
+        self.report_host_error_prepared(value, origin, owners)
     }
 
     pub(super) fn current_diagnostic_source_location(
@@ -222,66 +242,98 @@ impl Vm {
         self.active_diagnostic_frame.as_ref()?.location().cloned()
     }
 
-    fn report_host_error_value(
+    fn report_host_error_prepared(
         &mut self,
-        value: Value,
-        origin: Option<crate::diagnostics::DiagnosticSourceLocation>,
+        value: NativeValue,
+        mut origin: ReportOrigin,
+        owners: ConsoleOwners,
+    ) -> Result<(), RuntimeError> {
+        let owners = owners.with_sources(value.owner_view()?, origin.owner_view()?)?;
+        let value = value.retain_for_owner(owners.owner.as_ref())?;
+        origin.retain_for_owner(owners.owner.as_ref())?;
+        let dispatch = self.host_error_reporting == Some(false);
+        let roots = realm_call_storage::RealmCallRoots::new(
+            usize::from(value.value().object_id().is_some()) + usize::from(dispatch),
+            owners.owner.as_ref(),
+        )?;
+        if let Some(object) = value.value().object_id() {
+            roots.push(&self.heap, object)?;
+        }
+        let frame = roots.clone();
+        let result = self.with_realm_call_roots(frame, |vm| {
+            vm.report_host_error_rooted(value, origin, dispatch, &roots, &owners)
+        });
+        owners.validate().and(result)
+    }
+
+    fn report_host_error_rooted(
+        &mut self,
+        value: NativeValue,
+        origin: ReportOrigin,
+        dispatch: bool,
+        roots: &realm_call_storage::RealmCallRoots,
+        owners: &ConsoleOwners,
     ) -> Result<(), RuntimeError> {
         let base = self.stack.len();
         let throw_site = self.pending_throw_site;
         let uncaught_site = self.uncaught_throw_site;
-        let pending_origin = self.pending_diagnostic_origin.clone();
-        let uncaught_origin = self.uncaught_diagnostic_origin.clone();
-        let saved_bytes = Self::diagnostic_origin_bytes(&pending_origin)
-            .saturating_add(Self::diagnostic_origin_bytes(&uncaught_origin));
-        let mut origin_charge = self.charge_diagnostic_payload(
-            saved_bytes.saturating_add(Self::diagnostic_origin_bytes(&origin)),
-        );
-        self.stack.push(value.clone());
+        let pending_origin = ReportOrigin::copied(
+            self.pending_diagnostic_origin.as_ref(),
+            owners.owner.as_ref(),
+        )?;
+        let uncaught_origin = ReportOrigin::copied(
+            self.uncaught_diagnostic_origin.as_ref(),
+            owners.owner.as_ref(),
+        )?;
         let result = (|| {
-            self.synchronize_scheduling_usage()?;
-            let mut message = Output::new();
-            self.console_preview(&value, &mut message)?;
+            let mut message = Output::owned(owners.owner.as_ref())?;
+            self.console_preview(value.value(), &mut message)?;
+            message.validate()?;
             let mut unhandled = true;
-            if self.host_error_reporting == Some(false) {
-                let mut state = self.new_web_event_state(6, "error".into());
-                state.cancelable = true;
-                state.set("message", Value::String(message.text.clone().into()));
+            if dispatch {
+                let mut state = PreparedReportEvent::new(self, owners.owner.as_ref())?;
+                state.set(
+                    "message",
+                    utf16_from_utf8(&message.text, owners.owner.as_ref())?,
+                );
                 let (filename, line, column) = origin
+                    .value
                     .as_ref()
                     .map(|source| (source.filename.as_str(), source.line, source.column))
                     .unwrap_or(("", 0, 0));
-                state.set("filename", Value::String(filename.into()));
-                state.set("lineno", Value::Number(f64::from(line)));
-                state.set("colno", Value::Number(f64::from(column)));
+                state.set(
+                    "filename",
+                    utf16_from_utf8(filename, owners.owner.as_ref())?,
+                );
+                state.number("lineno", line);
+                state.number("colno", column);
                 state.set("error", value);
                 let prototype = self.globals["%WebErrorEvent%"];
-                let event = self.with_roots(|heap| heap.alloc_drag_event(state, prototype))?;
-                self.stack.push(Value::Object(event));
+                let event = state.into_heap(self, prototype)?;
+                roots.push(&self.heap, event)?;
                 self.finish_web_event(event)?;
                 let global = self.global("globalThis")?.object_id().unwrap();
                 self.host_error_reporting = Some(true);
                 let fired = self.dispatch_web_target_event(global, event, true);
                 self.host_error_reporting = Some(false);
+                owners.validate()?;
                 unhandled = fired? == Value::Bool(true);
             }
             if unhandled {
-                let mut output = Output::message("Uncaught ");
+                let mut output = Output::owned(owners.owner.as_ref())?;
+                output.push("Uncaught ");
                 output.push(&message.text);
                 output.truncated |= message.truncated;
-                // The console record takes ownership of this copy. Saved VM
-                // state stays charged until the report finishes unwinding.
-                origin_charge.set_bytes(saved_bytes);
-                self.console_emit_with_source(ConsoleFunction::Error, "error", output, origin)?;
+                self.console_emit_guarded(ConsoleFunction::Error, "error", output, origin, owners)?;
             }
             Ok(())
         })();
         self.stack.truncate(base);
         self.pending_throw_site = throw_site;
         self.uncaught_throw_site = uncaught_site;
-        self.pending_diagnostic_origin = pending_origin;
-        self.uncaught_diagnostic_origin = uncaught_origin;
-        origin_charge.set_bytes(0);
-        result
+        pending_origin.restore(&mut self.pending_diagnostic_origin);
+        uncaught_origin.restore(&mut self.uncaught_diagnostic_origin);
+        let reconciled = self.synchronize_scheduling_usage();
+        owners.validate().and(reconciled).and(result)
     }
 }

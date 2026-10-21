@@ -281,16 +281,16 @@ impl Vm {
         let owner = self.argument_list_owner()?;
         let roots = realm_call_storage::RealmCallRoots::new(3, owner.as_ref())?;
         if let Some(id) = args.object_id() {
-            roots.push(id);
+            roots.push(&self.heap, id)?;
         }
         self.with_realm_call_roots(roots.clone(), |vm| {
             let lone = vm.get_property(args, &"loneCodePoints".into())?;
             if let Some(id) = lone.object_id() {
-                roots.push(id);
+                roots.push(&vm.heap, id)?;
             }
             let ranges = vm.get_property(args, &"ranges".into())?;
             if let Some(id) = ranges.object_id() {
-                roots.push(id);
+                roots.push(&vm.heap, id)?;
             }
             let mut result = JsString::default();
             vm.with_array_like_values(&lone, |vm, points| {
@@ -890,20 +890,20 @@ impl Vm {
         let owner = self.argument_list_owner()?;
         let roots = realm_call_storage::RealmCallRoots::new(4, owner.as_ref())?;
         if let Some(id) = args.object_id() {
-            roots.push(id);
+            roots.push(&self.heap, id)?;
         }
         self.with_realm_call_roots(roots.clone(), |vm| {
             let regexp = vm.get_property(args, &"regExp".into())?;
             if let Some(id) = regexp.object_id() {
-                roots.push(id);
+                roots.push(&vm.heap, id)?;
             }
             let match_strings = vm.get_property(args, &"matchStrings".into())?;
             if let Some(id) = match_strings.object_id() {
-                roots.push(id);
+                roots.push(&vm.heap, id)?;
             }
             let non_match_strings = vm.get_property(args, &"nonMatchStrings".into())?;
             if let Some(id) = non_match_strings.object_id() {
-                roots.push(id);
+                roots.push(&vm.heap, id)?;
             }
             vm.with_array_like_values(&match_strings, |vm, matches| {
                 let all_matches = vm.test262_join_strings(&matches.values)?;

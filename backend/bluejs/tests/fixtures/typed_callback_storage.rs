@@ -286,7 +286,7 @@ fn typed_callback_storage_species_throw_restores_prefix_and_roots() {
     let predicate = vm.lookup_global_name("predicate").unwrap().unwrap();
     let owner = vm.argument_list_owner().unwrap();
     let outer = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    outer.push(source.object_id().unwrap());
+    outer.push(&vm.heap, source.object_id().unwrap()).unwrap();
     vm.stack.push(Value::Number(9.0));
     vm.synchronize_scheduling_usage().unwrap();
     vm.with_realm_call_roots(outer.clone(), |vm| {
@@ -485,7 +485,7 @@ fn typed_callback_storage_neutral_root_loan_preserves_policy() {
         .object_id()
         .unwrap();
     let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&neutral.heap, object).unwrap();
     let item = neutral
         .with_realm_call_roots(roots, |vm| vm.typed_array_owned_element(object, 0, None))
         .unwrap();

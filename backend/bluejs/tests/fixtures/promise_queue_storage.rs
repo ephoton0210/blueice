@@ -48,7 +48,7 @@ fn promise_queue_storage_jobs_refuse_a_net_capacity_only_allowance() {
         vm.enqueue_promise_job(job());
     }
     assert_eq!(vm.promise_jobs.len(), vm.promise_jobs.capacity());
-    let _peer = leave_room(&mut vm, 4 * std::mem::size_of::<PromiseJob>());
+    let _peer = leave_room(&mut vm, job_bytes(4));
     vm.enqueue_promise_job(job());
     assert_eq!(
         vm.check_scheduling_failure(),
@@ -92,7 +92,7 @@ fn promise_queue_storage_await_refusal_keeps_the_frame_serial_and_reaction_capac
         .unwrap();
     let id = *vm.async_continuations.keys().next().unwrap();
     let frame = vm.async_continuations.remove(&id).unwrap();
-    vm.promises.get_mut(&input).unwrap().reactions.clear();
+    vm.promises.get_mut(&input).unwrap().truncate_reactions(0);
     for _ in 0..4 {
         vm.enqueue_promise_reaction(input, reaction());
     }
@@ -110,7 +110,7 @@ fn promise_queue_storage_await_refusal_keeps_the_frame_serial_and_reaction_capac
 }
 
 fn job_bytes(count: usize) -> usize {
-    count * std::mem::size_of::<PromiseJob>()
+    count * std::mem::size_of::<promise_job_storage::QueuedPromiseJob>()
 }
 fn reaction_slots(count: usize) -> usize {
     count * std::mem::size_of::<PromiseReaction>()
@@ -284,10 +284,10 @@ fn promise_queue_storage_partial_reaction_removal_retains_its_actual_capacity_ch
         vm.enqueue_promise_reaction(input, reaction());
     }
     let before = vm.host_scheduling_usage().unwrap().payload_bytes;
-    vm.promises.get_mut(&input).unwrap().reactions.pop();
+    vm.promises.get_mut(&input).unwrap().truncate_reactions(1);
     vm.reconcile_scheduling_ownership();
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
-    vm.promises.get_mut(&input).unwrap().reactions = Vec::new();
+    vm.promises.get_mut(&input).unwrap().release_reactions();
     vm.reconcile_scheduling_ownership();
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
@@ -301,7 +301,8 @@ fn promise_queue_storage_rust_held_deque_candidate_outlives_its_vm_owner() {
         vm.enqueue_promise_job(job());
     }
     let observed = observer(&vm);
-    let prepared = PreparedDeque::for_push(&vm.promise_jobs, vm.host_scheduling.as_ref()).unwrap();
+    let prepared =
+        PreparedDeque::for_additional(&vm.promise_jobs, 1, vm.host_scheduling.as_ref()).unwrap();
     drop(vm);
     assert_eq!(
         observed.host_scheduling_snapshot().payload_bytes,
@@ -407,8 +408,7 @@ impl AwaitFixture {
         vm.promises
             .get_mut(&input)
             .unwrap()
-            .reactions
-            .retain(|reaction| match reaction {
+            .retain_reactions(|reaction| match reaction {
                 PromiseReaction::AsyncAwait { continuation } => {
                     !asynchronous || *continuation != id
                 }
@@ -636,7 +636,7 @@ fn promise_queue_storage_terminal_queue_cleanup_refunds_its_committed_storage() 
     vm.enqueue_promise_job(payload_job());
     let before = vm.host_scheduling_usage().unwrap().payload_bytes;
     let _ = vm.host_scheduling.as_ref().unwrap().fail();
-    vm.promise_jobs = VecDeque::new();
+    vm.promise_jobs = Default::default();
     vm.reconcile_scheduling_ownership();
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,

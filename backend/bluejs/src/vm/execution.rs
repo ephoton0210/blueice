@@ -8,6 +8,10 @@ use super::eval_compilation_storage::PreparedEvalCode;
 use super::root_code_storage::BorrowedRootCode;
 use super::*;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/error_input_storage.rs"]
+mod error_input_tests;
+
 /// The synchronous root entry cannot suspend at a generator or await boundary.
 pub(super) fn root_interpreter_exit(exit: InterpreterExit) -> Result<Value, RuntimeError> {
     match exit {
@@ -273,14 +277,29 @@ impl Vm {
         if self.host_scheduling.is_some() {
             return self.enqueue_host_finalization_tasks();
         }
-        // Host-neutral queues have no document admission policy. Move cells
-        // straight into their traced queue without bulk jobs/live-cell copies.
+        if self.heap.pending_finalization_registries().next().is_none() {
+            if !self.promise_jobs.is_empty() {
+                self.promise_job_owner(None)?;
+            }
+            return Ok(());
+        }
+        // A neutral VM can still retain a borrowed queue account. Prepare each
+        // move before publishing it; refusal leaves the source cell intact.
+        let owner = self.promise_job_owner(None)?;
         let jobs = &mut self.promise_jobs;
         self.heap
             .drain_finalization_registry_cleanup_jobs(|callback, holdings| {
-                jobs.push_back(PromiseJob::FinalizationCleanup { callback, holdings });
-            });
-        Ok(())
+                let mut job = Some(PromiseJob::FinalizationCleanup { callback, holdings });
+                match jobs.try_push_cleanup(&mut job, owner.as_ref()) {
+                    Ok(()) => Ok(()),
+                    Err(error) => {
+                        let Some(PromiseJob::FinalizationCleanup { holdings, .. }) = job else {
+                            unreachable!("cleanup refusal retains its input");
+                        };
+                        Err((error, holdings))
+                    }
+                }
+            })
     }
 
     /// GlobalDeclarationInstantiation for this VM's implemented classic
@@ -1100,6 +1119,10 @@ impl Vm {
         iterators: &mut IteratorRecords,
         depth: usize,
     ) -> Option<RuntimeError> {
+        let mut first_error_storage = match self.argument_list_owner() {
+            Ok(owner) => owner,
+            Err(error) => return Some(error),
+        };
         // A compiler-emitted `break` can close its target for-of iterator
         // before a surrounding handler starts finalizer cleanup.
         // Scope teardown can release all of these records before cleanup.
@@ -1117,8 +1140,16 @@ impl Vm {
             let result = self.iterator_close(&record);
             if let Err(error) = result {
                 if first_error.is_none() {
-                    if let RuntimeError::Thrown(value) = &error {
-                        self.stack.push(value.clone());
+                    if let Some(storage) = first_error_storage.as_mut() {
+                        if let Err(admission) =
+                            storage.resize(host_scheduling::runtime_error_payload_bytes(&error))
+                        {
+                            first_error = Some(admission);
+                            break;
+                        }
+                    }
+                    if let RuntimeError::Thrown(Value::Object(object)) = &error {
+                        self.stack.push(Value::Object(*object));
                     }
                     first_error = Some(error);
                     let origin = self.take_pending_throw_origin();
@@ -1148,22 +1179,8 @@ impl Vm {
     }
 
     pub(super) fn error_value(&mut self, error: RuntimeError) -> Result<Value, RuntimeError> {
-        match error {
-            RuntimeError::Thrown(value) => Ok(value),
-            RuntimeError::ReferenceError(message) => self.error_object("ReferenceError", message),
-            RuntimeError::TypeError(message) => self.error_object("TypeError", message),
-            RuntimeError::RangeError(message) => self.error_object("RangeError", message),
-            RuntimeError::SyntaxError(message) => self.error_object("SyntaxError", message),
-            // Dynamic import reports a linking/host-resolution failure by
-            // rejecting its Promise with a SyntaxError; it must not escape
-            // the job queue as an implementation error.
-            RuntimeError::ModuleResolution(message) => self.error_object("SyntaxError", message),
-            RuntimeError::Test262(message) => self.error_object("Test262Error", message),
-            RuntimeError::StringLimit { limit } => {
-                self.error_object("RangeError", format!("BlueJS string exceeds {limit} bytes"))
-            }
-            error => Err(error),
-        }
+        self.error_value_with_input(error, None)
+            .map(native_value_storage::NativeValue::into_value)
     }
 
     pub(super) fn error_object(
@@ -1171,13 +1188,10 @@ impl Vm {
         name: &str,
         message: String,
     ) -> Result<Value, RuntimeError> {
-        let constructor = self.error_global(name)?;
-        self.call_native(
-            constructor,
-            Value::Undefined,
-            vec![Value::String(message.into())],
-            false,
-        )
+        let owner = self.argument_list_owner()?;
+        error_input_storage::ErrorMessage::adopt(message, owner.as_ref())?
+            .into_error(self, name)
+            .map(native_value_storage::NativeValue::into_value)
     }
 
     pub(super) fn restore_completion(&mut self) {
@@ -1204,6 +1218,27 @@ impl Vm {
         iterators: &mut IteratorRecords,
         completion: Completion,
     ) -> Result<CompletionAction, RuntimeError> {
+        self.resolve_completion_with_input(code, handlers, iterators, completion, &mut None)
+    }
+
+    pub(super) fn resolve_completion_with_input(
+        &mut self,
+        code: &Bytecode,
+        handlers: &mut HandlerRecords,
+        iterators: &mut IteratorRecords,
+        completion: Completion,
+        input: &mut Option<host_scheduling::SharedSchedulingCharge>,
+    ) -> Result<CompletionAction, RuntimeError> {
+        if input.is_none() {
+            self.reconcile_scheduling_ownership();
+            *input = self
+                .argument_list_owner()?
+                .as_ref()
+                .map(|owner| {
+                    owner.reserve_peer(generator_input::scalar_completion_bytes(&completion))
+                })
+                .transpose()?;
+        }
         handlers.refresh_payload(self);
         if let Completion::Halt(value) = completion {
             return Ok(CompletionAction::Return(value));
@@ -1220,7 +1255,10 @@ impl Vm {
             self.restore_completion();
             return match frame.pending {
                 Some(pending) => {
-                    let completion = self.pending_completions[pending].clone();
+                    let (completion, mut storage) = generator_input::copy_scalar_completion(
+                        &self.pending_completions[pending],
+                        input,
+                    )?;
                     if matches!(completion, Completion::Throw(_)) {
                         let mut origin = frame.pending_origin;
                         // A suspended finalizer can resume in another script
@@ -1230,7 +1268,13 @@ impl Vm {
                         self.restore_pending_throw_origin(origin);
                     }
                     handlers.refresh_payload(self);
-                    self.resolve_completion(code, handlers, iterators, completion)
+                    self.resolve_completion_with_input(
+                        code,
+                        handlers,
+                        iterators,
+                        completion,
+                        &mut storage,
+                    )
                 }
                 None => Ok(CompletionAction::Continue),
             };
@@ -1238,7 +1282,11 @@ impl Vm {
 
         // Keep a potential thrown/returned object reachable while scope and
         // iterator cleanup can call user code and trigger collection.
-        self.pending_completions.push(completion.clone());
+        let (temporary, mut temporary_storage) =
+            generator_input::copy_scalar_completion(&completion, input)?;
+        self.pending_completions.push(temporary);
+        generator_input::release_generator_payload(&mut temporary_storage, 0);
+        self.reconcile_scheduling_ownership();
         let mut completion = completion;
         loop {
             handlers.refresh_payload(self);
@@ -1252,8 +1300,16 @@ impl Vm {
                     Completion::Return(value) => {
                         match self.close_iterators_to_first_error(iterators, 0) {
                             None => CompletionAction::Return(value),
-                            Some(error) if error.is_catchable() => CompletionAction::Throw(error),
-                            Some(error) => return Err(error),
+                            Some(error) if error.is_catchable() => {
+                                drop(value);
+                                generator_input::release_generator_payload(input, 0);
+                                CompletionAction::Throw(error)
+                            }
+                            Some(error) => {
+                                drop(value);
+                                generator_input::release_generator_payload(input, 0);
+                                return Err(error);
+                            }
                         }
                     }
                     Completion::TailRecur(args) => CompletionAction::TailRecur(args),
@@ -1329,10 +1385,19 @@ impl Vm {
                             return Err(error);
                         }
                         completion = Completion::Throw(error);
+                        generator_input::release_generator_payload(input, 0);
+                        generator_input::retain_generator_payload(
+                            input,
+                            generator_input::scalar_completion_bytes(&completion),
+                        )?;
+                        let (replacement, mut replacement_storage) =
+                            generator_input::copy_scalar_completion(&completion, input)?;
                         *self
                             .pending_completions
                             .last_mut()
-                            .expect("completion remains rooted") = completion.clone();
+                            .expect("completion remains rooted") = replacement;
+                        generator_input::release_generator_payload(&mut replacement_storage, 0);
+                        self.reconcile_scheduling_ownership();
                     }
                 }
                 if let Some(origin) = original_origin {
@@ -1343,13 +1408,14 @@ impl Vm {
 
             if state == HandlerState::Try {
                 if let (Some(target), Completion::Throw(error)) = (catch, &completion) {
-                    let value = self.error_value(error.clone())?;
+                    let value = self.copy_error_value(error, input.as_ref())?;
                     let origin = self.take_pending_throw_origin();
                     let frame = handlers.last_mut().expect("handler was inspected above");
                     frame.state = HandlerState::Catch;
                     frame.pending_origin = origin;
                     handlers.refresh_payload(self);
-                    self.stack.push(value);
+                    self.stack.push(value.into_value());
+                    self.reconcile_scheduling_ownership();
                     // A class's heritage or computed key may have thrown while
                     // the function was running as strict code.
                     self.strict = code.strict;
@@ -1359,6 +1425,8 @@ impl Vm {
                     // allocate; retaining it would keep every caught error
                     // alive until the enclosing script returns.
                     self.pending_completions.pop();
+                    drop(completion);
+                    generator_input::release_generator_payload(input, 0);
                     return Ok(CompletionAction::Jump(target as usize));
                 }
             }
@@ -1366,6 +1434,8 @@ impl Vm {
                 if let Some(target) = finally {
                     let pending = self.pending_completions.len();
                     self.pending_completions.push(completion);
+                    generator_input::release_generator_payload(input, 0);
+                    self.reconcile_scheduling_ownership();
                     // Save the completion value the abrupt completion carries;
                     // a normal finalizer restores it (see `Completion::Resume`).
                     self.completion_saves
@@ -1385,11 +1455,14 @@ impl Vm {
             if state == HandlerState::Finally {
                 self.completion_saves.pop();
             }
-            completion = self
-                .pending_completions
-                .last()
-                .expect("completion remains rooted")
-                .clone();
+            let (replacement, replacement_storage) = generator_input::copy_scalar_completion(
+                self.pending_completions
+                    .last()
+                    .expect("completion remains rooted"),
+                input,
+            )?;
+            completion = replacement;
+            *input = replacement_storage;
         }
     }
 

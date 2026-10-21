@@ -19,6 +19,11 @@ pub(super) enum ProtectedRoots<'a> {
     Slice(&'a [ObjectId]),
     Allocation(&'a ObjectKind, Option<ObjectId>),
     Namespace(ObjectId, &'a [(JsString, ObjectId)]),
+    WebTarget(ObjectId, &'a WebTargetData),
+    AbortSignal(ObjectId, &'a AbortData),
+    Event(ObjectId, &'a DragEventState),
+    DragStore(ObjectId, &'a DragStore),
+    EventPath(ObjectId, &'a [ObjectId]),
 }
 impl ProtectedRoots<'_> {
     fn visit(self, visit: &mut dyn FnMut(ObjectId)) {
@@ -31,6 +36,26 @@ impl ProtectedRoots<'_> {
             Self::Namespace(namespace, exports) => {
                 visit(namespace);
                 exports.iter().map(|(_, cell)| *cell).for_each(visit);
+            }
+            Self::WebTarget(target, state) => {
+                visit(target);
+                state.visit_references(visit);
+            }
+            Self::AbortSignal(signal, state) => {
+                visit(signal);
+                state.visit_references(visit);
+            }
+            Self::DragStore(store, state) => {
+                visit(store);
+                state.visit_references(visit);
+            }
+            Self::Event(event, state) => {
+                visit(event);
+                state.visit_references(visit);
+            }
+            Self::EventPath(event, path) => {
+                visit(event);
+                path.iter().copied().for_each(visit);
             }
         }
     }
@@ -99,6 +124,9 @@ fn new_map<K: Eq + Hash, V>(capacity: Option<usize>) -> Result<Option<HashMap<K,
 }
 
 impl CollectorWorkspace {
+    pub(super) fn budget(&self) -> Option<&HeapNativeBudget> {
+        self.budget.as_ref()
+    }
     fn retained_bytes(&self) -> usize {
         vec_bytes(&self.work)
             .saturating_add(vec_bytes(&self.waiters))
@@ -362,7 +390,26 @@ impl Heap {
         }
     }
 
+    pub(crate) fn native_storage_budget(&self) -> Option<&HeapNativeBudget> {
+        self.collector.budget()
+    }
+
     pub(crate) fn bind_native_budget(&mut self, budget: HeapNativeBudget) -> Result<(), HeapError> {
+        if !self.async_generator_counts_can_join(&budget) {
+            return Err(HeapError::InvalidConfig);
+        }
+        let count = self.unowned_async_generator_requests();
+        let credit = if count == 0 {
+            None
+        } else {
+            Some(
+                budget
+                    .reserve_request_credit(count)
+                    .map_err(|_| HeapError::AsyncGeneratorStorageLimit)?,
+            )
+        };
+        self.attach_async_generator_request_budget(&budget, credit, None)?;
+        self.retain_async_generator_backing(&budget, None)?;
         if let Some(managed) = self.document_heap_budget_handle() {
             managed.bind_native(&budget)?;
         }

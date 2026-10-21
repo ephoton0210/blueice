@@ -7,6 +7,300 @@
 
 #[cfg(coverage)]
 #[test]
+fn ordinary_library_console_text_storage_contracts() {
+    blueice_bluejs::Vm::verify_console_text_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_console_runtime_storage_contracts() {
+    blueice_bluejs::Vm::verify_console_runtime_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_file_reader_storage_contracts() {
+    blueice_bluejs::Vm::verify_file_reader_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_blob_read_storage_contracts() {
+    blueice_bluejs::Vm::verify_blob_read_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_blob_construct_storage_contracts() {
+    blueice_bluejs::Vm::verify_blob_construct_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_file_input_registry_contracts() {
+    blueice_bluejs::Vm::verify_file_input_registry_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_file_list_storage_contracts() {
+    blueice_bluejs::Vm::verify_file_list_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_drag_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_drag_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_drag_store_storage_contracts() {
+    blueice_bluejs::Vm::verify_drag_store_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_event_lifecycle_contracts() {
+    blueice_bluejs::Vm::verify_host_event_lifecycle_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_node_event_storage_contracts() {
+    blueice_bluejs::Vm::verify_node_event_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_web_event_storage_contracts() {
+    blueice_bluejs::Vm::verify_web_event_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_event_target_storage_contracts() {
+    blueice_bluejs::Vm::verify_event_target_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_realm_root_write_contracts() {
+    blueice_bluejs::Vm::verify_realm_root_write_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_active_realm_resolution_contracts() {
+    blueice_bluejs::Vm::verify_active_realm_resolution_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_active_realm_publication_contracts() {
+    blueice_bluejs::Vm::verify_active_realm_publication_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_realm_root_affinity_contracts() {
+    blueice_bluejs::Vm::verify_realm_root_affinity_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_abort_cleanup_contracts() {
+    blueice_bluejs::Vm::verify_abort_cleanup_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_abort_storage_contracts() {
+    blueice_bluejs::Vm::verify_abort_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_report_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_report_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_promise_reaction_counts_contracts() {
+    blueice_bluejs::Vm::verify_promise_reaction_counts_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_promise_job_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_promise_job_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_promise_reaction_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_promise_reaction_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_promise_status_storage_contracts() {
+    blueice_bluejs::Vm::verify_promise_status_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_wait_map_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_wait_map_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_async_registration_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_async_registration_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_browser_task_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_browser_task_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_timer_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_timer_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_finalization_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_host_finalization_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_pending_rejection_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_pending_rejection_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_module_import_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_module_import_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_deferred_import_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_deferred_import_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_async_generator_request_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_async_generator_request_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_async_generator_capacity_contracts() {
+    blueice_bluejs::Vm::verify_async_generator_capacity_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_async_generator_origin_contracts() {
+    blueice_bluejs::Vm::verify_async_generator_origin_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_async_generator_value_contracts() {
+    blueice_bluejs::Vm::verify_async_generator_value_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_async_generator_input_contracts() {
+    blueice_bluejs::Vm::verify_async_generator_input_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_runtime_error_input_contracts() {
+    blueice_bluejs::Vm::verify_runtime_error_input_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_error_input_storage_contracts() {
+    blueice_bluejs::Vm::verify_error_input_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_module_report_lifetime_contracts() {
+    blueice_bluejs::Vm::verify_module_report_lifetime_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_marshalling_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_marshalling_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_function_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_function_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_registration_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_registration_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_family_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_family_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_host_listener_storage_contracts() {
+    blueice_bluejs::Vm::verify_host_listener_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_intrinsic_storage_contracts() {
+    blueice_bluejs::Vm::verify_intrinsic_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_array_sort_storage_contracts() {
+    blueice_bluejs::Vm::verify_array_sort_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_active_native_storage_contracts() {
+    blueice_bluejs::Vm::verify_active_native_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
+fn ordinary_library_array_copy_storage_contracts() {
+    blueice_bluejs::Vm::verify_array_copy_storage_contracts();
+}
+
+#[cfg(coverage)]
+#[test]
 fn ordinary_library_array_flatten_storage_contracts() {
     blueice_bluejs::Vm::verify_array_flatten_storage_contracts();
 }

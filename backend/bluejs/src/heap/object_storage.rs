@@ -396,7 +396,9 @@ impl Heap {
                 | ObjectKind::StringIterator { string, .. }
                 | ObjectKind::RegExpIterator { string, .. } => string.byte_len(),
                 ObjectKind::ArrayBuffer { bytes, .. } => bytes.len(),
-                ObjectKind::WebFileList(files) => files.len().saturating_mul(size_of::<ObjectId>()),
+                ObjectKind::WebFileList(files) => {
+                    files.capacity().saturating_mul(size_of::<ObjectId>())
+                }
                 ObjectKind::WebDataTransfer(store) => store.bytes(),
                 ObjectKind::WebDragEvent(state) => state.bytes(),
                 ObjectKind::WebEventTarget(state) => state.bytes(),
@@ -408,11 +410,7 @@ impl Heap {
                 ObjectKind::WebAbortSignal(state) => state.bytes(),
                 ObjectKind::WebAbortController(_) => 0,
                 ObjectKind::WebUrl(url) => size_of::<url::Url>() + url.as_str().len(),
-                ObjectKind::WebBlob(blob) => blob
-                    .bytes
-                    .len()
-                    .saturating_add(blob.media_type.byte_len())
-                    .saturating_add(blob.file.as_ref().map_or(0, |(name, _)| name.byte_len())),
+                ObjectKind::WebBlob(blob) => blob.owned_buffer_bytes(),
                 ObjectKind::RegExp(regexp) => exotic::regexp_bytes(regexp),
                 ObjectKind::Collator { data, .. } => data.bytes(),
                 ObjectKind::NumberFormat { data, .. } => data.bytes(),
@@ -541,6 +539,23 @@ impl Heap {
                 .ok_or(HeapError::UninitializedModuleExport);
         }
         Ok(self.objects[&object].own_property(&key))
+    }
+
+    /// Borrows an own string data property without allocating a key or a
+    /// copy of the value; diagnostics use it for `name`/`message` text.
+    pub(crate) fn own_string_property_ref(
+        &self,
+        object: ObjectId,
+        name: &str,
+    ) -> Result<Option<&JsString>, HeapError> {
+        Ok(self
+            .object(object)?
+            .properties
+            .iter()
+            .find_map(|(key, value)| match (key, value) {
+                (key, Value::String(text)) if key == name => Some(text),
+                _ => None,
+            }))
     }
 
     /// Ordinary data-property lookup through the prototype chain.

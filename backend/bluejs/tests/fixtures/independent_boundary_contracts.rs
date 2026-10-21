@@ -412,9 +412,17 @@ fn host_root_refusals_leave_families_wrappers_and_listener_snapshots_unpublished
             panic!("actual listener tag")
         };
         vm.heap.allow_root_registrations(available);
+        // The wrapper and callbacks ride the call's temporary roots, so a
+        // click dispatch needs a single heap root slot.
+        let expected = if available < 1 {
+            Err(RuntimeError::Heap(HeapError::IdExhausted))
+        } else {
+            Ok(false)
+        };
         assert_eq!(
             vm.dispatch_host_click(family, HostObjectKey::new(7, 3, 1)),
-            Err(RuntimeError::Heap(HeapError::IdExhausted))
+            expected,
+            "available={available}"
         );
         for callback in [first, second] {
             vm.host_click_listener_call(

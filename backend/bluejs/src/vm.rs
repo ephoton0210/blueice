@@ -23,7 +23,9 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
+mod active_native_storage;
 mod argument_list_storage;
+mod array_sort_storage;
 mod async_root_storage;
 mod browser_task_entry;
 mod browser_task_storage;
@@ -36,6 +38,7 @@ mod completion;
 mod debugger;
 mod diagnostic_accounting;
 mod document_policy;
+mod error_input_storage;
 mod errors;
 mod execution;
 mod execution_payload;
@@ -43,6 +46,7 @@ mod frame_bindings;
 mod frame_maps;
 mod gc_trace_storage;
 mod generator_entry;
+mod generator_input;
 mod generator_resume;
 mod generator_storage;
 mod global_bindings;
@@ -52,6 +56,7 @@ mod module_continuation_storage;
 mod module_error_reporting;
 mod module_graph_storage;
 mod module_value_storage;
+mod native_context_guards;
 mod native_value_storage;
 mod property_definition_storage;
 mod realm_call_storage;
@@ -99,8 +104,11 @@ mod host_objects;
 mod host_promises;
 mod host_realm_tasks;
 mod host_rejections;
+mod host_report_storage;
 mod host_task_storage;
 mod host_wait_storage;
+mod intrinsic_storage;
+mod promise_job_storage;
 mod promise_queue_storage;
 mod promise_record_storage;
 mod promise_settlement;
@@ -156,7 +164,8 @@ use host_scheduling::{
     AwaitRegistration, SchedulingCapacity, SchedulingMapCapacity, SchedulingScope,
 };
 pub(crate) use host_scheduling::{
-    HeapNativeBudget, NativeDocumentIdentity, SharedSchedulingCharge as HeapNativeCharge,
+    HeapNativeBudget, HeapReactionLease, NativeDocumentIdentity,
+    SharedSchedulingCharge as HeapNativeCharge,
 };
 pub use host_scheduling::{
     HostSchedulingUsage, MAX_HOST_SCHEDULING_BYTES, MAX_PENDING_BROWSER_TASKS,
@@ -200,6 +209,7 @@ mod weak_kept_storage;
 mod web_abort;
 mod web_dom_exception;
 mod web_drag_drop;
+mod web_event_storage;
 mod web_event_target;
 mod web_events;
 mod web_file_api;
@@ -234,8 +244,8 @@ use host_animation_frames::HostAnimationFrame;
 pub(crate) use host_animation_frames::HostAnimationFrameFunction;
 pub use host_animation_frames::{BlueJsAnimationFrameRun, MAX_HOST_ANIMATION_FRAME_CALLBACKS};
 use host_objects::{
-    ActiveHostClickEvent, HostClickListener, HostObjectFactoryRegistration, HostObjectFamilyState,
-    HostObjectMethodRegistration, HostObjectPairMethodRegistration,
+    ActiveHostClickEvent, HostFamilies, HostListeners, HostObjectFactoryRegistration,
+    HostObjectMethodRegistration, HostObjectPairMethodRegistration, HostRegistrations,
 };
 pub use host_objects::{
     HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragImage, HostDragItem,
@@ -276,6 +286,8 @@ pub enum HostValue {
     String(JsString),
 }
 
+const HOST_PRIMITIVE_ARGUMENT_ERROR: &str = "host functions accept primitive values only";
+
 impl TryFrom<&Value> for HostValue {
     type Error = HostFunctionError;
 
@@ -286,9 +298,9 @@ impl TryFrom<&Value> for HostValue {
             Value::Bool(value) => Ok(Self::Bool(*value)),
             Value::Number(value) => Ok(Self::Number(*value)),
             Value::String(value) => Ok(Self::String(value.clone())),
-            Value::BigInt(_) | Value::Symbol(_) | Value::Object(_) => Err(HostFunctionError::new(
-                "host functions accept primitive values only",
-            )),
+            Value::BigInt(_) | Value::Symbol(_) | Value::Object(_) => {
+                Err(HostFunctionError::new(HOST_PRIMITIVE_ARGUMENT_ERROR))
+            }
         }
     }
 }
@@ -431,6 +443,7 @@ impl From<HeapError> for RuntimeError {
         match error {
             HeapError::CollectorStorageLimit
             | HeapError::RootStorageLimit
+            | HeapError::AsyncGeneratorStorageLimit
             | HeapError::CodeSourceStorageLimit => Self::SchedulingLimit,
             HeapError::InvalidArrayLength => Self::RangeError("invalid array length".into()),
             HeapError::InvalidBufferRange => {
@@ -589,7 +602,7 @@ use module_export_resolution::{ExportResolution, ResolvedModule};
 struct DeferredImportWaiter {
     promise: ObjectId,
     namespace: ObjectId,
-    pending: import_waiter_storage::ImportDependencies,
+    pending: import_waiter_storage::DeferredImportDependencies,
 }
 
 enum PromiseStatus {
@@ -689,6 +702,9 @@ struct PromiseRecord {
     reactions: Vec<PromiseReaction>,
     handled: bool,
     rejection_notified: bool,
+    // Status/provenance data must be destroyed before its native credit.
+    status_storage: Option<host_scheduling::SharedSchedulingCharge>,
+    reaction_storage: Option<host_scheduling::SharedSchedulingCharge>,
 }
 
 /// Whether a disposable resource was added by a `using` declaration/
@@ -872,7 +888,7 @@ impl ShadowRealmRecord {
 /// A caller-heap facade standing in for a callable value that crossed a
 /// `ShadowRealm` boundary (`WrappedFunctionCreate`). `home_heap` identifies,
 /// by `ObjectId::heap`, the `Vm` that owns `target`; the live pointer to
-/// that `Vm` is resolved dynamically (see `shadow_realm::resolve_active`)
+/// that `Vm` is resolved dynamically (see `realm_reentrancy::resolve_active_entry`)
 /// rather than stored here, since a `Vm` is an ordinary owned value its
 /// caller may move between top-level calls. `target_root` keeps `target`
 /// alive against *its own* realm's collector: nothing in that realm's own
@@ -906,7 +922,7 @@ struct Test262ForeignValue {
 /// The reverse Test262 membrane's own per-facade record -- symmetric with
 /// [`Test262ForeignValue`], but keyed by the *parent's* own heap identity
 /// (`home_heap`, the same tag [`realm_reentrancy::register_active`]/
-/// [`realm_reentrancy::resolve_active`] use) rather than a `test262_realms`
+/// [`realm_reentrancy::resolve_active_entry`] use) rather than a `test262_realms`
 /// `ObjectId`, since a child realm has no map back to its own parent -- the
 /// parent is reachable only dynamically, through `ACTIVE`, while a call from
 /// this child is actually in flight.
@@ -1037,6 +1053,8 @@ pub struct Vm {
     active_diagnostic_bytes: Rc<std::cell::Cell<usize>>,
     /// Native Promise algorithms forward an origin; entering JavaScript masks it.
     promise_origin_override: Option<ThrowOrigin>,
+    /// Credit follows the current provenance and displaced native contexts.
+    promise_origin_override_storage: Option<host_scheduling::SharedSchedulingCharge>,
     /// Weak metadata owned by native finally-thunk state, never a heap root.
     promise_thunk_origins: retained_control_map::RetainedControlMap<ObjectId, ThrowOrigin>,
     /// Distinguishes a new callee throw from its propagation through `Call`.
@@ -1132,14 +1150,15 @@ pub struct Vm {
     /// parks them here; `store_module_graph` hands them to the installed
     /// graph, which owns every root of its modules.
     nested_module_roots: ModuleRoots,
-    deferred_import_waiters: Vec<DeferredImportWaiter>,
+    deferred_import_waiters: import_waiter_storage::DeferredImportWaiters,
     module_continuations: retained_control_map::RetainedControlMap<u64, ModuleContinuation>,
     next_module_continuation: u64,
     async_continuations: retained_control_map::RetainedControlMap<u64, AsyncContinuation>,
     next_async_continuation: u64,
     module_pending_dependencies: module_dependencies::PendingDependencyMap,
     module_async_parents: module_dependencies::AsyncParentMap,
-    module_import_waiters: retained_control_map::RetainedControlMap<String, Vec<ObjectId>>,
+    module_import_waiters:
+        retained_control_map::RetainedControlMap<String, import_waiters::ModuleImportWaiterGroup>,
     /// The defining source-text module for currently executing code. A
     /// closure receives the same association at creation time.
     active_module_name: Option<String>,
@@ -1176,7 +1195,7 @@ pub struct Vm {
     globals: HashMap<String, ObjectId>,
     /// Host callbacks are private to this realm. Native function objects hold
     /// only an index into this vector, so GC sees no Rust references.
-    host_functions: Vec<Box<dyn HostFunction>>,
+    host_functions: HostRegistrations<Box<dyn HostFunction>>,
     host_promises: host_promises::HostPromiseState,
     host_console: Option<host_console::ConsoleState>,
     /// None until the page owner enables errors; true while firing `error`.
@@ -1185,18 +1204,18 @@ pub struct Vm {
     /// Opaque host-object factories and their collector-rooted, realm-private
     /// identity tables. Neither a JavaScript value nor a raw host key enters
     /// a Rust callback through the primitive-only HostValue ABI.
-    host_object_factories: Vec<HostObjectFactoryRegistration>,
-    host_object_methods: Vec<HostObjectMethodRegistration>,
-    host_object_pair_methods: Vec<HostObjectPairMethodRegistration>,
-    host_object_families: Vec<HostObjectFamilyState>,
-    host_file_inputs: Vec<web_file_input::HostFileInputRegistration>,
+    host_object_factories: HostRegistrations<HostObjectFactoryRegistration>,
+    host_object_methods: HostRegistrations<HostObjectMethodRegistration>,
+    host_object_pair_methods: HostRegistrations<HostObjectPairMethodRegistration>,
+    host_object_families: HostFamilies,
+    host_file_inputs: HostRegistrations<web_file_input::HostFileInputRegistration>,
     host_object_urls: Option<Box<dyn HostObjectUrls>>,
-    host_click_listeners: Vec<HostClickListener>,
+    host_click_listeners: HostListeners,
     next_host_listener_serial: u64,
     active_host_click_event: Option<ActiveHostClickEvent>,
     /// Pending `setTimeout`/`setInterval` entries and the host-supplied
     /// millisecond clock they are scheduled against.
-    host_timers: Vec<HostTimer>,
+    host_timers: timer_registration::HostTimerTable,
     host_timer_next_id: u32,
     host_timer_clock_ms: u64,
     host_timer_clock: Option<Box<dyn Fn() -> u64>>,
@@ -1253,7 +1272,7 @@ pub struct Vm {
     /// `chunks`, `windows`) that have already been offered to the realm. Each
     /// is installed at most once, so deleting one never lets a later
     /// observation put a fresh copy back.
-    iterator_helpers_installed: Vec<&'static str>,
+    iterator_helpers_installed: intrinsic_storage::IteratorHelperFlags,
     /// `%WrapForValidIteratorPrototype%`, shared by the iterator wrappers
     /// created by `Iterator.from`.
     iterator_wrapper_prototype: Option<ObjectId>,
@@ -1310,7 +1329,7 @@ pub struct Vm {
     promises: retained_control_map::RetainedControlMap<ObjectId, PromiseRecord>,
     /// Managed Promise/host-wait preparation preserves every staged control map.
     preserve_promise_table_capacity: bool,
-    promise_jobs: VecDeque<PromiseJob>,
+    promise_jobs: promise_job_storage::PromiseJobQueue,
     /// Page realms bound even the implicit drains used by module evaluation.
     bounded_host_microtask_checkpoints: bool,
     document_policy_ready: bool,
@@ -1322,8 +1341,8 @@ pub struct Vm {
     displaced_execution_control_bytes: Rc<std::cell::Cell<usize>>,
     linked_module_cell_bytes: Rc<std::cell::Cell<usize>>,
     last_execution_payload_bytes: usize,
-    browser_tasks: VecDeque<browser_tasks::BrowserTask>,
-    host_finalization_tasks: VecDeque<host_finalization::HostFinalizationTask>,
+    browser_tasks: browser_task_storage::BrowserTaskQueue,
+    host_finalization_tasks: host_finalization::HostFinalizationQueue,
     active_finalization_registry: Option<ObjectId>,
     next_host_task_source: usize,
     next_standalone_task_serial: u64,
@@ -1364,7 +1383,7 @@ pub struct Vm {
     /// "child" role generically -- there is no reverse analog of
     /// `test262_realms` here, since a child has no map back to its parent;
     /// the live parent pointer is instead resolved dynamically through
-    /// [`realm_reentrancy::resolve_active`], keyed by `home_heap`. See
+    /// [`realm_reentrancy::resolve_active_entry`], keyed by `home_heap`. See
     /// [`test262::reverse`] for the forwarding functions that dispatch
     /// through this map.
     test262_reverse_values: MembraneMap<ObjectId, Test262ReverseValue>,
@@ -1386,11 +1405,11 @@ pub struct Vm {
     /// Synchronous delegate callbacks execute while their saved frame remains
     /// in the heap for GC. These identities block resumption until the callback
     /// and its result getters finish; the call operands already retain each one.
-    active_generator_delegations: HashSet<ObjectId>,
+    active_generator_delegations: active_native_storage::ActiveDelegations,
     /// How many of `with_objects` the running function inherited from the
     /// scope it was created in (the rest were entered by its own `with`).
     inherited_with_depth: usize,
-    joining: Vec<ObjectId>,
+    joining: transport_buffer_storage::TransportVector<ObjectId>,
     realm_home: Option<realm_cells::RealmWeak>,
 }
 
@@ -1416,6 +1435,10 @@ impl Vm {
         length: u32,
         function: impl HostFunction,
     ) -> Result<(), RuntimeError> {
+        // Cancellation precedes lazy global/intrinsic materialization, even
+        // when this neutral realm borrowed a different document's registry.
+        self.argument_list_owner()?;
+        self.host_functions.owner_view()?;
         let global = self
             .global("globalThis")?
             .object_id()
@@ -1472,6 +1495,8 @@ impl Vm {
         length: u32,
         function: impl HostFunction,
     ) -> Result<(), RuntimeError> {
+        self.argument_list_owner()?;
+        self.host_functions.owner_view()?;
         if owner.0.heap != self.object_prototype.heap || !host_property_name_is_valid(name) {
             return Err(RuntimeError::TypeError(
                 "host object or method name is invalid".into(),
@@ -1502,11 +1527,19 @@ impl Vm {
         // Check the tag's representation before publishing either the heap
         // function or its callback. The integer boundary can be validated
         // without constructing an impossibly large callback registry.
-        host_function_index(self.host_functions.len()).and_then(|index| {
-            self.install_host_callable_native(owner, name, length, NativeFunction::Host(index))?;
-            self.host_functions.push(Box::new(function));
-            Ok(())
-        })
+        let caller = self.argument_list_owner()?;
+        let index = host_function_index(self.host_functions.len())?;
+        let prepared = self.host_functions.prepare(1, caller.as_ref())?;
+        let callbacks = prepared.callbacks(&[std::mem::size_of_val(&function)], || {
+            [Box::new(function) as Box<dyn HostFunction>]
+        })?;
+        if let Some(caller) = &caller {
+            caller.reserve_peer(0)?;
+        }
+        self.host_functions.owner_view()?;
+        self.install_host_callable_native(owner, name, length, NativeFunction::Host(index))?;
+        self.host_functions.commit(prepared, callbacks);
+        Ok(())
     }
 
     fn install_host_callable_native(
@@ -1543,43 +1576,30 @@ impl Vm {
         args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
+        let caller = self.argument_list_owner()?;
+        let original = self.host_functions.retain_for_entry(caller.as_ref())?;
         if construct {
             return Err(RuntimeError::TypeError(
                 "host functions are not constructors".into(),
             ));
         }
-        let mut converted = self.owned_records(Vec::new());
-        for value in args {
-            if matches!(
-                value,
-                Value::Undefined
-                    | Value::Null
-                    | Value::Bool(_)
-                    | Value::Number(_)
-                    | Value::String(_)
-            ) {
-                let growth = SchedulingCapacity::for_vec_push(&converted);
-                self.admit_scheduling_work(
-                    HostSchedulingUsage {
-                        payload_bytes: host_scheduling::value_payload_bytes(value),
-                        ..Default::default()
-                    }
-                    .with_growth(growth),
-                )?;
-            }
-            let value = HostValue::try_from(value)
-                .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
-            converted.try_push(self, value)?;
+        let mut converted = self.prepare_host_arguments(args, original.as_ref())?;
+        if let Some(error) = converted.error.take() {
+            return Err(error);
         }
         let result = self
             .host_functions
             .get_mut(index as usize)
             .ok_or_else(|| RuntimeError::TypeError("host function is unavailable".into()))?
-            .call(&converted)
-            .map_err(|error| RuntimeError::TypeError(error.to_string()))?
-            .into();
-        self.check_string(&result)?;
-        Ok(result)
+            .call(&converted.values);
+        // A callback may terminate either account. Observe that before moving
+        // its result or allocating the native error's JavaScript message.
+        for owner in [caller.as_ref(), original.as_ref()].into_iter().flatten() {
+            owner.reserve_peer(0)?;
+        }
+        self.argument_list_owner()?;
+        let owner = converted.owner_view()?;
+        self.finish_host_callback_value(result, owner.as_ref())
     }
 }
 

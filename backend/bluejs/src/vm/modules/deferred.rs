@@ -13,6 +13,12 @@ use super::*;
 #[path = "../../../tests/fixtures/import_source_admission.rs"]
 mod source_admission_tests;
 
+/// A host resolution failure (a specifier that escapes its root, a NUL byte)
+/// as opposed to a heap-limit refusal that happens to travel in the same error.
+fn is_specifier_resolution_failure(error: &RuntimeError) -> bool {
+    matches!(error, RuntimeError::ModuleResolution(message) if !message.contains("heap limit exceeded"))
+}
+
 impl Vm {
     /// Source-phase dynamic import has the same promise and argument
     /// boundary as ordinary import(), but asks the host for a Module Source
@@ -50,7 +56,11 @@ impl Vm {
         })();
         let result = match result {
             Ok(value) => self.resolve_promise(promise, value),
-            Err(error) if !error.is_catchable() => Err(error),
+            // An unresolvable specifier rejects the promise, exactly as it does
+            // for `import()`; only resource refusals stay hard errors.
+            Err(error) if !error.is_catchable() && !is_specifier_resolution_failure(&error) => {
+                Err(error)
+            }
             Err(error) => self
                 .error_value(error)
                 .and_then(|error| self.settle_promise(promise, PromiseStatus::Rejected(error))),

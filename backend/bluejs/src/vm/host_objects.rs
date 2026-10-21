@@ -8,8 +8,41 @@
 
 use super::*;
 mod drag_events;
+mod drag_storage;
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/host_drag_storage.rs"]
+mod drag_storage_tests;
+mod family_storage;
 mod file_selection_events;
+mod listener_storage;
 mod node_events;
+pub(super) use node_events::HostEventContext;
+mod registration_storage;
+use super::argument_list_storage::ArgumentValues;
+use super::native_value_storage::NativeValue;
+use family_storage::FamilyContext;
+pub(super) use family_storage::HostFamilies;
+pub(super) use listener_storage::HostListeners;
+use listener_storage::{ListenerContext, ListenerSnapshot};
+pub(super) use registration_storage::{HostRegistrations, RegistrationRecord};
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/host_event_lifecycle.rs"]
+mod event_lifecycle_tests;
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/host_family_storage.rs"]
+mod family_ownership_tests;
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/host_function_storage.rs"]
+mod function_ownership_tests;
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/host_marshalling_storage.rs"]
+mod marshalling_ownership_tests;
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/host_listener_storage.rs"]
+mod ownership_tests;
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/host_registration_storage.rs"]
+mod registration_ownership_tests;
 pub use drag_events::{
     HostDragEventData, HostDragEventKind, HostDragEventOutcome, HostDragImage, HostDragItem,
 };
@@ -131,13 +164,15 @@ where
 pub(super) struct HostObjectFamilyState {
     prototype: ObjectId,
     _prototype_root: RootId,
-    wrappers: HashMap<HostObjectKey, (ObjectId, RootId)>,
-    keys_by_wrapper: HashMap<ObjectId, HostObjectKey>,
+    wrappers: MembraneMap<HostObjectKey, (ObjectId, RootId)>,
+    keys_by_wrapper: MembraneMap<ObjectId, HostObjectKey>,
     event_target: bool,
     file_events: bool,
     drag_events: bool,
     element_validator: Option<Box<dyn Fn(HostObjectKey) -> bool>>,
     event_path: Option<Box<NodeEventPath>>,
+    // Both callback allocations drop before their native allocation credit.
+    callback_storage: Option<host_scheduling::SharedSchedulingCharge>,
 }
 
 type NodeEventPath = dyn FnMut(HostObjectKey) -> Result<Vec<HostObjectKey>, HostFunctionError>;
@@ -158,7 +193,6 @@ pub(super) struct HostObjectPairMethodRegistration {
     method: Box<dyn HostObjectPairMethod>,
 }
 
-#[derive(Clone)]
 pub(super) struct HostClickListener {
     serial: u64,
     family_index: u32,
@@ -183,12 +217,11 @@ pub(super) struct ActiveHostClickEvent {
     passive: bool,
 }
 
-fn listener_phases(length: usize) -> Vec<(usize, bool)> {
+fn listener_phases(length: usize) -> impl Iterator<Item = (usize, bool)> {
     (0..length)
         .rev()
         .map(|index| (index, true))
         .chain((0..length).map(|index| (index, false)))
-        .collect()
 }
 
 impl Vm {
@@ -200,11 +233,25 @@ impl Vm {
         validator: impl Fn(HostObjectKey) -> bool + 'static,
     ) -> Result<(), RuntimeError> {
         self.host_family_prototype(family)?;
-        self.host_object_families[family.index as usize].element_validator =
-            Some(Box::new(validator));
+        let context = FamilyContext::capture(self)?;
+        let charge = context
+            .owner()
+            .map(|owner| owner.reserve_peer(std::mem::size_of_val(&validator)))
+            .transpose()?;
+        let callback = Box::new(validator);
+        let state = &mut self.host_object_families[family.index as usize];
+        let old = state.element_validator.replace(callback);
+        let bytes = old
+            .as_ref()
+            .map_or(0, |callback| std::mem::size_of_val(&**callback));
+        drop(old);
+        state.replace_callback_charge(bytes, charge);
         Ok(())
     }
     pub(super) fn is_host_element(&self, object: ObjectId) -> bool {
+        if self.argument_list_owner().is_err() || self.host_object_families.owner_view().is_err() {
+            return false;
+        }
         self.host_object_families.iter().any(|family| {
             family.keys_by_wrapper.get(&object).is_some_and(|key| {
                 family
@@ -253,6 +300,8 @@ impl Vm {
                 "Host family belongs to another realm".into(),
             ));
         }
+        self.argument_list_owner()?;
+        self.host_object_families.owner_view()?;
         self.host_object_families
             .get(family.index as usize)
             .map(|state| state.prototype)
@@ -377,49 +426,26 @@ impl Vm {
                 "host click dispatch is already active".into(),
             ));
         }
-        let mut callbacks = self
-            .host_click_listeners
-            .iter()
-            .filter(|listener| {
+        let callbacks = self.listener_snapshot(
+            |listener| {
                 listener.family_index == family.index
                     && listener.key == key
                     && listener.selection.is_none()
                     && listener.drag.is_none()
                     && listener.event_type == "click"
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        callbacks.sort_by_key(|listener| !listener.capture);
-        if callbacks.is_empty() {
+            },
+            true,
+        )?;
+        if callbacks.serials.is_empty() {
             return Ok(false);
         }
-        let mut snapshot_roots = Vec::with_capacity(callbacks.len());
-        for callback in &callbacks {
-            match self.heap.root(callback.callback) {
-                Ok(root) => snapshot_roots.push(root),
-                Err(error) => {
-                    for root in snapshot_roots {
-                        self.heap
-                            .unroot(root)
-                            .expect("snapshot rollback releases only its own root registrations");
-                    }
-                    return Err(error.into());
-                }
-            }
-        }
-        let outcome = self.dispatch_rooted_host_click(wrapper, &callbacks);
-        for root in snapshot_roots {
-            self.heap
-                .unroot(root)
-                .expect("dispatch releases its independent retained snapshot registrations");
-        }
-        outcome
+        self.dispatch_rooted_host_click(wrapper, &callbacks)
     }
 
     fn dispatch_rooted_host_click(
         &mut self,
         wrapper: ObjectId,
-        callbacks: &[HostClickListener],
+        callbacks: &ListenerSnapshot,
     ) -> Result<bool, RuntimeError> {
         self.remaining_instructions = self.config.instruction_budget;
         let object_prototype = self.object_prototype;
@@ -458,8 +484,11 @@ impl Vm {
                 passive: false,
             });
             let mut result = Ok(());
-            for callback in callbacks {
-                if let Err(error) = self.invoke_host_listener(callback, wrapper, event) {
+            for serial in callbacks.serials.iter().copied() {
+                callbacks.validate(self)?;
+                let called = self.invoke_host_listener(serial, wrapper, event);
+                callbacks.validate(self)?;
+                if let Err(error) = called {
                     // An uncaught page exception ends this callback, not the
                     // event task. The source-free child reply still carries
                     // only the cancellation bit. Resource failures remain
@@ -505,6 +534,30 @@ impl Vm {
                 "host listener requires a type and callback".into(),
             ));
         }
+        let context = ListenerContext::capture(self)?;
+        let objects = std::iter::once(&receiver)
+            .chain(args)
+            .filter_map(Value::object_id);
+        let roots =
+            realm_call_storage::RealmCallRoots::new(objects.clone().count(), context.owner())?;
+        for object in objects {
+            roots.push(&self.heap, object)?;
+        }
+        self.with_realm_call_roots(roots, |vm| {
+            let result = vm.host_click_listener_input(family_index, receiver, args, add, &context);
+            context.validate(vm)?;
+            result
+        })
+    }
+
+    fn host_click_listener_input(
+        &mut self,
+        family_index: u32,
+        receiver: Value,
+        args: &[Value],
+        add: bool,
+        context: &ListenerContext,
+    ) -> Result<Value, RuntimeError> {
         let family = self
             .host_object_families
             .get(family_index as usize)
@@ -518,14 +571,24 @@ impl Vm {
             family.drag_events,
             family.event_path.is_some(),
         );
-        let name = self.coerce_string(&args[0])?;
-        let event_type = Value::String(name.clone());
-        let (selection, drag) = if event_type == Value::String("click".into()) {
+        let name = if matches!(&args[0], Value::String(_)) {
+            NativeValue::copied(&args[0], context.owner())?
+        } else {
+            let converted = self.coerce_string(&args[0]);
+            context.validate(self)?;
+            NativeValue::adopt(Value::String(converted?), context.owner())?
+        };
+        context.validate(self)?;
+        let Value::String(name_value) = name.value() else {
+            unreachable!("coerced event name")
+        };
+        let event_type = name.value();
+        let (selection, drag) = if name_value == "click" {
             (None, None)
-        } else if drag_events && HostDragEventKind::from_value(&event_type).is_some() {
-            (None, HostDragEventKind::from_value(&event_type))
-        } else if file_events && HostFileSelectionEvent::from_value(&event_type).is_ok() {
-            (Some(HostFileSelectionEvent::from_value(&event_type)?), None)
+        } else if drag_events && HostDragEventKind::from_value(event_type).is_some() {
+            (None, HostDragEventKind::from_value(event_type))
+        } else if file_events && HostFileSelectionEvent::from_value(event_type).is_ok() {
+            (Some(HostFileSelectionEvent::from_value(event_type)?), None)
         } else if node_events {
             (None, None)
         } else {
@@ -545,14 +608,22 @@ impl Vm {
         let (mut capture, mut once, mut passive) = (false, false, false);
         let mut signal = None;
         if options.object_id().is_some() {
-            let value = self.get_property(options, &"capture".into())?;
+            let value = self.get_property(options, &"capture".into());
+            context.validate(self)?;
+            let value = value?;
             capture = self.to_boolean(&value)?;
             if add {
-                let value = self.get_property(options, &"once".into())?;
+                let value = self.get_property(options, &"once".into());
+                context.validate(self)?;
+                let value = value?;
                 once = self.to_boolean(&value)?;
-                let value = self.get_property(options, &"passive".into())?;
+                let value = self.get_property(options, &"passive".into());
+                context.validate(self)?;
+                let value = value?;
                 passive = self.to_boolean(&value)?;
-                let value = self.get_property(options, &"signal".into())?;
+                let value = self.get_property(options, &"signal".into());
+                context.validate(self)?;
+                let value = value?;
                 signal = self.abort_signal_argument(&value)?;
             }
         } else if *options != Value::Null && *options != Value::Undefined {
@@ -575,7 +646,7 @@ impl Vm {
                 && listener.selection == selection
                 && listener.drag == drag
                 && listener.capture == capture
-                && listener.event_type == name
+                && listener.event_type == *name_value
         });
         if add {
             if existing.is_none() {
@@ -601,6 +672,12 @@ impl Vm {
                     .ok_or_else(|| {
                         RuntimeError::RangeError("listener identity exhausted".into())
                     })?;
+                context.validate(self)?;
+                let current = self.argument_list_owner()?;
+                let prepared = self
+                    .host_click_listeners
+                    .prepare(context.owner().or(current.as_ref()))?;
+                let name = name.retain_for_owner(prepared.owner())?;
                 let root = self.heap.root(callback)?;
                 let signal_root = match signal.map(|signal| self.heap.root(signal)).transpose() {
                     Ok(root) => root,
@@ -610,7 +687,7 @@ impl Vm {
                     }
                 };
                 let type_root = if node_events {
-                    match self.root_host_event_type(name.clone()) {
+                    match self.root_host_event_type(&name) {
                         Ok(root) => Some(root),
                         Err(error) => {
                             self.heap.unroot(root)?;
@@ -623,22 +700,30 @@ impl Vm {
                 } else {
                     None
                 };
+                let (name, name_storage) = name.into_retained_parts();
+                let Value::String(name) = name else {
+                    unreachable!("coerced event name")
+                };
+                self.host_click_listeners.commit(
+                    prepared,
+                    HostClickListener {
+                        serial,
+                        family_index,
+                        key,
+                        callback,
+                        root,
+                        signal: signal.zip(signal_root),
+                        selection,
+                        drag,
+                        capture,
+                        once,
+                        passive,
+                        event_type: name,
+                        type_root,
+                    },
+                    name_storage,
+                );
                 self.next_host_listener_serial = serial;
-                self.host_click_listeners.push(HostClickListener {
-                    serial,
-                    family_index,
-                    key,
-                    callback,
-                    root,
-                    signal: signal.zip(signal_root),
-                    selection,
-                    drag,
-                    capture,
-                    once,
-                    passive,
-                    event_type: name,
-                    type_root,
-                });
                 if let Some(signal) = signal {
                     if let Err(error) =
                         self.attach_abort_hook(signal, crate::heap::AbortHook::Host { serial })
@@ -667,8 +752,10 @@ impl Vm {
                 self.heap.unroot(root)?;
             }
             if let Some((signal, root)) = listener.signal {
-                self.detach_abort_hook(signal, crate::heap::AbortHook::Host { serial })?;
+                let detached =
+                    self.detach_abort_hook(signal, crate::heap::AbortHook::Host { serial });
                 self.heap.unroot(root)?;
+                detached?;
             }
         }
         Ok(())
@@ -676,51 +763,59 @@ impl Vm {
 
     fn invoke_host_listener(
         &mut self,
-        listener: &HostClickListener,
+        serial: u64,
         current: ObjectId,
         event: ObjectId,
     ) -> Result<Value, RuntimeError> {
-        let Some(index) = self
+        let context = ListenerContext::capture(self)?;
+        let Some((callback, once, passive)) = self
             .host_click_listeners
             .iter()
-            .position(|entry| entry.serial == listener.serial)
+            .find(|listener| listener.serial == serial)
+            .map(|listener| (listener.callback, listener.once, listener.passive))
         else {
             return Ok(Value::Undefined);
         };
-        if listener.once {
-            let serial = self.host_click_listeners[index].serial;
-            self.remove_host_listener_serial(serial)?;
+        let roots = realm_call_storage::RealmCallRoots::new(3, context.owner())?;
+        for object in [callback, current, event] {
+            roots.push(&self.heap, object)?;
         }
-        if self.heap.drag_event(event).is_ok() {
-            let mut state = self.heap.drag_event(event)?.clone();
-            state.passive = listener.passive;
-            self.with_roots(|heap| heap.set_drag_event_state(event, state))?;
-        } else if let Some(active) = self.active_host_click_event.as_mut() {
-            active.passive = listener.passive;
-        }
-        let result = (|| {
-            let callback = Value::Object(listener.callback);
-            if self.is_callable(&callback)? {
-                self.call_native(
-                    callback,
-                    Value::Object(current),
-                    vec![Value::Object(event)],
-                    false,
-                )
-            } else {
-                let function = self.get_property(&callback, &"handleEvent".into())?;
-                self.call_native(function, callback, vec![Value::Object(event)], false)
+        // Prepare callback arguments and roots before consuming a once listener.
+        let arguments = ArgumentValues::single(self, Value::Object(event), context.owner())?;
+        self.with_realm_call_roots(roots, |vm| {
+            if once {
+                vm.remove_host_listener_serial(serial)?;
             }
-        })();
-        let result = self.cleanup_host_event_callback(result);
-        if self.heap.drag_event(event).is_ok() {
-            let mut state = self.heap.drag_event(event)?.clone();
-            state.passive = false;
-            self.with_roots(|heap| heap.set_drag_event_state(event, state))?;
-        } else if let Some(active) = self.active_host_click_event.as_mut() {
-            active.passive = false;
-        }
-        result
+            if vm.heap.drag_event(event).is_ok() {
+                vm.heap.set_event_passive(event, passive)?;
+            } else if let Some(active) = vm.active_host_click_event.as_mut() {
+                active.passive = passive;
+            }
+            let result = (|| {
+                let callback = Value::Object(callback);
+                if vm.is_callable(&callback)? {
+                    arguments.call_native(vm, callback, Value::Object(current), false)
+                } else {
+                    let function = vm.get_property(&callback, &"handleEvent".into());
+                    context.validate(vm)?;
+                    let function = NativeValue::adopt(function?, context.owner())?;
+                    function.with_value(vm, |vm, function| {
+                        arguments.call_native_borrowed(vm, function, &callback)
+                    })
+                }
+            })();
+            let result = context.validate(vm).and(result);
+            let result = super::web_event_storage::EventCompletion::adopt(result, context.owner())
+                .and_then(|completion| completion.cleanup(vm))
+                .and_then(super::web_event_storage::EventCompletion::into_result);
+            if vm.heap.drag_event(event).is_ok() {
+                vm.heap.set_event_passive(event, false)?;
+            } else if let Some(active) = vm.active_host_click_event.as_mut() {
+                active.passive = false;
+            }
+            context.validate(vm)?;
+            result
+        })
     }
 
     pub(super) fn host_click_prevent_default(
@@ -753,22 +848,28 @@ impl Vm {
     /// Creates a realm-local prototype and identity table. The prototype is
     /// kept alive even before a wrapper exists; all roots die with the VM.
     pub fn create_host_object_family(&mut self) -> Result<HostObjectFamily, RuntimeError> {
+        let context = FamilyContext::capture(self)?;
         let index = u32::try_from(self.host_object_families.len())
             .map_err(|_| RuntimeError::RangeError("too many host-object families".into()))?;
+        let prepared = self.host_object_families.prepare(context.owner())?;
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(prototype)?;
-        self.host_object_families.push(HostObjectFamilyState {
-            prototype,
-            _prototype_root: root,
-            wrappers: HashMap::new(),
-            keys_by_wrapper: HashMap::new(),
-            event_target: false,
-            file_events: false,
-            drag_events: false,
-            element_validator: None,
-            event_path: None,
-        });
+        self.host_object_families.commit(
+            prepared,
+            HostObjectFamilyState {
+                prototype,
+                _prototype_root: root,
+                wrappers: MembraneMap::default(),
+                keys_by_wrapper: MembraneMap::default(),
+                event_target: false,
+                file_events: false,
+                drag_events: false,
+                element_validator: None,
+                event_path: None,
+                callback_storage: None,
+            },
+        );
         Ok(HostObjectFamily {
             heap: self.object_prototype.heap,
             index,
@@ -790,11 +891,7 @@ impl Vm {
                 "host-object family or method name is invalid".into(),
             ));
         }
-        let prototype = self
-            .host_object_families
-            .get(family.index as usize)
-            .expect("this opaque same-heap family belongs to the append-only VM registry")
-            .prototype;
+        let prototype = self.host_family_prototype(family)?;
         if self
             .heap
             .get_own(prototype, name)
@@ -805,25 +902,29 @@ impl Vm {
                 "host-object method is already defined".into(),
             ));
         }
-        host_registration_index(
+        let context = FamilyContext::capture(self)?;
+        let index = host_registration_index(
             self.host_object_methods.len(),
             0,
             "too many host-object methods",
-        )
-        .and_then(|index| {
-            self.function_prototype()?;
-            self.install_host_callable_native(
-                prototype,
-                name,
-                length,
-                NativeFunction::HostObjectMethod(index),
-            )?;
-            self.host_object_methods.push(HostObjectMethodRegistration {
+        )?;
+        let prepared = self.host_object_methods.prepare(1, context.owner())?;
+        let callbacks = prepared.callbacks(&[std::mem::size_of_val(&method)], || {
+            [HostObjectMethodRegistration {
                 family_index: family.index,
                 method: Box::new(method),
-            });
-            Ok(())
-        })
+            }]
+        })?;
+        self.function_prototype()?;
+        context.validate(self)?;
+        self.install_host_callable_native(
+            prototype,
+            name,
+            length,
+            NativeFunction::HostObjectMethod(index),
+        )?;
+        self.host_object_methods.commit(prepared, callbacks);
+        Ok(())
     }
 
     /// Installs a one-child operation on the family's private prototype.
@@ -841,11 +942,7 @@ impl Vm {
                 "host-object family or method name is invalid".into(),
             ));
         }
-        let prototype = self
-            .host_object_families
-            .get(family.index as usize)
-            .expect("this opaque same-heap family belongs to the append-only VM registry")
-            .prototype;
+        let prototype = self.host_family_prototype(family)?;
         if self
             .heap
             .get_own(prototype, name)
@@ -856,26 +953,29 @@ impl Vm {
                 "host-object method is already defined".into(),
             ));
         }
-        host_registration_index(
+        let context = FamilyContext::capture(self)?;
+        let index = host_registration_index(
             self.host_object_pair_methods.len(),
             0,
             "too many host-object pair methods",
-        )
-        .and_then(|index| {
-            self.function_prototype()?;
-            self.install_host_callable_native(
-                prototype,
-                name,
-                length,
-                NativeFunction::HostObjectPairMethod(index),
-            )?;
-            self.host_object_pair_methods
-                .push(HostObjectPairMethodRegistration {
-                    family_index: family.index,
-                    method: Box::new(method),
-                });
-            Ok(())
-        })
+        )?;
+        let prepared = self.host_object_pair_methods.prepare(1, context.owner())?;
+        let callbacks = prepared.callbacks(&[std::mem::size_of_val(&method)], || {
+            [HostObjectPairMethodRegistration {
+                family_index: family.index,
+                method: Box::new(method),
+            }]
+        })?;
+        self.function_prototype()?;
+        context.validate(self)?;
+        self.install_host_callable_native(
+            prototype,
+            name,
+            length,
+            NativeFunction::HostObjectPairMethod(index),
+        )?;
+        self.host_object_pair_methods.commit(prepared, callbacks);
+        Ok(())
     }
 
     /// Installs a genuine JavaScript accessor on the private wrapper
@@ -894,11 +994,7 @@ impl Vm {
                 "host-object family or accessor name is invalid".into(),
             ));
         }
-        let prototype = self
-            .host_object_families
-            .get(family.index as usize)
-            .expect("this opaque same-heap family belongs to the append-only VM registry")
-            .prototype;
+        let prototype = self.host_family_prototype(family)?;
         if self
             .heap
             .get_own(prototype, name)
@@ -909,33 +1005,43 @@ impl Vm {
                 "host-object accessor is already defined".into(),
             ));
         }
-        host_registration_index(
+        let context = FamilyContext::capture(self)?;
+        let getter_index = host_registration_index(
             self.host_object_methods.len(),
             1,
             "too many host-object methods",
-        )
-        .and_then(|getter_index| {
-            let setter_index = getter_index + 1;
-            let function_prototype = self.function_prototype()?;
-            self.install_native_accessor(
-                prototype,
-                function_prototype,
-                name,
-                NativeFunction::HostObjectMethod(getter_index),
-                NativeFunction::HostObjectMethod(setter_index),
-            )?;
-            self.host_object_methods.extend([
-                HostObjectMethodRegistration {
-                    family_index: family.index,
-                    method: Box::new(getter),
-                },
-                HostObjectMethodRegistration {
-                    family_index: family.index,
-                    method: Box::new(setter),
-                },
-            ]);
-            Ok(())
-        })
+        )?;
+        let setter_index = getter_index + 1;
+        let prepared = self.host_object_methods.prepare(2, context.owner())?;
+        let callbacks = prepared.callbacks(
+            &[
+                std::mem::size_of_val(&getter),
+                std::mem::size_of_val(&setter),
+            ],
+            || {
+                [
+                    HostObjectMethodRegistration {
+                        family_index: family.index,
+                        method: Box::new(getter),
+                    },
+                    HostObjectMethodRegistration {
+                        family_index: family.index,
+                        method: Box::new(setter),
+                    },
+                ]
+            },
+        )?;
+        let function_prototype = self.function_prototype()?;
+        context.validate(self)?;
+        self.install_native_accessor(
+            prototype,
+            function_prototype,
+            name,
+            NativeFunction::HostObjectMethod(getter_index),
+            NativeFunction::HostObjectMethod(setter_index),
+        )?;
+        self.host_object_methods.commit(prepared, callbacks);
+        Ok(())
     }
 
     /// Installs one non-constructable global factory. Only private keys cross
@@ -948,6 +1054,8 @@ impl Vm {
         family: HostObjectFamily,
         factory: impl HostObjectFactory,
     ) -> Result<(), RuntimeError> {
+        self.host_family_prototype(family)?;
+        self.host_object_factories.owner_view()?;
         let global = self
             .global("globalThis")?
             .object_id()
@@ -987,6 +1095,7 @@ impl Vm {
                 "host-object family belongs to a different realm".into(),
             ));
         }
+        self.host_family_prototype(family)?;
         if !host_property_name_is_valid(name)
             || self
                 .heap
@@ -998,26 +1107,29 @@ impl Vm {
                 "host factory name is invalid or already defined".into(),
             ));
         }
-        host_registration_index(
+        let context = FamilyContext::capture(self)?;
+        let index = host_registration_index(
             self.host_object_factories.len(),
             0,
             "too many host-object factories",
-        )
-        .and_then(|index| {
-            self.install_host_callable_native(
-                owner,
-                name,
-                length,
-                NativeFunction::HostObjectFactory(index),
-            )?;
-            self.host_object_factories
-                .push(HostObjectFactoryRegistration {
-                    family_index: family.index,
-                    required_receiver,
-                    factory: Box::new(factory),
-                });
-            Ok(())
-        })
+        )?;
+        let prepared = self.host_object_factories.prepare(1, context.owner())?;
+        let callbacks = prepared.callbacks(&[std::mem::size_of_val(&factory)], || {
+            [HostObjectFactoryRegistration {
+                family_index: family.index,
+                required_receiver,
+                factory: Box::new(factory),
+            }]
+        })?;
+        context.validate(self)?;
+        self.install_host_callable_native(
+            owner,
+            name,
+            length,
+            NativeFunction::HostObjectFactory(index),
+        )?;
+        self.host_object_factories.commit(prepared, callbacks);
+        Ok(())
     }
 
     pub(super) fn host_object_factory_call(
@@ -1032,11 +1144,14 @@ impl Vm {
                 "host-object factories are not constructors".into(),
             ));
         }
-        let args = args
-            .iter()
-            .map(HostValue::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
+        let context = FamilyContext::capture(self)?;
+        let registration_owner = self
+            .host_object_factories
+            .retain_for_entry(context.owner())?;
+        let mut args = self.prepare_host_arguments(args, context.owner())?;
+        if let Some(error) = args.error.take() {
+            return Err(error);
+        }
         let registration = self
             .host_object_factories
             .get_mut(index as usize)
@@ -1050,11 +1165,13 @@ impl Vm {
             ));
         }
         let family_index = registration.family_index as usize;
-        let Some(key) = registration
-            .factory
-            .create(&args)
-            .map_err(|error| RuntimeError::TypeError(error.to_string()))?
-        else {
+        let key = registration.factory.create(&args.values);
+        context.validate(self)?;
+        if let Some(owner) = registration_owner {
+            owner.reserve_peer(0)?;
+        }
+        let owner = args.owner_view()?;
+        let Some(key) = self.finish_host_callback(key, owner.as_ref())? else {
             return Ok(Value::Null);
         };
         self.mint_host_wrapper(family_index, key).map(Value::Object)
@@ -1074,6 +1191,7 @@ impl Vm {
         family_index: usize,
         key: HostObjectKey,
     ) -> Result<ObjectId, RuntimeError> {
+        let context = FamilyContext::capture(self)?;
         let family = &self.host_object_families[family_index];
         if let Some(&(object, _root)) = family.wrappers.get(&key) {
             return Ok(object);
@@ -1084,8 +1202,22 @@ impl Vm {
             ));
         }
         let prototype = family.prototype;
+        let (wrappers, keys) = {
+            let family = &mut self.host_object_families[family_index];
+            let wrappers = family.wrappers.prepare_insert_owned(context.owner())?;
+            let keys = family
+                .keys_by_wrapper
+                .prepare_insert_owned(context.owner())?;
+            (wrappers, keys)
+        };
         let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         let root = self.heap.root(object)?;
+        self.host_object_families[family_index]
+            .wrappers
+            .commit(wrappers);
+        self.host_object_families[family_index]
+            .keys_by_wrapper
+            .commit(keys);
         self.host_object_families[family_index]
             .wrappers
             .insert(key, (object, root));
@@ -1107,6 +1239,8 @@ impl Vm {
                 "host-object methods are not constructors".into(),
             ));
         }
+        let context = FamilyContext::capture(self)?;
+        let registration_owner = self.host_object_methods.retain_for_entry(context.owner())?;
         let registration = self
             .host_object_methods
             .get(index as usize)
@@ -1120,18 +1254,19 @@ impl Vm {
                     .copied()
             })
             .ok_or_else(|| RuntimeError::TypeError("invalid host-object receiver".into()))?;
-        let args = args
-            .iter()
-            .map(HostValue::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
-        let result: Value = self.host_object_methods[index as usize]
+        let mut args = self.prepare_host_arguments(args, context.owner())?;
+        if let Some(error) = args.error.take() {
+            return Err(error);
+        }
+        let result = self.host_object_methods[index as usize]
             .method
-            .call(key, &args)
-            .map_err(|error| RuntimeError::TypeError(error.to_string()))?
-            .into();
-        self.check_string(&result)?;
-        Ok(result)
+            .call(key, &args.values);
+        context.validate(self)?;
+        if let Some(owner) = registration_owner {
+            owner.reserve_peer(0)?;
+        }
+        let owner = args.owner_view()?;
+        self.finish_host_callback_value(result, owner.as_ref())
     }
 
     pub(super) fn host_object_pair_method_call(
@@ -1146,6 +1281,10 @@ impl Vm {
                 "host-object pair method requires one child".into(),
             ));
         }
+        let context = FamilyContext::capture(self)?;
+        let registration_owner = self
+            .host_object_pair_methods
+            .retain_for_entry(context.owner())?;
         let registration = self
             .host_object_pair_methods
             .get(index as usize)
@@ -1165,10 +1304,15 @@ impl Vm {
             .get(&child_object)
             .copied()
             .ok_or_else(|| RuntimeError::TypeError("invalid host-object child".into()))?;
-        self.host_object_pair_methods[index as usize]
+        let result = self.host_object_pair_methods[index as usize]
             .method
-            .call(parent, child)
-            .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
+            .call(parent, child);
+        context.validate(self)?;
+        if let Some(owner) = registration_owner {
+            owner.reserve_peer(0)?;
+        }
+        let caller = self.argument_list_owner()?;
+        self.finish_host_callback(result, caller.as_ref().or(context.owner()))?;
         Ok(Value::Object(child_object))
     }
 }

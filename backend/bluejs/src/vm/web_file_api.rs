@@ -5,8 +5,24 @@
 //! Owner-installed browser File API. Immutable byte slots belong to the
 //! collector; neither a page path nor an embedding object handle is used.
 
+use super::native_value_storage::NativeValue;
+use super::realm_call_storage::RealmCallRoots;
+use super::transport_buffer_storage::TransportVector;
+use super::web_drag_drop::storage::copy_string;
+use super::web_event_storage::{EventCompletion, EventContext};
 use super::*;
-use crate::heap::{TypedArrayKind, WebBlobData};
+use crate::heap::TypedArrayKind;
+
+pub(super) mod storage;
+use storage::{blob_media_type, blob_usv, decode_text, pack_parts, BlobBytes};
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/blob_construct_storage.rs"]
+mod storage_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/blob_read_storage.rs"]
+mod read_storage_tests;
 
 impl Vm {
     pub(super) fn install_web_files(&mut self) -> Result<(), RuntimeError> {
@@ -210,11 +226,31 @@ impl Vm {
                 "File API constructor requires new and its required arguments".into(),
             ));
         }
-        let base = self.stack.len();
-        self.stack.extend_from_slice(args);
-        let result = (|| {
+        let context = EventContext::capture(self)?;
+        let ids = args
+            .iter()
+            .filter_map(Value::object_id)
+            .chain(self.new_target.object_id());
+        let input_count = ids.clone().count();
+        let roots = context.prepare_roots(self, ids, 2)?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            vm.web_blob_construct_owned(args, file, &context, &roots, input_count)
+        });
+        context.validate().and(result)
+    }
+
+    fn web_blob_construct_owned(
+        &mut self,
+        args: &[Value],
+        file: bool,
+        context: &EventContext,
+        roots: &RealmCallRoots,
+        input_count: usize,
+    ) -> Result<Value, RuntimeError> {
+        let part_roots = RealmCallRoots::new(0, context.owner.as_ref())?;
+        let candidate = self.with_realm_call_roots(part_roots.clone(), |vm| {
             let parts = native::argument(args, 0);
-            let mut part_slots = Vec::new();
+            let mut collected_parts = TransportVector::with_capacity(0, context.owner.as_ref())?;
             let mut string_bytes = 0usize;
             if file || !matches!(parts, Value::Undefined) {
                 if parts.object_id().is_none() {
@@ -222,48 +258,64 @@ impl Vm {
                         "Blob parts must be an iterable object".into(),
                     ));
                 }
-                let record = self.get_iterator(parts)?;
-                self.stack.push(record.clone());
+                let record = vm.get_iterator(parts);
+                let record = context.validate().and(record)?;
+                if let Some(id) = record.object_id() {
+                    roots.push(&vm.heap, id)?;
+                }
+                let record_count = input_count + usize::from(record.object_id().is_some());
                 let collected = (|| {
-                    while let Some(part) = self.iterator_step(&record, true)? {
-                        self.charge_step()?;
-                        self.stack.push(part.clone());
-                        let next = self.web_blob_convert_part(&part);
-                        self.stack.pop();
-                        let next = next?;
-                        if let Value::String(value) = &next {
+                    loop {
+                        let next = vm.iterator_step(&record, true);
+                        let Some(part) = context.validate().and(next)? else {
+                            break;
+                        };
+                        let part = NativeValue::adopt(part, context.owner.as_ref())?;
+                        if let Some(id) = part.value().object_id() {
+                            roots.push(&vm.heap, id)?;
+                        }
+                        vm.charge_step()?;
+                        let next = vm.web_blob_convert_part_owned(part, context)?;
+                        if let Value::String(value) = next.value() {
                             string_bytes = string_bytes.saturating_add(value.byte_len());
                         }
-                        if part_slots.len() >= 4096
-                            || string_bytes > self.config.heap.max_heap_bytes
+                        if collected_parts.len() >= 4096
+                            || string_bytes > vm.config.heap.max_heap_bytes
                         {
                             return Err(RuntimeError::RangeError(
                                 "Blob parts exceed runtime limits".into(),
                             ));
                         }
-                        part_slots.push(self.stack.len());
-                        self.stack.push(next);
+                        if let Some(id) = next.value().object_id() {
+                            part_roots.push_admitted(&vm.heap, id)?;
+                        }
+                        collected_parts.push_owned(next)?;
+                        roots.truncate(record_count);
                     }
                     Ok(())
                 })();
                 if let Err(error) = collected {
-                    let error_base = self.stack.len();
-                    if let RuntimeError::Thrown(value) = &error {
-                        self.stack.push(value.clone());
+                    // A canceled document cannot enter IteratorClose. An
+                    // ordinary throw keeps its original payload and object
+                    // edge alive while return() runs, including when it throws.
+                    context.validate()?;
+                    roots.truncate(record_count);
+                    let error = EventCompletion::adopt(Err(error), context.owner.as_ref())?;
+                    if let Err(RuntimeError::Thrown(value)) = error.result() {
+                        if let Some(id) = value.object_id() {
+                            roots.push(&vm.heap, id)?;
+                        }
                     }
-                    self.iterator_close_preserving_throw(&record);
-                    self.stack.truncate(error_base);
-                    return Err(error);
+                    vm.iterator_close_preserving_throw(&record);
+                    context.validate()?;
+                    return error.into_result().map(|_| unreachable!());
                 }
+                roots.truncate(input_count);
             }
             let name = if file {
-                Some(
-                    String::from_utf16_lossy(
-                        self.coerce_string(native::argument(args, 1))?
-                            .as_code_units(),
-                    )
-                    .into(),
-                )
+                Some(blob_usv(
+                    vm.blob_string(native::argument(args, 1), context)?,
+                ))
             } else {
                 None
             };
@@ -273,112 +325,109 @@ impl Vm {
                     "Blob options must be a dictionary".into(),
                 ));
             }
-            let mut media_type = JsString::default();
+            let mut media_type =
+                NativeValue::adopt(Value::String(JsString::default()), context.owner.as_ref())?;
             let mut native_endings = false;
             let mut last_modified = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |time| time.as_millis() as i64);
             if options.object_id().is_some() {
                 // Dictionary members are read in Web IDL lexicographic order.
-                let endings = self.get_property(options, &"endings".into())?;
-                if endings != Value::Undefined {
-                    let endings = self.coerce_string(&endings)?;
-                    if endings != "transparent" && endings != "native" {
+                let endings = vm.blob_option(options, "endings", context)?;
+                if *endings.value() != Value::Undefined {
+                    let endings = vm.blob_owned_string(endings, context)?;
+                    let Value::String(text) = endings.value() else {
+                        unreachable!()
+                    };
+                    if text != "transparent" && text != "native" {
                         return Err(RuntimeError::TypeError("Invalid Blob endings".into()));
                     }
-                    native_endings = endings == "native";
+                    native_endings = text == "native";
                 }
                 if file {
-                    let value = self.get_property(options, &"lastModified".into())?;
-                    if value != Value::Undefined {
-                        last_modified = web_long_long(self.coerce_number(&value)?);
+                    let value = vm.blob_option(options, "lastModified", context)?;
+                    if *value.value() != Value::Undefined {
+                        let number = value.with_value(vm, |vm, value| vm.coerce_number(value));
+                        last_modified = web_long_long(context.validate().and(number)?);
                     }
                 }
-                let value = self.get_property(options, &"type".into())?;
-                if value != Value::Undefined {
-                    media_type = normalize_blob_type(&self.coerce_string(&value)?);
+                let value = vm.blob_option(options, "type", context)?;
+                if *value.value() != Value::Undefined {
+                    media_type = blob_media_type(vm.blob_owned_string(value, context)?)?;
                 }
             }
-            let mut bytes = Vec::new();
-            for slot in part_slots {
-                self.charge_step()?;
-                let part = self.stack[slot].clone();
-                let mut next = self.web_blob_part(&part)?;
-                if native_endings && matches!(part, Value::String(_)) {
-                    next = normalize_line_endings(&next);
-                }
-                if bytes.len().saturating_add(next.len()) > self.heap.max_array_buffer_byte_length()
-                {
-                    return Err(RuntimeError::RangeError(
-                        "Blob data exceeds heap byte limit".into(),
-                    ));
-                }
-                bytes.extend(next);
-            }
-            let default = self.globals[if file { "%WebFile%" } else { "%WebBlob%" }];
-            let prototype = self.constructor_prototype(default)?;
-            Ok(Value::Object(self.with_roots(|heap| {
-                heap.alloc_web_blob(
-                    WebBlobData {
-                        bytes,
-                        media_type,
-                        file: name.map(|name| (name, last_modified)),
-                    },
-                    prototype,
-                )
-            })?))
-        })();
-        self.stack.truncate(base);
-        result
+            let bytes = pack_parts(vm, collected_parts, native_endings, context)?;
+            bytes.into_candidate(media_type, name.map(|name| (name, last_modified)))
+        });
+        // Finished part snapshots and their root backing are gone before the
+        // newTarget prototype getter. Only final bytes and metadata remain.
+        drop(part_roots);
+        let candidate = context.validate().and(candidate)?;
+        let default = self.globals[if file { "%WebFile%" } else { "%WebBlob%" }];
+        let prototype = self.constructor_prototype(default);
+        let prototype = context.validate().and(prototype)?;
+        Ok(Value::Object(candidate.allocate(self, prototype)?))
     }
 
-    fn web_blob_convert_part(&mut self, part: &Value) -> Result<Value, RuntimeError> {
-        if let Some(id) = part.object_id() {
+    fn web_blob_convert_part_owned(
+        &mut self,
+        part: NativeValue,
+        context: &EventContext,
+    ) -> Result<NativeValue, RuntimeError> {
+        if let Some(id) = part.value().object_id() {
             if self.heap.web_blob(id).is_ok()
                 || self.heap.is_buffer(id)?
                 || self.heap.is_data_view(id)?
                 || self.heap.is_typed_array(id)?
             {
-                return Ok(part.clone());
+                return Ok(part);
             }
         }
-        let string = self.coerce_string(part)?;
-        let value = Value::String(String::from_utf16_lossy(string.as_code_units()).into());
-        self.check_string(&value)?;
+        let value = blob_usv(self.blob_owned_string(part, context)?);
+        self.check_string(value.value())?;
         Ok(value)
     }
 
-    fn web_blob_part(&mut self, part: &Value) -> Result<Vec<u8>, RuntimeError> {
-        if let Some(id) = part.object_id() {
-            if let Ok(blob) = self.heap.web_blob(id) {
-                return Ok(blob.bytes.clone());
-            }
-            if self.heap.is_buffer(id)? {
-                let length = self.heap.buffer_byte_length(id)?;
-                return Ok(self.heap.array_buffer_copy(id, 0, length)?);
-            }
-            if self.heap.is_data_view(id)? {
-                let (buffer, offset, length) = self.heap.data_view_current_info(id)?;
-                return Ok(self.heap.array_buffer_copy(buffer, offset, length)?);
-            }
-            if self.heap.is_typed_array(id)? {
-                let (buffer, offset, length, kind) = self.heap.typed_array_info(id)?;
-                if self.heap.buffer_is_detached(buffer)?
-                    || self.heap.typed_array_is_out_of_bounds(id)?
-                {
-                    return Err(RuntimeError::TypeError(
-                        "Blob part view is detached or out of bounds".into(),
-                    ));
-                }
-                return Ok(self.heap.array_buffer_copy(
-                    buffer,
-                    offset,
-                    length * kind.byte_width(),
-                )?);
-            }
+    fn blob_string(
+        &mut self,
+        value: &Value,
+        context: &EventContext,
+    ) -> Result<NativeValue, RuntimeError> {
+        if matches!(value, Value::String(_)) {
+            return NativeValue::copied(value, context.owner.as_ref());
         }
-        let string = self.coerce_string(part)?;
-        Ok(String::from_utf16_lossy(string.as_code_units()).into_bytes())
+        let text = self.coerce_string(value);
+        let text = context.validate().and(text)?;
+        NativeValue::adopt(Value::String(text), context.owner.as_ref())
+    }
+
+    fn blob_owned_string(
+        &mut self,
+        value: NativeValue,
+        context: &EventContext,
+    ) -> Result<NativeValue, RuntimeError> {
+        if matches!(value.value(), Value::String(_)) {
+            return Ok(value);
+        }
+        value.with_value(self, |vm, value| vm.blob_string(value, context))
+    }
+
+    fn blob_option(
+        &mut self,
+        options: &Value,
+        field: &str,
+        context: &EventContext,
+    ) -> Result<NativeValue, RuntimeError> {
+        let (Value::String(key), _storage) =
+            error_input_storage::utf16_from_utf8(field, context.owner.as_ref())?
+                .into_retained_parts()
+        else {
+            unreachable!()
+        };
+        let key = PropertyName::from(key);
+        let value = self.get_property(options, &key);
+        let value = context.validate().and(value)?;
+        NativeValue::adopt(value, context.owner.as_ref())
     }
 
     pub(super) fn web_blob_call(
@@ -391,16 +440,35 @@ impl Vm {
             .object_id()
             .filter(|id| self.heap.web_blob(*id).is_ok())
             .ok_or_else(|| RuntimeError::TypeError("Invalid Blob receiver".into()))?;
+        let context = EventContext::capture(self)?;
+        let ids = std::iter::once(id).chain(args.iter().filter_map(Value::object_id));
+        let roots = context.prepare_roots(self, ids, 1)?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            vm.web_blob_read_owned(native, id, args, &context, &roots)
+        });
+        context.validate().and(result)
+    }
+
+    fn web_blob_read_owned(
+        &mut self,
+        native: NativeFunction,
+        id: ObjectId,
+        args: &[Value],
+        context: &EventContext,
+        roots: &RealmCallRoots,
+    ) -> Result<Value, RuntimeError> {
         let blob = self.heap.web_blob(id)?;
         match native {
             NativeFunction::BlobSize => return Ok(Value::Number(blob.bytes.len() as f64)),
-            NativeFunction::BlobType => return Ok(Value::String(blob.media_type.clone())),
+            NativeFunction::BlobType => {
+                return Ok(copy_string(&blob.media_type, context.owner.as_ref())?.into_value())
+            }
             NativeFunction::FileName => {
-                return blob
+                let (name, _) = blob
                     .file
                     .as_ref()
-                    .map(|(name, _)| Value::String(name.clone()))
-                    .ok_or_else(|| RuntimeError::TypeError("Invalid File receiver".into()))
+                    .ok_or_else(|| RuntimeError::TypeError("Invalid File receiver".into()))?;
+                return Ok(copy_string(name, context.owner.as_ref())?.into_value());
             }
             NativeFunction::FileLastModified => {
                 return blob
@@ -413,82 +481,67 @@ impl Vm {
         }
         if native == NativeFunction::BlobSlice {
             let length = blob.bytes.len();
-            let start = blob_index(self.coerce_number(native::argument(args, 0))?, length);
+            let start = self.coerce_number(native::argument(args, 0));
+            let start = blob_index(context.validate().and(start)?, length);
             let end = if args.get(1).is_none_or(|value| *value == Value::Undefined) {
                 length
             } else {
-                blob_index(self.coerce_number(&args[1])?, length)
+                let end = self.coerce_number(&args[1]);
+                blob_index(context.validate().and(end)?, length)
             };
             let media_type = if args.get(2).is_none_or(|value| *value == Value::Undefined) {
-                JsString::default()
+                NativeValue::adopt(Value::String(JsString::default()), context.owner.as_ref())?
             } else {
-                normalize_blob_type(&self.coerce_string(&args[2])?)
+                blob_media_type(self.blob_string(&args[2], context)?)?
             };
-            let bytes = self.heap.web_blob(id)?.bytes[start..end.max(start)].to_vec();
+            let bytes = BlobBytes::copied(
+                &self.heap.web_blob(id)?.bytes[start..end.max(start)],
+                context.owner.as_ref(),
+            )?;
+            let candidate = bytes.into_candidate(media_type, None)?;
             let prototype = self.globals["%WebBlob%"];
-            return Ok(Value::Object(self.with_roots(|heap| {
-                heap.alloc_web_blob(
-                    WebBlobData {
-                        bytes,
-                        media_type,
-                        file: None,
-                    },
-                    prototype,
-                )
-            })?));
+            return Ok(Value::Object(candidate.allocate(self, prototype)?));
         }
-        let bytes = blob.bytes.clone();
-        let base = self.stack.len();
-        let result = (|| {
-            let value = if native == NativeFunction::BlobText {
-                // UTF-8 decode consumes one leading BOM; binary reads keep it.
-                let text_bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes);
-                let text: JsString = String::from_utf8_lossy(text_bytes).into_owned().into();
-                let value = Value::String(text);
-                self.check_string(&value)?;
-                value
+        let value = if native == NativeFunction::BlobText {
+            let text = decode_text(
+                &self.heap.web_blob(id)?.bytes,
+                self.config.max_string_bytes,
+                context.owner.as_ref(),
+            )?;
+            self.check_string(text.value())?;
+            text
+        } else {
+            let bytes = BlobBytes::copied(&self.heap.web_blob(id)?.bytes, context.owner.as_ref())?;
+            let length = bytes.len();
+            let prototype = self.buffer_prototype("ArrayBuffer");
+            let prototype = context.validate().and(prototype)?;
+            let buffer =
+                self.with_roots(|heap| heap.alloc_array_buffer(length, Some(prototype)))?;
+            roots.push(&self.heap, buffer)?;
+            // Only the admitted managed buffer is needed by later view and
+            // Promise preparation; destroy this independent copy now.
+            bytes.copy_into_buffer(self, buffer)?;
+            let value = if native == NativeFunction::BlobBytes {
+                let prototype = self.buffer_prototype("Uint8Array");
+                let prototype = context.validate().and(prototype)?;
+                Value::Object(self.with_roots(|heap| {
+                    heap.alloc_typed_array(
+                        buffer,
+                        0,
+                        length,
+                        false,
+                        TypedArrayKind::Uint8,
+                        Some(prototype),
+                    )
+                })?)
             } else {
-                let prototype = self.buffer_prototype("ArrayBuffer")?;
-                let buffer =
-                    self.with_roots(|heap| heap.alloc_array_buffer(bytes.len(), Some(prototype)))?;
-                self.stack.push(Value::Object(buffer));
-                self.heap.array_buffer_write(buffer, 0, &bytes)?;
-                if native == NativeFunction::BlobBytes {
-                    let prototype = self.buffer_prototype("Uint8Array")?;
-                    Value::Object(self.with_roots(|heap| {
-                        heap.alloc_typed_array(
-                            buffer,
-                            0,
-                            bytes.len(),
-                            false,
-                            TypedArrayKind::Uint8,
-                            Some(prototype),
-                        )
-                    })?)
-                } else {
-                    Value::Object(buffer)
-                }
+                Value::Object(buffer)
             };
-            self.promise_resolve(value)
-        })();
-        self.stack.truncate(base);
-        result
+            NativeValue::adopt(value, context.owner.as_ref())?
+        };
+        let result = self.promise_resolve_retained(value);
+        context.validate().and(result)
     }
-}
-
-fn normalize_blob_type(value: &JsString) -> JsString {
-    if value
-        .as_code_units()
-        .iter()
-        .any(|unit| !(0x20..=0x7e).contains(unit))
-    {
-        return JsString::default();
-    }
-    value
-        .to_utf8()
-        .expect("ASCII type")
-        .to_ascii_lowercase()
-        .into()
 }
 
 fn blob_index(value: f64, length: usize) -> usize {
@@ -514,27 +567,4 @@ fn web_long_long(value: f64) -> i64 {
     } else {
         value as i64
     }
-}
-
-fn normalize_line_endings(bytes: &[u8]) -> Vec<u8> {
-    let mut result = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'\r' {
-            if cfg!(windows) {
-                result.push(b'\r');
-            }
-            result.push(b'\n');
-            if bytes.get(index + 1) == Some(&b'\n') {
-                index += 1;
-            }
-        } else {
-            if cfg!(windows) && bytes[index] == b'\n' {
-                result.push(b'\r');
-            }
-            result.push(bytes[index]);
-        }
-        index += 1;
-    }
-    result
 }

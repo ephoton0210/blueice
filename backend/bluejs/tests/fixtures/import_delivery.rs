@@ -73,7 +73,7 @@ fn import_delivery_rejection_native_refusal_preserves_both_waiter_kinds() {
         Err(RuntimeError::SchedulingLimit)
     );
     pending(&vm, &targets);
-    assert_eq!(vm.module_import_waiters["done"], [eager]);
+    assert_eq!(vm.module_import_waiters["done"].as_slice(), [eager]);
 }
 #[cfg_attr(test, test)]
 fn import_delivery_root_refusal_preserves_dependency_membership_and_targets() {

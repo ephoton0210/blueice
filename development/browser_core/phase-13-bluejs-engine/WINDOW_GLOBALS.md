@@ -54,7 +54,7 @@ and ambient `typeof` fields preserve declaration-owned callable types without
 capturing consumer shadows. This does not rewrite v13/v14 declaration bytes or
 the existing member generator. Complete compiler/bridge, host/MCP, workspace
 build/Clippy/formatting and pinned Test262 gates pass. See [the checker contract](HOST_TYPING_BOUNDARIES.md)
-and the [live acceptance record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+and the [live acceptance record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 M1o advances the active owner-selected profile to v15 with `ErrorEvent`,
 `reportError`, `onerror` and global EventTarget methods. Its independent real
@@ -69,7 +69,7 @@ BlueTS inventory includes all three names. Existing v15 identities remain a
 prefix; only the new profile gains rejection listener overloads. All 37 related
 Rust targets, real Core/MCP, formatting and workspace/all-target Clippy/build
 pass. The complete pinned Test262 inventory matches M1o; see the
-[milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 `backend/launcher/tests/browser_timers.rs` observes every section C global
 through `typeof globalThis.<name>` in real JavaScript and checked BlueTS

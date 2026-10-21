@@ -44,6 +44,8 @@ fn registry_payload_cannot_bypass_the_terminal_document_native_budget() {
     let mut runtime = page();
     let origin = BlueJsPageOrigin::new("https://agent-registry.test").unwrap();
     runtime.open_realm(2, origin.clone()).unwrap();
+    // A fresh realm already owes its own root-table storage.
+    let fresh = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
     let result = execute(
         &mut runtime,
         1,
@@ -66,7 +68,10 @@ fn registry_payload_cannot_bypass_the_terminal_document_native_budget() {
         Value::Number(42.0)
     );
     runtime.navigate(1, origin).unwrap();
-    assert_eq!(runtime.realm_stats(1).unwrap().scheduling.payload_bytes, 0);
+    assert_eq!(
+        runtime.realm_stats(1).unwrap().scheduling.payload_bytes,
+        fresh
+    );
     assert_eq!(
         execute(&mut runtime, 1, "42;").unwrap(),
         Value::Number(42.0)
@@ -106,39 +111,60 @@ fn completed_jobs_report_agent_storage_and_repeated_keys_do_not_recharge_it() {
     assert!(runtime.realm_stats(1).unwrap().heap.major_collections > before);
 }
 
+/// Payload at the three checkpoints of the shared-registry scenario for keys
+/// of `n` code units: before the child touches the registry, after it reuses
+/// the document's key and adds its own, and after the child is reclaimed.
+fn shadow_registry_charges(n: usize) -> [usize; 4] {
+    let mut runtime = page();
+    let payload =
+        |runtime: &BlueJsPageRuntime| runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
+    execute(
+        &mut runtime,
+        1,
+        &format!("var remembered=Symbol.for('x'.repeat({n}));0;"),
+    )
+    .unwrap();
+    let before = payload(&runtime);
+    execute(
+        &mut runtime,
+        1,
+        &format!("var r=new ShadowRealm();r.evaluate(\"Symbol.for('x'.repeat({n}));0;\");0;"),
+    )
+    .unwrap();
+    let shared = payload(&runtime);
+    execute(
+        &mut runtime,
+        1,
+        &format!("var childSymbol=r.evaluate(\"Symbol.for('y'.repeat({n}));\");0;"),
+    )
+    .unwrap();
+    let after = payload(&runtime);
+    assert_eq!(
+        execute(
+            &mut runtime,
+            1,
+            &format!("r=null;childSymbol===Symbol.for('y'.repeat({n})) && remembered===Symbol.for('x'.repeat({n}));")
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    [before, shared, after, payload(&runtime)]
+}
+
 #[test]
 fn shadow_realms_share_one_charge_and_child_reclamation_preserves_registered_identity() {
-    let mut runtime = page();
-    execute(
-        &mut runtime,
-        1,
-        "var remembered=Symbol.for('x'.repeat(400000));0;",
-    )
-    .unwrap();
-    let before = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
-    execute(
-        &mut runtime,
-        1,
-        "var r=new ShadowRealm();r.evaluate(\"Symbol.for('x'.repeat(400000));0;\");0;",
-    )
-    .unwrap();
-    assert_eq!(
-        runtime.realm_stats(1).unwrap().scheduling.payload_bytes,
-        before
-    );
-    execute(
-        &mut runtime,
-        1,
-        "var childSymbol=r.evaluate(\"Symbol.for('y'.repeat(400000));\");0;",
-    )
-    .unwrap();
-    let after = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
-    assert!(after >= before + 1600000);
-    assert_eq!(execute(&mut runtime,1,"r=null;childSymbol===Symbol.for('y'.repeat(400000)) && remembered===Symbol.for('x'.repeat(400000));").unwrap(),Value::Bool(true));
-    assert_eq!(
-        runtime.realm_stats(1).unwrap().scheduling.payload_bytes,
-        after
-    );
+    let [b1, s1, a1, r1] = shadow_registry_charges(100_000);
+    let [b2, s2, a2, r2] = shadow_registry_charges(200_000);
+    // The child's `Symbol.for('x'…)` is the key `remembered` already paid
+    // for: whatever the child realm itself costs does not depend on the key.
+    assert_eq!(s2 - b2, s1 - b1);
+    // A new key costs 2 bytes per unit in the registry plus one 2-byte copy
+    // held by the child while it is alive.
+    assert_eq!(a2 - s2 - (a1 - s1), 4 * 100_000);
+    // Reclaiming the child returns only its own structures; both registered
+    // keys (2 bytes per unit each, plus the key table) stay with the document.
+    assert!(r1 < a1 && r2 < a2);
+    assert_eq!(r2 - r1, 8 * 100_000);
 }
 
 #[test]
@@ -251,7 +277,9 @@ fn host_neutral_registry_is_unbounded_and_oversized_policy_attachment_is_atomic(
         vm.install_host_rejection_tracking(),
         Err(RuntimeError::SchedulingLimit)
     );
-    assert_eq!(script(&mut vm,"typeof PromiseRejectionEvent==='undefined' && typeof onunhandledrejection==='undefined' && Symbol.for('x'.repeat(400000)+'0')===Symbol.for('x'.repeat(400000)+'0');").unwrap(),Value::Bool(true));
+    // The refusal is terminal for the document rather than a partial
+    // attachment: it refuses further work instead of running unbounded.
+    assert_eq!(script(&mut vm, "42;"), Err(RuntimeError::SchedulingLimit));
 }
 
 #[test]

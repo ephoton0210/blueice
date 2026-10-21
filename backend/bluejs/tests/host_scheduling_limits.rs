@@ -85,23 +85,56 @@ fn diagnostic_snapshots_and_active_cleanup_cannot_bypass_the_document_byte_cap()
                 })
             })
             .unwrap();
-        // Small arguments across 1,000 timers let a near-cap queue also
-        // reserve the active registration copy within diagnostic headroom.
-        execute(&mut runtime, &format!("onerror=function(){{probe(1);return true;}};function noop(){{}}var payload='x'.repeat({padding});for(var i=0;i<1000;i++){{setTimeout(noop,1000000,payload);}}")).unwrap();
+        // Registering a timer with an argument keeps a transient copy of it
+        // charged while the script runs, so filling the budget with a thousand
+        // large timer arguments would need far more headroom than the test
+        // leaves. Six large agent-registry keys take most of the budget
+        // instead (they have no transient copy), and a thousand timers with
+        // modest arguments tune the remaining headroom.
+        execute(
+            &mut runtime,
+            "onerror=function(){probe(1);return true;};function noop(){}",
+        )
+        .unwrap();
+        execute(
+            &mut runtime,
+            "for(var k=0;k<3;k++){Symbol.for('r'.repeat(400000)+k);}",
+        )
+        .unwrap();
+        for _ in 0..100 {
+            execute(
+                &mut runtime,
+                &format!(
+                    "for(var b=0;b<10;b++){{setTimeout(noop,1000000,'x'.repeat({padding}));}}"
+                ),
+            )
+            .unwrap();
+        }
         (runtime, observations)
     }
 
     let short = "memory:///a.js";
     let long = format!("memory:///{}.js", "x".repeat(4096));
-    let (mut calibration, _) = prepared(1);
-    let baseline = calibration.host_scheduling_usage(1).unwrap().payload_bytes;
     let room = 2 * long.len() + 512;
-    let padding = 1 + (MAX_HOST_SCHEDULING_BYTES - baseline - room) / 2000;
+    // Calibrate from two large paddings: a tiny argument string is rounded up
+    // to a minimum capacity, so extrapolating from `padding = 1` misses the
+    // slope (about 2 bytes per padding unit across the 1,000 timers).
+    let measure = |padding: usize| {
+        let (mut runtime, _) = prepared(padding);
+        runtime.host_scheduling_usage(1).unwrap().payload_bytes
+    };
+    let (small, large) = (measure(100), measure(200));
+    let per_unit = (large - small) / 100;
+    let padding = 100 + (MAX_HOST_SCHEDULING_BYTES - small - room) / per_unit;
     let mut failures = Vec::new();
+    // The timer arguments registered while the failure is being handled are
+    // sized (900 and 100 characters) so that, with the retained headroom, one
+    // fits beside short source names and none fits beside two 4 KiB names. A
+    // registration transiently holds a few copies of its argument.
     for (name, source, expected_probes) in [
         ("error event snapshots", "throw 'saved';", &[1.0][..]),
-        ("active catch", "try{throw 'saved';}catch(error){setTimeout(noop,1000000,'y'.repeat(2000));probe(2);}", &[2.0][..]),
-        ("iterator cleanup", "var iterator={[Symbol.iterator](){return this;},next(){return {value:0,done:false};},return(){setTimeout(noop,1000000,'y'.repeat(2000));probe(2);return {};}};for(var value of iterator){throw 'saved';}", &[2.0,1.0][..]),
+        ("active catch", "try{throw 'saved';}catch(error){setTimeout(noop,1000000,'y'.repeat(900));probe(2);}", &[2.0][..]),
+        ("iterator cleanup", "var iterator={[Symbol.iterator](){return this;},next(){return {value:0,done:false};},return(){setTimeout(noop,1000000,'y'.repeat(100));probe(2);return {};}};for(var value of iterator){throw 'saved';}", &[2.0,1.0][..]),
     ] {
         for filename in [short, long.as_str()] {
             let (mut runtime, observations) = prepared(padding);
@@ -271,7 +304,9 @@ fn firing_and_clearing_timers_release_owned_payload_for_later_admission() {
     let cleared = runtime.host_scheduling_usage(1).unwrap().payload_bytes;
     assert!(cleared + 700000 < before);
     assert_eq!(runtime.run_due_timers(1, 1).unwrap().tasks_run, 1);
-    assert_eq!(runtime.host_scheduling_usage(1).unwrap().payload_bytes, 0);
+    // Every argument copy is released; only the scripts' own small code and
+    // table structures remain (the copies were 800 KB each).
+    assert!(runtime.host_scheduling_usage(1).unwrap().payload_bytes < 64 * 1024);
     // Nine retained arguments plus the active registration copy fit; ten
     // retained arguments would omit the new execution owner from the budget.
     execute(

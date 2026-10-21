@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::vm::intrinsic_storage::LateIteratorHelper;
 
 impl Vm {
     pub(in super::super::super) fn base_iterator_prototype(
@@ -96,24 +97,27 @@ impl Vm {
         if self.iterator_base != Some(owner) {
             return Ok(());
         }
-        let (name, length, method) = if key == &PropertyName::from("flatMap") {
-            ("flatMap", 1, native::IteratorHelperMethod::FlatMap)
-        } else if key == &PropertyName::from("chunks") {
-            ("chunks", 1, native::IteratorHelperMethod::Chunks)
-        } else if key == &PropertyName::from("windows") {
-            ("windows", 1, native::IteratorHelperMethod::Windows)
-        } else {
+        let Some(helper) = LateIteratorHelper::for_key(key) else {
             return Ok(());
         };
+        self.argument_list_owner()?;
+        self.iterator_helpers_installed.validate_owner()?;
         // Once offered, the helper is an ordinary property: a script that has
         // deleted it must not see it come back.
-        if self.iterator_helpers_installed.contains(&name)
-            || self
-                .heap
-                .get_own_property_descriptor(owner, key)
-                .expect("the Iterator prototype is live")
-                .is_some()
+        if self.iterator_helpers_installed.contains(helper) {
+            return Ok(());
+        }
+        let prepared = self.prepare_iterator_helper_installation()?;
+        prepared.validate_origin()?;
+        if self
+            .heap
+            .get_own_property_descriptor(owner, key)
+            .expect("the Iterator prototype is live")
+            .is_some()
         {
+            // A user replacement also consumes this lazy installation. Its
+            // later deletion must not resurrect the original native helper.
+            self.commit_iterator_helper_installation(helper, prepared);
             return Ok(());
         }
         let function_prototype = self
@@ -122,11 +126,11 @@ impl Vm {
         self.install_native(
             owner,
             function_prototype,
-            name,
-            length,
-            NativeFunction::IteratorHelper(method),
+            helper.name(),
+            1,
+            NativeFunction::IteratorHelper(helper.native()),
         )?;
-        self.iterator_helpers_installed.push(name);
+        self.commit_iterator_helper_installation(helper, prepared);
         Ok(())
     }
 

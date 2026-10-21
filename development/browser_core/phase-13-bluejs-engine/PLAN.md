@@ -6,7 +6,7 @@
 
 **2026-10-15 browser integration:** M1a/M0a/M1b/M1c establish bounded host checkpoints, merged BlueTS profile compatibility, owner-selected File DOM timers and a separate animation-frame render entry, with generated v12 typings. M1d adds shared document scheduling admission and an owned-payload ledger, including ShadowRealms and suspended async state; M1e propagates that ownership through private protocol v59 into Core's live per-tab cache accounting. JavaScript and BlueTS counter pages satisfy the repeated frame/Representation acceptance. M1f restores live-owner Promise tracing and awaited for-await cleanup, with long-lived page polling and pinned full-inventory acceptance tracked in the milestone record. M1g moves page FinalizationRegistry cleanup to bounded document-owned engine tasks, with shared ShadowRealm FIFO and browser-task admission; its verification is tracked in the milestone record. Task-source ordering, complete host-buffer/aggregate resource policy and default-on policy remain open in the [browser integration TODO](BROWSER_INTEGRATION_TODO.md).
 
-**M1h callback follow-up:** Native DOM callbacks now checkpoint before the next listener, with shared job admission, preserved fuel and rooted dispatch frames across import/module work. Script-driven dispatch waits for the enclosing JavaScript. Acceptance is tracked in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+**M1h callback follow-up:** Native DOM callbacks now checkpoint before the next listener, with shared job admission, preserved fuel and rooted dispatch frames across import/module work. Script-driven dispatch waits for the enclosing JavaScript. Acceptance is tracked in the [milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 **M1i task-turn follow-up:** Timer and browser work share a bounded document
 entry, and the child returns to Core after one selected task and checkpoint.
@@ -43,7 +43,7 @@ private v60 carries an exact-document drain through Core to MCP's
 acceptance pass, as do the related Rust, build, Clippy and format gates.
 All 102,926 pinned Test262 modes match M1l's accepted source/result inventory.
 See [the console contract](HOST_CONSOLE.md) and the
-[live milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+[live milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 **M1n checked host boundaries (2026-10-15):** Ambient value queries
 retain declaration ownership, full callable signatures and lexical shadows.
@@ -73,7 +73,7 @@ Pending delivery owns roots; outstanding notifications remain weak. All 37
 related Rust targets, mixed-language real Core/MCP acceptance, formatting and
 workspace/all-target Clippy/build pass. The complete pinned Test262 inventory
 matches M1o; final evidence is recorded in the
-[milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 See [the rejection contract](HOST_PROMISE_REJECTIONS.md).
 
 **M1q source-provenance checkpoint (in progress):** Immutable maps bind exact
@@ -85,7 +85,7 @@ preserve their pending throw's origin, including across generator suspension
 and later scripts; saved filename payloads join the existing suspension
 budgets. This is an implementation checkpoint; original typed,
 expression, module and asynchronous positions and the final full
-gates remain open in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record)
+gates remain open in the [milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record)
 and [source-position contract](SOURCE_DIAGNOSTICS.md).
 Bounded optional console sources now pass through private v61, Core validation
 and MCP's untrusted frame, with combined message/source admission and explicit
@@ -265,7 +265,7 @@ The next hardening pass targets `cargo llvm-cov -p blueice-bluejs --fail-under-l
 - [x] Decide the event loop shape — macrotask loop draining microtasks per-task, plus a separate render-pass entry point, see `research/js-bytecode-eventloop.md`
 - [ ] Implement the event loop and its interleaving with `core`'s render-pass/paint loop per that shape — including the Promise/task hooks Phase 17's Fetch/XHR design requires
 - [x] Define the `blueice_ipc::script` wire types and framed read/write helpers — already implemented in `backend/ipc/src/script.rs` before the runtime-storage slice, including `ScriptRequest`/`ScriptReply`, `Hello`/`HelloAck`, and real-socket round-trip tests
-- [x] Wire `blueice_ipc::script` into Core and a real launcher-supervised BlueJS host for plain request/reply. The owner-selected File DOM profile uses authenticated, exact-document calls while Core pumps the private DOM channel during a child wait. M1b's real HTTP JavaScript/BlueTS counter fixtures exercise this path through repeated callback DOM mutation, unsolicited frames and matching Representation generations; the existing selected-file fixture covers native events, FileReader and stream tasks. Snapshot profiles retain their narrower inventory. General module loading, batching/shared-memory reads and complete tab-memory accounting remain separate open work. See the [integration milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+- [x] Wire `blueice_ipc::script` into Core and a real launcher-supervised BlueJS host for plain request/reply. The owner-selected File DOM profile uses authenticated, exact-document calls while Core pumps the private DOM channel during a child wait. M1b's real HTTP JavaScript/BlueTS counter fixtures exercise this path through repeated callback DOM mutation, unsolicited frames and matching Representation generations; the existing selected-file fixture covers native events, FileReader and stream tasks. Snapshot profiles retain their narrower inventory. General module loading, batching/shared-memory reads and complete tab-memory accounting remain separate open work. See the [integration milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 - [x] Design the first DOM/event binding boundary connecting BlueJS-owned node wrappers and click listeners to core-owned `blueice-dom` through authenticated, document-generation-bound `blueice_ipc::script` calls. [The binding decision](DOM_EVENT_BINDINGS.md) fixes the initial surface, session scheduling, ownership, denial rules and real-page acceptance order. The owner-selected narrow DOM/event and File profiles now have runtime and real-page coverage; general DOM/event acceptance remains open. Phase 17 keeps network and debugger traffic on separate paths.
 - [ ] Design the AI-facing capability-summary output (derived from the AST) and its exact granularity, with Phase 7
 - [ ] Design the Phase 7 gatekeeper's script-level hook points against that summary, with Phase 7

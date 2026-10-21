@@ -5,16 +5,112 @@
 use super::*;
 
 impl Heap {
-    pub(crate) fn pending_async_generator_requests(&self) -> usize {
+    pub(crate) fn unowned_async_generator_requests(&self) -> usize {
+        self.unowned_async_generator_requests_for(None)
+    }
+    pub(crate) fn unowned_async_generator_requests_for(&self, only: Option<ObjectId>) -> usize {
         self.objects
-            .values()
-            .fold(0usize, |count, object| match &object.kind {
+            .iter()
+            .fold(0usize, |count, (id, object)| match &object.kind {
                 ObjectKind::Generator {
                     async_control: Some(control),
                     ..
-                } => count.saturating_add(control.requests.len()),
+                } if only.is_none_or(|only| only == *id) => count.saturating_add(
+                    control
+                        .requests
+                        .iter()
+                        .filter(|request| !request.scheduling.is_owned())
+                        .count(),
+                ),
                 _ => count,
             })
+    }
+    pub(crate) fn unowned_async_generator_request_bytes(&self) -> usize {
+        self.unowned_async_generator_requests()
+            .saturating_mul(HeapReactionLease::allocation_bytes())
+    }
+    pub(crate) fn async_generator_counts_can_join(&self, budget: &HeapNativeBudget) -> bool {
+        self.async_generator_counts_can_join_for(budget, None)
+    }
+    pub(crate) fn async_generator_counts_can_join_for(
+        &self,
+        budget: &HeapNativeBudget,
+        only: Option<ObjectId>,
+    ) -> bool {
+        self.objects.iter().all(|(id, object)| match &object.kind {
+            ObjectKind::Generator {
+                async_control: Some(control),
+                ..
+            } if only.is_none_or(|only| only == *id) => {
+                control
+                    .owner
+                    .as_ref()
+                    .is_none_or(|owner| owner.same_document(budget))
+                    && control.requests.iter().all(|request| {
+                        request.scheduling.can_join(budget)
+                            && request.origin.can_join(budget)
+                            && request.value_can_join(budget)
+                    })
+            }
+            _ => true,
+        })
+    }
+    pub(crate) fn attach_async_generator_request_budget(
+        &mut self,
+        budget: &HeapNativeBudget,
+        mut credit: Option<crate::vm::HeapNativeCharge>,
+        only: Option<ObjectId>,
+    ) -> Result<(), HeapError> {
+        if !self.async_generator_counts_can_join_for(budget, only) {
+            return Err(HeapError::InvalidConfig);
+        }
+        for (id, object) in self.objects.iter_mut() {
+            if only.is_some_and(|only| only != *id) {
+                continue;
+            }
+            if let ObjectKind::Generator {
+                async_control: Some(control),
+                ..
+            } = &mut object.kind
+            {
+                control.owner = Some(budget.clone());
+                for request in &control.requests {
+                    if !request.scheduling.is_owned() {
+                        budget
+                            .attach_reaction_lease(
+                                &request.scheduling,
+                                credit
+                                    .as_mut()
+                                    .expect("all unowned requests have prepared credit"),
+                            )
+                            .map_err(|_| HeapError::AsyncGeneratorStorageLimit)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn async_generator_request_budget(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<HeapNativeBudget>, HeapError> {
+        let ObjectKind::Generator {
+            async_control: Some(control),
+            ..
+        } = &self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok(control
+            .owner
+            .clone()
+            .or_else(|| {
+                control
+                    .requests
+                    .iter()
+                    .find_map(|request| request.scheduling.owner())
+            })
+            .or_else(|| self.collector.budget().cloned()))
     }
     /// Allocates a Proxy exotic object. Trap dispatch stays in the VM so it
     /// can call JavaScript functions while preserving interpreter roots.
@@ -316,17 +412,37 @@ impl Heap {
     pub(crate) fn set_generator_state(
         &mut self,
         object: ObjectId,
-        mut state: GeneratorState,
+        state: GeneratorState,
     ) -> Result<(), HeapError> {
+        self.try_set_generator_state(object, state, &[])
+            .map_err(|(error, _)| error)
+    }
+
+    /// Like [`Self::set_generator_state`], but a refusal hands the unpublished
+    /// state back so the caller can retry or restore its previous contents.
+    /// `keep` names objects the caller still needs after a refusal; a
+    /// collection the commit triggers must not reclaim them.
+    pub(crate) fn try_set_generator_state(
+        &mut self,
+        object: ObjectId,
+        mut state: GeneratorState,
+        keep: &[ObjectId],
+    ) -> Result<(), (HeapError, Box<GeneratorState>)> {
         // A generator may have been promoted while it was running. Restoring
         // a suspended frame can then install young bindings/cells into an old
         // generator object, so this internal-slot write needs the same
         // remembered-set barrier as an ordinary property write.
-        let old_state_bytes = *self.generator_state_slots_mut(object)?.1;
+        let old_state_bytes = match self.generator_state_slots_mut(object) {
+            Ok(slots) => *slots.1,
+            Err(error) => return Err((error, Box::new(state))),
+        };
         if let GeneratorState::Start { code, .. } | GeneratorState::Suspended { code, .. } =
             &mut state
         {
-            *code = self.prepare_code_sources(code.clone())?;
+            match self.prepare_code_sources(code.clone()) {
+                Ok(prepared) => *code = prepared,
+                Err(error) => return Err((error, Box::new(state))),
+            }
         }
         let references = state.references();
         let state_bytes = state.managed_bytes();
@@ -334,8 +450,13 @@ impl Heap {
         // Keep both the generator and its incoming references alive across it.
         let protected: Vec<_> = std::iter::once(object)
             .chain(references.iter().copied())
+            .chain(keep.iter().copied())
             .collect();
-        self.ensure_room(state_bytes.saturating_sub(old_state_bytes), &protected)?;
+        if let Err(error) =
+            self.ensure_room(state_bytes.saturating_sub(old_state_bytes), &protected)
+        {
+            return Err((error, Box::new(state)));
+        }
         {
             let (current, current_bytes, entry_bytes) = self
                 .generator_state_slots_mut(object)
@@ -356,6 +477,7 @@ impl Heap {
     /// JavaScript. The queue starts empty and therefore cannot allocate or
     /// create collector edges.
     pub(crate) fn enable_async_generator(&mut self, object: ObjectId) -> Result<(), HeapError> {
+        let owner = self.collector.budget().cloned();
         let entry = self
             .objects
             .get_mut(&object)
@@ -364,7 +486,10 @@ impl Heap {
             return Err(HeapError::InvalidObject(object));
         };
         if async_control.is_none() {
-            *async_control = Some(AsyncGeneratorControl::default());
+            *async_control = Some(Box::new(AsyncGeneratorControl {
+                owner,
+                ..Default::default()
+            }));
         }
         Ok(())
     }
@@ -373,16 +498,31 @@ impl Heap {
         &self,
         object: ObjectId,
     ) -> Result<Option<AsyncGeneratorControl>, HeapError> {
+        self.async_generator_control_ref(object)?
+            .map(|control| control.try_snapshot(self.collector.budget()))
+            .transpose()
+    }
+    pub(crate) fn async_generator_control_ref(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<&AsyncGeneratorControl>, HeapError> {
         let ObjectKind::Generator { async_control, .. } = &self.object(object)?.kind else {
             return Err(HeapError::InvalidObject(object));
         };
-        Ok(async_control.clone())
+        Ok(async_control.as_deref())
     }
 
-    fn async_generator_slots_mut(
+    pub(super) fn async_generator_slots_mut(
         &mut self,
         object: ObjectId,
-    ) -> Result<(&mut Option<AsyncGeneratorControl>, &mut usize, &mut usize), HeapError> {
+    ) -> Result<
+        (
+            &mut Option<Box<AsyncGeneratorControl>>,
+            &mut usize,
+            &mut usize,
+        ),
+        HeapError,
+    > {
         let entry = self
             .objects
             .get_mut(&object)
@@ -403,37 +543,104 @@ impl Heap {
     pub(crate) fn set_async_generator_control(
         &mut self,
         object: ObjectId,
-        control: AsyncGeneratorControl,
+        mut control: AsyncGeneratorControl,
     ) -> Result<(), HeapError> {
-        let references = control.references();
+        let mut owner = None;
+        {
+            let old = match &self.object(object)?.kind {
+                ObjectKind::Generator { async_control, .. } => async_control.as_ref(),
+                _ => return Err(HeapError::InvalidObject(object)),
+            };
+            let budget = old
+                .and_then(|old| old.owner.clone())
+                .or_else(|| self.collector.budget().cloned())
+                .or_else(|| control.owner.clone())
+                .or_else(|| {
+                    control
+                        .requests
+                        .iter()
+                        .find_map(|request| request.scheduling.owner())
+                });
+            owner.clone_from(&budget);
+            if let Some(budget) = &budget {
+                if control
+                    .owner
+                    .as_ref()
+                    .is_some_and(|owner| !owner.same_document(budget))
+                {
+                    return Err(HeapError::AsyncGeneratorStorageLimit);
+                }
+                control.owner = Some(budget.clone());
+            }
+            for request in &control.requests {
+                if !request.scheduling.bind(object, request.id, request.target) {
+                    return Err(HeapError::InvalidConfig);
+                }
+                if let Some(budget) = &budget {
+                    if !request.scheduling.can_join(budget)
+                        || !request.origin.can_join(budget)
+                        || !request.value_can_join(budget)
+                    {
+                        return Err(HeapError::AsyncGeneratorStorageLimit);
+                    }
+                    if !request.scheduling.is_owned() {
+                        let mut credit = budget
+                            .reserve_request_credit(1)
+                            .map_err(|_| HeapError::AsyncGeneratorStorageLimit)?;
+                        budget
+                            .attach_reaction_lease(&request.scheduling, &mut credit)
+                            .map_err(|_| HeapError::AsyncGeneratorStorageLimit)?;
+                    }
+                    if !request.scheduling.is_published() {
+                        request
+                            .scheduling
+                            .check()
+                            .map_err(|_| HeapError::AsyncGeneratorStorageLimit)?;
+                    }
+                }
+            }
+        }
+        control.retain_backing(owner.as_ref())?;
         let control_bytes = control.managed_bytes();
-        let (old_bytes, old_references) = {
-            let (async_control, async_control_bytes, _) = self.async_generator_slots_mut(object)?;
-            (
-                *async_control_bytes,
-                async_control
-                    .iter()
-                    .flat_map(AsyncGeneratorControl::references)
-                    .collect::<Vec<_>>(),
-            )
+        let protected = self.prepare_async_generator_roots(object, &control)?;
+        let old_bytes = match &self.object(object)?.kind {
+            ObjectKind::Generator {
+                async_control_bytes,
+                ..
+            } => *async_control_bytes,
+            _ => return Err(HeapError::InvalidObject(object)),
         };
-        let protected: Vec<_> = std::iter::once(object)
-            .chain(references.iter().copied())
-            .chain(old_references)
-            .collect();
         self.ensure_room(control_bytes.saturating_sub(old_bytes), &protected)?;
         {
             let (async_control, async_control_bytes, entry_bytes) = self
                 .async_generator_slots_mut(object)
                 .expect("protected async generator survives collection");
-            *async_control = Some(control);
+            // Shared metadata marks retained requests without scratch or a
+            // quadratic membership scan. Queue protocol diagnostics remain
+            // at the scheduler boundary, including intentionally invalid IDs.
+            if let Some(old) = async_control.as_ref() {
+                for request in &old.requests {
+                    request.scheduling.set_published(false);
+                }
+            }
+            for request in &control.requests {
+                request.scheduling.set_published(true);
+            }
+            if let Some(old) = async_control.as_ref() {
+                for request in &old.requests {
+                    if !request.scheduling.is_published() {
+                        request.scheduling.retire();
+                    }
+                }
+            }
+            *async_control = Some(Box::new(control));
             *async_control_bytes = control_bytes;
             *entry_bytes = *entry_bytes - old_bytes + control_bytes;
         }
         self.managed_bytes
             .set(self.managed_bytes.get() - old_bytes + control_bytes);
-        for reference in references {
-            self.write_barrier(object, Some(reference));
+        for reference in protected.new_references() {
+            self.write_barrier(object, Some(*reference));
         }
         Ok(())
     }

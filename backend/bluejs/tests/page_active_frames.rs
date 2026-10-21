@@ -25,6 +25,24 @@ fn execute(
     runtime.execute_program(tab, program)
 }
 
+/// Installs a program (the registry retains and charges it) without running it.
+fn install(
+    runtime: &mut BlueJsPageRuntime,
+    tab: u64,
+    source: &str,
+) -> blueice_bluejs::BlueJsProgramHandle {
+    let stats = runtime.realm_stats(tab).unwrap();
+    runtime
+        .install_program(
+            tab,
+            &stats.origin,
+            BlueJsSourceIdentity::new(format!("page:///frame-{}.js", stats.program_count), "frame")
+                .unwrap(),
+            &BlueJsProgramV1::Script(parse(source).unwrap()),
+        )
+        .unwrap()
+}
+
 fn exhaustion_is_document_owned(source: &str) {
     let mut runtime = BlueJsPageRuntime::default();
     let origin = BlueJsPageOrigin::new("https://active-frames.test").unwrap();
@@ -109,9 +127,19 @@ fn completed_thrown_and_eval_frames_refund_their_payload() {
         )
         .unwrap();
     execute(&mut runtime,1,"Symbol.for('r'.repeat(100000));var held=Promise.resolve('p'.repeat(100000));function work(){var x='x'.repeat(200000);return eval('x.length');}function fail(){var x='y'.repeat(200000);throw x;}0;").unwrap();
+    // One installed program run repeatedly: after a warm-up run the document
+    // owes exactly what it owed, so no frame payload outlives its run.
+    let program = install(&mut runtime,1,"var sum=0;for(var i=0;i<32;i++){sum+=work();try{fail();}catch(error){if(error.length!==200000)throw 'lost value';}}sum;");
+    assert_eq!(
+        runtime.execute_program(1, program).unwrap(),
+        Value::Number(6400000.0)
+    );
     let before = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
     for _ in 0..16 {
-        assert_eq!(execute(&mut runtime,1,"var sum=0;for(var i=0;i<32;i++){sum+=work();try{fail();}catch(error){if(error.length!==200000)throw 'lost value';}}sum;").unwrap(),Value::Number(6400000.0));
+        assert_eq!(
+            runtime.execute_program(1, program).unwrap(),
+            Value::Number(6400000.0)
+        );
         assert_eq!(
             runtime.realm_stats(1).unwrap().scheduling.payload_bytes,
             before
@@ -126,76 +154,109 @@ fn host_neutral_execution_keeps_its_existing_policy() {
     assert_eq!(vm.execute_script(&code).unwrap(), Value::Number(6800000.0));
 }
 
+/// What a resumed pause leaves charged beyond the installed program, for an
+/// operand of `size` code units (the digits are kept the same length so the
+/// source text is too).
+fn resumed_pause_residual(size: &str) -> usize {
+    let mut runtime = BlueJsPageRuntime::default();
+    let origin = BlueJsPageOrigin::new("https://paused-residual.test").unwrap();
+    runtime.open_realm(1, origin.clone()).unwrap();
+    let program = install(&mut runtime, 1, &format!("'x'.repeat({size})+'y';"));
+    let installed = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
+    let offset = add_offset(&runtime, program);
+    runtime
+        .execute_program_until_debugger_pause_at_root_offset(1, program, offset)
+        .unwrap();
+    runtime.resume_debugger_execution(1).unwrap();
+    runtime.realm_stats(1).unwrap().scheduling.payload_bytes - installed
+}
+
+fn add_offset(runtime: &BlueJsPageRuntime, program: blueice_bluejs::BlueJsProgramHandle) -> u32 {
+    runtime
+        .program_registry()
+        .get(program)
+        .unwrap()
+        .bytecode()
+        .instructions()
+        .find(|instruction| instruction.opcode == blueice_bluejs::Opcode::Add)
+        .unwrap()
+        .offset as u32
+}
+
 #[test]
 fn paused_operand_storage_is_visible_and_released_on_resume_or_navigation() {
     let mut runtime = BlueJsPageRuntime::default();
     let origin = BlueJsPageOrigin::new("https://paused-payload.test").unwrap();
     runtime.open_realm(1, origin.clone()).unwrap();
-    for navigate in [false, true] {
-        let program = runtime
-            .install_program(
-                1,
-                &origin,
-                BlueJsSourceIdentity::new("page:///paused.js", "paused").unwrap(),
-                &BlueJsProgramV1::Script(parse("'x'.repeat(400000)+'y';").unwrap()),
-            )
-            .unwrap();
-        let offset = runtime
-            .program_registry()
-            .get(program)
-            .unwrap()
-            .bytecode()
-            .instructions()
-            .find(|instruction| instruction.opcode == blueice_bluejs::Opcode::Add)
-            .unwrap()
-            .offset as u32;
-        runtime
-            .execute_program_until_debugger_pause_at_root_offset(1, program, offset)
-            .unwrap();
-        assert!(runtime.realm_stats(1).unwrap().scheduling.payload_bytes >= 800000);
-        if navigate {
-            runtime.navigate(1, origin.clone()).unwrap();
-        } else {
-            runtime.resume_debugger_execution(1).unwrap();
-        }
-        assert_eq!(runtime.realm_stats(1).unwrap().scheduling.payload_bytes, 0);
-    }
+    // A fresh realm already owes its own root-table storage.
+    let fresh = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
+    let program = install(&mut runtime, 1, "'x'.repeat(400000)+'y';");
+    let offset = add_offset(&runtime, program);
+    runtime
+        .execute_program_until_debugger_pause_at_root_offset(1, program, offset)
+        .unwrap();
+    assert!(runtime.realm_stats(1).unwrap().scheduling.payload_bytes >= 800000);
+    runtime.navigate(1, origin).unwrap();
+    assert_eq!(
+        runtime.realm_stats(1).unwrap().scheduling.payload_bytes,
+        fresh
+    );
+    // Resuming leaves only the program's own code/source charge, which does
+    // not depend on how large the released operand was.
+    assert_eq!(
+        resumed_pause_residual("400000"),
+        resumed_pause_residual("300000")
+    );
+}
+
+/// What a refused deep child-frame run leaves charged beyond its installed
+/// program, for frames holding `size` code units each.
+fn failed_frame_residual(wrapped: bool, size: &str) -> usize {
+    let mut runtime = BlueJsPageRuntime::default();
+    let origin = BlueJsPageOrigin::new("https://failed-frame.test").unwrap();
+    runtime.open_realm(1, origin.clone()).unwrap();
+    let fresh = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
+    execute(&mut runtime, 1, "Symbol.for('r'.repeat(100000));0;").unwrap();
+    let body = format!("function hold(n){{var x='x'.repeat({size});if(n===0)return x.length;return hold(n-1)+x.length;}}");
+    let source = if wrapped {
+        format!(
+            "var realm=new ShadowRealm();var hold=realm.evaluate({:?});hold(16);",
+            format!("{body}hold;")
+        )
+    } else {
+        format!(
+            "var realm=new ShadowRealm();realm.evaluate({:?});",
+            format!("{body}hold(16);")
+        )
+    };
+    let program = install(&mut runtime, 1, &source);
+    let before = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
+    assert!(matches!(
+        runtime.execute_program(1, program),
+        Err(BlueJsPageRuntimeError::Runtime(
+            RuntimeError::SchedulingLimit
+        ))
+    ));
+    let after = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
+    assert!(execute(&mut runtime, 1, "42;").is_err());
+    runtime.navigate(1, origin).unwrap();
+    assert_eq!(
+        runtime.realm_stats(1).unwrap().scheduling.payload_bytes,
+        fresh
+    );
+    after - before
 }
 
 #[test]
 fn failed_child_frames_refund_payload_without_recovering_the_document() {
     for wrapped in [false, true] {
-        let mut runtime = BlueJsPageRuntime::default();
-        let origin = BlueJsPageOrigin::new("https://failed-frame.test").unwrap();
-        runtime.open_realm(1, origin.clone()).unwrap();
-        execute(&mut runtime, 1, "Symbol.for('r'.repeat(100000));0;").unwrap();
-        let before = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
-        let body = "function hold(n){var x='x'.repeat(400000);if(n===0)return x.length;return hold(n-1)+x.length;}";
-        let source = if wrapped {
-            format!(
-                "var realm=new ShadowRealm();var hold=realm.evaluate({:?});hold(16);",
-                format!("{body}hold;")
-            )
-        } else {
-            format!(
-                "var realm=new ShadowRealm();realm.evaluate({:?});",
-                format!("{body}hold(16);")
-            )
-        };
-        assert!(matches!(
-            execute(&mut runtime, 1, &source),
-            Err(BlueJsPageRuntimeError::Runtime(
-                RuntimeError::SchedulingLimit
-            ))
-        ));
+        // Both sizes overrun the 8 MiB budget at the same frame depth; what stays charged is the
+        // program's own code and must not depend on the released frames.
         assert_eq!(
-            runtime.realm_stats(1).unwrap().scheduling.payload_bytes,
-            before,
+            failed_frame_residual(wrapped, "400000"),
+            failed_frame_residual(wrapped, "390000"),
             "released child frames remain charged; wrapped={wrapped}"
         );
-        assert!(execute(&mut runtime, 1, "42;").is_err());
-        runtime.navigate(1, origin).unwrap();
-        assert_eq!(runtime.realm_stats(1).unwrap().scheduling.payload_bytes, 0);
     }
 }
 
@@ -294,8 +355,9 @@ fn child_await_does_not_capture_the_callers_pending_return() {
 #[test]
 fn every_root_pause_handoff_obeys_the_native_budget_without_spending_fuel() {
     let expression = (0..16).fold("value".to_string(), |tail, _| format!("value+({tail})"));
-    let source = format!("var value='x'.repeat(400000);{expression};");
-    let prepare = || {
+    let source_for = |size: &str| format!("var value='x'.repeat({size});{expression};");
+    let source = source_for("400000");
+    let prepare_with = |source: &str| {
         let mut runtime = BlueJsPageRuntime::default();
         let origin = BlueJsPageOrigin::new("https://pause-budget.test").unwrap();
         runtime.open_realm(1, origin.clone()).unwrap();
@@ -304,11 +366,13 @@ fn every_root_pause_handoff_obeys_the_native_budget_without_spending_fuel() {
                 1,
                 &origin,
                 BlueJsSourceIdentity::new("page:///pause-budget.js", "pause-budget").unwrap(),
-                &BlueJsProgramV1::Script(parse(&source).unwrap()),
+                &BlueJsProgramV1::Script(parse(source).unwrap()),
             )
             .unwrap();
         (runtime, program)
     };
+    let prepare = || prepare_with(&source);
+    let twin_source = source_for("390000");
     let (template, program) = prepare();
     let offsets = template
         .program_registry()
@@ -320,8 +384,10 @@ fn every_root_pause_handoff_obeys_the_native_budget_without_spending_fuel() {
         .collect::<Vec<_>>();
     let mut largest_pause = 0;
     let mut refused = 0;
+    let mut compared = 0;
     for offset in offsets {
         let (mut runtime, program) = prepare();
+        let installed = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
         match runtime.execute_program_until_debugger_pause_at_root_offset(1, program, offset) {
             Ok(blueice_bluejs::BlueJsPageDebuggerExecutionState::Paused { .. }) => {
                 let bytes = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
@@ -333,7 +399,30 @@ fn every_root_pause_handoff_obeys_the_native_budget_without_spending_fuel() {
             }
             Err(BlueJsPageRuntimeError::Runtime(RuntimeError::SchedulingLimit)) => {
                 refused += 1;
-                assert_eq!(runtime.realm_stats(1).unwrap().scheduling.payload_bytes, 0);
+                // Only the program's bounded code/source charge stays after
+                // the refusal; the operand payload is released.
+                let after = runtime.realm_stats(1).unwrap().scheduling.payload_bytes;
+                // The same program with a slightly smaller operand, refused
+                // at the same offset, must leave exactly the same residue.
+                let (mut twin, twin_program) = prepare_with(&twin_source);
+                let twin_installed = twin.realm_stats(1).unwrap().scheduling.payload_bytes;
+                if matches!(
+                    twin.execute_program_until_debugger_pause_at_root_offset(
+                        1,
+                        twin_program,
+                        offset
+                    ),
+                    Err(BlueJsPageRuntimeError::Runtime(
+                        RuntimeError::SchedulingLimit
+                    ))
+                ) {
+                    compared += 1;
+                    assert_eq!(
+                        after - installed,
+                        twin.realm_stats(1).unwrap().scheduling.payload_bytes - twin_installed,
+                        "pause at {offset} left operand payload charged"
+                    );
+                }
                 assert!(runtime.resume_debugger_execution(1).is_err());
                 assert!(matches!(
                     execute(&mut runtime, 1, "42;"),
@@ -347,6 +436,7 @@ fn every_root_pause_handoff_obeys_the_native_budget_without_spending_fuel() {
     }
     assert!(largest_pause >= 8000000);
     assert!(refused > 0);
+    assert!(compared > 0);
     let mut config = blueice_bluejs::BlueJsPageRuntimeConfig::default();
     config.vm.instruction_budget = 1;
     let mut runtime = BlueJsPageRuntime::new(config).unwrap();

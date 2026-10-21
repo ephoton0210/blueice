@@ -37,7 +37,6 @@ use crate::native::{
 use num_bigint::BigUint;
 use num_traits::One;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 mod arguments;
 mod collections;

@@ -6,7 +6,7 @@ M1o completed on 2026-10-15. Public VM/profile and real Core/MCP acceptance,
 all 24 related Rust targets (3,101 passed; one existing ignored), fresh focused
 MCP acceptance (one passed), formatting and workspace/all-target Clippy/build
 pass. All 102,926 pinned Test262 modes match M1n's accepted source/result
-inventory. See the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+inventory. See the [milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 ## Owner and profile
 
@@ -43,7 +43,7 @@ Page module records retain a one-time reporting flag until their evaluation
 finishes, including later top-level-await rejection. Dynamic imports retain
 their Promise rejection behavior. M1p supplies the separate document-task
 `unhandledrejection` / `rejectionhandled` tracker; its final gates are recorded
-in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record) and
+in the [milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record) and
 [rejection contract](HOST_PROMISE_REJECTIONS.md). Loader/compiler admission
 failures keep their existing rejection reports.
 

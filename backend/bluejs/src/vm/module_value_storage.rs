@@ -42,6 +42,15 @@ pub(super) type ModuleCompletion = Rc<ModuleValueData<()>>;
 pub(super) type ModuleEvaluationError = Rc<ModuleValueData<ThrowOrigin>>;
 
 impl<O: Default> ModuleValueData<O> {
+    pub(super) fn owner_view(&self) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        self.lease
+            .charge
+            .borrow()
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()
+    }
+
     fn header_bytes() -> usize {
         std::mem::size_of::<Self>()
             + std::mem::size_of::<ModuleValueLease>()

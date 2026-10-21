@@ -65,6 +65,21 @@ pub(super) enum BrowserTask {
 }
 
 impl BrowserTask {
+    pub(super) fn payload_bytes(&self) -> usize {
+        match self {
+            Self::DragString { text, .. } => text.owned_heap_payload_bytes().unwrap_or(usize::MAX),
+            Self::HostPromise { completion, .. } => completion.payload_bytes(),
+            Self::PromiseRejections { entries, .. } => host_scheduling::slots(entries),
+            _ => 0,
+        }
+    }
+
+    pub(super) fn reaction_count(&self) -> usize {
+        match self {
+            Self::PromiseRejections { entries, .. } => entries.len(),
+            _ => 0,
+        }
+    }
     pub(super) fn source(&self) -> host_task_turns::TaskSource {
         use host_task_turns::TaskSource;
         match self {
@@ -132,10 +147,30 @@ impl Vm {
             .min()
     }
 
+    #[cfg(any(test, coverage))]
     pub(super) fn queue_drag_string_task(
         &mut self,
         callback: ObjectId,
         text: JsString,
+    ) -> Result<(), RuntimeError> {
+        self.queue_drag_string_input(callback, text, None)
+    }
+    pub(super) fn queue_drag_string_task_owned(
+        &mut self,
+        callback: ObjectId,
+        text: native_value_storage::NativeValue,
+    ) -> Result<(), RuntimeError> {
+        text.validate_owner()?;
+        let (Value::String(text), storage) = text.into_retained_parts() else {
+            unreachable!("drag string task input")
+        };
+        self.queue_drag_string_input(callback, text, Some(storage))
+    }
+    fn queue_drag_string_input(
+        &mut self,
+        callback: ObjectId,
+        text: JsString,
+        mut storage: Option<Option<host_scheduling::SharedSchedulingCharge>>,
     ) -> Result<(), RuntimeError> {
         let bytes = self
             .browser_tasks
@@ -152,10 +187,21 @@ impl Vm {
             ));
         }
         self.heap.check_root_registration_count(1)?;
-        let prepared = self.prepare_browser_task(HostSchedulingUsage {
-            payload_bytes: text.owned_heap_payload_bytes().unwrap_or(usize::MAX),
-            ..HostSchedulingUsage::default()
-        })?;
+        let prepared = if let Some(storage) = &mut storage {
+            let owner = storage
+                .as_ref()
+                .map(|owner| owner.reserve_peer(0))
+                .transpose()?;
+            let mut prepared = self
+                .prepare_browser_task_with_owner(HostSchedulingUsage::default(), owner.as_ref())?;
+            prepared.absorb_payload(storage)?;
+            prepared
+        } else {
+            self.prepare_browser_task(HostSchedulingUsage {
+                payload_bytes: text.owned_heap_payload_bytes().unwrap_or(usize::MAX),
+                ..HostSchedulingUsage::default()
+            })?
+        };
         let objects = [callback];
         let roots = self.heap.prepare_root_batch(&objects)?;
         self.check_scheduling_failure()?;
@@ -228,8 +274,20 @@ impl Vm {
     }
 
     pub(super) fn run_own_browser_task(&mut self, index: usize) -> Result<(), RuntimeError> {
+        let owner = self.browser_task_owner(index)?;
         let previous_active = self.active_scheduling_bytes;
-        let result = self.run_own_browser_task_inner(index);
+        let result = if self.host_scheduling.is_none() && owner.is_some() {
+            let roots = realm_call_storage::RealmCallRoots::new(0, owner.as_ref())?;
+            self.with_realm_call_roots(roots, |vm| vm.run_own_browser_task_inner(index))
+        } else {
+            self.run_own_browser_task_inner(index)
+        };
+        // Cancellation also takes precedence when the task returned an error.
+        let ownership = owner
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose();
+        let result = ownership.and(result);
         self.active_scheduling_bytes = previous_active;
         if self.browser_tasks.is_empty() {
             self.browser_tasks.shrink_to_fit();
@@ -249,9 +307,10 @@ impl Vm {
         if prepared.action == BrowserEntryAction::Cleanup {
             let task = self
                 .browser_tasks
-                .remove(index)
+                .remove_owned(index)
                 .expect("prepared task remains queued");
-            self.discard_inactive_browser_task(task);
+            self.discard_inactive_browser_task(task.task);
+            drop(task.storage);
             self.reconcile_scheduling_ownership();
             // Cleanup does not start a new task instruction segment. Keep the
             // established post-task checkpoint while restoring ambient fuel.
@@ -266,32 +325,41 @@ impl Vm {
             self.remaining_instructions = previous_fuel;
             return Err(error);
         }
-        let task = self
+        let mut queued = self
             .browser_tasks
-            .remove(index)
+            .remove_owned(index)
             .expect("a runnable task was selected");
-        let active_bytes = match &task {
-            BrowserTask::PromiseRejections { entries, .. } => {
+        let native = queued.storage.is_some();
+        let active_bytes = match &queued.task {
+            BrowserTask::PromiseRejections { entries, .. } if !native => {
                 entries.capacity() * std::mem::size_of::<host_rejections::PendingRejection>()
             }
             _ => 0,
         };
-        let moved_payload = self.charge_execution_payload(match &task {
+        let payload_bytes = match &queued.task {
             BrowserTask::DragString { text, .. } => {
                 text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
             }
             BrowserTask::HostPromise { completion, .. } => completion.payload_bytes(),
             _ => 0,
-        });
+        };
+        let content = matches!(
+            &queued.task,
+            BrowserTask::DragString { .. } | BrowserTask::HostPromise { .. }
+        )
+        .then(|| queued.storage.take())
+        .flatten();
+        let moved_payload = self.adopt_job_payload(content, payload_bytes);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
         self.reconcile_scheduling_ownership();
-        let (result, root, next, report_page_exception) = match task {
+        let (result, root, next, report_page_exception) = match queued.task {
             BrowserTask::PromiseRejections {
                 entries, handled, ..
             } => (
                 self.run_host_rejection_task(
                     entries,
                     handled,
+                    native,
                     prepared
                         .rejections
                         .take()
@@ -367,6 +435,9 @@ impl Vm {
                 Err(error) => (Err(error), Some(root), None, false),
             },
         };
+        // The consumed batch and its roots have been released by the
+        // consumer; return its native content/count credit before checkpoint.
+        drop(queued.storage);
         // Report before releasing task roots or synchronizing accounting,
         // either of which can collect an object-valued abrupt completion.
         let result = match &result {
@@ -418,8 +489,8 @@ impl Vm {
         while index < self.browser_tasks.len() {
             if matches!(&self.browser_tasks[index], BrowserTask::FileRead { reader: owner, .. } if *owner == reader)
             {
-                let BrowserTask::FileRead { root, .. } = self.browser_tasks.remove(index).unwrap()
-                else {
+                let queued = self.browser_tasks.remove_owned(index).unwrap();
+                let BrowserTask::FileRead { root, .. } = queued.task else {
                     unreachable!("selected FileReader task")
                 };
                 self.heap.unroot(root)?;

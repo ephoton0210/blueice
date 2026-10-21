@@ -140,7 +140,7 @@ fn enter_path<T>(
                 *stale = true;
                 return Ok(None);
             }
-            if realm_reentrancy::resolve_active(step.heap).is_some() {
+            if realm_reentrancy::is_active(step.heap) {
                 return Ok(None);
             }
             let Ok(child) = child.vm.try_borrow() else {
@@ -168,7 +168,7 @@ fn enter_path<T>(
             }
             let registration =
                 realm_reentrancy::prepare_active_registration(vm, child.host_scheduling.as_ref())?;
-            let guard = registration.publish(vm);
+            let guard = registration.publish(vm)?;
             let result = enter_path(&mut child, rest, stale, action);
             drop(guard);
             result

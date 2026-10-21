@@ -20,6 +20,37 @@ impl JsString {
         &self.0
     }
 
+    /// Web IDL USVString conversion keeps this same admitted UTF-16 buffer.
+    pub(crate) fn replace_unpaired_surrogates(mut self) -> Self {
+        let mut index = 0;
+        while index < self.0.len() {
+            let unit = self.0[index];
+            if (0xd800..=0xdbff).contains(&unit)
+                && self
+                    .0
+                    .get(index + 1)
+                    .is_some_and(|next| (0xdc00..=0xdfff).contains(next))
+            {
+                index += 2;
+                continue;
+            }
+            if (0xd800..=0xdfff).contains(&unit) {
+                self.0[index] = 0xfffd;
+            }
+            index += 1;
+        }
+        self
+    }
+
+    /// ASCII case folding keeps the already admitted UTF-16 allocation.
+    pub(crate) fn make_ascii_lowercase(&mut self) {
+        for unit in &mut self.0 {
+            if (0x41..=0x5a).contains(unit) {
+                *unit += 0x20;
+            }
+        }
+    }
+
     pub(crate) fn owned_heap_payload_bytes(&self) -> Option<usize> {
         self.0.capacity().checked_mul(std::mem::size_of::<u16>())
     }

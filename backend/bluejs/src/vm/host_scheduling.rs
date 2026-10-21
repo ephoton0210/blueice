@@ -6,7 +6,7 @@
 //! Standalone ECMAScript VMs retain their unbounded host-neutral job policy.
 
 use super::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/task_payload_handoff.rs"]
@@ -251,6 +251,10 @@ impl Drop for CheckpointDeferral {
 pub(crate) struct SharedSchedulingCharge {
     account: Rc<RefCell<Account>>,
     bytes: usize,
+    pending_microtasks: usize,
+    pending_reactions: usize,
+    pending_browser_tasks: usize,
+    pending_timers: usize,
 }
 
 /// Keep a weak-retained allocation header charged after its data is destroyed.
@@ -264,6 +268,12 @@ impl SharedNativeHeader {
 }
 
 impl SharedSchedulingCharge {
+    pub(super) fn scheduling_scope(&self) -> SchedulingScope {
+        SchedulingScope {
+            account: self.account.clone(),
+            own: HostSchedulingUsage::default(),
+        }
+    }
     /// Reconcile storage already owned by a retained frame after a move/edit.
     /// Producers still admit allocation separately. The VM reconciles its
     /// corresponding fields before checking limits or observing a peak, so a
@@ -281,9 +291,25 @@ impl SharedSchedulingCharge {
         let mut charge = Self {
             account: self.account.clone(),
             bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
         };
         charge.resize(bytes)?;
         Ok(charge)
+    }
+    /// Optional reclamation never turns declined scratch into termination.
+    pub(super) fn try_reserve_peer(&self, bytes: usize) -> Option<Self> {
+        let mut charge = Self {
+            account: self.account.clone(),
+            bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
+        };
+        charge.try_resize_for_reclamation(bytes).then_some(charge)
     }
     pub(super) fn bytes(&self) -> usize {
         self.bytes
@@ -294,6 +320,156 @@ impl SharedSchedulingCharge {
         Self {
             account: self.account.clone(),
             bytes,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
+        }
+    }
+
+    pub(super) fn reserve_microtasks(&self, count: usize) -> Result<Self, RuntimeError> {
+        self.reserve_pending_work(count, 0, 0, 0)
+    }
+
+    pub(super) fn reserve_reactions(&self, count: usize) -> Result<Self, RuntimeError> {
+        self.reserve_pending_work(0, count, 0, 0)
+    }
+
+    pub(super) fn reserve_browser_tasks(&self, count: usize) -> Result<Self, RuntimeError> {
+        self.reserve_pending_work(0, 0, count, 0)
+    }
+
+    pub(super) fn reserve_timers(&self, count: usize) -> Result<Self, RuntimeError> {
+        self.reserve_pending_work(0, 0, 0, count)
+    }
+
+    pub(super) fn split_timers(&mut self, count: usize) -> Self {
+        assert!(count <= self.pending_timers);
+        self.pending_timers -= count;
+        Self {
+            account: self.account.clone(),
+            bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: count,
+        }
+    }
+
+    pub(super) fn release_timers(&mut self) {
+        self.account.borrow_mut().usage.pending_timers -= self.pending_timers;
+        self.pending_timers = 0;
+    }
+
+    pub(super) fn split_browser_tasks(&mut self, count: usize) -> Self {
+        assert!(count <= self.pending_browser_tasks);
+        self.pending_browser_tasks -= count;
+        Self {
+            account: self.account.clone(),
+            bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: count,
+            pending_timers: 0,
+        }
+    }
+
+    pub(super) fn release_browser_tasks(&mut self) {
+        self.release_browser_tasks_to(0);
+    }
+
+    pub(super) fn release_browser_tasks_to(&mut self, count: usize) {
+        assert!(
+            count <= self.pending_browser_tasks,
+            "task cleanup cannot acquire work"
+        );
+        self.account.borrow_mut().usage.pending_browser_tasks -= self.pending_browser_tasks - count;
+        self.pending_browser_tasks = count;
+    }
+
+    fn reserve_pending_work(
+        &self,
+        microtasks: usize,
+        reactions: usize,
+        browser_tasks: usize,
+        timers: usize,
+    ) -> Result<Self, RuntimeError> {
+        let mut charge = self.reserve_peer(0)?;
+        let mut account = charge.account.borrow_mut();
+        let extra = HostSchedulingUsage {
+            pending_microtasks: microtasks,
+            pending_reactions: reactions,
+            pending_browser_tasks: browser_tasks,
+            pending_timers: timers,
+            ..Default::default()
+        };
+        let next = account.usage.add(extra);
+        if account.failed || !next.fits() {
+            account.failed = true;
+            return Err(RuntimeError::SchedulingLimit);
+        }
+        account.usage = next;
+        charge.pending_microtasks = microtasks;
+        charge.pending_reactions = reactions;
+        charge.pending_browser_tasks = browser_tasks;
+        charge.pending_timers = timers;
+        drop(account);
+        Ok(charge)
+    }
+
+    pub(super) fn split_microtasks(&mut self, count: usize) -> Self {
+        assert!(
+            count <= self.pending_microtasks,
+            "split existing pending work"
+        );
+        self.pending_microtasks -= count;
+        Self {
+            account: self.account.clone(),
+            bytes: 0,
+            pending_microtasks: count,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
+        }
+    }
+
+    pub(super) fn release_microtasks(&mut self) {
+        self.account.borrow_mut().usage.pending_microtasks -= self.pending_microtasks;
+        self.pending_microtasks = 0;
+    }
+
+    pub(super) fn reaction_count(&self) -> usize {
+        self.pending_reactions
+    }
+
+    pub(super) fn split_reactions(&mut self, count: usize) -> Self {
+        assert!(
+            count <= self.pending_reactions,
+            "split existing pending reactions"
+        );
+        self.pending_reactions -= count;
+        Self {
+            account: self.account.clone(),
+            bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: count,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
+        }
+    }
+
+    pub(super) fn release_reactions_to(&mut self, count: usize) {
+        assert!(
+            count <= self.pending_reactions,
+            "reaction cleanup cannot acquire work"
+        );
+        self.account.borrow_mut().usage.pending_reactions -= self.pending_reactions - count;
+        self.pending_reactions = count;
+    }
+
+    pub(super) fn publish_microtasks(&self) {
+        if self.pending_microtasks != 0 {
+            self.account.borrow_mut().checkpoint_pending = true;
         }
     }
     /// Releasing existing storage is permitted after terminal admission failure.
@@ -321,13 +497,41 @@ impl SharedSchedulingCharge {
             .bytes
             .checked_add(other.bytes)
             .ok_or_else(|| self.fail())?;
+        let pending_microtasks = self
+            .pending_microtasks
+            .checked_add(other.pending_microtasks)
+            .ok_or_else(|| self.fail())?;
+        let pending_reactions = self
+            .pending_reactions
+            .checked_add(other.pending_reactions)
+            .ok_or_else(|| self.fail())?;
+        let browser_tasks = self
+            .pending_browser_tasks
+            .checked_add(other.pending_browser_tasks)
+            .ok_or_else(|| self.fail())?;
+        let timers = self
+            .pending_timers
+            .checked_add(other.pending_timers)
+            .ok_or_else(|| self.fail())?;
         self.bytes = bytes;
+        self.pending_timers = timers;
+        self.pending_browser_tasks = browser_tasks;
+        self.pending_microtasks = pending_microtasks;
+        self.pending_reactions = pending_reactions;
         other.bytes = 0;
+        other.pending_microtasks = 0;
+        other.pending_reactions = 0;
+        other.pending_browser_tasks = 0;
+        other.pending_timers = 0;
         Ok(())
     }
 
     pub(super) fn belongs_to(&self, scope: &SchedulingScope) -> bool {
         Rc::ptr_eq(&self.account, &scope.account)
+    }
+
+    pub(super) fn same_owner(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.account, &other.account)
     }
 
     pub(crate) fn resize(&mut self, bytes: usize) -> Result<(), RuntimeError> {
@@ -379,7 +583,122 @@ pub(crate) struct NativeDocumentIdentity {
 pub(crate) struct HeapNativeBudget {
     account: Rc<RefCell<Account>>,
 }
+
+/// Snapshots share one logical request. Retirement returns its pending count
+/// while held snapshots keep the metadata allocation and original identity.
+pub(crate) struct HeapReactionLease {
+    pending: Cell<bool>,
+    published: Cell<bool>,
+    identity: Cell<Option<(ObjectId, u64, ObjectId)>>,
+    storage: RefCell<Option<SharedSchedulingCharge>>,
+}
+impl HeapReactionLease {
+    pub(crate) fn allocation_bytes() -> usize {
+        std::mem::size_of::<Self>() + 2 * std::mem::size_of::<usize>()
+    }
+    pub(crate) fn unowned() -> Rc<Self> {
+        Rc::new(Self {
+            pending: Cell::new(true),
+            published: Cell::new(false),
+            identity: Cell::new(None),
+            storage: RefCell::new(None),
+        })
+    }
+    pub(crate) fn is_owned(&self) -> bool {
+        self.storage.borrow().is_some()
+    }
+    pub(crate) fn is_pending(&self) -> bool {
+        self.pending.get()
+    }
+    pub(crate) fn owner(&self) -> Option<HeapNativeBudget> {
+        self.storage
+            .borrow()
+            .as_ref()
+            .map(|charge| HeapNativeBudget {
+                account: charge.account.clone(),
+            })
+    }
+    pub(crate) fn can_join(&self, budget: &HeapNativeBudget) -> bool {
+        self.storage
+            .borrow()
+            .as_ref()
+            .is_none_or(|charge| budget.owns(charge))
+    }
+    pub(crate) fn bind(&self, generator: ObjectId, id: u64, target: ObjectId) -> bool {
+        if !self.pending.get() {
+            return false;
+        }
+        let key = (generator, id, target);
+        match self.identity.get() {
+            Some(current) => current == key,
+            None => {
+                self.identity.set(Some(key));
+                true
+            }
+        }
+    }
+    pub(crate) fn check(&self) -> Result<(), RuntimeError> {
+        if let Some(storage) = self.storage.borrow().as_ref() {
+            storage.reserve_peer(0)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn is_published(&self) -> bool {
+        self.published.get()
+    }
+    pub(crate) fn set_published(&self, published: bool) {
+        self.published.set(published);
+    }
+    pub(crate) fn retire(&self) {
+        self.pending.set(false);
+        self.published.set(false);
+        if let Some(storage) = self.storage.borrow_mut().as_mut() {
+            storage.release_reactions_to(0);
+        }
+    }
+}
 impl HeapNativeBudget {
+    pub(crate) fn value_payload_bytes(value: &Value) -> usize {
+        value_payload_bytes(value)
+    }
+
+    pub(crate) fn reserve_request_credit(
+        &self,
+        count: usize,
+    ) -> Result<SharedSchedulingCharge, RuntimeError> {
+        let bytes = count
+            .checked_mul(HeapReactionLease::allocation_bytes())
+            .ok_or_else(|| self.fail())?;
+        let mut credit = self.reserve(0)?.reserve_reactions(count)?;
+        credit.resize(bytes)?;
+        Ok(credit)
+    }
+    pub(crate) fn reserve_reaction_lease(&self) -> Result<Rc<HeapReactionLease>, RuntimeError> {
+        let credit = self.reserve_request_credit(1)?;
+        Ok(Rc::new(HeapReactionLease {
+            pending: Cell::new(true),
+            published: Cell::new(false),
+            identity: Cell::new(None),
+            storage: RefCell::new(Some(credit)),
+        }))
+    }
+    pub(crate) fn attach_reaction_lease(
+        &self,
+        lease: &HeapReactionLease,
+        credit: &mut SharedSchedulingCharge,
+    ) -> Result<(), RuntimeError> {
+        if !self.owns(credit) || !lease.can_join(self) || !lease.is_pending() {
+            return Err(self.fail());
+        }
+        if !lease.is_owned() {
+            let mut incoming = credit.split_off(HeapReactionLease::allocation_bytes());
+            incoming
+                .absorb(credit.split_reactions(1))
+                .expect("same document");
+            *lease.storage.borrow_mut() = Some(incoming);
+        }
+        Ok(())
+    }
     pub(crate) fn identity(&self) -> NativeDocumentIdentity {
         NativeDocumentIdentity {
             account: Rc::downgrade(&self.account),
@@ -401,6 +720,10 @@ impl HeapNativeBudget {
         let mut charge = SharedSchedulingCharge {
             account: self.account.clone(),
             bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
         };
         charge.resize(bytes)?;
         Ok(charge)
@@ -416,7 +739,12 @@ impl HeapNativeBudget {
 
 impl Drop for SharedSchedulingCharge {
     fn drop(&mut self) {
-        self.account.borrow_mut().usage.payload_bytes -= self.bytes;
+        let mut account = self.account.borrow_mut();
+        account.usage.payload_bytes -= self.bytes;
+        account.usage.pending_microtasks -= self.pending_microtasks;
+        account.usage.pending_reactions -= self.pending_reactions;
+        account.usage.pending_browser_tasks -= self.pending_browser_tasks;
+        account.usage.pending_timers -= self.pending_timers;
     }
 }
 
@@ -492,6 +820,68 @@ impl SchedulingScope {
         SharedSchedulingCharge {
             account: self.account.clone(),
             bytes,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
+        }
+    }
+
+    pub(super) fn detach_owned_microtasks(&mut self, count: usize) -> SharedSchedulingCharge {
+        assert!(
+            count <= self.own.pending_microtasks,
+            "detach published pending jobs"
+        );
+        self.own.pending_microtasks -= count;
+        SharedSchedulingCharge {
+            account: self.account.clone(),
+            bytes: 0,
+            pending_microtasks: count,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
+        }
+    }
+
+    pub(super) fn detach_owned_browser_tasks(&mut self, count: usize) -> SharedSchedulingCharge {
+        assert!(count <= self.own.pending_browser_tasks);
+        self.own.pending_browser_tasks -= count;
+        SharedSchedulingCharge {
+            account: self.account.clone(),
+            bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: count,
+            pending_timers: 0,
+        }
+    }
+
+    pub(super) fn detach_owned_timers(&mut self, count: usize) -> SharedSchedulingCharge {
+        assert!(count <= self.own.pending_timers);
+        self.own.pending_timers -= count;
+        SharedSchedulingCharge {
+            account: self.account.clone(),
+            bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: count,
+        }
+    }
+
+    pub(super) fn detach_owned_reactions(&mut self, count: usize) -> SharedSchedulingCharge {
+        assert!(
+            count <= self.own.pending_reactions,
+            "detach published reactions"
+        );
+        self.own.pending_reactions -= count;
+        SharedSchedulingCharge {
+            account: self.account.clone(),
+            bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: count,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
         }
     }
     #[cfg(any(test, coverage))]
@@ -520,6 +910,10 @@ impl SchedulingScope {
         let mut charge = SharedSchedulingCharge {
             account: self.account.clone(),
             bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
         };
         charge.resize(bytes)?;
         Ok(charge)
@@ -528,6 +922,10 @@ impl SchedulingScope {
         let mut charge = SharedSchedulingCharge {
             account: self.account.clone(),
             bytes: 0,
+            pending_microtasks: 0,
+            pending_reactions: 0,
+            pending_browser_tasks: 0,
+            pending_timers: 0,
         };
         charge.try_resize_for_reclamation(bytes).then_some(charge)
     }
@@ -756,6 +1154,20 @@ pub(super) fn runtime_error_payload_bytes(error: &RuntimeError) -> usize {
         | RuntimeError::RegexWorker(message)
         | RuntimeError::ModuleResolution(message) => message.capacity(),
         _ => 0,
+    }
+}
+
+/// Rust String clones copy initialized bytes without the source's spare capacity.
+pub(super) fn runtime_error_copy_bytes(error: &RuntimeError) -> usize {
+    match error {
+        RuntimeError::ReferenceError(message)
+        | RuntimeError::TypeError(message)
+        | RuntimeError::RangeError(message)
+        | RuntimeError::SyntaxError(message)
+        | RuntimeError::Test262(message)
+        | RuntimeError::RegexWorker(message)
+        | RuntimeError::ModuleResolution(message) => message.len(),
+        _ => runtime_error_payload_bytes(error),
     }
 }
 fn suspended_bytes(frame: &SuspendedModuleExecution) -> usize {
@@ -1045,26 +1457,32 @@ impl Vm {
     }
 
     pub(super) fn own_scheduling_usage(&self) -> HostSchedulingUsage {
+        let browser = self.browser_tasks.unowned_usage();
         let mut usage = HostSchedulingUsage {
-            pending_browser_tasks: self
-                .browser_tasks
-                .len()
-                .saturating_add(self.host_finalization_tasks.len()),
-            pending_timers: self.host_timers.len(),
-            pending_microtasks: self.promise_jobs.len(),
+            pending_browser_tasks: browser
+                .pending_browser_tasks
+                .saturating_add(self.host_finalization_tasks.unowned_count()),
+            pending_timers: self.host_timers.unowned_count(),
+            pending_microtasks: self.promise_jobs.unowned_microtasks(),
             pending_reactions: self
                 .heap
-                .pending_async_generator_requests()
-                .saturating_add(self.host_promises.pending.len()),
+                .unowned_async_generator_requests()
+                .saturating_add(self.host_promises.unowned_wait_count())
+                .saturating_add(browser.pending_reactions),
             payload_bytes: self
                 .promise_jobs
-                .capacity()
-                .saturating_mul(std::mem::size_of::<PromiseJob>())
+                .unowned_payload_bytes()
+                .saturating_add(self.heap.unowned_async_generator_request_bytes())
+                .saturating_add(browser.payload_bytes)
                 .saturating_add(self.active_scheduling_bytes)
                 .saturating_add(self.global_binding_storage_bytes())
                 .saturating_add(map_slots(&self.templates))
                 .saturating_add(self.module_referrer_storage_bytes())
                 .saturating_add(self.unowned_membrane_storage_bytes())
+                .saturating_add(self.unowned_active_native_storage_bytes())
+                .saturating_add(self.unowned_host_listener_storage_bytes())
+                .saturating_add(self.unowned_host_family_storage_bytes())
+                .saturating_add(self.unowned_host_registration_storage_bytes())
                 .saturating_add(self.linked_module_cell_bytes.get())
                 .saturating_add(self.owned_execution_payload_bytes()),
         };
@@ -1090,25 +1508,18 @@ impl Vm {
         usage.payload_bytes = usage.payload_bytes.saturating_add(
             self.host_console
                 .as_ref()
-                .map_or(0, |console| console.payload_bytes()),
+                .map_or(0, |console| console.unowned_payload_bytes()),
         );
         if let Some(state) = &self.host_rejections {
             usage.pending_reactions = usage
                 .pending_reactions
-                .saturating_add(state.pending.len())
-                .saturating_add(state.active);
-            usage.payload_bytes = usage.payload_bytes.saturating_add(
-                state.pending.capacity() * std::mem::size_of::<host_rejections::PendingRejection>(),
-            );
+                .saturating_add(state.unowned_count())
+                .saturating_add(state.active.saturating_sub(state.active_owned));
+            usage.payload_bytes = usage.payload_bytes.saturating_add(state.unowned_bytes());
         }
         usage.payload_bytes = usage
             .payload_bytes
-            .saturating_add(self.host_promises.pending.retained_bytes());
-        for job in &self.promise_jobs {
-            usage.payload_bytes = usage
-                .payload_bytes
-                .saturating_add(job.scheduling_payload_bytes());
-        }
+            .saturating_add(self.host_promises.pending.unowned_bytes());
         usage.payload_bytes = usage
             .payload_bytes
             .saturating_add(self.promise_thunk_origins.retained_bytes())
@@ -1118,74 +1529,35 @@ impl Vm {
                     .map(ThrowOrigin::payload_bytes)
                     .sum::<usize>(),
             )
-            .saturating_add(
+            .saturating_add(if self.promise_origin_override_storage.is_some() {
+                0
+            } else {
                 self.promise_origin_override
                     .as_ref()
-                    .map_or(0, ThrowOrigin::payload_bytes),
-            );
+                    .map_or(0, ThrowOrigin::payload_bytes)
+            });
         for record in self.promises.values() {
             usage.payload_bytes = usage
                 .payload_bytes
-                .saturating_add(record.rejection_origin.payload_bytes());
+                .saturating_add(record.unowned_status_payload_bytes());
             usage.pending_reactions = usage
                 .pending_reactions
-                .saturating_add(record.reactions.len());
-            usage.payload_bytes = usage.payload_bytes.saturating_add(
-                record
-                    .reactions
-                    .capacity()
-                    .saturating_mul(std::mem::size_of::<PromiseReaction>()),
-            );
-            for reaction in &record.reactions {
-                usage.payload_bytes = usage.payload_bytes.saturating_add(reaction_bytes(reaction));
-            }
-            if let PromiseStatus::Fulfilled(value) | PromiseStatus::Rejected(value) = &record.status
-            {
-                usage.payload_bytes = usage
-                    .payload_bytes
-                    .saturating_add(value_payload_bytes(value));
-            }
-        }
-        usage.payload_bytes = usage.payload_bytes.saturating_add(
-            self.host_timers
-                .capacity()
-                .saturating_mul(std::mem::size_of::<HostTimer>()),
-        );
-        for timer in &self.host_timers {
+                .saturating_add(record.unowned_reaction_count());
             usage.payload_bytes = usage
                 .payload_bytes
-                .saturating_add(timer.scheduling_payload_bytes());
+                .saturating_add(record.unowned_reaction_payload_bytes());
         }
+        usage.payload_bytes = usage
+            .payload_bytes
+            .saturating_add(self.host_timers.unowned_bytes());
         usage.payload_bytes = usage.payload_bytes.saturating_add(
             self.host_animation_frames
                 .capacity()
                 .saturating_mul(std::mem::size_of::<HostAnimationFrame>()),
         );
-        usage.payload_bytes = usage.payload_bytes.saturating_add(
-            self.browser_tasks
-                .capacity()
-                .saturating_mul(std::mem::size_of::<browser_tasks::BrowserTask>()),
-        );
-        for task in &self.browser_tasks {
-            usage.payload_bytes = usage.payload_bytes.saturating_add(match task {
-                browser_tasks::BrowserTask::DragString { text, .. } => {
-                    text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
-                }
-                browser_tasks::BrowserTask::HostPromise { completion, .. } => {
-                    completion.payload_bytes()
-                }
-                browser_tasks::BrowserTask::PromiseRejections { entries, .. } => {
-                    usage.pending_reactions = usage.pending_reactions.saturating_add(entries.len());
-                    entries.capacity() * std::mem::size_of::<host_rejections::PendingRejection>()
-                }
-                _ => 0,
-            });
-        }
-        usage.payload_bytes = usage.payload_bytes.saturating_add(
-            self.host_finalization_tasks
-                .capacity()
-                .saturating_mul(std::mem::size_of::<host_finalization::HostFinalizationTask>()),
-        );
+        usage.payload_bytes = usage
+            .payload_bytes
+            .saturating_add(self.host_finalization_tasks.unowned_bytes());
         for frame in self.async_continuations.values() {
             usage.payload_bytes = usage
                 .payload_bytes
@@ -1207,25 +1579,28 @@ impl Vm {
         }
         usage.payload_bytes = usage
             .payload_bytes
-            .saturating_add(self.promises.retained_bytes())
+            .saturating_add(self.promises.unowned_bytes())
             .saturating_add(self.async_continuations.retained_bytes())
             .saturating_add(self.module_continuations.retained_bytes())
-            .saturating_add(self.module_import_waiters.retained_bytes());
+            .saturating_add(self.module_import_waiters.unowned_bytes());
         for (name, waiters) in self.module_import_waiters.iter() {
-            usage.pending_reactions = usage.pending_reactions.saturating_add(waiters.len());
+            usage.pending_reactions = usage
+                .pending_reactions
+                .saturating_add(waiters.unowned_count());
             usage.payload_bytes = usage
                 .payload_bytes
-                .saturating_add(name.capacity())
-                .saturating_add(slots(waiters));
+                .saturating_add(waiters.unowned_bytes(name.capacity()));
         }
         usage.payload_bytes = usage
             .payload_bytes
-            .saturating_add(slots(&self.deferred_import_waiters));
+            .saturating_add(self.deferred_import_waiters.unowned_bytes());
         for waiter in &self.deferred_import_waiters {
-            usage.pending_reactions = usage.pending_reactions.saturating_add(1);
+            usage.pending_reactions = usage
+                .pending_reactions
+                .saturating_add(waiter.pending.unowned_count());
             usage.payload_bytes = usage
                 .payload_bytes
-                .saturating_add(waiter.pending.retained_bytes());
+                .saturating_add(waiter.pending.unowned_bytes());
         }
         usage.payload_bytes = usage
             .payload_bytes

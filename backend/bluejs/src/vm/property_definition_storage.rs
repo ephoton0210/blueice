@@ -113,9 +113,9 @@ impl PropertyDefinitionInput {
                 .count(),
             owner.as_ref(),
         )?;
-        roots.push(object);
+        roots.push(&vm.heap, object)?;
         for object in objects.into_iter().flatten().filter_map(Value::object_id) {
-            roots.push(object);
+            roots.push(&vm.heap, object)?;
         }
         let mut storage = self.storage.take();
         let result = vm.with_realm_call_roots(roots, |vm| {

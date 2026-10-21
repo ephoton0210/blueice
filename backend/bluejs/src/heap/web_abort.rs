@@ -44,11 +44,6 @@ impl AbortData {
                 .iter()
                 .any(|listener| listener.name == "abort")
     }
-    pub fn references(&self) -> Vec<ObjectId> {
-        let mut ids = Vec::new();
-        self.visit_references(&mut |id| ids.push(id));
-        ids
-    }
     pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         self.target.visit_references(&mut *visit);
         self.reason
@@ -61,14 +56,30 @@ impl AbortData {
             .for_each(&mut *visit)
     }
     pub fn bytes(&self) -> usize {
-        size_of::<Self>()
-            + self.target.bytes()
-            + match &self.reason {
-                Value::String(value) => value.byte_len(),
-                _ => 0,
-            }
-            + (self.sources.len() + self.dependents.len()) * size_of::<ObjectId>()
-            + self.hooks.len() * size_of::<AbortHook>()
+        size_of::<Self>().saturating_add(self.owned_buffer_bytes())
+    }
+
+    pub(crate) fn owned_buffer_bytes(&self) -> usize {
+        self.target
+            .owned_buffer_bytes()
+            .saturating_add(HeapNativeBudget::value_payload_bytes(&self.reason))
+            .saturating_add(
+                (self.sources.capacity() + self.dependents.capacity()) * size_of::<ObjectId>(),
+            )
+            .saturating_add(self.hooks.capacity() * size_of::<AbortHook>())
+    }
+
+    pub(crate) fn copied_buffer_bytes(&self) -> usize {
+        let reason = match &self.reason {
+            Value::String(value) => value.byte_len(),
+            Value::Symbol(value) => value.description.as_ref().map_or(0, JsString::byte_len),
+            value => HeapNativeBudget::value_payload_bytes(value),
+        };
+        self.target
+            .copied_buffer_bytes()
+            .saturating_add(reason)
+            .saturating_add((self.sources.len() + self.dependents.len()) * size_of::<ObjectId>())
+            .saturating_add(self.hooks.len() * size_of::<AbortHook>())
     }
 }
 impl Heap {
@@ -105,24 +116,40 @@ impl Heap {
     ) -> Result<(), HeapError> {
         let previous = self.abort_signal(object)?.bytes();
         let bytes = state.bytes();
-        let references = state.references();
-        for reference in &references {
-            self.object(*reference)?;
-        }
-        let protected: Vec<_> = std::iter::once(object)
-            .chain(references.iter().copied())
-            .collect();
-        self.ensure_room(bytes.saturating_sub(previous), &protected)?;
+        let mut valid = Ok(());
+        state.visit_references(&mut |id| {
+            valid = valid.and_then(|()| self.object(id).map(|_| ()));
+        });
+        valid?;
+        self.ensure_room_protected(
+            bytes.saturating_sub(previous),
+            ProtectedRoots::AbortSignal(object, &state),
+        )?;
+        state.visit_references(&mut |id| self.write_barrier(object, Some(id)));
         let entry = self.objects.get_mut(&object).expect("protected signal");
         entry.kind = ObjectKind::WebAbortSignal(Box::new(state));
         entry.bytes = entry.bytes - previous + bytes;
         self.managed_bytes
             .set(self.managed_bytes.get() - previous + bytes);
-        for reference in references {
-            self.write_barrier(object, Some(reference));
-        }
         Ok(())
     }
+
+    /// Removing Copy hooks creates no edge or allocation. Retained slots keep
+    /// the same managed charge, including during terminal document cleanup.
+    pub(crate) fn remove_abort_hook(
+        &mut self,
+        object: ObjectId,
+        hook: AbortHook,
+    ) -> Result<(), HeapError> {
+        self.abort_signal(object)?;
+        let entry = self.objects.get_mut(&object).expect("validated signal");
+        let ObjectKind::WebAbortSignal(state) = &mut entry.kind else {
+            unreachable!("validated signal")
+        };
+        state.hooks.retain(|candidate| *candidate != hook);
+        Ok(())
+    }
+
     pub(super) fn clean_abort_weak_edges(&mut self) {
         let alive: HashSet<_> = self.objects.keys().copied().collect();
         let mut released = 0;

@@ -39,6 +39,7 @@ impl Vm {
         index: usize,
     ) -> Result<PreparedBrowserEntry, RuntimeError> {
         self.check_scheduling_failure()?;
+        let owner = self.browser_task_owner(index)?;
         let task = self
             .browser_tasks
             .get(index)
@@ -111,22 +112,21 @@ impl Vm {
         let rejections = matches!(task, BrowserTask::PromiseRejections { .. });
         self.admit_scheduling_work(HostSchedulingUsage::default())?;
         if rejections {
-            prepared.rejections = Some(self.prepare_rejection_batch(index)?);
+            prepared.rejections = Some(self.prepare_rejection_batch(index, owner.as_ref())?);
         }
         if drag {
-            let charge = self
-                .host_scheduling
+            let charge = owner
                 .as_ref()
-                .map(|scope| scope.shared_charge(std::mem::size_of::<Value>()))
+                .map(|owner| owner.reserve_peer(std::mem::size_of::<Value>()))
                 .transpose()?;
             let mut arguments = PreparedBrowserArguments {
                 values: Vec::new(),
                 charge,
             };
             arguments.values.try_reserve_exact(1).map_err(|_| {
-                self.host_scheduling
+                owner
                     .as_ref()
-                    .map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail)
+                    .map_or(RuntimeError::SchedulingLimit, SharedSchedulingCharge::fail)
             })?;
             if let Some(charge) = &mut arguments.charge {
                 charge.resize(host_scheduling::slots(&arguments.values))?;

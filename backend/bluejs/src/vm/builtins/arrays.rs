@@ -16,6 +16,10 @@ mod callback_storage_tests;
 #[path = "../../../tests/fixtures/array_flatten_storage.rs"]
 mod flatten_storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../../tests/fixtures/array_copy_storage.rs"]
+mod copy_storage_tests;
+
 #[derive(Clone, Copy)]
 struct ArrayFlattenFrame {
     source: ObjectId,
@@ -366,23 +370,23 @@ impl Vm {
             owner.as_ref(),
         )?;
         if let Some(receiver) = receiver.object_id() {
-            roots.push(receiver);
+            roots.push(&self.heap, receiver)?;
         }
         if let Some(depth) = depth.object_id() {
-            roots.push(depth);
+            roots.push(&self.heap, depth)?;
         }
         if let Some((mapper, this_arg)) = mapper {
             if let Some(mapper) = mapper.object_id() {
-                roots.push(mapper);
+                roots.push(&self.heap, mapper)?;
             }
             if let Some(receiver) = this_arg.object_id() {
-                roots.push(receiver);
+                roots.push(&self.heap, receiver)?;
             }
         }
         let result = self.with_realm_call_roots(roots.clone(), |vm| {
             let object = vm.coerce_object(receiver)?;
             if receiver.object_id().is_none() {
-                roots.push(object);
+                roots.push(&vm.heap, object)?;
             }
             let length = vm.get_property(&Value::Object(object), &"length".into())?;
             let length = NativeValue::adopt(length, owner.as_ref())?;
@@ -408,7 +412,7 @@ impl Vm {
                 owner.reserve_peer(0)?;
             }
             let target = vm.array_species_create(object, 0)?;
-            roots.push(target);
+            roots.push(&vm.heap, target)?;
             vm.array_flatten_into(target, object, count, depth, mapper)?;
             Ok(Value::Object(target))
         });
@@ -434,16 +438,16 @@ impl Vm {
             usize::from(mapper.object_id().is_some()) + usize::from(receiver.object_id().is_some())
         });
         let roots = RealmCallRoots::new(root_base + 1, owner.as_ref())?;
-        roots.push(target);
+        roots.push(&self.heap, target)?;
         if let Some((mapper, this_arg)) = mapper {
             if let Some(mapper) = mapper.object_id() {
-                roots.push(mapper);
+                roots.push(&self.heap, mapper)?;
             }
             if let Some(receiver) = this_arg.object_id() {
-                roots.push(receiver);
+                roots.push(&self.heap, receiver)?;
             }
         }
-        roots.push(source);
+        roots.push(&self.heap, source)?;
         let result = self.with_realm_call_roots(roots.clone(), |vm| {
             let mut frames = vm.array_flatten_frames(source, source_len, depth)?;
             let mut target_index: u64 = 0;
@@ -497,7 +501,7 @@ impl Vm {
                             index: 0,
                             depth: depth - 1.0,
                         })?;
-                        roots.push_admitted(inner)?;
+                        roots.push_admitted(&vm.heap, inner)?;
                         Ok(())
                     })?;
                 } else {
@@ -522,35 +526,62 @@ impl Vm {
         receiver: &Value,
         separator: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = self.coerce_object(receiver)?;
-        self.stack.push(Value::Object(object));
-        let length = self.get_property(&Value::Object(object), &"length".into())?;
-        let length = self.coerce_length(&length)? as u64;
-        let separator = if *separator == Value::Undefined {
-            ",".into()
-        } else {
-            self.coerce_string(separator)?
-        };
-        if self.joining.contains(&object) {
-            return Ok(Value::String(JsString::default()));
-        }
-        self.joining.push(object);
-        let result = (|| {
-            let mut result = JsString::default();
-            for index in 0..length {
-                self.charge_step()?;
-                if index > 0 {
-                    native::append(&mut result, &separator, self.config.max_string_bytes)?;
-                }
-                let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
-                if !matches!(value, Value::Null | Value::Undefined) {
-                    let value = self.coerce_string(&value)?;
-                    native::append(&mut result, &value, self.config.max_string_bytes)?;
-                }
+        let owner = self.argument_list_owner()?;
+        let roots = RealmCallRoots::new(2, owner.as_ref())?;
+        [receiver, separator]
+            .into_iter()
+            .filter_map(Value::object_id)
+            .try_for_each(|id| roots.push(&self.heap, id))?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            let object = vm.coerce_object(receiver)?;
+            if receiver.object_id().is_none() {
+                roots.push(&vm.heap, object)?;
             }
-            Ok(Value::String(result))
-        })();
-        self.joining.pop();
+            let length = vm.get_property(&Value::Object(object), &"length".into())?;
+            let length = NativeValue::adopt(length, owner.as_ref())?;
+            let count = length.with_value(vm, |vm, value| vm.coerce_length(value))? as u64;
+            drop(length);
+            let separator = if *separator == Value::Undefined {
+                ",".into()
+            } else {
+                vm.coerce_string(separator)?
+            };
+            let separator = NativeValue::adopt(Value::String(separator), owner.as_ref())?;
+            if vm.joining.contains(&object) {
+                return Ok(Value::String(JsString::default()));
+            }
+            vm.begin_array_join(object)?;
+            let result = (|| {
+                let mut result = TransportVector::<u16>::with_capacity(0, owner.as_ref())?;
+                for index in 0..count {
+                    vm.charge_step()?;
+                    if index > 0 {
+                        let Value::String(separator) = separator.value() else {
+                            unreachable!("the join separator was converted to a String")
+                        };
+                        result.append_string(separator, vm.config.max_string_bytes)?;
+                    }
+                    let value =
+                        vm.get_property(&Value::Object(object), &index.to_string().into())?;
+                    let value = NativeValue::adopt(value, owner.as_ref())?;
+                    if !matches!(value.value(), Value::Null | Value::Undefined) {
+                        let text = value.with_value(vm, |vm, value| vm.coerce_string(value))?;
+                        drop(value);
+                        let text = NativeValue::adopt(Value::String(text), owner.as_ref())?;
+                        let Value::String(text) = text.value() else {
+                            unreachable!("the join element was converted to a String")
+                        };
+                        result.append_string(text, vm.config.max_string_bytes)?;
+                    }
+                }
+                result.into_string()
+            })();
+            vm.end_array_join(object);
+            result
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
         result
     }
 
@@ -559,27 +590,36 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        // §23.1.3.2 starts by boxing the receiver, then creates its result
-        // through ArraySpeciesCreate. A primitive receiver therefore becomes
-        // one non-spread element, while an Array Proxy can still select its
-        // species and spread through the normal internal-method boundary.
-        let original = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(original));
-        self.stack.extend(args.iter().cloned());
-        let result = (|| {
-            let target = self.array_species_create(original, 0)?;
-            self.stack.push(Value::Object(target));
+        let owner = self.argument_list_owner()?;
+        let roots = RealmCallRoots::new(
+            2 + args.iter().filter_map(Value::object_id).count(),
+            owner.as_ref(),
+        )?;
+        if let Some(receiver) = receiver.object_id() {
+            roots.push(&self.heap, receiver)?;
+        }
+        args.iter()
+            .filter_map(Value::object_id)
+            .try_for_each(|id| roots.push(&self.heap, id))?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            let original = vm.coerce_object(receiver)?;
+            if receiver.object_id().is_none() {
+                roots.push(&vm.heap, original)?;
+            }
+            let target = vm.array_species_create(original, 0)?;
+            roots.push(&vm.heap, target)?;
+            let original = Value::Object(original);
             let mut index = 0_u64;
-            for value in std::iter::once(Value::Object(original)).chain(args.iter().cloned()) {
-                self.stack.push(value.clone());
-                let spreadable = self.array_is_concat_spreadable(&value)?;
-                // A spread element adds its length, any other one adds one.
+            // All object inputs are already pinned. Borrow primitive inputs
+            // until the leaf consumer admits its one required copy.
+            for value in std::iter::once(&original).chain(args.iter()) {
+                let spreadable = vm.array_is_concat_spreadable(value)?;
                 let length = if spreadable {
-                    let source = value.object_id().expect("only objects are spreadable");
-                    self.stack.push(Value::Object(source));
-                    let length = self.get_property(&Value::Object(source), &"length".into())?;
-                    self.coerce_length(&length)? as u64
+                    let length = vm.get_property(value, &"length".into())?;
+                    let length = NativeValue::adopt(length, owner.as_ref())?;
+                    let count = length.with_value(vm, |vm, value| vm.coerce_length(value))? as u64;
+                    drop(length);
+                    count
                 } else {
                     1
                 };
@@ -594,50 +634,54 @@ impl Vm {
                 if spreadable {
                     let source = value.object_id().expect("only objects are spreadable");
                     for source_index in 0..length {
-                        self.charge_step()?;
+                        vm.charge_step()?;
                         let key: PropertyName = source_index.to_string().into();
-                        if self.has_property(source, &key)? {
-                            let element = self.get_property(&Value::Object(source), &key)?;
-                            self.stack.push(element.clone());
-                            self.array_create_data_property_or_throw(
+                        let present = vm.has_property(source, &key)?;
+                        if let Some(owner) = &owner {
+                            owner.reserve_peer(0)?;
+                        }
+                        if present {
+                            let element = vm.get_property(value, &key)?;
+                            let element = NativeValue::adopt(element, owner.as_ref())?;
+                            vm.array_create_data_property_or_throw_owned(
                                 target,
                                 index.to_string().into(),
                                 element,
                             )?;
-                            self.stack.pop();
                         }
                         index += 1;
                     }
-                    self.stack.pop();
                 } else {
-                    self.array_create_data_property_or_throw(
+                    let value = NativeValue::copied(value, owner.as_ref())?;
+                    vm.array_create_data_property_or_throw_owned(
                         target,
                         index.to_string().into(),
                         value,
                     )?;
                     index += 1;
                 }
-                self.stack.pop();
             }
-            self.array_set_or_throw(target, "length".into(), &Value::Number(index as f64))?;
+            vm.array_set_or_throw(target, "length".into(), &Value::Number(index as f64))?;
             Ok(Value::Object(target))
-        })();
-        self.stack.truncate(base);
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
         result
     }
 
-    /// ECMAScript `IsConcatSpreadable`. The well-known-symbol lookup is
-    /// observable before `IsArray`; a false marker keeps even an Array (or an
-    /// Array Proxy) as a single element, while a true marker spreads an
-    /// arbitrary array-like object.
+    /// The marker getter runs before IsArray. Retain its scalar result and
+    /// original owner before inspecting it or entering a length getter.
     fn array_is_concat_spreadable(&mut self, value: &Value) -> Result<bool, RuntimeError> {
+        let owner = self.argument_list_owner()?;
         let Value::Object(_) = value else {
             return Ok(false);
         };
         let marker =
             self.get_property(value, &JsSymbol::well_known("isConcatSpreadable").into())?;
-        if marker != Value::Undefined {
-            return self.to_boolean(&marker);
+        let marker = NativeValue::adopt(marker, owner.as_ref())?;
+        if *marker.value() != Value::Undefined {
+            return self.to_boolean(marker.value());
         }
         self.is_array(value)
     }
@@ -727,18 +771,18 @@ impl Vm {
             owner.as_ref(),
         )?;
         if let Some(object) = receiver.object_id() {
-            roots.push(object);
+            roots.push(&self.heap, object)?;
         }
         if let Some(callback) = callback.object_id() {
-            roots.push(callback);
+            roots.push(&self.heap, callback)?;
         }
         if let Some(receiver) = this_arg.object_id() {
-            roots.push(receiver);
+            roots.push(&self.heap, receiver)?;
         }
         let result = self.with_realm_call_roots(roots.clone(), |vm| {
             let object = vm.coerce_object(receiver)?;
             if receiver.object_id().is_none() {
-                roots.push(object);
+                roots.push(&vm.heap, object)?;
             }
             let length = vm.get_property(&Value::Object(object), &"length".into())?;
             let length = NativeValue::adopt(length, owner.as_ref())?;
@@ -809,7 +853,7 @@ impl Vm {
                     0
                 };
                 let target = vm.array_species_create(object, length)?;
-                roots.push(target);
+                roots.push(&vm.heap, target)?;
                 Some(target)
             } else {
                 None
@@ -905,14 +949,14 @@ impl Vm {
         let owner = self.argument_list_owner()?;
         let roots = RealmCallRoots::new(3, owner.as_ref())?;
         if let Some(callback) = callback.object_id() {
-            roots.push(callback);
+            roots.push(&self.heap, callback)?;
         }
         if let Some(initial) = args.get(1).and_then(Value::object_id) {
-            roots.push(initial);
+            roots.push(&self.heap, initial)?;
         }
         let result = self.with_realm_call_roots(roots.clone(), |vm| {
             let object = vm.coerce_object(receiver)?;
-            roots.push(object);
+            roots.push(&vm.heap, object)?;
             let length = vm.array_like_length(object)?;
             if !vm.is_callable(callback)? {
                 return Err(RuntimeError::TypeError(
@@ -1369,129 +1413,102 @@ impl Vm {
         receiver: &Value,
         compare: &Value,
     ) -> Result<Value, RuntimeError> {
-        if *compare != Value::Undefined && !self.is_callable(compare)? {
-            return Err(RuntimeError::TypeError(
-                "Array sort comparator must be callable".into(),
-            ));
-        }
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as usize;
-            let mut values = Vec::new();
-            let mut undefined = 0usize;
-            for index in 0..length {
-                self.charge_step()?;
-                let key: PropertyName = index.to_string().into();
-                if self.has_property(object, &key)? {
-                    let value = self.get_property(&Value::Object(object), &key)?;
-                    if value == Value::Undefined {
-                        undefined += 1;
-                    } else {
-                        // The comparator may empty or replace the receiver's
-                        // elements, so the collected values must stay
-                        // reachable from the VM stack, not just this Vec.
-                        self.stack.push(value.clone());
-                        values.push(value);
+        let owner = self.argument_list_owner()?;
+        let inputs = RealmCallRoots::new(2, owner.as_ref())?;
+        [receiver, compare]
+            .into_iter()
+            .filter_map(Value::object_id)
+            .try_for_each(|id| inputs.push(&self.heap, id))?;
+        let result = self.with_realm_call_roots(inputs.clone(), |vm| {
+            if *compare != Value::Undefined && !vm.is_callable(compare)? {
+                return Err(RuntimeError::TypeError(
+                    "Array sort comparator must be callable".into(),
+                ));
+            }
+            let object = vm.coerce_object(receiver)?;
+            if receiver.object_id().is_none() {
+                inputs.push(&vm.heap, object)?;
+            }
+            let length = vm.get_property(&Value::Object(object), &"length".into())?;
+            let length = NativeValue::adopt(length, owner.as_ref())?;
+            let count = length.with_value(vm, |vm, value| vm.coerce_length(value))? as usize;
+            drop(length);
+            let collected = RealmCallRoots::new(0, owner.as_ref())?;
+            vm.with_realm_call_roots(collected.clone(), |vm| {
+                let mut values = vm.array_sort_input()?;
+                let mut undefined = 0usize;
+                for index in 0..count {
+                    vm.charge_step()?;
+                    let key = Self::array_sort_key(index, owner.as_ref())?;
+                    let present = vm.has_property(object, &key.name)?;
+                    if let Some(owner) = &owner {
+                        owner.reserve_peer(0)?;
+                    }
+                    if present {
+                        let value = vm.get_property(&Value::Object(object), &key.name)?;
+                        if let Some(owner) = &owner {
+                            owner.reserve_peer(0)?;
+                        }
+                        if value == Value::Undefined {
+                            undefined += 1;
+                        } else {
+                            if let Some(object) = value.object_id() {
+                                collected.push_admitted(&vm.heap, object)?;
+                            }
+                            vm.push_array_sort_input(&mut values, value)?;
+                        }
                     }
                 }
-            }
-            let values = self.array_sort_values(values, compare)?;
-            let mut index = 0usize;
-            // Set(obj, key, value, true): a failed write throws whatever the
-            // strictness of the caller, and an unchanged value is still written.
-            for value in values {
-                self.array_set_or_throw(object, index.to_string().into(), &value)?;
-                index += 1;
-            }
-            for _ in 0..undefined {
-                self.array_set_or_throw(object, index.to_string().into(), &Value::Undefined)?;
-                index += 1;
-            }
-            while index < length {
-                self.object_delete(object, &index.to_string().into())?;
-                index += 1;
-            }
-            Ok(Value::Object(object))
-        })();
-        self.stack.truncate(base);
+                let values = vm.array_sort_values(values, compare)?;
+                // Rebuild in reverse write order so each completed consumer
+                // can retire its own edge without retaining discarded values.
+                collected.truncate(0);
+                let mut remaining = 0usize;
+                for object in values.iter().rev().filter_map(Value::object_id) {
+                    collected.push(&vm.heap, object)?;
+                    remaining += 1;
+                }
+                let mut values = values.into_owned_iter()?;
+                let mut index = 0usize;
+                while let Some(value) = values.next_owned()? {
+                    let object_value = value.value().object_id().is_some();
+                    let key = Self::array_sort_key(index, owner.as_ref())?;
+                    value.with_value(vm, |vm, value| {
+                        vm.array_set_or_throw(object, key.name, value)
+                    })?;
+                    if let Some(owner) = &owner {
+                        owner.reserve_peer(0)?;
+                    }
+                    if object_value {
+                        remaining -= 1;
+                        collected.truncate(remaining);
+                    }
+                    index += 1;
+                }
+                drop(values);
+                for _ in 0..undefined {
+                    let key = Self::array_sort_key(index, owner.as_ref())?;
+                    vm.array_set_or_throw(object, key.name, &Value::Undefined)?;
+                    if let Some(owner) = &owner {
+                        owner.reserve_peer(0)?;
+                    }
+                    index += 1;
+                }
+                while index < count {
+                    let key = Self::array_sort_key(index, owner.as_ref())?;
+                    vm.object_delete(object, &key.name)?;
+                    if let Some(owner) = &owner {
+                        owner.reserve_peer(0)?;
+                    }
+                    index += 1;
+                }
+                Ok(Value::Object(object))
+            })
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
         result
-    }
-
-    /// Stable bottom-up merge sort of already-collected values with the
-    /// user (or default string) comparator. Merge sorting bounds observable
-    /// comparator calls to O(n log n); the 513- and 2048-element
-    /// stable-array-sort conformance cases exercise this exact path. The
-    /// result is a permutation of the input, so a caller that keeps the input
-    /// values reachable keeps every result value reachable too.
-    pub(super) fn array_sort_values(
-        &mut self,
-        mut values: Vec<Value>,
-        compare: &Value,
-    ) -> Result<Vec<Value>, RuntimeError> {
-        let mut scratch = values.to_vec();
-        let mut width = 1usize;
-        while width < values.len() {
-            let mut start = 0usize;
-            while start < values.len() {
-                let middle = start.saturating_add(width).min(values.len());
-                let end = middle.saturating_add(width).min(values.len());
-                let (mut left, mut right, mut target) = (start, middle, start);
-                while left < middle && right < end {
-                    if self.array_sort_order(compare, &values[right], &values[left])?
-                        == std::cmp::Ordering::Less
-                    {
-                        scratch[target] = values[right].clone();
-                        right += 1;
-                    } else {
-                        scratch[target] = values[left].clone();
-                        left += 1;
-                    }
-                    target += 1;
-                }
-                while left < middle {
-                    scratch[target] = values[left].clone();
-                    target += 1;
-                    left += 1;
-                }
-                while right < end {
-                    scratch[target] = values[right].clone();
-                    target += 1;
-                    right += 1;
-                }
-                values[start..end].clone_from_slice(&scratch[start..end]);
-                start = end;
-            }
-            width = width.saturating_mul(2);
-        }
-        Ok(values)
-    }
-
-    fn array_sort_order(
-        &mut self,
-        compare: &Value,
-        left: &Value,
-        right: &Value,
-    ) -> Result<std::cmp::Ordering, RuntimeError> {
-        if *compare == Value::Undefined {
-            return Ok(self.coerce_string(left)?.cmp(&self.coerce_string(right)?));
-        }
-        let value = self.call_native(
-            compare.clone(),
-            Value::Undefined,
-            vec![left.clone(), right.clone()],
-            false,
-        )?;
-        let value = self.coerce_number(&value)?;
-        Ok(if value.is_nan() || value == 0.0 {
-            std::cmp::Ordering::Equal
-        } else if value < 0.0 {
-            std::cmp::Ordering::Less
-        } else {
-            std::cmp::Ordering::Greater
-        })
     }
 
     fn array_species_create(
@@ -1546,7 +1563,7 @@ impl Vm {
         })
     }
 
-    fn array_create_data_property_or_throw_owned(
+    pub(super) fn array_create_data_property_or_throw_owned(
         &mut self,
         object: ObjectId,
         key: PropertyName,
@@ -1616,38 +1633,66 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let object = self.coerce_object(receiver)?;
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as i64;
-            let start = self.array_start_index(native::argument(args, 0), length)?;
+        let owner = self.argument_list_owner()?;
+        let roots = RealmCallRoots::new(
+            2 + args.iter().take(2).filter_map(Value::object_id).count(),
+            owner.as_ref(),
+        )?;
+        if let Some(receiver) = receiver.object_id() {
+            roots.push(&self.heap, receiver)?;
+        }
+        args.iter()
+            .take(2)
+            .filter_map(Value::object_id)
+            .try_for_each(|id| roots.push(&self.heap, id))?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            let object = vm.coerce_object(receiver)?;
+            if receiver.object_id().is_none() {
+                roots.push(&vm.heap, object)?;
+            }
+            let length = vm.get_property(&Value::Object(object), &"length".into())?;
+            let length = NativeValue::adopt(length, owner.as_ref())?;
+            let count = length.with_value(vm, |vm, value| vm.coerce_length(value))? as i64;
+            drop(length);
+            let start = vm.array_start_index(native::argument(args, 0), count)?;
+            if let Some(owner) = &owner {
+                owner.reserve_peer(0)?;
+            }
             let end = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
-                self.array_start_index(native::argument(args, 1), length)?
+                let end = vm.array_start_index(native::argument(args, 1), count)?;
+                if let Some(owner) = &owner {
+                    owner.reserve_peer(0)?;
+                }
+                end
             } else {
-                length
+                count
             };
-            // count = max(final - k, 0): an end before the start yields an
-            // empty result, never a wrapped-around length.
             let count = end.saturating_sub(start).max(0) as usize;
-            let target = self.array_species_create(object, count)?;
-            self.stack.push(Value::Object(target));
+            let target = vm.array_species_create(object, count)?;
+            roots.push(&vm.heap, target)?;
             for (result_index, index) in (start..end.max(start)).enumerate() {
-                self.charge_step()?;
+                vm.charge_step()?;
                 let key: PropertyName = (index as u64).to_string().into();
-                if self.has_property(object, &key)? {
-                    let value = self.get_property(&Value::Object(object), &key)?;
-                    self.array_create_data_property_or_throw(
+                let present = vm.has_property(object, &key)?;
+                if let Some(owner) = &owner {
+                    owner.reserve_peer(0)?;
+                }
+                if present {
+                    let value = vm.get_property(&Value::Object(object), &key)?;
+                    let value = NativeValue::adopt(value, owner.as_ref())?;
+                    vm.array_create_data_property_or_throw_owned(
                         target,
                         result_index.to_string().into(),
                         value,
                     )?;
                 }
             }
-            self.array_set_or_throw(target, "length".into(), &Value::Number(count as f64))?;
+            vm.array_set_or_throw(target, "length".into(), &Value::Number(count as f64))?;
             Ok(Value::Object(target))
-        })();
-        self.stack.pop();
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
         result
     }
 

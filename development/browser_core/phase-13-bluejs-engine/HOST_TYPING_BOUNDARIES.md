@@ -3,7 +3,7 @@
 [← Browser integration TODO](BROWSER_INTEGRATION_TODO.md)
 
 M1n completed on 2026-10-15. Its public failing baseline and final acceptance
-are recorded in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+are recorded in the [milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 ## Declaration ownership
 

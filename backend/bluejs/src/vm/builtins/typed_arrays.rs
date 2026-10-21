@@ -335,12 +335,12 @@ impl Vm {
                 )),
             owner.as_ref(),
         )?;
-        roots.push(object);
+        roots.push(&self.heap, object)?;
         if let Some(callback) = callback.object_id() {
-            roots.push(callback);
+            roots.push(&self.heap, callback)?;
         }
         if let Some(receiver) = this_arg.object_id() {
-            roots.push(receiver);
+            roots.push(&self.heap, receiver)?;
         }
         let result = self.with_realm_call_roots(roots.clone(), |vm| {
             let result_value = |value| NativeValue::adopt(value, owner.as_ref());
@@ -414,7 +414,7 @@ impl Vm {
                 TypedArrayCallbackMethod::Map => {
                     let (target, target_kind) =
                         vm.typed_array_species_create(receiver, length, kind)?;
-                    roots.push(target);
+                    roots.push(&vm.heap, target)?;
                     for index in 0..length {
                         let value = vm.typed_array_owned_element(object, index, owner.as_ref())?;
                         let value =
@@ -444,7 +444,7 @@ impl Vm {
                     }
                     let (target, target_kind) =
                         vm.typed_array_species_create(receiver, selected.len(), kind)?;
-                    roots.push(target);
+                    roots.push(&vm.heap, target)?;
                     vm.typed_array_write_values(target, target_kind, 0, &selected)?;
                     selected.validate_owner()?;
                     result_value(Value::Object(target))
@@ -628,9 +628,9 @@ impl Vm {
         }
         let owner = self.argument_list_owner()?;
         let roots = RealmCallRoots::new(2, owner.as_ref())?;
-        roots.push(object);
+        roots.push(&self.heap, object)?;
         if let Some(callback) = callback.object_id() {
-            roots.push(callback);
+            roots.push(&self.heap, callback)?;
         }
         let result = self.with_realm_call_roots(roots, |vm| {
             let (mut accumulator, start) = if let Some(initial) = args.get(1) {

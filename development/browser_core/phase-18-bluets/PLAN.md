@@ -20,7 +20,7 @@ recorded with TypeScript 5.9.3, with nine further weak inherited option-record
 controls. Prototype-only host constructors are rejected, and inheritance
 lookup exhaustion reports a resource error. Existing native closure, drag
 constructor, event and iterator tests verify execution. See the
-[M0a evidence record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[M0a evidence record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 Earlier subset summaries below retain their historical boundaries.
 
 **Checked host-boundary correction (2026-10-15):**
@@ -33,7 +33,7 @@ Public compiler/profile and real Core/child refusal controls pass, along with
 all 164 compiler/bridge targets, related host/MCP acceptance, workspace
 build/Clippy/formatting and the full pinned Test262 comparison against M1m.
 Final evidence is recorded in the
-[M1n record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record)
+[M1n record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record)
 and [checker contract](../phase-13-bluejs-engine/HOST_TYPING_BOUNDARIES.md).
 
 **Typed page errors (M1o, 2026-10-15):** The owner selects the new
@@ -42,7 +42,7 @@ EventTarget methods. Older declarations retain their bytes and reject these
 names. Public checked profile controls, real mixed-language Core/MCP acceptance,
 all 24 related Rust targets, formatting and workspace Clippy/build pass. The
 complete pinned Test262 inventory matches M1n; evidence is recorded in the
-[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 Original error source mapping stays open; see the
 [error contract](../phase-13-bluejs-engine/HOST_ERROR_REPORTING.md).
 
@@ -55,7 +55,7 @@ named typed callback; the owner still refuses undeclared standard-library
 value globals such as `Promise`. All 37 related Rust targets, real Core/MCP,
 formatting and workspace/all-target Clippy/build pass. The complete pinned
 Test262 inventory matches M1o; final evidence is recorded in the
-[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 The direct bridge lowers parenthesized `new Identifier(args)` expressions with normal or spread arguments. Member constructors and omitted parentheses remain excluded.
 

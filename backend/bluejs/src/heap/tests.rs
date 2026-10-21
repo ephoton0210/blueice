@@ -1278,18 +1278,19 @@ fn async_generator_request_origin_capacity_is_charged_and_refusal_is_atomic() {
         ..Default::default()
     };
     let base = control.managed_bytes();
-    control.requests.push_back(AsyncGeneratorRequest {
-        id: 0,
-        completion: AsyncGeneratorCompletion::Throw(Value::Undefined),
-        target,
-        origin: Rc::new(origin),
-    });
+    control
+        .push_request(AsyncGeneratorRequest {
+            value_storage: None,
+            scheduling: HeapReactionLease::unowned(),
+            id: 0,
+            completion: AsyncGeneratorCompletion::Throw(Value::Undefined),
+            target,
+            origin: crate::heap::AsyncGeneratorOrigin::unowned(origin),
+        })
+        .unwrap();
     assert_eq!(
         control.managed_bytes() - base,
-        size_of::<AsyncGeneratorRequest>()
-            + size_of::<crate::diagnostics::ThrowOrigin>()
-            + 2 * size_of::<usize>()
-            + 1024
+        size_of::<AsyncGeneratorRequest>() + AsyncGeneratorOrigin::allocation_bytes() + 1024
     );
     heap.set_async_generator_control(generator, control)
         .unwrap();
@@ -1297,14 +1298,15 @@ fn async_generator_request_origin_capacity_is_charged_and_refusal_is_atomic() {
     let mut replacement = heap.async_generator_control(generator).unwrap().unwrap();
     let mut filename = String::with_capacity(8192);
     filename.push_str("memory:///replacement.js");
-    replacement.requests.front_mut().unwrap().origin = Rc::new(crate::diagnostics::ThrowOrigin {
-        source: Some(crate::diagnostics::DiagnosticSourceLocation {
-            filename,
-            line: 9,
-            column: 1,
-        }),
-        ..Default::default()
-    });
+    replacement.requests.front_mut().unwrap().origin =
+        AsyncGeneratorOrigin::unowned(crate::diagnostics::ThrowOrigin {
+            source: Some(crate::diagnostics::DiagnosticSourceLocation {
+                filename,
+                line: 9,
+                column: 1,
+            }),
+            ..Default::default()
+        });
     assert_eq!(
         heap.set_async_generator_control(generator, replacement),
         Err(HeapError::HeapLimitExceeded { limit: 4096 })
@@ -1343,12 +1345,18 @@ fn async_generator_queue_keeps_request_targets_and_values_alive() {
     let value = heap.alloc_object(None).unwrap();
 
     let mut control = heap.async_generator_control(generator).unwrap().unwrap();
-    control.requests.push_back(AsyncGeneratorRequest {
-        id: 0,
-        completion: AsyncGeneratorCompletion::Next(Value::Object(value)),
-        target,
-        origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
-    });
+    control
+        .push_request(AsyncGeneratorRequest {
+            value_storage: None,
+            scheduling: HeapReactionLease::unowned(),
+            id: 0,
+            completion: AsyncGeneratorCompletion::Next(Value::Object(value)),
+            target,
+            origin: crate::heap::AsyncGeneratorOrigin::unowned(
+                crate::diagnostics::ThrowOrigin::default(),
+            ),
+        })
+        .unwrap();
     control.next_request_id = 1;
     control.status = AsyncGeneratorStatus::Awaiting;
     heap.set_async_generator_control(generator, control)
@@ -1414,10 +1422,16 @@ fn restoring_generator_state_respects_the_heap_limit() {
     })
     .unwrap();
     let prototype = heap.alloc_object(None).unwrap();
+    // A `Done` generator already charges its whole state record, which pushes
+    // the heap past its major threshold: keep every object rooted so the
+    // collection that triggers cannot reclaim the fixture.
+    let _prototype_root = heap.root(prototype).unwrap();
     let generator = heap
         .alloc_generator(GeneratorState::Done, prototype)
         .unwrap();
+    let _generator_root = heap.root(generator).unwrap();
     let saved = heap.alloc_object(None).unwrap();
+    let _saved_root = heap.root(saved).unwrap();
     let baseline = heap.stats().managed_bytes;
 
     assert_eq!(
@@ -1451,21 +1465,32 @@ fn replacing_async_generator_queue_respects_the_heap_limit() {
     })
     .unwrap();
     let prototype = heap.alloc_object(None).unwrap();
+    // See `restoring_generator_state_respects_the_heap_limit`: root the
+    // fixture so the threshold collection cannot reclaim it.
+    let _prototype_root = heap.root(prototype).unwrap();
     let generator = heap
         .alloc_generator(GeneratorState::Done, prototype)
         .unwrap();
+    let _generator_root = heap.root(generator).unwrap();
     heap.enable_async_generator(generator).unwrap();
     let target = heap.alloc_object(None).unwrap();
+    let _target_root = heap.root(target).unwrap();
     let baseline = heap.stats().managed_bytes;
 
     let mut control = heap.async_generator_control(generator).unwrap().unwrap();
     for id in 0..1_024 {
-        control.requests.push_back(AsyncGeneratorRequest {
-            id,
-            completion: AsyncGeneratorCompletion::Next(Value::Undefined),
-            target,
-            origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
-        });
+        control
+            .push_request(AsyncGeneratorRequest {
+                value_storage: None,
+                scheduling: HeapReactionLease::unowned(),
+                id,
+                completion: AsyncGeneratorCompletion::Next(Value::Undefined),
+                target,
+                origin: crate::heap::AsyncGeneratorOrigin::unowned(
+                    crate::diagnostics::ThrowOrigin::default(),
+                ),
+            })
+            .unwrap();
     }
     assert_eq!(
         heap.set_async_generator_control(generator, control),
@@ -3137,19 +3162,23 @@ fn completion_records_retain_object_references_and_charge_owned_payloads() {
     .into_iter()
     .enumerate()
     {
-        queue.requests.push_back(AsyncGeneratorRequest {
-            id: id as u64,
-            completion,
-            target: second,
-            origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
-        });
+        queue
+            .push_request(AsyncGeneratorRequest {
+                value_storage: None,
+                scheduling: HeapReactionLease::unowned(),
+                id: id as u64,
+                completion,
+                target: second,
+                origin: crate::heap::AsyncGeneratorOrigin::unowned(
+                    crate::diagnostics::ThrowOrigin::default(),
+                ),
+            })
+            .unwrap();
     }
     assert_eq!(queue.references(), [second, first].repeat(6));
     assert_eq!(
         queue.managed_bytes(),
-        6 * (size_of::<AsyncGeneratorRequest>()
-            + size_of::<crate::diagnostics::ThrowOrigin>()
-            + 2 * size_of::<usize>())
+        6 * (size_of::<AsyncGeneratorRequest>() + AsyncGeneratorOrigin::allocation_bytes())
     );
 }
 

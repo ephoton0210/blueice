@@ -64,6 +64,7 @@ impl Vm {
     pub(super) fn prepare_rejection_batch(
         &self,
         index: usize,
+        owner: Option<&SharedSchedulingCharge>,
     ) -> Result<PreparedRejectionBatch, RuntimeError> {
         let BrowserTask::PromiseRejections {
             entries, handled, ..
@@ -100,11 +101,8 @@ impl Vm {
             .len()
             .saturating_mul(std::mem::size_of::<PreparedRejectionEntry>())
             .saturating_add(remaining);
-        let scope = self.host_scheduling.as_ref();
-        let fail = || scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail);
-        let charge = scope
-            .map(|scope| scope.shared_charge(minimum))
-            .transpose()?;
+        let fail = || owner.map_or(RuntimeError::SchedulingLimit, SharedSchedulingCharge::fail);
+        let charge = owner.map(|owner| owner.reserve_peer(minimum)).transpose()?;
         let mut batch = PreparedRejectionBatch {
             entries: Vec::new(),
             charge,

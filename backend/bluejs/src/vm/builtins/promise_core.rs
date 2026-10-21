@@ -979,11 +979,11 @@ impl Vm {
     /// Implements the settled-value portion of Await. A pending promise needs
     /// a saved interpreter continuation, which remains a separate boundary.
     pub(in super::super) fn await_value(&mut self, value: Value) -> Result<Value, RuntimeError> {
-        let record = self
-            .promises
-            .get(&value.object_id().expect("PromiseResolve returns a promise"))
-            .expect("PromiseResolve returns a promise the VM tracks");
-        match record.clone_for_await() {
+        let promise = value.object_id().expect("PromiseResolve returns a promise");
+        // The immediate path shares copy admission and original-owner guards
+        // with saved continuations, without admitting a queued resumption.
+        let (status, _copy_storage) = self.prepare_promise_status_copy(promise)?;
+        match status {
             PromiseAwaitStatus::Pending => {
                 Err(RuntimeError::Unsupported("pending await continuation"))
             }

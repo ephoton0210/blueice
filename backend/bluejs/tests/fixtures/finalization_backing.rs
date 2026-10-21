@@ -259,8 +259,19 @@ fn finalization_backing_delivery_refunds_payload_then_the_final_allocation() {
 fn finalization_backing_standalone_partial_drain_retains_the_live_backing_owner() {
     let (mut heap, registry) = ready_fixture(true);
     let before = heap.stats().managed_bytes;
+    // Refused publication must leave the source cell and its bytes intact.
+    assert_eq!(
+        heap.drain_finalization_registry_cleanup_jobs(|_, holdings| Err(((), holdings))),
+        Err(())
+    );
+    assert_eq!(heap.finalization_cell_storage_state(registry), (2, 4));
+    assert_eq!(heap.stats().managed_bytes, before);
     let mut delivered = Vec::new();
-    heap.drain_finalization_registry_cleanup_jobs(|_, holdings| delivered.push(holdings));
+    heap.drain_finalization_registry_cleanup_jobs(|_, holdings| {
+        delivered.push(holdings);
+        Ok::<_, ((), Value)>(())
+    })
+    .unwrap();
     assert_eq!(delivered, [Value::String("tiny".into())]);
     assert_eq!(heap.finalization_cell_storage_state(registry), (1, 4));
     assert_eq!(heap.stats().managed_bytes, before - 8);
@@ -271,7 +282,11 @@ fn finalization_backing_standalone_empty_drain_releases_the_allocation() {
     let (mut heap, registry) = ready_fixture(false);
     let before = heap.stats().managed_bytes;
     let mut delivered = Vec::new();
-    heap.drain_finalization_registry_cleanup_jobs(|_, holdings| delivered.push(holdings));
+    heap.drain_finalization_registry_cleanup_jobs(|_, holdings| {
+        delivered.push(holdings);
+        Ok::<_, ((), Value)>(())
+    })
+    .unwrap();
     assert_eq!(delivered, [Value::String("tiny".into()), Value::Undefined]);
     assert_eq!(heap.finalization_cell_storage_state(registry), (0, 0));
     assert_eq!(heap.stats().managed_bytes, before - 8 - 4 * slot_bytes());

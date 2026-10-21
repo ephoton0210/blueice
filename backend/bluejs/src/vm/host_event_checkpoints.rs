@@ -39,9 +39,27 @@ impl Vm {
         result
     }
 
+    // Scalar-free root fixtures enter cleanup without a retained producer.
+    // Production event consumers retain their completion before this entry.
+    #[cfg(any(test, coverage))]
     pub(super) fn cleanup_host_event_callback(
         &mut self,
         result: Result<Value, RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
+        self.cleanup_host_event_callback_storage(result, false)
+    }
+
+    pub(super) fn cleanup_host_event_callback_retained(
+        &mut self,
+        result: Result<Value, RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
+        self.cleanup_host_event_callback_storage(result, true)
+    }
+
+    fn cleanup_host_event_callback_storage(
+        &mut self,
+        result: Result<Value, RuntimeError>,
+        retained: bool,
     ) -> Result<Value, RuntimeError> {
         if let Err(error) = &result {
             self.report_host_exception(error)?;
@@ -63,7 +81,11 @@ impl Vm {
         };
         let root_base = self.async_frame_roots.len();
         self.extend_async_frame_roots(value.and_then(Value::object_id).into_iter())?;
-        let bytes = value.map_or(0, host_scheduling::value_payload_bytes);
+        let bytes = if retained {
+            0
+        } else {
+            value.map_or(0, host_scheduling::value_payload_bytes)
+        };
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(bytes);
         let checkpoint = self
             .synchronize_scheduling_usage()

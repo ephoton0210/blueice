@@ -14,7 +14,7 @@ on its session tick and validates relative wake-up replies against the live
 document. Real JavaScript and BlueTS counter pages verify distinct unsolicited
 frames with matching Representation generations/text, plus timer cancellation
 and replacement lifetime behavior. See the
-[M1b record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[M1b record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 M1c extends the latest artifact to `core-script-dom-animation-frame-v12`
 (47 entries) and supplies a separate private v58 render entry, Core-owned
 software cadence, callback snapshots and pre-paint microtask cleanup. Typed and
@@ -32,7 +32,7 @@ ShadowRealms. Task-source ordering and broader host-buffer/aggregate resource
 accounting remain open. M1h adds callback cleanup during native DOM dispatch,
 sharing its job budget and preserving fuel/frame roots while script-driven
 dispatch waits for the enclosing JavaScript. Acceptance is tracked in the
-[integration record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[integration record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 M1i adds a bounded document timer/browser task entry and returns to Core after
 one selected task and checkpoint. Task/frame wake replies cover ready browser

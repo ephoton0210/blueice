@@ -220,6 +220,7 @@ fn module_continuation_ownership_loader_replacement_resumes_the_original_program
         observer.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
+            + (vm.promises.retained_bytes() - vm.promises.unowned_bytes())
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
@@ -231,6 +232,7 @@ fn module_continuation_ownership_loader_replacement_resumes_the_original_program
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
+            + (vm.promises.retained_bytes() - vm.promises.unowned_bytes())
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
@@ -279,6 +281,7 @@ fn module_continuation_ownership_late_activation_attaches_a_displaced_snapshot()
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
+            + (vm.promises.retained_bytes() - vm.promises.unowned_bytes())
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
@@ -293,6 +296,7 @@ fn module_continuation_ownership_late_activation_attaches_a_displaced_snapshot()
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
+            + (vm.promises.retained_bytes() - vm.promises.unowned_bytes())
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
@@ -308,14 +312,17 @@ fn module_continuation_ownership_late_debugger_activation_retains_and_refunds_th
     vm.set_module_loader_context("", HashMap::new());
     vm.use_bounded_host_microtask_checkpoints().unwrap();
     let frame = vm.debugger_module_continuation.as_ref().unwrap();
-    assert!(
-        vm.own_scheduling_usage().payload_bytes
-            >= frame.module.capacity() + frame.execution.control_bytes()
-    );
+    let frame_bytes = frame.module.capacity() + frame.execution.control_bytes();
+    let frame_storage = frame._storage.as_ref().map_or(0, |storage| storage.bytes());
+    // Activation attaches the frame to the document account.
+    assert!(vm.host_scheduling_snapshot().payload_bytes >= frame_bytes);
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + frame_storage
+            + frame_bytes
             + vm.module_value_storage_bytes()
+            + (vm.promises.retained_bytes() - vm.promises.unowned_bytes())
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
@@ -329,6 +336,7 @@ fn module_continuation_ownership_late_debugger_activation_retains_and_refunds_th
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
+            + (vm.promises.retained_bytes() - vm.promises.unowned_bytes())
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
@@ -353,6 +361,7 @@ fn module_continuation_ownership_rejected_await_refunds_the_old_snapshot() {
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
             + vm.module_value_storage_bytes()
+            + (vm.promises.retained_bytes() - vm.promises.unowned_bytes())
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
@@ -379,9 +388,23 @@ fn module_continuation_ownership_registration_refusal_releases_code_and_name_wit
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     drop(peer);
     vm.reconcile_scheduling_ownership();
+    // The gate promise still holds the suspended module's one reaction.
+    let owned_promise_records: usize = vm
+        .promises
+        .values()
+        .map(|record| {
+            [&record.status_storage, &record.reaction_storage]
+                .into_iter()
+                .flatten()
+                .map(|storage| storage.bytes())
+                .sum::<usize>()
+        })
+        .sum();
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + owned_promise_records
+            + (vm.promises.retained_bytes() - vm.promises.unowned_bytes())
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()
@@ -404,6 +427,7 @@ fn module_continuation_ownership_terminal_debugger_cleanup_refunds_the_old_snaps
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         vm.own_scheduling_usage().payload_bytes
+            + (vm.promises.retained_bytes() - vm.promises.unowned_bytes())
             + vm.heap.collector_storage_bytes()
             + vm.heap.root_storage_bytes()
             + vm.module_record_storage_bytes()

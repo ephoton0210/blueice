@@ -222,6 +222,10 @@ fn timers_use_the_owner_clock_and_missing_or_duplicate_labels_warn() {
 #[test]
 fn console_storage_and_utf8_messages_are_bounded_and_accounted() {
     let mut vm = page();
+    // A first identical run leaves behind only what the script itself retains
+    // (its global binding and program), which is not console storage.
+    run(&mut vm, "for(var i=0;i<300;i++){console.log(i);}");
+    vm.drain_host_console().unwrap();
     let base = vm.host_scheduling_usage().unwrap().payload_bytes;
     run(&mut vm, "for(var i=0;i<300;i++){console.log(i);}");
     assert!(vm.host_scheduling_usage().unwrap().payload_bytes > base);

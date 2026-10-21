@@ -168,7 +168,12 @@ fn finalization_entry_exact_preparation_allowance_keeps_the_original_owners() {
         host_scheduling::slots(&prepared.arguments),
         argument_bytes()
     );
-    assert_eq!(primitive_counters(&vm), (8, argument_bytes()));
+    assert_eq!(primitive_counters(&vm), (0, 0));
+    assert_eq!(
+        (prepared.payload.bytes(), prepared.control.bytes()),
+        (8, argument_bytes())
+    );
+    assert!(prepared.payload.is_retained() && prepared.control.is_retained());
     assert_eq!(
         vm.host_scheduling_snapshot().payload_bytes,
         MAX_HOST_SCHEDULING_BYTES

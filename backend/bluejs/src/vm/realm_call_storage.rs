@@ -5,16 +5,57 @@
 //! Temporary realm-call roots own admitted IDs without copying guest values.
 
 use super::host_scheduling::SharedSchedulingCharge;
+use super::native_context_guards::NativeContextGuards;
 use super::*;
+use std::cell::Cell;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/realm_root_affinity.rs"]
+mod affinity_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/realm_root_writes.rs"]
+mod write_tests;
 
 pub(super) struct RealmCallRoots {
     values: RefCell<Vec<ObjectId>>,
     previous: RefCell<Option<Rc<Self>>>,
+    active_heap: Cell<Option<u64>>,
+    callers: RefCell<Option<Rc<NativeContextGuards>>>,
     // The backing allocation is destroyed before its native lease.
     _storage: RefCell<Option<SharedSchedulingCharge>>,
 }
 
 impl RealmCallRoots {
+    fn allocation_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + 2 * std::mem::size_of::<usize>()
+            + host_scheduling::slots(&self.values.borrow())
+    }
+
+    #[cfg(any(test, coverage))]
+    pub(super) fn retained_bytes(&self) -> usize {
+        self.allocation_bytes()
+    }
+
+    fn owner_view(&self) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        self._storage
+            .borrow()
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()
+    }
+
+    fn adopt_owner(&self, owner: Option<&SharedSchedulingCharge>) -> Result<(), RuntimeError> {
+        let mut storage = self._storage.borrow_mut();
+        if storage.is_none() {
+            if let Some(owner) = owner {
+                *storage = Some(owner.reserve_peer(self.allocation_bytes())?);
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn new(
         count: usize,
         owner: Option<&SharedSchedulingCharge>,
@@ -36,17 +77,39 @@ impl RealmCallRoots {
         Ok(Rc::new(Self {
             values: RefCell::new(values),
             previous: RefCell::new(None),
+            active_heap: Cell::new(None),
+            callers: RefCell::new(None),
             _storage: RefCell::new(storage),
         }))
     }
 
-    pub(super) fn push(&self, id: ObjectId) {
+    fn validate_write(&self, heap: &Heap, id: ObjectId) -> Result<(), RuntimeError> {
+        self.owner_view()?;
+        if let Some(callers) = self.callers.borrow().as_ref() {
+            callers.validate()?;
+        }
+        if self
+            .active_heap
+            .get()
+            .is_some_and(|active| active != id.heap)
+        {
+            return Err(RuntimeError::Heap(HeapError::InvalidObject(id)));
+        }
+        // This is a pure handle lookup: no guest trap, mutation or safepoint
+        // precedes refusal, including when the admitted Vec already has room.
+        heap.prototype(id)?;
+        Ok(())
+    }
+
+    pub(super) fn push(&self, heap: &Heap, id: ObjectId) -> Result<(), RuntimeError> {
+        self.validate_write(heap, id)?;
         let mut values = self.values.borrow_mut();
         assert!(
             values.len() < values.capacity(),
             "realm roots were prepared before guest entry"
         );
         values.push(id);
+        Ok(())
     }
 
     /// Retire completed temporary edges while retaining their paid backing.
@@ -56,7 +119,8 @@ impl RealmCallRoots {
 
     /// Unknown getter results grow one prepared root buffer at a time. Admit
     /// the full replacement while the previous allocation is still alive.
-    pub(super) fn push_admitted(&self, id: ObjectId) -> Result<(), RuntimeError> {
+    pub(super) fn push_admitted(&self, heap: &Heap, id: ObjectId) -> Result<(), RuntimeError> {
+        self.validate_write(heap, id)?;
         let mut values = self.values.borrow_mut();
         if values.len() == values.capacity() {
             let count = values.capacity().saturating_mul(2).max(4);
@@ -138,25 +202,46 @@ impl Vm {
     ) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
         let mut frame = self.realm_call_roots.clone();
         while let Some(current) = frame {
-            if let Some(owner) = current._storage.borrow().as_ref() {
-                return owner.reserve_peer(0).map(Some);
+            let owner = current.owner_view()?;
+            if let Some(callers) = current.callers.borrow().as_ref() {
+                callers.validate()?;
+            }
+            if owner.is_some() {
+                return Ok(owner);
             }
             frame = current.previous.borrow().clone();
         }
         Ok(None)
     }
 
+    pub(super) fn current_realm_context_guards(
+        &self,
+    ) -> Result<Option<Rc<NativeContextGuards>>, RuntimeError> {
+        let Some(frame) = &self.realm_call_roots else {
+            return Ok(None);
+        };
+        frame.owner_view()?;
+        let callers = frame.callers.borrow().clone();
+        if let Some(callers) = &callers {
+            callers.validate()?;
+        }
+        Ok(callers)
+    }
+
     pub(super) fn realm_call_native_owner(
         &self,
         peer: &Vm,
     ) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
-        match self
-            .host_scheduling
-            .as_ref()
-            .or(peer.host_scheduling.as_ref())
-        {
-            Some(scope) => scope.shared_charge(0).map(Some),
-            None => realm_reentrancy::reserve_active_native(0),
+        let root = self.current_realm_root_owner()?;
+        if let Some(scope) = &self.host_scheduling {
+            scope.shared_charge(0).map(Some)
+        } else if let Some(owner) = root {
+            realm_reentrancy::reserve_active_native(0)?;
+            Ok(Some(owner))
+        } else if let Some(scope) = &peer.host_scheduling {
+            scope.shared_charge(0).map(Some)
+        } else {
+            realm_reentrancy::reserve_active_native(0)
         }
     }
 
@@ -167,10 +252,39 @@ impl Vm {
         frame: Rc<RealmCallRoots>,
         operation: impl FnOnce(&mut Self) -> Result<T, RuntimeError>,
     ) -> Result<T, RuntimeError> {
-        assert!(
-            frame.previous.borrow().is_none(),
-            "publish one root frame at a time"
-        );
+        // An outermost active frame has no previous node too. Record active
+        // publication independently so an alias cannot link the frame to itself.
+        if frame.active_heap.get().is_some() || frame.previous.borrow().is_some() {
+            return Err(RuntimeError::TypeError(
+                "Realm root frame is already active".into(),
+            ));
+        }
+        frame.owner_view()?;
+        let parent = self.current_realm_root_owner()?;
+        let parent_guards = self.current_realm_context_guards()?;
+        let caller = self.argument_list_owner()?;
+        let ambient = if self.host_scheduling.is_none() {
+            realm_reentrancy::reserve_active_native(0)?
+        } else {
+            None
+        };
+        let ambient_guards = if self.host_scheduling.is_none() {
+            realm_reentrancy::active_context_guards()?
+        } else {
+            None
+        };
+        for object in frame.values.borrow().iter().copied() {
+            self.heap.prototype(object)?;
+        }
+        frame.adopt_owner(caller.as_ref())?;
+        let owner = frame.owner_view()?;
+        let required = NativeContextGuards::capture(
+            owner.as_ref(),
+            [parent_guards.as_ref(), ambient_guards.as_ref()],
+            [parent.as_ref(), caller.as_ref(), ambient.as_ref()],
+        )?;
+        *frame.callers.borrow_mut() = required.clone();
+        frame.active_heap.set(Some(self.object_prototype.heap));
         *frame.previous.borrow_mut() = self.realm_call_roots.take();
         self.realm_call_roots = Some(frame.clone());
         let result = operation(self);
@@ -180,6 +294,16 @@ impl Vm {
             "realm roots nest with their calls"
         );
         self.realm_call_roots = frame.previous.borrow_mut().take();
+        frame.active_heap.set(None);
+        *frame.callers.borrow_mut() = None;
+        // Check both successful and failing callbacks after restoring the
+        // caller's context. A healthy input owner cannot revive its caller.
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        if let Some(required) = required {
+            required.validate()?;
+        }
         result
     }
 

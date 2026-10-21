@@ -8,9 +8,10 @@
 //! Each method reads its receiver through `Get` at the ordinary property
 //! boundary (holes read as `undefined`, never `HasProperty`) and builds the
 //! result with `ArrayCreate` on the current Realm's `%Array.prototype%`. They
-//! never consult `@@species`, unlike `slice`/`splice`. Every value that only
-//! the result (or a Rust `Vec`) holds is kept reachable from the VM stack
-//! before anything can allocate.
+//! never consult `@@species`, unlike `slice`/`splice`. Temporary values use
+//! operand-stack or scoped object-ID roots across guest operations. `toSorted`
+//! owns its native snapshot and moves each payload lease into result creation.
+use super::super::{native_value_storage, realm_call_storage};
 use super::*;
 
 const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
@@ -86,50 +87,93 @@ impl Vm {
         receiver: &Value,
         compare: &Value,
     ) -> Result<Value, RuntimeError> {
-        if *compare != Value::Undefined && !self.is_callable(compare)? {
-            return Err(RuntimeError::TypeError(
-                "Array toSorted comparator must be callable".into(),
-            ));
-        }
-        let object = self.coerce_object(receiver)?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        self.stack.push(compare.clone());
-        let result = (|| {
-            let length = self.array_length_of(object)?;
-            let target = self.array_create_exact(length)?;
-            self.stack.push(Value::Object(target));
-            let mut values = Vec::new();
-            let mut undefined = 0u64;
-            for index in 0..length as u64 {
-                self.charge_step()?;
-                let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
-                if value == Value::Undefined {
-                    undefined += 1;
-                } else {
-                    // The sort only permutes this set, so keeping each value
-                    // on the stack once keeps every intermediate list alive.
-                    self.stack.push(value.clone());
-                    values.push(value);
+        let owner = self.argument_list_owner()?;
+        let inputs = realm_call_storage::RealmCallRoots::new(3, owner.as_ref())?;
+        [receiver, compare]
+            .into_iter()
+            .filter_map(Value::object_id)
+            .try_for_each(|id| inputs.push(&self.heap, id))?;
+        let result = self.with_realm_call_roots(inputs.clone(), |vm| {
+            if *compare != Value::Undefined && !vm.is_callable(compare)? {
+                return Err(RuntimeError::TypeError(
+                    "Array toSorted comparator must be callable".into(),
+                ));
+            }
+            let object = vm.coerce_object(receiver)?;
+            if receiver.object_id().is_none() {
+                inputs.push(&vm.heap, object)?;
+            }
+            let length = vm.get_property(&Value::Object(object), &"length".into())?;
+            let length = native_value_storage::NativeValue::adopt(length, owner.as_ref())?;
+            let count = length.with_value(vm, |vm, value| vm.coerce_length(value))?;
+            drop(length);
+            let target = vm.array_create_exact(count)?;
+            inputs.push(&vm.heap, target)?;
+            let collected = realm_call_storage::RealmCallRoots::new(0, owner.as_ref())?;
+            vm.with_realm_call_roots(collected.clone(), |vm| {
+                let mut values = vm.array_sort_input()?;
+                let mut undefined = 0usize;
+                for index in 0..count as usize {
+                    vm.charge_step()?;
+                    let key = Self::array_sort_key(index, owner.as_ref())?;
+                    let value = vm.get_property(&Value::Object(object), &key.name)?;
+                    if let Some(owner) = &owner {
+                        owner.reserve_peer(0)?;
+                    }
+                    if value == Value::Undefined {
+                        undefined += 1;
+                    } else {
+                        if let Some(object) = value.object_id() {
+                            collected.push_admitted(&vm.heap, object)?;
+                        }
+                        vm.push_array_sort_input(&mut values, value)?;
+                    }
                 }
-            }
-            let values = self.array_sort_values(values, compare)?;
-            let mut index = 0u64;
-            for value in values {
-                self.array_create_data_property_or_throw(target, index.to_string().into(), value)?;
-                index += 1;
-            }
-            for _ in 0..undefined {
-                self.array_create_data_property_or_throw(
-                    target,
-                    index.to_string().into(),
-                    Value::Undefined,
-                )?;
-                index += 1;
-            }
-            Ok(Value::Object(target))
-        })();
-        self.stack.truncate(base);
+                let values = vm.array_sort_values(values, compare)?;
+                collected.truncate(0);
+                let mut remaining = 0usize;
+                for object in values.iter().rev().filter_map(Value::object_id) {
+                    collected.push(&vm.heap, object)?;
+                    remaining += 1;
+                }
+                let mut values = values.into_owned_iter()?;
+                let mut index = 0usize;
+                while let Some(value) = values.next_owned()? {
+                    let object_value = value.value().object_id().is_some();
+                    vm.array_create_data_property_or_throw_owned(
+                        target,
+                        index.to_string().into(),
+                        value,
+                    )?;
+                    if let Some(owner) = &owner {
+                        owner.reserve_peer(0)?;
+                    }
+                    if object_value {
+                        remaining -= 1;
+                        collected.truncate(remaining);
+                    }
+                    index += 1;
+                }
+                drop(values);
+                for _ in 0..undefined {
+                    let value =
+                        native_value_storage::NativeValue::adopt(Value::Undefined, owner.as_ref())?;
+                    vm.array_create_data_property_or_throw_owned(
+                        target,
+                        index.to_string().into(),
+                        value,
+                    )?;
+                    if let Some(owner) = &owner {
+                        owner.reserve_peer(0)?;
+                    }
+                    index += 1;
+                }
+                Ok(Value::Object(target))
+            })
+        });
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
         result
     }
 

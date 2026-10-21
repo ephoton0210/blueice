@@ -172,7 +172,12 @@ fn promise_settlement_exact_batch_admission_refunds_all_staging() {
     let (mut vm, promise) = fanout(2);
     vm.promise_origin_override = Some(origin());
     let before = vm.host_scheduling_usage().unwrap().payload_bytes;
-    let before_owned = vm.own_scheduling_usage().payload_bytes;
+    // The same settlement with unlimited room is the reference: running at the
+    // exact allowance must leave exactly the same retained state.
+    let (mut twin, twin_promise) = fanout(2);
+    twin.promise_origin_override = Some(origin());
+    twin.settle_promise(twin_promise, rejected()).unwrap();
+    let reference = twin.host_scheduling_usage().unwrap().payload_bytes;
     let extra = preview(&mut vm, promise, rejected());
     let view = observer(&vm);
     let peer = leave_room(&mut vm, extra);
@@ -180,10 +185,9 @@ fn promise_settlement_exact_batch_admission_refunds_all_staging() {
     assert_eq!(vm.promise_jobs.len(), 2);
     assert_eq!(vm.promises[&promise].reactions.capacity(), 0);
     assert_eq!(vm.promises[&promise].rejection_origin.epoch, 7);
-    let retained = vm.own_scheduling_usage().payload_bytes;
     assert_eq!(
         vm.host_scheduling_usage().unwrap().payload_bytes,
-        MAX_HOST_SCHEDULING_BYTES - extra - before_owned + retained
+        reference + peer.bytes()
     );
     drop(vm);
     assert_eq!(

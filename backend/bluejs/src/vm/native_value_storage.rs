@@ -14,7 +14,51 @@ pub(super) struct NativeValue {
     storage: Option<SharedSchedulingCharge>,
 }
 
+pub(super) struct NativeValueIter {
+    values: std::vec::IntoIter<Value>,
+    // IntoIter retains the full Vec backing until it is dropped. Consumed
+    // values take their payload credit; the remaining slots stay paid here.
+    storage: Option<SharedSchedulingCharge>,
+}
+
+impl NativeValueIter {
+    pub(super) fn new(values: Vec<Value>, storage: Option<SharedSchedulingCharge>) -> Self {
+        debug_assert!(storage.as_ref().is_none_or(|storage| {
+            storage.bytes()
+                == host_scheduling::slots(&values)
+                    .saturating_add(host_scheduling::values_bytes(&values))
+        }));
+        Self {
+            values: values.into_iter(),
+            storage,
+        }
+    }
+
+    pub(super) fn next_owned(&mut self) -> Result<Option<NativeValue>, RuntimeError> {
+        if let Some(owner) = &self.storage {
+            owner.reserve_peer(0)?;
+        }
+        Ok(self.values.next().map(|value| {
+            let storage = self
+                .storage
+                .as_mut()
+                .map(|owner| owner.split_off(value_payload_bytes(&value)));
+            NativeValue { value, storage }
+        }))
+    }
+}
+
 impl NativeValue {
+    pub(super) fn from_retained_parts(
+        value: Value,
+        storage: Option<SharedSchedulingCharge>,
+    ) -> Self {
+        debug_assert!(storage
+            .as_ref()
+            .is_none_or(|storage| storage.bytes() == value_payload_bytes(&value)));
+        Self { value, storage }
+    }
+
     pub(super) fn copied_property_key(
         key: &PropertyName,
         owner: Option<&SharedSchedulingCharge>,
@@ -107,7 +151,7 @@ impl NativeValue {
         let owner = self.owner_view()?;
         let result = if let Some(object) = self.value.object_id() {
             let roots = RealmCallRoots::new(1, owner.as_ref())?;
-            roots.push(object);
+            roots.push(&vm.heap, object)?;
             vm.with_realm_call_roots(roots, |vm| operation(vm, &self.value))
         } else {
             operation(vm, &self.value)
@@ -126,11 +170,41 @@ impl NativeValue {
         let owner = self.owner_view()?;
         let result = if let Some(object) = self.value.object_id() {
             let roots = RealmCallRoots::new(1, owner.as_ref())?;
-            roots.push(object);
+            roots.push(&vm.heap, object)?;
             vm.with_realm_call_roots(roots, |vm| operation(vm, self))
         } else {
             operation(vm, self)
         };
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
+    }
+
+    /// A native input keeps its document context even when a primitive needs
+    /// no object root. Nested native preparation borrows that same account.
+    pub(super) fn with_owned_context<T>(
+        mut self,
+        vm: &mut Vm,
+        operation: impl FnOnce(&mut Vm, Self) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        if self.storage.is_none() {
+            self = self.retain_for_owner(vm.argument_list_owner()?.as_ref())?;
+        }
+        let owner = self.owner_view()?;
+        if let (Some(scope), Some(owner)) = (&vm.host_scheduling, &owner) {
+            if !owner.belongs_to(scope) {
+                return Err(scope.fail());
+            }
+        }
+        let roots = RealmCallRoots::new(
+            usize::from(self.value.object_id().is_some()),
+            owner.as_ref(),
+        )?;
+        if let Some(object) = self.value.object_id() {
+            roots.push(&vm.heap, object)?;
+        }
+        let result = vm.with_realm_call_roots(roots, |vm| operation(vm, self));
         if let Some(owner) = owner {
             owner.reserve_peer(0)?;
         }
@@ -142,6 +216,30 @@ impl NativeValue {
     pub(super) fn into_value(self) -> Value {
         drop(self.storage);
         self.value
+    }
+
+    /// Transfer this same buffer to an independently owned native consumer.
+    /// Its caller keeps the original identity through any destination change.
+    pub(super) fn retain_for_owner(
+        mut self,
+        owner: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
+        self.validate_owner()?;
+        if let Some(owner) = owner {
+            if self
+                .storage
+                .as_ref()
+                .is_none_or(|storage| !storage.same_owner(owner))
+            {
+                self.storage = Some(owner.reserve_peer(value_payload_bytes(&self.value))?);
+            }
+        }
+        Ok(self)
+    }
+
+    /// A prepared native consumer takes both data and credit without copying.
+    pub(super) fn into_retained_parts(self) -> (Value, Option<SharedSchedulingCharge>) {
+        (self.value, self.storage)
     }
 
     /// Move this same primitive lease into guest-capable property definition;
@@ -170,7 +268,7 @@ impl NativeValue {
             .object_id()
             .map(|object| {
                 let roots = RealmCallRoots::new(1, owner.as_ref())?;
-                roots.push(object);
+                roots.push(&vm.heap, object)?;
                 Ok::<_, RuntimeError>(roots)
             })
             .transpose()?;

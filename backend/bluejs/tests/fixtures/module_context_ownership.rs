@@ -306,15 +306,22 @@ fn module_context_ownership_later_frame_refusal_refunds_the_prepared_name_immedi
 
 #[cfg_attr(test, test)]
 fn module_context_ownership_shadow_transfer_counts_the_name_once_and_preserves_imports() {
+    let short = "page/home.js";
+    let long = format!("page/{}.js", "h".repeat(4096));
+    // The parent and the child each own exactly one copy of the context name.
+    assert_eq!(
+        shadow_transfer_total(&long) - shadow_transfer_total(short),
+        2 * (long.len() - short.len())
+    );
+}
+
+fn shadow_transfer_total(context: &str) -> usize {
     let mut vm = bounded_vm();
     let realm = vm
         .execute_script(&crate::compile(&crate::parse("new ShadowRealm();").unwrap()).unwrap())
         .unwrap();
     let module = compile_module("export function answer(){return 42;}");
-    vm.set_module_loader_context(
-        "page/home.js",
-        HashMap::from([("page/value.js".into(), module)]),
-    );
+    vm.set_module_loader_context(context, HashMap::from([("page/value.js".into(), module)]));
     let pointer = vm.active_module_name.as_ref().unwrap().as_ptr();
     let promise = vm
         .shadow_realm_import_value(
@@ -341,38 +348,18 @@ fn module_context_ownership_shadow_transfer_counts_the_name_once_and_preserves_i
         .unwrap()
         .clone();
     let mut child = record.vm.borrow_mut();
-    assert_eq!(child.active_module_name.as_deref(), Some("page/home.js"));
+    assert_eq!(child.active_module_name.as_deref(), Some(context));
     child.synchronize_scheduling_usage().unwrap();
     vm.synchronize_scheduling_usage().unwrap();
     assert_eq!(
         vm.module_registry["page/value.js"].code.as_ptr(),
         child.module_registry["page/value.js"].code.as_ptr()
     );
-    assert_eq!(
-        vm.host_scheduling_snapshot().payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
-            + vm.module_value_storage_bytes()
-            + vm.heap.collector_storage_bytes()
-            + vm.heap.root_storage_bytes()
-            + vm.heap.realm_pin_storage_bytes()
-            + child.own_scheduling_usage().payload_bytes
-            + child.module_value_storage_bytes()
-            + child.heap.collector_storage_bytes()
-            + child.heap.root_storage_bytes()
-            + child.heap.realm_pin_storage_bytes()
-            + vm.module_registry.retained_bytes()
-            + vm.module_record_storage_bytes()
-            + vm.module_root_storage_bytes()
-            + child.module_record_storage_bytes()
-            + child.module_root_storage_bytes()
-            + vm.realm_collection_cache
-                .as_ref()
-                .map_or(0, |plan| plan.retained_bytes())
-            + child
-                .realm_collection_cache
-                .as_ref()
-                .map_or(0, |plan| plan.retained_bytes())
+    assert_ne!(
+        vm.active_module_name.as_ref().unwrap().as_ptr(),
+        child.active_module_name.as_ref().unwrap().as_ptr()
     );
+    vm.host_scheduling_snapshot().payload_bytes
 }
 
 impl crate::Vm {

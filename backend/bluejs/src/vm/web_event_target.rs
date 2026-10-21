@@ -5,9 +5,26 @@
 //! Standalone EventTargets share the existing collector-owned Event state.
 //! Browser interfaces can reuse this listener storage without a second realm.
 
+use super::native_value_storage::NativeValue;
+use super::realm_call_storage::RealmCallRoots;
+use super::transport_buffer_storage::TransportVector;
+use super::web_event_storage::{EventCompletion, EventContext, EventPath, NativeEventTarget};
 use super::*;
 use crate::heap::WebListener;
 use crate::native::TargetNative;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/event_target_storage.rs"]
+mod storage_tests;
+
+#[derive(Clone, Copy)]
+struct ListenerCall {
+    callback: ObjectId,
+    signal: Option<ObjectId>,
+    once: bool,
+    passive: bool,
+    handler: bool,
+}
 
 impl Vm {
     pub(super) fn install_web_event_target(&mut self) -> Result<(), RuntimeError> {
@@ -129,7 +146,33 @@ impl Vm {
                 "Event listener method requires two arguments".into(),
             ));
         }
-        let name = self.coerce_string(&args[0])?;
+        let context = EventContext::capture(self)?;
+        let ids = std::iter::once(object).chain(args.iter().filter_map(Value::object_id));
+        let roots = context.prepare_roots(self, ids, 1)?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            vm.web_target_listener_input(native, object, args, &context, &roots)
+        });
+        context.validate().and(result)
+    }
+
+    fn web_target_listener_input(
+        &mut self,
+        native: TargetNative,
+        object: ObjectId,
+        args: &[Value],
+        context: &EventContext,
+        roots: &RealmCallRoots,
+    ) -> Result<Value, RuntimeError> {
+        let name = if matches!(&args[0], Value::String(_)) {
+            NativeValue::copied(&args[0], context.owner.as_ref())?
+        } else {
+            let converted = self.coerce_string(&args[0]);
+            context.validate()?;
+            NativeValue::adopt(Value::String(converted?), context.owner.as_ref())?
+        };
+        let Value::String(name_value) = name.value() else {
+            unreachable!("coerced event type")
+        };
         let callback = match &args[1] {
             Value::Undefined | Value::Null => None,
             Value::Object(object) => Some(*object),
@@ -140,20 +183,22 @@ impl Vm {
             }
         };
         let options = native::argument(args, 2);
-        let mut capture = false;
-        let mut once = false;
-        let mut passive = false;
+        let (mut capture, mut once, mut passive) = (false, false, false);
         let mut signal = None;
         if options.object_id().is_some() {
-            let value = self.get_property(options, &"capture".into())?;
-            capture = self.to_boolean(&value)?;
+            let value = self.get_property(options, &"capture".into());
+            context.validate()?;
+            capture = self.to_boolean(&value?)?;
             if native == TargetNative::Add {
-                let value = self.get_property(options, &"once".into())?;
-                once = self.to_boolean(&value)?;
-                let value = self.get_property(options, &"passive".into())?;
-                passive = self.to_boolean(&value)?;
-                let value = self.get_property(options, &"signal".into())?;
-                signal = self.abort_signal_argument(&value)?;
+                let value = self.get_property(options, &"once".into());
+                context.validate()?;
+                once = self.to_boolean(&value?)?;
+                let value = self.get_property(options, &"passive".into());
+                context.validate()?;
+                passive = self.to_boolean(&value?)?;
+                let value = self.get_property(options, &"signal".into());
+                context.validate()?;
+                signal = self.abort_signal_argument(&value?)?;
             }
         } else if *options != Value::Undefined {
             capture = self.to_boolean(options)?;
@@ -168,72 +213,110 @@ impl Vm {
         }) {
             return Ok(Value::Undefined);
         }
-        let mut state = self.heap.web_event_target(object)?.clone();
-        let existing = state.listeners.iter().position(|listener| {
-            !listener.handler
-                && listener.name == name
-                && listener.callback == callback
-                && listener.capture == capture
-        });
-        match native {
-            TargetNative::Remove => {
-                if let Some(index) = existing {
-                    let removed = state.listeners.remove(index);
-                    if let Some(signal) = removed.signal {
-                        self.detach_abort_hook(
-                            signal,
-                            crate::heap::AbortHook::Web {
-                                target: object,
-                                serial: removed.serial,
-                            },
-                        )?;
-                    }
+        let state = self.heap.web_event_target(object)?;
+        let existing = state
+            .listeners
+            .iter()
+            .find(|listener| {
+                !listener.handler
+                    && listener.name == *name_value
+                    && listener.callback == callback
+                    && listener.capture == capture
+            })
+            .map(|listener| (listener.serial, listener.signal));
+        if native == TargetNative::Remove {
+            if let Some((serial, signal)) = existing {
+                if let Some(signal) = signal {
+                    roots.push(&self.heap, signal)?;
                 }
-            }
-            TargetNative::Add if existing.is_none() => {
-                if state.listeners.len() >= 4096
-                    || signal.is_some_and(|signal| {
-                        self.heap
-                            .abort_signal(signal)
-                            .is_ok_and(|state| state.hooks.len() >= 4096)
-                    })
-                {
-                    return Err(RuntimeError::RangeError(
-                        "Event listener limit exceeded".into(),
-                    ));
+                self.heap.remove_web_listener(object, serial)?;
+                if let Some(signal) = signal {
+                    self.detach_abort_hook(
+                        signal,
+                        crate::heap::AbortHook::Web {
+                            target: object,
+                            serial,
+                        },
+                    )?;
                 }
-                state.next_serial = state.next_serial.checked_add(1).ok_or_else(|| {
-                    RuntimeError::RangeError("Event listener identity exhausted".into())
-                })?;
-                state.listeners.push(WebListener {
-                    signal,
-                    serial: state.next_serial,
-                    name,
-                    callback,
-                    capture,
-                    once,
-                    passive,
-                    handler: false,
-                });
+                self.refresh_abort_timer_roots(object)?;
             }
-            _ => {}
+            return Ok(Value::Undefined);
         }
-        let added = if native == TargetNative::Add && existing.is_none() {
-            Some(state.next_serial)
-        } else {
-            None
+        if existing.is_some() {
+            return Ok(Value::Undefined);
+        }
+        if state.listeners.len() >= 4096
+            || signal.is_some_and(|signal| {
+                self.heap
+                    .abort_signal(signal)
+                    .is_ok_and(|state| state.hooks.len() >= 4096)
+            })
+        {
+            return Err(RuntimeError::RangeError(
+                "Event listener limit exceeded".into(),
+            ));
+        }
+        let serial = state
+            .next_serial
+            .checked_add(1)
+            .ok_or_else(|| RuntimeError::RangeError("Event listener identity exhausted".into()))?;
+        if let Some(signal) = signal {
+            roots.push(&self.heap, signal)?;
+        }
+        let mut prepared = NativeEventTarget::copied(self, object, context.owner.as_ref())?;
+        let (name, name_storage) = name.into_retained_parts();
+        let Value::String(name) = name else {
+            unreachable!("coerced event type")
         };
-        self.with_roots(|heap| heap.set_web_event_target(object, state))?;
-        if let (Some(signal), Some(serial)) = (signal, added) {
-            self.attach_abort_hook(
+        prepared.listener(
+            WebListener {
                 signal,
-                crate::heap::AbortHook::Web {
-                    target: object,
-                    serial,
-                },
-            )?;
+                serial,
+                name,
+                callback,
+                capture,
+                once,
+                passive,
+                handler: false,
+            },
+            name_storage,
+        )?;
+        prepared.state.next_serial = serial;
+        // Hook admission happens before listener publication. No guest call
+        // separates these pure heap operations; a refusal retires the hook and
+        // any just-published listener without allocating a cleanup snapshot.
+        let result = (|| {
+            context.validate()?;
+            if let Some(signal) = signal {
+                self.attach_abort_hook(
+                    signal,
+                    crate::heap::AbortHook::Web {
+                        target: object,
+                        serial,
+                    },
+                )?;
+            }
+            context.validate()?;
+            prepared.into_heap(self, object)?;
+            self.refresh_abort_timer_roots(object)
+        })();
+        if let Err(error) = result {
+            self.heap.rollback_web_listener(object, serial)?;
+            let cleanup = if let Some(signal) = signal {
+                self.detach_abort_hook(
+                    signal,
+                    crate::heap::AbortHook::Web {
+                        target: object,
+                        serial,
+                    },
+                )
+            } else {
+                self.refresh_abort_timer_roots(object)
+            };
+            context.validate()?;
+            return cleanup.and(Err(error));
         }
-        self.refresh_abort_timer_roots(object)?;
         Ok(Value::Undefined)
     }
 
@@ -243,152 +326,166 @@ impl Vm {
         event: ObjectId,
         trusted: bool,
     ) -> Result<Value, RuntimeError> {
+        let context = EventContext::capture(self)?;
         if self.starts_host_event_turn() {
             return self
                 .run_host_event_turn(|vm| vm.dispatch_web_target_event(target, event, trusted));
         }
+        self.heap.web_event_target(target)?;
         let state = self.heap.drag_event(event)?;
         if state.phase != 0 {
             return self.drag_named_error("InvalidStateError", "Event is already dispatching");
         }
-        let name = match state.get("type") {
-            Value::String(name) => name,
-            _ => unreachable!("branded event type"),
-        };
-        let base = self.stack.len();
-        self.stack
-            .extend([Value::Object(target), Value::Object(event)]);
-        let result = (|| {
-            let mut state = self.heap.drag_event(event)?.clone();
-            state.set("target", Value::Object(target));
-            state.set("isTrusted", Value::Bool(trusted));
-            state.current_target = Some(target);
-            state.phase = 2;
-            state.path = vec![target];
-            self.with_roots(|heap| heap.set_drag_event_state(event, state))?;
-            for capture in [true, false] {
-                if self.heap.drag_event(event)?.propagation_stopped {
+        let name = NativeValue::copied(
+            state.get_ref("type").expect("branded event type"),
+            context.owner.as_ref(),
+        )?;
+        let roots = context.prepare_roots(self, [target, event].into_iter(), 1)?;
+        self.with_realm_call_roots(roots.clone(), |vm| {
+            let mut started = false;
+            let result = (|| {
+                context.validate()?;
+                EventPath::single(target, context.owner.as_ref())?
+                    .publish(vm, event, target, trusted)?;
+                started = true;
+                let Value::String(name) = name.value() else {
+                    unreachable!("branded event type")
+                };
+                vm.dispatch_web_target_rooted(target, event, name, &context, &roots)
+            })();
+            // No fresh snapshot or admission is needed after cancellation.
+            if started {
+                vm.heap.finish_event_dispatch(event)?;
+            }
+            context.validate()?;
+            result
+        })
+    }
+
+    fn dispatch_web_target_rooted(
+        &mut self,
+        target: ObjectId,
+        event: ObjectId,
+        name: &JsString,
+        context: &EventContext,
+        roots: &Rc<RealmCallRoots>,
+    ) -> Result<Value, RuntimeError> {
+        for capture in [true, false] {
+            context.validate()?;
+            if self.heap.drag_event(event)?.propagation_stopped {
+                break;
+            }
+            let snapshot = TransportVector::capture(
+                self.heap
+                    .web_event_target(target)?
+                    .listeners
+                    .iter()
+                    .filter(|listener| listener.name == *name && listener.capture == capture)
+                    .map(|listener| listener.serial),
+                context.owner.as_ref(),
+            )?;
+            for &serial in snapshot.iter() {
+                context.validate()?;
+                if self.heap.drag_event(event)?.immediate_stopped {
                     break;
                 }
-                let snapshot: Vec<_> = self
+                let listener = self
                     .heap
                     .web_event_target(target)?
                     .listeners
                     .iter()
-                    .filter(|listener| listener.name == name && listener.capture == capture)
-                    .map(|listener| listener.serial)
-                    .collect();
-                for serial in snapshot {
-                    if self.heap.drag_event(event)?.immediate_stopped {
-                        break;
-                    }
-                    let listener = self
-                        .heap
-                        .web_event_target(target)?
-                        .listeners
-                        .iter()
-                        .find(|listener| listener.serial == serial)
-                        .cloned();
-                    let Some(listener) = listener else {
-                        continue;
-                    };
-                    let callback_base = self.stack.len();
-                    self.stack.push(Value::Object(listener.callback));
-                    let called = (|| {
-                        if listener.once {
-                            if let Some(signal) = listener.signal {
-                                self.detach_abort_hook(
-                                    signal,
-                                    crate::heap::AbortHook::Web {
-                                        target,
-                                        serial: listener.serial,
-                                    },
-                                )?;
-                            }
-                            let mut state = self.heap.web_event_target(target)?.clone();
-                            state
-                                .listeners
-                                .retain(|candidate| candidate.serial != serial);
-                            self.with_roots(|heap| heap.set_web_event_target(target, state))?;
-                            self.refresh_abort_timer_roots(target)?;
+                    .find(|listener| listener.serial == serial)
+                    .map(|listener| ListenerCall {
+                        callback: listener.callback,
+                        signal: listener.signal,
+                        once: listener.once,
+                        passive: listener.passive,
+                        handler: listener.handler,
+                    });
+                let Some(listener) = listener else {
+                    continue;
+                };
+                roots.push(&self.heap, listener.callback)?;
+                let mut global_error = false;
+                let called = (|| {
+                    context.validate()?;
+                    if listener.once {
+                        if let Some(signal) = listener.signal {
+                            self.detach_abort_hook(
+                                signal,
+                                crate::heap::AbortHook::Web { target, serial },
+                            )?;
                         }
-                        let mut state = self.heap.drag_event(event)?.clone();
-                        state.passive = listener.passive;
-                        self.with_roots(|heap| heap.set_drag_event_state(event, state))?;
-                        let callback = Value::Object(listener.callback);
-                        let (function, receiver) = if self.is_callable(&callback)? {
-                            (callback, Value::Object(target))
-                        } else if listener.handler {
-                            return Ok(Value::Undefined);
-                        } else {
-                            (
-                                self.get_property(&callback, &"handleEvent".into())?,
-                                callback,
-                            )
-                        };
-                        let global_error = listener.handler
-                            && name == "error"
-                            && self.host_error_reporting.is_some()
-                            && self.global("globalThis")?.object_id() == Some(target)
-                            && self.heap.drag_event(event)?.interface == 6;
-                        let arguments = if global_error {
-                            let state = self.heap.drag_event(event)?;
-                            ["message", "filename", "lineno", "colno", "error"]
-                                .iter()
-                                .map(|name| state.get(name))
-                                .collect()
-                        } else {
-                            vec![Value::Object(event)]
-                        };
-                        self.call_native(function, receiver, arguments, false)
-                    })();
-                    let called = self.cleanup_host_event_callback(called);
-                    self.stack.truncate(callback_base);
-                    let global_error = listener.handler
-                        && name == "error"
+                        self.heap.remove_web_listener(target, serial)?;
+                        self.refresh_abort_timer_roots(target)?;
+                    }
+                    self.heap.set_event_passive(event, listener.passive)?;
+                    let callback = Value::Object(listener.callback);
+                    let (function, receiver) = if self.is_callable(&callback)? {
+                        (callback, Value::Object(target))
+                    } else if listener.handler {
+                        return Ok(Value::Undefined);
+                    } else {
+                        (
+                            self.get_property(&callback, &"handleEvent".into())?,
+                            callback,
+                        )
+                    };
+                    context.validate()?;
+                    global_error = listener.handler
+                        && *name == "error"
                         && self.host_error_reporting.is_some()
                         && self.global("globalThis")?.object_id() == Some(target)
                         && self.heap.drag_event(event)?.interface == 6;
+                    context.validate()?;
+                    let mut arguments = TransportVector::with_capacity(
+                        if global_error { 5 } else { 1 },
+                        context.owner.as_ref(),
+                    )?;
+                    if global_error {
+                        let state = self.heap.drag_event(event)?;
+                        for field in ["message", "filename", "lineno", "colno", "error"] {
+                            let value = NativeValue::copied(
+                                state.get_ref(field).unwrap_or(&Value::Undefined),
+                                context.owner.as_ref(),
+                            )?;
+                            arguments.push_owned(value)?;
+                        }
+                    } else {
+                        arguments.push_owned(NativeValue::adopt(
+                            Value::Object(event),
+                            context.owner.as_ref(),
+                        )?)?;
+                    }
+                    arguments.with_arguments(self, |vm, arguments| {
+                        arguments.call_native(vm, function, receiver, false)
+                    })
+                })();
+                let outcome = (|| {
+                    context.validate()?;
+                    let called =
+                        EventCompletion::adopt(called, context.owner.as_ref())?.cleanup(self)?;
+                    context.validate()?;
                     if listener.handler
                         && called
+                            .result()
                             .as_ref()
                             .is_ok_and(|value| *value == Value::Bool(global_error))
                     {
-                        let mut state = self.heap.drag_event(event)?.clone();
-                        if state.cancelable && !state.passive {
-                            state.default_prevented = true;
-                            self.with_roots(|heap| heap.set_drag_event_state(event, state))?;
+                        self.heap.prevent_event_default(event)?;
+                    }
+                    if let Err(error) = called.result() {
+                        if !super::web_drag_drop::drag_page_exception(error) {
+                            return called.into_result();
                         }
                     }
-                    if let Err(error) = called {
-                        if !super::web_drag_drop::drag_page_exception(&error) {
-                            return Err(error);
-                        }
-                    }
-                }
-            }
-            Ok(Value::Bool(!self.heap.drag_event(event)?.default_prevented))
-        })();
-        let cleanup = (|| {
-            let mut state = self.heap.drag_event(event)?.clone();
-            state.phase = 0;
-            state.current_target = None;
-            state.path.clear();
-            state.passive = false;
-            state.propagation_stopped = false;
-            state.immediate_stopped = false;
-            self.with_roots(|heap| heap.set_drag_event_state(event, state))
-        })();
-        self.stack.truncate(base);
-        match result {
-            Ok(value) => {
-                cleanup?;
-                Ok(value)
-            }
-            Err(error) => {
-                cleanup?;
-                Err(error)
+                    Ok(Value::Undefined)
+                })();
+                roots.truncate(2);
+                outcome?;
             }
         }
+        context.validate()?;
+        Ok(Value::Bool(!self.heap.drag_event(event)?.default_prevented))
     }
 }

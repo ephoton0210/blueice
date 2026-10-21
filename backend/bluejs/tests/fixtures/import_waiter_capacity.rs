@@ -96,18 +96,38 @@ fn leave_room(vm: &mut Vm, bytes: usize) -> SharedSchedulingCharge {
         .unwrap()
 }
 
+/// The job entry roots the queued job's edges before it pops it, and those
+/// temporary roots are charged to the same account.
+fn roots_bytes(vm: &Vm) -> usize {
+    let mut references = 0;
+    vm.visit_promise_job_references(vm.promise_jobs.front().unwrap(), &mut |_| references += 1);
+    crate::vm::realm_call_storage::RealmCallRoots::new(references, None)
+        .unwrap()
+        .retained_bytes()
+}
+
 fn shape(vm: &Vm) -> (usize, usize, usize, usize) {
     (
         vm.module_import_waiters.len(),
         vm.module_import_waiters.capacity(),
-        vm.module_import_waiters.values().map(Vec::len).sum(),
+        vm.module_import_waiters
+            .values()
+            .map(|waiters| waiters.len())
+            .sum(),
         vm.deferred_import_waiters.len(),
     )
 }
 
+fn module_import_snapshot(vm: &Vm) -> HashMap<String, Vec<ObjectId>> {
+    vm.module_import_waiters
+        .iter()
+        .map(|(name, waiters)| (name.clone(), waiters.as_slice().to_vec()))
+        .collect()
+}
+
 fn assert_refused(vm: &mut Vm) {
     let before = shape(vm);
-    let references = vm.module_import_waiters.clone();
+    let references = module_import_snapshot(vm);
     let deferred_references: Vec<_> = vm
         .deferred_import_waiters
         .iter()
@@ -116,7 +136,7 @@ fn assert_refused(vm: &mut Vm) {
     let capacities: Vec<_> = vm
         .module_import_waiters
         .values()
-        .map(Vec::capacity)
+        .map(|waiters| waiters.capacity())
         .collect();
     let deferred_capacity = vm.deferred_import_waiters.capacity();
     let count = vm.host_scheduling_snapshot().pending_reactions;
@@ -128,13 +148,13 @@ fn assert_refused(vm: &mut Vm) {
     assert_eq!(
         vm.module_import_waiters
             .values()
-            .map(Vec::capacity)
+            .map(|waiters| waiters.capacity())
             .collect::<Vec<_>>(),
         capacities
     );
     assert_eq!(vm.deferred_import_waiters.capacity(), deferred_capacity);
     assert_eq!(vm.host_scheduling_snapshot().pending_reactions, count);
-    assert_eq!(&*vm.module_import_waiters, &references);
+    assert_eq!(module_import_snapshot(vm), references);
     assert_eq!(
         vm.deferred_import_waiters
             .iter()
@@ -148,7 +168,8 @@ fn assert_refused(vm: &mut Vm) {
 #[cfg_attr(test, test)]
 fn first_import_waiter_is_refused_before_a_new_key_or_vector_is_published() {
     let mut vm = fixture(Mode::EagerSame, 0, false);
-    let _owner = leave_room(&mut vm, 0);
+    let roots = roots_bytes(&vm);
+    let _owner = leave_room(&mut vm, roots);
     assert_refused(&mut vm);
 }
 
@@ -159,7 +180,8 @@ fn import_waiter_map_growth_is_refused_before_publication() {
         vm.module_import_waiters.len(),
         vm.module_import_waiters.capacity()
     );
-    let _owner = leave_room(&mut vm, 0);
+    let roots = roots_bytes(&vm);
+    let _owner = leave_room(&mut vm, roots);
     assert_refused(&mut vm);
 }
 
@@ -168,7 +190,8 @@ fn import_waiter_vector_growth_is_refused_before_publication() {
     let mut vm = fixture(Mode::EagerSame, 8, false);
     let waiters = &vm.module_import_waiters["test/m0.mjs"];
     assert_eq!(waiters.len(), waiters.capacity());
-    let _owner = leave_room(&mut vm, 0);
+    let roots = roots_bytes(&vm);
+    let _owner = leave_room(&mut vm, roots);
     assert_refused(&mut vm);
 }
 
@@ -189,7 +212,8 @@ fn import_waiter_existing_slots_do_not_recharge_the_module_name() {
     assert!(matches!(preview, Ok(DynamicImportResult::Waiting(_))));
     drop(preview);
     let job_bytes = vm.promise_jobs.front().unwrap().scheduling_payload_bytes();
-    let _owner = leave_room(&mut vm, peak);
+    let roots = roots_bytes(&vm);
+    let _owner = leave_room(&mut vm, peak + roots);
     let before = vm.host_scheduling_snapshot().payload_bytes;
     assert_eq!(vm.run_next_promise_job(), Ok(true));
     assert_eq!(vm.module_import_waiters["test/m0.mjs"].len(), 6);
@@ -232,7 +256,8 @@ fn deferred_waiter_growth_is_refused_before_dependencies_or_entries_are_retained
         vm.deferred_import_waiters.len(),
         vm.deferred_import_waiters.capacity()
     );
-    let _owner = leave_room(&mut vm, 0);
+    let roots = roots_bytes(&vm);
+    let _owner = leave_room(&mut vm, roots);
     assert_refused(&mut vm);
 }
 
@@ -261,7 +286,8 @@ fn deferred_waiter_existing_slots_charge_complete_dependency_staging() {
             * std::mem::size_of::<String>();
     drop(modules);
     let job_bytes = vm.promise_jobs.front().unwrap().scheduling_payload_bytes();
-    let _owner = leave_room(&mut vm, bytes.max(producer_peak));
+    let roots = roots_bytes(&vm);
+    let _owner = leave_room(&mut vm, bytes.max(producer_peak) + roots);
     let before = vm.host_scheduling_snapshot().payload_bytes;
     assert_eq!(vm.run_next_promise_job(), Ok(true));
     assert_eq!(vm.deferred_import_waiters.len(), 6);
@@ -292,6 +318,8 @@ fn assert_cleanup(mode: Mode) {
         assert_eq!(vm.module_import_waiters.capacity(), 0);
         assert_eq!(vm.deferred_import_waiters.capacity(), 0);
         assert_eq!(vm.host_scheduling_usage().unwrap().pending_reactions, 0);
+        // `weak.deref()` keeps its target until the job's checkpoint ends.
+        vm.run_host_microtask_checkpoint().unwrap();
         vm.collect_realm_garbage().unwrap();
         assert_eq!(
             execute(&mut vm, "weak.deref() === undefined;"),
@@ -392,14 +420,14 @@ fn namespace_root_refusal_preserves_pending_import_owners() {
     execute(&mut vm, "var target=import('./m0.mjs'); 0;");
     vm.run_promise_jobs_bounded(32).unwrap();
     execute(&mut vm, "gate.resolve(); 0;");
-    let references = vm.module_import_waiters.clone();
+    let references = module_import_snapshot(&vm);
     let capacity = vm.module_import_waiters.capacity();
     vm.heap.allow_root_registrations(0);
     assert_eq!(
         vm.run_next_promise_job(),
         Err(RuntimeError::Heap(HeapError::IdExhausted))
     );
-    assert_eq!(&*vm.module_import_waiters, &references);
+    assert_eq!(module_import_snapshot(&vm), references);
     assert_eq!(vm.module_import_waiters.capacity(), capacity);
 }
 

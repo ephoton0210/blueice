@@ -15,6 +15,7 @@
 //! matching the HTML event loop's "run a task, then perform a microtask
 //! checkpoint" shape (`research/js-bytecode-eventloop.md`).
 
+use super::host_scheduling::SharedSchedulingCharge;
 use super::*;
 
 /// Maximum pending timers in one host-neutral realm. Further registrations
@@ -58,6 +59,13 @@ pub(super) struct HostTimer {
     nesting: u32,
     /// One registration for the callback and one per object argument.
     roots: Vec<RootId>,
+    // Record buffers and registrations drop before their native/count credit.
+    pub(super) storage: Option<SharedSchedulingCharge>,
+}
+
+struct ActiveTimerRoots {
+    roots: Vec<RootId>,
+    storage: Option<SharedSchedulingCharge>,
 }
 
 /// An uncaught page exception, as opposed to a resource failure that must
@@ -189,6 +197,17 @@ impl Vm {
     /// rather than replaying every missed period. Debugger pauses retain the
     /// queue and return an empty run until the continuation resumes.
     pub fn run_due_host_timers(&mut self, now_ms: u64) -> Result<BlueJsTimerRun, RuntimeError> {
+        // A refused turn leaves the ambient fuel as it found it, even though
+        // the checkpoint pass resets fuel per job before the refusal point.
+        let fuel = self.remaining_instructions;
+        let result = self.run_due_host_timers_inner(now_ms);
+        if result.is_err() {
+            self.remaining_instructions = fuel;
+        }
+        result
+    }
+
+    fn run_due_host_timers_inner(&mut self, now_ms: u64) -> Result<BlueJsTimerRun, RuntimeError> {
         self.check_scheduling_failure()?;
         if self.ensure_no_debugger_continuation().is_err() {
             return Ok(BlueJsTimerRun::default());
@@ -220,7 +239,9 @@ impl Vm {
     ) -> Result<host_task_storage::TaskVector<(u64, u32)>, RuntimeError> {
         self.host_timer_clock_ms = self.host_timer_clock_ms.max(now_ms);
         let now = self.sample_host_timer_clock();
-        let mut due = host_task_storage::TaskVector::new(self.host_scheduling.as_ref())?;
+        let owner = self.timer_table_owner(None)?;
+        let scope = owner.as_ref().map(SharedSchedulingCharge::scheduling_scope);
+        let mut due = host_task_storage::TaskVector::new(scope.as_ref())?;
         due.reserve(
             self.host_timers
                 .iter()
@@ -239,10 +260,50 @@ impl Vm {
         id: u32,
         run: &mut BlueJsTimerRun,
     ) -> Result<(), RuntimeError> {
+        let Some(index) = self.host_timers.iter().position(|timer| timer.id == id) else {
+            return Ok(());
+        };
+        let owner = self.timer_entry_owner(index)?;
+        let result = if self.host_scheduling.is_none() && owner.is_some() {
+            if self.config.instruction_budget == 0 {
+                return Err(RuntimeError::InstructionLimit);
+            }
+            let timer = &self.host_timers[index];
+            let count = if timer.interval_ms.is_some() {
+                1 + timer.arguments.iter().filter_map(Value::object_id).count()
+            } else {
+                0
+            };
+            let roots = realm_call_storage::RealmCallRoots::new(count, owner.as_ref())?;
+            if timer.interval_ms.is_some() {
+                roots.push(&self.heap, timer.callback)?;
+                timer
+                    .arguments
+                    .iter()
+                    .filter_map(Value::object_id)
+                    .try_for_each(|id| roots.push(&self.heap, id))?;
+            }
+            self.with_realm_call_roots(roots, |vm| vm.run_host_timer_entry_inner(id, run))
+        } else {
+            self.run_host_timer_entry_inner(id, run)
+        };
+        owner
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()
+            .and(result)
+    }
+
+    fn run_host_timer_entry_inner(
+        &mut self,
+        id: u32,
+        run: &mut BlueJsTimerRun,
+    ) -> Result<(), RuntimeError> {
         // Earlier task callbacks and their checkpoints may have canceled it.
         let Some(index) = self.host_timers.iter().position(|timer| timer.id == id) else {
             return Ok(());
         };
+        let owner = self.timer_entry_owner(index)?;
         let owns_checkpoint = self.host_scheduling.is_some()
             && !self.checkpoint_completion_deferred()
             && self.checkpoint_context_is_idle();
@@ -263,16 +324,42 @@ impl Vm {
         }
         let root_base = self.async_frame_roots.len();
         let (callback, nesting, snapshot) = if interval.is_none() {
-            let timer = self.host_timers.remove(index);
-            prepared.adopt_arguments(timer.arguments);
-            (timer.callback, timer.nesting, timer.roots)
+            let mut timer = self.host_timers.remove(index);
+            let bytes = host_scheduling::slots(&timer.arguments)
+                .saturating_add(host_scheduling::values_bytes(&timer.arguments));
+            let input = timer
+                .storage
+                .as_mut()
+                .map(|storage| storage.split_off(bytes));
+            prepared.adopt_arguments(self, timer.arguments, input);
+            (
+                timer.callback,
+                timer.nesting,
+                ActiveTimerRoots {
+                    roots: timer.roots,
+                    storage: timer.storage,
+                },
+            )
         } else {
             let timer = &self.host_timers[index];
-            self.async_frame_roots
-                .extend(prepared.references.into_iter().flatten());
-            (timer.callback, timer.nesting, Vec::new())
+            if self.host_scheduling.is_some() || timer.storage.is_none() {
+                self.async_frame_roots
+                    .extend(prepared.references.into_iter().flatten());
+            }
+            (
+                timer.callback,
+                timer.nesting,
+                ActiveTimerRoots {
+                    roots: Vec::new(),
+                    storage: None,
+                },
+            )
         };
-        let active_bytes = host_scheduling::slots(&snapshot);
+        let active_bytes = if snapshot.storage.is_some() {
+            0
+        } else {
+            host_scheduling::slots(&snapshot.roots)
+        };
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(active_bytes);
         if self.host_timers.is_empty() {
             self.host_timers.shrink_to_fit();
@@ -281,10 +368,15 @@ impl Vm {
             .synchronize_scheduling_usage()
             .and_then(|()| self.run_timer_task(callback, prepared, nesting, run));
         self.async_frame_roots.truncate(root_base);
-        self.release_timer_roots(snapshot);
+        self.release_timer_roots(snapshot.roots);
+        drop(snapshot.storage);
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_sub(active_bytes);
         self.reconcile_scheduling_ownership();
         self.synchronize_scheduling_usage()?;
+        owner
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()?;
         outcome?;
         if let Some(interval) = interval {
             let now = self.sample_host_timer_clock();
@@ -425,12 +517,21 @@ impl Vm {
                     .iter()
                     .position(|timer| i64::from(timer.id) == i64::from(id))
                 {
+                    let owner = self.host_timers[index]
+                        .storage
+                        .as_ref()
+                        .map(SharedSchedulingCharge::scheduling_scope);
                     let timer = self.host_timers.remove(index);
                     self.release_timer_roots(timer.roots);
+                    drop(timer.arguments);
+                    drop(timer.storage);
                     if self.host_timers.is_empty() {
                         self.host_timers.shrink_to_fit();
                     }
                     self.synchronize_scheduling_usage()?;
+                    if let Some(owner) = owner {
+                        owner.shared_charge(0)?;
+                    }
                 }
                 Ok(Value::Undefined)
             }
@@ -448,6 +549,7 @@ impl Vm {
     }
 
     fn host_timer_schedule(&mut self, args: &[Value], repeat: bool) -> Result<Value, RuntimeError> {
+        self.timer_table_owner(None)?;
         let callback = args.first().cloned().unwrap_or(Value::Undefined);
         if !self.is_callable(&callback)? {
             return Err(RuntimeError::TypeError(
@@ -479,6 +581,7 @@ impl Vm {
         // A host clock can enqueue work in another same-document realm.
         // Observe it before final admission, root retention and serial assignment.
         let now = self.sample_host_timer_clock();
+        self.timer_table_owner(None)?;
         self.admit_scheduling_work(HostSchedulingUsage {
             pending_timers: 1,
             ..Default::default()
@@ -497,17 +600,21 @@ impl Vm {
         let serial = self.next_host_task_serial()?;
         self.heap.commit_root_batch(batch, &mut prepared.roots);
         if let Some(mut replacement) = prepared.replacement.take() {
-            replacement.append(&mut self.host_timers);
-            self.host_timers = replacement;
+            replacement.append(&mut self.host_timers.data);
+            self.host_timers.data = replacement;
+            if let Some(storage) = prepared.replacement_storage.take() {
+                self.host_timers.storage = Some(storage);
+            }
         }
         let timer_registration::PreparedTimerRegistration {
             arguments,
             roots,
             replacement: _,
+            replacement_storage: _,
             charge,
         } = prepared;
         self.host_timer_next_id = next;
-        self.host_timers.push(HostTimer {
+        self.host_timers.data.push(HostTimer {
             id,
             callback,
             arguments,
@@ -516,8 +623,8 @@ impl Vm {
             interval_ms: repeat.then_some(delay_ms),
             nesting: self.host_timer_nesting.saturating_add(1),
             roots,
+            storage: charge,
         });
-        drop(charge);
         self.reconcile_scheduling_ownership();
         Ok(Value::Number(f64::from(id)))
     }

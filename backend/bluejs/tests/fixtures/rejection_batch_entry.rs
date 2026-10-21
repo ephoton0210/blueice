@@ -366,14 +366,17 @@ fn rejection_batch_entry_delivery_refreshes_the_prepared_timestamp() {
         .as_mut()
         .unwrap()
         .set("timeStamp", Value::Number(-7.0));
+    let queued = vm.browser_tasks.remove_owned(0).unwrap();
+    let native = queued.storage.is_some();
     let BrowserTask::PromiseRejections {
         entries, handled, ..
-    } = vm.browser_tasks.remove(0).unwrap()
+    } = queued.task
     else {
         unreachable!()
     };
     vm.remaining_instructions = vm.config.instruction_budget;
-    vm.run_host_rejection_task(entries, handled, batch).unwrap();
+    vm.run_host_rejection_task(entries, handled, native, batch)
+        .unwrap();
     let stamp = vm
         .lookup_global_name("stamp")
         .unwrap()

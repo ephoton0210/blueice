@@ -101,6 +101,9 @@ fn disposal_ownership_unreachable_stack_resources_and_cycles_are_collectible() {
                 format!("var weak; (()=>{{let value={{}}; weak=new WeakRef(value); let s=new {name}(); s.adopt(value,()=>{{}});}})(); 0;")
             };
             execute(&mut vm, &source).unwrap();
+            // `new WeakRef(value)` keeps its target until the document owner's
+            // checkpoint ends the job.
+            vm.run_host_microtask_checkpoint().unwrap();
             vm.collect_realm_garbage().unwrap();
             assert_eq!(
                 execute(&mut vm, "weak.deref()===undefined;"),
@@ -309,12 +312,15 @@ fn disposal_ownership_suspended_getter_methods_survive_collection() {
 fn disposal_ownership_live_stack_retains_and_disposal_releases_values() {
     let mut vm = page_vm();
     execute(&mut vm,"var s=new DisposableStack(); var weak; (()=>{let value={};weak=new WeakRef(value);s.adopt(value,()=>{});})(); 0;").unwrap();
+    vm.run_host_microtask_checkpoint().unwrap();
     vm.collect_realm_garbage().unwrap();
     assert_eq!(
         execute(&mut vm, "weak.deref()!==undefined;"),
         Ok(Value::Bool(true))
     );
     execute(&mut vm, "s.dispose(); 0;").unwrap();
+    // `deref` kept the target for the job; the owner's checkpoint releases it.
+    vm.run_host_microtask_checkpoint().unwrap();
     vm.collect_realm_garbage().unwrap();
     assert_eq!(
         execute(&mut vm, "weak.deref()===undefined;"),

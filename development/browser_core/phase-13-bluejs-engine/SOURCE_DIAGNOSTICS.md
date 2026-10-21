@@ -1246,7 +1246,7 @@ match that final replay. The combined eight-target checkpoint has 1,731
 passing cases and one existing ignored. Formatting and focused three-library
 Clippy with `-D warnings` pass.
 
-The [TODO progress checklist](BROWSER_INTEGRATION_TODO.md#milestone-record)
+The [TODO progress checklist](BROWSER_INTEGRATION_MILESTONES.md#milestone-record)
 records the verified implementation steps and remaining work. At the foundation
 checkpoint, two of the ten full M1q acceptance gates were complete. That
 checkpoint does not claim

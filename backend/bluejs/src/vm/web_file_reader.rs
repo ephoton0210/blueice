@@ -4,44 +4,23 @@
 
 //! Asynchronous immutable-Blob reads, with collector-owned state and events.
 
+use super::error_input_storage::utf16_from_utf8;
+use super::native_value_storage::NativeValue;
+use super::realm_call_storage::RealmCallRoots;
+use super::transport_buffer_storage::TransportVector;
+use super::web_event_storage::{EventContext, NativeEventState, NativeEventTarget};
 use super::*;
 use crate::heap::{FileReadKind, WebListener};
 use crate::native::ReaderNative;
-use base64::Engine;
 use browser_tasks::BrowserTask;
 
-fn reader_state_storage_bytes(state: &crate::heap::FileReaderState, cloned: bool) -> usize {
-    let text = |value: &JsString| {
-        if cloned {
-            value.byte_len()
-        } else {
-            value.owned_heap_payload_bytes().unwrap_or(usize::MAX)
-        }
-    };
-    std::mem::size_of::<crate::heap::FileReaderState>()
-        .saturating_add(
-            if cloned {
-                state.target.listeners.len()
-            } else {
-                state.target.listeners.capacity()
-            }
-            .saturating_mul(std::mem::size_of::<WebListener>()),
-        )
-        .saturating_add(
-            state
-                .target
-                .listeners
-                .iter()
-                .fold(0usize, |bytes, listener| {
-                    bytes.saturating_add(text(&listener.name))
-                }),
-        )
-        .saturating_add(state.encoding.as_ref().map_or(0, &text))
-        .saturating_add(match &state.result {
-            Value::String(value) => text(value),
-            _ => 0,
-        })
-}
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/file_reader_storage.rs"]
+mod storage_tests;
+
+mod packaging;
+mod storage;
+use storage::NativeReaderState;
 
 const HANDLERS: [&str; 6] = ["loadstart", "progress", "abort", "error", "load", "loadend"];
 
@@ -194,17 +173,43 @@ impl Vm {
         args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
-        if native == ReaderNative::Constructor {
-            if !construct {
-                return Err(RuntimeError::TypeError(
-                    "FileReader constructor requires new".into(),
-                ));
-            }
-            let default = self.globals["%WebFileReader%"];
-            let prototype = self.constructor_prototype_for(default, None)?;
-            return Ok(Value::Object(
-                self.with_roots(|heap| heap.alloc_file_reader(prototype))?,
+        if native == ReaderNative::Constructor && !construct {
+            return Err(RuntimeError::TypeError(
+                "FileReader constructor requires new".into(),
             ));
+        }
+        let context = EventContext::capture(self)?;
+        let ids = receiver
+            .object_id()
+            .into_iter()
+            .chain(args.iter().filter_map(Value::object_id))
+            .chain(
+                self.new_target
+                    .object_id()
+                    .filter(|_| native == ReaderNative::Constructor),
+            );
+        let roots = context.prepare_roots(self, ids, 2)?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            vm.web_reader_owned(native, receiver, args, &context, &roots)
+        });
+        context.validate().and(result)
+    }
+
+    fn web_reader_owned(
+        &mut self,
+        native: ReaderNative,
+        receiver: &Value,
+        args: &[Value],
+        context: &EventContext,
+        roots: &RealmCallRoots,
+    ) -> Result<Value, RuntimeError> {
+        if native == ReaderNative::Constructor {
+            let default = self.globals["%WebFileReader%"];
+            let prototype = self.constructor_prototype_for(default, None);
+            let prototype = context.validate().and(prototype)?;
+            roots.push(&self.heap, prototype)?;
+            let state = NativeReaderState::new(context.owner.as_ref())?;
+            return Ok(Value::Object(state.allocate(self, prototype)?));
         }
         let reader = receiver
             .object_id()
@@ -213,12 +218,14 @@ impl Vm {
         let state = self.heap.file_reader(reader)?;
         match native {
             ReaderNative::Ready => return Ok(Value::Number(state.ready as f64)),
-            ReaderNative::Result => return Ok(state.result.clone()),
+            ReaderNative::Result => {
+                return Ok(NativeValue::copied(&state.result, context.owner.as_ref())?.into_value())
+            }
             ReaderNative::Error => return Ok(state.error.map_or(Value::Null, Value::Object)),
             ReaderNative::Handler(name, set) => {
-                return self.reader_handler(reader, name, set, args)
+                return self.reader_handler(reader, name, set, args, context)
             }
-            ReaderNative::Abort => return self.abort_file_reader(reader),
+            ReaderNative::Abort => return self.abort_file_reader(reader, context, roots),
             ReaderNative::Read(kind) => {
                 let blob = native::argument(args, 0)
                     .object_id()
@@ -229,7 +236,7 @@ impl Vm {
                 let encoding = if kind == FileReadKind::Text
                     && args.get(1).is_some_and(|value| *value != Value::Undefined)
                 {
-                    Some(self.coerce_string(&args[1])?)
+                    Some(self.reader_string(&args[1], context)?)
                 } else {
                     None
                 };
@@ -253,43 +260,28 @@ impl Vm {
                     })?;
                 let prepared = self.prepare_browser_task(HostSchedulingUsage::default())?;
                 self.heap.check_root_registration_count(1)?;
-                let encoding_bytes = encoding.as_ref().map_or(0, |value| {
-                    value.owned_heap_payload_bytes().unwrap_or(usize::MAX)
-                });
-                let forecast = reader_state_storage_bytes(self.heap.file_reader(reader)?, true)
-                    .saturating_add(encoding_bytes);
-                let mut state_charge = self
-                    .host_scheduling
-                    .as_ref()
-                    .map(|scope| scope.shared_charge(forecast))
-                    .transpose()?;
-                let mut state = self.heap.file_reader(reader)?.clone();
-                if let Some(charge) = &mut state_charge {
-                    charge.resize(
-                        reader_state_storage_bytes(&state, false).saturating_add(encoding_bytes),
-                    )?;
-                }
-                state.epoch = epoch;
-                state.ready = 1;
-                state.result = Value::Null;
-                state.error = None;
-                state.blob = Some(blob);
-                state.kind = kind;
-                state.encoding = encoding;
-                state.loaded = 0;
-                state.total = self.heap.web_blob(blob)?.bytes.len();
-                if let Some(charge) = &mut state_charge {
-                    charge.resize(reader_state_storage_bytes(&state, false))?;
-                }
-                let state =
-                    self.with_roots(|heap| heap.prepare_file_reader_update(reader, state))?;
+                let mut state = NativeReaderState::copied(self, reader, context.owner.as_ref())?;
+                state.result(
+                    self,
+                    roots,
+                    NativeValue::adopt(Value::Null, context.owner.as_ref())?,
+                )?;
+                state.encoding(encoding)?;
+                state.state.epoch = epoch;
+                state.state.ready = 1;
+                state.state.error = None;
+                state.state.blob = Some(blob);
+                state.state.kind = kind;
+                state.state.loaded = 0;
+                state.state.total = self.heap.web_blob(blob)?.bytes.len();
+                let state = state.prepare(self, reader)?;
                 let objects = [reader];
                 let roots = self.heap.prepare_root_batch(&objects)?;
+                context.validate()?;
                 self.check_scheduling_failure()?;
                 let serial = self.next_host_task_serial()?;
                 let root = self.heap.commit_single_root(roots);
-                self.heap.commit_file_reader_update(state);
-                drop(state_charge);
+                state.commit(self);
                 prepared.commit(
                     self,
                     BrowserTask::FileRead {
@@ -307,76 +299,118 @@ impl Vm {
         Ok(Value::Undefined)
     }
 
+    fn reader_string(
+        &mut self,
+        value: &Value,
+        context: &EventContext,
+    ) -> Result<NativeValue, RuntimeError> {
+        if matches!(value, Value::String(_)) {
+            return NativeValue::copied(value, context.owner.as_ref());
+        }
+        let text = self.coerce_string(value);
+        let text = context.validate().and(text)?;
+        NativeValue::adopt(Value::String(text), context.owner.as_ref())
+    }
+
     fn reader_handler(
         &mut self,
         reader: ObjectId,
         name: &'static str,
         set: bool,
         args: &[Value],
+        context: &EventContext,
     ) -> Result<Value, RuntimeError> {
-        let mut target = self.heap.web_event_target(reader)?.clone();
-        let existing = target
+        let existing = self
+            .heap
+            .web_event_target(reader)?
             .listeners
             .iter()
             .position(|listener| listener.handler && listener.name == name);
         if !set {
             return Ok(existing.map_or(Value::Null, |index| {
-                Value::Object(target.listeners[index].callback)
+                Value::Object(
+                    self.heap
+                        .web_event_target(reader)
+                        .expect("validated reader")
+                        .listeners[index]
+                        .callback,
+                )
             }));
         }
-        let value = native::argument(args, 0);
-        // EventHandler's LegacyTreatNonObjectAsNull conversion retains any
-        // object. Noncallable objects are inert handlers, not EventListeners.
-        let callback = value.object_id();
+        // EventHandler's LegacyTreatNonObjectAsNull retains any object; a
+        // noncallable object remains inert rather than becoming a listener.
+        let callback = native::argument(args, 0).object_id();
+        let mut target = NativeEventTarget::copied(self, reader, context.owner.as_ref())?;
         match (existing, callback) {
-            (Some(index), Some(callback)) => target.listeners[index].callback = callback,
+            (Some(index), Some(callback)) => target.state.listeners[index].callback = callback,
             (Some(index), None) => {
-                target.listeners.remove(index);
+                target.state.listeners.remove(index);
             }
             (None, Some(callback)) => {
-                if target.listeners.len() >= 4096 {
+                if target.state.listeners.len() >= 4096 {
                     return Err(RuntimeError::RangeError(
                         "Event listener limit exceeded".into(),
                     ));
                 }
-                target.next_serial = target.next_serial.checked_add(1).ok_or_else(|| {
-                    RuntimeError::RangeError("Event listener identity exhausted".into())
-                })?;
-                target.listeners.push(WebListener {
-                    signal: None,
-                    serial: target.next_serial,
-                    name: name.into(),
-                    callback,
-                    capture: false,
-                    once: false,
-                    passive: false,
-                    handler: true,
-                });
+                target.state.next_serial =
+                    target.state.next_serial.checked_add(1).ok_or_else(|| {
+                        RuntimeError::RangeError("Event listener identity exhausted".into())
+                    })?;
+                let (Value::String(name), storage) =
+                    utf16_from_utf8(name, context.owner.as_ref())?.into_retained_parts()
+                else {
+                    unreachable!()
+                };
+                target.listener(
+                    WebListener {
+                        signal: None,
+                        serial: target.state.next_serial,
+                        name,
+                        callback,
+                        capture: false,
+                        once: false,
+                        passive: false,
+                        handler: true,
+                    },
+                    storage,
+                )?;
             }
             _ => {}
         }
-        self.with_roots(|heap| heap.set_web_event_target(reader, target))?;
+        context.validate()?;
+        target.into_heap(self, reader)?;
         Ok(Value::Undefined)
     }
 
-    fn abort_file_reader(&mut self, reader: ObjectId) -> Result<Value, RuntimeError> {
-        let mut state = self.heap.file_reader(reader)?.clone();
-        state.result = Value::Null;
-        if state.ready != 1 {
-            self.with_roots(|heap| heap.set_file_reader(reader, state))?;
+    fn abort_file_reader(
+        &mut self,
+        reader: ObjectId,
+        context: &EventContext,
+        roots: &RealmCallRoots,
+    ) -> Result<Value, RuntimeError> {
+        let mut state = NativeReaderState::copied(self, reader, context.owner.as_ref())?;
+        state.result(
+            self,
+            roots,
+            NativeValue::adopt(Value::Null, context.owner.as_ref())?,
+        )?;
+        if state.state.ready != 1 {
+            state.into_heap(self, reader)?;
             return Ok(Value::Undefined);
         }
-        let (loaded, total) = (state.loaded, state.total);
-        state.ready = 2;
-        state.blob = None;
-        state.encoding = None;
-        state.epoch = state
+        let (loaded, total) = (state.state.loaded, state.state.total);
+        state.state.ready = 2;
+        state.state.blob = None;
+        state.encoding(None)?;
+        state.state.epoch = state
+            .state
             .epoch
             .checked_add(1)
             .ok_or_else(|| RuntimeError::RangeError("FileReader identity exhausted".into()))?;
-        self.with_roots(|heap| heap.set_file_reader(reader, state))?;
+        state.into_heap(self, reader)?;
         self.cancel_file_read_tasks(reader)?;
         self.fire_reader_progress(reader, "abort", loaded, total)?;
+        context.validate()?;
         if self.heap.file_reader(reader)?.ready != 1 {
             self.fire_reader_progress(reader, "loadend", loaded, total)?;
         }
@@ -390,22 +424,22 @@ impl Vm {
         loaded: usize,
         total: usize,
     ) -> Result<(), RuntimeError> {
-        let base = self.stack.len();
-        self.stack.push(Value::Object(reader));
-        let result = (|| {
-            let mut state = self.new_web_event_state(4, name.into());
-            state.set("lengthComputable", Value::Bool(true));
-            state.set("loaded", Value::Number(loaded as f64));
-            state.set("total", Value::Number(total as f64));
-            let prototype = self.globals["%WebProgressEvent%"];
-            let event = self.with_roots(|heap| heap.alloc_drag_event(state, prototype))?;
-            self.stack.push(Value::Object(event));
-            self.finish_web_event(event)?;
-            self.dispatch_web_target_event(reader, event, true)?;
-            Ok(())
-        })();
-        self.stack.truncate(base);
-        result
+        let context = EventContext::capture(self)?;
+        let roots = context.prepare_roots(self, std::iter::once(reader), 1)?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            let name = utf16_from_utf8(name, context.owner.as_ref())?;
+            let mut state = NativeEventState::new(vm, 4, name)?;
+            state.scalar(vm, &roots, "lengthComputable", Value::Bool(true))?;
+            state.scalar(vm, &roots, "loaded", Value::Number(loaded as f64))?;
+            state.scalar(vm, &roots, "total", Value::Number(total as f64))?;
+            let prototype = vm.globals["%WebProgressEvent%"];
+            let event = state.allocate(vm, prototype)?;
+            roots.push(&vm.heap, event)?;
+            vm.finish_web_event(event)?;
+            let result = vm.dispatch_web_target_event(reader, event, true);
+            context.validate().and(result).map(|_| ())
+        });
+        context.validate().and(result)
     }
 
     pub(super) fn file_read_task(
@@ -413,6 +447,22 @@ impl Vm {
         reader: ObjectId,
         epoch: u64,
         stage: u8,
+    ) -> Result<Option<u8>, RuntimeError> {
+        let context = EventContext::capture(self)?;
+        let roots = context.prepare_roots(self, std::iter::once(reader), 2)?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            vm.file_read_task_owned(reader, epoch, stage, &context, &roots)
+        });
+        context.validate().and(result)
+    }
+
+    fn file_read_task_owned(
+        &mut self,
+        reader: ObjectId,
+        epoch: u64,
+        stage: u8,
+        context: &EventContext,
+        roots: &RealmCallRoots,
     ) -> Result<Option<u8>, RuntimeError> {
         let state = self.heap.file_reader(reader)?;
         if state.epoch != epoch || state.ready != 1 {
@@ -422,57 +472,75 @@ impl Vm {
         match stage {
             0 => self.fire_reader_progress(reader, "loadstart", 0, total)?,
             1 => {
-                let mut state = state.clone();
-                state.loaded = total;
-                self.with_roots(|heap| heap.set_file_reader(reader, state))?;
+                let mut state = NativeReaderState::copied(self, reader, context.owner.as_ref())?;
+                state.state.loaded = total;
+                state.into_heap(self, reader)?;
                 self.fire_reader_progress(reader, "progress", total, total)?;
             }
             2 => {
                 let blob = state.blob.expect("an active read retains its Blob");
                 let kind = state.kind;
-                let encoding = state.encoding.clone();
-                let base = self.stack.len();
-                let result = self.package_file_read(blob, kind, encoding.as_ref());
-                let mut state = self.heap.file_reader(reader)?.clone();
-                state.ready = 2;
-                state.blob = None;
-                state.encoding = None;
-                let event = match result {
-                    Ok(value) => {
-                        self.stack.push(value.clone());
-                        state.result = value;
-                        "load"
-                    }
+                let encoding = state
+                    .encoding
+                    .as_ref()
+                    .map(|text| {
+                        crate::vm::web_drag_drop::storage::copy_string(text, context.owner.as_ref())
+                    })
+                    .transpose()?;
+                let label = encoding.as_ref().map(|value| match value.value() {
+                    Value::String(text) => text,
+                    _ => unreachable!(),
+                });
+                let result = self.package_file_read(blob, kind, label);
+                context.validate()?;
+                drop(encoding);
+                let current = self.heap.file_reader(reader)?;
+                if current.epoch != epoch || current.ready != 1 {
+                    // Packaging may abort or start a replacement read. Its
+                    // independent queued owner must keep that newer state.
+                    return Ok(None);
+                }
+                let (event, value, error) = match result {
+                    Ok(value) => ("load", value, None),
                     Err(error) => {
-                        if matches!(error, RuntimeError::InstructionLimit) {
+                        if !error.is_catchable() {
                             return Err(error);
                         }
-                        let prototype = self.globals["%WebDOMException%"];
-                        let error = self.with_roots(|heap| {
-                            heap.alloc_dom_exception(
-                                "NotReadableError".into(),
-                                "File data could not be packaged".into(),
-                                prototype,
-                            )
-                        })?;
-                        self.stack.push(Value::Object(error));
-                        state.error = Some(error);
-                        "error"
+                        drop(error);
+                        drop(self.take_pending_throw_origin());
+                        let error = match self
+                            .drag_named_error("NotReadableError", "File data could not be packaged")
+                        {
+                            Err(RuntimeError::Thrown(Value::Object(error))) => error,
+                            Err(error) => return Err(error),
+                            Ok(_) => unreachable!("named DOMException throws its object"),
+                        };
+                        context.validate()?;
+                        roots.push(&self.heap, error)?;
+                        (
+                            "error",
+                            NativeValue::adopt(Value::Null, context.owner.as_ref())?,
+                            Some(error),
+                        )
                     }
                 };
-                let result = (|| {
-                    self.with_roots(|heap| heap.set_file_reader(reader, state))?;
-                    self.fire_reader_progress(reader, event, total, total)?;
-                    if self.heap.file_reader(reader)?.ready != 1 {
-                        self.fire_reader_progress(reader, "loadend", total, total)?;
-                    }
-                    Ok(None)
-                })();
-                self.stack.truncate(base);
-                return result;
+                let mut state = NativeReaderState::copied(self, reader, context.owner.as_ref())?;
+                state.result(self, roots, value)?;
+                state.state.ready = 2;
+                state.state.blob = None;
+                state.state.error = error;
+                state.encoding(None)?;
+                state.into_heap(self, reader)?;
+                self.fire_reader_progress(reader, event, total, total)?;
+                context.validate()?;
+                if self.heap.file_reader(reader)?.ready != 1 {
+                    self.fire_reader_progress(reader, "loadend", total, total)?;
+                }
+                return Ok(None);
             }
             _ => unreachable!("bounded file read stage"),
         }
+        context.validate()?;
         let state = self.heap.file_reader(reader)?;
         Ok((state.epoch == epoch && state.ready == 1).then_some(stage + 1))
     }
@@ -482,47 +550,13 @@ impl Vm {
         blob: ObjectId,
         kind: FileReadKind,
         label: Option<&JsString>,
-    ) -> Result<Value, RuntimeError> {
-        let data = self.heap.web_blob(blob)?.clone();
-        let result = match kind {
-            FileReadKind::ArrayBuffer => {
-                let prototype = self.buffer_prototype("ArrayBuffer")?;
-                let buffer = self.with_roots(|heap| {
-                    heap.alloc_array_buffer(data.bytes.len(), Some(prototype))
-                })?;
-                self.heap.array_buffer_write(buffer, 0, &data.bytes)?;
-                Value::Object(buffer)
-            }
-            FileReadKind::BinaryString => Value::String(JsString::from_code_units(
-                data.bytes.into_iter().map(u16::from).collect(),
-            )),
-            FileReadKind::DataUrl => {
-                let mime = data.media_type.to_utf8().unwrap_or_default();
-                let mime = if mime.is_empty() {
-                    "application/octet-stream"
-                } else {
-                    &mime
-                };
-                Value::String(
-                    format!(
-                        "data:{mime};base64,{}",
-                        base64::engine::general_purpose::STANDARD.encode(data.bytes)
-                    )
-                    .into(),
-                )
-            }
-            FileReadKind::Text => {
-                let explicit = label
-                    .and_then(|label| label.to_utf8().ok())
-                    .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()));
-                let mime = data.media_type.to_utf8().unwrap_or_default();
-                let charset = reader_mime_encoding(&mime);
-                let encoding = explicit.or(charset).unwrap_or(encoding_rs::UTF_8);
-                Value::String(encoding.decode(&data.bytes).0.into_owned().into())
-            }
-        };
-        self.check_string(&result)?;
-        Ok(result)
+    ) -> Result<NativeValue, RuntimeError> {
+        let context = EventContext::capture(self)?;
+        let roots = context.prepare_roots(self, std::iter::once(blob), 1)?;
+        let result = self.with_realm_call_roots(roots.clone(), |vm| {
+            packaging::package(vm, blob, kind, label, &context, &roots)
+        });
+        context.validate().and(result)
     }
 }
 
@@ -530,7 +564,13 @@ impl Vm {
 // MIME Sniffing's forgiving parameter parser: quoted semicolons are data,
 // invalid essences fail parsing, and the first valid charset parameter wins
 // even when its value is not a recognized Encoding Standard label.
-fn reader_mime_encoding(input: &str) -> Option<&'static encoding_rs::Encoding> {
+fn reader_mime_encoding(
+    input: &str,
+    owner: Option<&host_scheduling::SharedSchedulingCharge>,
+) -> Result<Option<&'static encoding_rs::Encoding>, RuntimeError> {
+    if let Some(owner) = owner {
+        owner.reserve_peer(0)?;
+    }
     fn whitespace(byte: u8) -> bool {
         matches!(byte, b'\t' | b'\n' | b'\r' | b' ')
     }
@@ -541,11 +581,15 @@ fn reader_mime_encoding(input: &str) -> Option<&'static encoding_rs::Encoding> {
                 .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(byte))
     }
     let input = input.trim_matches(['\t', '\n', '\r', ' ']);
-    let (essence, parameters) = input.split_once(';')?;
-    let (main, subtype) = essence.split_once('/')?;
+    let Some((essence, parameters)) = input.split_once(';') else {
+        return Ok(None);
+    };
+    let Some((main, subtype)) = essence.split_once('/') else {
+        return Ok(None);
+    };
     let subtype = subtype.trim_end_matches(['\t', '\n', '\r', ' ']);
     if !token(main.as_bytes()) || !token(subtype.as_bytes()) {
-        return None;
+        return Ok(None);
     }
     let bytes = parameters.as_bytes();
     let mut position = 0;
@@ -565,7 +609,7 @@ fn reader_mime_encoding(input: &str) -> Option<&'static encoding_rs::Encoding> {
             continue;
         }
         position += 1;
-        let mut value = Vec::new();
+        let mut value = TransportVector::with_capacity(0, owner)?;
         if bytes.get(position) == Some(&b'"') {
             position += 1;
             while position < bytes.len() {
@@ -575,10 +619,10 @@ fn reader_mime_encoding(input: &str) -> Option<&'static encoding_rs::Encoding> {
                     break;
                 }
                 if byte == b'\\' && position < bytes.len() {
-                    value.push(bytes[position]);
+                    value.push(bytes[position])?;
                     position += 1;
                 } else {
-                    value.push(byte);
+                    value.push(byte)?;
                 }
             }
             while position < bytes.len() && bytes[position] != b';' {
@@ -589,9 +633,11 @@ fn reader_mime_encoding(input: &str) -> Option<&'static encoding_rs::Encoding> {
             while position < bytes.len() && bytes[position] != b';' {
                 position += 1;
             }
-            value.extend_from_slice(&bytes[start..position]);
+            for byte in &bytes[start..position] {
+                value.push(*byte)?;
+            }
             while value.last().is_some_and(|byte| whitespace(*byte)) {
-                value.pop();
+                value.truncate(value.len() - 1);
             }
             if value.is_empty() {
                 continue;
@@ -603,8 +649,8 @@ fn reader_mime_encoding(input: &str) -> Option<&'static encoding_rs::Encoding> {
                 .iter()
                 .all(|byte| *byte == b'\t' || (32..=126).contains(byte))
         {
-            return encoding_rs::Encoding::for_label(&value);
+            return Ok(encoding_rs::Encoding::for_label(&value));
         }
     }
-    None
+    Ok(None)
 }

@@ -989,33 +989,71 @@ impl Vm {
     /// advance the queue one observable turn at a time.
     pub(in super::super) fn run_next_promise_job(&mut self) -> Result<bool, RuntimeError> {
         self.check_scheduling_failure()?;
-        let active_root_base = self.async_frame_roots.len();
-        if let Some(job) = self.promise_jobs.front() {
-            let mut references = 0;
-            self.visit_promise_job_references(job, &mut |_| references += 1);
-            self.prepare_async_frame_root_slots(references)?;
+        if self.promise_jobs.is_empty() {
+            return Ok(false);
         }
-        let Some(job) = self.promise_jobs.pop_front() else {
+        let queue_owner = self.promise_job_owner(None)?;
+        let queued = self.promise_jobs.data.front().expect("pending job");
+        let owner = match queued.owner() {
+            Ok(owner) => owner.or(queue_owner),
+            Err(RuntimeError::SchedulingLimit | RuntimeError::Heap(_)) => {
+                // A canceled foreign producer loses its own work. The queue's
+                // original backing owner was validated above and stays live.
+                drop(self.promise_jobs.pop_front());
+                if self.promise_jobs.is_empty() {
+                    self.promise_jobs.shrink_to_fit();
+                }
+                self.reconcile_scheduling_ownership();
+                return Ok(true);
+            }
+            Err(error) => return Err(error),
+        };
+        let mut references = 0;
+        self.visit_promise_job_references(&queued.job, &mut |_| references += 1);
+        let roots = realm_call_storage::RealmCallRoots::new(references, owner.as_ref())?;
+        let mut rooting = Ok(());
+        self.visit_promise_job_references(&queued.job, &mut |id| {
+            if rooting.is_ok() {
+                rooting = roots.push(&self.heap, id);
+            }
+        });
+        rooting?;
+        let result = self.with_realm_call_roots(roots, Vm::run_next_promise_job_owned);
+        if let Some(owner) = owner {
+            owner.reserve_peer(0)?;
+        }
+        result
+    }
+
+    fn run_next_promise_job_owned(&mut self) -> Result<bool, RuntimeError> {
+        let active_root_base = self.async_frame_roots.len();
+        let Some(queued) = self.promise_jobs.pop_front() else {
             return Ok(false);
         };
-        // Split the borrow without a reference vector. All slots were admitted
-        // while the queue still owned this job; the lease covers the Rust-held buffer.
-        let mut roots = std::mem::take(&mut self.async_frame_roots);
-        let roots_charge = self.charge_execution_control(host_scheduling::slots(&roots));
-        self.visit_promise_job_references(&job, &mut |id| roots.push(id));
-        self.async_frame_roots = roots;
-        drop(roots_charge);
         if self.promise_jobs.is_empty() {
             self.promise_jobs.shrink_to_fit();
         }
-        let job_payload = self.charge_execution_payload(job.scheduling_payload_bytes());
         if let Err(error) = self.synchronize_scheduling_usage() {
             self.async_frame_roots.truncate(active_root_base);
-            drop(job);
-            drop(job_payload);
+            drop(queued);
             self.reconcile_scheduling_ownership();
             return Err(error);
         }
+        let origin_bytes = queued
+            .job
+            .rejection_origin()
+            .map_or(0, ThrowOrigin::payload_bytes);
+        let owner = self.argument_list_owner()?;
+        let mut origin_storage = owner
+            .as_ref()
+            .map(|owner| owner.reserve_peer(origin_bytes))
+            .transpose()?;
+        let origin = queued.job.rejection_origin().cloned().unwrap_or_default();
+        if let Some(storage) = &mut origin_storage {
+            storage.resize(origin.payload_bytes())?;
+        }
+        let promise_job_storage::QueuedPromiseJob { job, storage } = queued;
+        let job_payload = self.adopt_job_payload(storage, job.scheduling_payload_bytes());
         // Promise jobs always execute in a new ECMAScript execution context.
         // A preceding top-level-await continuation can leave the ambient
         // interpreter with no fuel, but that must not turn the next queued
@@ -1037,10 +1075,9 @@ impl Vm {
         let ambient_origin = self.take_pending_throw_origin();
         let ambient_bytes = ambient_origin.payload_bytes();
         self.active_scheduling_bytes = self.active_scheduling_bytes.saturating_add(ambient_bytes);
-        let origin = job.rejection_origin().cloned().unwrap_or_default();
         let epoch = self.throw_epoch;
-        let result =
-            self.with_rejection_origin(Some(origin), |vm| vm.execute_promise_job(job, job_payload));
+        let execute = |vm: &mut Vm| vm.execute_promise_job(job, job_payload);
+        let result = self.with_leased_rejection_origin(Some(origin), origin_storage, execute);
         let failure_origin = result
             .as_ref()
             .is_err_and(|error| error.is_catchable())
@@ -1112,9 +1149,21 @@ impl Vm {
                         self.resolve_promise(promise, value)?
                     }
                     (ReactionTarget::Native(promise), Err(error)) => {
-                        let error = self.error_value(error)?;
-                        drop(outcome_payload);
-                        self.reject_promise_with_origin(promise, error, origin)?;
+                        let storage = outcome_payload.into_native(
+                            self,
+                            host_scheduling::runtime_error_payload_bytes(&error),
+                        )?;
+                        let error = self.error_value_with_input(error, storage)?;
+                        error.with_owned_context(self, |vm, error| {
+                            vm.with_rejection_origin(Some(origin), |vm| {
+                                let (value, storage) = error.into_retained_parts();
+                                vm.settle_promise_with_input_charge(
+                                    promise,
+                                    PromiseStatus::Rejected(value),
+                                    storage,
+                                )
+                            })
+                        })?;
                     }
                     (ReactionTarget::Capability(capability), Ok(value)) => {
                         self.stack.extend(value.object_id().map(Value::Object));
@@ -1122,11 +1171,22 @@ impl Vm {
                         self.call_native(capability.resolve, Value::Undefined, vec![value], false)?;
                     }
                     (ReactionTarget::Capability(capability), Err(error)) => {
-                        let error = self.error_value(error)?;
-                        self.stack.extend(error.object_id().map(Value::Object));
-                        drop(outcome_payload);
-                        self.with_rejection_origin(Some(origin), |vm| {
-                            vm.call_native(capability.reject, Value::Undefined, vec![error], false)
+                        let storage = outcome_payload.into_native(
+                            self,
+                            host_scheduling::runtime_error_payload_bytes(&error),
+                        )?;
+                        let error = self.error_value_with_input(error, storage)?;
+                        error.with_owned_context(self, |vm, error| {
+                            let arguments =
+                                argument_list_storage::ArgumentValues::single_retained(vm, error)?;
+                            vm.with_rejection_origin(Some(origin), |vm| {
+                                arguments.call_native(
+                                    vm,
+                                    capability.reject,
+                                    Value::Undefined,
+                                    false,
+                                )
+                            })
                         })?;
                     }
                 }

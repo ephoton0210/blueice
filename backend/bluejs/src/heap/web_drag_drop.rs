@@ -44,6 +44,7 @@ pub(crate) struct DragStore {
 }
 
 impl DragStore {
+    #[cfg(any(test, coverage))]
     pub fn new(mode: DragStoreMode) -> Self {
         Self {
             mode,
@@ -58,10 +59,19 @@ impl DragStore {
         }
     }
 
-    pub fn references(&self) -> Vec<ObjectId> {
-        let mut ids = Vec::new();
-        self.visit_references(&mut |id| ids.push(id));
-        ids
+    pub(super) fn file_ids(&self) -> impl Iterator<Item = ObjectId> + Clone + '_ {
+        self.items.iter().filter_map(|item| {
+            if matches!(
+                self.mode,
+                DragStoreMode::Protected | DragStoreMode::Disabled
+            ) {
+                return None;
+            }
+            match item.data {
+                DragItemData::File(file) => Some(file),
+                _ => None,
+            }
+        })
     }
     pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         self.items
@@ -80,15 +90,48 @@ impl DragStore {
     }
 
     pub fn bytes(&self) -> usize {
+        size_of::<Self>().saturating_add(self.owned_buffer_bytes())
+    }
+    pub(crate) fn owned_buffer_bytes(&self) -> usize {
         self.items.iter().fold(
-            size_of::<Self>() + self.drop_effect.byte_len() + self.effect_allowed.byte_len(),
+            self.items
+                .capacity()
+                .saturating_mul(size_of::<DragItem>())
+                .saturating_add(
+                    self.drop_effect
+                        .owned_heap_payload_bytes()
+                        .unwrap_or(usize::MAX),
+                )
+                .saturating_add(
+                    self.effect_allowed
+                        .owned_heap_payload_bytes()
+                        .unwrap_or(usize::MAX),
+                ),
             |bytes, item| {
                 bytes
-                    .saturating_add(size_of::<DragItem>())
+                    .saturating_add(item.format.owned_heap_payload_bytes().unwrap_or(usize::MAX))
+                    .saturating_add(match &item.data {
+                        DragItemData::Text(text) => {
+                            text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+                        }
+                        _ => 0,
+                    })
+            },
+        )
+    }
+    pub(crate) fn copied_buffer_bytes(&self) -> usize {
+        self.items.iter().fold(
+            self.items
+                .len()
+                .saturating_mul(size_of::<DragItem>())
+                .saturating_add(self.drop_effect.byte_len())
+                .saturating_add(self.effect_allowed.byte_len()),
+            |bytes, item| {
+                bytes
                     .saturating_add(item.format.byte_len())
                     .saturating_add(match &item.data {
                         DragItemData::Text(text) => text.byte_len(),
-                        DragItemData::File(_) | DragItemData::FileMarker => 0,
+                        _ => 0,
                     })
             },
         )
@@ -129,10 +172,14 @@ impl DragEventState {
     }
 
     pub fn get(&self, name: &str) -> Value {
+        self.get_ref(name).cloned().unwrap_or(Value::Undefined)
+    }
+
+    pub(crate) fn get_ref(&self, name: &str) -> Option<&Value> {
         self.attributes
             .iter()
             .find(|(key, _)| *key == name)
-            .map_or(Value::Undefined, |(_, value)| value.clone())
+            .map(|(_, value)| value)
     }
 
     pub fn set(&mut self, name: &'static str, value: Value) {
@@ -144,21 +191,45 @@ impl DragEventState {
     }
 
     pub fn bytes(&self) -> usize {
+        size_of::<Self>().saturating_add(self.owned_buffer_bytes())
+    }
+
+    pub(crate) fn owned_buffer_bytes(&self) -> usize {
         self.attributes.iter().fold(
-            size_of::<Self>().saturating_add(self.path.len().saturating_mul(size_of::<ObjectId>())),
+            self.path
+                .capacity()
+                .saturating_mul(size_of::<ObjectId>())
+                .saturating_add(
+                    self.attributes
+                        .capacity()
+                        .saturating_mul(size_of::<(&str, Value)>()),
+                ),
+            |bytes, (_, value)| bytes.saturating_add(HeapNativeBudget::value_payload_bytes(value)),
+        )
+    }
+
+    pub(crate) fn copied_buffer_bytes(&self) -> usize {
+        self.attributes.iter().fold(
+            self.path
+                .len()
+                .saturating_mul(size_of::<ObjectId>())
+                .saturating_add(
+                    self.attributes
+                        .len()
+                        .saturating_mul(size_of::<(&str, Value)>()),
+                ),
             |bytes, (_, value)| {
-                bytes
-                    .saturating_add(size_of::<(&str, Value)>())
-                    .saturating_add(value.payload_bytes())
+                bytes.saturating_add(match value {
+                    Value::String(value) => value.byte_len(),
+                    Value::Symbol(value) => {
+                        value.description.as_ref().map_or(0, JsString::byte_len)
+                    }
+                    value => HeapNativeBudget::value_payload_bytes(value),
+                })
             },
         )
     }
 
-    pub fn references(&self) -> Vec<ObjectId> {
-        let mut ids = Vec::new();
-        self.visit_references(&mut |id| ids.push(id));
-        ids
-    }
     pub fn visit_references(&self, visit: &mut dyn FnMut(ObjectId)) {
         self.transfer
             .into_iter()
@@ -221,25 +292,25 @@ impl Heap {
     ) -> Result<(), HeapError> {
         let previous = self.drag_store(object)?.bytes();
         let bytes = store.bytes();
-        let references = store.references();
-        for reference in &references {
-            self.object(*reference)?;
-        }
-        let protected: Vec<_> = std::iter::once(object)
-            .chain(references.iter().copied())
-            .collect();
-        self.ensure_room(bytes.saturating_sub(previous), &protected)?;
+        let mut valid = Ok(());
+        store.visit_references(&mut |id| valid = valid.and_then(|()| self.object(id).map(|_| ())));
+        valid?;
+        self.ensure_room_protected(
+            bytes.saturating_sub(previous),
+            ProtectedRoots::DragStore(object, &store),
+        )?;
+        store.visit_references(&mut |id| self.write_barrier(object, Some(id)));
         let entry = self
             .objects
             .get_mut(&object)
             .expect("protected across collection");
-        entry.kind = ObjectKind::WebDataTransfer(Box::new(store));
+        let ObjectKind::WebDataTransfer(current) = &mut entry.kind else {
+            unreachable!("validated drag store")
+        };
+        **current = store;
         entry.bytes = entry.bytes - previous + bytes;
         self.managed_bytes
             .set(self.managed_bytes.get() - previous + bytes);
-        for reference in references {
-            self.write_barrier(object, Some(reference));
-        }
         // Live indices must never reuse an ordinary property cache entry.
         self.structure_epoch = self.structure_epoch.wrapping_add(1);
         Ok(())
@@ -290,24 +361,6 @@ impl Heap {
         }
     }
 
-    pub(crate) fn drag_files(&self, store: ObjectId) -> Result<Vec<ObjectId>, HeapError> {
-        let store = self.drag_store(store)?;
-        if matches!(
-            store.mode,
-            DragStoreMode::Protected | DragStoreMode::Disabled
-        ) {
-            return Ok(Vec::new());
-        }
-        Ok(store
-            .items
-            .iter()
-            .filter_map(|item| match item.data {
-                DragItemData::File(file) => Some(file),
-                DragItemData::Text(_) | DragItemData::FileMarker => None,
-            })
-            .collect())
-    }
-
     pub(super) fn drag_index_value(
         &self,
         object: ObjectId,
@@ -330,9 +383,9 @@ impl Heap {
                 }))
             }
             ObjectKind::WebDragFiles(store) => Ok(Some(
-                self.drag_files(store)?
-                    .get(index)
-                    .copied()
+                self.drag_store(store)?
+                    .file_ids()
+                    .nth(index)
                     .map(Value::Object),
             )),
             _ => Ok(None),
@@ -349,7 +402,7 @@ impl Heap {
                     store.items.len()
                 }))
             }
-            ObjectKind::WebDragFiles(store) => Ok(Some(self.drag_files(store)?.len())),
+            ObjectKind::WebDragFiles(store) => Ok(Some(self.drag_store(store)?.file_ids().count())),
             _ => Ok(None),
         }
     }
@@ -369,6 +422,143 @@ impl Heap {
         }
     }
 
+    pub(crate) fn begin_event_dispatch(
+        &mut self,
+        object: ObjectId,
+        target: ObjectId,
+        trusted: bool,
+        path: Vec<ObjectId>,
+    ) -> Result<(), HeapError> {
+        // Preserve the standalone entry's exact single-target contract.
+        if path.as_slice() != [target] {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
+        self.begin_node_event_dispatch(object, target, trusted, path)
+    }
+
+    pub(crate) fn begin_node_event_dispatch(
+        &mut self,
+        object: ObjectId,
+        target: ObjectId,
+        trusted: bool,
+        path: Vec<ObjectId>,
+    ) -> Result<(), HeapError> {
+        if path.first() != Some(&target) {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
+        for id in &path {
+            self.object(*id)?;
+        }
+        let state = self.drag_event(object)?;
+        let target_slot = state
+            .attributes
+            .iter()
+            .position(|(name, _)| *name == "target")
+            .ok_or(HeapError::InvalidInternalSlot(object))?;
+        let trusted_slot = state
+            .attributes
+            .iter()
+            .position(|(name, _)| *name == "isTrusted")
+            .ok_or(HeapError::InvalidInternalSlot(object))?;
+        let previous = state.bytes();
+        let bytes = previous
+            .saturating_sub(state.path.capacity().saturating_mul(size_of::<ObjectId>()))
+            .saturating_sub(HeapNativeBudget::value_payload_bytes(
+                &state.attributes[target_slot].1,
+            ))
+            .saturating_sub(HeapNativeBudget::value_payload_bytes(
+                &state.attributes[trusted_slot].1,
+            ))
+            .saturating_add(path.capacity().saturating_mul(size_of::<ObjectId>()));
+        self.ensure_room_protected(
+            bytes.saturating_sub(previous),
+            ProtectedRoots::EventPath(object, &path),
+        )?;
+        for id in &path {
+            self.write_barrier(object, Some(*id));
+        }
+        let entry = self.objects.get_mut(&object).expect("protected event");
+        let ObjectKind::WebDragEvent(state) = &mut entry.kind else {
+            unreachable!("validated event")
+        };
+        state.attributes[target_slot].1 = Value::Object(target);
+        state.attributes[trusted_slot].1 = Value::Bool(trusted);
+        state.current_target = Some(target);
+        state.phase = 2;
+        state.path = path;
+        entry.bytes = entry.bytes - previous + bytes;
+        self.managed_bytes
+            .set(self.managed_bytes.get() - previous + bytes);
+        self.write_barrier(object, Some(target));
+        Ok(())
+    }
+
+    pub(crate) fn set_event_phase(
+        &mut self,
+        object: ObjectId,
+        current: ObjectId,
+        phase: u8,
+    ) -> Result<(), HeapError> {
+        if !(1..=3).contains(&phase) || !self.drag_event(object)?.path.contains(&current) {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
+        self.object(current)?;
+        let state = self.drag_event_mut(object)?;
+        state.phase = phase;
+        state.current_target = Some(current);
+        self.write_barrier(object, Some(current));
+        Ok(())
+    }
+
+    fn drag_event_mut(&mut self, object: ObjectId) -> Result<&mut DragEventState, HeapError> {
+        self.drag_event(object)?;
+        match &mut self.objects.get_mut(&object).expect("validated event").kind {
+            ObjectKind::WebDragEvent(state) => Ok(state),
+            _ => Err(HeapError::InvalidInternalSlot(object)),
+        }
+    }
+
+    pub(crate) fn set_event_passive(
+        &mut self,
+        object: ObjectId,
+        passive: bool,
+    ) -> Result<(), HeapError> {
+        self.drag_event_mut(object)?.passive = passive;
+        Ok(())
+    }
+
+    pub(crate) fn prevent_event_default(&mut self, object: ObjectId) -> Result<(), HeapError> {
+        let state = self.drag_event_mut(object)?;
+        if state.cancelable && !state.passive {
+            state.default_prevented = true;
+        }
+        Ok(())
+    }
+
+    /// Terminal cleanup adds no edge or allocation. The retained path keeps
+    /// its managed capacity charge after its transient references are cleared.
+    pub(crate) fn finish_event_dispatch(&mut self, object: ObjectId) -> Result<(), HeapError> {
+        let state = self.drag_event_mut(object)?;
+        state.phase = 0;
+        state.current_target = None;
+        state.path.clear();
+        state.passive = false;
+        state.propagation_stopped = false;
+        state.immediate_stopped = false;
+        Ok(())
+    }
+
+    pub(crate) fn stop_event_propagation(
+        &mut self,
+        object: ObjectId,
+        immediate: bool,
+    ) -> Result<(), HeapError> {
+        let state = self.drag_event_mut(object)?;
+        state.propagation_stopped = true;
+        state.immediate_stopped |= immediate;
+        Ok(())
+    }
+
     pub(crate) fn set_drag_event_state(
         &mut self,
         object: ObjectId,
@@ -376,14 +566,14 @@ impl Heap {
     ) -> Result<(), HeapError> {
         let previous = self.drag_event(object)?.bytes();
         let bytes = state.bytes();
-        let references = state.references();
-        for reference in &references {
-            self.object(*reference)?;
-        }
-        let protected: Vec<_> = std::iter::once(object)
-            .chain(references.iter().copied())
-            .collect();
-        self.ensure_room(bytes.saturating_sub(previous), &protected)?;
+        let mut valid = Ok(());
+        state.visit_references(&mut |id| valid = valid.and_then(|()| self.object(id).map(|_| ())));
+        valid?;
+        self.ensure_room_protected(
+            bytes.saturating_sub(previous),
+            ProtectedRoots::Event(object, &state),
+        )?;
+        state.visit_references(&mut |id| self.write_barrier(object, Some(id)));
         let entry = self
             .objects
             .get_mut(&object)
@@ -392,9 +582,25 @@ impl Heap {
         entry.bytes = entry.bytes - previous + bytes;
         self.managed_bytes
             .set(self.managed_bytes.get() - previous + bytes);
-        for reference in references {
-            self.write_barrier(object, Some(reference));
-        }
+        Ok(())
+    }
+
+    /// Terminal retirement creates no reference or allocation. Retained Vec
+    /// slots remain paid, while payloads, type cache and image roots are dropped.
+    pub(crate) fn disable_drag_store(&mut self, object: ObjectId) -> Result<(), HeapError> {
+        let previous = self.drag_store(object)?.bytes();
+        let entry = self.objects.get_mut(&object).expect("validated drag store");
+        let ObjectKind::WebDataTransfer(store) = &mut entry.kind else {
+            unreachable!("validated drag store")
+        };
+        store.mode = DragStoreMode::Disabled;
+        store.items.clear();
+        store.types = None;
+        store.image = None;
+        let bytes = store.bytes();
+        entry.bytes = entry.bytes - previous + bytes;
+        self.managed_bytes.sub(previous - bytes);
+        self.structure_epoch = self.structure_epoch.wrapping_add(1);
         Ok(())
     }
 }

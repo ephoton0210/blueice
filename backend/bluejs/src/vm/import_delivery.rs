@@ -49,13 +49,19 @@ impl Vm {
         namespace: Option<ObjectId>,
         error: Option<&ModuleEvaluationError>,
     ) -> Result<PreparedImportDelivery, RuntimeError> {
+        let owner = self.module_import_owner()?;
+        self.deferred_import_owner(owner.as_ref())?;
         self.synchronize_scheduling_usage()?;
         let count = self
             .deferred_import_waiters
             .iter()
             .filter(|waiter| ready_dependency(waiter, module, error.is_some()))
             .count()
-            .saturating_add(self.module_import_waiters.get(module).map_or(0, Vec::len));
+            .saturating_add(
+                self.module_import_waiters
+                    .get(module)
+                    .map_or(0, |waiters| waiters.len()),
+            );
         let mut batch = PreparedImportDelivery {
             entries: Vec::new(),
             references: Vec::new(),
@@ -77,10 +83,16 @@ impl Vm {
         let reference_slots = ref_count.saturating_mul(std::mem::size_of::<ObjectId>());
         let root_slots = ref_count.saturating_mul(std::mem::size_of::<RootId>());
         let scope = self.host_scheduling.as_ref();
-        let fail = || scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail);
-        batch.charge = scope
-            .map(|scope| {
-                scope.shared_charge(
+        let fail = || {
+            owner.as_ref().map_or_else(
+                || scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail),
+                SharedSchedulingCharge::fail,
+            )
+        };
+        batch.charge = owner
+            .as_ref()
+            .map(|owner| {
+                owner.reserve_peer(
                     count
                         .saturating_mul(std::mem::size_of::<ImportDeliveryEntry>())
                         .saturating_add(reference_slots)
@@ -246,6 +258,9 @@ impl Vm {
                     )?;
                 }
                 self.check_scheduling_failure()?;
+                if let Some(owner) = &batch.charge {
+                    owner.reserve_peer(0)?;
+                }
             }
             Ok(())
         })();
@@ -262,6 +277,7 @@ impl Vm {
         module: &str,
         linked: &mut HashMap<String, LinkedModule>,
     ) -> Result<(), RuntimeError> {
+        self.module_import_owner()?;
         let mut namespace_roots = ModuleRoots::default();
         let result = (|| {
             let namespace = if self

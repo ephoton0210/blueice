@@ -75,8 +75,8 @@ fn loaned_call(
 ) -> Result<Value, RuntimeError> {
     let owner = source.argument_list_owner()?;
     let roots = RealmCallRoots::new(2, owner.as_ref())?;
-    roots.push(receiver.object_id().unwrap());
-    roots.push(callback.object_id().unwrap());
+    roots.push(&neutral.heap, receiver.object_id().unwrap())?;
+    roots.push(&neutral.heap, callback.object_id().unwrap())?;
     neutral.with_realm_call_roots(roots, |vm| {
         vm.array_callback_method(receiver, callback, &Value::Undefined, method)
     })
@@ -113,8 +113,12 @@ fn array_callback_storage_neutral_early_return_checks_original_owner() {
     );
     let callback = neutral.lookup_global_name("callback").unwrap().unwrap();
     let roots = RealmCallRoots::new(2, owner.as_ref()).unwrap();
-    roots.push(receiver.object_id().unwrap());
-    roots.push(callback.object_id().unwrap());
+    roots
+        .push(&neutral.heap, receiver.object_id().unwrap())
+        .unwrap();
+    roots
+        .push(&neutral.heap, callback.object_id().unwrap())
+        .unwrap();
     let result = neutral.with_realm_call_roots(roots, |vm| {
         vm.array_some(&receiver, &callback, &Value::Undefined)
     });
@@ -199,7 +203,7 @@ fn array_callback_storage_root_loan_does_not_install_document_policy() {
     let mut neutral = Vm::default();
     let object = run(&mut neutral, "[1];").object_id().unwrap();
     let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&neutral.heap, object).unwrap();
     let arguments = neutral
         .with_realm_call_roots(roots, |vm| Ok(arguments(vm, buffered_string(), object)))
         .unwrap();
@@ -328,7 +332,7 @@ fn array_callback_storage_callback_throw_restores_the_outer_roots_and_stack() {
         let callback = vm.lookup_global_name("callback").unwrap().unwrap();
         let owner = vm.argument_list_owner().unwrap();
         let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-        roots.push(receiver.object_id().unwrap());
+        roots.push(&vm.heap, receiver.object_id().unwrap()).unwrap();
         vm.stack.push(Value::Number(9.0));
         vm.with_realm_call_roots(roots.clone(), |vm| {
             assert_eq!(

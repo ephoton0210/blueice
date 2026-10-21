@@ -6,6 +6,10 @@
 
 use super::*;
 
+fn expected_metadata_bytes() -> usize {
+    std::mem::size_of::<ActiveVm>() + 2 * std::mem::size_of::<usize>()
+}
+
 fn page() -> Vm {
     let mut vm = Vm::default();
     vm.use_bounded_host_microtask_checkpoints().unwrap();
@@ -30,7 +34,7 @@ fn active_realm_storage_registration_retains_document_metadata_credit() {
     let before = view.host_scheduling_snapshot().payload_bytes;
     let guard = enter(&mut vm);
     assert!(
-        view.host_scheduling_snapshot().payload_bytes >= before + std::mem::size_of::<ActiveVm>(),
+        view.host_scheduling_snapshot().payload_bytes >= before + expected_metadata_bytes(),
         "a live cross-realm registration must own its native metadata"
     );
     drop(guard);
@@ -100,16 +104,31 @@ fn active_realm_storage_preparation_charges_before_publication() {
     assert_eq!(active_backing_bytes(), 0);
     assert_eq!(
         view.host_scheduling_snapshot().payload_bytes,
-        before + std::mem::size_of::<ActiveVm>()
+        before + expected_metadata_bytes()
     );
-    let guard = prepared.publish(&mut vm);
+    let guard = prepared.publish(&mut vm).unwrap();
     assert_eq!(resolve_active(tag), Some(&mut vm as *mut Vm));
     assert_eq!(
         view.host_scheduling_snapshot().payload_bytes,
-        before + std::mem::size_of::<ActiveVm>()
+        before + expected_metadata_bytes()
     );
     drop(guard);
     assert!(resolve_active(tag).is_none());
+    assert_eq!(view.host_scheduling_snapshot().payload_bytes, before);
+}
+
+#[cfg_attr(test, test)]
+fn active_realm_storage_preparation_counts_the_rc_allocation_header() {
+    let mut vm = page();
+    let view = observer(&vm);
+    let before = view.host_scheduling_snapshot().payload_bytes;
+    let prepared = prepare_active_registration(&mut vm, None).unwrap();
+    let expected = std::mem::size_of::<ActiveVm>() + 2 * std::mem::size_of::<usize>();
+    assert_eq!(
+        view.host_scheduling_snapshot().payload_bytes - before,
+        expected
+    );
+    drop(prepared);
     assert_eq!(view.host_scheduling_snapshot().payload_bytes, before);
 }
 
@@ -123,7 +142,7 @@ fn active_realm_storage_unpublished_metadata_can_outlive_its_vm() {
     assert_eq!(active_backing_bytes(), 0);
     assert_eq!(
         view.host_scheduling_snapshot().payload_bytes,
-        std::mem::size_of::<ActiveVm>()
+        expected_metadata_bytes()
     );
     drop(prepared);
     assert_eq!(view.host_scheduling_snapshot().payload_bytes, 0);
@@ -182,12 +201,12 @@ fn active_realm_storage_peer_hint_preserves_neutral_policy() {
     let before = view.host_scheduling_snapshot().payload_bytes;
     let prepared = prepare_active_registration(&mut neutral, Some(scope)).unwrap();
     assert!(prepared.node._storage.as_ref().unwrap().belongs_to(scope));
-    let guard = prepared.publish(&mut neutral);
+    let guard = prepared.publish(&mut neutral).unwrap();
     assert!(neutral.host_scheduling.is_none());
     assert!(active_scheduling_scope(tag).is_none());
     assert_eq!(
         view.host_scheduling_snapshot().payload_bytes,
-        before + std::mem::size_of::<ActiveVm>()
+        before + expected_metadata_bytes()
     );
     drop(guard);
     assert_eq!(view.host_scheduling_snapshot().payload_bytes, before);
@@ -212,7 +231,7 @@ fn active_realm_storage_neutral_nesting_uses_nearest_metadata_owner() {
     );
     assert_eq!(
         second_view.host_scheduling_snapshot().payload_bytes,
-        second_before + std::mem::size_of::<ActiveVm>()
+        second_before + expected_metadata_bytes()
     );
     drop(inner);
     assert_eq!(
@@ -230,7 +249,7 @@ fn active_realm_storage_standalone_neutral_calls_release_metadata() {
     let guard = enter(&mut vm);
     assert!(guard.node._storage.is_none());
     assert!(active_scheduling_scope(vm.object_prototype.heap).is_none());
-    assert_eq!(active_backing_bytes(), std::mem::size_of::<ActiveVm>());
+    assert_eq!(active_backing_bytes(), expected_metadata_bytes());
     drop(guard);
     assert_eq!(active_backing_bytes(), 0);
 }
@@ -323,7 +342,7 @@ fn active_realm_storage_finite_repeated_calls_release_each_node() {
         let guard = enter(&mut vm);
         assert_eq!(
             view.host_scheduling_snapshot().payload_bytes,
-            before + std::mem::size_of::<ActiveVm>()
+            before + expected_metadata_bytes()
         );
         drop(guard);
         assert_eq!(view.host_scheduling_snapshot().payload_bytes, before);
@@ -342,12 +361,12 @@ fn observe_metadata(vm: &mut Vm) -> Rc<RefCell<Vec<usize>>> {
             let mut bytes = 0;
             while let Some(current) = node {
                 assert!(current._storage.as_ref().unwrap().belongs_to(&scope));
-                bytes += std::mem::size_of::<ActiveVm>();
+                bytes += expected_metadata_bytes();
                 node = current.previous.get().and_then(Option::as_deref);
             }
             bytes
         });
-        assert!(bytes >= 2 * std::mem::size_of::<ActiveVm>());
+        assert!(bytes >= 2 * expected_metadata_bytes());
         output.borrow_mut().push(bytes);
         Ok(HostValue::Undefined)
     })
@@ -422,6 +441,7 @@ impl Vm {
         active_realm_storage_empty_registry_releases_backing();
         active_realm_storage_nested_documents_keep_independent_credit();
         active_realm_storage_preparation_charges_before_publication();
+        active_realm_storage_preparation_counts_the_rc_allocation_header();
         active_realm_storage_unpublished_metadata_can_outlive_its_vm();
         active_realm_storage_nested_tags_restore_in_stack_order();
         active_realm_storage_duplicate_tags_keep_zero_owning_policy_views();

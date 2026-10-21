@@ -569,11 +569,11 @@ impl Heap {
 
     /// Transfer cleared cells in their existing order, directly into the
     /// standalone VM queue. The visitor must not run JavaScript or collect.
-    pub(crate) fn drain_finalization_registry_cleanup_jobs(
+    pub(crate) fn drain_finalization_registry_cleanup_jobs<E>(
         &mut self,
-        mut visit: impl FnMut(Value, Value),
-    ) {
-        self.pending_finalization.clear();
+        mut visit: impl FnMut(Value, Value) -> Result<(), (E, Value)>,
+    ) -> Result<(), E> {
+        let mut failure = None;
         let mut released: usize = 0;
         for object in self.objects.values_mut() {
             let ObjectKind::FinalizationRegistry {
@@ -586,20 +586,23 @@ impl Heap {
             let old_backing = cells.capacity() * size_of::<FinalizationCell>();
             let mut registry_released: usize = 0;
             cells.retain_mut(|cell| {
-                if cell.target.is_some() {
+                if cell.target.is_some() || failure.is_some() {
                     return true;
                 }
-                registry_released = registry_released
-                    .saturating_add(cell.holdings.payload_bytes())
-                    .saturating_add(
-                        cell.unregister_token
-                            .as_ref()
-                            .map_or(0, weak_collection_key_bytes),
-                    );
-                visit(
+                let payload = cell.holdings.payload_bytes().saturating_add(
+                    cell.unregister_token
+                        .as_ref()
+                        .map_or(0, weak_collection_key_bytes),
+                );
+                if let Err((error, holdings)) = visit(
                     cleanup_callback.clone(),
                     std::mem::replace(&mut cell.holdings, Value::Undefined),
-                );
+                ) {
+                    cell.holdings = holdings;
+                    failure = Some(error);
+                    return true;
+                }
+                registry_released = registry_released.saturating_add(payload);
                 false
             });
             if cells.is_empty() {
@@ -611,6 +614,12 @@ impl Heap {
             released = released.saturating_add(registry_released);
         }
         self.managed_bytes.sub(released);
+        if let Some(error) = failure {
+            Err(error)
+        } else {
+            self.pending_finalization.clear();
+            Ok(())
+        }
     }
 
     pub(crate) fn weak_ref_target(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {

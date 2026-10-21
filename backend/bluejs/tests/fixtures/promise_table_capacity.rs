@@ -191,6 +191,7 @@ fn host_wait_admits_argument_storage_and_promise_growth_together() {
 fn host_wait_root_refusal_refunds_argument_leases_and_reconciles_capacity() {
     let (mut vm, starts) = waits(0);
     execute(&mut vm, "Promise; 0;");
+    let before = vm.host_scheduling_usage().unwrap().payload_bytes;
     vm.heap.allow_root_registrations(0);
     assert_eq!(
         vm.host_async_function_call(
@@ -205,6 +206,8 @@ fn host_wait_root_refusal_refunds_argument_leases_and_reconciles_capacity() {
     assert!(vm.host_promises.pending.is_empty());
     assert_eq!(vm.displaced_execution_bytes.get(), 0);
     assert_eq!(vm.active_scheduling_bytes, 0);
+    // The refused call refunds everything it staged: the account is exactly
+    // what it was before the call.
     assert_eq!(
         vm.host_scheduling
             .as_ref()
@@ -213,9 +216,7 @@ fn host_wait_root_refusal_refunds_argument_leases_and_reconciles_capacity() {
             .borrow()
             .usage
             .payload_bytes,
-        vm.own_scheduling_usage().payload_bytes
-            + vm.heap.collector_storage_bytes()
-            + vm.heap.root_storage_bytes()
+        before
     );
 }
 
@@ -270,7 +271,7 @@ impl AwaitFixture {
             vm.module_continuations.shrink_to_fit();
             (serial, Frame::Module(Box::new(frame)))
         };
-        vm.promises.get_mut(&input).unwrap().reactions.retain(|reaction| !matches!(reaction,
+        vm.promises.get_mut(&input).unwrap().retain_reactions(|reaction| !matches!(reaction,
             PromiseReaction::AsyncAwait { continuation } if asynchronous && *continuation == serial)
             && !matches!(reaction, PromiseReaction::ModuleAwait { continuation } if !asynchronous && *continuation == serial));
         Self {
@@ -406,7 +407,8 @@ fn await_rejected_job_growth(asynchronous: bool) {
         fixture.vm.promise_jobs.capacity()
     );
     let bytes = fixture.frame_bytes()
-        + fixture.vm.promise_jobs.capacity() * std::mem::size_of::<PromiseJob>();
+        + fixture.vm.promise_jobs.capacity()
+            * std::mem::size_of::<promise_job_storage::QueuedPromiseJob>();
     let _owner = leave_room(&mut fixture.vm, bytes - 1);
     fixture.assert_refused();
 }

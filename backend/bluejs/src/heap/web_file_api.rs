@@ -4,6 +4,27 @@
 
 use super::*;
 
+impl WebBlobData {
+    pub(crate) fn owned_buffer_bytes(&self) -> usize {
+        self.bytes
+            .capacity()
+            .saturating_add(
+                self.media_type
+                    .owned_heap_payload_bytes()
+                    .unwrap_or(usize::MAX),
+            )
+            .saturating_add(self.file.as_ref().map_or(0, |(name, _)| {
+                name.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+            }))
+    }
+    pub(crate) fn copied_buffer_bytes(&self) -> usize {
+        self.bytes
+            .len()
+            .saturating_add(self.media_type.byte_len())
+            .saturating_add(self.file.as_ref().map_or(0, |(name, _)| name.byte_len()))
+    }
+}
+
 impl Heap {
     pub(crate) fn alloc_host_selection_event(
         &mut self,
@@ -51,12 +72,19 @@ impl Heap {
         self.alloc(ObjectKind::WebFileList(files), Some(prototype))
     }
 
-    pub(crate) fn web_file_list(&self, object: ObjectId) -> Result<Vec<ObjectId>, HeapError> {
-        match &self.object(object)?.kind {
-            ObjectKind::WebFileList(files) => Ok(files.clone()),
-            ObjectKind::WebDragFiles(store) => self.drag_files(*store),
-            _ => Err(HeapError::InvalidInternalSlot(object)),
-        }
+    pub(crate) fn web_file_list(
+        &self,
+        object: ObjectId,
+    ) -> Result<impl Iterator<Item = ObjectId> + Clone + '_, HeapError> {
+        let (files, drag): (&[ObjectId], Option<&DragStore>) = match &self.object(object)?.kind {
+            ObjectKind::WebFileList(files) => (files, None),
+            ObjectKind::WebDragFiles(store) => (&[], Some(self.drag_store(*store)?)),
+            _ => return Err(HeapError::InvalidInternalSlot(object)),
+        };
+        Ok(files
+            .iter()
+            .copied()
+            .chain(drag.into_iter().flat_map(|store| store.file_ids())))
     }
     pub(crate) fn alloc_web_blob(
         &mut self,

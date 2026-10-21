@@ -48,7 +48,7 @@ and 32 extra arguments per timer, and each turn invokes at most 64 callbacks.
 The host supplies a monotonic clock; the VM supplies the next runnable due time.
 Core validates the child's relative delay and schedules callbacks before the
 same tick's dirty frame publication. See the
-[M1b acceptance record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+[M1b acceptance record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 String timer handlers, animation frames and complete task/byte accounting
 remain outside this profile. Timing conversion and nesting follow the
 [HTML timer algorithm](https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers)
@@ -91,7 +91,7 @@ dispatch defers cleanup until its calling JavaScript returns. The native
 dispatch shares one 256-job cap, preserves instruction fuel and roots its
 displaced execution frame during import/module jobs. Resource failure stops
 delivery before default action. See the
-[M1h record](BROWSER_INTEGRATION_TODO.md#milestone-record) for verification.
+[M1h record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record) for verification.
 M1i adds a common timer/browser task entry. Ordinary child polls select one
 task and complete its checkpoint before Core can publish dirty pixels or
 service frontend work. The separate render entry remains. Ready browser work
@@ -123,9 +123,9 @@ The owner installs the 19-method namespace and generated `BlueIceConsole` and
 `window.console` types. Private v60 drains bounded copied records for an exact
 document and refreshes Core's native-payload ledger; MCP publishes them inside
 the untrusted-page boundary. Public profile, real MCP, related Rust and full Test262
-acceptance are recorded in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+acceptance are recorded in the [milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 See [the console contract](HOST_CONSOLE.md).
-See the [M1c record](BROWSER_INTEGRATION_TODO.md#milestone-record) and the
+See the [M1c record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record) and the
 [HTML animation-frame algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames).
 The distinct entry follows [the two-entry-point decision](../research/js-bytecode-eventloop.md).
 

@@ -13,7 +13,7 @@
 //! `Test262ReverseValue`, both in `vm.rs`). This module is what makes that
 //! facade *live*: every function here mirrors one of `foreign.rs`'s own
 //! forward-direction functions, but resolves its target realm dynamically,
-//! through [`realm_reentrancy::resolve_active`], rather than through a
+//! through [`realm_reentrancy::resolve_active_entry`], rather than through a
 //! `test262_realms` map entry -- a child realm has no map back to its own
 //! parent, so the parent is only reachable while a call chain that started
 //! there is still mid-flight on this thread. Do not reinvent this
@@ -39,7 +39,7 @@ use super::super::property_definition_storage::{
     definition_bytes, retain_definition_storage, PropertyDefinitionInput,
 };
 use super::super::realm_call_storage::{RealmCallInput, RealmCallRoots};
-use super::super::realm_reentrancy::{register_active, resolve_active};
+use super::super::realm_reentrancy::{register_active, resolve_active_entry, ActiveVmEntry};
 use super::*;
 
 impl Vm {
@@ -50,7 +50,7 @@ impl Vm {
     /// the forward direction's `(realm, target, callable, constructible)`
     /// shape except that the first element identifies the parent
     /// dynamically (a heap tag, resolved through
-    /// [`realm_reentrancy::resolve_active`]) rather than by a
+    /// [`realm_reentrancy::resolve_active_entry`]) rather than by a
     /// `test262_realms` key.
     pub(in super::super) fn test262_reverse_reference(
         &self,
@@ -70,22 +70,21 @@ impl Vm {
     /// currently mid-call on this thread's cross-realm call chain --
     /// exactly the two checks `shadow_call_wrapped` established a
     /// precedent for: the creating frame having already returned
-    /// (`resolve_active` finds nothing, a catchable error rather than a
+    /// (`resolve_active_entry` finds nothing, a catchable error rather than a
     /// dangling dereference), and a value somehow looping all the way back
     /// to its own origin realm within one call chain (which would alias
     /// `self` with itself).
-    fn resolve_reverse_parent(&self, home_heap: u64) -> Result<*mut Vm, RuntimeError> {
-        let Some(ptr) = resolve_active(home_heap) else {
-            return Err(RuntimeError::TypeError(
-                "the Test262 realm this value belongs to is no longer reachable".into(),
-            ));
-        };
-        if std::ptr::eq(ptr as *const Vm, self as *const Vm) {
+    fn resolve_reverse_parent(&self, home_heap: u64) -> Result<ActiveVmEntry, RuntimeError> {
+        if home_heap == self.object_prototype.heap && realm_reentrancy::is_active(home_heap) {
             return Err(RuntimeError::TypeError(
                 "a Test262 reverse membrane facade cannot resolve to its own realm".into(),
             ));
         }
-        Ok(ptr)
+        resolve_active_entry(self.object_prototype.heap, home_heap)?.ok_or_else(|| {
+            RuntimeError::TypeError(
+                "the Test262 realm this value belongs to is no longer reachable".into(),
+            )
+        })
     }
 
     /// Writes `bytes` directly into the *real* parent-owned buffer that
@@ -116,7 +115,7 @@ impl Vm {
     /// `TEST262_ANALYSIS_REPORT.md`'s "Reverse-membrane round-trip cache"
     /// writeup for the full trace). Writing directly into the real
     /// object's own buffer -- reached here via the exact same
-    /// `resolve_active`/raw-pointer discipline every other function in
+    /// `resolve_active_entry`/raw-pointer discipline every other function in
     /// this module uses -- sidesteps that cache instead of fighting it:
     /// there is nothing left to discard.
     ///
@@ -137,36 +136,28 @@ impl Vm {
             return Ok(false);
         };
         let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
-        // SAFETY: see this module's top-level "Soundness" note. This
-        // function makes no nested calls into JavaScript (only direct heap
-        // reads/writes), so there is no reentrancy concern beyond the
-        // dereference itself, which is sound for the same reason every
-        // other function in this module's dereference is: `ptr` is only
-        // present in `ACTIVE` for the dynamic extent of a `&mut Vm` call
-        // currently suspended further up the Rust call stack, and we have
-        // already confirmed (via `resolve_reverse_parent`) it is not
-        // `self`.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        let Some(real_target) = parent
-            .test262_realms
-            .get(&child_realm_id)
-            .expect("a reverse facade's home realm always owns this child directly")
-            .imported_values
-            .get(&local_result)
-            .and_then(|imported| imported.value.object_id())
-        else {
-            return Ok(false);
-        };
-        let (real_buffer, real_offset, ..) = parent
-            .heap
-            .typed_array_info(real_target)
-            .expect("an imported round-trip value is a live typed array");
-        parent.with_roots(|heap| {
-            heap.array_buffer_write(real_buffer, real_offset + byte_offset, bytes)
-        })?;
-        Ok(true)
+        let entry = self.resolve_reverse_parent(home_heap)?;
+        entry.with(|parent| {
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            let Some(real_target) = parent
+                .test262_realms
+                .get(&child_realm_id)
+                .expect("a reverse facade's home realm always owns this child directly")
+                .imported_values
+                .get(&local_result)
+                .and_then(|imported| imported.value.object_id())
+            else {
+                return Ok(false);
+            };
+            let (real_buffer, real_offset, ..) = parent
+                .heap
+                .typed_array_info(real_target)
+                .expect("an imported round-trip value is a live typed array");
+            parent.with_roots(|heap| {
+                heap.array_buffer_write(real_buffer, real_offset + byte_offset, bytes)
+            })?;
+            Ok(true)
+        })
     }
 
     /// `[[Get]]` on a reverse facade: forwards into the parent realm,
@@ -181,18 +172,15 @@ impl Vm {
             .test262_reverse_reference(wrapper)
             .expect("reverse get has a membrane record");
         let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let entry = self.resolve_reverse_parent(home_heap)?;
         let _guard = register_active(self)?;
-        // SAFETY: see `realm_reentrancy::ACTIVE`'s documentation and this
-        // module's own top-level "Soundness" note. `ptr` was just confirmed
-        // distinct from `self`, and `self` is not dereferenced again for
-        // the rest of this function.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        let receiver = parent.test262_import_foreign_value(child_realm_id, receiver.clone())?;
-        parent.remaining_instructions = parent.config.instruction_budget;
-        let result = parent.get_object_property(target, &receiver, key);
-        test262_reverse_export_result(parent, child_realm_id, result)
+        entry.with(|parent| {
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            let receiver = parent.test262_import_foreign_value(child_realm_id, receiver.clone())?;
+            parent.remaining_instructions = parent.config.instruction_budget;
+            let result = parent.get_object_property(target, &receiver, key);
+            test262_reverse_export_result(parent, child_realm_id, result)
+        })
     }
 
     /// `[[GetPrototypeOf]]` on a reverse facade, mirroring
@@ -213,21 +201,21 @@ impl Vm {
         // the parent's.
         debug_assert!(override_prototype.is_none());
         let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let entry = self.resolve_reverse_parent(home_heap)?;
         let _guard = register_active(self)?;
-        // SAFETY: see this module's top-level "Soundness" note.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        parent.remaining_instructions = parent.config.instruction_budget;
-        let prototype = parent
-            .object_get_prototype(target)
-            .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))?;
-        prototype
-            .map(|prototype| {
-                parent.test262_export_foreign_value(child_realm_id, &Value::Object(prototype))
-            })
-            .transpose()
-            .map(|prototype| prototype.and_then(|prototype| prototype.object_id()))
+        entry.with(|parent| {
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            parent.remaining_instructions = parent.config.instruction_budget;
+            let prototype = parent
+                .object_get_prototype(target)
+                .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))?;
+            prototype
+                .map(|prototype| {
+                    parent.test262_export_foreign_value(child_realm_id, &Value::Object(prototype))
+                })
+                .transpose()
+                .map(|prototype| prototype.and_then(|prototype| prototype.object_id()))
+        })
     }
 
     /// `[[SetPrototypeOf]]` on a reverse facade, mirroring
@@ -241,25 +229,25 @@ impl Vm {
             .test262_reverse_reference(wrapper)
             .expect("reverse set-prototype has a membrane record");
         let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let entry = self.resolve_reverse_parent(home_heap)?;
         let _guard = register_active(self)?;
-        // SAFETY: see this module's top-level "Soundness" note.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        let prototype = prototype
-            .map(|prototype| {
-                parent.test262_import_foreign_value(child_realm_id, Value::Object(prototype))
-            })
-            .transpose()?
-            .map(|prototype| {
-                prototype
-                    .object_id()
-                    .expect("an imported [[Prototype]] value is always an object")
-            });
-        parent.remaining_instructions = parent.config.instruction_budget;
-        parent
-            .object_set_prototype(target, prototype)
-            .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        entry.with(|parent| {
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            let prototype = prototype
+                .map(|prototype| {
+                    parent.test262_import_foreign_value(child_realm_id, Value::Object(prototype))
+                })
+                .transpose()?
+                .map(|prototype| {
+                    prototype
+                        .object_id()
+                        .expect("an imported [[Prototype]] value is always an object")
+                });
+            parent.remaining_instructions = parent.config.instruction_budget;
+            parent
+                .object_set_prototype(target, prototype)
+                .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        })
     }
 
     /// `[[OwnPropertyKeys]]` on a reverse facade, mirroring
@@ -274,15 +262,15 @@ impl Vm {
             .test262_reverse_reference(wrapper)
             .expect("reverse ownKeys has a membrane record");
         let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let entry = self.resolve_reverse_parent(home_heap)?;
         let _guard = register_active(self)?;
-        // SAFETY: see this module's top-level "Soundness" note.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        parent.remaining_instructions = parent.config.instruction_budget;
-        parent
-            .object_own_property_keys(target)
-            .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        entry.with(|parent| {
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            parent.remaining_instructions = parent.config.instruction_budget;
+            parent
+                .object_own_property_keys(target)
+                .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        })
     }
 
     /// `[[GetOwnProperty]]` on a reverse facade, mirroring
@@ -296,35 +284,35 @@ impl Vm {
             .test262_reverse_reference(wrapper)
             .expect("reverse own-property has a membrane record");
         let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let entry = self.resolve_reverse_parent(home_heap)?;
         let _guard = register_active(self)?;
-        // SAFETY: see this module's top-level "Soundness" note.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        parent.remaining_instructions = parent.config.instruction_budget;
-        let descriptor = parent
-            .object_get_own_property(target, key)
-            .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))?;
-        let Some(descriptor) = descriptor else {
-            return Ok(None);
-        };
-        Ok(Some(PropertyDescriptor {
-            value: descriptor
-                .value
-                .map(|value| parent.test262_export_foreign_value(child_realm_id, &value))
-                .transpose()?,
-            writable: descriptor.writable,
-            get: descriptor
-                .get
-                .map(|value| parent.test262_export_foreign_value(child_realm_id, &value))
-                .transpose()?,
-            set: descriptor
-                .set
-                .map(|value| parent.test262_export_foreign_value(child_realm_id, &value))
-                .transpose()?,
-            enumerable: descriptor.enumerable,
-            configurable: descriptor.configurable,
-        }))
+        entry.with(|parent| {
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            parent.remaining_instructions = parent.config.instruction_budget;
+            let descriptor = parent
+                .object_get_own_property(target, key)
+                .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))?;
+            let Some(descriptor) = descriptor else {
+                return Ok(None);
+            };
+            Ok(Some(PropertyDescriptor {
+                value: descriptor
+                    .value
+                    .map(|value| parent.test262_export_foreign_value(child_realm_id, &value))
+                    .transpose()?,
+                writable: descriptor.writable,
+                get: descriptor
+                    .get
+                    .map(|value| parent.test262_export_foreign_value(child_realm_id, &value))
+                    .transpose()?,
+                set: descriptor
+                    .set
+                    .map(|value| parent.test262_export_foreign_value(child_realm_id, &value))
+                    .transpose()?,
+                enumerable: descriptor.enumerable,
+                configurable: descriptor.configurable,
+            }))
+        })
     }
 
     /// `[[DefineOwnProperty]]` changes the real parent object immediately.
@@ -343,40 +331,40 @@ impl Vm {
                 .test262_reverse_reference(wrapper)
                 .expect("reverse defineOwnProperty has a membrane record");
             let self_heap = self.object_prototype.heap;
-            let ptr = self.resolve_reverse_parent(home_heap)?;
+            let entry = self.resolve_reverse_parent(home_heap)?;
             let _guard = register_active(self)?;
-            // SAFETY: the child is suspended before borrowing its active
-            // parent; no access to self occurs below. See Soundness above.
-            let parent = unsafe { &mut *ptr };
-            let child_realm_id = reverse_child_realm_id(parent, self_heap);
-            let owner = parent.argument_list_owner()?.or(storage
-                .as_ref()
-                .map(|owner| owner.reserve_peer(0))
-                .transpose()?);
-            let roots = RealmCallRoots::new(3, owner.as_ref())?;
-            let result = parent.with_realm_call_roots(roots.clone(), |parent| {
-                for index in 0..3 {
-                    let field = match index {
-                        0 => &mut descriptor.value,
-                        1 => &mut descriptor.get,
-                        _ => &mut descriptor.set,
-                    };
-                    if let Some(value) = field.take() {
-                        let value = parent.test262_import_foreign_value(child_realm_id, value)?;
-                        if let Some(object) = value.object_id() {
-                            roots.push(object);
+            entry.with(|parent| {
+                let child_realm_id = reverse_child_realm_id(parent, self_heap);
+                let owner = parent.argument_list_owner()?.or(storage
+                    .as_ref()
+                    .map(|owner| owner.reserve_peer(0))
+                    .transpose()?);
+                let roots = RealmCallRoots::new(3, owner.as_ref())?;
+                let result = parent.with_realm_call_roots(roots.clone(), |parent| {
+                    for index in 0..3 {
+                        let field = match index {
+                            0 => &mut descriptor.value,
+                            1 => &mut descriptor.get,
+                            _ => &mut descriptor.set,
+                        };
+                        if let Some(value) = field.take() {
+                            let value =
+                                parent.test262_import_foreign_value(child_realm_id, value)?;
+                            if let Some(object) = value.object_id() {
+                                roots.push(&parent.heap, object)?;
+                            }
+                            *field = Some(value);
                         }
-                        *field = Some(value);
+                        if let Some(storage) = storage {
+                            storage.resize(definition_bytes(&key, &descriptor))?;
+                        }
                     }
-                    if let Some(storage) = storage {
-                        storage.resize(definition_bytes(&key, &descriptor))?;
-                    }
-                }
-                parent.remaining_instructions = parent.config.instruction_budget;
-                PropertyDefinitionInput::from_retained(key, descriptor, storage.take())
-                    .define(parent, target)
-            });
-            result.map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+                    parent.remaining_instructions = parent.config.instruction_budget;
+                    PropertyDefinitionInput::from_retained(key, descriptor, storage.take())
+                        .define(parent, target)
+                });
+                result.map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+            })
         })();
         if let Some(owner) = original {
             owner.reserve_peer(0)?;
@@ -395,15 +383,15 @@ impl Vm {
             .test262_reverse_reference(wrapper)
             .expect("reverse delete has a membrane record");
         let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let entry = self.resolve_reverse_parent(home_heap)?;
         let _guard = register_active(self)?;
-        // SAFETY: no child access overlaps this nested active-parent call.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        parent.remaining_instructions = parent.config.instruction_budget;
-        parent
-            .object_delete(target, key)
-            .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        entry.with(|parent| {
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            parent.remaining_instructions = parent.config.instruction_budget;
+            parent
+                .object_delete(target, key)
+                .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        })
     }
 
     /// `[[Set]]` on a reverse facade with an explicit receiver, mirroring
@@ -419,17 +407,17 @@ impl Vm {
             .test262_reverse_reference(wrapper)
             .expect("reverse set has a membrane record");
         let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let entry = self.resolve_reverse_parent(home_heap)?;
         let _guard = register_active(self)?;
-        // SAFETY: see this module's top-level "Soundness" note.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        let receiver = parent.test262_import_foreign_value(child_realm_id, receiver.clone())?;
-        let value = parent.test262_import_foreign_value(child_realm_id, value.clone())?;
-        parent.remaining_instructions = parent.config.instruction_budget;
-        parent
-            .ordinary_set_with_receiver(target, &receiver, key, &value)
-            .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        entry.with(|parent| {
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            let receiver = parent.test262_import_foreign_value(child_realm_id, receiver.clone())?;
+            let value = parent.test262_import_foreign_value(child_realm_id, value.clone())?;
+            parent.remaining_instructions = parent.config.instruction_budget;
+            parent
+                .ordinary_set_with_receiver(target, &receiver, key, &value)
+                .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        })
     }
 
     /// `[[Set]]` on a reverse facade with an implicit receiver (the facade
@@ -448,16 +436,16 @@ impl Vm {
             .test262_reverse_reference(wrapper)
             .expect("reverse set has a membrane record");
         let self_heap = self.object_prototype.heap;
-        let ptr = self.resolve_reverse_parent(home_heap)?;
+        let entry = self.resolve_reverse_parent(home_heap)?;
         let _guard = register_active(self)?;
-        // SAFETY: see this module's top-level "Soundness" note.
-        let parent = unsafe { &mut *ptr };
-        let child_realm_id = reverse_child_realm_id(parent, self_heap);
-        let value = parent.test262_import_foreign_value(child_realm_id, value.clone())?;
-        parent.remaining_instructions = parent.config.instruction_budget;
-        parent
-            .set_property(&Value::Object(target), key, &value)
-            .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        entry.with(|parent| {
+            let child_realm_id = reverse_child_realm_id(parent, self_heap);
+            let value = parent.test262_import_foreign_value(child_realm_id, value.clone())?;
+            parent.remaining_instructions = parent.config.instruction_budget;
+            parent
+                .set_property(&Value::Object(target), key, &value)
+                .map_err(|error| test262_reverse_export_error(parent, child_realm_id, error))
+        })
     }
 
     /// `[[Call]]`/`[[Construct]]` on a reverse facade, mirroring
@@ -498,32 +486,33 @@ impl Vm {
             owner.as_ref(),
         )?;
         let roots = RealmCallRoots::new(input.objects().count(), owner.as_ref())?;
-        input.objects().for_each(|id| roots.push(id));
+        input
+            .objects()
+            .try_for_each(|id| roots.push(&self.heap, id))?;
         let result = self.with_realm_call_roots(roots, |source| {
             let self_heap = source.object_prototype.heap;
-            let ptr = source.resolve_reverse_parent(home_heap)?;
+            let entry = source.resolve_reverse_parent(home_heap)?;
             let _guard = register_active(source)?;
-            // SAFETY: the original parent-resolution/publication boundary is
-            // unchanged. After reborrowing the parent, no source VM access
-            // occurs until the whole parent operation returns and roots unwind.
-            let parent = unsafe { &mut *ptr };
-            let child_realm_id = reverse_child_realm_id(parent, self_heap);
-            input.receiver = parent.test262_import_foreign_value(child_realm_id, input.receiver)?;
-            for slot in &mut input.arguments {
-                let value = std::mem::replace(slot, Value::Undefined);
-                *slot = parent.test262_import_foreign_value(child_realm_id, value)?;
-            }
-            parent.remaining_instructions = parent.config.instruction_budget;
-            let result = input.invoke(parent, target, construct);
-            let result = match result {
-                Ok(value) => Ok(value),
-                // Materialize ordinary throws in the callee's own realm.
-                Err(error) => match parent.error_value(error) {
-                    Ok(error) => Err(RuntimeError::Thrown(error)),
-                    Err(error) => Err(error),
-                },
-            };
-            test262_reverse_export_result(parent, child_realm_id, result)
+            entry.with(|parent| {
+                let child_realm_id = reverse_child_realm_id(parent, self_heap);
+                input.receiver =
+                    parent.test262_import_foreign_value(child_realm_id, input.receiver)?;
+                for slot in &mut input.arguments {
+                    let value = std::mem::replace(slot, Value::Undefined);
+                    *slot = parent.test262_import_foreign_value(child_realm_id, value)?;
+                }
+                parent.remaining_instructions = parent.config.instruction_budget;
+                let result = input.invoke(parent, target, construct);
+                let result = match result {
+                    Ok(value) => Ok(value),
+                    // Materialize ordinary throws in the callee's own realm.
+                    Err(error) => match parent.error_value(error) {
+                        Ok(error) => Err(RuntimeError::Thrown(error)),
+                        Err(error) => Err(error),
+                    },
+                };
+                test262_reverse_export_result(parent, child_realm_id, result)
+            })
         });
         if let Some(owner) = owner {
             owner.reserve_peer(0)?;
@@ -1018,7 +1007,9 @@ mod tests {
         let parent_heap = parent.object_prototype.heap;
         // The parent has no call in flight.
         assert_eq!(
-            child.resolve_reverse_parent(parent_heap),
+            child
+                .resolve_reverse_parent(parent_heap)
+                .map(|entry| entry.pointer()),
             Err(RuntimeError::TypeError(
                 "the Test262 realm this value belongs to is no longer reachable".into()
             ))
@@ -1026,7 +1017,9 @@ mod tests {
         // Once it has, the facade reaches it.
         let guard = register_active(&mut parent).unwrap();
         assert_eq!(
-            child.resolve_reverse_parent(parent_heap),
+            child
+                .resolve_reverse_parent(parent_heap)
+                .map(|entry| entry.pointer()),
             Ok(&mut parent as *mut Vm)
         );
         drop(guard);
@@ -1034,7 +1027,9 @@ mod tests {
         let own_heap = child.object_prototype.heap;
         let _guard = register_active(&mut child).unwrap();
         assert_eq!(
-            child.resolve_reverse_parent(own_heap),
+            child
+                .resolve_reverse_parent(own_heap)
+                .map(|entry| entry.pointer()),
             Err(RuntimeError::TypeError(
                 "a Test262 reverse membrane facade cannot resolve to its own realm".into()
             ))

@@ -366,7 +366,7 @@ narrowing needs a flow graph or can stay structural, recorded in PLAN.md before 
   - *Browser integration follow-up (2026-10-14):* complete declared method sets
     now satisfy inherited overloads without rejecting the specialized entries;
     eight TypeScript 5.9.3 controls and native host-profile tests cover acceptance
-    and rejection. See [M0a](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+    and rejection. See [M0a](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 - [x] **K.4.5 Type operators (XL).** `keyof`, `typeof`, indexed access, conditional types (distributive),
   `infer`, mapped types with `readonly`/`?` modifiers and `as` clauses, template-literal types, recursive
   aliases within a depth budget; each operator needs the assignability relation extended.

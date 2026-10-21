@@ -6,7 +6,7 @@ M1p completed on 2026-10-15. All 37 related Rust targets (3,234 passed; one
 existing ignored), fresh official MCP acceptance (one passed), formatting and
 workspace/all-target Clippy/build pass. All 102,926 pinned Test262 modes match
 M1o's accepted source/result inventory. The verified red baseline and final
-evidence are recorded in the [milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+evidence are recorded in the [milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 ## Engine state and ownership
 

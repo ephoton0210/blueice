@@ -20,9 +20,14 @@ fn document_task_delivery_does_not_enter_an_adopted_foreign_document() {
         "var cleaned=0,registry=new FinalizationRegistry(()=>cleaned++);registry.register({},0);",
     );
     let record = ShadowRealmRecord::new(foreign).unwrap();
+    let prepared = owner
+        .shadow_realms
+        .prepare_set(&owner.object_prototype, owner.host_scheduling.as_ref())
+        .unwrap();
+    owner.shadow_realms.commit(prepared);
     owner
         .shadow_realms
-        .insert(owner.object_prototype, record.clone());
+        .set(owner.object_prototype, record.clone());
     assert!(owner.run_browser_task_turn(64).unwrap());
     assert_eq!(
         record

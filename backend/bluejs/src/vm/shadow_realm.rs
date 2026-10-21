@@ -25,7 +25,7 @@ use super::realm_call_storage::{RealmCallInput, RealmCallRoots};
 #[cfg(any(test, coverage))]
 use super::realm_reentrancy::register_active;
 use super::realm_reentrancy::{
-    active_scheduling_scope, prepare_active_registration, resolve_active,
+    active_scheduling_scope, prepare_active_registration, resolve_active_entry, ActiveVmEntry,
 };
 use super::*;
 
@@ -281,7 +281,7 @@ impl Vm {
         return match record.vm.try_borrow_mut() {
             Ok(mut child) => {
                 let child_registration = prepare_active_registration(&mut child, scope.as_ref())?;
-                let child_guard = child_registration.publish(&mut child);
+                let child_guard = child_registration.publish(&mut child)?;
                 let outcome = Self::run_prepared_evaluate(self, &mut child, &mut code, false);
                 drop(child_guard);
                 match outcome {
@@ -303,16 +303,15 @@ impl Vm {
                     .iter()
                     .find(|&(_, &id)| id == this_id)
                     .map(|(&tag, _)| tag);
-                let ptr = self.resolve_shadow_ancestor(heap_tag)?;
-                // SAFETY: see `ACTIVE`'s documentation and the identical
-                // reasoning in `shadow_call_wrapped`.
-                let record_vm = unsafe { &mut *ptr };
-                let outcome = Self::run_prepared_evaluate(self, record_vm, &mut code, true);
-                match outcome {
-                    Ok(value) => self.shadow_wrap_into(record_vm, value),
-                    Err(error) if !error.is_catchable() => Err(error),
-                    Err(_) => Err(RuntimeError::TypeError(String::new())),
-                }
+                let entry = self.resolve_shadow_ancestor(heap_tag)?;
+                entry.with(|record_vm| {
+                    let outcome = Self::run_prepared_evaluate(self, record_vm, &mut code, true);
+                    match outcome {
+                        Ok(value) => self.shadow_wrap_into(record_vm, value),
+                        Err(error) if !error.is_catchable() => Err(error),
+                        Err(_) => Err(RuntimeError::TypeError(String::new())),
+                    }
+                })
             }
         };
     }
@@ -371,8 +370,8 @@ impl Vm {
         };
         let registration = prepare_active_registration(caller, child.host_scheduling.as_ref())?;
         if !reentrant {
+            let _guard = registration.publish(caller)?;
             child.reset_lexical_global_bindings();
-            let _guard = registration.publish(caller);
             let value = code.execute(child)?;
             child.run_promise_jobs()?;
             // Metadata traps execute after this function returns. Retain the
@@ -441,8 +440,8 @@ impl Vm {
         // `globalThis` properties across calls exactly as `execute_script`
         // already provides.
         let outcome = (|| {
+            let _guard = registration.publish(caller)?;
             child.reset_lexical_global_bindings();
-            let _guard = registration.publish(caller);
             let value = code.execute(child)?;
             // Promise reactions belong to this evaluation context too.
             child.run_promise_jobs()?;
@@ -666,7 +665,7 @@ impl Vm {
                     // trying to borrow it a second time.
                     let child_registration =
                         prepare_active_registration(&mut other, self.host_scheduling.as_ref())?;
-                    let child_guard = child_registration.publish(&mut other);
+                    let child_guard = child_registration.publish(&mut other)?;
                     let result = self.shadow_call_across(&mut other, target, input);
                     drop(child_guard);
                     return result;
@@ -688,16 +687,16 @@ impl Vm {
             if let Ok(mut other) = home.try_borrow_mut() {
                 let registration =
                     prepare_active_registration(&mut other, self.host_scheduling.as_ref())?;
-                let guard = registration.publish(&mut other);
+                let guard = registration.publish(&mut other)?;
                 let result = self.shadow_call_across(&mut other, target, input);
                 drop(guard);
                 return result;
             }
         }
-        let caller = self.object_prototype.heap;
-        realm_reentrancy::with_active_vm(caller, home_heap, |other| {
-            self.shadow_call_across(other, target, input)
-        })
+        // The home realm is only reachable through an active ancestor call; a
+        // missing one is this boundary's own catchable error.
+        let entry = self.resolve_shadow_ancestor(Some(home_heap))?;
+        entry.with(|other| self.shadow_call_across(other, target, input))
     }
 
     /// Validate the active ancestor before either reentrant boundary reborrows
@@ -705,21 +704,26 @@ impl Vm {
     pub(super) fn resolve_shadow_ancestor(
         &self,
         heap_tag: Option<u64>,
-    ) -> Result<*mut Vm, RuntimeError> {
-        let Some(ptr) = heap_tag.and_then(resolve_active) else {
-            return Err(RuntimeError::TypeError(
+    ) -> Result<ActiveVmEntry, RuntimeError> {
+        let unavailable = || {
+            RuntimeError::TypeError(
                 "the ShadowRealm this function belongs to is no longer reachable".into(),
-            ));
+            )
         };
-        if std::ptr::eq(ptr as *const Vm, self as *const Vm) {
-            // A value that somehow crossed all the way back to its own
-            // origin realm within one call chain. Calling through would
-            // alias `self` with itself; refuse rather than risk it.
+        let Some(tag) = heap_tag else {
+            return Err(unavailable());
+        };
+        if tag == self.object_prototype.heap && realm_reentrancy::is_active(tag) {
             return Err(RuntimeError::TypeError(
                 "a ShadowRealm boundary cannot resolve to itself".into(),
             ));
         }
-        Ok(ptr)
+        // An absent ancestor is this boundary's own catchable error; leave the
+        // generic entry failure for a live ancestor that cannot be borrowed.
+        if !realm_reentrancy::is_active(tag) {
+            return Err(unavailable());
+        }
+        resolve_active_entry(self.object_prototype.heap, tag)?.ok_or_else(unavailable)
     }
 
     /// `OrdinaryWrappedFunctionCall`: wraps `this`/each argument *into*
@@ -742,15 +746,17 @@ impl Vm {
             owner.as_ref(),
         )?;
         let source_roots = RealmCallRoots::new(input.objects().count(), owner.as_ref())?;
-        input.objects().for_each(|id| source_roots.push(id));
+        input
+            .objects()
+            .try_for_each(|id| source_roots.push(&self.heap, id))?;
         let target_owner = other.realm_call_native_owner(self)?;
         let count = 1
             + input.receiver.object_id().is_some() as usize
             + input.arguments.iter().filter_map(Value::object_id).count();
         let target_roots = RealmCallRoots::new(count, target_owner.as_ref())?;
-        target_roots.push(target);
+        target_roots.push(&other.heap, target)?;
         let registration = prepare_active_registration(self, other.host_scheduling.as_ref())?;
-        let _guard = registration.publish(self);
+        let _guard = registration.publish(self)?;
         // Guest metadata getters can collect in either heap. Original IDs
         // remain rooted in the source; completed facades get destination IDs.
         // Primitive buffers move in place in the incoming allocation.
@@ -758,13 +764,13 @@ impl Vm {
             other.with_realm_call_roots(target_roots.clone(), |other| {
                 input.receiver = other.shadow_wrap_into(source, input.receiver)?;
                 if let Some(id) = input.receiver.object_id() {
-                    target_roots.push(id);
+                    target_roots.push(&other.heap, id)?;
                 }
                 for slot in &mut input.arguments {
                     let value = std::mem::replace(slot, Value::Undefined);
                     *slot = other.shadow_wrap_into(source, value)?;
                     if let Some(id) = slot.object_id() {
-                        target_roots.push(id);
+                        target_roots.push(&other.heap, id)?;
                     }
                 }
                 other.remaining_instructions = other.config.instruction_budget;
@@ -824,7 +830,7 @@ impl Vm {
                         function_prototype,
                     )
                 })?;
-                roots.push(wrapper);
+                roots.push(&vm.heap, wrapper)?;
                 let copied = vm.copy_name_and_length(source, wrapper, target);
                 // Metadata getters must not expose their original exception
                 // across the boundary. The root transfers to the wrapper record

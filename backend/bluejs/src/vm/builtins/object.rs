@@ -1338,7 +1338,7 @@ impl Vm {
         let roots = RealmCallRoots::new(1, owner.as_ref())?;
         let prototype = self.object_prototype;
         let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        roots.push(object);
+        roots.push(&self.heap, object)?;
         self.with_realm_call_roots(roots, |vm| {
             let writable = descriptor.writable.map(Value::Bool);
             let enumerable = descriptor.enumerable.map(Value::Bool);
@@ -1475,8 +1475,8 @@ impl Vm {
         };
         // GetMethod can revoke the proxy and collect before returning a trap.
         let roots = RealmCallRoots::new(4, owner.as_ref())?;
-        roots.push(target);
-        roots.push(handler);
+        roots.push(&self.heap, target)?;
+        roots.push(&self.heap, handler)?;
         self.with_realm_call_roots(roots.clone(), |vm| {
             let trap = vm.proxy_trap(handler, "defineProperty");
             validate_definition_storage(storage)?;
@@ -1491,13 +1491,13 @@ impl Vm {
                 ));
             }
             if let Some(object) = trap.object_id() {
-                roots.push(object);
+                roots.push(&vm.heap, object)?;
             }
             let descriptor_value = vm.descriptor_object(&descriptor);
             validate_definition_storage(storage)?;
             let descriptor_value = descriptor_value?;
             if let Some(object) = descriptor_value.object_id() {
-                roots.push(object);
+                roots.push(&vm.heap, object)?;
             }
             let mut arguments = TransportVector::with_capacity(3, owner.as_ref())?;
             arguments.push_owned(NativeValue::adopt(Value::Object(target), owner.as_ref())?)?;

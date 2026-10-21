@@ -151,7 +151,7 @@ fn reducer_storage_neutral_root_loan_does_not_rebind_policy() {
     let mut neutral = Vm::default();
     let object = run(&mut neutral, "[1];").object_id().unwrap();
     let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&neutral.heap, object).unwrap();
     let arguments = neutral
         .with_realm_call_roots(roots, |vm| {
             Ok(arguments(
@@ -339,7 +339,7 @@ fn reducer_storage_callback_throw_restores_stack_and_root_chain() {
             let callee = vm.get_property(&source, &method.into()).unwrap();
             let owner = vm.argument_list_owner().unwrap();
             let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-            roots.push(source.object_id().unwrap());
+            roots.push(&vm.heap, source.object_id().unwrap()).unwrap();
             vm.stack.push(Value::Number(9.0));
             vm.synchronize_scheduling_usage().unwrap();
             vm.with_realm_call_roots(roots.clone(), |vm| {
@@ -473,7 +473,7 @@ fn reducer_storage_owned_consumer_roots_restore_after_throw() {
     let object = vm.with_roots(|heap| heap.alloc_object(None)).unwrap();
     let owner = vm.argument_list_owner().unwrap();
     let outer = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    outer.push(anchor);
+    outer.push(&vm.heap, anchor).unwrap();
     let item = NativeValue::adopt(Value::Object(object), owner.as_ref()).unwrap();
     vm.with_realm_call_roots(outer.clone(), |vm| {
         let result: Result<(), RuntimeError> = item.with_owned(vm, |vm, item| {

@@ -2,7 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::node_events::{valid_host_event_path, HostEventContext};
 use super::*;
+use crate::vm::error_input_storage::utf16_from_utf8;
+use crate::vm::realm_call_storage::RealmCallRoots;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostFileSelectionEvent {
@@ -53,13 +56,9 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         self.ensure_no_debugger_continuation()?;
         self.host_family_prototype(family)?;
+        let context = HostEventContext::capture(self)?;
         if !self.host_object_families[family.index as usize].file_events
-            || path.is_empty()
-            || path.len() > 256
-            || path
-                .iter()
-                .any(|key| !key.matches_owner(path[0].owner, path[0].generation))
-            || path.iter().copied().collect::<HashSet<_>>().len() != path.len()
+            || !valid_host_event_path(path)
         {
             return Err(RuntimeError::TypeError(
                 "Invalid file event ancestry".into(),
@@ -74,6 +73,7 @@ impl Vm {
             .event_path
             .is_some()
         {
+            context.validate(self)?;
             self.remaining_instructions = self.config.instruction_budget;
             self.dispatch_native_node_event(
                 family.index,
@@ -84,14 +84,36 @@ impl Vm {
             )?;
             return Ok(());
         }
-        let target = self.mint_host_wrapper(family.index as usize, path[0])?;
+        context.with_roots(self, std::iter::empty(), 3, |vm, roots| {
+            vm.dispatch_legacy_file_event(family, path, kind, &context, roots)
+        })
+    }
+
+    fn dispatch_legacy_file_event(
+        &mut self,
+        family: HostObjectFamily,
+        path: &[HostObjectKey],
+        kind: HostFileSelectionEvent,
+        context: &HostEventContext,
+        roots: &RealmCallRoots,
+    ) -> Result<(), RuntimeError> {
+        let target = self.mint_host_wrapper(family.index as usize, path[0]);
+        let target = context.validate(self).and(target)?;
+        roots.push(&self.heap, target)?;
         self.remaining_instructions = self.config.instruction_budget;
         let prototype = self.object_prototype;
         let event = self.with_roots(|heap| heap.alloc_host_selection_event(prototype))?;
-        let event_root = self.heap.root(event)?;
+        roots.push(&self.heap, event)?;
         let result = (|| {
+            let name = utf16_from_utf8(kind.as_str(), context.event.owner.as_ref())?;
+            let (name, storage) = name.into_retained_parts();
+            property_definition_storage::PropertyDefinitionInput::from_retained(
+                "type".into(),
+                PropertyDescriptor::data(name, false, true, false),
+                storage,
+            )
+            .define(self, event)?;
             for (name, value) in [
-                ("type", Value::String(kind.as_str().into())),
                 ("target", Value::Object(target)),
                 ("bubbles", Value::Bool(true)),
                 ("cancelable", Value::Bool(false)),
@@ -140,35 +162,26 @@ impl Vm {
                 passive: false,
             });
             for (index, capture) in super::listener_phases(path.len()) {
+                context.validate(self)?;
                 let key = &path[index];
-                let callbacks = self
-                    .host_click_listeners
-                    .iter()
-                    .filter(|listener| {
+                let callbacks = self.listener_snapshot(
+                    |listener| {
                         listener.family_index == family.index
                             && listener.key == *key
                             && listener.selection == Some(kind)
                             && listener.capture == capture
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
-                let current = self.mint_host_wrapper(family.index as usize, *key)?;
+                    },
+                    false,
+                )?;
+                let current = self.mint_host_wrapper(family.index as usize, *key);
+                let current = context.validate(self).and(current)?;
+                roots.push(&self.heap, current)?;
                 self.heap
                     .set_host_selection_current_target(event, Some(current))?;
-                let mut roots = Vec::with_capacity(callbacks.len());
-                for callback in &callbacks {
-                    match self.heap.root(callback.callback) {
-                        Ok(root) => roots.push(root),
-                        Err(error) => {
-                            for root in roots {
-                                let _ = self.heap.unroot(root);
-                            }
-                            return Err(error.into());
-                        }
-                    }
-                }
                 let outcome = (|| {
-                    for callback in callbacks {
+                    for serial in callbacks.serials.iter().copied() {
+                        context.validate(self)?;
+                        callbacks.validate(self)?;
                         if self
                             .active_host_click_event
                             .as_ref()
@@ -176,7 +189,10 @@ impl Vm {
                         {
                             break;
                         }
-                        if let Err(error) = self.invoke_host_listener(&callback, current, event) {
+                        let called = self.invoke_host_listener(serial, current, event);
+                        context.validate(self)?;
+                        callbacks.validate(self)?;
+                        if let Err(error) = called {
                             if !matches!(
                                 error,
                                 RuntimeError::Thrown(_)
@@ -198,9 +214,7 @@ impl Vm {
                     }
                     Ok(())
                 })();
-                for root in roots {
-                    self.heap.unroot(root)?;
-                }
+                roots.truncate(2);
                 outcome?;
                 if self
                     .active_host_click_event
@@ -214,9 +228,11 @@ impl Vm {
             Ok(())
         })();
         self.active_host_click_event = None;
-        self.heap.set_host_selection_current_target(event, None)?;
-        self.heap.unroot(event_root)?;
-        result
+        let cleanup = self
+            .heap
+            .set_host_selection_current_target(event, None)
+            .map_err(RuntimeError::from);
+        context.validate(self).and(cleanup).and(result)
     }
 
     pub(in super::super) fn host_selection_current_target(

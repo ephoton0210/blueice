@@ -154,6 +154,20 @@ pub(super) struct CallEntryCharge {
 }
 
 impl CallEntryCharge {
+    pub(super) fn push_retained_argument(
+        &mut self,
+        values: &mut Vec<Value>,
+        input: native_value_storage::NativeValue,
+    ) -> Result<(), RuntimeError> {
+        input.move_into(values, &mut self.payload.native)?;
+        self.payload.bytes = self
+            .payload
+            .native
+            .as_ref()
+            .map_or(0, host_scheduling::SharedSchedulingCharge::bytes);
+        Ok(())
+    }
+
     /// Adopt native storage already admitted by a snapshot producer, without
     /// publishing duplicate displaced counters before the pure handoff.
     pub(super) fn adopt_native_arguments(
@@ -289,7 +303,23 @@ impl CallEntryCharge {
 }
 
 impl ExecutionPayloadCharge {
-    fn resize_entry(&mut self, bytes: usize) -> Result<(), RuntimeError> {
+    /// Transfer published payload credit to the native consumer of the same data.
+    pub(super) fn into_native(
+        mut self,
+        vm: &mut Vm,
+        bytes: usize,
+    ) -> Result<Option<host_scheduling::SharedSchedulingCharge>, RuntimeError> {
+        self.validate_retained(vm.host_scheduling.as_ref())?;
+        let owner = vm.argument_list_owner()?;
+        self.retain_entry(vm, bytes, owner.as_ref())?;
+        if self.native.is_none() {
+            self.counter.set(self.counter.get() - self.bytes);
+        }
+        self.bytes = 0;
+        Ok(self.native.take())
+    }
+
+    pub(super) fn resize_entry(&mut self, bytes: usize) -> Result<(), RuntimeError> {
         if let Some(owner) = &mut self.native {
             owner.resize(bytes)?;
             self.bytes = bytes;
@@ -299,7 +329,7 @@ impl ExecutionPayloadCharge {
         Ok(())
     }
 
-    fn retain_entry(
+    pub(super) fn retain_entry(
         &mut self,
         vm: &mut Vm,
         bytes: usize,
@@ -452,6 +482,23 @@ impl Drop for ExecutionPayloadCharge {
 }
 
 impl Vm {
+    pub(super) fn adopt_job_payload(
+        &self,
+        native: Option<host_scheduling::SharedSchedulingCharge>,
+        bytes: usize,
+    ) -> ExecutionPayloadCharge {
+        if let Some(native) = native {
+            ExecutionPayloadCharge {
+                counter: self.displaced_execution_bytes.clone(),
+                bytes: native.bytes(),
+                enabled: true,
+                native: Some(native),
+            }
+        } else {
+            self.charge_execution_payload(bytes)
+        }
+    }
+
     pub(super) fn charge_module_cells(&self, bytes: usize) -> ExecutionPayloadCharge {
         let enabled = self.host_scheduling.is_some();
         let bytes = if enabled { bytes } else { 0 };

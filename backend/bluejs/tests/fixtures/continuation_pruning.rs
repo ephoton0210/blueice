@@ -122,7 +122,7 @@ fn held_async_page() -> (Vm, ObjectId) {
 }
 fn remove_reactions(vm: &mut Vm, module: bool) {
     vm.promises.retain(|_, record| {
-        record.reactions.retain(|reaction| {
+        record.retain_reactions(|reaction| {
             !matches!(
                 (module, reaction),
                 (true, PromiseReaction::ModuleAwait { .. })

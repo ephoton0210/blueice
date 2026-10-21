@@ -11,6 +11,7 @@
 //! shared primitive. Each registration owns its admitted metadata; preparation
 //! precedes publication so the original VM-pointer validity window stays exact.
 
+use super::native_context_guards::NativeContextGuards;
 use super::*;
 use std::cell::{Cell, OnceCell};
 
@@ -18,12 +19,25 @@ use std::cell::{Cell, OnceCell};
 #[path = "../../tests/fixtures/active_realm_storage.rs"]
 mod storage_tests;
 
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/active_realm_publication.rs"]
+mod publication_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/active_realm_resolution.rs"]
+mod resolution_tests;
+
 struct ActiveVm {
     tag: u64,
     ptr: Cell<*mut Vm>,
     scope: Option<SchedulingScope>,
     previous: OnceCell<Option<Rc<ActiveVm>>>,
+    callers: Option<Rc<NativeContextGuards>>,
     _storage: Option<host_scheduling::SharedSchedulingCharge>,
+}
+
+fn active_allocation_bytes() -> usize {
+    std::mem::size_of::<ActiveVm>() + 2 * std::mem::size_of::<usize>()
 }
 
 pub(super) struct ActiveRegistration {
@@ -33,8 +47,29 @@ pub(super) struct ActiveRegistration {
 impl ActiveRegistration {
     /// Publish only at the original cross-VM call boundary. Allocation and
     /// admission have already finished without capturing a VM pointer.
-    pub(super) fn publish(self, vm: &mut Vm) -> ActiveGuard {
-        debug_assert_eq!(self.node.tag, vm.object_prototype.heap);
+    pub(super) fn publish(self, vm: &mut Vm) -> Result<ActiveGuard, RuntimeError> {
+        let same_policy = match (&self.node.scope, &vm.host_scheduling) {
+            (Some(prepared), Some(current)) => prepared.same_document(current),
+            (None, None) => true,
+            _ => false,
+        };
+        if self.node.tag != vm.object_prototype.heap || !same_policy {
+            return Err(RuntimeError::TypeError(
+                "prepared realm registration no longer matches its VM".into(),
+            ));
+        }
+        // Conversions between preparation and publication may cancel the
+        // original account or a retained caller. Refuse before publishing a
+        // pointer or taking the previous registration; dropping self refunds
+        // the prepared metadata even when its owning account has failed.
+        vm.check_scheduling_failure()?;
+        vm.current_realm_root_owner()?;
+        if let Some(owner) = &self.node._storage {
+            owner.reserve_peer(0)?;
+        }
+        if let Some(callers) = &self.node.callers {
+            callers.validate()?;
+        }
         self.node.ptr.set(vm as *mut Vm);
         ACTIVE.with(|active| {
             let mut active = active.borrow_mut();
@@ -45,7 +80,7 @@ impl ActiveRegistration {
             );
             *active = Some(self.node.clone());
         });
-        ActiveGuard { node: self.node }
+        Ok(ActiveGuard { node: self.node })
     }
 }
 
@@ -56,7 +91,7 @@ fn active_backing_bytes() -> usize {
         let mut node = active.as_deref();
         let mut bytes = 0usize;
         while let Some(current) = node {
-            bytes += std::mem::size_of::<ActiveVm>();
+            bytes += active_allocation_bytes();
             node = current.previous.get().and_then(Option::as_deref);
         }
         bytes
@@ -80,7 +115,7 @@ thread_local! {
     ///
     /// A facade that a realm retains and calls again long after the
     /// synchronous call that produced it has returned (so no entry remains
-    /// for its home realm) simply fails [`resolve_active`] and reports a
+    /// for its home realm) simply fails [`resolve_active_entry`] and reports a
     /// catchable error, rather than dereferencing memory whose lifetime has
     /// already ended.
     static ACTIVE: RefCell<Option<Rc<ActiveVm>>> = const { RefCell::new(None) };
@@ -118,8 +153,26 @@ pub(super) fn prepare_active_registration(
     // Keep a zero-owning account view for reentrant compilation without
     // dereferencing the active VM merely to inspect its scheduling policy.
     let scope = vm.host_scheduling.as_ref().map(SchedulingScope::child);
-    let bytes = std::mem::size_of::<ActiveVm>();
-    let storage = if let Some(owner) = scope.as_ref().or(owner_hint) {
+    let bytes = active_allocation_bytes();
+    let root_owner = vm.current_realm_root_owner()?;
+    let root_guards = vm.current_realm_context_guards()?;
+    let borrow_ambient = scope.is_none() && (root_owner.is_some() || owner_hint.is_none());
+    let ambient = if borrow_ambient {
+        reserve_active_native(0)?
+    } else {
+        None
+    };
+    let ambient_guards = if borrow_ambient {
+        active_context_guards()?
+    } else {
+        None
+    };
+    let storage = if let Some(owner) = scope.as_ref() {
+        Some(owner.shared_charge(bytes)?)
+    } else if let Some(owner) = &root_owner {
+        reserve_active_native(0)?;
+        Some(owner.reserve_peer(bytes)?)
+    } else if let Some(owner) = owner_hint {
         Some(owner.shared_charge(bytes)?)
     } else {
         // A neutral membrane nested inside bounded work still allocates
@@ -127,12 +180,18 @@ pub(super) fn prepare_active_registration(
         // without changing the neutral VM's captured policy.
         reserve_active_native(bytes)?
     };
+    let callers = NativeContextGuards::capture(
+        storage.as_ref(),
+        [root_guards.as_ref(), ambient_guards.as_ref()],
+        [root_owner.as_ref(), ambient.as_ref(), None],
+    )?;
     Ok(ActiveRegistration {
         node: Rc::new(ActiveVm {
             tag,
             ptr: Cell::new(std::ptr::null_mut()),
             scope,
             previous: OnceCell::new(),
+            callers,
             _storage: storage,
         }),
     })
@@ -146,6 +205,9 @@ pub(super) fn reserve_active_native(
         let active = active.borrow();
         let mut node = active.as_deref();
         while let Some(current) = node {
+            if let Some(callers) = &current.callers {
+                callers.validate()?;
+            }
             if let Some(owner) = &current._storage {
                 return owner.reserve_peer(bytes).map(Some);
             }
@@ -155,9 +217,28 @@ pub(super) fn reserve_active_native(
     })
 }
 
+/// Only copy immutable guard metadata; never access the registered VM pointer.
+pub(super) fn active_context_guards() -> Result<Option<Rc<NativeContextGuards>>, RuntimeError> {
+    ACTIVE.with(|active| {
+        let active = active.borrow();
+        let mut node = active.as_deref();
+        while let Some(current) = node {
+            if let Some(callers) = &current.callers {
+                callers.validate()?;
+            }
+            if let Some(owner) = &current._storage {
+                owner.reserve_peer(0)?;
+                return Ok(current.callers.clone());
+            }
+            node = current.previous.get().and_then(Option::as_deref);
+        }
+        Ok(None)
+    })
+}
+
 pub(super) fn register_active(vm: &mut Vm) -> Result<ActiveGuard, RuntimeError> {
     let prepared = prepare_active_registration(vm, None)?;
-    Ok(prepared.publish(vm))
+    prepared.publish(vm)
 }
 
 /// Whether this call is nested inside a different Realm's suspended call.
@@ -176,22 +257,120 @@ pub(super) fn has_foreign_caller(tag: u64) -> bool {
     })
 }
 
-/// Finds the most recently registered `Vm` for `tag`, if one is currently
-/// mid-call on this thread's synchronous cross-realm call chain. See
-/// `ACTIVE`'s own documentation for the safety argument governing every
-/// caller of this function.
-pub(super) fn resolve_active(tag: u64) -> Option<*mut Vm> {
+fn active_node(tag: u64) -> Option<Rc<ActiveVm>> {
     ACTIVE.with(|active| {
         let active = active.borrow();
-        let mut node = active.as_deref();
+        let mut node = active.as_ref();
         while let Some(current) = node {
             if current.tag == tag {
-                return Some(current.ptr.get());
+                return Some(Rc::clone(current));
             }
-            node = current.previous.get().and_then(Option::as_deref);
+            node = current.previous.get().and_then(Option::as_ref);
         }
         None
     })
+}
+
+/// Topology queries must still see a suspended call after account failure.
+pub(super) fn is_active(tag: u64) -> bool {
+    active_node(tag).is_some()
+}
+
+/// Identity observations for internal fixtures; never dereference this pointer.
+#[cfg(any(test, coverage))]
+pub(super) fn resolve_active(tag: u64) -> Option<*mut Vm> {
+    active_node(tag).map(|node| node.ptr.get())
+}
+
+/// Retains paid metadata, not VM ownership or a longer pointer validity window.
+/// Only a live synchronous registration can lend its VM to `with`.
+pub(super) struct ActiveVmEntry {
+    node: Rc<ActiveVm>,
+    caller: Option<Rc<ActiveVm>>,
+}
+
+impl ActiveVmEntry {
+    fn unavailable() -> RuntimeError {
+        RuntimeError::TypeError("the callable home realm is not available".into())
+    }
+
+    fn validate_node(node: &Rc<ActiveVm>) -> Result<(), RuntimeError> {
+        let live = ACTIVE.with(|active| {
+            let active = active.borrow();
+            let mut current = active.as_ref();
+            while let Some(candidate) = current {
+                if Rc::ptr_eq(candidate, node) {
+                    return true;
+                }
+                current = candidate.previous.get().and_then(Option::as_ref);
+            }
+            false
+        });
+        if !live || node.ptr.get().is_null() {
+            return Err(Self::unavailable());
+        }
+        if let Some(owner) = &node._storage {
+            owner.reserve_peer(0)?;
+        }
+        if let Some(callers) = &node.callers {
+            callers.validate()?;
+        }
+        Ok(())
+    }
+
+    fn validate(&self) -> Result<(), RuntimeError> {
+        Self::validate_node(&self.node)?;
+        if let Some(caller) = &self.caller {
+            Self::validate_node(caller)?;
+        }
+        Ok(())
+    }
+
+    /// Suspend caller access for the original synchronous ancestor operation.
+    /// Both success and error validate the same metadata and current root state.
+    pub(super) fn with<T>(
+        self,
+        operation: impl FnOnce(&mut Vm) -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        self.validate()?;
+        // SAFETY: the exact registration is still on ACTIVE, and resolution
+        // rejected a self-reference. Its original ancestor call remains
+        // suspended for this operation; no pointer escapes this reborrow.
+        let vm = unsafe { &mut *self.node.ptr.get() };
+        vm.check_scheduling_failure()?;
+        vm.current_realm_root_owner()?;
+        let result = operation(vm);
+        vm.check_scheduling_failure()?;
+        vm.current_realm_root_owner()?;
+        self.validate()?;
+        result
+    }
+
+    #[cfg(any(test, coverage))]
+    pub(super) fn pointer(&self) -> *mut Vm {
+        self.node.ptr.get()
+    }
+}
+
+/// Resolve account identities without accessing any registered VM pointer.
+pub(super) fn resolve_active_entry(
+    caller: u64,
+    target: u64,
+) -> Result<Option<ActiveVmEntry>, RuntimeError> {
+    let Some(node) = active_node(target) else {
+        return Ok(None);
+    };
+    if caller == target {
+        return Err(RuntimeError::TypeError(
+            "a realm membrane cannot resolve to itself".into(),
+        ));
+    }
+    let entry = ActiveVmEntry {
+        node,
+        caller: active_node(caller),
+    };
+    entry.validate()?;
+    Ok(Some(entry))
 }
 
 /// A suspended same-document call still owns this synchronous job boundary.
@@ -239,10 +418,6 @@ pub(super) fn with_active_vm<T>(
             "a realm membrane cannot resolve to itself".into(),
         ));
     }
-    let ptr = resolve_active(target).ok_or_else(|| {
-        RuntimeError::TypeError("the callable home realm is not available".into())
-    })?;
-    // SAFETY: ACTIVE owns this tag only for a suspended call's dynamic extent.
-    // Its existing guard keeps the VM alive, and caller != target excludes self.
-    unsafe { operation(&mut *ptr) }
+    let entry = resolve_active_entry(caller, target)?.ok_or_else(ActiveVmEntry::unavailable)?;
+    entry.with(operation)
 }

@@ -407,7 +407,9 @@ fn argument_list_storage_existing_root_owner_covers_neutral_conversion() {
     let list = list(&mut neutral);
     let before = view.host_scheduling_snapshot().payload_bytes;
     let roots = RealmCallRoots::new(1, Some(&owner)).unwrap();
-    roots.push(list.object_id().unwrap());
+    roots
+        .push(&neutral.heap, list.object_id().unwrap())
+        .unwrap();
     neutral
         .with_realm_call_roots(roots, |vm| {
             let current = view.host_scheduling_snapshot().payload_bytes;

@@ -611,6 +611,8 @@ fn foreign_internal_methods_preserve_actual_target_exceptions() {
     )
     .object_id()
     .unwrap();
+    // A result is rooted only until the next execution, which collects first.
+    let _wrapper_root = vm.heap.root(wrapper).unwrap();
     assert_eq!(
         vm.test262_foreign_next(&Value::Object(wrapper), "next", &[]),
         Err(RuntimeError::Thrown(Value::Number(7.0)))
@@ -722,6 +724,8 @@ fn shadow_reexports_and_foreign_apply_preserve_destination_refusals() {
         let wrapper = execute(&mut vm, "first.eval('new ShadowRealm()')")
             .object_id()
             .unwrap();
+        // A result is rooted only until the next execution, which collects.
+        let _wrapper_root = vm.heap.root(wrapper).unwrap();
         let (source, target, _, _) = vm.test262_foreign_reference(wrapper).unwrap();
         let second = execute(&mut vm, "second").object_id().unwrap();
         let (destination, _, _, _) = vm.test262_foreign_reference(second).unwrap();

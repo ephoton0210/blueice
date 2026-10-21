@@ -22,7 +22,7 @@ for-await cleanup. The public page regressions cover bounded managed heap and
 native scheduling payload during repeated timer polls. M1g adds document-owned
 registry cleanup tasks, automatic GC notifications at host checkpoints and a
 shared 64-task browser/cleanup cap; the milestone record tracks final gates. See the
-[`browser-integration milestone record`](BROWSER_INTEGRATION_TODO.md#milestone-record)
+[`browser-integration milestone record`](BROWSER_INTEGRATION_MILESTONES.md#milestone-record)
 for current evidence and remaining task-ordering/resource work. The tables
 below retain the original analysis baseline except for the dated milestone
 updates, including M1l's verified global inventory/aliases and M1m's v14
@@ -38,7 +38,7 @@ M1p adds v16 rejection events and bounded document-task tracking with weak
 outstanding ownership. All 37 related Rust targets, real Core/MCP, formatting
 and workspace/all-target Clippy/build pass. The complete pinned Test262
 inventory matches M1o; evidence is recorded in the
-[milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 BlueJS is measured against ECMA-262/402 (Test262 99.995%). That says the
 *language* is nearly complete; it says nothing about whether the engine is a
@@ -104,7 +104,7 @@ See [the global contract](WINDOW_GLOBALS.md).
 M1m advances the profile to v14 with typed console output and
 bounded document-owned diagnostics routed through private v60, Core and MCP.
 Real MCP, related Rust and full pinned Test262 acceptance pass; see the
-[milestone record](BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone record](BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 | Group | Names | Layer |
 |---|---|---|

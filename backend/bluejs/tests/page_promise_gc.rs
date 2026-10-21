@@ -21,6 +21,18 @@ fn page_script(runtime: &mut BlueJsPageRuntime, source: &str) -> Value {
     runtime.execute_program(1, handle).unwrap()
 }
 
+/// What a brand-new realm owes before any script runs (its own root table).
+fn fresh_realm_payload() -> usize {
+    let mut runtime = BlueJsPageRuntime::default();
+    runtime
+        .open_realm(
+            1,
+            BlueJsPageOrigin::new("https://fresh-realm.test").unwrap(),
+        )
+        .unwrap();
+    runtime.host_scheduling_usage(1).unwrap().payload_bytes
+}
+
 #[test]
 fn iterator_close_awaits_once_without_inserting_an_extra_reaction_turn() {
     let mut vm = Vm::default();
@@ -228,7 +240,10 @@ fn unchanged_live_promise_payload_does_not_force_gc_at_every_call() {
     assert!(runtime.realm_stats(1).unwrap().heap.major_collections > before);
     assert!(runtime.host_scheduling_usage(1).unwrap().payload_bytes < retained);
     runtime.navigate(1, origin).unwrap();
-    assert_eq!(runtime.host_scheduling_usage(1).unwrap().payload_bytes, 0);
+    assert_eq!(
+        runtime.host_scheduling_usage(1).unwrap().payload_bytes,
+        fresh_realm_payload()
+    );
 }
 
 #[test]
@@ -325,7 +340,10 @@ fn document_work_keeps_an_orphan_realm_until_delivery_or_navigation() {
             }
             if navigate {
                 runtime.navigate(1, origin).unwrap();
-                assert_eq!(runtime.host_scheduling_usage(1).unwrap().payload_bytes, 0);
+                assert_eq!(
+                    runtime.host_scheduling_usage(1).unwrap().payload_bytes,
+                    fresh_realm_payload()
+                );
                 assert_eq!(runtime.run_task_turn(1, 10, 1).unwrap().tasks_run, 0);
             } else {
                 let turn = runtime.run_task_turn(1, 10, 1).unwrap();

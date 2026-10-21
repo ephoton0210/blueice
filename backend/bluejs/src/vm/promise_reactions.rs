@@ -20,6 +20,7 @@ impl Vm {
         on_rejected: Value,
         target: ReactionTarget,
     ) -> Result<promise_queue_storage::PreparedAwaitRegistration, RuntimeError> {
+        let owner = self.prepare_promise_record_owner(promise, None)?;
         let record = self
             .promises
             .get(&promise)
@@ -70,10 +71,9 @@ impl Vm {
             }
             AwaitRegistration::Job(job) => job.scheduling_payload_bytes(),
         };
-        let input = self
-            .host_scheduling
+        let input = owner
             .as_ref()
-            .map(|scope| scope.shared_charge(incoming.saturating_add(copied_bytes)))
+            .map(|owner| owner.reserve_peer(incoming.saturating_add(copied_bytes)))
             .transpose()?;
         let mut work = work;
         if let AwaitRegistration::Job(PromiseJob::Reaction { value, origin, .. }) = &mut work {
@@ -124,3 +124,7 @@ impl Vm {
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/promise_reaction_storage.rs"]
 mod storage_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/promise_reaction_lifetime.rs"]
+mod lifetime_tests;

@@ -56,13 +56,26 @@ impl FileReaderState {
             .for_each(&mut *visit)
     }
     pub fn bytes(&self) -> usize {
-        size_of::<Self>()
-            + self.target.bytes()
-            + self.encoding.as_ref().map_or(0, JsString::byte_len)
-            + match &self.result {
-                Value::String(value) => value.byte_len(),
-                _ => 0,
-            }
+        size_of::<Self>().saturating_add(self.owned_buffer_bytes())
+    }
+    pub(crate) fn owned_buffer_bytes(&self) -> usize {
+        self.target
+            .owned_buffer_bytes()
+            .saturating_add(self.encoding.as_ref().map_or(0, |text| {
+                text.owned_heap_payload_bytes().unwrap_or(usize::MAX)
+            }))
+            .saturating_add(crate::vm::HeapNativeBudget::value_payload_bytes(
+                &self.result,
+            ))
+    }
+    pub(crate) fn copied_buffer_bytes(&self) -> usize {
+        self.target
+            .copied_buffer_bytes()
+            .saturating_add(self.encoding.as_ref().map_or(0, JsString::byte_len))
+            .saturating_add(match &self.result {
+                Value::String(text) => text.byte_len(),
+                value => crate::vm::HeapNativeBudget::value_payload_bytes(value),
+            })
     }
 }
 
@@ -74,8 +87,16 @@ pub(crate) struct PreparedFileReaderUpdate {
 }
 
 impl Heap {
+    #[cfg(any(test, coverage))]
     pub(crate) fn alloc_file_reader(&mut self, prototype: ObjectId) -> Result<ObjectId, HeapError> {
-        self.alloc(ObjectKind::WebFileReader(Box::default()), Some(prototype))
+        self.alloc_file_reader_owned(Box::default(), prototype)
+    }
+    pub(crate) fn alloc_file_reader_owned(
+        &mut self,
+        state: Box<FileReaderState>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::WebFileReader(state), Some(prototype))
     }
     pub(crate) fn file_reader(&self, object: ObjectId) -> Result<&FileReaderState, HeapError> {
         match &self.object(object)?.kind {
@@ -83,6 +104,7 @@ impl Heap {
             _ => Err(HeapError::InvalidInternalSlot(object)),
         }
     }
+    #[cfg(any(test, coverage))]
     pub(crate) fn set_file_reader(
         &mut self,
         object: ObjectId,
@@ -94,10 +116,18 @@ impl Heap {
     }
     /// Admission may collect; the old reader remains installed. After this
     /// returns, commit must precede any further collection or managed allocation.
+    #[cfg(any(test, coverage))]
     pub(crate) fn prepare_file_reader_update(
         &mut self,
         object: ObjectId,
         state: FileReaderState,
+    ) -> Result<PreparedFileReaderUpdate, HeapError> {
+        self.prepare_file_reader_update_owned(object, Box::new(state))
+    }
+    pub(crate) fn prepare_file_reader_update_owned(
+        &mut self,
+        object: ObjectId,
+        state: Box<FileReaderState>,
     ) -> Result<PreparedFileReaderUpdate, HeapError> {
         let previous = self.file_reader(object)?.bytes();
         let bytes = state.bytes();
@@ -108,7 +138,7 @@ impl Heap {
             }
         });
         validation?;
-        let kind = ObjectKind::WebFileReader(Box::new(state));
+        let kind = ObjectKind::WebFileReader(state);
         // Allocation protection visits the incoming kind and one extra object,
         // avoiding reference/protection scratch vectors for the receiver update.
         self.ensure_room_protected(

@@ -536,7 +536,7 @@ fn rooted_task_storage_rejection_notification_moves_existing_vector_ownership() 
     assert_eq!(usage.pending_reactions, 1);
     assert_eq!(
         usage.payload_bytes,
-        before + 4 * std::mem::size_of::<browser_tasks::BrowserTask>()
+        before + 4 * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>()
     );
 }
 #[cfg_attr(test, test)]

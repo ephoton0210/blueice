@@ -401,7 +401,7 @@ fn typed_snapshot_storage_existing_root_owner_covers_neutral_range() {
         .object_id()
         .unwrap();
     let roots = realm_call_storage::RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&neutral.heap, object).unwrap();
     let values = neutral
         .with_realm_call_roots(roots, |vm| vm.typed_array_read_values(object, 0, 2))
         .unwrap();

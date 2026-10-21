@@ -17,7 +17,7 @@ in progress for task-source ordering and broader host-buffer/aggregate
 accounting. M1h adds native DOM callback cleanup with a shared 256-job budget,
 preserved dispatch fuel and rooted frames during module jobs; script-driven
 dispatch retains its enclosing JavaScript ordering. The
-[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record)
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record)
 tracks its acceptance without closing M1 as a whole.
 
 M1i shares timer/browser work in one bounded document task entry. Core can
@@ -51,7 +51,7 @@ bounded page logging; private v60 drains one document's copied records through
 Core to MCP `get_console_messages`. Real mixed-language MCP acceptance passes,
 including task/native-click output and navigation isolation. Rust/build/Clippy
 gates pass and the complete Test262 inventory matches M1l; see the
-[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 The M1o/M1p follow-ups below supply exception and rejection reporting; the
 remaining M1 policy work stays open.
 
@@ -60,7 +60,7 @@ chains now fail before a checked page's earlier DOM writes can run; ambient
 callable queries retain their declarations and local shadows. The existing
 installed surface is unchanged. Complete compiler/bridge and related host/MCP
 acceptance, workspace build/Clippy/formatting and pinned Test262 gates pass. See the
-[live acceptance record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[live acceptance record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 M1o's exception-reporting follow-up is accepted. File DOM v15
 dispatches cancelable error events and sends uncanceled bounded diagnostics
@@ -68,7 +68,7 @@ through the existing Core/MCP console channel. Real pages and the official
 MCP client verify continuation after task/native-listener throws. Related
 Rust, format, workspace Clippy/build and complete pinned Test262 gates pass.
 Final evidence is recorded in the
-[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 M1p now implements general page rejection tracking; broader host-buffer policy
 keeps M1 open.
 
@@ -79,7 +79,7 @@ navigation are covered by public VM/profile and real Core/MCP acceptance.
 Uncanceled copied diagnostics use the existing private v60 console route.
 All 37 related Rust targets, formatting and workspace/all-target Clippy/build
 pass. The complete pinned Test262 inventory matches M1o; final evidence is in the
-[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record);
+[milestone record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record);
 see [the rejection contract](../phase-13-bluejs-engine/HOST_PROMISE_REJECTIONS.md).
 
 M1q is in progress. A verified source-provenance foundation supplies original
@@ -90,7 +90,7 @@ and cross-script generator resumption. Bounded optional source records now
 pass through private v61, exact-document Core validation and MCP's untrusted
 frame, with message/source byte accounting. Typed, expression,
 module and asynchronous positions remain required; see
-[the live record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[the live record](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 ## Objective
 
@@ -182,7 +182,7 @@ typings, exact-document relative wake-up propagation, and session tick delivery.
 Real JavaScript and BlueTS counter pages each produce three distinct unsolicited
 frames with increasing generation and matching Representation generation/text;
 clear and navigation stop old timer work. See the
-[milestone results](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[milestone results](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 M1c adds `requestAnimationFrame`/`cancelAnimationFrame`, the exact v12 artifact,
 and private v58 render requests. A Core-owned software cadence runs the callback
 snapshot and its microtask cleanup before dirty frame publication. JavaScript
@@ -270,7 +270,7 @@ open, so M1 remains in progress.
 addresses the Promise lifetime and iterator cleanup differences described
 above. The merge record remains historical; current implementation and full
 Test262 acceptance are recorded in the
-[M1f milestone](../phase-13-bluejs-engine/BROWSER_INTEGRATION_TODO.md#milestone-record).
+[M1f milestone](../phase-13-bluejs-engine/BROWSER_INTEGRATION_MILESTONES.md#milestone-record).
 
 Verification gate before this branch is treated as integrated:
 `cargo test -p blueice-bluejs` (including the Test262-dependent integration

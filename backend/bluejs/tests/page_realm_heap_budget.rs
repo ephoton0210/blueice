@@ -4,7 +4,7 @@
 
 use blueice_bluejs::{
     parse, BlueJsPageOrigin, BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsProgramV1,
-    BlueJsSourceIdentity, HeapError, RuntimeError, Value,
+    BlueJsSourceIdentity, RuntimeError, Value,
 };
 
 fn execute(
@@ -41,7 +41,7 @@ fn live_child_heaps_cannot_multiply_the_document_heap_budget() {
         matches!(
             result,
             Err(blueice_bluejs::BlueJsPageRuntimeError::Runtime(
-                RuntimeError::Heap(HeapError::HeapLimitExceeded { limit: 1048576 })
+                RuntimeError::SchedulingLimit
             ))
         ),
         "sixteen child heaps bypassed the document cap: {result:?}"

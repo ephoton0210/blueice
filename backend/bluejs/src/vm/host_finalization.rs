@@ -6,11 +6,16 @@
 //! task per registry and document-wide FIFO order, including ShadowRealms.
 //! https://html.spec.whatwg.org/multipage/webappapis.html#hostenqueuefinalizationregistrycleanupjob
 
+use super::host_scheduling::SharedSchedulingCharge;
 use super::*;
 
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/host_finalization_boundaries.rs"]
 mod boundary_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/host_finalization_lifetime.rs"]
+mod lifetime_tests;
 
 pub(super) struct HostFinalizationTask {
     registry: ObjectId,
@@ -18,7 +23,173 @@ pub(super) struct HostFinalizationTask {
     pub(super) serial: u64,
 }
 
+/// Page cleanup tasks share one document account. Their records contain only
+/// IDs; backing and pending-count reservations therefore travel together.
+#[derive(Default)]
+pub(super) struct HostFinalizationQueue {
+    data: VecDeque<HostFinalizationTask>,
+    // Every task and the queue allocation drop before their independent fee.
+    storage: Option<SharedSchedulingCharge>,
+}
+impl std::ops::Deref for HostFinalizationQueue {
+    type Target = VecDeque<HostFinalizationTask>;
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+impl std::ops::Index<usize> for HostFinalizationQueue {
+    type Output = HostFinalizationTask;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[index]
+    }
+}
+impl std::ops::IndexMut<usize> for HostFinalizationQueue {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.data[index]
+    }
+}
+impl HostFinalizationQueue {
+    pub(super) fn can_join(&self, scope: &SchedulingScope) -> bool {
+        self.storage
+            .as_ref()
+            .is_none_or(|owner| owner.belongs_to(scope))
+    }
+    fn owner(&self) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        self.storage
+            .as_ref()
+            .map(|owner| owner.reserve_peer(0))
+            .transpose()
+    }
+    fn backing_bytes(&self) -> usize {
+        self.data
+            .capacity()
+            .saturating_mul(std::mem::size_of::<HostFinalizationTask>())
+    }
+    pub(super) fn unowned_count(&self) -> usize {
+        if self.storage.is_none() {
+            self.data.len()
+        } else {
+            0
+        }
+    }
+    pub(super) fn unowned_bytes(&self) -> usize {
+        if self.storage.is_none() {
+            self.backing_bytes()
+        } else {
+            0
+        }
+    }
+    fn pop_front(&mut self) -> Option<HostFinalizationTask> {
+        let task = self.data.pop_front()?;
+        if let Some(storage) = &mut self.storage {
+            storage.release_browser_tasks_to(self.data.len());
+        }
+        Some(task)
+    }
+    fn shrink_to_fit(&mut self) {
+        if self.data.is_empty() {
+            self.data = VecDeque::new();
+            if let Some(storage) = &mut self.storage {
+                storage.release_to(0);
+            }
+        }
+    }
+    #[cfg(any(test, coverage))]
+    pub(super) fn reserve(&mut self, count: usize) {
+        self.data.reserve(count);
+        let bytes = self.backing_bytes();
+        if let Some(storage) = &mut self.storage {
+            storage.reconcile_owned_bytes(bytes);
+        }
+    }
+}
+
+pub(super) struct PreparedFinalizationTask {
+    growth: promise_queue_storage::PreparedDeque<HostFinalizationTask>,
+    count: Option<SharedSchedulingCharge>,
+}
+impl PreparedFinalizationTask {
+    fn commit(self, vm: &mut Vm, task: HostFinalizationTask) {
+        let queue = &mut vm.host_finalization_tasks;
+        if let Some(backing) = self.growth.commit_owned(&mut queue.data) {
+            if let Some(storage) = &mut queue.storage {
+                storage.release_to(0);
+                storage
+                    .absorb(backing)
+                    .expect("cleanup backing has one document");
+            } else {
+                queue.storage = Some(backing);
+            }
+        }
+        if let Some(count) = self.count {
+            queue
+                .storage
+                .as_mut()
+                .expect("prepared cleanup owner")
+                .absorb(count)
+                .expect("cleanup count has the queue's document");
+        }
+        queue.data.push_back(task);
+        vm.reconcile_scheduling_ownership();
+    }
+}
+
 impl Vm {
+    pub(super) fn finalization_queue_owner(
+        &mut self,
+        hint: Option<&SharedSchedulingCharge>,
+    ) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        let current = self.argument_list_owner()?;
+        let original = self.host_finalization_tasks.owner()?;
+        if let Some(scope) = &self.host_scheduling {
+            if !self.host_finalization_tasks.can_join(scope)
+                || hint.is_some_and(|owner| !owner.belongs_to(scope))
+            {
+                return Err(scope.fail());
+            }
+        }
+        let Some(owner) = original.as_ref().or(current.as_ref()).or(hint) else {
+            return Ok(None);
+        };
+        if self.host_finalization_tasks.storage.is_none() {
+            self.synchronize_scheduling_usage()?;
+            let bytes = self.host_finalization_tasks.backing_bytes();
+            let count = self.host_finalization_tasks.len();
+            let storage = match &mut self.host_scheduling {
+                Some(scope) => {
+                    let mut storage = scope.detach_owned_payload(bytes);
+                    storage
+                        .absorb(scope.detach_owned_browser_tasks(count))
+                        .expect("published cleanup has one document");
+                    storage
+                }
+                None => {
+                    let mut storage = owner.reserve_peer(bytes)?;
+                    storage.absorb(owner.reserve_browser_tasks(count)?)?;
+                    storage
+                }
+            };
+            self.host_finalization_tasks.storage = Some(storage);
+        }
+        owner.reserve_peer(0).map(Some)
+    }
+
+    pub(super) fn prepare_host_finalization_task(
+        &mut self,
+    ) -> Result<PreparedFinalizationTask, RuntimeError> {
+        let owner = self.finalization_queue_owner(None)?;
+        let count = owner
+            .as_ref()
+            .map(|owner| owner.reserve_browser_tasks(1))
+            .transpose()?;
+        let growth = promise_queue_storage::PreparedDeque::for_additional_owned(
+            &self.host_finalization_tasks.data,
+            1,
+            owner.as_ref(),
+        )?;
+        Ok(PreparedFinalizationTask { growth, count })
+    }
+
     pub(super) fn prepare_finalization_registry_snapshot(
         &self,
     ) -> Result<host_task_storage::TaskVector<ObjectId>, RuntimeError> {
@@ -49,10 +220,7 @@ impl Vm {
             };
             self.admit_scheduling_work(extra)?;
             self.heap.check_root_registration_count(1)?;
-            let growth = promise_queue_storage::PreparedDeque::for_push(
-                &self.host_finalization_tasks,
-                self.host_scheduling.as_ref(),
-            )?;
+            let prepared = self.prepare_host_finalization_task()?;
             let objects = [registry];
             let roots = self.heap.prepare_root_batch(&objects)?;
             self.check_scheduling_failure()?;
@@ -63,13 +231,14 @@ impl Vm {
                 .expect("page cleanup has an owner")
                 .next_task_serial()?;
             let root = self.heap.commit_single_root(roots);
-            growth.commit(&mut self.host_finalization_tasks);
-            self.host_finalization_tasks
-                .push_back(HostFinalizationTask {
+            prepared.commit(
+                self,
+                HostFinalizationTask {
                     registry,
                     root,
                     serial,
-                });
+                },
+            );
             self.synchronize_scheduling_usage()?;
         }
         Ok(())

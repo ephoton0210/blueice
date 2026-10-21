@@ -112,6 +112,20 @@ fn counters(vm: &Vm) -> (usize, usize) {
         vm.displaced_execution_control_bytes.get(),
     )
 }
+fn set_argument(vm: &mut Vm, value: Value) {
+    let timer = &mut vm.host_timers[0];
+    let before = timer.scheduling_payload_bytes();
+    if let Some(storage) = &mut timer.storage {
+        storage
+            .resize(before + host_scheduling::value_payload_bytes(&value))
+            .unwrap();
+    }
+    timer.arguments[0] = value;
+    let bytes = timer.scheduling_payload_bytes();
+    if let Some(storage) = &mut timer.storage {
+        storage.release_to(bytes);
+    }
+}
 fn argument_bytes() -> usize {
     std::mem::size_of::<Value>()
 }
@@ -177,7 +191,7 @@ fn timer_entry_interval_argument_refusal_preserves_the_original_owner() {
 #[cfg_attr(test, test)]
 fn timer_entry_interval_payload_refusal_precedes_copy_publication() {
     let (mut vm, _, _, _) = fixture(true);
-    vm.host_timers[0].arguments[0] = Value::String("tiny".into());
+    set_argument(&mut vm, Value::String("tiny".into()));
     vm.synchronize_scheduling_usage().unwrap();
     let _peer = leave_room(&mut vm, argument_bytes() + 7);
     assert!(matches!(
@@ -197,7 +211,12 @@ fn timer_entry_interval_exact_preparation_admits_slots_and_object_protection() {
     let _peer = leave_room(&mut vm, argument_bytes() + root_bytes(4));
     let prepared = vm.prepare_timer_entry(0).unwrap();
     assert_eq!(prepared.arguments, [Value::Number(7.0)]);
-    assert_eq!(counters(&vm), (0, argument_bytes()));
+    assert_eq!(counters(&vm), (0, 0));
+    assert_eq!(
+        (prepared.payload.bytes(), prepared.control.bytes()),
+        (0, argument_bytes())
+    );
+    assert!(prepared.payload.is_retained() && prepared.control.is_retained());
     assert_eq!(vm.async_frame_roots.capacity(), 4);
     assert!(vm.async_frame_roots.is_empty());
     assert_eq!(vm.heap.root_storage_state(), roots);
@@ -218,13 +237,18 @@ fn timer_entry_interval_exact_preparation_admits_slots_and_object_protection() {
 #[cfg_attr(test, test)]
 fn timer_entry_interval_exact_primitive_copy_has_a_separate_owner() {
     let (mut vm, _, _, _) = fixture(true);
-    vm.host_timers[0].arguments[0] = Value::String("tiny".into());
+    set_argument(&mut vm, Value::String("tiny".into()));
     vm.prepare_async_frame_root_slots(1).unwrap();
     vm.synchronize_scheduling_usage().unwrap();
     let _peer = leave_room(&mut vm, argument_bytes() + 8);
     let prepared = vm.prepare_timer_entry(0).unwrap();
     assert_eq!(prepared.arguments, [Value::String("tiny".into())]);
-    assert_eq!(counters(&vm), (8, argument_bytes()));
+    assert_eq!(counters(&vm), (0, 0));
+    assert_eq!(
+        (prepared.payload.bytes(), prepared.control.bytes()),
+        (8, argument_bytes())
+    );
+    assert!(prepared.payload.is_retained() && prepared.control.is_retained());
     assert_eq!(vm.host_timers[0].arguments, prepared.arguments);
     drop(prepared);
     vm.reconcile_scheduling_ownership();
@@ -450,10 +474,16 @@ fn timer_entry_object_arguments_survive_collection_and_release_after_self_cancel
 #[cfg_attr(test, test)]
 fn timer_entry_argument_slots_do_not_survive_into_the_promise_checkpoint() {
     let mut observations = Vec::new();
-    for argument in ["", ", 7"] {
+    for extra in [false, true] {
         let (mut vm, id, _, observed) = fixture(false);
         clear(&mut vm, id);
-        execute(&mut vm, &format!("function cb() {{ Promise.resolve().then(recordTimer); }} setTimeout(cb, 1{argument}); 0;"));
+        let global = vm.global("globalThis").unwrap().object_id().unwrap();
+        vm.heap
+            .set(global, "withExtra", Value::Bool(extra))
+            .unwrap();
+        // Retained program buffers are real owners too. Keep the exact same
+        // source and bytecode while varying only the timer's argument list.
+        execute(&mut vm, "function cb() { Promise.resolve().then(recordTimer); } if (withExtra) { setTimeout(cb, 1, 7); } else { setTimeout(cb, 1); } 0;");
         vm.run_host_timer_entry(2, &mut BlueJsTimerRun::default())
             .unwrap();
         observations.push(observed.borrow()[0]);

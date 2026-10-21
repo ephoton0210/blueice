@@ -1049,12 +1049,18 @@ fn async_generator_queue_rejects_invalid_brand_serial_and_completion_order() {
         .is_empty());
     let mut control = vm.heap.async_generator_control(generator).unwrap().unwrap();
     control.next_request_id = 2;
-    control.requests.push_back(AsyncGeneratorRequest {
-        id: 1,
-        completion: AsyncGeneratorCompletion::Next(Value::Undefined),
-        target: promise,
-        origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
-    });
+    control
+        .push_request(AsyncGeneratorRequest {
+            value_storage: None,
+            scheduling: crate::vm::HeapReactionLease::unowned(),
+            id: 1,
+            completion: AsyncGeneratorCompletion::Next(Value::Undefined),
+            target: promise,
+            origin: crate::heap::AsyncGeneratorOrigin::unowned(
+                crate::diagnostics::ThrowOrigin::default(),
+            ),
+        })
+        .unwrap();
     vm.heap
         .set_async_generator_control(generator, control)
         .unwrap();
@@ -1082,12 +1088,18 @@ fn async_generator_queue_rejects_invalid_brand_serial_and_completion_order() {
     // A heap queue supplied at the scheduler boundary must retain its head
     // when later request IDs do not strictly follow it.
     let mut control = vm.heap.async_generator_control(generator).unwrap().unwrap();
-    control.requests.push_back(AsyncGeneratorRequest {
-        id: 1,
-        completion: AsyncGeneratorCompletion::Next(Value::Undefined),
-        target: wrong_target,
-        origin: Rc::new(crate::diagnostics::ThrowOrigin::default()),
-    });
+    control
+        .push_request(AsyncGeneratorRequest {
+            value_storage: None,
+            scheduling: crate::vm::HeapReactionLease::unowned(),
+            id: 1,
+            completion: AsyncGeneratorCompletion::Next(Value::Undefined),
+            target: wrong_target,
+            origin: crate::heap::AsyncGeneratorOrigin::unowned(
+                crate::diagnostics::ThrowOrigin::default(),
+            ),
+        })
+        .unwrap();
     vm.heap
         .set_async_generator_control(generator, control)
         .unwrap();
@@ -1704,8 +1716,11 @@ fn root_identifier_exhaustion_propagates_without_invalidating_existing_heaps() {
     for exhaust_child in [false, true] {
         let mut vm = Vm::default();
         vm.install_test262_harness().unwrap();
-        vm.execute_script(&compile(&parse("$262.createRealm();").unwrap()).unwrap())
-            .unwrap();
+        // An unreferenced child realm is reclaimed, so keep this one reachable.
+        vm.execute_script(
+            &compile(&parse("globalThis.keptRealm = $262.createRealm();").unwrap()).unwrap(),
+        )
+        .unwrap();
         let realm = *vm.test262_realms.keys().next().unwrap();
         let (target, root) = {
             let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
@@ -1738,8 +1753,11 @@ fn root_identifier_exhaustion_propagates_without_invalidating_existing_heaps() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();
     vm.execute_script(
-        &compile(&parse("$262.createRealm(); globalThis.retained = {answer:42};").unwrap())
-            .unwrap(),
+        &compile(
+            &parse("globalThis.keptRealm = $262.createRealm(); globalThis.retained = {answer:42};")
+                .unwrap(),
+        )
+        .unwrap(),
     )
     .unwrap();
     let realm = *vm.test262_realms.keys().next().unwrap();
@@ -1762,6 +1780,9 @@ fn failed_reverse_facade_root_registration_releases_every_unpublished_owner() {
             .unwrap()
             .object_id()
             .unwrap();
+        // The facade is only rooted until the next execution, and an
+        // unreferenced child realm is reclaimed: keep it reachable.
+        let _realm_root = vm.heap.root(realm).unwrap();
         {
             let child = &mut vm.test262_realms.get_mut(&realm).unwrap().vm.borrow_mut();
             child
@@ -1987,18 +2008,24 @@ fn shadow_ancestor_resolution_rejects_absent_and_self_contexts_before_reborrowin
         "the ShadowRealm this function belongs to is no longer reachable".into(),
     );
     assert_eq!(
-        child.resolve_shadow_ancestor(None),
+        child
+            .resolve_shadow_ancestor(None)
+            .map(|entry| entry.pointer()),
         Err(unavailable.clone())
     );
     assert_eq!(
-        child.resolve_shadow_ancestor(Some(parent_heap)),
+        child
+            .resolve_shadow_ancestor(Some(parent_heap))
+            .map(|entry| entry.pointer()),
         Err(unavailable)
     );
     let expected = &mut parent as *mut Vm;
     {
         let guard = register_active(&mut parent).unwrap();
         assert_eq!(
-            child.resolve_shadow_ancestor(Some(parent_heap)),
+            child
+                .resolve_shadow_ancestor(Some(parent_heap))
+                .map(|entry| entry.pointer()),
             Ok(expected)
         );
         drop(guard);
@@ -2006,7 +2033,9 @@ fn shadow_ancestor_resolution_rejects_absent_and_self_contexts_before_reborrowin
     let child_heap = child.object_prototype.heap;
     let guard = register_active(&mut child).unwrap();
     assert_eq!(
-        child.resolve_shadow_ancestor(Some(child_heap)),
+        child
+            .resolve_shadow_ancestor(Some(child_heap))
+            .map(|entry| entry.pointer()),
         Err(RuntimeError::TypeError(
             "a ShadowRealm boundary cannot resolve to itself".into()
         ))

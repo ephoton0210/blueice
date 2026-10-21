@@ -26,7 +26,7 @@
 //! an allocator guarantee or a whole-process memory limit.
 
 use crate::native::NativeFunction;
-use crate::vm::SharedBytecode;
+use crate::vm::{HeapNativeBudget, HeapReactionLease, SharedBytecode};
 use crate::{Bytecode, JsString, JsSymbol, ObjectId, PropertyDescriptor, PropertyName, Value};
 use num_bigint::BigInt;
 use std::collections::hash_map::DefaultHasher;
@@ -45,6 +45,7 @@ mod capabilities;
 pub(crate) use capabilities::ObjectCapabilities;
 mod collection_iteration;
 pub(crate) use collection_iteration::CollectionEntry;
+mod async_generator_storage;
 mod collector;
 mod core;
 mod debugger;
@@ -60,6 +61,9 @@ pub(crate) use realm_roots::RealmRoot;
 mod object_storage;
 mod root_table;
 use root_table::RootTable;
+#[cfg(test)]
+#[path = "../tests/fixtures/event_target_registration_gc.rs"]
+mod event_registration_gc_tests;
 mod finalization_storage;
 #[cfg(any(test, coverage))]
 #[path = "../tests/fixtures/namespace_payload_storage.rs"]
@@ -76,7 +80,7 @@ mod web_url;
 pub(crate) use web_abort::{AbortData, AbortHook};
 pub(crate) use web_drag_drop::{DragEventState, DragItem, DragItemData, DragStore, DragStoreMode};
 pub(crate) use web_event_target::{WebListener, WebTargetData};
-pub(crate) use web_file_reader::{FileReadKind, FileReaderState};
+pub(crate) use web_file_reader::{FileReadKind, FileReaderState, PreparedFileReaderUpdate};
 pub(crate) use web_streams::{
     PullInto, StreamData, StreamRead, StreamReader, StreamTee, WebStreamState,
 };
@@ -138,6 +142,7 @@ pub enum HeapError {
     HeapLimitExceeded { limit: usize },
     CollectorStorageLimit,
     RootStorageLimit,
+    AsyncGeneratorStorageLimit,
     CodeSourceStorageLimit,
     IdExhausted,
 }
@@ -170,6 +175,9 @@ impl fmt::Display for HeapError {
             }
             Self::IdExhausted => write!(f, "BlueJS heap identity counter exhausted"),
             Self::RootStorageLimit => write!(f, "BlueJS root table native storage limit exceeded"),
+            Self::AsyncGeneratorStorageLimit => {
+                write!(f, "BlueJS async generator request storage limit exceeded")
+            }
             Self::CodeSourceStorageLimit => {
                 write!(f, "BlueJS code source native storage limit exceeded")
             }
@@ -523,16 +531,19 @@ pub(crate) enum AsyncGeneratorCompletion {
 }
 
 impl AsyncGeneratorCompletion {
-    fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
+    pub(crate) fn value(&self) -> &Value {
         match self {
             Self::Next(value)
             | Self::Return(value)
             | Self::Throw(value)
             | Self::ReturnAwaited(value)
             | Self::ResumeReturn(value)
-            | Self::ResumeThrow(value) => value.object_id(),
+            | Self::ResumeThrow(value) => value,
         }
-        .into_iter()
+    }
+
+    fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        self.value().object_id().into_iter()
     }
 }
 
@@ -540,12 +551,21 @@ impl AsyncGeneratorCompletion {
 /// the Promise target here, rather than only in a suspended VM continuation,
 /// preserves FIFO ordering and gives the collector one owner for later
 /// queued arguments and capabilities.
-#[derive(Clone)]
 pub(crate) struct AsyncGeneratorRequest {
     pub(crate) id: u64,
     pub(crate) completion: AsyncGeneratorCompletion,
     pub(crate) target: ObjectId,
-    pub(crate) origin: Rc<crate::diagnostics::ThrowOrigin>,
+    pub(crate) origin: Rc<AsyncGeneratorOrigin>,
+    pub(crate) scheduling: Rc<HeapReactionLease>,
+    // Destroy the independently owned primitive before returning its credit.
+    pub(crate) value_storage: Option<crate::vm::HeapNativeCharge>,
+}
+
+/// Shared provenance contains no heap edges and keeps its original account
+/// until the last request or independent provenance snapshot is destroyed.
+pub(crate) struct AsyncGeneratorOrigin {
+    value: crate::diagnostics::ThrowOrigin,
+    storage: std::cell::RefCell<Option<crate::vm::HeapNativeCharge>>,
 }
 
 /// States which prevent `AsyncGeneratorResumeNext` from running a second
@@ -560,11 +580,12 @@ pub(crate) enum AsyncGeneratorStatus {
     Completed,
 }
 
-#[derive(Clone)]
 pub(crate) struct AsyncGeneratorControl {
     pub(crate) status: AsyncGeneratorStatus,
     pub(crate) requests: VecDeque<AsyncGeneratorRequest>,
     pub(crate) next_request_id: u64,
+    pub(crate) owner: Option<HeapNativeBudget>,
+    pub(crate) storage: Option<crate::vm::HeapNativeCharge>,
 }
 
 impl Default for AsyncGeneratorControl {
@@ -573,32 +594,26 @@ impl Default for AsyncGeneratorControl {
             status: AsyncGeneratorStatus::SuspendedStart,
             requests: VecDeque::new(),
             next_request_id: 0,
+            owner: None,
+            storage: None,
         }
     }
 }
 
 impl AsyncGeneratorControl {
     fn managed_bytes(&self) -> usize {
-        self.requests.len() * size_of::<AsyncGeneratorRequest>()
-            + self
-                .requests
-                .iter()
-                .map(|request| {
-                    size_of::<crate::diagnostics::ThrowOrigin>()
-                        + 2 * size_of::<usize>()
-                        + request.origin.payload_bytes()
-                        + match &request.completion {
-                            AsyncGeneratorCompletion::Next(value)
-                            | AsyncGeneratorCompletion::Return(value)
-                            | AsyncGeneratorCompletion::Throw(value)
-                            | AsyncGeneratorCompletion::ReturnAwaited(value)
-                            | AsyncGeneratorCompletion::ResumeReturn(value)
-                            | AsyncGeneratorCompletion::ResumeThrow(value) => value.payload_bytes(),
-                        }
-                })
-                .sum::<usize>()
+        (if self.storage.is_none() {
+            self.requests.len() * size_of::<AsyncGeneratorRequest>()
+        } else {
+            0
+        }) + self
+            .requests
+            .iter()
+            .map(|request| request.origin.unowned_bytes() + request.unowned_value_bytes())
+            .sum::<usize>()
     }
 
+    #[cfg(test)]
     fn references(&self) -> Vec<ObjectId> {
         let mut ids = Vec::new();
         self.visit_references(&mut |id| ids.push(id));
@@ -1155,7 +1170,7 @@ enum ObjectKind {
     Generator {
         state: Box<GeneratorState>,
         state_bytes: usize,
-        async_control: Option<AsyncGeneratorControl>,
+        async_control: Option<Box<AsyncGeneratorControl>>,
         async_control_bytes: usize,
     },
     BoundFunction(BoundFunction),

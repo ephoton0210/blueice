@@ -415,7 +415,7 @@ fn property_definition_storage_throw_restores_the_outer_root_chain_and_stack() {
         .unwrap();
     let owner = vm.argument_list_owner().unwrap();
     let roots = crate::vm::realm_call_storage::RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&vm.heap, object).unwrap();
     vm.stack.push(Value::Number(9.0));
     vm.synchronize_scheduling_usage().unwrap();
     let input = input(&vm);

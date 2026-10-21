@@ -56,8 +56,12 @@ fn array_flatten_storage_neutral_flat_checks_terminal_depth_conversion() {
     );
     let depth = neutral.lookup_global_name("depth").unwrap().unwrap();
     let roots = RealmCallRoots::new(2, owner.as_ref()).unwrap();
-    roots.push(receiver.object_id().unwrap());
-    roots.push(depth.object_id().unwrap());
+    roots
+        .push(&neutral.heap, receiver.object_id().unwrap())
+        .unwrap();
+    roots
+        .push(&neutral.heap, depth.object_id().unwrap())
+        .unwrap();
     assert_eq!(
         neutral.with_realm_call_roots(roots, |vm| vm.array_flat(&receiver, &depth)),
         Err(RuntimeError::SchedulingLimit)
@@ -84,8 +88,12 @@ fn array_flatten_storage_neutral_flat_map_checks_terminal_empty_mapper() {
     );
     let mapper = neutral.lookup_global_name("mapper").unwrap().unwrap();
     let roots = RealmCallRoots::new(2, owner.as_ref()).unwrap();
-    roots.push(receiver.object_id().unwrap());
-    roots.push(mapper.object_id().unwrap());
+    roots
+        .push(&neutral.heap, receiver.object_id().unwrap())
+        .unwrap();
+    roots
+        .push(&neutral.heap, mapper.object_id().unwrap())
+        .unwrap();
     assert_eq!(
         neutral.with_realm_call_roots(roots, |vm| {
             vm.array_flat_map(&receiver, &mapper, &Value::Undefined)
@@ -164,7 +172,7 @@ fn array_flatten_storage_neutral_root_loan_keeps_its_document_credit() {
     let mut neutral = Vm::default();
     let object = run(&mut neutral, "[1];").object_id().unwrap();
     let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-    roots.push(object);
+    roots.push(&neutral.heap, object).unwrap();
     let frames = neutral
         .with_realm_call_roots(roots, |vm| vm.array_flatten_frames(object, 1, 1.0))
         .unwrap();
@@ -224,7 +232,7 @@ fn array_flatten_storage_throws_restore_the_outer_roots_and_stack() {
         let mapper = vm.lookup_global_name("mapper").unwrap().unwrap();
         let owner = vm.argument_list_owner().unwrap();
         let roots = RealmCallRoots::new(1, owner.as_ref()).unwrap();
-        roots.push(receiver.object_id().unwrap());
+        roots.push(&vm.heap, receiver.object_id().unwrap()).unwrap();
         vm.stack.push(Value::Number(9.0));
         vm.with_realm_call_roots(roots.clone(), |vm| {
             let result = if mapped {
@@ -270,8 +278,12 @@ fn array_flatten_storage_terminal_has_trap_stops_before_the_index_getter() {
         let receiver = run(&mut neutral, "var receiver=new Proxy({length:1,get 0(){return observe();}},{has(){return markTerminal();}}),mapper=value=>value;receiver;");
         let mapper = neutral.lookup_global_name("mapper").unwrap().unwrap();
         let roots = RealmCallRoots::new(2, owner.as_ref()).unwrap();
-        roots.push(receiver.object_id().unwrap());
-        roots.push(mapper.object_id().unwrap());
+        roots
+            .push(&neutral.heap, receiver.object_id().unwrap())
+            .unwrap();
+        roots
+            .push(&neutral.heap, mapper.object_id().unwrap())
+            .unwrap();
         let result = neutral.with_realm_call_roots(roots, |vm| {
             if mapped {
                 vm.array_flat_map(&receiver, &mapper, &Value::Undefined)
@@ -312,8 +324,12 @@ fn array_flatten_storage_terminal_index_getter_stops_before_the_mapper() {
     );
     let mapper = neutral.lookup_global_name("mapper").unwrap().unwrap();
     let roots = RealmCallRoots::new(2, owner.as_ref()).unwrap();
-    roots.push(receiver.object_id().unwrap());
-    roots.push(mapper.object_id().unwrap());
+    roots
+        .push(&neutral.heap, receiver.object_id().unwrap())
+        .unwrap();
+    roots
+        .push(&neutral.heap, mapper.object_id().unwrap())
+        .unwrap();
     assert_eq!(
         neutral.with_realm_call_roots(roots, |vm| {
             vm.array_flat_map(&receiver, &mapper, &Value::Undefined)
@@ -349,8 +365,12 @@ fn array_flatten_storage_terminal_nested_length_stops_before_indexed_reads() {
         let receiver = run(&mut neutral, "var inner=new Proxy([1],{get(target,key){if(key==='length'){markTerminal();return 1;}if(key==='0')observe();return Reflect.get(target,key);}}),receiver=[inner],mapper=()=>inner;receiver;");
         let mapper = neutral.lookup_global_name("mapper").unwrap().unwrap();
         let roots = RealmCallRoots::new(2, owner.as_ref()).unwrap();
-        roots.push(receiver.object_id().unwrap());
-        roots.push(mapper.object_id().unwrap());
+        roots
+            .push(&neutral.heap, receiver.object_id().unwrap())
+            .unwrap();
+        roots
+            .push(&neutral.heap, mapper.object_id().unwrap())
+            .unwrap();
         assert_eq!(
             neutral.with_realm_call_roots(roots, |vm| {
                 if mapped {
@@ -598,10 +618,13 @@ fn array_flatten_storage_empty_frames_reject_a_terminal_original_owner() {
     let owner = source.argument_list_owner().unwrap();
     let mut neutral = Vm::default();
     let input = run(&mut neutral, "[];").object_id().unwrap();
+    // A result stays rooted only until the next execution; keep `input` alive
+    // across the second script, which may collect.
+    let input_root = neutral.heap.root(input).unwrap();
     let target = run(&mut neutral, "({});").object_id().unwrap();
     let roots = RealmCallRoots::new(2, owner.as_ref()).unwrap();
-    roots.push(input);
-    roots.push(target);
+    roots.push(&neutral.heap, input).unwrap();
+    roots.push(&neutral.heap, target).unwrap();
     let _ = source.host_scheduling.as_ref().unwrap().fail();
     assert_eq!(
         neutral.with_realm_call_roots(roots, |vm| {
@@ -611,6 +634,7 @@ fn array_flatten_storage_empty_frames_reject_a_terminal_original_owner() {
     );
     assert!(neutral.host_scheduling.is_none());
     assert!(neutral.realm_call_roots.is_none());
+    neutral.heap.unroot(input_root).unwrap();
 }
 
 impl Vm {

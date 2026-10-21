@@ -131,9 +131,9 @@ fn shadow_argument_storage_nested_roots_survive_gc_and_restore_after_error() {
         .shared_charge(0)
         .unwrap();
     let outer = RealmCallRoots::new(1, Some(&owner)).unwrap();
-    outer.push(first);
+    outer.push(&vm.heap, first).unwrap();
     let inner = RealmCallRoots::new(1, Some(&owner)).unwrap();
-    inner.push(second);
+    inner.push(&vm.heap, second).unwrap();
     vm.with_realm_call_roots(outer.clone(), |vm| {
         let error = vm.with_realm_call_roots(inner.clone(), |vm| {
             vm.with_roots(|heap| {

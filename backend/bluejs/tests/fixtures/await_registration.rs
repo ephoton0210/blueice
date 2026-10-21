@@ -37,7 +37,7 @@ fn reject_for_retry(vm: &mut Vm, promise: ObjectId) {
     reject_value_for_retry(vm, promise, Value::Number(7.0));
 }
 fn reject_value_for_retry(vm: &mut Vm, promise: ObjectId, value: Value) {
-    vm.promises.get_mut(&promise).unwrap().reactions = Vec::new();
+    vm.promises.get_mut(&promise).unwrap().release_reactions();
     vm.promises.get_mut(&promise).unwrap().handled = false;
     vm.host_rejections = Some(host_rejections::HostRejections::default());
     vm.settle_promise(promise, PromiseStatus::Rejected(value))
@@ -66,7 +66,7 @@ fn capture_frame(asynchronous: bool) -> (Vm, ObjectId, Frame) {
         Frame::Module(Box::new(vm.module_continuations.remove(&id).unwrap()))
     };
     let promise = input(&mut vm);
-    vm.promises.get_mut(&promise).unwrap().reactions = Vec::new();
+    vm.promises.get_mut(&promise).unwrap().release_reactions();
     vm.promises.get_mut(&promise).unwrap().handled = false;
     (vm, promise, frame)
 }
@@ -272,7 +272,10 @@ fn await_registration_frame_map_refusal_refunds_prepared_queue_without_handling(
             vm.module_continuations.release_empty();
             std::mem::size_of::<(u64, ModuleContinuation)>()
         };
-        let room = frame.bytes() + 4 * std::mem::size_of::<PromiseJob>() + map_min - 1;
+        let room = frame.bytes()
+            + 4 * std::mem::size_of::<promise_job_storage::QueuedPromiseJob>()
+            + map_min
+            - 1;
         let before = serials(&vm);
         let roots = vm.heap.root_storage_state();
         let _peer = leave_room(&mut vm, room);
@@ -540,7 +543,14 @@ fn await_registration_scheduler_resource_refusal_keeps_the_original_return_reque
     vm.set_async_generator_status(generator, AsyncGeneratorStatus::SuspendedYield)
         .unwrap();
     let control = vm.heap.async_generator_control(generator).unwrap().unwrap();
-    let request = control.requests.front().unwrap().clone();
+    // The queued request's lease belongs to the document account, so a copy
+    // needs that account's budget.
+    let request = control
+        .requests
+        .front()
+        .unwrap()
+        .try_snapshot(vm.heap.native_storage_budget())
+        .unwrap();
     let request_id = request.id;
     drop(control);
     let roots = vm.heap.root_storage_state();
@@ -550,7 +560,13 @@ fn await_registration_scheduler_resource_refusal_keeps_the_original_return_reque
         Err(RuntimeError::SchedulingLimit)
     );
     retained(&vm, promise, roots);
-    let control = vm.heap.async_generator_control(generator).unwrap().unwrap();
+    // The refusal latched the account's failure, so a snapshot (which needs
+    // admission) is refused; inspect the retained queue in place instead.
+    let control = vm
+        .heap
+        .async_generator_control_ref(generator)
+        .unwrap()
+        .unwrap();
     assert_eq!(control.requests.len(), 1);
     assert_eq!(control.requests[0].id, request_id);
     assert_eq!(control.requests[0].target, target);

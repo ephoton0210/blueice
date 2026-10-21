@@ -36,7 +36,35 @@ impl Vm {
         suspend_at: Option<InterpreterSuspensionPoint>,
         restored_handlers: Option<(HandlerRecords, usize)>,
     ) -> Result<InterpreterExit, RuntimeError> {
-        iterators.bind(self)?;
+        self.interpret_with_input(
+            code,
+            iterators,
+            start_pc,
+            generator_input::InterpreterResumeInput {
+                value: resume_value,
+                storage: None,
+            },
+            suspend_at,
+            restored_handlers,
+        )
+    }
+
+    pub(super) fn interpret_with_input(
+        &mut self,
+        code: &Bytecode,
+        iterators: &mut IteratorRecords,
+        start_pc: usize,
+        mut input: generator_input::InterpreterResumeInput<'_>,
+        suspend_at: Option<InterpreterSuspensionPoint>,
+        restored_handlers: Option<(HandlerRecords, usize)>,
+    ) -> Result<InterpreterExit, RuntimeError> {
+        if let Err(error) = iterators.bind(self) {
+            drop(input.value.take());
+            if let Some(storage) = input.storage.as_deref_mut() {
+                generator_input::release_generator_payload(storage, 0);
+            }
+            return Err(error);
+        }
         let iterator_root_base = self.async_frame_roots.len();
         let previous_diagnostic_frame = self.active_diagnostic_frame.take();
         let _previous_diagnostic_charge =
@@ -49,17 +77,28 @@ impl Vm {
         // Generator/module continuations can enter directly from a native
         // Promise algorithm. Their JavaScript body owns its own known or
         // unavailable sites, independently of the native request's origin.
-        let result = self.with_rejection_origin(None, |vm| {
+        let mut result = self.with_rejection_origin(None, |vm| {
             vm.interpret_frame(
                 code,
                 iterators,
                 start_pc,
-                resume_value,
+                &mut input,
                 suspend_at,
                 restored_handlers,
                 iterator_root_base,
             )
         });
+        drop(input.value.take());
+        if let Some(storage) = input.storage.as_deref_mut() {
+            // The interpreter has removed its returned value from VM fields.
+            // Reconcile that pure move before its Rust result takes the lease.
+            self.reconcile_scheduling_ownership();
+            let bytes = generator_input::interpreter_result_bytes(&result);
+            if let Err(error) = generator_input::retain_generator_payload(storage, bytes) {
+                result = Err(error);
+                generator_input::release_generator_payload(storage, 0);
+            }
+        }
         // Every exit, including a resource refusal, releases this active
         // frame's records. A suspended frame's caller owns them afterwards.
         self.async_frame_roots.truncate(iterator_root_base);
@@ -76,7 +115,7 @@ impl Vm {
         code: &Bytecode,
         iterators: &mut IteratorRecords,
         start_pc: usize,
-        resume_value: Option<Value>,
+        input: &mut generator_input::InterpreterResumeInput<'_>,
         suspend_at: Option<InterpreterSuspensionPoint>,
         restored_handlers: Option<(HandlerRecords, usize)>,
         iterator_root_base: usize,
@@ -84,8 +123,12 @@ impl Vm {
         let stack_base = self.stack.len();
         let pending_base = self.pending_completions.len();
         let save_base = self.completion_saves.len();
-        if let Some(value) = resume_value {
+        if let Some(value) = input.value.take() {
             self.stack.push(value);
+        }
+        if let Some(storage) = input.storage.as_deref_mut() {
+            generator_input::release_generator_payload(storage, 0);
+            self.reconcile_scheduling_ownership();
         }
         let mut pc = start_pc;
         let (mut handlers, handler_stack_base) =

@@ -14,8 +14,20 @@ pub(super) struct PreparedTimerEntry {
     control: ExecutionPayloadCharge,
 }
 impl PreparedTimerEntry {
-    pub(super) fn adopt_arguments(&mut self, arguments: Vec<Value>) {
+    pub(super) fn adopt_arguments(
+        &mut self,
+        vm: &Vm,
+        arguments: Vec<Value>,
+        native: Option<host_scheduling::SharedSchedulingCharge>,
+    ) {
         self.arguments = arguments;
+        if let Some(mut native) = native {
+            let bytes = host_scheduling::values_bytes(&self.arguments);
+            self.payload = vm.adopt_job_payload(Some(native.split_off(bytes)), bytes);
+            self.control =
+                vm.adopt_job_payload(Some(native), host_scheduling::slots(&self.arguments));
+            return;
+        }
         if self.payload.enabled() {
             self.payload
                 .resize(host_scheduling::values_bytes(&self.arguments));
@@ -53,6 +65,7 @@ impl Vm {
         index: usize,
     ) -> Result<PreparedTimerEntry, RuntimeError> {
         self.check_scheduling_failure()?;
+        let owner = self.timer_entry_owner(index)?;
         if self.config.instruction_budget == 0 {
             return Err(RuntimeError::InstructionLimit);
         }
@@ -75,33 +88,38 @@ impl Vm {
         ) {
             *slot = Some(object);
         }
-        self.admit_scheduling_work(HostSchedulingUsage {
-            payload_bytes: count
-                .saturating_mul(std::mem::size_of::<Value>())
-                .saturating_add(bytes),
-            ..Default::default()
-        })?;
-        if prepared.payload.enabled() {
-            prepared.payload.resize(bytes);
-        }
+        prepared.payload.retain_entry(self, bytes, owner.as_ref())?;
+        prepared.control.retain_entry(
+            self,
+            count.saturating_mul(std::mem::size_of::<Value>()),
+            owner.as_ref(),
+        )?;
         prepared.arguments.try_reserve_exact(count).map_err(|_| {
-            self.host_scheduling
-                .as_ref()
-                .map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail)
+            owner.as_ref().map_or(
+                RuntimeError::SchedulingLimit,
+                host_scheduling::SharedSchedulingCharge::fail,
+            )
         })?;
         if prepared.control.enabled() {
             prepared
                 .control
-                .resize(host_scheduling::slots(&prepared.arguments));
+                .resize_entry(host_scheduling::slots(&prepared.arguments))?;
         }
         self.synchronize_scheduling_usage()?;
         prepared
             .arguments
             .extend_from_slice(&self.host_timers[index].arguments);
+        if prepared.payload.enabled() {
+            prepared
+                .payload
+                .resize_entry(host_scheduling::values_bytes(&prepared.arguments))?;
+        }
         // The interval may clear its own registration. Temporary object edges
         // remain traced through its callback and Promise checkpoint, without
         // allocating an intermediate object list or new persistent roots.
-        self.prepare_async_frame_root_slots(prepared.references.iter().flatten().count())?;
+        if self.host_scheduling.is_some() || owner.is_none() {
+            self.prepare_async_frame_root_slots(prepared.references.iter().flatten().count())?;
+        }
         Ok(prepared)
     }
 }

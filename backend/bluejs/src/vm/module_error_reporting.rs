@@ -11,6 +11,7 @@ use super::host_scheduling::SharedSchedulingCharge;
 struct PendingModuleReport {
     name: String,
     error: ModuleEvaluationError,
+    context: Rc<realm_call_storage::RealmCallRoots>,
 }
 struct PendingModuleReports {
     entries: Vec<PendingModuleReport>,
@@ -19,16 +20,64 @@ struct PendingModuleReports {
     _charge: Option<SharedSchedulingCharge>,
 }
 impl PendingModuleReports {
-    fn retained_bytes(&self) -> usize {
+    fn entry_bytes(&self) -> usize {
         self.entries
             .iter()
             .fold(host_scheduling::slots(&self.entries), |bytes, entry| {
                 bytes.saturating_add(entry.name.capacity())
             })
     }
+
+    #[cfg(any(test, coverage))]
+    fn retained_bytes(&self) -> usize {
+        self.entries
+            .iter()
+            .fold(self.entry_bytes(), |bytes, entry| {
+                bytes.saturating_add(entry.context.retained_bytes())
+            })
+    }
+
+    fn validate_entry(&self, index: usize) -> Result<(), RuntimeError> {
+        if let Some(owner) = &self._charge {
+            owner.reserve_peer(0)?;
+        }
+        self.entries[index].error.owner_view()?;
+        Ok(())
+    }
 }
 
 impl Vm {
+    fn pending_module_report_owner(&self) -> Result<Option<SharedSchedulingCharge>, RuntimeError> {
+        let graph = self
+            .module_graph
+            .as_ref()
+            .expect("counted live module graph");
+        let mut owner = graph.linked.owner_view()?;
+        if let (Some(scope), Some(original)) = (&self.host_scheduling, &owner) {
+            if !original.belongs_to(scope) {
+                return Err(scope.fail());
+            }
+        }
+        for error in graph
+            .linked
+            .values()
+            .filter(|record| record.host_error_pending && record.evaluated)
+            .filter_map(|record| record.error.as_ref())
+        {
+            let original = error.owner_view()?;
+            if let (Some(scope), Some(original)) = (&self.host_scheduling, &original) {
+                if !original.belongs_to(scope) {
+                    return Err(scope.fail());
+                }
+            }
+            if owner.is_none() {
+                owner = original;
+            }
+        }
+        let caller = self.argument_list_owner()?;
+        Ok(owner.or(caller))
+    }
+
     fn clear_ready_module_error_flags(&mut self) {
         if let Some(graph) = &mut self.module_graph {
             for record in graph.linked.values_mut() {
@@ -58,8 +107,10 @@ impl Vm {
             self.clear_ready_module_error_flags();
             return Ok(None);
         }
+        let owner = self.pending_module_report_owner()?;
+        let owned_scope = owner.as_ref().map(SharedSchedulingCharge::scheduling_scope);
         self.synchronize_scheduling_usage()?;
-        let scope = self.host_scheduling.as_ref();
+        let scope = owned_scope.as_ref();
         let fail = || scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail);
         let minimum = count
             .saturating_mul(std::mem::size_of::<PendingModuleReport>())
@@ -88,6 +139,13 @@ impl Vm {
             let Some(error) = &record.error else {
                 continue;
             };
+            if error.owner_view()?.is_none() {
+                if let Some(scope) = scope {
+                    error.attach(scope)?;
+                }
+            }
+            let context_owner = error.owner_view()?;
+            let context = realm_call_storage::RealmCallRoots::new(0, context_owner.as_ref())?;
             let mut copied = String::new();
             copied.try_reserve_exact(name.len()).map_err(|_| fail())?;
             remaining_names -= name.len();
@@ -104,6 +162,7 @@ impl Vm {
             entries.push(PendingModuleReport {
                 name: copied,
                 error: error.clone(),
+                context,
             });
         }
         let mut batch = PendingModuleReports {
@@ -111,7 +170,7 @@ impl Vm {
             roots: ModuleRoots::default(),
             _charge: charge,
         };
-        let actual = batch.retained_bytes();
+        let actual = batch.entry_bytes();
         if let Some(charge) = &mut batch._charge {
             charge.resize(actual)?;
         }
@@ -159,7 +218,15 @@ impl Vm {
         self.clear_ready_module_error_flags();
         let mut result = Ok(());
         for index in 0..batch.entries.len() {
-            if let Err(error) = report(self, &batch.entries[index].error) {
+            if let Err(error) = batch.validate_entry(index) {
+                self.restore_unattempted_module_reports(&batch.entries[index..]);
+                result = Err(error);
+                break;
+            }
+            let entry = &batch.entries[index];
+            let reported =
+                self.with_realm_call_roots(entry.context.clone(), |vm| report(vm, &entry.error));
+            if let Err(error) = batch.validate_entry(index).and(reported) {
                 // The failed report may already have entered user code. Only
                 // its unattempted suffix is eligible for later delivery.
                 self.restore_unattempted_module_reports(&batch.entries[index + 1..]);
@@ -178,3 +245,7 @@ impl Vm {
 #[cfg(any(test, coverage))]
 #[path = "../../tests/fixtures/module_error_reporting.rs"]
 mod ownership_tests;
+
+#[cfg(any(test, coverage))]
+#[path = "../../tests/fixtures/module_report_lifetime.rs"]
+mod lifetime_tests;

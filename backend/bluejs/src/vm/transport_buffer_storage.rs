@@ -5,7 +5,7 @@
 //! Native transport snapshots own storage independently of either realm VM.
 
 use super::host_scheduling::SharedSchedulingCharge;
-use super::native_value_storage::NativeValue;
+use super::native_value_storage::{NativeValue, NativeValueIter};
 use super::*;
 use crate::heap::{SharedBuffer, TypedArrayKind};
 
@@ -15,7 +15,45 @@ pub(super) struct TransportVector<T> {
     storage: Option<SharedSchedulingCharge>,
 }
 
+impl<T> Default for TransportVector<T> {
+    fn default() -> Self {
+        Self {
+            values: Vec::new(),
+            storage: None,
+        }
+    }
+}
+
 impl<T> TransportVector<T> {
+    #[cfg(any(test, coverage))]
+    pub(super) fn capacity(&self) -> usize {
+        self.values.capacity()
+    }
+
+    pub(super) fn unowned_slots(&self) -> usize {
+        if self.storage.is_none() {
+            host_scheduling::slots(&self.values)
+        } else {
+            0
+        }
+    }
+
+    pub(super) fn can_join(&self, scope: &SchedulingScope) -> bool {
+        self.storage
+            .as_ref()
+            .is_none_or(|owner| owner.belongs_to(scope))
+    }
+
+    pub(super) fn attach(&mut self, scope: &SchedulingScope) -> Result<(), RuntimeError> {
+        if !self.can_join(scope) {
+            return Err(scope.fail());
+        }
+        if self.storage.is_none() && self.values.capacity() != 0 {
+            self.storage = Some(scope.shared_charge(host_scheduling::slots(&self.values))?);
+        }
+        Ok(())
+    }
+
     #[cfg(any(test, coverage))]
     pub(super) fn retained_slots(&self) -> usize {
         host_scheduling::slots(&self.values)
@@ -52,7 +90,55 @@ impl<T> TransportVector<T> {
     }
 }
 
+impl TransportVector<u16> {
+    pub(super) fn append_string(
+        &mut self,
+        part: &JsString,
+        limit: usize,
+    ) -> Result<(), RuntimeError> {
+        self.validate_owner()?;
+        let length = self
+            .values
+            .len()
+            .checked_add(part.len())
+            .ok_or(RuntimeError::StringLimit { limit })?;
+        if length
+            .checked_mul(std::mem::size_of::<u16>())
+            .is_none_or(|bytes| bytes > limit)
+        {
+            return Err(RuntimeError::StringLimit { limit });
+        }
+        if length > self.values.capacity() {
+            let count = self.values.capacity().saturating_mul(2).max(length).max(4);
+            let mut replacement = Self::with_capacity(count, self.storage.as_ref())?;
+            replacement.values.extend_from_slice(&self.values);
+            *self = replacement;
+        }
+        self.values.extend_from_slice(part.as_code_units());
+        Ok(())
+    }
+
+    /// The same UTF-16 buffer becomes the immediate VM result without a copy
+    /// or any intervening guest operation after its native lease is returned.
+    pub(super) fn into_string(self) -> Result<Value, RuntimeError> {
+        self.validate_owner()?;
+        Ok(Value::String(JsString::from_code_units(self.values)))
+    }
+}
+
 impl<T: Copy> TransportVector<T> {
+    /// A host producer transfers its returned Copy buffer without a second
+    /// allocation. Retain all physical slots before its next consumer runs.
+    pub(super) fn from_owned(
+        values: Vec<T>,
+        owner: Option<&SharedSchedulingCharge>,
+    ) -> Result<Self, RuntimeError> {
+        let storage = owner
+            .map(|owner| owner.reserve_peer(host_scheduling::slots(&values)))
+            .transpose()?;
+        Ok(Self { values, storage })
+    }
+
     /// Attach a previously unowned Copy buffer before its next consumer. An
     /// existing native loan keeps its original document identity.
     pub(super) fn attach_owner(
@@ -102,6 +188,22 @@ impl<T: Copy + PartialEq> TransportVector<T> {
     pub(super) fn dedup(&mut self) {
         // Vec::dedup preserves capacity, so all reusable slots stay owned.
         self.values.dedup();
+    }
+}
+
+impl TransportVector<ObjectId> {
+    pub(super) fn into_file_list(
+        mut self,
+        vm: &mut Vm,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, RuntimeError> {
+        self.validate_owner()?;
+        vm.with_roots(|heap| {
+            if let Some(storage) = &mut self.storage {
+                storage.release_to(0);
+            }
+            heap.alloc_web_file_list(self.values, prototype)
+        })
     }
 }
 
@@ -170,6 +272,11 @@ impl TransportVector<u8> {
 }
 
 impl TransportVector<Value> {
+    pub(super) fn into_owned_iter(self) -> Result<NativeValueIter, RuntimeError> {
+        self.validate_owner()?;
+        Ok(NativeValueIter::new(self.values, self.storage))
+    }
+
     pub(super) fn push_owned(&mut self, value: NativeValue) -> Result<(), RuntimeError> {
         self.validate_owner()?;
         value.validate_owner()?;

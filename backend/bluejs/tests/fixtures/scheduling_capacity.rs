@@ -148,7 +148,10 @@ fn scheduling_capacity_refuses_job_growth_before_queue_publication() {
     }
     let capacity = vm.promise_jobs.capacity();
     assert_eq!(capacity, vm.promise_jobs.len());
-    let _owner = leave_room(&mut vm, capacity * std::mem::size_of::<PromiseJob>() - 1);
+    let _owner = leave_room(
+        &mut vm,
+        capacity * std::mem::size_of::<promise_job_storage::QueuedPromiseJob>() - 1,
+    );
     vm.enqueue_promise_job(PromiseJob::HostMicrotask { callback });
     assert_eq!(
         vm.check_scheduling_failure(),

@@ -28,6 +28,12 @@ fn leave_room(vm: &mut Vm, bytes: usize) -> SharedSchedulingCharge {
         .unwrap()
 }
 
+fn realm_roots_bytes(count: usize) -> usize {
+    crate::vm::realm_call_storage::RealmCallRoots::new(count, None)
+        .unwrap()
+        .retained_bytes()
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Producer {
     Drag,
@@ -150,8 +156,14 @@ impl Fixture {
     fn extra_payload(producer: Producer) -> usize {
         match producer {
             Producer::Handled => std::mem::size_of::<host_rejections::PendingRejection>(),
-            // Queue-slot reuse still needs the independent staged reader copy.
-            Producer::Read => std::mem::size_of::<crate::heap::FileReaderState>(),
+            // Queue-slot reuse still needs the independent staged reader copy
+            // and the call's temporary realm roots: receiver, Blob and two
+            // spare edges reserved by the reader entry.
+            Producer::Read => {
+                std::mem::size_of::<crate::heap::FileReaderState>() + realm_roots_bytes(4)
+            }
+            // The timeout's argument context needs its own (empty) root header.
+            Producer::Timeout => realm_roots_bytes(0),
             _ => 0,
         }
     }
@@ -177,7 +189,9 @@ fn assert_refused(producer: Producer) {
         .next_task_serial;
     let _owner = leave_room(
         &mut fixture.vm,
-        capacity * std::mem::size_of::<BrowserTask>() + Fixture::extra_payload(producer) - 1,
+        capacity * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>()
+            + Fixture::extra_payload(producer)
+            - 1,
     );
     assert_eq!(
         fixture.append(producer),
@@ -426,7 +440,9 @@ fn assert_file_requeue_refused(count_limit: bool) {
             // The callback must fund its complete coexisting replacements.
             // After it returns, the old `entries` slots coexist with a new
             // `2 * entries` successor candidate; refuse that peak by one byte.
-            (3 * entries - 4) * std::mem::size_of::<BrowserTask>() - 1,
+            (3 * entries - 4)
+                * std::mem::size_of::<crate::vm::browser_task_storage::QueuedBrowserTask>()
+                - 1,
         ))
     };
     assert_eq!(
@@ -454,9 +470,9 @@ fn file_requeue_refuses_callback_consumed_document_count() {
 #[cfg_attr(test, test)]
 fn file_cancellation_preserves_existing_non_file_slots() {
     let mut fixture = Fixture::new(Producer::Read, 5);
-    fixture.vm.browser_tasks.shrink_to_fit();
+    // A nonempty queue keeps its paid capacity, so there is spare room here.
     let capacity = fixture.vm.browser_tasks.capacity();
-    assert_eq!(capacity, 5);
+    assert!(capacity >= 5);
     let roots = fixture.vm.heap.stats().root_registrations;
     let _owner = leave_room(&mut fixture.vm, 0);
     assert_eq!(

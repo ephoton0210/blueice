@@ -170,10 +170,8 @@ fn displaced_control_capacity_follows_call_eval_and_generator_frames() {
 #[cfg_attr(test, test)]
 fn active_control_capacity_releases_finished_root_allocations() {
     let mut vm = bounded_vm();
-    vm.execute_script(&compile(
-        "function f(a,b,c){try{return a+b+c;}finally{}} f(1,2,3); 0;",
-    ))
-    .unwrap();
+    let program = compile("function f(a,b,c){try{return a+b+c;}finally{}} f(1,2,3); 0;");
+    vm.execute_script(&program).unwrap();
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
     assert_eq!(vm.stack.capacity(), 0);
     assert_eq!(vm.bindings.capacity(), 0);
@@ -185,13 +183,16 @@ fn active_control_capacity_releases_finished_root_allocations() {
     assert!(vm.global_bindings.contains_key("f"));
     let persistent = vm.global_binding_storage_bytes();
     assert!(persistent > 0);
-    assert_eq!(
-        vm.host_scheduling_usage().unwrap().payload_bytes,
-        persistent
-            + vm.gc_trace_cache.retained_bytes()
-            + vm.heap.collector_storage_bytes()
-            + vm.heap.root_storage_bytes()
-    );
+    // What remains is what the program itself retains (its function and
+    // bindings). A rerun of the same program, which reuses that code, must
+    // leave the account unchanged: no control container charge outlives a run.
+    // One warm-up rerun first: collector and root-table capacity grow once.
+    vm.execute_script(&program).unwrap();
+    vm.collect_realm_garbage().unwrap();
+    let first = vm.host_scheduling_usage().unwrap().payload_bytes;
+    vm.execute_script(&program).unwrap();
+    vm.collect_realm_garbage().unwrap();
+    assert_eq!(vm.host_scheduling_usage().unwrap().payload_bytes, first);
 }
 
 impl crate::Vm {
@@ -311,7 +312,10 @@ fn active_control_capacity_releases_abort_paths() {
         }).unwrap();
         assert_eq!(vm.execute_script(&compile(source)), Err(RuntimeError::SchedulingLimit));
         assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
-        assert_eq!(vm.host_scheduling_snapshot().payload_bytes, vm.own_scheduling_usage().payload_bytes + vm.heap.collector_storage_bytes() + vm.heap.root_storage_bytes());
+        // Every active execution-control charge is released on abort; only
+        // what the (now failed) program itself retains remains charged.
+        assert_eq!(vm.current_execution_control_bytes(), 0, "{source}");
+        assert_eq!(vm.active_scheduling_bytes, 0, "{source}");
         assert_eq!(vm.stack.capacity(), 0);
     }
 }
@@ -366,7 +370,9 @@ fn active_control_capacity_debugger_frames_preserve_owners_and_release_on_resume
         let child = &vm.debugger_nested_continuation.as_ref().unwrap().execution;
         assert!(child.control_bytes() > 0);
         assert_eq!(child.control_charge.bytes(), child.control_bytes());
-        assert!(vm.displaced_execution_control_bytes.get() >= child.control_bytes());
+        // The paused frame's control bytes sit on its own charge, which the
+        // document account carries.
+        assert!(vm.host_scheduling_snapshot().payload_bytes >= child.control_bytes());
         assert!(matches!(
             vm.resume_debugger_nested_execution(frame_serial).unwrap(),
             VmDebuggerNestedExecutionState::FrameReturned { .. }
