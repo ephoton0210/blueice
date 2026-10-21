@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-20).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-21).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 12,987 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,045 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,423/12,432 (99.9276%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 18 BlueTS owner = 555; excluded from direct agreement |
-| Case labels | 12,978 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 107 suites / 257 ignored Rust functions; not a case denominator |
-| Suite labels | 101 scoped closed, 1 open, 5 refused |
+| Direct agreement | 12,479/12,488 (99.9279%); 3 open, 6 refused observations |
+| Separate controls | 537 native-reference + 20 BlueTS owner = 557; excluded from direct agreement |
+| Case labels | 13,036 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 108 suites / 259 ignored Rust functions; not a case denominator |
+| Suite labels | 102 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 12,987 recorded case expectations pass; expected differences/refusals are not
+All 13,045 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,19 +33,19 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:b6bb5836a062cb245d57b32b106438cf60b96d30`.
-Input graph SHA-256: `f21643e02180f56e3ec0f8704fc8c895abae49e51445a1ca8edb7b3d1f2c222e`.
+Compiler/oracle source: `backend-tree:5fe62da9ab3b24bd8ea2590078bef66933fd0670`.
+Input graph SHA-256: `33a3a979564490c9622623ef8de060e482b8f8fbc37b8a0ce2531c7350c4d16a`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
 
-**Current work (2026-10-20):** A–J and K.1–K.14 are the completed baseline,
+**Current work (2026-10-21):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, both
-G-T1 stages, G-T3, G-T2 and G-T5 are complete for their scopes below; 17 packages
-remain unchecked. Next: G-T6.**
+G-T1 stages, G-T3, G-T2, G-T5 and G-T6 are complete for their scopes below;
+16 packages remain unchecked. Next: G-T4.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -272,13 +272,33 @@ Existing measured behavior is reused; it is not implemented again.
     unchanged. The broader row stays open; full parity remains OFF.
     [Matrix and evidence](PLAN.md#phase-l--g-t5-implementation).
 
-- [ ] **G-T6 — Structural compatibility across nested expression boundaries.**
+- [x] **G-T6 — Structural compatibility across nested expression boundaries.**
   - **Scope:** computed/conditional/spread expressions at assignment, argument and
     return boundaries; nested generic callback variance and structural protocols.
   - **Pass:** freshness and variance agree with strictFunctionTypes on/off and
     exactOptionalPropertyTypes/noUncheckedIndexedAccess controls; native-accepted
     programs stay accepted and native-rejected programs are not hidden by opaque
     compatibility types.
+  - **Frozen minimum:** `gt6_structural/cases.json` / `reference.json`: 28
+    accepted/rejected pairs (56 observations), complete diagnostics including
+    UTF-16 primary/related spans, 28 byte-exact declarations with bidirectional
+    native consumers and ES2022 syntax checks, and two Node executions. Cover
+    computed literal keys, conditional branches, explicit versus spread/stale
+    properties at all three boundaries; nested function/generic/higher-order
+    callbacks, method/generic protocols, strictFunctionTypes on/off, and both
+    optional/indexed flag values. Two owner-budget controls are not native
+    compatibility assertions. No old expectation or policy allowance may change.
+  - **Completion gate:** source-bound full oracle measurement, complete ordinary
+    tests for both compiler crates, cache-epoch invalidation controls, rustfmt,
+    warnings-denied Clippy, and evidence/document/tool consistency checks;
+    implementation and measured evidence are submitted together. The broader
+    G-T6 row remains open beyond this finite matrix; full parity remains OFF.
+  - **Completed (2026-10-21):** all 56 native observations and 28 raw declarations
+    pass, with two executions and two separate owner-budget controls. The frozen
+    replay passes 108 suites / 566 tests, including all 259 ignored functions;
+    complete ordinary tests pass 168 targets / 1,327 tests. Final formatting,
+    warnings-denied Clippy and evidence/tool/document checks pass. All 12,987
+    prior assertions remain unchanged. [Source and acceptance](PLAN.md#phase-l--g-t6-implementation).
 
 - [ ] **G-T4 — Overload selection with generic/optional call chains.**
   - **Scope:** call/construct/method overloads combined with generic callbacks,

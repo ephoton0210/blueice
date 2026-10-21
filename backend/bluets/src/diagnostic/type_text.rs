@@ -19,6 +19,10 @@ pub(crate) fn render_in(value: &Type, project: &crate::Project) -> String {
     text(value, 0, Some(project))
 }
 
+pub(crate) fn render_exact_optional(value: &Type, project: &crate::Project) -> String {
+    text_options(value, 0, Some(project), true)
+}
+
 fn field_name(field: &crate::parser::TypeField, project: Option<&crate::Project>) -> String {
     if let Some(name) = crate::symbol_keys::display(&field.name) {
         return name;
@@ -46,13 +50,22 @@ fn field_name(field: &crate::parser::TypeField, project: Option<&crate::Project>
 }
 
 fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String {
+    text_options(value, depth, project, false)
+}
+
+fn text_options(
+    value: &Type,
+    depth: usize,
+    project: Option<&crate::Project>,
+    exact_optional: bool,
+) -> String {
     if let Some(display) = crate::type_operator_profiles::diagnostic(value) {
         return display.to_string();
     }
     if depth >= 128 {
         return "...".into();
     }
-    let render = |value: &Type| text(value, depth + 1, project);
+    let render = |value: &Type| text_options(value, depth + 1, project, exact_optional);
     match value {
         Type::Conditional(_)
         | Type::Infer(_)
@@ -119,7 +132,12 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
                 .join(", ")
         ),
         Type::CallableRecord { fields, signatures } => {
-            let record_text = text(&Type::Record(fields.clone()), depth, project);
+            let record_text = text_options(
+                &Type::Record(fields.clone()),
+                depth,
+                project,
+                exact_optional,
+            );
             if record_text.starts_with("typeof ") {
                 return record_text;
             }
@@ -192,7 +210,7 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
             }
             let fields = fields.iter().map(|field| {
                 let optional=field.optional && !matches!(field.value,Type::Any|Type::Unknown);
-                let mut value = if optional && !matches!(&field.value,Type::Union(values) if values.contains(&Type::Undefined)) {
+                let mut value = if optional && !exact_optional && !matches!(&field.value,Type::Union(values) if values.contains(&Type::Undefined)) {
                     let value=render(&field.value);
                     if matches!(field.value,Type::Function {..}) {format!("({value}) | undefined")} else {format!("{value} | undefined")}
                 } else { render(&field.value) };
@@ -201,7 +219,7 @@ fn text(value: &Type, depth: usize, project: Option<&crate::Project>) -> String 
                     let source_method = project.and_then(|project|project.source(&field.span.module).or_else(||(field.span.module=="<inferred>").then(||project.modules.values().find_map(|module|module.source.get(field.span.start..field.span.end).filter(|source|source.trim_start().starts_with(&field.name)).map(|_|module.source.as_str()))).flatten())).and_then(|source|source.get(field.span.start..field.span.end)).is_some_and(|source|source.trim_start().strip_prefix(&field.name).is_some_and(|rest|rest.trim_start_matches('?').trim_start().starts_with('(')));
                     if source_method { return format!("{}{}({}): {};",field.name,if field.optional {"?"} else {""},parameters::list(parameters,project),render(result)); }
                 }
-                if optional && matches!(field.value,Type::Union(_)) {value=render(&Type::Union(match &field.value {Type::Union(values)=>{let mut values=values.clone();if !values.contains(&Type::Undefined) {values.push(Type::Undefined)} values},_=>unreachable!()}));}
+                if optional && !exact_optional && matches!(field.value,Type::Union(_)) {value=render(&Type::Union(match &field.value {Type::Union(values)=>{let mut values=values.clone();if !values.contains(&Type::Undefined) {values.push(Type::Undefined)} values},_=>unreachable!()}));}
                 format!("{}{}{}: {value};",if field.readonly {"readonly "} else {""},field_name(field,project),if field.optional {"?"} else {""})
             }).collect::<Vec<_>>().join(" ");
             format!("{{ {fields} }}")

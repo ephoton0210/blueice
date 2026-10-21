@@ -339,7 +339,7 @@ impl<'a> ModuleChecker<'a> {
             }
             .expect("method signature parameters have annotations");
             if let Some(argument) = arguments.get(index) {
-                if self.check_fresh_properties(argument, expected, scope, argument_span) {
+                if self.check_fresh_argument_properties(argument, expected, scope, argument_span) {
                     continue;
                 }
             }

@@ -11,6 +11,7 @@ mod inference_candidates;
 mod more_types;
 mod operators;
 mod records;
+mod structural;
 
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn call_argument_error(
@@ -360,9 +361,14 @@ impl ModuleChecker<'_> {
     ) {
         if self.enforce_types {
             let origin = self.parameter_constraint_origin(actual, expected);
-            let missing = self.inference_missing_parameter_property(actual, expected);
-            let detail = self
-                .compatibility_detail(actual, expected)
+            let structural = self.nested_structural_reason(actual, expected);
+            let missing = structural
+                .as_ref()
+                .and_then(|reason| reason.related.clone())
+                .or_else(|| self.inference_missing_parameter_property(actual, expected));
+            let detail = structural
+                .map(|reason| reason.message)
+                .or_else(|| self.compatibility_detail(actual, expected))
                 .unwrap_or_else(|| {
                     crate::diagnostic::type_text::detail(actual, expected, self.project)
                 });

@@ -33,6 +33,20 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt6_structural" => {
+            let path = "backend/bluets/tests/fixtures/gt6_structural/reference.json";
+            let mut controls = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/budget_controls",
+                "owner-budget-control",
+            )?;
+            for case in &mut controls {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("BlueTS's below/above nested structural work and parser-depth limits; native default-budget acceptance is not agreement on owner-selected limits.".into());
+            }
+            controls
+        }
         "gt5_compositions" => {
             let path = "backend/bluets/tests/fixtures/gt5_compositions/reference.json";
             let mut controls = super::case_sources::json_cases(

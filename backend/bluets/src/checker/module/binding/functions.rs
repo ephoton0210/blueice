@@ -612,7 +612,7 @@ impl<'a> ModuleChecker<'a> {
         let Some(return_type) = return_type else {
             return;
         };
-        if self.check_fresh_properties(returned, return_type, scope, function_span) {
+        if self.check_fresh_return_properties(returned, return_type, scope, function_span) {
             return;
         }
         let actual = self.infer_in_context(returned, scope, return_type);

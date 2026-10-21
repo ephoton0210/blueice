@@ -1,0 +1,246 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "declaration": true,
+    "newLine": "lf",
+    "types": []
+  },
+  "forms": [
+    {
+      "id": "computed-assignment",
+      "area": "computed",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item};",
+      "accept": "export const result: Box = {['inner']: {['value']: 1}};",
+      "reject": "export const result: Box = {['inner']: {['value']: 1, ['extra']: 2}};"
+    },
+    {
+      "id": "conditional-assignment",
+      "area": "conditional",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true;",
+      "accept": "export const result: Box = flag ? {inner: {value: 1}} : {inner: {value: 2}};",
+      "reject": "export const result: Box = flag ? {inner: {value: 1, extra: 2}} : {inner: {value: 2}};"
+    },
+    {
+      "id": "spread-assignment",
+      "area": "spread",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};",
+      "accept": "export const result: Box = {inner: {...input}};",
+      "reject": "export const result: Box = {inner: {...input, other: 3}};"
+    },
+    {
+      "id": "stale-assignment",
+      "area": "freshness",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};",
+      "accept": "export const result: Box = {inner: input};",
+      "reject": "export const result: Box = {inner: {value: input.value, extra: 2}};"
+    },
+    {
+      "id": "conditional-spread-assignment",
+      "area": "conditional",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true; const input = {value: 1, extra: 2};",
+      "accept": "export const result: Box = flag ? {inner: {...input}} : {inner: input};",
+      "reject": "export const result: Box = flag ? {inner: {...input, other: 3}} : {inner: input};"
+    },
+    {
+      "id": "computed-argument",
+      "area": "computed",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item};",
+      "accept": "function take(value: Box): number { return value.inner.value; } export const result = take({['inner']: {['value']: 1}});",
+      "reject": "function take(value: Box): number { return value.inner.value; } export const result = take({['inner']: {['value']: 1, ['extra']: 2}});",
+      "invoke": "console.log(result);"
+    },
+    {
+      "id": "conditional-argument",
+      "area": "conditional",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true;",
+      "accept": "function take(value: Box): number { return value.inner.value; } export const result = take(flag ? {inner: {value: 1}} : {inner: {value: 2}});",
+      "reject": "function take(value: Box): number { return value.inner.value; } export const result = take(flag ? {inner: {value: 1, extra: 2}} : {inner: {value: 2}});"
+    },
+    {
+      "id": "spread-argument",
+      "area": "spread",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};",
+      "accept": "function take(value: Box): number { return value.inner.value; } export const result = take({inner: {...input}});",
+      "reject": "function take(value: Box): number { return value.inner.value; } export const result = take({inner: {...input, other: 3}});"
+    },
+    {
+      "id": "stale-argument",
+      "area": "freshness",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};",
+      "accept": "function take(value: Box): number { return value.inner.value; } export const result = take({inner: input});",
+      "reject": "function take(value: Box): number { return value.inner.value; } export const result = take({inner: {value: input.value, extra: 2}});"
+    },
+    {
+      "id": "conditional-spread-argument",
+      "area": "conditional",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true; const input = {value: 1, extra: 2};",
+      "accept": "function take(value: Box): number { return value.inner.value; } export const result = take(flag ? {inner: {...input}} : {inner: input});",
+      "reject": "function take(value: Box): number { return value.inner.value; } export const result = take(flag ? {inner: {...input, other: 3}} : {inner: input});"
+    },
+    {
+      "id": "computed-return",
+      "area": "computed",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item};",
+      "accept": "export function result(): Box { return {['inner']: {['value']: 1}}; }",
+      "reject": "export function result(): Box { return {['inner']: {['value']: 1, ['extra']: 2}}; }"
+    },
+    {
+      "id": "conditional-return",
+      "area": "conditional",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true;",
+      "accept": "export function result(): Box { return flag ? {inner: {value: 1}} : {inner: {value: 2}}; }",
+      "reject": "export function result(): Box { return flag ? {inner: {value: 1, extra: 2}} : {inner: {value: 2}}; }"
+    },
+    {
+      "id": "spread-return",
+      "area": "spread",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};",
+      "accept": "export function result(): Box { return {inner: {...input}}; }",
+      "reject": "export function result(): Box { return {inner: {...input, other: 3}}; }",
+      "invoke": "console.log(result().inner.value);"
+    },
+    {
+      "id": "stale-return",
+      "area": "freshness",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};",
+      "accept": "export function result(): Box { return {inner: input}; }",
+      "reject": "export function result(): Box { return {inner: {value: input.value, extra: 2}}; }"
+    },
+    {
+      "id": "conditional-spread-return",
+      "area": "conditional",
+      "prefix": "type Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true; const input = {value: 1, extra: 2};",
+      "accept": "export function result(): Box { return flag ? {inner: {...input}} : {inner: input}; }",
+      "reject": "export function result(): Box { return flag ? {inner: {...input, other: 3}} : {inner: input}; }"
+    },
+    {
+      "id": "nested-callback-strict",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; type Handler<T> = {nested: {handle: (value: T) => void}}; declare const broad: Handler<Animal>; declare const narrow: Handler<Dog>;",
+      "accept": "export const result: Handler<Dog> = broad;",
+      "reject": "export const result: Handler<Animal> = narrow;"
+    },
+    {
+      "id": "nested-callback-bivariant",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; type Handler<T> = {nested: {handle: (value: T) => void}}; declare const narrow: Handler<Dog>; declare const wrong: Handler<number>;",
+      "accept": "export const result: Handler<Animal> = narrow;",
+      "reject": "export const result: Handler<Animal> = wrong;",
+      "options": {
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "nested-generic-constraint-identity",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; type Factory<T> = {run: <U extends T>(value: U) => U}; declare const broad: Factory<Animal>; declare const narrow: Factory<Dog>;",
+      "accept": "export const result: Factory<Animal> = narrow;",
+      "reject": "export const result: {run: <U extends Animal>(value: U) => number} = narrow;"
+    },
+    {
+      "id": "higher-order-strict",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; type Sink<T> = (consume: (value: T) => void) => void; type Handler<T> = {inner: {run: Sink<T>}}; declare const broad: Handler<Animal>; declare const narrow: Handler<Dog>;",
+      "accept": "export const result: Handler<Animal> = narrow;",
+      "reject": "export const result: Handler<Dog> = broad;"
+    },
+    {
+      "id": "method-protocol",
+      "area": "protocol",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; type Protocol<T> = {nested: {run(value: T): void}}; declare const narrow: Protocol<Dog>; declare const wrong: Protocol<number>;",
+      "accept": "export const result: Protocol<Animal> = narrow;",
+      "reject": "export const result: Protocol<Animal> = wrong;"
+    },
+    {
+      "id": "generic-producer-protocol",
+      "area": "protocol",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; type Protocol<T> = {produce: <U extends T>(value: U) => U}; declare const good: Protocol<Animal>; declare const wrong: {produce: <U extends Animal>(value: U) => Animal};",
+      "accept": "export const result: Protocol<Animal> = good;",
+      "reject": "export const result: Protocol<Animal> = wrong;"
+    },
+    {
+      "id": "optional-loose",
+      "area": "optional",
+      "prefix": "type Box = {inner: {value?: number}};",
+      "accept": "export const result: Box = {inner: {value: undefined}};",
+      "reject": "export const result: Box = {inner: {value: 'wrong'}};",
+      "options": {
+        "exactOptionalPropertyTypes": false
+      }
+    },
+    {
+      "id": "optional-spread-loose",
+      "area": "optional",
+      "prefix": "type Box = {inner: {value?: number}}; const input = {value: undefined};",
+      "accept": "export const result: Box = {inner: {...input}};",
+      "reject": "export const result: Box = {inner: {...input, value: 'wrong'}};",
+      "options": {
+        "exactOptionalPropertyTypes": false
+      }
+    },
+    {
+      "id": "optional-exact",
+      "area": "optional",
+      "prefix": "type Box = {inner: {value?: number}};",
+      "accept": "export const result: Box = {inner: {}};",
+      "reject": "export const result: Box = {inner: {value: undefined}};",
+      "options": {
+        "exactOptionalPropertyTypes": true
+      }
+    },
+    {
+      "id": "optional-spread-exact",
+      "area": "optional",
+      "prefix": "type Box = {inner: {value?: number}}; const input = {value: undefined};",
+      "accept": "export const result: Box = {inner: {...input, value: 1}};",
+      "reject": "export const result: Box = {inner: {...input}};",
+      "options": {
+        "exactOptionalPropertyTypes": true
+      }
+    },
+    {
+      "id": "indexed-plain",
+      "area": "indexed",
+      "prefix": "type Box = {inner: {value: number}}; const values: number[] = [1];",
+      "accept": "export const result: Box = {inner: {value: values[0]}};",
+      "reject": "export const result: {inner: {value: string}} = {inner: {value: values[0]}};",
+      "options": {
+        "noUncheckedIndexedAccess": false
+      }
+    },
+    {
+      "id": "indexed-checked",
+      "area": "indexed",
+      "prefix": "type Box = {inner: {value: number}}; const values: number[] = [1];",
+      "accept": "export const result: {inner: {value: number | undefined}} = {inner: {value: values[0]}};",
+      "reject": "export const result: Box = {inner: {value: values[0]}};",
+      "options": {
+        "noUncheckedIndexedAccess": true
+      }
+    },
+    {
+      "id": "nested-generic-callback-strict",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; type Handler<T> = {nested: {run: <U>(value: U, item: T) => U}}; declare const broad: Handler<Animal>; declare const narrow: Handler<Dog>;",
+      "accept": "export const result: Handler<Dog> = broad;",
+      "reject": "export const result: Handler<Animal> = narrow;"
+    }
+  ],
+  "budget_controls": [
+    {
+      "id": "nested-context-depth",
+      "kind": "depth",
+      "source": "export const result: {one: {two: {three: number}}} = {one: {two: {three: 1}}};"
+    },
+    {
+      "id": "nested-context-work",
+      "kind": "expansion",
+      "source": "type Box<T> = {inner: {value: T}}; export const result: Box<number> = {inner: {value: 1}};"
+    }
+  ],
+  "readonly_controls": []
+}

@@ -314,7 +314,7 @@ impl<'a> ModuleChecker<'a> {
             let parameter = function_parameter_for_argument(&signature, index)
                 .expect("an accepted function call has a parameter for every argument");
             let expected = call_parameter_expected_type(parameter, &substitutions);
-            if self.check_fresh_properties(
+            if self.check_fresh_argument_properties(
                 arguments.get(index).copied().unwrap_or(&[]),
                 &expected,
                 scope,

@@ -36,6 +36,7 @@ pub(crate) use scopes::emission::{lexical_emission, LexicalEmission};
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
 pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v4";
+pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/1";
 mod computed_keys;
 pub(crate) mod tuple_compositions;
 mod type_operators;

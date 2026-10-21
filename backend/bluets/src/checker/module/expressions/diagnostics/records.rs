@@ -36,16 +36,26 @@ impl ModuleChecker<'_> {
         let Some(point) = point else {
             return false;
         };
+        let exact_optional = self.checking.exact_optional_property_types
+            && self.exact_optional_mismatch(&actual.value, &expected.value);
         self.typescript_type_error(
             &point,
             message.into(),
             code,
-            2322,
+            if exact_optional { 2375 } else { 2322 },
             vec![
                 crate::diagnostic::type_text::render_in(&actual.value, self.project),
-                crate::diagnostic::type_text::render_in(&expected.value, self.project),
+                if exact_optional {
+                    crate::diagnostic::type_text::render_exact_optional(
+                        &expected.value,
+                        self.project,
+                    )
+                } else {
+                    crate::diagnostic::type_text::render_in(&expected.value, self.project)
+                },
             ],
         );
+        self.explain_last_type_pair(&actual.value, &expected.value);
         let origin = self
             .project
             .source(&expected.span.module)
@@ -120,6 +130,11 @@ impl ModuleChecker<'_> {
             {
                 return None;
             }
+            if self.checking.exact_optional_property_types
+                && self.exact_optional_mismatch(&item.value, &field.value)
+            {
+                return Some((item.clone(), field.clone(), expected.clone()));
+            }
             if let Some(nested) =
                 self.nested_mismatch(&item.value, &field.value, span, budget, depth + 1)
             {
@@ -128,5 +143,19 @@ impl ModuleChecker<'_> {
             return (depth > 0).then(|| (item.clone(), field.clone(), expected.clone()));
         }
         None
+    }
+
+    fn exact_optional_mismatch(&self, actual: &Type, expected: &Type) -> bool {
+        let (Type::Record(actual), Type::Record(expected)) = (actual, expected) else {
+            return false;
+        };
+        expected.iter().any(|e| {
+            e.optional && actual.iter().any(|a| {
+                a.name == e.name
+                    && a.value == Type::Undefined
+                    && e.value != Type::Undefined
+                    && !matches!(&e.value, Type::Union(parts) if parts.contains(&Type::Undefined))
+            })
+        })
     }
 }

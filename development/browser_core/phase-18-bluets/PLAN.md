@@ -9,24 +9,24 @@
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-20).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-21).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 12,987 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,045 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,423/12,432 (99.9276%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 18 BlueTS owner = 555; excluded from direct agreement |
-| Case labels | 12,978 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 107 suites / 257 ignored Rust functions; not a case denominator |
-| Suite labels | 101 scoped closed, 1 open, 5 refused |
+| Direct agreement | 12,479/12,488 (99.9279%); 3 open, 6 refused observations |
+| Separate controls | 537 native-reference + 20 BlueTS owner = 557; excluded from direct agreement |
+| Case labels | 13,036 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 108 suites / 259 ignored Rust functions; not a case denominator |
+| Suite labels | 102 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 12,987 recorded case expectations pass; expected differences/refusals are not
+All 13,045 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:b6bb5836a062cb245d57b32b106438cf60b96d30`.
-Input graph SHA-256: `f21643e02180f56e3ec0f8704fc8c895abae49e51445a1ca8edb7b3d1f2c222e`.
+Compiler/oracle source: `backend-tree:5fe62da9ab3b24bd8ea2590078bef66933fd0670`.
+Input graph SHA-256: `33a3a979564490c9622623ef8de060e482b8f8fbc37b8a0ce2531c7350c4d16a`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -13147,3 +13147,155 @@ oracle/local baseline keeps its own source scope; hosted CI is supplementary.
 | Final warnings-denied Clippy | `35fc72bacfe065673ddba4b566b6467dc5b94a887c640891f8cbf1f5e1028448` |
 | Versioned measurement | `3d15d681f6bbb334373a7c1275779d0bf350979c124730644488cf8d4f962ca7` |
 | Preserved-case/log/tool identity audit | `f8ca99ed32938a6dc6ac97e21b71abeccde0c355050300ebb301270ce3f8e9e6` |
+
+## Phase L — G-T6 implementation
+
+### Frozen scope and test-first baseline (2026-10-21)
+
+The finite package adds `gt6_structural`, independently recorded with native
+TypeScript **5.9.3**, strict ES2022/ESNext and LF declarations. Its 28
+accepted/rejected pairs contain **56 observations**; all 28 accepted declarations
+must match byte-for-byte and pass bidirectional native consumers and Acorn
+8.15.0 ES2022 parsing. Two accepted programs compare Node exit/stdout/stderr.
+The source includes an astral UTF-16 control; diagnostics compare every code,
+message, primary span and related-information span, not just the first error.
+
+The pairs cover computed literal keys, conditional branches, spreads and stale
+values at **assignment, argument and explicit return** boundaries; nested
+function, generic and higher-order callbacks; method and generic producer
+protocols; strictFunctionTypes enabled/disabled and both values of
+exactOptionalPropertyTypes/noUncheckedIndexedAccess. Distinct mutable/stale and
+method-bivariance witnesses prevent a blanket excess-property or callback
+refusal. Two parser-depth/type-work boundary controls are listed separately,
+not counted as TypeScript agreement.
+
+Input SHA-256: `1300e5736011c387139bfa00419d0c40a0e23698d34dbaac1005cb2cd385dec9`.
+Reference SHA-256: `8bc72a5b270c0b5f93dbda5e0e2ab25652b434eb6893d5c06be915c5b54f6a2e`.
+These native observations were frozen **before production edits**. The public
+compiler test initially fails with **17 mismatches**, including nine incorrect
+acceptances for computed/conditional fresh properties and eight diagnostic
+differences. The original failing run is
+`/private/tmp/bluets-gt6-before.log`; no reference expectation was loosened.
+
+### Implementation and preflight
+
+Freshness now keeps explicitly written computed keys separate from spread
+properties and traverses conditional branches. Assignment/argument boundaries
+retain the native union diagnostic chain; explicit returns retain the property
+diagnostic and its declaration origin. A small `freshness/members.rs` module
+owns key extraction and diagnostic literal presentation. A separate
+`diagnostics/structural.rs` explains rejected nested/generic protocol relations
+using directed bounded comparisons; it does not decide acceptance. Nested
+optional-property failures retain TS2375 at the containing property when exact
+optional checking is enabled, and indexed undefined failures retain their
+complete reason. Existing checking flags, budgets and readonly/opaque owner
+policy remain unchanged; no any/unknown substitution is added.
+
+The artifact producer includes `bluets-structural-boundaries/1`; build-state
+epoch **13** rejects old epochs 4–12 and tests cold/warm/rebuild behavior.
+The focused gate passes **all five tests**, including both ignored native
+oracles, raw declarations, consumers, syntax, execution and owner budgets:
+`/private/tmp/bluets-gt6-focused-oracles.log`.
+
+Completion still requires a successful whole source-frozen oracle cohort,
+complete ordinary tests for both compiler crates, formatting, warnings-denied
+Clippy, preserved-case/log/tool identity audit and document/accounting checks.
+G-T6 stays unchecked until those gates pass. Implementation and the matching
+completed measurement must be committed together. The broader row remains open
+for expression/variance/library combinations beyond this finite matrix; full
+parity stays OFF. This leaf is darwin-arm64 compiler evidence, not a new Windows
+VM or full-workspace milestone, and does not impose hosted CI as an acceptance
+condition.
+
+### Source-bound complete replay
+
+The ordinary preflight succeeds: **165 targets / 1,305 passed**, zero
+failed/filtered, 259 ignored. This preflight deliberately excludes the
+not-yet-regenerated inventory suite and doc-tests; it is not the final ordinary
+gate. Warnings-denied two-crate all-target Clippy, workspace formatting,
+13 Python and 15 Node tests also pass before freezing the source.
+
+Immutable backend tree: `5fe62da9ab3b24bd8ea2590078bef66933fd0670`.
+Source graph SHA-256:
+`33a3a979564490c9622623ef8de060e482b8f8fbc37b8a0ce2531c7350c4d16a`.
+Base HEAD: `6a1b93f230f662407024fe69b2264dd84461545f`.
+Source and primary-provider checks pass with no missing inline providers.
+The complete **108-suite / 259-ignored-function** replay used this frozen
+tree and unchanged oracle tooling, without fixture-write/filter environment
+variables, in `/private/tmp/bluets-gt6-measurement-GxNiqI`; driver log:
+`/private/tmp/bluets-gt6-measurement-run.log`. Only the driver's complete success
+is publishable evidence. No implementation-only commit or partial-cohort
+evidence is submitted.
+
+This host now reports **Rust 1.98.0 (Homebrew)**, which is recorded verbatim in
+the measurement; this is not relabelled as the earlier Rust 1.95 build. Formatting
+uses the repository's existing Rust 1.95 rustfmt executable. Native observations
+remain pinned to TypeScript 5.9.3, Acorn 8.15.0 and Node 26.7.0.
+
+The complete replay succeeds at **2026-10-21T01:10:24.949Z**: **108 suites /
+566 tests**, including all **259 ignored Rust functions**, with zero
+failed/ignored/filtered functions. The driver rechecks source/catalog and all
+**62 oracle tool bodies** at completion. Versioned measurement SHA-256:
+`cb124ee681954b7a61b6963efb851ee4385ad6726350a7e00258fc0ba477a4a8`.
+
+Independent audit `/private/tmp/bluets-gt6-final-identity-audit.json` verifies
+every completed log and tool hash and all **12,987 previous assertion identities
+and expectations** remain unchanged. Exactly **58 additions** belong to G-T6:
+56 native observations and two owner-budget controls. Frozen input/reference
+hashes remain unchanged; no prior native fixture was edited. The versioned
+measurement bytes equal the original successful run. N = **13,045**;
+direct agreement **12,479/12,488**, with the same three open and six refused
+observations. The 537 reference-only and 20 owner controls remain separate;
+scoped closed is 13,036. The broader feature rows remain one scoped closed /
+22 open, not a full-parity claim.
+
+Source/case checks, row accounting and all four generated current-status blocks
+agree with the new evidence. The no-exclusion final ordinary gate is recorded in
+`/private/tmp/bluets-gt6-ordinary-final.log`; it includes the inventory suite and
+both doc-test targets omitted by the preflight. Its results and the final
+formatting/Clippy/tool/document checks determine acceptance below.
+
+### Final acceptance (2026-10-21)
+
+The complete two-crate ordinary gate passes **168 targets / 1,327 tests**,
+zero failed/filtered, 259 ignored. All 259 ignored functions separately pass
+in the complete source-frozen cohort. The ordinary gate includes all 22
+inventory/measurement-integrity tests and both doc-test targets. Final workspace
+Rust 1.95 formatting, warnings-denied two-crate all-target Clippy, **13 Python
+and 15 Node tests**, source/case checks, log/tool identity audit, row/refusal
+accounting, whitespace and four-document status consistency pass. Refusals remain
+213 sites / 11 areas. No budget or owner-policy allowance was loosened.
+
+G-T6's frozen finite package is complete; implementation and its matching
+completed measurement are submitted together. The broader G-T6 row stays open
+for non-literal computed keys and expression, generic-variance or library
+relations outside the matrix. **16 Phase L packages remain unchecked; G-T4 is
+next. Full parity remains OFF.** This does not claim a new Windows VM,
+full-workspace or hosted-CI acceptance run.
+
+Reproduction uses the pinned oracle paths in
+`/private/tmp/bluets-gt6-oracles-5c8vA3/node_modules/.bin/` (`tsc` and `acorn`),
+Node 26.7.0 and the shared-target environment `CARGO_INCREMENTAL=0`,
+`CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0`, `FORCE_COLOR=0`,
+with `BLUEICE_BLUETSC_ORACLE`, `BLUEICE_ACORN_ORACLE` and
+`BLUEJS_REGEXP_WORKER` set explicitly. No second target directory is used.
+
+```sh
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs --output-dir <fresh-empty-directory> --staged-source
+cargo test --offline -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast
+cargo clippy --offline -p blueice-bluets -p blueice-bluets-bluejs --all-targets -- -D warnings
+```
+
+The original measurement directory is no longer empty; preserve it and select
+a fresh directory for replay. The staged backend must match the immutable tree
+above; remove all `BLUETS_*` filter variables and fixture-write overrides.
+
+| Evidence | SHA-256 |
+| --- | --- |
+| Initial 56-program failing replay | `4ee5079b3c3b1ad9e86b59a21c40b2eb03559ea14ddcb86640c793e39e734bb0` |
+| Focused native/consumer/runtime gate | `8285af3a80a00b1244e13944a3e0dda602f80d986cbbe3a5f23c9694d8fad303` |
+| Complete 108-suite cohort log | `1a5de116814b3712936616d2c6eb02116758a334c657bda47539995834dd1669` |
+| Versioned measurement | `cb124ee681954b7a61b6963efb851ee4385ad6726350a7e00258fc0ba477a4a8` |
+| No-exclusion ordinary gate | `e5b07f2864dfc522b69ddfe7dbdb6594a956ad52eb751a6794da76a5f2732ab8` |
+| Final warnings-denied Clippy | `35fc72bacfe065673ddba4b566b6467dc5b94a887c640891f8cbf1f5e1028448` |
+| Preserved-case/log/tool identity audit | `f7c4d384443ea91cbc4d08a2988132c720b64e2b3ea32c34a02b1f7c4119c1a8` |

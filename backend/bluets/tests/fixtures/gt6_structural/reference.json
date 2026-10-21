@@ -1,0 +1,1354 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "computed-assignment-accept",
+      "area": "computed",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item};\nexport const result: Box = {['inner']: {['value']: 1}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "computed-assignment-reject",
+      "area": "computed",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item};\nexport const result: Box = {['inner']: {['value']: 1, ['extra']: 2}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and '['extra']' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 131,
+          "length": 9,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conditional-assignment-accept",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true;\nexport const result: Box = flag ? {inner: {value: 1}} : {inner: {value: 2}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "conditional-assignment-reject",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true;\nexport const result: Box = flag ? {inner: {value: 1, extra: 2}} : {inner: {value: 2}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ inner: { value: number; extra: number; }; } | { inner: { value: number; }; }' is not assignable to type 'Box'.\n  Type '{ inner: { value: number; extra: number; }; }' is not assignable to type 'Box'.\n    Types of property 'inner' are incompatible.\n      Object literal may only specify known properties, and 'extra' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 158,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "spread-assignment-accept",
+      "area": "spread",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nexport const result: Box = {inner: {...input}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "spread-assignment-reject",
+      "area": "spread",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nexport const result: Box = {inner: {...input, other: 3}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and 'other' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 159,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stale-assignment-accept",
+      "area": "freshness",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nexport const result: Box = {inner: input};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "stale-assignment-reject",
+      "area": "freshness",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nexport const result: Box = {inner: {value: input.value, extra: 2}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 169,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conditional-spread-assignment-accept",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true; const input = {value: 1, extra: 2};\nexport const result: Box = flag ? {inner: {...input}} : {inner: input};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "conditional-spread-assignment-reject",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true; const input = {value: 1, extra: 2};\nexport const result: Box = flag ? {inner: {...input, other: 3}} : {inner: input};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ inner: { other: number; value: number; extra: number; }; } | { inner: { value: number; extra: number; }; }' is not assignable to type 'Box'.\n  Type '{ inner: { other: number; value: number; extra: number; }; }' is not assignable to type 'Box'.\n    Types of property 'inner' are incompatible.\n      Object literal may only specify known properties, and 'other' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 194,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "computed-argument-accept",
+      "area": "computed",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item};\nfunction take(value: Box): number { return value.inner.value; } export const result = take({['inner']: {['value']: 1}});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n",
+      "invoke": "console.log(result);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "computed-argument-reject",
+      "area": "computed",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item};\nfunction take(value: Box): number { return value.inner.value; } export const result = take({['inner']: {['value']: 1, ['extra']: 2}});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and '['extra']' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 195,
+          "length": 9,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conditional-argument-accept",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true;\nfunction take(value: Box): number { return value.inner.value; } export const result = take(flag ? {inner: {value: 1}} : {inner: {value: 2}});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "conditional-argument-reject",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true;\nfunction take(value: Box): number { return value.inner.value; } export const result = take(flag ? {inner: {value: 1, extra: 2}} : {inner: {value: 2}});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '{ inner: { value: number; extra: number; }; } | { inner: { value: number; }; }' is not assignable to parameter of type 'Box'.\n  Type '{ inner: { value: number; extra: number; }; }' is not assignable to type 'Box'.\n    Types of property 'inner' are incompatible.\n      Object literal may only specify known properties, and 'extra' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 222,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "spread-argument-accept",
+      "area": "spread",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nfunction take(value: Box): number { return value.inner.value; } export const result = take({inner: {...input}});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "spread-argument-reject",
+      "area": "spread",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nfunction take(value: Box): number { return value.inner.value; } export const result = take({inner: {...input, other: 3}});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and 'other' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 223,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stale-argument-accept",
+      "area": "freshness",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nfunction take(value: Box): number { return value.inner.value; } export const result = take({inner: input});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "stale-argument-reject",
+      "area": "freshness",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nfunction take(value: Box): number { return value.inner.value; } export const result = take({inner: {value: input.value, extra: 2}});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 233,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conditional-spread-argument-accept",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true; const input = {value: 1, extra: 2};\nfunction take(value: Box): number { return value.inner.value; } export const result = take(flag ? {inner: {...input}} : {inner: input});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "conditional-spread-argument-reject",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true; const input = {value: 1, extra: 2};\nfunction take(value: Box): number { return value.inner.value; } export const result = take(flag ? {inner: {...input, other: 3}} : {inner: input});\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '{ inner: { other: number; value: number; extra: number; }; } | { inner: { value: number; extra: number; }; }' is not assignable to parameter of type 'Box'.\n  Type '{ inner: { other: number; value: number; extra: number; }; }' is not assignable to type 'Box'.\n    Types of property 'inner' are incompatible.\n      Object literal may only specify known properties, and 'other' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 258,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "computed-return-accept",
+      "area": "computed",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item};\nexport function result(): Box { return {['inner']: {['value']: 1}}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare function result(): Box;\nexport {};\n"
+    },
+    {
+      "id": "computed-return-reject",
+      "area": "computed",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item};\nexport function result(): Box { return {['inner']: {['value']: 1, ['extra']: 2}}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and '['extra']' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 143,
+          "length": 9,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conditional-return-accept",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true;\nexport function result(): Box { return flag ? {inner: {value: 1}} : {inner: {value: 2}}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare function result(): Box;\nexport {};\n"
+    },
+    {
+      "id": "conditional-return-reject",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true;\nexport function result(): Box { return flag ? {inner: {value: 1, extra: 2}} : {inner: {value: 2}}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 170,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spread-return-accept",
+      "area": "spread",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nexport function result(): Box { return {inner: {...input}}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare function result(): Box;\nexport {};\n",
+      "invoke": "console.log(result().inner.value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "spread-return-reject",
+      "area": "spread",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nexport function result(): Box { return {inner: {...input, other: 3}}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and 'other' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 171,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stale-return-accept",
+      "area": "freshness",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nexport function result(): Box { return {inner: input}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare function result(): Box;\nexport {};\n"
+    },
+    {
+      "id": "stale-return-reject",
+      "area": "freshness",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const input = {value: 1, extra: 2};\nexport function result(): Box { return {inner: {value: input.value, extra: 2}}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and 'extra' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 181,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conditional-spread-return-accept",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true; const input = {value: 1, extra: 2};\nexport function result(): Box { return flag ? {inner: {...input}} : {inner: input}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Item = {\n    value: number;\n};\ntype Box = {\n    inner: Item;\n};\nexport declare function result(): Box;\nexport {};\n"
+    },
+    {
+      "id": "conditional-spread-return-reject",
+      "area": "conditional",
+      "source": "// UTF-16 control: 😀\ntype Item = {value: number}; type Box = {inner: Item}; const flag: boolean = true; const input = {value: 1, extra: 2};\nexport function result(): Box { return flag ? {inner: {...input, other: 3}} : {inner: input}; }\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2353,
+          "message": "Object literal may only specify known properties, and 'other' does not exist in type 'Item'.",
+          "module": "entry.ts",
+          "start": 206,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 63,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nested-callback-strict-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Handler<T> = {nested: {handle: (value: T) => void}}; declare const broad: Handler<Animal>; declare const narrow: Handler<Dog>;\nexport const result: Handler<Dog> = broad;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Dog = {\n    name: string;\n    bark: number;\n};\ntype Handler<T> = {\n    nested: {\n        handle: (value: T) => void;\n    };\n};\nexport declare const result: Handler<Dog>;\nexport {};\n"
+    },
+    {
+      "id": "nested-callback-strict-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Handler<T> = {nested: {handle: (value: T) => void}}; declare const broad: Handler<Animal>; declare const narrow: Handler<Dog>;\nexport const result: Handler<Animal> = narrow;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Handler<Dog>' is not assignable to type 'Handler<Animal>'.\n  Property 'bark' is missing in type 'Animal' but required in type 'Dog'.",
+          "module": "entry.ts",
+          "start": 238,
+          "length": 6,
+          "related": [
+            {
+              "code": 2728,
+              "message": "'bark' is declared here.",
+              "module": "entry.ts",
+              "start": 78,
+              "length": 4,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nested-callback-bivariant-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Handler<T> = {nested: {handle: (value: T) => void}}; declare const narrow: Handler<Dog>; declare const wrong: Handler<number>;\nexport const result: Handler<Animal> = narrow;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Animal = {\n    name: string;\n};\ntype Handler<T> = {\n    nested: {\n        handle: (value: T) => void;\n    };\n};\nexport declare const result: Handler<Animal>;\nexport {};\n"
+    },
+    {
+      "id": "nested-callback-bivariant-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Handler<T> = {nested: {handle: (value: T) => void}}; declare const narrow: Handler<Dog>; declare const wrong: Handler<number>;\nexport const result: Handler<Animal> = wrong;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Handler<number>' is not assignable to type 'Handler<Animal>'.\n  Type 'number' is not assignable to type 'Animal'.",
+          "module": "entry.ts",
+          "start": 238,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-generic-constraint-identity-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Factory<T> = {run: <U extends T>(value: U) => U}; declare const broad: Factory<Animal>; declare const narrow: Factory<Dog>;\nexport const result: Factory<Animal> = narrow;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Animal = {\n    name: string;\n};\ntype Factory<T> = {\n    run: <U extends T>(value: U) => U;\n};\nexport declare const result: Factory<Animal>;\nexport {};\n"
+    },
+    {
+      "id": "nested-generic-constraint-identity-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Factory<T> = {run: <U extends T>(value: U) => U}; declare const broad: Factory<Animal>; declare const narrow: Factory<Dog>;\nexport const result: {run: <U extends Animal>(value: U) => number} = narrow;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Factory<Dog>' is not assignable to type '{ run: <U extends Animal>(value: U) => number; }'.\n  Types of property 'run' are incompatible.\n    Type '<U extends Dog>(value: U) => U' is not assignable to type '<U extends Animal>(value: U) => number'.\n      Types of parameters 'value' and 'value' are incompatible.\n        Type 'U' is not assignable to type 'Dog'.\n          Property 'bark' is missing in type 'Animal' but required in type 'Dog'.",
+          "module": "entry.ts",
+          "start": 235,
+          "length": 6,
+          "related": [
+            {
+              "code": 2728,
+              "message": "'bark' is declared here.",
+              "module": "entry.ts",
+              "start": 78,
+              "length": 4,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "higher-order-strict-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Sink<T> = (consume: (value: T) => void) => void; type Handler<T> = {inner: {run: Sink<T>}}; declare const broad: Handler<Animal>; declare const narrow: Handler<Dog>;\nexport const result: Handler<Animal> = narrow;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Animal = {\n    name: string;\n};\ntype Sink<T> = (consume: (value: T) => void) => void;\ntype Handler<T> = {\n    inner: {\n        run: Sink<T>;\n    };\n};\nexport declare const result: Handler<Animal>;\nexport {};\n"
+    },
+    {
+      "id": "higher-order-strict-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Sink<T> = (consume: (value: T) => void) => void; type Handler<T> = {inner: {run: Sink<T>}}; declare const broad: Handler<Animal>; declare const narrow: Handler<Dog>;\nexport const result: Handler<Dog> = broad;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Handler<Animal>' is not assignable to type 'Handler<Dog>'.\n  Property 'bark' is missing in type 'Animal' but required in type 'Dog'.",
+          "module": "entry.ts",
+          "start": 277,
+          "length": 6,
+          "related": [
+            {
+              "code": 2728,
+              "message": "'bark' is declared here.",
+              "module": "entry.ts",
+              "start": 78,
+              "length": 4,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "method-protocol-accept",
+      "area": "protocol",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Protocol<T> = {nested: {run(value: T): void}}; declare const narrow: Protocol<Dog>; declare const wrong: Protocol<number>;\nexport const result: Protocol<Animal> = narrow;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Animal = {\n    name: string;\n};\ntype Protocol<T> = {\n    nested: {\n        run(value: T): void;\n    };\n};\nexport declare const result: Protocol<Animal>;\nexport {};\n"
+    },
+    {
+      "id": "method-protocol-reject",
+      "area": "protocol",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Protocol<T> = {nested: {run(value: T): void}}; declare const narrow: Protocol<Dog>; declare const wrong: Protocol<number>;\nexport const result: Protocol<Animal> = wrong;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Protocol<number>' is not assignable to type 'Protocol<Animal>'.\n  Type 'number' is not assignable to type 'Animal'.",
+          "module": "entry.ts",
+          "start": 234,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-producer-protocol-accept",
+      "area": "protocol",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Protocol<T> = {produce: <U extends T>(value: U) => U}; declare const good: Protocol<Animal>; declare const wrong: {produce: <U extends Animal>(value: U) => Animal};\nexport const result: Protocol<Animal> = good;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Animal = {\n    name: string;\n};\ntype Protocol<T> = {\n    produce: <U extends T>(value: U) => U;\n};\nexport declare const result: Protocol<Animal>;\nexport {};\n"
+    },
+    {
+      "id": "generic-producer-protocol-reject",
+      "area": "protocol",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Protocol<T> = {produce: <U extends T>(value: U) => U}; declare const good: Protocol<Animal>; declare const wrong: {produce: <U extends Animal>(value: U) => Animal};\nexport const result: Protocol<Animal> = wrong;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ produce: <U extends Animal>(value: U) => Animal; }' is not assignable to type 'Protocol<Animal>'.\n  The types returned by 'produce(...)' are incompatible between these types.\n    Type 'Animal' is not assignable to type 'U'.\n      'Animal' is assignable to the constraint of type 'U', but 'U' could be instantiated with a different subtype of constraint 'Animal'.",
+          "module": "entry.ts",
+          "start": 276,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-loose-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value?: number}};\nexport const result: Box = {inner: {value: undefined}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "exactOptionalPropertyTypes": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Box = {\n    inner: {\n        value?: number;\n    };\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "optional-loose-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value?: number}};\nexport const result: Box = {inner: {value: 'wrong'}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "exactOptionalPropertyTypes": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value?: number | undefined; }'",
+              "module": "entry.ts",
+              "start": 42,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "optional-spread-loose-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value?: number}}; const input = {value: undefined};\nexport const result: Box = {inner: {...input}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "exactOptionalPropertyTypes": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Box = {\n    inner: {\n        value?: number;\n    };\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "optional-spread-loose-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value?: number}}; const input = {value: undefined};\nexport const result: Box = {inner: {...input, value: 'wrong'}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "exactOptionalPropertyTypes": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 140,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value?: number | undefined; }'",
+              "module": "entry.ts",
+              "start": 42,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "optional-exact-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value?: number}};\nexport const result: Box = {inner: {}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "exactOptionalPropertyTypes": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Box = {\n    inner: {\n        value?: number;\n    };\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "optional-exact-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value?: number}};\nexport const result: Box = {inner: {value: undefined}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "exactOptionalPropertyTypes": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2375,
+          "message": "Type '{ value: undefined; }' is not assignable to type '{ value?: number; }' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.\n  Types of property 'value' are incompatible.\n    Type 'undefined' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 88,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 34,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "optional-spread-exact-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value?: number}}; const input = {value: undefined};\nexport const result: Box = {inner: {...input, value: 1}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "exactOptionalPropertyTypes": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Box = {\n    inner: {\n        value?: number;\n    };\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "optional-spread-exact-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value?: number}}; const input = {value: undefined};\nexport const result: Box = {inner: {...input}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "exactOptionalPropertyTypes": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2375,
+          "message": "Type '{ value: undefined; }' is not assignable to type '{ value?: number; }' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.\n  Types of property 'value' are incompatible.\n    Type 'undefined' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 122,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'inner' which is declared here on type 'Box'",
+              "module": "entry.ts",
+              "start": 34,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "indexed-plain-accept",
+      "area": "indexed",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value: number}}; const values: number[] = [1];\nexport const result: Box = {inner: {value: values[0]}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "noUncheckedIndexedAccess": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Box = {\n    inner: {\n        value: number;\n    };\n};\nexport declare const result: Box;\nexport {};\n"
+    },
+    {
+      "id": "indexed-plain-reject",
+      "area": "indexed",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value: number}}; const values: number[] = [1];\nexport const result: {inner: {value: string}} = {inner: {value: values[0]}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "noUncheckedIndexedAccess": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 146,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value: string; }'",
+              "module": "entry.ts",
+              "start": 119,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "indexed-checked-accept",
+      "area": "indexed",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value: number}}; const values: number[] = [1];\nexport const result: {inner: {value: number | undefined}} = {inner: {value: values[0]}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: {\n    inner: {\n        value: number | undefined;\n    };\n};\n"
+    },
+    {
+      "id": "indexed-checked-reject",
+      "area": "indexed",
+      "source": "// UTF-16 control: 😀\ntype Box = {inner: {value: number}}; const values: number[] = [1];\nexport const result: Box = {inner: {value: values[0]}};\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "noUncheckedIndexedAccess": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 125,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type '{ value: number; }'",
+              "module": "entry.ts",
+              "start": 42,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nested-generic-callback-strict-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Handler<T> = {nested: {run: <U>(value: U, item: T) => U}}; declare const broad: Handler<Animal>; declare const narrow: Handler<Dog>;\nexport const result: Handler<Dog> = broad;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Dog = {\n    name: string;\n    bark: number;\n};\ntype Handler<T> = {\n    nested: {\n        run: <U>(value: U, item: T) => U;\n    };\n};\nexport declare const result: Handler<Dog>;\nexport {};\n"
+    },
+    {
+      "id": "nested-generic-callback-strict-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Handler<T> = {nested: {run: <U>(value: U, item: T) => U}}; declare const broad: Handler<Animal>; declare const narrow: Handler<Dog>;\nexport const result: Handler<Animal> = narrow;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Handler<Dog>' is not assignable to type 'Handler<Animal>'.\n  Property 'bark' is missing in type 'Animal' but required in type 'Dog'.",
+          "module": "entry.ts",
+          "start": 244,
+          "length": 6,
+          "related": [
+            {
+              "code": 2728,
+              "message": "'bark' is declared here.",
+              "module": "entry.ts",
+              "start": 78,
+              "length": 4,
+              "related": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "budget_controls": [
+    {
+      "id": "nested-context-depth",
+      "kind": "depth",
+      "source": "export const result: {one: {two: {three: number}}} = {one: {two: {three: 1}}};"
+    },
+    {
+      "id": "nested-context-work",
+      "kind": "expansion",
+      "source": "type Box<T> = {inner: {value: T}}; export const result: Box<number> = {inner: {value: 1}};"
+    }
+  ],
+  "readonly_controls": []
+}
