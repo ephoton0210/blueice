@@ -628,6 +628,19 @@ impl<'a> ModuleChecker<'a> {
             || self.is_assignable_bounded(&actual, return_type, function_span);
         self.strict_catch_unknown = previous_unknown;
         if !return_is_assignable {
+            let before = self.diagnostics.len();
+            if Self::literal_elements(returned).is_some()
+                && self.literal_composition_error(returned, return_type, scope, 0)
+            {
+                // Preserve the public BTS return-error category while the
+                // native counterpart points at the incompatible tuple element.
+                for diagnostic in &mut self.diagnostics[before..] {
+                    if diagnostic.code == DiagnosticCode::TypeMismatch {
+                        diagnostic.code = DiagnosticCode::ReturnTypeMismatch;
+                    }
+                }
+                return;
+            }
             self.assignment_error(
                 function_span,
                 format!(

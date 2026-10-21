@@ -59,7 +59,7 @@ impl ModuleChecker<'_> {
         value
     }
 
-    fn fresh_array_element(
+    pub(in crate::checker::module) fn fresh_array_element(
         &self,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
@@ -99,6 +99,9 @@ impl ModuleChecker<'_> {
                         && variable.annotation.is_none()
                         && self.fresh_array_element(&variable.initializer, scope, seen, depth + 1))
             });
+        }
+        if let Some(fresh) = self.fresh_call_chain(tokens, scope, seen, depth) {
+            return fresh;
         }
         let Some(call) = direct_call_parts(tokens).filter(|call| !call.generic) else {
             return false;

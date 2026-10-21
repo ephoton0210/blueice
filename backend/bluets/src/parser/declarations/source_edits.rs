@@ -25,6 +25,7 @@ impl Parser {
 
     fn collect_runtime_type_edits(&mut self, start: usize, end: usize, statement_range: bool) {
         let mut index = start;
+        let mut postfix_bang = false;
         while index < end {
             if let Some(next) = self.collect_catch_annotation(index, end) {
                 index = next;
@@ -66,21 +67,31 @@ impl Parser {
                 index = next;
                 continue;
             }
+            let generic_open = if self
+                .tokens
+                .get(index + 1)
+                .is_some_and(|token| token.is("?."))
+            {
+                index + 2
+            } else {
+                index + 1
+            };
             if self.tokens[index].kind == TokenKind::Identifier
                 && self
                     .tokens
-                    .get(index + 1)
+                    .get(generic_open)
                     .is_some_and(|token| token.is("<"))
             {
-                if let Some(close) = matching_angle_bracket(&self.tokens, index + 1, end) {
+                if let Some(close) = matching_angle_bracket(&self.tokens, generic_open, end) {
                     if self
                         .tokens
                         .get(close + 1)
                         .is_some_and(|token| token.is("("))
                     {
-                        let type_arguments = self.parse_call_type_arguments(index + 2, close);
+                        let type_arguments =
+                            self.parse_call_type_arguments(generic_open + 1, close);
                         self.edits.push(TextEdit {
-                            start: self.tokens[index + 1].start,
+                            start: self.tokens[generic_open].start,
                             end: self.tokens[close].end,
                             replacement: String::new(),
                         });
@@ -106,12 +117,36 @@ impl Parser {
                     "typed arrow parameters are not in the initial BlueTS matrix",
                 );
             }
+            if self.tokens[index].is("!") {
+                postfix_bang = index
+                    .checked_sub(1)
+                    .filter(|previous| *previous >= start)
+                    .is_some_and(|previous| {
+                        let token = &self.tokens[previous];
+                        if token.is("!") {
+                            postfix_bang
+                        } else {
+                            matches!(
+                                token.kind,
+                                TokenKind::Identifier
+                                    | TokenKind::Number
+                                    | TokenKind::String
+                                    | TokenKind::Template
+                            ) || matches!(
+                                token.text.as_str(),
+                                ")" | "]" | "}" | "this" | "super" | "true" | "false" | "null"
+                            )
+                        }
+                    });
+            }
             if self.tokens[index].is("!")
-                && index > start
-                && self
-                    .tokens
-                    .get(index + 1)
-                    .is_some_and(|token| matches!(token.text.as_str(), ";" | "," | ")" | "]" | "."))
+                && postfix_bang
+                && self.tokens.get(index + 1).is_some_and(|token| {
+                    matches!(
+                        token.text.as_str(),
+                        ";" | "," | ")" | "]" | "." | "?." | "(" | "!"
+                    )
+                })
             {
                 self.edits.push(TextEdit {
                     start: self.tokens[index].start,

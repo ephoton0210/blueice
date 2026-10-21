@@ -1,0 +1,423 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "declaration": true,
+    "newLine": "lf",
+    "types": []
+  },
+  "forms": [
+    {
+      "id": "generic-call-order-0",
+      "area": "call",
+      "prefix": "declare function select<T>(value: {value: T}, fn: (value: T) => T): T; declare function select(value: string, fn: (value: string) => number): number;",
+      "accept": "export const result = select({value: 1}, value => value + 1); const witness: number = result;",
+      "reject": "export const result = select({value: 1}, value => value + 1); const witness: string = result;"
+    },
+    {
+      "id": "overlap-order-0",
+      "area": "call",
+      "prefix": "declare function select(value: number): 'first'; declare function select(value: number): 'second';",
+      "accept": "export const result = select(1); const witness: 'first' = result;",
+      "reject": "export const result = select(1); const witness: 'second' = result;"
+    },
+    {
+      "id": "generic-specific-order-0",
+      "area": "call",
+      "prefix": "declare function select<T>(value: T): T; declare function select(value: number): number[];",
+      "accept": "export const result = select(1); const witness: 1 = result;",
+      "reject": "export const result = select(1); const witness: string = result;"
+    },
+    {
+      "id": "literal-priority-order-0",
+      "area": "call",
+      "prefix": "declare function select(value: string): 'wide'; declare function select(value: 'a'): 'narrow';",
+      "accept": "export const result = select('a'); const witness: 'narrow' = result;",
+      "reject": "export const result = select('a'); const witness: 'wide' = result;"
+    },
+    {
+      "id": "generic-construct-order-0",
+      "area": "construct",
+      "prefix": "type Factory = {new <T>(value: T, fn: (value: T) => T): {value: T}; new (value: string): {text: string};}; declare const Factory: Factory;",
+      "accept": "export const result = new Factory(1, value => value + 1); const witness: {value: number} = result;",
+      "reject": "export const result = new Factory(1, value => value + 1); const witness: {value: string} = result;"
+    },
+    {
+      "id": "generic-method-order-0",
+      "area": "method",
+      "prefix": "interface Service {select<T>(value: T, fn: (value: T) => T): T; select(value: string): string;} declare const service: Service;",
+      "accept": "export const result = service.select(1, value => value + 1); const witness: number = result;",
+      "reject": "export const result = service.select(1, value => value + 1); const witness: string = result;"
+    },
+    {
+      "id": "optional-function-order-0",
+      "area": "optional",
+      "prefix": "type Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;",
+      "accept": "export const result = select?.(1); const witness: 1 | undefined = result;",
+      "reject": "export const result = select?.(1); const witness: string[] | undefined = result;"
+    },
+    {
+      "id": "merged-order-0",
+      "area": "merged",
+      "prefix": "interface Select {(value: number): 'first';} interface Select {(value: number): 'last';} declare const select: Select;",
+      "accept": "export const result = select(1); const witness: 'last' = result;",
+      "reject": "export const result = select(1); const witness: 'first' = result;"
+    },
+    {
+      "id": "generic-call-order-1",
+      "area": "call",
+      "prefix": "declare function select(value: string, fn: (value: string) => number): number; declare function select<T>(value: {value: T}, fn: (value: T) => T): T;",
+      "accept": "export const result = select({value: 1}, value => value + 1); const witness: number = result;",
+      "reject": "export const result = select({value: 1}, value => value + 1); const witness: string = result;"
+    },
+    {
+      "id": "overlap-order-1",
+      "area": "call",
+      "prefix": "declare function select(value: number): 'second'; declare function select(value: number): 'first';",
+      "accept": "export const result = select(1); const witness: 'second' = result;",
+      "reject": "export const result = select(1); const witness: 'first' = result;"
+    },
+    {
+      "id": "generic-specific-order-1",
+      "area": "call",
+      "prefix": "declare function select(value: number): number[]; declare function select<T>(value: T): T;",
+      "accept": "export const result = select(1); const witness: number[] = result;",
+      "reject": "export const result = select(1); const witness: string = result;"
+    },
+    {
+      "id": "literal-priority-order-1",
+      "area": "call",
+      "prefix": "declare function select(value: 'a'): 'narrow'; declare function select(value: string): 'wide';",
+      "accept": "export const result = select('a'); const witness: 'narrow' = result;",
+      "reject": "export const result = select('a'); const witness: 'wide' = result;"
+    },
+    {
+      "id": "generic-construct-order-1",
+      "area": "construct",
+      "prefix": "type Factory = {new (value: string): {text: string}; new <T>(value: T, fn: (value: T) => T): {value: T};}; declare const Factory: Factory;",
+      "accept": "export const result = new Factory(1, value => value + 1); const witness: {value: number} = result;",
+      "reject": "export const result = new Factory(1, value => value + 1); const witness: {value: string} = result;"
+    },
+    {
+      "id": "generic-method-order-1",
+      "area": "method",
+      "prefix": "interface Service {select(value: string): string; select<T>(value: T, fn: (value: T) => T): T;} declare const service: Service;",
+      "accept": "export const result = service.select(1, value => value + 1); const witness: number = result;",
+      "reject": "export const result = service.select(1, value => value + 1); const witness: string = result;"
+    },
+    {
+      "id": "optional-function-order-1",
+      "area": "optional",
+      "prefix": "type Select = {(value: string): string[]; <T>(value: T): T;}; declare const select: Select | undefined;",
+      "accept": "export const result = select?.(1); const witness: 1 | undefined = result;",
+      "reject": "export const result = select?.(1); const witness: string[] | undefined = result;"
+    },
+    {
+      "id": "merged-order-1",
+      "area": "merged",
+      "prefix": "interface Select {(value: number): 'last';} interface Select {(value: number): 'first';} declare const select: Select;",
+      "accept": "export const result = select(1); const witness: 'first' = result;",
+      "reject": "export const result = select(1); const witness: 'last' = result;"
+    },
+    {
+      "id": "optional-explicit-generic",
+      "area": "optional",
+      "prefix": "type Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;",
+      "accept": "export const result = select?.<number>(1); const witness: number | undefined = result;",
+      "reject": "export const result = select?.<number>(1); const witness: string | undefined = result;"
+    },
+    {
+      "id": "optional-receiver",
+      "area": "optional",
+      "prefix": "type Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select: Select} | undefined;",
+      "accept": "export const result = service?.select(1); const witness: 1 | undefined = result;",
+      "reject": "export const result = service?.select(1); const witness: string | undefined = result;"
+    },
+    {
+      "id": "optional-member",
+      "area": "optional",
+      "prefix": "type Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select?: Select};",
+      "accept": "export const result = service.select?.(1); const witness: 1 | undefined = result;",
+      "reject": "export const result = service.select?.(1); const witness: string | undefined = result;"
+    },
+    {
+      "id": "optional-combined",
+      "area": "optional",
+      "prefix": "type Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select?: Select} | undefined;",
+      "accept": "export const result = service?.select?.(1); const witness: 1 | undefined = result;",
+      "reject": "export const result = service?.select?.(1); const witness: string | undefined = result;"
+    },
+    {
+      "id": "nonnull-function",
+      "area": "nonnull",
+      "prefix": "type Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;",
+      "accept": "export const result = select!(1); const witness: 1 = result;",
+      "reject": "export const result = select!(1); const witness: string = result;"
+    },
+    {
+      "id": "nonnull-receiver",
+      "area": "nonnull",
+      "prefix": "type Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select: Select} | undefined;",
+      "accept": "export const result = service!.select(1); const witness: 1 = result;",
+      "reject": "export const result = service!.select(1); const witness: string = result;"
+    },
+    {
+      "id": "nonnull-result",
+      "area": "nonnull",
+      "prefix": "type Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;",
+      "accept": "export const result = select?.(1)!; const witness: 1 = result;",
+      "reject": "export const result = select?.(1)!; const witness: undefined = result;"
+    },
+    {
+      "id": "nonnull-argument",
+      "area": "nonnull",
+      "prefix": "declare function select(value: number): 'number'; declare function select(value: string): 'text'; declare const input: number | undefined;",
+      "accept": "export const result = select(input!); const witness: 'number' = result;",
+      "reject": "export const result = select(input!); const witness: 'text' = result;"
+    },
+    {
+      "id": "nonnull-parenthesized",
+      "area": "nonnull",
+      "prefix": "type Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;",
+      "accept": "export const result = (select!)(1); const witness: 1 = result;",
+      "reject": "export const result = (select!)(1); const witness: string = result;"
+    },
+    {
+      "id": "variance-call-strict",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; declare function select(fn: (value: Animal) => void): 'wide'; declare function select(fn: (value: Dog) => void): 'narrow'; declare const callback: (value: Dog) => void;",
+      "accept": "export const result = select(callback); const witness: 'narrow' = result;",
+      "reject": "export const result = select(callback); const witness: 'wide' = result;",
+      "options": {
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "variance-construct-strict",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; type Factory = {new(fn: (value: Animal) => void): 'wide';new(fn: (value: Dog) => void): 'narrow';}; declare const Factory: Factory; declare const callback: (value: Dog) => void;",
+      "accept": "export const result = new Factory(callback); const witness: 'narrow' = result;",
+      "reject": "export const result = new Factory(callback); const witness: 'wide' = result;",
+      "options": {
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "variance-method-strict",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; interface Service {select(fn: (value: Animal) => void): 'wide';select(fn: (value: Dog) => void): 'narrow';} declare const service: Service; declare const callback: (value: Dog) => void;",
+      "accept": "export const result = service.select(callback); const witness: 'narrow' = result;",
+      "reject": "export const result = service.select(callback); const witness: 'wide' = result;",
+      "options": {
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "variance-call-loose",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; declare function select(fn: (value: Animal) => void): 'wide'; declare function select(fn: (value: Dog) => void): 'narrow'; declare const callback: (value: Dog) => void;",
+      "accept": "export const result = select(callback); const witness: 'wide' = result;",
+      "reject": "export const result = select(callback); const witness: 'narrow' = result;",
+      "options": {
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "variance-construct-loose",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; type Factory = {new(fn: (value: Animal) => void): 'wide';new(fn: (value: Dog) => void): 'narrow';}; declare const Factory: Factory; declare const callback: (value: Dog) => void;",
+      "accept": "export const result = new Factory(callback); const witness: 'wide' = result;",
+      "reject": "export const result = new Factory(callback); const witness: 'narrow' = result;",
+      "options": {
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "variance-method-loose",
+      "area": "variance",
+      "prefix": "type Animal = {name: string}; type Dog = {name: string; bark: number}; interface Service {select(fn: (value: Animal) => void): 'wide';select(fn: (value: Dog) => void): 'narrow';} declare const service: Service; declare const callback: (value: Dog) => void;",
+      "accept": "export const result = service.select(callback); const witness: 'wide' = result;",
+      "reject": "export const result = service.select(callback); const witness: 'narrow' = result;",
+      "options": {
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "no-match-call",
+      "area": "diagnostics",
+      "prefix": "declare function select(value: string): string; declare function select(value: number): number;",
+      "accept": "export const result = select(1);",
+      "reject": "export const result = select(true);"
+    },
+    {
+      "id": "no-match-method",
+      "area": "diagnostics",
+      "prefix": "interface Service {select(value: string): string; select(value: number): number;} declare const service: Service;",
+      "accept": "export const result = service.select(1);",
+      "reject": "export const result = service.select(true);"
+    },
+    {
+      "id": "no-match-construct",
+      "area": "diagnostics",
+      "prefix": "type Factory = {new (value: string): {text: string};new (value: number): {value: number};}; declare const Factory: Factory;",
+      "accept": "export const result = new Factory(1);",
+      "reject": "export const result = new Factory(true);"
+    },
+    {
+      "id": "implementation-compatibility",
+      "area": "diagnostics",
+      "prefix": "export function select(value: number): number; export function select(value: string): string;",
+      "accept": "export function select(value: number | string): number | string {return value;} export const result = select(1);",
+      "reject": "export function select(value: boolean): boolean {return value;} export const result = select(1);",
+      "invoke": "console.log(result);"
+    },
+    {
+      "id": "runtime-optional-order",
+      "area": "runtime",
+      "prefix": "function select(value: number): number; function select(value: string): string; function select(value: number | string): number | string {return value;}",
+      "accept": "export function run(fn: typeof select | undefined): [number | undefined, number] {let calls = 0; const next = (): number => {calls += 1; return calls;}; const value = fn?.(next()); return [value, calls];}",
+      "reject": "export function run(fn: typeof select | undefined): [number, number] {let calls = 0; const next = (): number => {calls += 1; return calls;}; const value = fn?.(next()); return [value, calls];}",
+      "invoke": "console.log(JSON.stringify(run(undefined))); console.log(JSON.stringify(run(select)));"
+    },
+    {
+      "id": "runtime-receiver-order",
+      "area": "runtime",
+      "prefix": "class Service {base = 10; select(value: number): number; select(value: string): string; select(value: number | string): number | string {return typeof value === 'number' ? this.base + value : value;}}",
+      "accept": "export function run(service: Service | undefined): number | undefined {return service?.select(1);}",
+      "reject": "export function run(service: Service | undefined): string | undefined {return service?.select(1);}",
+      "invoke": "console.log(run(undefined)); console.log(run(new Service()));"
+    },
+    {
+      "id": "optional-no-match-function",
+      "area": "diagnostics",
+      "prefix": "type Select = {(value: string): string;(value: number): number;}; declare const select: Select | undefined;",
+      "accept": "export const result = select?.(1);",
+      "reject": "export const result = select?.(true);"
+    },
+    {
+      "id": "optional-no-match-method",
+      "area": "diagnostics",
+      "prefix": "interface Service {select(value: string): string;select(value: number): number;} declare const service: Service | undefined;",
+      "accept": "export const result = service?.select(1);",
+      "reject": "export const result = service?.select(true);"
+    },
+    {
+      "id": "nonnull-no-match",
+      "area": "diagnostics",
+      "prefix": "type Select = {(value: string): string;(value: number): number;}; declare const select: Select | undefined;",
+      "accept": "export const result = select!(1);",
+      "reject": "export const result = select!(true);"
+    },
+    {
+      "id": "nullable-call-guard",
+      "area": "diagnostics",
+      "prefix": "type Select = {(value: string): string;(value: number): number;}; declare const select: Select | undefined;",
+      "accept": "export const result = select!(1);",
+      "reject": "export const result = select(1);"
+    },
+    {
+      "id": "optional-member-guard",
+      "area": "diagnostics",
+      "prefix": "type Select = {(value: string): string;(value: number): number;}; declare const service: {select?: Select} | undefined;",
+      "accept": "export const result = service?.select?.(1);",
+      "reject": "export const result = service?.select(1);"
+    },
+    {
+      "id": "nested-argument-check",
+      "area": "diagnostics",
+      "prefix": "declare function take(value: number): number; type Select = {<T>(value: T): T}; declare const select: Select | undefined;",
+      "accept": "export const result = select?.(take(1));",
+      "reject": "export const result = select?.(take('wrong'));"
+    },
+    {
+      "id": "nested-construction-check",
+      "area": "diagnostics",
+      "prefix": "abstract class Item {value = 1;} class Concrete extends Item {} type Select = {<T>(value: T): T}; declare const select: Select | undefined;",
+      "accept": "export const result = select?.(new Concrete());",
+      "reject": "export const result = select?.(new Item());"
+    },
+    {
+      "id": "nullable-call-null-guard",
+      "area": "diagnostics",
+      "prefix": "type Select = {(value: string): string;(value: number): number;}; declare const select: Select | null;",
+      "accept": "export const result = select!(1);",
+      "reject": "export const result = select(1);"
+    },
+    {
+      "id": "nullable-call-both-guard",
+      "area": "diagnostics",
+      "prefix": "type Select = {(value: string): string;(value: number): number;}; declare const select: Select | null | undefined;",
+      "accept": "export const result = select!(1);",
+      "reject": "export const result = select(1);"
+    },
+    {
+      "id": "nullable-call-null-checks-off",
+      "area": "diagnostics",
+      "prefix": "type Select = {(value: string): string;(value: number): number;}; declare const select: Select | null | undefined;",
+      "accept": "export const result = select(1); const witness: number = result;",
+      "reject": "export const result = select(1); const witness: string = result;",
+      "options": {
+        "strictNullChecks": false
+      }
+    },
+    {
+      "id": "optional-call-null-checks-off",
+      "area": "optional",
+      "prefix": "type Select = {<T>(value: T): T}; declare const select: Select | null | undefined;",
+      "accept": "export const result = select?.(1); const witness: number = result;",
+      "reject": "export const result = select?.(1); const witness: string = result;",
+      "options": {
+        "strictNullChecks": false
+      }
+    },
+    {
+      "id": "runtime-unary-bang-control",
+      "area": "runtime",
+      "prefix": "",
+      "accept": "export function run(flag: boolean): boolean {return flag && !(false);}",
+      "reject": "export function run(flag: boolean): number {return flag && !(false);}",
+      "invoke": "console.log(run(true)); console.log(run(false));"
+    },
+    {
+      "id": "contextual-candidate-isolation-order-0",
+      "area": "call",
+      "prefix": "declare function select<T>(value: T, callback: (value: string) => void): T; declare function select<T>(value: T, callback: (value: T) => void): T;",
+      "accept": "export const result = select(1, value => {}); const witness: 1 = result;",
+      "reject": "export const result = select(1, value => {}); const witness: string = result;"
+    },
+    {
+      "id": "contextual-candidate-isolation-order-1",
+      "area": "call",
+      "prefix": "declare function select<T>(value: T, callback: (value: T) => void): T; declare function select<T>(value: T, callback: (value: string) => void): T;",
+      "accept": "export const result = select(1, value => {}); const witness: number = result;",
+      "reject": "export const result = select(1, value => {}); const witness: string = result;"
+    }
+  ],
+  "budget_controls": [
+    {
+      "id": "overload-work",
+      "kind": "expansion",
+      "source": "declare function select<T>(value: T, fn: (value: T) => T): T; declare function select(value: string): string; export const result = select(1, value => value + 1);"
+    },
+    {
+      "id": "overload-depth",
+      "kind": "depth",
+      "source": "type Box<T> = {inner: {nested: {value: T}}}; declare function select<T>(value: Box<T>): T; export const result = select({inner: {nested: {value: 1}}});"
+    }
+  ],
+  "readonly_controls": [
+    {
+      "id": "optional-result-readonly",
+      "source": "export function write(get: (() => readonly number[]) | undefined): void {const erased = get?.()! as never; const value = undefined as never; erased[0] = value;}",
+      "mutable": "export function write(get: (() => number[]) | undefined): void {const erased = get?.()! as never; const value = undefined as never; erased[0] = value;}"
+    },
+    {
+      "id": "nonnull-callee-readonly",
+      "source": "export function write(get: (() => readonly number[]) | undefined): void {const erased = get!() as never; const value = undefined as never; erased[0] = value;}",
+      "mutable": "export function write(get: (() => number[]) | undefined): void {const erased = get!() as never; const value = undefined as never; erased[0] = value;}"
+    }
+  ]
+}

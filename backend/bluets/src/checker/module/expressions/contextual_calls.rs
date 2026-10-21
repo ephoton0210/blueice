@@ -6,6 +6,38 @@
 use super::*;
 
 impl ModuleChecker<'_> {
+    pub(super) fn contextual_callback_widens_parameter(
+        &self,
+        signature: &FunctionSignature,
+        index: usize,
+        arguments: &[&[Token]],
+    ) -> bool {
+        let Some(Type::Named {
+            name,
+            arguments: types,
+        }) = signature
+            .parameters
+            .get(index)
+            .and_then(|p| p.annotation.as_ref())
+        else {
+            return false;
+        };
+        if !types.is_empty()
+            || !signature
+                .type_parameters
+                .iter()
+                .any(|p| p.name == *name && !p.is_const && p.constraint.is_none())
+        {
+            return false;
+        }
+        signature.parameters.iter().zip(arguments).any(|(parameter, argument)| {
+            let Some(function) = strip_outer_parentheses(argument).first().and_then(|t| self.module.nested_functions.get(&t.start)) else {return false;};
+            let Some(Type::Function {parameters,..}) = &parameter.annotation else {return false;};
+            function.parameters.iter().zip(parameters).any(|(actual, expected)| actual.annotation.is_none()
+                && matches!(&expected.annotation, Some(Type::Named {name: n, arguments}) if n == name && arguments.is_empty()))
+        })
+    }
+
     pub(super) fn generic_argument_seeds(
         &self,
         arguments: &[&[Token]],

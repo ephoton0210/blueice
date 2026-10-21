@@ -25,6 +25,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::checker::CLASS_SURFACE_VERSION);
     add(crate::checker::MODULE_EXPORTS_VERSION);
     add(crate::checker::STRUCTURAL_BOUNDARIES_VERSION);
+    add(crate::checker::OVERLOAD_CHAINS_VERSION);
     add(crate::standard_library::VERSION);
     add(&crate::standard_library::identity_with_libraries(
         options.target,

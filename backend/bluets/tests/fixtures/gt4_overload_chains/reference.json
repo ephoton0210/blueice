@@ -1,0 +1,2143 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "generic-call-order-0-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select<T>(value: {value: T}, fn: (value: T) => T): T; declare function select(value: string, fn: (value: string) => number): number;\nexport const result = select({value: 1}, value => value + 1); const witness: number = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "generic-call-order-0-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select<T>(value: {value: T}, fn: (value: T) => T): T; declare function select(value: string, fn: (value: string) => number): number;\nexport const result = select({value: 1}, value => value + 1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 240,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overlap-order-0-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: number): 'first'; declare function select(value: number): 'second';\nexport const result = select(1); const witness: 'first' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"first\";\n"
+    },
+    {
+      "id": "overlap-order-0-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: number): 'first'; declare function select(value: number): 'second';\nexport const result = select(1); const witness: 'second' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"first\"' is not assignable to type '\"second\"'.",
+          "module": "entry.ts",
+          "start": 160,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-specific-order-0-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select<T>(value: T): T; declare function select(value: number): number[];\nexport const result = select(1); const witness: 1 = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result = 1;\n"
+    },
+    {
+      "id": "generic-specific-order-0-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select<T>(value: T): T; declare function select(value: number): number[];\nexport const result = select(1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 152,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "literal-priority-order-0-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: string): 'wide'; declare function select(value: 'a'): 'narrow';\nexport const result = select('a'); const witness: 'narrow' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"narrow\";\n"
+    },
+    {
+      "id": "literal-priority-order-0-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: string): 'wide'; declare function select(value: 'a'): 'narrow';\nexport const result = select('a'); const witness: 'wide' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "module": "entry.ts",
+          "start": 158,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-construct-order-0-accept",
+      "area": "construct",
+      "source": "// UTF-16 control: 😀\ntype Factory = {new <T>(value: T, fn: (value: T) => T): {value: T}; new (value: string): {text: string};}; declare const Factory: Factory;\nexport const result = new Factory(1, value => value + 1); const witness: {value: number} = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: {\n    value: number;\n};\n"
+    },
+    {
+      "id": "generic-construct-order-0-reject",
+      "area": "construct",
+      "source": "// UTF-16 control: 😀\ntype Factory = {new <T>(value: T, fn: (value: T) => T): {value: T}; new (value: string): {text: string};}; declare const Factory: Factory;\nexport const result = new Factory(1, value => value + 1); const witness: {value: string} = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ value: number; }' is not assignable to type '{ value: string; }'.\n  Types of property 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 225,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-method-order-0-accept",
+      "area": "method",
+      "source": "// UTF-16 control: 😀\ninterface Service {select<T>(value: T, fn: (value: T) => T): T; select(value: string): string;} declare const service: Service;\nexport const result = service.select(1, value => value + 1); const witness: number = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "generic-method-order-0-reject",
+      "area": "method",
+      "source": "// UTF-16 control: 😀\ninterface Service {select<T>(value: T, fn: (value: T) => T): T; select(value: string): string;} declare const service: Service;\nexport const result = service.select(1, value => value + 1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 217,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-function-order-0-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = select?.(1); const witness: 1 | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "optional-function-order-0-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = select?.(1); const witness: string[] | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '1 | undefined' is not assignable to type 'string[] | undefined'.\n  Type 'number' is not assignable to type 'string[]'.",
+          "module": "entry.ts",
+          "start": 167,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "merged-order-0-accept",
+      "area": "merged",
+      "source": "// UTF-16 control: 😀\ninterface Select {(value: number): 'first';} interface Select {(value: number): 'last';} declare const select: Select;\nexport const result = select(1); const witness: 'last' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"last\";\n"
+    },
+    {
+      "id": "merged-order-0-reject",
+      "area": "merged",
+      "source": "// UTF-16 control: 😀\ninterface Select {(value: number): 'first';} interface Select {(value: number): 'last';} declare const select: Select;\nexport const result = select(1); const witness: 'first' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"last\"' is not assignable to type '\"first\"'.",
+          "module": "entry.ts",
+          "start": 180,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-call-order-1-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: string, fn: (value: string) => number): number; declare function select<T>(value: {value: T}, fn: (value: T) => T): T;\nexport const result = select({value: 1}, value => value + 1); const witness: number = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "generic-call-order-1-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: string, fn: (value: string) => number): number; declare function select<T>(value: {value: T}, fn: (value: T) => T): T;\nexport const result = select({value: 1}, value => value + 1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 240,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "overlap-order-1-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: number): 'second'; declare function select(value: number): 'first';\nexport const result = select(1); const witness: 'second' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"second\";\n"
+    },
+    {
+      "id": "overlap-order-1-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: number): 'second'; declare function select(value: number): 'first';\nexport const result = select(1); const witness: 'first' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"second\"' is not assignable to type '\"first\"'.",
+          "module": "entry.ts",
+          "start": 160,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-specific-order-1-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: number): number[]; declare function select<T>(value: T): T;\nexport const result = select(1); const witness: number[] = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number[];\n"
+    },
+    {
+      "id": "generic-specific-order-1-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: number): number[]; declare function select<T>(value: T): T;\nexport const result = select(1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number[]' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 152,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "literal-priority-order-1-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: 'a'): 'narrow'; declare function select(value: string): 'wide';\nexport const result = select('a'); const witness: 'narrow' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"narrow\";\n"
+    },
+    {
+      "id": "literal-priority-order-1-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: 'a'): 'narrow'; declare function select(value: string): 'wide';\nexport const result = select('a'); const witness: 'wide' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "module": "entry.ts",
+          "start": 158,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-construct-order-1-accept",
+      "area": "construct",
+      "source": "// UTF-16 control: 😀\ntype Factory = {new (value: string): {text: string}; new <T>(value: T, fn: (value: T) => T): {value: T};}; declare const Factory: Factory;\nexport const result = new Factory(1, value => value + 1); const witness: {value: number} = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: {\n    value: number;\n};\n"
+    },
+    {
+      "id": "generic-construct-order-1-reject",
+      "area": "construct",
+      "source": "// UTF-16 control: 😀\ntype Factory = {new (value: string): {text: string}; new <T>(value: T, fn: (value: T) => T): {value: T};}; declare const Factory: Factory;\nexport const result = new Factory(1, value => value + 1); const witness: {value: string} = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ value: number; }' is not assignable to type '{ value: string; }'.\n  Types of property 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 225,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-method-order-1-accept",
+      "area": "method",
+      "source": "// UTF-16 control: 😀\ninterface Service {select(value: string): string; select<T>(value: T, fn: (value: T) => T): T;} declare const service: Service;\nexport const result = service.select(1, value => value + 1); const witness: number = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "generic-method-order-1-reject",
+      "area": "method",
+      "source": "// UTF-16 control: 😀\ninterface Service {select(value: string): string; select<T>(value: T, fn: (value: T) => T): T;} declare const service: Service;\nexport const result = service.select(1, value => value + 1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 217,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-function-order-1-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string[]; <T>(value: T): T;}; declare const select: Select | undefined;\nexport const result = select?.(1); const witness: 1 | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "optional-function-order-1-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string[]; <T>(value: T): T;}; declare const select: Select | undefined;\nexport const result = select?.(1); const witness: string[] | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '1 | undefined' is not assignable to type 'string[] | undefined'.\n  Type 'number' is not assignable to type 'string[]'.",
+          "module": "entry.ts",
+          "start": 167,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "merged-order-1-accept",
+      "area": "merged",
+      "source": "// UTF-16 control: 😀\ninterface Select {(value: number): 'last';} interface Select {(value: number): 'first';} declare const select: Select;\nexport const result = select(1); const witness: 'first' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"first\";\n"
+    },
+    {
+      "id": "merged-order-1-reject",
+      "area": "merged",
+      "source": "// UTF-16 control: 😀\ninterface Select {(value: number): 'last';} interface Select {(value: number): 'first';} declare const select: Select;\nexport const result = select(1); const witness: 'last' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"first\"' is not assignable to type '\"last\"'.",
+          "module": "entry.ts",
+          "start": 180,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-explicit-generic-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = select?.<number>(1); const witness: number | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "optional-explicit-generic-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = select?.<number>(1); const witness: string | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number | undefined' is not assignable to type 'string | undefined'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 175,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-receiver-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select: Select} | undefined;\nexport const result = service?.select(1); const witness: 1 | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "optional-receiver-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select: Select} | undefined;\nexport const result = service?.select(1); const witness: string | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '1 | undefined' is not assignable to type 'string | undefined'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 185,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-member-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select?: Select};\nexport const result = service.select?.(1); const witness: 1 | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "optional-member-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select?: Select};\nexport const result = service.select?.(1); const witness: string | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '1 | undefined' is not assignable to type 'string | undefined'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 175,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-combined-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select?: Select} | undefined;\nexport const result = service?.select?.(1); const witness: 1 | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "optional-combined-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select?: Select} | undefined;\nexport const result = service?.select?.(1); const witness: string | undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '1 | undefined' is not assignable to type 'string | undefined'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 188,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nonnull-function-accept",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = select!(1); const witness: 1 = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result = 1;\n"
+    },
+    {
+      "id": "nonnull-function-reject",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = select!(1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 166,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nonnull-receiver-accept",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select: Select} | undefined;\nexport const result = service!.select(1); const witness: 1 = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result = 1;\n"
+    },
+    {
+      "id": "nonnull-receiver-reject",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const service: {select: Select} | undefined;\nexport const result = service!.select(1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 185,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nonnull-result-accept",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = select?.(1)!; const witness: 1 = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result = 1;\n"
+    },
+    {
+      "id": "nonnull-result-reject",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = select?.(1)!; const witness: undefined = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '1' is not assignable to type 'undefined'.",
+          "module": "entry.ts",
+          "start": 168,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nonnull-argument-accept",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: number): 'number'; declare function select(value: string): 'text'; declare const input: number | undefined;\nexport const result = select(input!); const witness: 'number' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"number\";\n"
+    },
+    {
+      "id": "nonnull-argument-reject",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: number): 'number'; declare function select(value: string): 'text'; declare const input: number | undefined;\nexport const result = select(input!); const witness: 'text' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"number\"' is not assignable to type '\"text\"'.",
+          "module": "entry.ts",
+          "start": 205,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nonnull-parenthesized-accept",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = (select!)(1); const witness: 1 = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result = 1;\n"
+    },
+    {
+      "id": "nonnull-parenthesized-reject",
+      "area": "nonnull",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T; (value: string): string[];}; declare const select: Select | undefined;\nexport const result = (select!)(1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 168,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "variance-call-strict-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; declare function select(fn: (value: Animal) => void): 'wide'; declare function select(fn: (value: Dog) => void): 'narrow'; declare const callback: (value: Dog) => void;\nexport const result = select(callback); const witness: 'narrow' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"narrow\";\n"
+    },
+    {
+      "id": "variance-call-strict-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; declare function select(fn: (value: Animal) => void): 'wide'; declare function select(fn: (value: Dog) => void): 'narrow'; declare const callback: (value: Dog) => void;\nexport const result = select(callback); const witness: 'wide' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "module": "entry.ts",
+          "start": 308,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "variance-construct-strict-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Factory = {new(fn: (value: Animal) => void): 'wide';new(fn: (value: Dog) => void): 'narrow';}; declare const Factory: Factory; declare const callback: (value: Dog) => void;\nexport const result = new Factory(callback); const witness: 'narrow' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"narrow\";\n"
+    },
+    {
+      "id": "variance-construct-strict-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Factory = {new(fn: (value: Animal) => void): 'wide';new(fn: (value: Dog) => void): 'narrow';}; declare const Factory: Factory; declare const callback: (value: Dog) => void;\nexport const result = new Factory(callback); const witness: 'wide' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "module": "entry.ts",
+          "start": 322,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "variance-method-strict-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; interface Service {select(fn: (value: Animal) => void): 'wide';select(fn: (value: Dog) => void): 'narrow';} declare const service: Service; declare const callback: (value: Dog) => void;\nexport const result = service.select(callback); const witness: 'narrow' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": true
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"narrow\";\n"
+    },
+    {
+      "id": "variance-method-strict-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; interface Service {select(fn: (value: Animal) => void): 'wide';select(fn: (value: Dog) => void): 'narrow';} declare const service: Service; declare const callback: (value: Dog) => void;\nexport const result = service.select(callback); const witness: 'wide' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": true
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"narrow\"' is not assignable to type '\"wide\"'.",
+          "module": "entry.ts",
+          "start": 333,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "variance-call-loose-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; declare function select(fn: (value: Animal) => void): 'wide'; declare function select(fn: (value: Dog) => void): 'narrow'; declare const callback: (value: Dog) => void;\nexport const result = select(callback); const witness: 'wide' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"wide\";\n"
+    },
+    {
+      "id": "variance-call-loose-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; declare function select(fn: (value: Animal) => void): 'wide'; declare function select(fn: (value: Dog) => void): 'narrow'; declare const callback: (value: Dog) => void;\nexport const result = select(callback); const witness: 'narrow' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"wide\"' is not assignable to type '\"narrow\"'.",
+          "module": "entry.ts",
+          "start": 308,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "variance-construct-loose-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Factory = {new(fn: (value: Animal) => void): 'wide';new(fn: (value: Dog) => void): 'narrow';}; declare const Factory: Factory; declare const callback: (value: Dog) => void;\nexport const result = new Factory(callback); const witness: 'wide' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"wide\";\n"
+    },
+    {
+      "id": "variance-construct-loose-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; type Factory = {new(fn: (value: Animal) => void): 'wide';new(fn: (value: Dog) => void): 'narrow';}; declare const Factory: Factory; declare const callback: (value: Dog) => void;\nexport const result = new Factory(callback); const witness: 'narrow' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"wide\"' is not assignable to type '\"narrow\"'.",
+          "module": "entry.ts",
+          "start": 322,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "variance-method-loose-accept",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; interface Service {select(fn: (value: Animal) => void): 'wide';select(fn: (value: Dog) => void): 'narrow';} declare const service: Service; declare const callback: (value: Dog) => void;\nexport const result = service.select(callback); const witness: 'wide' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"wide\";\n"
+    },
+    {
+      "id": "variance-method-loose-reject",
+      "area": "variance",
+      "source": "// UTF-16 control: 😀\ntype Animal = {name: string}; type Dog = {name: string; bark: number}; interface Service {select(fn: (value: Animal) => void): 'wide';select(fn: (value: Dog) => void): 'narrow';} declare const service: Service; declare const callback: (value: Dog) => void;\nexport const result = service.select(callback); const witness: 'narrow' = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictFunctionTypes": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"wide\"' is not assignable to type '\"narrow\"'.",
+          "module": "entry.ts",
+          "start": 333,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "no-match-call-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: string): string; declare function select(value: number): number;\nexport const result = select(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "no-match-call-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ndeclare function select(value: string): string; declare function select(value: number): number;\nexport const result = select(true);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2769,
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 147,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "no-match-method-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ninterface Service {select(value: string): string; select(value: number): number;} declare const service: Service;\nexport const result = service.select(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "no-match-method-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ninterface Service {select(value: string): string; select(value: number): number;} declare const service: Service;\nexport const result = service.select(true);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2769,
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 173,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "no-match-construct-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Factory = {new (value: string): {text: string};new (value: number): {value: number};}; declare const Factory: Factory;\nexport const result = new Factory(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: {\n    value: number;\n};\n"
+    },
+    {
+      "id": "no-match-construct-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Factory = {new (value: string): {text: string};new (value: number): {value: number};}; declare const Factory: Factory;\nexport const result = new Factory(true);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2769,
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): { text: string; }', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): { value: number; }', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 180,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "implementation-compatibility-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\nexport function select(value: number): number; export function select(value: string): string;\nexport function select(value: number | string): number | string {return value;} export const result = select(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function select(value: number): number;\nexport declare function select(value: string): string;\nexport declare const result: number;\n",
+      "invoke": "console.log(result);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "implementation-compatibility-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\nexport function select(value: number): number; export function select(value: string): string;\nexport function select(value: boolean): boolean {return value;} export const result = select(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2394,
+          "message": "This overload signature is not compatible with its implementation signature.",
+          "module": "entry.ts",
+          "start": 38,
+          "length": 6,
+          "related": [
+            {
+              "code": 2750,
+              "message": "The implementation signature is declared here.",
+              "module": "entry.ts",
+              "start": 132,
+              "length": 6,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "runtime-optional-order-accept",
+      "area": "runtime",
+      "source": "// UTF-16 control: 😀\nfunction select(value: number): number; function select(value: string): string; function select(value: number | string): number | string {return value;}\nexport function run(fn: typeof select | undefined): [number | undefined, number] {let calls = 0; const next = (): number => {calls += 1; return calls;}; const value = fn?.(next()); return [value, calls];}\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "declare function select(value: number): number;\ndeclare function select(value: string): string;\nexport declare function run(fn: typeof select | undefined): [number | undefined, number];\nexport {};\n",
+      "invoke": "console.log(JSON.stringify(run(undefined))); console.log(JSON.stringify(run(select)));",
+      "runtime": {
+        "exit": 0,
+        "stdout": "[null,0]\n[1,1]\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "runtime-optional-order-reject",
+      "area": "runtime",
+      "source": "// UTF-16 control: 😀\nfunction select(value: number): number; function select(value: string): string; function select(value: number | string): number | string {return value;}\nexport function run(fn: typeof select | undefined): [number, number] {let calls = 0; const next = (): number => {calls += 1; return calls;}; const value = fn?.(next()); return [value, calls];}\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 352,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-receiver-order-accept",
+      "area": "runtime",
+      "source": "// UTF-16 control: 😀\nclass Service {base = 10; select(value: number): number; select(value: string): string; select(value: number | string): number | string {return typeof value === 'number' ? this.base + value : value;}}\nexport function run(service: Service | undefined): number | undefined {return service?.select(1);}\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "declare class Service {\n    base: number;\n    select(value: number): number;\n    select(value: string): string;\n}\nexport declare function run(service: Service | undefined): number | undefined;\nexport {};\n",
+      "invoke": "console.log(run(undefined)); console.log(run(new Service()));",
+      "runtime": {
+        "exit": 0,
+        "stdout": "undefined\n11\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "runtime-receiver-order-reject",
+      "area": "runtime",
+      "source": "// UTF-16 control: 😀\nclass Service {base = 10; select(value: number): number; select(value: string): string; select(value: number | string): number | string {return typeof value === 'number' ? this.base + value : value;}}\nexport function run(service: Service | undefined): string | undefined {return service?.select(1);}\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number | undefined' is not assignable to type 'string | undefined'.\n  Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 294,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-no-match-function-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | undefined;\nexport const result = select?.(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "optional-no-match-function-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | undefined;\nexport const result = select?.(true);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2769,
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string | undefined', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number | undefined', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 161,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-no-match-method-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ninterface Service {select(value: string): string;select(value: number): number;} declare const service: Service | undefined;\nexport const result = service?.select(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "optional-no-match-method-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ninterface Service {select(value: string): string;select(value: number): number;} declare const service: Service | undefined;\nexport const result = service?.select(true);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2769,
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string | undefined', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number | undefined', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 185,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nonnull-no-match-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | undefined;\nexport const result = select!(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "nonnull-no-match-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | undefined;\nexport const result = select!(true);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2769,
+          "message": "No overload matches this call.\n  Overload 1 of 2, '(value: string): string', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'string'.\n  Overload 2 of 2, '(value: number): number', gave the following error.\n    Argument of type 'boolean' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 160,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nullable-call-guard-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | undefined;\nexport const result = select!(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "nullable-call-guard-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | undefined;\nexport const result = select(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2722,
+          "message": "Cannot invoke an object which is possibly 'undefined'.",
+          "module": "entry.ts",
+          "start": 152,
+          "length": 6,
+          "related": []
+        },
+        {
+          "code": 18048,
+          "message": "'select' is possibly 'undefined'.",
+          "module": "entry.ts",
+          "start": 152,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-member-guard-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const service: {select?: Select} | undefined;\nexport const result = service?.select?.(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "optional-member-guard-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const service: {select?: Select} | undefined;\nexport const result = service?.select(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2722,
+          "message": "Cannot invoke an object which is possibly 'undefined'.",
+          "module": "entry.ts",
+          "start": 164,
+          "length": 15,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-argument-check-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ndeclare function take(value: number): number; type Select = {<T>(value: T): T}; declare const select: Select | undefined;\nexport const result = select?.(take(1));\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n"
+    },
+    {
+      "id": "nested-argument-check-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ndeclare function take(value: number): number; type Select = {<T>(value: T): T}; declare const select: Select | undefined;\nexport const result = select?.(take('wrong'));\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 180,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-construction-check-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\nabstract class Item {value = 1;} class Concrete extends Item {} type Select = {<T>(value: T): T}; declare const select: Select | undefined;\nexport const result = select?.(new Concrete());\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "declare abstract class Item {\n    value: number;\n}\ndeclare class Concrete extends Item {\n}\nexport declare const result: Concrete | undefined;\nexport {};\n"
+    },
+    {
+      "id": "nested-construction-check-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\nabstract class Item {value = 1;} class Concrete extends Item {} type Select = {<T>(value: T): T}; declare const select: Select | undefined;\nexport const result = select?.(new Item());\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2511,
+          "message": "Cannot create an instance of an abstract class.",
+          "module": "entry.ts",
+          "start": 193,
+          "length": 10,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nullable-call-null-guard-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | null;\nexport const result = select!(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "nullable-call-null-guard-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | null;\nexport const result = select(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2721,
+          "message": "Cannot invoke an object which is possibly 'null'.",
+          "module": "entry.ts",
+          "start": 147,
+          "length": 6,
+          "related": []
+        },
+        {
+          "code": 18047,
+          "message": "'select' is possibly 'null'.",
+          "module": "entry.ts",
+          "start": 147,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nullable-call-both-guard-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | null | undefined;\nexport const result = select!(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "nullable-call-both-guard-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | null | undefined;\nexport const result = select(1);\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2723,
+          "message": "Cannot invoke an object which is possibly 'null' or 'undefined'.",
+          "module": "entry.ts",
+          "start": 159,
+          "length": 6,
+          "related": []
+        },
+        {
+          "code": 18049,
+          "message": "'select' is possibly 'null' or 'undefined'.",
+          "module": "entry.ts",
+          "start": 159,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nullable-call-null-checks-off-accept",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | null | undefined;\nexport const result = select(1); const witness: number = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictNullChecks": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "nullable-call-null-checks-off-reject",
+      "area": "diagnostics",
+      "source": "// UTF-16 control: 😀\ntype Select = {(value: string): string;(value: number): number;}; declare const select: Select | null | undefined;\nexport const result = select(1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictNullChecks": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 176,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "optional-call-null-checks-off-accept",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T}; declare const select: Select | null | undefined;\nexport const result = select?.(1); const witness: number = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictNullChecks": false
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result = 1;\n"
+    },
+    {
+      "id": "optional-call-null-checks-off-reject",
+      "area": "optional",
+      "source": "// UTF-16 control: 😀\ntype Select = {<T>(value: T): T}; declare const select: Select | null | undefined;\nexport const result = select?.(1); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": [],
+        "strictNullChecks": false
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 146,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-unary-bang-control-accept",
+      "area": "runtime",
+      "source": "// UTF-16 control: 😀\n\nexport function run(flag: boolean): boolean {return flag && !(false);}\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare function run(flag: boolean): boolean;\n",
+      "invoke": "console.log(run(true)); console.log(run(false));",
+      "runtime": {
+        "exit": 0,
+        "stdout": "true\nfalse\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "runtime-unary-bang-control-reject",
+      "area": "runtime",
+      "source": "// UTF-16 control: 😀\n\nexport function run(flag: boolean): number {return flag && !(false);}\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 67,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "contextual-candidate-isolation-order-0-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select<T>(value: T, callback: (value: string) => void): T; declare function select<T>(value: T, callback: (value: T) => void): T;\nexport const result = select(1, value => {}); const witness: 1 = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result = 1;\n"
+    },
+    {
+      "id": "contextual-candidate-isolation-order-0-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select<T>(value: T, callback: (value: string) => void): T; declare function select<T>(value: T, callback: (value: T) => void): T;\nexport const result = select(1, value => {}); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 221,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "contextual-candidate-isolation-order-1-accept",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select<T>(value: T, callback: (value: T) => void): T; declare function select<T>(value: T, callback: (value: string) => void): T;\nexport const result = select(1, value => {}); const witness: number = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number;\n"
+    },
+    {
+      "id": "contextual-candidate-isolation-order-1-reject",
+      "area": "call",
+      "source": "// UTF-16 control: 😀\ndeclare function select<T>(value: T, callback: (value: T) => void): T; declare function select<T>(value: T, callback: (value: string) => void): T;\nexport const result = select(1, value => {}); const witness: string = result;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "declaration": true,
+        "newLine": "lf",
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 221,
+          "length": 7,
+          "related": []
+        }
+      ]
+    }
+  ],
+  "budget_controls": [
+    {
+      "id": "overload-work",
+      "kind": "expansion",
+      "source": "declare function select<T>(value: T, fn: (value: T) => T): T; declare function select(value: string): string; export const result = select(1, value => value + 1);"
+    },
+    {
+      "id": "overload-depth",
+      "kind": "depth",
+      "source": "type Box<T> = {inner: {nested: {value: T}}}; declare function select<T>(value: Box<T>): T; export const result = select({inner: {nested: {value: 1}}});"
+    }
+  ],
+  "readonly_controls": [
+    {
+      "id": "optional-result-readonly",
+      "source": "export function write(get: (() => readonly number[]) | undefined): void {const erased = get?.()! as never; const value = undefined as never; erased[0] = value;}",
+      "mutable": "export function write(get: (() => number[]) | undefined): void {const erased = get?.()! as never; const value = undefined as never; erased[0] = value;}"
+    },
+    {
+      "id": "nonnull-callee-readonly",
+      "source": "export function write(get: (() => readonly number[]) | undefined): void {const erased = get!() as never; const value = undefined as never; erased[0] = value;}",
+      "mutable": "export function write(get: (() => number[]) | undefined): void {const erased = get!() as never; const value = undefined as never; erased[0] = value;}"
+    }
+  ]
+}

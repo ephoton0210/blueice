@@ -246,8 +246,15 @@ impl<'a> Context<'a> {
             }
         }
         for _ in 0..module.declarations.len() {
-            let before = context.private_aliases.len();
+            let before = (context.private_aliases.len(), context.used_imports.len());
             for declaration in &module.declarations {
+                if let Declaration::Class(class) = declaration {
+                    if context.used_imports.contains(&class.name) {
+                        if let Some(parent) = &class.extends_name {
+                            context.retain(parent);
+                        }
+                    }
+                }
                 if let Declaration::TypeAlias(alias) = declaration {
                     if !alias.exported
                         && context.used_imports.contains(&alias.name)
@@ -259,7 +266,7 @@ impl<'a> Context<'a> {
                     }
                 }
             }
-            if context.private_aliases.len() == before {
+            if (context.private_aliases.len(), context.used_imports.len()) == before {
                 break;
             }
         }

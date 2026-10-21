@@ -7,6 +7,7 @@
 use super::*;
 
 mod assertion_qualifiers;
+mod call_chains;
 mod call_presentation;
 mod composition_diagnostics;
 mod computed_indices;
@@ -493,13 +494,20 @@ impl<'a> ModuleChecker<'a> {
                         || token.is("true")
                         || token.is("false")
                     {
-                        let preserve = signatures.iter().any(|signature| {
+                        let preserving = signatures.iter().find(|signature| {
                             let Some(parameter) = function_parameter_for_argument(signature, actuals.len()) else { return false };
                             let annotation = if parameter.rest { rest_parameter_element_annotation(parameter) } else { parameter.annotation.as_ref() };
                             matches!(annotation, Some(Type::Literal(_))) || (matches!(annotation, Some(Type::Named { name, arguments }) if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name))
                                 && matches!(&signature.return_type, Type::Named { name, arguments } if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name)))
                         });
-                        if preserve {
+                        let contextual_callback = preserving.is_some_and(|signature| {
+                            self.contextual_callback_widens_parameter(
+                                signature,
+                                actuals.len(),
+                                arguments,
+                            )
+                        });
+                        if preserving.is_some() && !contextual_callback {
                             actuals.push(Type::Literal(token.text.clone()));
                             continue;
                         }

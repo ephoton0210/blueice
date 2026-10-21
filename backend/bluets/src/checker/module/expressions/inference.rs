@@ -244,6 +244,9 @@ impl<'a> ModuleChecker<'a> {
         {
             return Type::Number;
         }
+        if let Some(value) = self.infer_call_chain(tokens, scope) {
+            return value;
+        }
         if let Some(value) = self.infer_indexed_call(tokens, scope) {
             return value;
         }

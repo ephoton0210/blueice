@@ -270,6 +270,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "gt2_inference" => "gt2_inference/reference.json",
         "gt5_compositions" => "gt5_compositions/reference.json",
         "gt6_structural" => "gt6_structural/reference.json",
+        "gt4_overload_chains" => "gt4_overload_chains/reference.json",
         "gt3_operators" => "gt3_operators/reference.json",
         "gt1_declaration_order" => "gt1_declaration_order/reference.json",
         "indexed_call_context" => "indexed-call-context-reference.json",

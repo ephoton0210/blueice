@@ -33,6 +33,31 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt4_overload_chains" => {
+            let path = "backend/bluets/tests/fixtures/gt4_overload_chains/reference.json";
+            let mut controls = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/budget_controls",
+                "owner-budget-control",
+            )?;
+            for case in &mut controls {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("BlueTS's below/above overload-chain work and parser-depth limits; native default-budget acceptance is not agreement on owner-selected limits.".into());
+            }
+            let mut readonly = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/readonly_controls",
+                "owner-readonly-control",
+            )?;
+            for case in &mut readonly {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("BlueTS retains owner readonly qualifiers through optional/non-null calls and never assertions in strict and legacy modes; native cast acceptance is not agreement on the owner policy.".into());
+            }
+            controls.extend(readonly);
+            controls
+        }
         "gt6_structural" => {
             let path = "backend/bluets/tests/fixtures/gt6_structural/reference.json";
             let mut controls = super::case_sources::json_cases(

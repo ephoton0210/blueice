@@ -6,7 +6,7 @@
 use super::*;
 
 impl ModuleChecker<'_> {
-    pub(super) fn literal_composition_error(
+    pub(in crate::checker::module) fn literal_composition_error(
         &mut self,
         tokens: &[Token],
         expected: &Type,
@@ -122,6 +122,7 @@ impl ModuleChecker<'_> {
                                 crate::diagnostic::type_text::render_in(expected, self.project),
                             ],
                         );
+                        self.explain_last_type_pair(&actual, expected);
                         return true;
                     }
                 }

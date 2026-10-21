@@ -22,7 +22,7 @@ pub(super) fn mismatch(
         depth,
         format!(
             "Type '{}' is not assignable to type '{}'.",
-            render_in(actual, project),
+            assignment_in(actual, expected, project),
             render_in(expected, project)
         ),
     );

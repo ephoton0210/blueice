@@ -24,6 +24,21 @@ pub(super) fn declaration_union(value: Type, fresh: bool) -> Type {
                     return first.clone();
                 }
             }
+            let non_nullish = widened
+                .iter()
+                .filter(|value| !matches!(value, Type::Null | Type::Undefined))
+                .collect::<Vec<_>>();
+            if let Some(first) = non_nullish.first() {
+                if non_nullish.iter().all(|value| value == first) {
+                    let mut unique = Vec::new();
+                    for part in widened {
+                        if !unique.contains(&part) {
+                            unique.push(part);
+                        }
+                    }
+                    return Type::Union(unique);
+                }
+            }
         }
     }
     value

@@ -336,6 +336,7 @@ impl<'a> ModuleChecker<'a> {
                 _ => None,
             })
             .collect::<Vec<_>>();
+        let mut incompatible_implementations = BTreeSet::new();
         for overload in overloads {
             let implementations = self
                 .module
@@ -372,14 +373,18 @@ impl<'a> ModuleChecker<'a> {
                 self.max_type_expansions,
             ) {
                 Ok(true) => {}
-                Ok(false) => self.type_error(
-                    &overload.span,
-                    format!(
-                        "overload signature for {} is incompatible with its implementation",
-                        overload.name
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                ),
+                Ok(false) => {
+                    if incompatible_implementations.insert(implementation.span.start) {
+                        self.type_error(
+                            &overload.span,
+                            format!(
+                                "overload signature for {} is incompatible with its implementation",
+                                overload.name
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    }
+                }
                 Err(()) => self.type_error(
                     &overload.span,
                     format!(
@@ -874,16 +879,21 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         self.check_type_only_class_value_uses(tokens, scope, span);
-        if self.check_optional_property_read(tokens, scope, span) {
+        let call_chain = self.check_call_chain(tokens, scope, span);
+        if !call_chain && self.check_optional_property_read(tokens, scope, span) {
             return;
         }
         self.check_class_constructions_in_expression(tokens, scope, span);
         self.check_bound_class_calls_in_expression(tokens, scope, span);
         self.check_flow_in_subjects(tokens, scope);
-        self.check_function_call(tokens, scope, span);
+        if !call_chain {
+            self.check_function_call(tokens, scope, span);
+        }
         self.check_flow_calls(tokens, scope, span);
-        self.check_member_calls_in_expression(tokens, scope, span);
-        self.check_indexed_calls_in_expression(tokens, scope, span);
+        if !call_chain {
+            self.check_member_calls_in_expression(tokens, scope, span);
+            self.check_indexed_calls_in_expression(tokens, scope, span);
+        }
         self.check_class_index_accesses(tokens, scope);
         self.check_direct_property_access(tokens, scope, span);
         self.check_member_assignment(tokens, scope, span);

@@ -91,7 +91,7 @@ pub(super) fn optional_property_type(
 
 /// Remove short-circuit alternatives, including those behind a type alias.
 /// Keep a non-nullable named receiver's identity for member diagnostics.
-fn optional_receiver_parts(
+pub(super) fn optional_receiver_parts(
     receiver: &Type,
     aliases: &BTreeMap<String, TypeDefinition>,
     visited: &mut HashSet<String>,

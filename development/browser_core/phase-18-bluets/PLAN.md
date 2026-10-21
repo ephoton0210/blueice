@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-21).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,045 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,151 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,479/12,488 (99.9279%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 20 BlueTS owner = 557; excluded from direct agreement |
-| Case labels | 13,036 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 108 suites / 259 ignored Rust functions; not a case denominator |
-| Suite labels | 102 scoped closed, 1 open, 5 refused |
+| Direct agreement | 12,581/12,590 (99.9285%); 3 open, 6 refused observations |
+| Separate controls | 537 native-reference + 24 BlueTS owner = 561; excluded from direct agreement |
+| Case labels | 13,142 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 109 suites / 261 ignored Rust functions; not a case denominator |
+| Suite labels | 103 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,045 recorded case expectations pass; expected differences/refusals are not
+All 13,151 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:5fe62da9ab3b24bd8ea2590078bef66933fd0670`.
-Input graph SHA-256: `33a3a979564490c9622623ef8de060e482b8f8fbc37b8a0ce2531c7350c4d16a`.
+Compiler/oracle source: `backend-tree:d00654ecc8b9709700a260998ab6fffbd2897db5`.
+Input graph SHA-256: `e445f7e75f37c6056e5eaab96aae8cfcfb39f21ae5f9dbd29db27cdce5e1f476`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -13299,3 +13299,187 @@ above; remove all `BLUETS_*` filter variables and fixture-write overrides.
 | No-exclusion ordinary gate | `e5b07f2864dfc522b69ddfe7dbdb6594a956ad52eb751a6794da76a5f2732ab8` |
 | Final warnings-denied Clippy | `35fc72bacfe065673ddba4b566b6467dc5b94a887c640891f8cbf1f5e1028448` |
 | Preserved-case/log/tool identity audit | `f7c4d384443ea91cbc4d08a2988132c720b64e2b3ea32c34a02b1f7c4119c1a8` |
+
+## Phase L — G-T4 implementation
+
+### Native-first scope and regression controls (2026-10-21)
+
+`gt4_overload_chains` freezes TypeScript **5.9.3**, strict ES2022/ESNext,
+LF declarations and explicit strictFunctionTypes/strictNullChecks controls.
+The initial **84 observations** were recorded before production changes;
+the public compiler replay failed with **37 mismatches** in
+`/private/tmp/bluets-gt4-frozen-before.log`. They include optional/non-null
+call refusals, a wrongly accepted parenthesized call through an unknown
+result, generic method precision and duplicate implementation diagnostics.
+
+The original input/reference hashes are
+`caa2adb6e54fe8545883e94bd6cb95179b7ba6dec522f0cd532f2bcb8e927457` /
+`9ab6eaab7589fa4495183f43a995da27c3a19c4c0df4446dd4c30c238c19dd20`.
+Reconstructing the original 42 forms / first 84 reference observations with
+empty readonly controls reproduces those exact hashes. No initial source,
+native expectation or configuration was changed to make the implementation pass.
+
+Eighteen additive native observations cover nested argument/abstract-constructor
+checks, null and combined-nullish guards, strictNullChecks disabled and unary
+logical-not erasure and candidate-context isolation. These controls were
+reproduced natively and failed at the relevant public boundary before their
+corrections. The final matrix has **51 accepted/rejected pairs / 102 observations**,
+with complete diagnostic arrays
+(codes, messages, UTF-16 primary and related spans), **51 byte-exact declarations**,
+bidirectional native declaration consumers, Acorn **8.15.0** ES2022 syntax and
+**four Node exit/stdout/stderr comparisons**. Both signature orders are retained
+for direct, generic/specific, literal-priority, construct, method, optional-call
+and merged-interface witnesses; variance flags, receiver/member/callee/result/
+argument assertions, nullability and no-match/implementation origins are explicit.
+
+Final input SHA-256:
+`51f175f86dd91d3181c5a36410d853d01c45dcf1bc89356c58135aa3f23c88f9`.
+Final native reference SHA-256:
+`d4c530a5b91042d90194531efca5286a13f368e51f88712e66e83f06ef5faa8b`.
+Two parser-depth/type-work controls and two readonly/never controls with mutable
+positives, each in strict and legacy checking, remain **owner boundary controls**,
+not native TypeScript agreement. Native cast acceptance does not authorize
+discarding runtime readonly qualifiers.
+
+### Modular implementation and focused acceptance
+
+`call_chains` separates postfix syntax, callee/receiver resolution, selected-call
+freshness and checking. It reuses the existing overload selector, type-argument,
+receiver and bounded inference paths. Short-circuit undefined stays distinct
+from a member's own optional type: an unchecked nullable callable is refused,
+while optional/non-null calls retain exact selected results. Nullable diagnostics
+distinguish null, undefined and both, and honor strictNullChecks disabled.
+The new route does not return before nested argument/construction, restricted
+member, mutation and readonly checks. The nested regression replay previously
+accepted invalid calls/construction; the corrected controls now reject them.
+
+Context-sensitive unannotated callback inputs widen their literal seeds without
+changing explicitly typed callback evidence. Selected identity-call freshness
+passes through optional/non-null chains into declaration emit; nullable fresh
+literal unions widen only at that declaration boundary. Tuple return errors
+retain the incompatible element and complete diagnostic reason. The declaration
+dependency fixed point retains private base classes required by the selected
+constructor result. Implementation incompatibility reports only the first
+failing overload per implementation, matching the native diagnostic array.
+
+Type erasure recognizes optional explicit type arguments and postfix non-null
+calls. The added execution control caught an intermediate regression that erased
+unary `!` before parentheses (`/private/tmp/bluets-gt4-unary-before.log`); postfix
+context now distinguishes it, without dropping native runtime evaluation effects.
+No runtime globals/capabilities, opaque compatibility types or larger budgets
+are introduced. New routing modules stay small; modified production files remain
+below the 1,200-line review threshold.
+
+The producer includes `bluets-overload-chains/1`; build-state epoch **14** rejects
+epochs 4–13 and retains cold/warm/rebuild controls. The corrected focused
+regression gate succeeds: **123 existing frontend tests plus six G-T4 tests**,
+including both ignored native oracles, with zero failures, ignored or filtered
+tests (`/private/tmp/bluets-gt4-regression-focused.log`).
+
+The first ordinary two-crate preflight stops with two return-diagnostic category
+regressions (`/private/tmp/bluets-gt4-preflight.log`); it is not accepted evidence.
+Tuple element counterparts now preserve BTS `ReturnTypeMismatch`, without
+reclassifying unrelated resource or readonly failures. A separate native/CLI
+probe also finds candidate-context contamination: a later generic callback
+widened the first candidate's `result = 1` to `result: number`. Both native
+signature-order controls are appended unchanged; literal context now belongs
+to the first preserving candidate, not a union of unrelated candidates.
+
+The corrected ordinary preflight restarts from its first target and succeeds
+in `/private/tmp/bluets-gt4-preflight-final.log`: **166 targets / 1,309 passed**,
+zero failed/filtered, 261 ignored. It excludes the not-yet-regenerated inventory
+suite and doc-tests, so it is not the final ordinary gate. Warnings-denied
+two-crate all-target Clippy and workspace formatting pass. Refreshing generated
+refusal source locations (not counts/classifications) resolves the preliminary
+tool-test stale-document failure; **13 Python and 15 Node tests** pass.
+
+G-T4 remains unchecked until a
+complete source-frozen oracle cohort, the final no-exclusion ordinary gate,
+formatting, warnings-denied Clippy and case/log/tool/document audits all pass.
+Implementation and completed measured data must be committed together. The
+broader G-T4 row stays open beyond this finite matrix; full parity stays OFF.
+
+### Source-bound complete replay
+
+Immutable backend tree: `d00654ecc8b9709700a260998ab6fffbd2897db5`.
+Source graph SHA-256:
+`e445f7e75f37c6056e5eaab96aae8cfcfb39f21ae5f9dbd29db27cdce5e1f476`.
+Base HEAD: `a0d6e391e85dab4404512cec66cec594d0da633e`.
+Source/case-provider checks pass with no missing inline providers. The complete
+**109-suite / 261-ignored-function** cohort succeeds from this frozen source/catalog
+and unchanged tool bodies, without fixture-write or filter environment overrides,
+in `/private/tmp/bluets-gt4-measurement-VIivAu`; driver log:
+`/private/tmp/bluets-gt4-measurement-run.log`. The run begins at
+`2026-10-21T02:43:25.704Z` and ends at `2026-10-21T03:20:57.519Z`:
+**572 passed, zero failed/ignored/filtered**, with all 261 pinned ignored
+functions actually executed. The original successful report is published
+byte-for-byte; no incomplete implementation or partial-cohort data is committed.
+
+The independent identity audit preserves all **13,045 previous assertions**
+(IDs, labels, source, selectors, units, classifications, scopes and reasons),
+plus the original 84 G-T4 observations. Exactly **106 additions** belong to
+this package: 102 native comparisons and four separate owner controls.
+The audit checks every original log hash and parsed result, all **63 oracle
+tool bodies**, the immutable source graph and the versioned report's exact
+bytes. Source/case checks and four-document status agree at **13,151 assertions**:
+**12,581 / 12,590 direct agreements**, 537 native-reference and 24 owner
+controls excluded, three open and six refused observations unchanged.
+
+This is **darwin-arm64 / Rust 1.98.0 (Homebrew)** compiler evidence, with Rust
+1.95 rustfmt, TypeScript 5.9.3, Acorn 8.15.0 and Node 26.7.0. It is not a new
+Windows VM/full-workspace milestone and does not impose hosted CI as a new gate.
+
+### Final acceptance (2026-10-21)
+
+The complete no-exclusion two-crate ordinary gate succeeds in
+`/private/tmp/bluets-gt4-ordinary-final.log`: **169 targets / 1,331 passed**,
+zero failed/filtered, 261 ignored. It includes all **22 inventory-integrity
+tests** and both doc-test targets. All 261 ignored functions separately succeed
+in the complete source-frozen oracle cohort; they are not unexecuted evidence.
+Final workspace Rust 1.95 formatting, warnings-denied two-crate all-target
+Clippy, **13 Python and 15 Node tests**, recorder syntax, source/case/catalog
+checks, independent log/tool/preserved-case audit, row/refusal accounting,
+whitespace and all four current-status blocks pass. Refusal accounting stays
+**213 sites / 11 areas**. No owner-policy allowance or budget was loosened.
+
+G-T4's finite package is complete; implementation and the corresponding
+completed measurement are submitted together. The broader inventory row stays
+open for candidate/operator/variance and imported/computed-chain compositions
+outside the frozen matrix. **15 Phase L packages remain unchecked; G-T8 is
+next. Full parity remains OFF.**
+
+Reproduction uses the pinned `tsc` and `acorn` commands in
+`/private/tmp/bluets-gt6-oracles-5c8vA3/node_modules/.bin/`, Node 26.7.0 and
+the shared-target environment `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_DEV_DEBUG=0`,
+`CARGO_PROFILE_TEST_DEBUG=0`, `FORCE_COLOR=0`. Set `BLUEICE_BLUETSC_ORACLE`,
+`BLUEICE_ACORN_ORACLE` and `BLUEJS_REGEXP_WORKER` explicitly, with no fixture-write
+or `BLUETS_*` filter variables and no second target directory:
+
+```sh
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs --output-dir <fresh-empty-directory> --staged-source
+cargo test --offline -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast
+cargo clippy --offline -p blueice-bluets -p blueice-bluets-bluejs --all-targets -- -D warnings
+env RUSTFMT=/Users/ephoton/.rustup/toolchains/1.95.0-aarch64-apple-darwin/bin/rustfmt cargo fmt --all -- --check
+python3 -m unittest discover -s development/browser_core/phase-18-bluets/tools -p 'test_*.py' -v
+node --test development/browser_core/phase-18-bluets/tools/*.test.cjs
+target/debug/examples/compatibility_inventory --check-cases
+target/debug/examples/compatibility_inventory --check
+python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --check
+python3 development/browser_core/phase-18-bluets/tools/check_compatibility_status.py --check
+```
+
+The original measurement directory is no longer empty; preserve it and choose
+a fresh directory for replay. The staged backend must equal the immutable tree
+above. Before committing, use the explicit `--check-cases-staged` /
+`--check-staged` source checks; the strict HEAD checks above run after commit.
+
+| Evidence | SHA-256 |
+| --- | --- |
+| Initial 84-observation failing replay | `1e0d093297dd2fff524ed23d1b5ca640b05dd33222c59148c308f1dc8f44ff50` |
+| Corrected frontend/G-T4 focused gate | `d690270d29d87c87fcda6175ae6a73d51264f1b42734166c5c2b526451a93d47` |
+| Corrected ordinary preflight | `9ad0024d3194b6c13ae1b3d75f5375a33efc2349dcb7122ab013fb93308e1253` |
+| Complete 109-suite cohort log | `19e0f0680e59c488661dabe970b3225682ed1184ec8df0c66bdae3296bfb7d60` |
+| Versioned measurement | `5dd0ee81551e51ec05a964612e2a1c146b4fbd9f009f282029bca2d17b94c07f` |
+| No-exclusion ordinary gate | `437a74c412981685260e70144453cc78cf44636d0d2025200d01d86c5b7b0196` |
+| Final warnings-denied Clippy | `40108eb5c2e432741fc7f36afdf5c793ec02b19e7b1ce5e51bdd2ba377bd26cb` |
+| Preserved-case/log/tool identity audit | `6ff4259abe62d4fbce00298522941c899b8fad9a0ad3acd6e8410613cbe0968a` |
