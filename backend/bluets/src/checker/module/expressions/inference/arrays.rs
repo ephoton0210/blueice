@@ -19,13 +19,16 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         expected: &Type,
     ) -> Type {
+        let tokens = strip_outer_parentheses(tokens);
         if let Some(literal) = self.enum_literal_for(tokens, expected) {
             return literal;
         }
         if let Some(result) = self.infer_generic_result_in_context(tokens, scope, expected) {
             return result;
         }
-        let mut contextual = expected.clone();
+        let mut contextual =
+            crate::checker::type_relations::normalize_more_type(expected, &self.types)
+                .unwrap_or_else(|| expected.clone());
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let mut visited = HashSet::new();
         while let Some(expanded) = instantiate_named(
@@ -39,6 +42,23 @@ impl<'a> ModuleChecker<'a> {
         }
         if let Type::Readonly(value) = contextual {
             contextual = *value;
+        }
+        let whole_function = tokens
+            .first()
+            .and_then(|token| self.module.nested_functions.get(&token.start))
+            .is_some_and(|function| {
+                tokens
+                    .last()
+                    .is_some_and(|token| token.end == function.span.end)
+            });
+        if let Some((_, left, right)) = (!whole_function)
+            .then(|| conditional_expression_parts(tokens))
+            .flatten()
+        {
+            return crate::checker::type_operators::union([
+                self.infer_in_context(left, scope, &contextual),
+                self.infer_in_context(right, scope, &contextual),
+            ]);
         }
         if let Type::UniqueSymbol(_) = expected {
             if self.fresh_symbol_call(tokens, scope) {
@@ -65,7 +85,7 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         match &contextual {
-            Type::Function { parameters, .. } => {
+            Type::Function { parameters, result } => {
                 let tokens = strip_outer_parentheses(tokens);
                 if let Some(function) = tokens
                     .first()
@@ -82,10 +102,7 @@ impl<'a> ModuleChecker<'a> {
                             }
                         }
                     }
-                    self.return_inference
-                        .results
-                        .borrow_mut()
-                        .remove(&function.span.start);
+                    self.contextual_return(function.span.start, result);
                     return self.infer_expression(tokens, scope);
                 }
             }
@@ -132,6 +149,19 @@ impl<'a> ModuleChecker<'a> {
             }
             Type::Array(item) => {
                 if let Some(literal) = self.infer_contextual_array_literal(tokens, scope, item) {
+                    return literal;
+                }
+            }
+            Type::Named { name, arguments }
+                if name == "Array"
+                    && arguments.len() == 1
+                    && self.types.get(name).is_some_and(|definition| {
+                        definition.kind == TypeDefinitionKind::LibraryInterface
+                    }) =>
+            {
+                if let Some(literal) =
+                    self.infer_contextual_array_literal(tokens, scope, &arguments[0])
+                {
                     return literal;
                 }
             }

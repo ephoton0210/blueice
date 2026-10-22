@@ -13,6 +13,16 @@ pub(super) fn display(name: &str, project: Option<&Project>) -> String {
     let Some(project) = project else {
         return name.into();
     };
+    if let Some((local, owner)) = name.split_once('@') {
+        if project.modules.get(owner).is_some_and(|module| {
+            module.declarations.iter().any(|item| {
+                matches!(item, Declaration::TypeAlias(alias) if alias.name == local)
+                    || matches!(item, Declaration::Interface(interface) if interface.name == local)
+            })
+        }) {
+            return local.into();
+        }
+    }
     if let Some(owner) = name
         .strip_prefix("super ")
         .and_then(|owner| owner.split('@').next())

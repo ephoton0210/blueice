@@ -33,6 +33,31 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt8_return_context" => {
+            let path = "backend/bluets/tests/fixtures/gt8_return_context/reference.json";
+            let mut controls = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/budget_controls",
+                "owner-budget-control",
+            )?;
+            for case in &mut controls {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("BlueTS's configured return-expansion and parser-depth controls; native default-budget acceptance is not agreement on owner-selected limits.".into());
+            }
+            let mut owner = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/owner_controls",
+                "owner-declaration-control",
+            )?;
+            for case in &mut owner {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("Static declaration queries do not authorize a runtime counterpart; strict and legacy value-import denial and declaration-class body/initializer guards are owner controls, not extra native agreements.".into());
+            }
+            controls.extend(owner);
+            controls
+        }
         "gt4_overload_chains" => {
             let path = "backend/bluets/tests/fixtures/gt4_overload_chains/reference.json";
             let mut controls = super::case_sources::json_cases(

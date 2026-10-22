@@ -250,7 +250,9 @@ impl Parser {
                 } else if self.consume("function") {
                     self.parse_function(start, exported, false, declared, async_start);
                 } else if self.consume("class") {
-                    if declared || async_start {
+                    if (declared && !crate::compiler::is_declaration_module(&self.id))
+                        || async_start
+                    {
                         self.unsupported(
                             self.previous().span(&self.id),
                             "declared and async classes are not in the first class form",

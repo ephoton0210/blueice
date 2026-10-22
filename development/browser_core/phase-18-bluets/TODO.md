@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-21).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-22).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,151 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,234 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,581/12,590 (99.9285%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 24 BlueTS owner = 561; excluded from direct agreement |
-| Case labels | 13,142 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 109 suites / 261 ignored Rust functions; not a case denominator |
-| Suite labels | 103 scoped closed, 1 open, 5 refused |
+| Direct agreement | 12,661/12,670 (99.9290%); 3 open, 6 refused observations |
+| Separate controls | 537 native-reference + 27 BlueTS owner = 564; excluded from direct agreement |
+| Case labels | 13,225 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 110 suites / 263 ignored Rust functions; not a case denominator |
+| Suite labels | 104 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 212 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,151 recorded case expectations pass; expected differences/refusals are not
+All 13,234 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,19 +33,19 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:d00654ecc8b9709700a260998ab6fffbd2897db5`.
-Input graph SHA-256: `e445f7e75f37c6056e5eaab96aae8cfcfb39f21ae5f9dbd29db27cdce5e1f476`.
+Compiler/oracle source: `backend-tree:b2070eb084f03cff84b53e25269844e2d100a3d8`.
+Input graph SHA-256: `09671b3ebdc55053d03abcc0e067eeb9fa94776f3dd284f5f06ef5c1275393aa`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
 
-**Current work (2026-10-21):** A–J and K.1–K.14 are the completed baseline,
+**Current work (2026-10-22):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, both
-G-T1 stages, G-T3, G-T2, G-T5, G-T6 and G-T4 are complete for their scopes below;
-15 packages remain unchecked. Next: G-T8.**
+G-T1 stages, G-T3, G-T2, G-T5, G-T6, G-T4 and G-T8 are complete for their scopes below;
+14 packages remain unchecked. Next: G-T7.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -333,12 +333,39 @@ Existing measured behavior is reused; it is not implemented again.
     document checks pass. All 13,045 previous assertions remain unchanged.
     [Source, commands and acceptance](PLAN.md#phase-l--g-t4-implementation).
 
-- [ ] **G-T8 — Contextual return/getter inference and literal freshness.**
+- [x] **G-T8 — Contextual return/getter inference and literal freshness.**
   - **Scope:** local/imported literal freshness, contextual object/union returns,
     getter/method bodies, async/generator results and recursive local functions.
   - **Pass:** inferred declarations and downstream consumer diagnostics agree;
     every fixture with a concrete native result retains that precision instead of
     an accidental `any`/`unknown` fallback. Recursive/resource failures stay bounded.
+  - **Frozen minimum:** `gt8_return_context/cases.json` / `reference.json`:
+    40 accepted/rejected pairs (80 native observations), strict ES2022/ESNext
+    with an explicit ES2022 library. Cover local/aliased/imported fresh versus
+    regular literals, const assertions, branch/record returns, contextual record/
+    discriminated-union/array/callback returns, object/class getters and methods
+    with locals/this/forward calls, async/await/imported results, generator yield/
+    return/next, async generators and local tail/forward/embedded/mutual recursion.
+  - **Acceptance:** full diagnostic arrays with UTF-16 primary/related spans;
+    40 exact declaration graphs (47 `.d.ts` files), 80 type-only downstream
+    accept/reject diagnostic controls, native bidirectional consumers and ES2022
+    Acorn syntax, plus four Node executions. Type-only consumers grant no runtime
+    counterpart; retain one separate declaration-value-import refusal control
+    in strict/legacy checking and two configured budget/depth controls. Every
+    original producer observation, old fixture and policy allowance stays intact.
+  - **Completion gate:** complete source-bound oracle cohort, no-exclusion
+    ordinary tests for both compiler crates, cache invalidation, formatting,
+    warnings-denied Clippy and case/log/tool/document audits must pass before
+    checking this item or committing implementation with its measured data.
+    The broader G-T8 row stays open beyond this frozen matrix; full parity is OFF.
+  - **Completed (2026-10-22):** all 80 native observations, 40 declaration graphs /
+    47 exact files, 80 downstream diagnostics, four executions and three separate
+    owner/budget controls pass. The final source-frozen replay passes 110 suites /
+    578 tests, including all 263 ignored functions; the post-publication ordinary
+    two-crate gate passes 170 targets / 1,335 tests. Cache epoch 15, formatting,
+    warnings-denied Clippy and case/log/tool/document checks pass. All 13,151 old
+    assertions and 80 original G-T8 producer observations remain unchanged.
+    [Source, commands and acceptance](PLAN.md#phase-l--g-t8-implementation).
 
 - [ ] **G-T7 — Expand the original standard-library API manifest.**
   - **Scope:** freeze the remaining constructor/overload/member/protocol list from

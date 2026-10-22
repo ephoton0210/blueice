@@ -419,6 +419,9 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn validate_class_constructor_group(&mut self, class: &ClassDeclaration) {
+        if crate::compiler::is_declaration_module(&self.module.id) {
+            return;
+        }
         let constructors = class
             .members
             .iter()
@@ -603,6 +606,9 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn validate_class_method_groups(&mut self, class: &ClassDeclaration) {
+        if crate::compiler::is_declaration_module(&self.module.id) {
+            return;
+        }
         let mut implementations: BTreeMap<(bool, &str), usize> = BTreeMap::new();
         for group in &class.method_groups {
             if group.implementation_member_index.is_some() {

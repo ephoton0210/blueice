@@ -9,24 +9,24 @@
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-21).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-22).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,151 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,234 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,581/12,590 (99.9285%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 24 BlueTS owner = 561; excluded from direct agreement |
-| Case labels | 13,142 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 109 suites / 261 ignored Rust functions; not a case denominator |
-| Suite labels | 103 scoped closed, 1 open, 5 refused |
+| Direct agreement | 12,661/12,670 (99.9290%); 3 open, 6 refused observations |
+| Separate controls | 537 native-reference + 27 BlueTS owner = 564; excluded from direct agreement |
+| Case labels | 13,225 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 110 suites / 263 ignored Rust functions; not a case denominator |
+| Suite labels | 104 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 213 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 212 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,151 recorded case expectations pass; expected differences/refusals are not
+All 13,234 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:d00654ecc8b9709700a260998ab6fffbd2897db5`.
-Input graph SHA-256: `e445f7e75f37c6056e5eaab96aae8cfcfb39f21ae5f9dbd29db27cdce5e1f476`.
+Compiler/oracle source: `backend-tree:b2070eb084f03cff84b53e25269844e2d100a3d8`.
+Input graph SHA-256: `09671b3ebdc55053d03abcc0e067eeb9fa94776f3dd284f5f06ef5c1275393aa`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -13483,3 +13483,265 @@ above. Before committing, use the explicit `--check-cases-staged` /
 | No-exclusion ordinary gate | `437a74c412981685260e70144453cc78cf44636d0d2025200d01d86c5b7b0196` |
 | Final warnings-denied Clippy | `40108eb5c2e432741fc7f36afdf5c793ec02b19e7b1ce5e51bdd2ba377bd26cb` |
 | Preserved-case/log/tool identity audit | `6ff4259abe62d4fbce00298522941c899b8fad9a0ad3acd6e8410613cbe0968a` |
+
+## Phase L — G-T8 implementation
+
+### Native-first scope (2026-10-22)
+
+Base HEAD: `b6b6f44e4f856c128bda48444c6821048422a87e`.
+The unmodified production compiler is replayed against pinned TypeScript
+**5.9.3**, strict ES2022/ESNext, an explicit ES2022 library, LF and no ambient
+type packages. `gt8_return_context` fixes **40 accepted/rejected pairs / 80
+producer observations** across all six named areas: freshness, contextual
+returns, getter/method members, async results, generators and local recursion.
+Each accepted graph retains exact declarations: **40 graphs / 47 files**,
+native bidirectional consumers, **80 downstream accept/reject diagnostic
+observations**, Acorn **8.15.0** syntax and **four Node executions**.
+Verdict/diagnostic arrays include UTF-16 primary and related module spans.
+
+The preliminary value-import consumer harness correctly hits the existing
+declaration-only owner boundary; those refusals are not 40 language bugs and
+are not removed from production. Consumers now use type-only imported value
+queries and declared local observations, so they remain entirely static.
+A separate owner control requires the original value-import source to stay
+refused in both strict and legacy checking, while native TypeScript accepts it.
+Two configured return-expansion/parser-depth controls also remain separate
+from TypeScript agreement. All **80 original producer observations** retain
+identical sources, options, verdicts, diagnostics, declarations and execution;
+only the consumer harness and its independently re-recorded native positions
+change. No existing versioned fixture or production code is edited at this point.
+
+The corrected public-boundary replay fails with **79 mismatches** in
+`/private/tmp/bluets-gt8-static-consumers-before.log`: imported freshness,
+contextual returns, unknown object getter/method results, readonly getter
+surface, class forward returns, async-generator inference, mutual recursion
+diagnostics and concrete type-query diagnostic presentation. The retention,
+owner-policy and resource-control tests pass; no new expectation is softened.
+The earlier mixed owner/language result is retained in
+`/private/tmp/bluets-gt8-frozen-before.log` and is not the corrected baseline.
+
+Frozen input SHA-256:
+`f33c634a33f4bbf6d917a4ce249e8909c843c1e4712658f1a9969d7710380419`.
+Frozen native reference SHA-256:
+`176074abced288fff1349e19d305a30a0bfaad792d7406316ab135848688270c`.
+Implementation must preserve these native expectations, all **13,151** prior
+case assertions, source/owner confinement, readonly/runtime policy and existing
+budgets. G-T8 remains unchecked until its complete ordinary/oracle, format,
+Clippy and evidence/document gates pass; implementation and matching completed
+measurement are committed together. The broader G-T8 row remains open and
+full parity stays OFF. This is a darwin-arm64 compiler leaf, not a new Windows
+VM/full-workspace milestone or a new hosted-CI prerequisite.
+
+### Modular implementation and regression acceptance
+
+Return inference separates expression contexts and literal provenance into
+`return_inference/context.rs` and `freshness.rs`. Contexts guide actual return
+expressions; they never substitute an expected type for an unproven result.
+Object/union/array returns retain their contextual members. Object methods and
+getters reuse structured bodies, inferred defaults and the receiver surface;
+getter-only properties remain readonly. A bounded class-member fixed point
+resolves forward method/getter dependencies without raising expansion limits.
+
+Freshness follows lexical bindings and only already-authorized import edges,
+distinguishing unannotated literal origins from annotations and const assertions.
+Fresh call/getter results keep checker precision while mutable declaration
+unions widen at the declaration boundary. Async results await their values;
+generator yields preserve regular literals, and async generators publish
+`AsyncGenerator` rather than a synchronous wrapper. Mutual local inference
+cycles diagnose every participating function; direct tail recursion and the
+configured failure controls remain bounded.
+
+The declaration consumer requires static readback of the compiler's own output.
+Declaration-only classes accept signatures but reject method/getter bodies,
+field initializers, static blocks and decorators; they emit no JavaScript.
+An import **inside a declaration module** is a static graph edge, including
+native value-style import spelling used only by declarations. This does not
+make a source consumer's value import of that declaration runtime-backed:
+the original strict/legacy denial remains tested. Canonical loader authority,
+opaque handles and runtime capability policy are unchanged. Declared exported
+variables, class-method record formatting, imported private alias display and
+query/property diagnostic origins retain exact native output.
+
+The original async-generator consumer reaches the configured expansion limit
+only because its otherwise identical library arguments use different string
+quote spellings (`/private/tmp/bluets-gt8-last-relation-trace.log`). A narrow
+library-instantiation identity comparison decodes equal string literal arguments
+before repeatedly expanding the recursive iterator protocol. It grants no
+subtyping shortcut for different arguments, owner replacements or readonly
+qualifiers, and no budget or `any`/`unknown` allowance is enlarged. Temporary
+diagnostic tracing is removed from production.
+
+Regression checks find real intermediate failures; none is accepted as a
+completed gate. The first selected replay stops at six G-T1 exact declarations:
+flow analysis treated an unannotated arrow's own pre-flow provisional signature
+as a contextual return expectation. Source-context selection now distinguishes
+that initializer from an actual annotation. The second replay exposes G-T2
+callback parameters shadowing a module variable with the same name: provenance
+now uses lexical binding identity instead of following that module namesake.
+It also exposes two G-T6 diagnostic reasons expanded past the native generic
+argument comparison; the original named comparison is retained. All old native
+sources and expectations remain untouched.
+
+The corrected replay restarts from its first target and passes **13 targets /
+185 tests**, with zero failed/ignored/filtered functions, in
+`/private/tmp/bluets-gt8-regression-third.log`. It covers the 123 frontend tests,
+G-T1's flow and 90 exact library-profile declarations, G-T2 through G-T6, G-T8,
+the previous return/declaration matrices and async-generator context, including
+every ignored oracle in that selected set. It is not the complete oracle cohort.
+All six G-T8 tests pass, including 80 producer observations, 47 exact declaration
+files, 80 static downstream observations, four executions and the owner/budget
+controls. Source data hashes above remain unchanged.
+
+The producer includes `bluets-return-context/1`; build-state epoch **15** rejects
+epochs 4–14 and retains cold/warm/rebuild controls. Modified production files
+remain below the 1,200-line review threshold. Complete two-crate ordinary tests,
+the source-frozen full cohort, formatting, warnings-denied Clippy and all
+source/case/log/tool/document checks still determine final acceptance. G-T8 is
+not checked or committed on selected-test results alone.
+
+The first complete ordinary preflight stops at `diagnostics_matrix`: verdicts,
+codes and positions pass, but ten existing class/private-property presentation
+observations lose their nominal explanation. This failure is retained in
+`/private/tmp/bluets-gt8-preflight.log`, not accepted as green evidence. The
+original nominal/generic reason now takes priority; structural expansion is
+only a fallback when that original reason is empty. No expected diagnostic,
+private identity or owner-policy allowance is changed. The complete two-crate
+preflight restarts from its first target in
+`/private/tmp/bluets-gt8-preflight-second.log`, collecting every target result.
+
+The corrected ordinary preflight succeeds: **167 targets / 1,313 passed**, zero
+failed/filtered, 263 ignored. It deliberately excludes the inventory suite and
+doc-tests until the completed case measurement is regenerated; it is not the
+final ordinary gate. Warnings-denied two-crate all-target Clippy, workspace
+Rust 1.95 formatting and 15 Node tool tests pass. The one Clippy nested-if lint
+is fixed by combining the unchanged declaration guard conditions. The final
+G-T8 focused replay passes all **six tests**, including both ignored native
+oracles, in `/private/tmp/bluets-gt8-focused-final.log`.
+
+### Source-bound complete replay
+
+Immutable backend tree: `b2070eb084f03cff84b53e25269844e2d100a3d8`.
+Source graph SHA-256:
+`09671b3ebdc55053d03abcc0e067eeb9fa94776f3dd284f5f06ef5c1275393aa`.
+Base HEAD: `b6b6f44e4f856c128bda48444c6821048422a87e`.
+Suite/catalog checks and primary-provider audit pass with no missing inline
+providers. The complete **110-suite / 263-ignored-function** cohort runs from
+this frozen source/catalog and **64 unchanged oracle tool bodies**, with no
+fixture-write or filter environment variables, in
+`/private/tmp/bluets-gt8-measurement-z1WvZv`; driver log:
+`/private/tmp/bluets-gt8-measurement-run.log`. Only a complete successful replay
+is publishable evidence; no partial cohort or implementation-only commit is
+submitted. G-T8 stays unchecked until the complete final gates pass.
+
+This is **darwin-arm64 / Rust 1.98.0 (Homebrew)** compiler evidence, with Rust
+1.95 rustfmt, TypeScript 5.9.3, Acorn 8.15.0 and Node 26.7.0. It is not a new
+Windows VM, full-workspace or hosted-CI acceptance run.
+
+The first complete replay succeeds at **110 suites / 578 tests**, including
+all 263 originally ignored functions, finishing at
+`2026-10-22T02:28:43.520Z`. Its independent identity/log audit confirms all
+13,151 old assertions, all 80 original G-T8 producer observations and the
+frozen native fixture hashes remain unchanged. Publication then exposes one
+stale Python negative test: its literal `213 refusal sites` is absent after
+the measured async-generator inference removes one refusal, so the intended
+tamper changes nothing. The test now derives the actual refusal header and
+asserts its presence before replacing it with a false count. All 13 Python
+tests pass without weakening the status validator. Because this test body is
+included in the 64 tool hashes, the first replay is retained as intermediate
+evidence only; a complete new replay with the corrected tool body is required
+before final publication. No compiler, fixture, case classification or native
+expectation changes for this tool-test repair.
+
+The no-exclusion ordinary compiler gate passes **170 targets / 1,335 tests**,
+zero failed/filtered, with 263 ignored functions covered by the separate complete
+oracle replay. The 22 inventory tests and both crates' doc-tests are included.
+Log: `/private/tmp/bluets-gt8-ordinary-final.log`;
+SHA-256: `09eff00a7cefb84ede43b5009e18a198f430ba7ec6ef7f1721b02d6a7100fca4`.
+Final workspace rustfmt and warnings-denied two-crate all-target Clippy pass;
+Python tool tests pass 13/13 and Node tool tests pass 15/15. The final full
+replay restarts from suite 1 with the same immutable backend tree and graph in
+`/private/tmp/bluets-gt8-measurement-final-qJNhU6`; driver log:
+`/private/tmp/bluets-gt8-measurement-final-run.log`. Its frozen status-test body
+SHA-256 is `44f976a9d1af48ef57bc0e39a59632a03699fd5bc39fb23b07ae58d3f0371d4a`.
+No backend, native fixture or oracle tool body changes during this replay.
+
+### Final acceptance — 2026-10-22
+
+The corrected-tool complete replay succeeds from `2026-10-22T02:36:30.393Z`
+through `2026-10-22T03:11:26.984Z`: **110 suites / 578 tests**, zero
+failed/ignored/filtered, including all **263 originally ignored functions**.
+The backend tree and source graph remain exactly the frozen values above;
+the 64 tool-body hashes match both replay endpoints and the published report.
+The final G-T8 matrix passes all 80 native producer observations, 40 declaration
+graphs / 47 byte-exact `.d.ts` files, 80 downstream diagnostic observations,
+bidirectional native consumers, ES2022 syntax checks, four executions and three
+separate owner/budget controls. No union-order exception is introduced.
+
+After publishing this complete report, the ordinary compiler gate is rerun
+from its first target and passes **170 targets / 1,335 tests**, zero
+failed/filtered, with 263 ignored functions covered by the complete replay.
+All 22 inventory tests and both crates' doc-tests are included. Workspace
+Rust 1.95 formatting, warnings-denied two-crate all-target Clippy, 13 Python
+and 15 Node tool tests, staged source/case checks, row/status consistency and
+whitespace checks pass. Source refusals are **212 in 11 areas**; removing the
+old unannotated async-generator refusal does not change any of the six
+retained refused case observations. All 29 modified production files stay
+below 1,200 lines (largest: 1,091); all four new source files have MPL headers.
+
+The independent identity audit preserves every one of the **13,151** old
+assertions and every original G-T8 producer projection. It checks both frozen
+fixture hashes, all 110 log digests and exact libtest summaries, all 64 current
+tool hashes, backend/graph bindings and byte-identical published measurement.
+The **83** additions are 80 direct observations and three separate owner/budget
+controls, with no changed classification or policy allowance. Current total:
+**13,234 assertions; 12,661/12,670 direct agreements, three open and six refused;
+537 native-reference and 27 owner controls**, excluded from direct agreement.
+
+| Final evidence | SHA-256 |
+| --- | --- |
+| `COMPATIBILITY_MEASUREMENT.json` | `3abfbe48bdf7242795002ec772a7f748804b348dc0cc588161bf301dc18980d7` |
+| `/private/tmp/bluets-gt8-ordinary-accepted.log` | `64549541441e1875e20a6339cb1077ecfbf17364a0d500537bfa14479f1ff964` |
+| `/private/tmp/bluets-gt8-final-identity-audit.json` | `193eec9d7c082fd2fdcddc44f86745668a2599121674e64eae343c8ce3f883fd` |
+| `/private/tmp/bluets-gt8-measurement-final-run.log` | `195ad9af4827a22e8d6a9cc1c9f09593b389892e1d82b4ac5cb7addea6807ab3` |
+
+Commands used from the repository root (a new replay requires a new empty
+measurement directory; never overwrite the recorded cohort):
+
+```sh
+export CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export BLUEICE_BLUETSC_ORACLE=/private/tmp/bluets-gt6-oracles-5c8vA3/node_modules/.bin/tsc
+export BLUEICE_ACORN_ORACLE=/private/tmp/bluets-gt6-oracles-5c8vA3/node_modules/.bin/acorn
+export BLUEJS_REGEXP_WORKER=/Users/ephoton/git/blueice-bluets/target/debug/bluejs-regexp-worker
+export FORCE_COLOR=0
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs --output-dir /private/tmp/bluets-gt8-measurement-final-qJNhU6 --staged-source
+target/debug/examples/compatibility_inventory --write-cases backend-tree:b2070eb084f03cff84b53e25269844e2d100a3d8 /private/tmp/bluets-gt8-measurement-final-qJNhU6/measurement.json
+target/debug/examples/compatibility_inventory --write backend-tree:b2070eb084f03cff84b53e25269844e2d100a3d8
+python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --write
+python3 development/browser_core/phase-18-bluets/tools/check_compatibility_status.py --write
+cargo test --offline -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast
+env RUSTFMT=/Users/ephoton/.rustup/toolchains/1.95.0-aarch64-apple-darwin/bin/rustfmt cargo fmt --all -- --check
+cargo clippy --offline -p blueice-bluets -p blueice-bluets-bluejs --all-targets -- -D warnings
+python3 -m unittest discover -s development/browser_core/phase-18-bluets/tools -p 'test_*.py'
+node --test development/browser_core/phase-18-bluets/tools/*.test.cjs
+target/debug/examples/compatibility_inventory --check-cases-staged
+target/debug/examples/compatibility_inventory --check-staged
+python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --check
+python3 development/browser_core/phase-18-bluets/tools/check_compatibility_status.py --check
+git diff --check
+```
+
+Tool logs are `/private/tmp/bluets-gt8-python-accepted.log`,
+`/private/tmp/bluets-gt8-node-accepted.log`,
+`/private/tmp/bluets-gt8-fmt-accepted.log` and
+`/private/tmp/bluets-gt8-clippy-accepted.log`; refusal and maintainability audits
+are `/private/tmp/bluets-gt8-refusals-accepted.log` and
+`/private/tmp/bluets-gt8-maintainability-audit.json`. Per-suite function names,
+durations and log hashes are in the versioned measurement; the driver invokes
+each compiled harness with `--include-ignored`.
+
+The finite TODO G-T8 item is complete. **14 finite packages remain; next is
+G-T7.** The broader G-T8 feature row remains open for the unmeasured
+compositions named in the inventory; full TypeScript parity stays **OFF**.
+This is darwin-arm64 compiler-leaf evidence, not a new full-workspace,
+Windows VM or hosted-CI run; the accepted historical Windows 82/82 baseline
+keeps its original source/platform scope.

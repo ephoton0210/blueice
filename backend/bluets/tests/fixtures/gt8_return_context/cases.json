@@ -1,0 +1,425 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "node10",
+    "lib": [
+      "ES2022"
+    ],
+    "declaration": true,
+    "newLine": "lf",
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
+    "types": []
+  },
+  "forms": [
+    {
+      "id": "local-fresh-string",
+      "area": "freshness",
+      "prefix": "const seed = 'fresh'; export function make() { return seed; }",
+      "accept": "export const result = make();\nconst checked: string = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "local-regular-string",
+      "area": "freshness",
+      "prefix": "const seed: 'fixed' = 'fixed'; export function make() { return seed; }",
+      "accept": "export const result = make();\nconst checked: 'fixed' = result;",
+      "reject": "export const result = make();\nconst checked: 'other' = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;"
+    },
+    {
+      "id": "local-fresh-alias",
+      "area": "freshness",
+      "prefix": "const first = 7; const second = first; export function make() { return second; }",
+      "accept": "export const result = make();\nconst checked: number = result;",
+      "reject": "export const result = make();\nconst checked: string = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;"
+    },
+    {
+      "id": "regular-const-assertion",
+      "area": "freshness",
+      "prefix": "export function make() { return 'fixed' as const; }",
+      "accept": "export const result = make();\nconst checked: 'fixed' = result;",
+      "reject": "export const result = make();\nconst checked: 'other' = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;"
+    },
+    {
+      "id": "fresh-branch-union",
+      "area": "freshness",
+      "prefix": "export function make(flag: boolean) { if (flag) { return 'left'; } return 'right'; }",
+      "accept": "export const result = make(true);\nconst checked: 'left' | 'right' = result;",
+      "reject": "export const result = make(true);\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "local-record-widening",
+      "area": "freshness",
+      "prefix": "const seed = 'fresh'; export function make() { return { value: seed }; }",
+      "accept": "export const result = make();\nconst checked: { value: string } = result;",
+      "reject": "export const result = make();\nconst checked: { value: number } = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: string } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;"
+    },
+    {
+      "id": "imported-fresh-string",
+      "area": "freshness",
+      "prefix": "import { seed } from './dep.js'; export function make() { return seed; }",
+      "accept": "export const result = make();\nconst checked: string = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "files": {
+        "dep.ts": "export const seed = 'fresh';\n"
+      }
+    },
+    {
+      "id": "imported-regular-string",
+      "area": "freshness",
+      "prefix": "import { seed } from './dep.js'; export function make() { return seed; }",
+      "accept": "export const result = make();\nconst checked: 'fixed' = result;",
+      "reject": "export const result = make();\nconst checked: 'other' = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;",
+      "files": {
+        "dep.ts": "export const seed: 'fixed' = 'fixed';\n"
+      }
+    },
+    {
+      "id": "imported-const-call",
+      "area": "freshness",
+      "prefix": "import { identity, seed } from './dep.js'; export function make() { return identity(seed); }",
+      "accept": "export const result = make();\nconst checked: string = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "files": {
+        "dep.ts": "export const seed = 'fresh'; export function identity<T>(value: T): T { return value; }\n"
+      }
+    },
+    {
+      "id": "imported-regular-object",
+      "area": "freshness",
+      "prefix": "import { seed } from './dep.js'; export function make() { return seed.value; }",
+      "accept": "export const result = make();\nconst checked: 'fixed' = result;",
+      "reject": "export const result = make();\nconst checked: 'other' = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;",
+      "files": {
+        "dep.ts": "export const seed = { value: 'fixed' as const };\n"
+      }
+    },
+    {
+      "id": "context-record-arrow",
+      "area": "context",
+      "prefix": "type Box = { kind: 'box'; value: number }; const make: () => Box = () => ({ kind: 'box', value: 1 });",
+      "accept": "export const result = make();\nconst checked: Box = result;",
+      "reject": "export const result = make();\nconst checked: { kind: 'wrong'; value: number } = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'box'; value: number } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'wrong'; value: number } = result;"
+    },
+    {
+      "id": "context-union-arrow",
+      "area": "context",
+      "prefix": "type Choice = { kind: 'left'; value: number } | { kind: 'right'; value: string }; const make: (flag: boolean) => Choice = flag => flag ? { kind: 'left', value: 1 } : { kind: 'right', value: 'ok' };",
+      "accept": "export const result = make(true);\nconst checked: Choice = result;",
+      "reject": "export const result = make(true);\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'left'; value: number } | { kind: 'right'; value: string } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "context-function-block",
+      "area": "context",
+      "prefix": "type Box = { kind: 'box'; value: number }; const make: () => Box = function () { return { kind: 'box', value: 1 }; };",
+      "accept": "export const result = make();\nconst checked: Box = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'box'; value: number } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "context-callback-return",
+      "area": "context",
+      "prefix": "declare function consume(callback: () => { kind: 'box'; value: number }): { kind: 'box'; value: number };",
+      "accept": "export const result = consume(() => ({ kind: 'box', value: 1 }));\nconst checked: { kind: 'box'; value: number } = result;",
+      "reject": "export const result = consume(() => ({ kind: 'box', value: 1 }));\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'box'; value: number } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "context-object-method",
+      "area": "context",
+      "prefix": "type Service = { make(): { kind: 'box'; value: number } }; const service: Service = { make() { return { kind: 'box', value: 1 }; } };",
+      "accept": "export const result = service.make();\nconst checked: { kind: 'box'; value: number } = result;",
+      "reject": "export const result = service.make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'box'; value: number } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "context-getter",
+      "area": "context",
+      "prefix": "type Service = { readonly value: 'fixed' };",
+      "accept": "const service: Service = { get value() { return 'fixed' as const; } }; export const result = service.value; const checked: 'fixed' = result;",
+      "reject": "const service: Service = { get value() { return 'fixed'; } }; export const result = service.value;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;"
+    },
+    {
+      "id": "context-array-arrow",
+      "area": "context",
+      "prefix": "const make: () => Array<'left' | 'right'> = () => ['left', 'right'];",
+      "accept": "export const result = make();\nconst checked: Array<'left' | 'right'> = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: Array<'left' | 'right'> = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "context-imported-return",
+      "area": "context",
+      "prefix": "import { Box } from './dep.js'; const make: () => Box = () => ({ kind: 'box', value: 1 });",
+      "accept": "export const result = make();\nconst checked: Box = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nimport type { Box } from './dep.js'; const checked: Box = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "files": {
+        "dep.ts": "export interface Box { kind: 'box'; value: number; }\n"
+      }
+    },
+    {
+      "id": "object-getter-local",
+      "area": "member",
+      "prefix": "export const service = { get value() { const seed = 4; return seed; } };",
+      "accept": "export const result = service.value;\nconst checked: number = result;",
+      "reject": "export const result = service.value;\nconst checked: string = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;",
+      "invoke": "console.log(result, service.value);"
+    },
+    {
+      "id": "object-method-local",
+      "area": "member",
+      "prefix": "export const service = { make(value = 4) { return value + 1; } };",
+      "accept": "export const result = service.make();\nconst checked: number = result;",
+      "reject": "export const result = service.make();\nconst checked: string = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;"
+    },
+    {
+      "id": "object-getter-this",
+      "area": "member",
+      "prefix": "export const service = { base: 4, get value() { return this.base + 1; } };",
+      "accept": "export const result = service.value;\nconst checked: number = result;",
+      "reject": "export const result = service.value;\nconst checked: string = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;"
+    },
+    {
+      "id": "class-getter-method",
+      "area": "member",
+      "prefix": "export class Service { make() { return 4; } get value() { return this.make(); } }",
+      "accept": "export const result = new Service().value;\nconst checked: number = result;",
+      "reject": "export const result = new Service().value;\nconst checked: string = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;"
+    },
+    {
+      "id": "class-getter-local",
+      "area": "member",
+      "prefix": "export class Service { get value() { const seed = 4; return { value: seed }; } }",
+      "accept": "export const result = new Service().value;\nconst checked: { value: number } = result;",
+      "reject": "export const result = new Service().value;\nconst checked: string = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;"
+    },
+    {
+      "id": "class-getter-branches",
+      "area": "member",
+      "prefix": "export class Service { flag: boolean = true; get value() { if (this.flag) { return 'left'; } return 4; } }",
+      "accept": "export const result = new Service().value;\nconst checked: string | number = result;",
+      "reject": "export const result = new Service().value;\nconst checked: boolean = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string | number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: boolean = result;"
+    },
+    {
+      "id": "class-method-forward",
+      "area": "member",
+      "prefix": "export class Service { first() { return this.second(); } second() { return { value: 4 }; } }",
+      "accept": "export const result = new Service().first();\nconst checked: { value: number } = result;",
+      "reject": "export const result = new Service().first();\nconst checked: string = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;"
+    },
+    {
+      "id": "object-nested-getter",
+      "area": "member",
+      "prefix": "export function make() { return { get value() { return 4; }, read() { return 'ok'; } }; }",
+      "accept": "export const result = make();\nconst checked: { readonly value: number; read(): string } = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { readonly value: number; read(): string } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "async-fresh-value",
+      "area": "async",
+      "prefix": "const seed = 'fresh'; export async function make() { return seed; }",
+      "accept": "export const result = await make();\nconst checked: string = result;",
+      "reject": "export const result = await make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "invoke": "console.log(result);"
+    },
+    {
+      "id": "async-object-result",
+      "area": "async",
+      "prefix": "export async function make() { return { value: 4 }; }",
+      "accept": "export const result = await make();\nconst checked: { value: number } = result;",
+      "reject": "export const result = await make();\nconst checked: string = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;"
+    },
+    {
+      "id": "async-awaited-import",
+      "area": "async",
+      "prefix": "import { get } from './dep.js'; export async function make() { return await get(); }",
+      "accept": "export const result = await make();\nconst checked: 'fixed' = result;",
+      "reject": "export const result = await make();\nconst checked: 'other' = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;",
+      "files": {
+        "dep.ts": "export async function get(): Promise<'fixed'> { return 'fixed'; }\n"
+      }
+    },
+    {
+      "id": "async-branch-result",
+      "area": "async",
+      "prefix": "export async function make(flag: boolean) { if (flag) { return 4; } return 'ok'; }",
+      "accept": "export const result = await make(true);\nconst checked: string | number = result;",
+      "reject": "export const result = await make(true);\nconst checked: boolean = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string | number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: boolean = result;"
+    },
+    {
+      "id": "generator-return",
+      "area": "generator",
+      "prefix": "export function* make() { yield 1; return 'done' as const; }",
+      "accept": "export const result = make();\nconst checked: Generator<number, 'done', unknown> = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: Generator<number, 'done', unknown> = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "generator-regular-yield",
+      "area": "generator",
+      "prefix": "const seed: 'fixed' = 'fixed'; export function* make() { yield seed; return 4; }",
+      "accept": "export const result = make();\nconst checked: Generator<'fixed', number, unknown> = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: Generator<'fixed', number, unknown> = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "generator-next-context",
+      "area": "generator",
+      "prefix": "export function* make() { const input: string = yield 1; return input; }",
+      "accept": "export const result = make();\nconst checked: Generator<number, string, string> = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: Generator<number, string, string> = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "async-generator",
+      "area": "generator",
+      "prefix": "export async function* make() { yield await Promise.resolve(1); return 'done' as const; }",
+      "accept": "export const result = make();\nconst checked: AsyncGenerator<number, 'done', unknown> = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: AsyncGenerator<number, 'done', unknown> = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "invoke": "const step = await result.next(); const done = await result.next(); console.log(step.value, step.done, done.value, done.done);"
+    },
+    {
+      "id": "local-tail-recursion",
+      "area": "recursion",
+      "prefix": "export function make(count: number) { function walk(value: number) { if (value === 0) { return 1; } return walk(value - 1); } return walk(count); }",
+      "accept": "export const result = make(2);\nconst checked: number = result;",
+      "reject": "export const result = make(2);\nconst checked: string = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;",
+      "invoke": "console.log(result);"
+    },
+    {
+      "id": "local-forward-return",
+      "area": "recursion",
+      "prefix": "export function make() { function first() { return second(); } function second() { return { value: 4 }; } return first(); }",
+      "accept": "export const result = make();\nconst checked: { value: number } = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;"
+    },
+    {
+      "id": "local-embedded-cycle",
+      "area": "recursion",
+      "prefix": "",
+      "accept": "export function make() { function loop(): { value: number } { return { value: 4 }; } return loop(); } export const result = make();",
+      "reject": "export function make() { function loop() { return { value: loop() }; } return loop(); } export const result = make();",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: { value: number } = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: string = result;"
+    },
+    {
+      "id": "local-mutual-cycle",
+      "area": "recursion",
+      "prefix": "",
+      "accept": "export function make() { function first(): number { return second(); } function second(): number { return 4; } return first(); } export const result = make();",
+      "reject": "export function make() { function first() { return second(); } function second() { return first(); } return first(); } export const result = make();",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: string = result;"
+    },
+    {
+      "id": "recursive-expression",
+      "area": "recursion",
+      "prefix": "",
+      "accept": "const make = function walk(count: number): number { if (count === 0) { return 1; } return walk(count - 1); }; export const result = make(2);",
+      "reject": "const make = function walk(count: number) { return { value: walk(count) }; }; export const result = make(2);",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: number = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: string = result;"
+    },
+    {
+      "id": "regular-imported-union",
+      "area": "freshness",
+      "prefix": "import { seed } from './dep.js'; export function make() { return seed; }",
+      "accept": "export const result = make();\nconst checked: 'left' | 'right' = result;",
+      "reject": "export const result = make();\nconst checked: number = result;",
+      "consumer_accept": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'left' | 'right' = result;",
+      "consumer_reject": "import type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;",
+      "files": {
+        "dep.ts": "export declare const seed: 'left' | 'right';\n"
+      }
+    }
+  ],
+  "owner_controls": [
+    {
+      "id": "declaration-runtime-import-denied",
+      "source": "import { result } from './entry.js'; const checked: string = result;"
+    }
+  ],
+  "budget_controls": [
+    {
+      "id": "return-expansion-limit",
+      "kind": "expansion",
+      "source": "export function first() { return second(); } function second() { return 4; }"
+    },
+    {
+      "id": "return-parser-depth",
+      "kind": "depth",
+      "source": "type Nest = { value: { value: { value: number } } }; export function make(value: Nest) { return value; }"
+    }
+  ]
+}

@@ -245,12 +245,6 @@ impl Parser {
             None
         };
 
-        if generator && async_start && return_type.is_none() && !self.emitted_runtime {
-            self.unsupported(
-                generator_span.clone(),
-                "an async generator without an explicit return annotation is not supported yet",
-            );
-        }
         if generator
             && async_start
             && matches!(return_type.as_ref(), Some(Type::Named { name, .. }) if matches!(name.as_str(), "Generator" | "Iterator" | "IterableIterator" | "Iterable"))

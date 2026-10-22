@@ -81,7 +81,28 @@ impl ModuleChecker<'_> {
 
     fn infer_class_return_types(&self, class: &ClassDeclaration) -> ClassDeclaration {
         let mut inferred = class.clone();
+        for _ in 0..class
+            .members
+            .len()
+            .saturating_add(1)
+            .min(self.max_type_expansions)
+        {
+            let next = self.infer_class_return_pass(&inferred);
+            if next == inferred {
+                break;
+            }
+            inferred = next;
+        }
+        inferred
+    }
+
+    fn infer_class_return_pass(&self, class: &ClassDeclaration) -> ClassDeclaration {
+        let mut inferred = class.clone();
         for member in &mut inferred.members {
+            let getter = member
+                .accessor
+                .as_ref()
+                .is_some_and(|accessor| accessor.getter);
             let (parameters, body, result, span, is_static, type_parameters) =
                 if let Some(method) = &mut member.method {
                     let Some(body) = &method.body else { continue };
@@ -159,7 +180,10 @@ impl ModuleChecker<'_> {
                 overload: false,
                 span: span.clone(),
             };
-            let value = self.inferred_function_result(&function, &scope, false);
+            let mut value = self.inferred_function_result(&function, &scope, false);
+            if getter {
+                value = return_inference::getter_union(value);
+            }
             let explicit_unknown = value == Type::Unknown && body.iter().any(|item| {
                 let FunctionBodyItem::Return { tokens, .. } = item else { return false; };
                 match tokens.as_slice() {

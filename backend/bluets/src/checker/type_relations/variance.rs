@@ -105,6 +105,15 @@ pub(super) fn assignable(
         return None;
     }
     let definition = aliases.get(a)?;
+    // Quote spelling does not make two otherwise identical library
+    // instantiations different. Avoid repeatedly expanding recursive iterator
+    // protocols for this identity case; no subtype or budget rule is relaxed.
+    if definition.kind == TypeDefinitionKind::LibraryInterface
+        && aa.len() == ea.len()
+        && aa.iter().zip(ea).all(|(a, e)| same_argument(a, e))
+    {
+        return Some(true);
+    }
     if !definition
         .parameters
         .iter()
@@ -129,4 +138,21 @@ pub(super) fn assignable(
                 None => is_assignable(a, e, aliases, &mut visited.clone(), budget),
             }),
     )
+}
+
+fn same_argument(actual: &Type, expected: &Type) -> bool {
+    if actual == expected {
+        return true;
+    }
+    if let (Type::Literal(actual), Type::Literal(expected)) = (actual, expected) {
+        if actual.starts_with(['\'', '"']) && expected.starts_with(['\'', '"']) {
+            if let (Some(actual), Some(expected)) = (
+                crate::enum_eval::decode_plain_string(actual),
+                crate::enum_eval::decode_plain_string(expected),
+            ) {
+                return actual == expected;
+            }
+        }
+    }
+    false
 }

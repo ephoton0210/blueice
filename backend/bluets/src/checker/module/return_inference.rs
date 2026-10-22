@@ -8,6 +8,9 @@ use super::*;
 use crate::parser::{NestedFunction, NestedFunctionBody, VariableKind};
 use std::cell::RefCell;
 mod completion;
+mod context;
+mod freshness;
+pub(in crate::checker::module) use freshness::getter_union;
 mod predicates;
 pub(super) use completion::has_return;
 
@@ -15,16 +18,21 @@ pub(super) use completion::has_return;
 pub(super) struct ReturnInference {
     pub(super) results: RefCell<BTreeMap<usize, Type>>,
     pub(super) parameters: RefCell<BTreeMap<usize, Type>>,
+    pub(super) contexts: RefCell<BTreeMap<usize, Type>>,
+    pub(super) fresh_results: RefCell<BTreeSet<usize>>,
     active: RefCell<Vec<Frame>>,
     failures: RefCell<BTreeMap<usize, (SourceSpan, bool)>>,
 }
 
 struct Frame {
     start: usize,
+    span: SourceSpan,
     locals: BTreeMap<String, FunctionDeclaration>,
     tail_calls: BTreeSet<usize>,
     provisional: Type,
     recursive: bool,
+    fresh_names: BTreeSet<String>,
+    bindings: BTreeSet<String>,
 }
 
 #[derive(Default)]
@@ -118,11 +126,18 @@ impl ModuleChecker<'_> {
         {
             let active = self.return_inference.active.borrow();
             let limited = active.len() >= self.max_type_expansions;
-            if limited || active.iter().any(|frame| frame.start == span.start) {
+            if limited {
                 self.return_inference
                     .failures
                     .borrow_mut()
-                    .insert(span.start, (span.clone(), limited));
+                    .insert(span.start, (span.clone(), true));
+                return Type::Unknown;
+            }
+            if let Some(cycle) = active.iter().position(|frame| frame.start == span.start) {
+                let mut failures = self.return_inference.failures.borrow_mut();
+                for frame in &active[cycle..] {
+                    failures.insert(frame.start, (frame.span.clone(), false));
+                }
                 return Type::Unknown;
             }
         }
@@ -137,10 +152,32 @@ impl ModuleChecker<'_> {
             .collect();
         self.return_inference.active.borrow_mut().push(Frame {
             start: span.start,
+            span: span.clone(),
             locals,
             tail_calls: tail_calls(body),
             provisional: Type::Never,
             recursive: false,
+            fresh_names: BTreeSet::new(),
+            bindings: parameters
+                .iter()
+                .flat_map(|parameter| {
+                    parameter
+                        .pattern
+                        .as_ref()
+                        .map(|pattern| match pattern {
+                            BindingPattern::Object(bindings) => bindings
+                                .iter()
+                                .map(|binding| binding.name.clone())
+                                .collect::<Vec<_>>(),
+                            BindingPattern::Array(bindings) => bindings
+                                .iter()
+                                .flatten()
+                                .map(|binding| binding.name.clone())
+                                .collect::<Vec<_>>(),
+                        })
+                        .unwrap_or_else(|| vec![parameter.name.clone()])
+                })
+                .collect(),
         });
         let mut scope = outer.clone();
         for item in body {
@@ -185,11 +222,10 @@ impl ModuleChecker<'_> {
                     if tokens.is_empty() {
                         found.bare = true;
                     } else {
-                        found.fresh &= self.fresh_return(&tokens, &fresh);
-                        found.returns.push(
-                            crate::parser::widen_literal_tokens(&tokens, true)
-                                .unwrap_or_else(|| self.infer_expression(&tokens, &scope)),
-                        );
+                        found.fresh &= self.fresh_return(&tokens, &fresh, &scope);
+                        found
+                            .returns
+                            .push(self.infer_return_expression(&tokens, &scope));
                     }
                 }
             }
@@ -207,6 +243,24 @@ impl ModuleChecker<'_> {
                 .results
                 .borrow_mut()
                 .insert(span.start, provisional);
+        }
+        if found.fresh
+            && !found.returns.is_empty()
+            && !self
+                .return_inference
+                .contexts
+                .borrow()
+                .contains_key(&span.start)
+        {
+            self.return_inference
+                .fresh_results
+                .borrow_mut()
+                .insert(span.start);
+        } else {
+            self.return_inference
+                .fresh_results
+                .borrow_mut()
+                .remove(&span.start);
         }
         let falls_through = self
             .flow
@@ -227,7 +281,14 @@ impl ModuleChecker<'_> {
                 found.returns.push(Type::Undefined);
             }
             let value = joined(found.returns);
-            if found.fresh && matches!(value, Type::Literal(_)) {
+            if found.fresh
+                && !self
+                    .return_inference
+                    .contexts
+                    .borrow()
+                    .contains_key(&span.start)
+                && matches!(value, Type::Literal(_))
+            {
                 widen(value)
             } else {
                 value
@@ -240,10 +301,31 @@ impl ModuleChecker<'_> {
         }
         if generator {
             result = Type::Named {
-                name: "Generator".to_string(),
+                name: if asynchronous {
+                    "AsyncGenerator"
+                } else {
+                    "Generator"
+                }
+                .to_string(),
                 arguments: vec![
-                    joined(found.yields.into_iter().map(widen).collect()),
-                    result,
+                    joined(
+                        found
+                            .yields
+                            .into_iter()
+                            .map(|value| {
+                                if asynchronous {
+                                    awaited(value, self.max_type_expansions)
+                                } else {
+                                    value
+                                }
+                            })
+                            .collect(),
+                    ),
+                    if asynchronous {
+                        awaited(result, self.max_type_expansions)
+                    } else {
+                        result
+                    },
                     if found.inputs.is_empty() {
                         Type::Unknown
                     } else {
@@ -462,10 +544,29 @@ impl ModuleChecker<'_> {
         fresh: &mut BTreeSet<String>,
         found: &mut BodyResults,
     ) {
+        let previous = self
+            .return_inference
+            .active
+            .borrow_mut()
+            .last_mut()
+            .map(|frame| {
+                let previous = frame.bindings.clone();
+                frame
+                    .bindings
+                    .extend(body.iter().filter_map(|item| match item {
+                        FunctionBodyItem::Variable(variable) => Some(variable.name.clone()),
+                        FunctionBodyItem::Function(function) => Some(function.name.clone()),
+                        _ => None,
+                    }));
+                previous
+            });
         for item in body {
+            if let Some(frame) = self.return_inference.active.borrow_mut().last_mut() {
+                frame.fresh_names = fresh.clone();
+            }
             match item {
                 FunctionBodyItem::Variable(variable) => {
-                    self.infer_yields(&variable.initializer, scope, found);
+                    self.infer_yields(&variable.initializer, scope, fresh, found);
                     if variable
                         .initializer
                         .first()
@@ -483,7 +584,7 @@ impl ModuleChecker<'_> {
                         .unwrap_or_else(|| self.infer_expression(&variable.initializer, scope))
                     });
                     if variable.annotation.is_none()
-                        && self.fresh_return(&variable.initializer, fresh)
+                        && self.fresh_return(&variable.initializer, fresh, scope)
                     {
                         fresh.insert(variable.name.clone());
                     } else {
@@ -499,18 +600,17 @@ impl ModuleChecker<'_> {
                     );
                 }
                 FunctionBodyItem::Return { tokens, .. } => {
-                    self.infer_yields(tokens, scope, found);
+                    self.infer_yields(tokens, scope, fresh, found);
                     if tokens.is_empty() {
                         found.bare = true;
                     } else {
-                        found.fresh &= self.fresh_return(tokens, fresh);
+                        found.fresh &= self.fresh_return(tokens, fresh, scope);
                         if let Some(frame) = self.return_inference.active.borrow_mut().last_mut() {
                             frame.provisional = widen(joined(found.returns.clone()));
                         }
-                        found.returns.push(
-                            crate::parser::widen_literal_tokens(tokens, true)
-                                .unwrap_or_else(|| self.infer_expression(tokens, scope)),
-                        );
+                        found
+                            .returns
+                            .push(self.infer_return_expression(tokens, scope));
                     }
                 }
                 FunctionBodyItem::If(statement) => {
@@ -572,12 +672,18 @@ impl ModuleChecker<'_> {
                     }
                 }
                 FunctionBodyItem::Expression { tokens, .. } => {
-                    self.infer_yields(tokens, scope, found)
+                    self.infer_yields(tokens, scope, fresh, found)
                 }
                 FunctionBodyItem::Function(_)
                 | FunctionBodyItem::Throw { .. }
                 | FunctionBodyItem::Opaque(_) => {}
             }
+        }
+        if let (Some(frame), Some(previous)) = (
+            self.return_inference.active.borrow_mut().last_mut(),
+            previous,
+        ) {
+            frame.bindings = previous;
         }
     }
 
@@ -644,18 +750,11 @@ impl ModuleChecker<'_> {
         }
     }
 
-    fn fresh_return(&self, tokens: &[Token], names: &BTreeSet<String>) -> bool {
-        let tokens = strip_outer_parentheses(tokens);
-        crate::parser::widen_literal_tokens(tokens, true).is_some()
-            || matches!(tokens, [name] if names.contains(&name.text)
-                || self.module.declarations.iter().any(|declaration| matches!(declaration,
-                    Declaration::Variable(variable) if variable.name == name.text && variable.annotation.is_none())))
-    }
-
     fn infer_yields(
         &self,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
+        fresh: &BTreeSet<String>,
         found: &mut BodyResults,
     ) {
         for (index, token) in tokens.iter().enumerate() {
@@ -677,6 +776,8 @@ impl ModuleChecker<'_> {
                 self.infer_expression(if delegated { &operand[1..] } else { operand }, scope);
             found.yields.push(if delegated {
                 self.iterated_type(&value).unwrap_or(Type::Unknown)
+            } else if self.fresh_return(operand, fresh, scope) {
+                widen(value)
             } else {
                 value
             });

@@ -204,6 +204,35 @@ impl Parser {
         let name_span = name_token.span(&self.id);
         self.index = closing + 1;
         let decorators = std::mem::take(&mut self.pending_decorators);
+        if crate::compiler::is_declaration_module(&self.id)
+            && (!decorators.is_empty()
+                || members.iter().any(|member| {
+                    !member.decorators.is_empty()
+                        || member.static_block.is_some()
+                        || member
+                            .constructor
+                            .as_ref()
+                            .is_some_and(|value| value.body.is_some())
+                        || member
+                            .method
+                            .as_ref()
+                            .is_some_and(|value| value.body.is_some())
+                        || member
+                            .accessor
+                            .as_ref()
+                            .is_some_and(|value| value.body_present)
+                        || member
+                            .field
+                            .as_ref()
+                            .is_some_and(|value| value.initializer.is_some())
+                }))
+        {
+            self.error_at(
+                span.clone(),
+                DiagnosticCode::InvalidDeclarationFile,
+                "declaration class cannot contain runtime bodies, initializers or decorators",
+            );
+        }
         self.declarations.push(Declaration::Class(ClassDeclaration {
             default_export: false,
             anonymous: false,
@@ -573,7 +602,10 @@ impl Parser {
             let mut locals = Vec::new();
             self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
             true
-        } else if member.abstract_modifier.is_some() && self.consume(";") {
+        } else if (member.abstract_modifier.is_some()
+            || crate::compiler::is_declaration_module(&self.id))
+            && self.consume(";")
+        {
             false
         } else {
             self.error_here(DiagnosticCode::ParseError, "expected an accessor body");

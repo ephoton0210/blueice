@@ -1,0 +1,3326 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "local-fresh-string-accept",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed = 'fresh'; export function make() { return seed; }\nexport const result = make();\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): string;\nexport declare const result: string;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "local-fresh-string-reject",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed = 'fresh'; export function make() { return seed; }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 120,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "local-regular-string-accept",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed: 'fixed' = 'fixed'; export function make() { return seed; }\nexport const result = make();\nconst checked: 'fixed' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): \"fixed\";\nexport declare const result: \"fixed\";\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "local-regular-string-reject",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed: 'fixed' = 'fixed'; export function make() { return seed; }\nexport const result = make();\nconst checked: 'other' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+          "module": "entry.ts",
+          "start": 129,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "local-fresh-alias-accept",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst first = 7; const second = first; export function make() { return second; }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): number;\nexport declare const result: number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'number' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "local-fresh-alias-reject",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst first = 7; const second = first; export function make() { return second; }\nexport const result = make();\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 139,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "regular-const-assertion-accept",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make() { return 'fixed' as const; }\nexport const result = make();\nconst checked: 'fixed' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): \"fixed\";\nexport declare const result: \"fixed\";\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "regular-const-assertion-reject",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make() { return 'fixed' as const; }\nexport const result = make();\nconst checked: 'other' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+          "module": "entry.ts",
+          "start": 110,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "fresh-branch-union-accept",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make(flag: boolean) { if (flag) { return 'left'; } return 'right'; }\nexport const result = make(true);\nconst checked: 'left' | 'right' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(flag: boolean): \"left\" | \"right\";\nexport declare const result: string;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fresh-branch-union-reject",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make(flag: boolean) { if (flag) { return 'left'; } return 'right'; }\nexport const result = make(true);\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 147,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "local-record-widening-accept",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed = 'fresh'; export function make() { return { value: seed }; }\nexport const result = make();\nconst checked: { value: string } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): {\n    value: string;\n};\nexport declare const result: {\n    value: string;\n};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: string } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ value: string; }' is not assignable to type '{ value: number; }'.\n  Types of property 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "local-record-widening-reject",
+      "area": "freshness",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed = 'fresh'; export function make() { return { value: seed }; }\nexport const result = make();\nconst checked: { value: number } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ value: string; }' is not assignable to type '{ value: number; }'.\n  Types of property 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 131,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "imported-fresh-string-accept",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export const seed = 'fresh';\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { seed } from './dep.js'; export function make() { return seed; }\nexport const result = make();\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const seed = \"fresh\";\n",
+        "entry.d.ts": "export declare function make(): string;\nexport declare const result: string;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "imported-fresh-string-reject",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export const seed = 'fresh';\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { seed } from './dep.js'; export function make() { return seed; }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 131,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "imported-regular-string-accept",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export const seed: 'fixed' = 'fixed';\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { seed } from './dep.js'; export function make() { return seed; }\nexport const result = make();\nconst checked: 'fixed' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const seed: 'fixed';\n",
+        "entry.d.ts": "export declare function make(): \"fixed\";\nexport declare const result: \"fixed\";\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "imported-regular-string-reject",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export const seed: 'fixed' = 'fixed';\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { seed } from './dep.js'; export function make() { return seed; }\nexport const result = make();\nconst checked: 'other' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+          "module": "entry.ts",
+          "start": 131,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "imported-const-call-accept",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export const seed = 'fresh'; export function identity<T>(value: T): T { return value; }\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { identity, seed } from './dep.js'; export function make() { return identity(seed); }\nexport const result = make();\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const seed = \"fresh\";\nexport declare function identity<T>(value: T): T;\n",
+        "entry.d.ts": "export declare function make(): string;\nexport declare const result: string;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "imported-const-call-reject",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export const seed = 'fresh'; export function identity<T>(value: T): T { return value; }\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { identity, seed } from './dep.js'; export function make() { return identity(seed); }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 151,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "imported-regular-object-accept",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export const seed = { value: 'fixed' as const };\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { seed } from './dep.js'; export function make() { return seed.value; }\nexport const result = make();\nconst checked: 'fixed' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const seed: {\n    value: \"fixed\";\n};\n",
+        "entry.d.ts": "export declare function make(): \"fixed\";\nexport declare const result: \"fixed\";\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "imported-regular-object-reject",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export const seed = { value: 'fixed' as const };\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { seed } from './dep.js'; export function make() { return seed.value; }\nexport const result = make();\nconst checked: 'other' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+          "module": "entry.ts",
+          "start": 137,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "context-record-arrow-accept",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Box = { kind: 'box'; value: number }; const make: () => Box = () => ({ kind: 'box', value: 1 });\nexport const result = make();\nconst checked: Box = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "type Box = {\n    kind: 'box';\n    value: number;\n};\nexport declare const result: Box;\nexport {};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'box'; value: number } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'wrong'; value: number } = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Box' is not assignable to type '{ kind: \"wrong\"; value: number; }'.\n  Types of property 'kind' are incompatible.\n    Type '\"box\"' is not assignable to type '\"wrong\"'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "context-record-arrow-reject",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Box = { kind: 'box'; value: number }; const make: () => Box = () => ({ kind: 'box', value: 1 });\nexport const result = make();\nconst checked: { kind: 'wrong'; value: number } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Box' is not assignable to type '{ kind: \"wrong\"; value: number; }'.\n  Types of property 'kind' are incompatible.\n    Type '\"box\"' is not assignable to type '\"wrong\"'.",
+          "module": "entry.ts",
+          "start": 160,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "context-union-arrow-accept",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Choice = { kind: 'left'; value: number } | { kind: 'right'; value: string }; const make: (flag: boolean) => Choice = flag => flag ? { kind: 'left', value: 1 } : { kind: 'right', value: 'ok' };\nexport const result = make(true);\nconst checked: Choice = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "type Choice = {\n    kind: 'left';\n    value: number;\n} | {\n    kind: 'right';\n    value: string;\n};\nexport declare const result: Choice;\nexport {};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'left'; value: number } | { kind: 'right'; value: string } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Choice' is not assignable to type 'number'.\n  Type '{ kind: \"left\"; value: number; }' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "context-union-arrow-reject",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Choice = { kind: 'left'; value: number } | { kind: 'right'; value: string }; const make: (flag: boolean) => Choice = flag => flag ? { kind: 'left', value: 1 } : { kind: 'right', value: 'ok' };\nexport const result = make(true);\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Choice' is not assignable to type 'number'.\n  Type '{ kind: \"left\"; value: number; }' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 260,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "context-function-block-accept",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Box = { kind: 'box'; value: number }; const make: () => Box = function () { return { kind: 'box', value: 1 }; };\nexport const result = make();\nconst checked: Box = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "type Box = {\n    kind: 'box';\n    value: number;\n};\nexport declare const result: Box;\nexport {};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'box'; value: number } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Box' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "context-function-block-reject",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Box = { kind: 'box'; value: number }; const make: () => Box = function () { return { kind: 'box', value: 1 }; };\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Box' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 176,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "context-callback-return-accept",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ndeclare function consume(callback: () => { kind: 'box'; value: number }): { kind: 'box'; value: number };\nexport const result = consume(() => ({ kind: 'box', value: 1 }));\nconst checked: { kind: 'box'; value: number } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare const result: {\n    kind: \"box\";\n    value: number;\n};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'box'; value: number } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ kind: \"box\"; value: number; }' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "context-callback-return-reject",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ndeclare function consume(callback: () => { kind: 'box'; value: number }): { kind: 'box'; value: number };\nexport const result = consume(() => ({ kind: 'box', value: 1 }));\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ kind: \"box\"; value: number; }' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 200,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "context-object-method-accept",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Service = { make(): { kind: 'box'; value: number } }; const service: Service = { make() { return { kind: 'box', value: 1 }; } };\nexport const result = service.make();\nconst checked: { kind: 'box'; value: number } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare const result: {\n    kind: \"box\";\n    value: number;\n};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { kind: 'box'; value: number } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ kind: \"box\"; value: number; }' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "context-object-method-reject",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Service = { make(): { kind: 'box'; value: number } }; const service: Service = { make() { return { kind: 'box', value: 1 }; } };\nexport const result = service.make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ kind: \"box\"; value: number; }' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 200,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "context-getter-accept",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Service = { readonly value: 'fixed' };\nconst service: Service = { get value() { return 'fixed' as const; } }; export const result = service.value; const checked: 'fixed' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare const result: \"fixed\";\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "context-getter-reject",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\ntype Service = { readonly value: 'fixed' };\nconst service: Service = { get value() { return 'fixed'; } }; export const result = service.value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type '\"fixed\"'.",
+          "module": "entry.ts",
+          "start": 97,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Service'",
+              "module": "entry.ts",
+              "start": 48,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "context-array-arrow-accept",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst make: () => Array<'left' | 'right'> = () => ['left', 'right'];\nexport const result = make();\nconst checked: Array<'left' | 'right'> = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare const result: (\"left\" | \"right\")[];\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: Array<'left' | 'right'> = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(\"left\" | \"right\")[]' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "context-array-arrow-reject",
+      "area": "context",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst make: () => Array<'left' | 'right'> = () => ['left', 'right'];\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '(\"left\" | \"right\")[]' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 127,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "context-imported-return-accept",
+      "area": "context",
+      "files": {
+        "dep.ts": "export interface Box { kind: 'box'; value: number; }\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { Box } from './dep.js'; const make: () => Box = () => ({ kind: 'box', value: 1 });\nexport const result = make();\nconst checked: Box = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box {\n    kind: 'box';\n    value: number;\n}\n",
+        "entry.d.ts": "import { Box } from './dep.js';\nexport declare const result: Box;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nimport type { Box } from './dep.js'; const checked: Box = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Box' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "context-imported-return-reject",
+      "area": "context",
+      "files": {
+        "dep.ts": "export interface Box { kind: 'box'; value: number; }\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { Box } from './dep.js'; const make: () => Box = () => ({ kind: 'box', value: 1 });\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Box' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 149,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "object-getter-local-accept",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport const service = { get value() { const seed = 4; return seed; } };\nexport const result = service.value;\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare const service: {\n    readonly value: number;\n};\nexport declare const result: number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'number' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(result, service.value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "4 4\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "object-getter-local-reject",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport const service = { get value() { const seed = 4; return seed; } };\nexport const result = service.value;\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 138,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "object-method-local-accept",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport const service = { make(value = 4) { return value + 1; } };\nexport const result = service.make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare const service: {\n    make(value?: number): number;\n};\nexport declare const result: number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'number' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "object-method-local-reject",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport const service = { make(value = 4) { return value + 1; } };\nexport const result = service.make();\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 132,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "object-getter-this-accept",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport const service = { base: 4, get value() { return this.base + 1; } };\nexport const result = service.value;\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare const service: {\n    base: number;\n    readonly value: number;\n};\nexport declare const result: number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'number' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "object-getter-this-reject",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport const service = { base: 4, get value() { return this.base + 1; } };\nexport const result = service.value;\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 140,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "class-getter-method-accept",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport class Service { make() { return 4; } get value() { return this.make(); } }\nexport const result = new Service().value;\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare class Service {\n    make(): number;\n    get value(): number;\n}\nexport declare const result: number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'number' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "class-getter-method-reject",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport class Service { make() { return 4; } get value() { return this.make(); } }\nexport const result = new Service().value;\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 153,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "class-getter-local-accept",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport class Service { get value() { const seed = 4; return { value: seed }; } }\nexport const result = new Service().value;\nconst checked: { value: number } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare class Service {\n    get value(): {\n        value: number;\n    };\n}\nexport declare const result: {\n    value: number;\n};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ value: number; }' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "class-getter-local-reject",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport class Service { get value() { const seed = 4; return { value: seed }; } }\nexport const result = new Service().value;\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ value: number; }' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 152,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "class-getter-branches-accept",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport class Service { flag: boolean = true; get value() { if (this.flag) { return 'left'; } return 4; } }\nexport const result = new Service().value;\nconst checked: string | number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare class Service {\n    flag: boolean;\n    get value(): 4 | \"left\";\n}\nexport declare const result: string | number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string | number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: boolean = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | number' is not assignable to type 'boolean'.\n  Type 'string' is not assignable to type 'boolean'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "class-getter-branches-reject",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport class Service { flag: boolean = true; get value() { if (this.flag) { return 'left'; } return 4; } }\nexport const result = new Service().value;\nconst checked: boolean = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'boolean'.\n  Type 'number' is not assignable to type 'boolean'.",
+          "module": "entry.ts",
+          "start": 178,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "class-method-forward-accept",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport class Service { first() { return this.second(); } second() { return { value: 4 }; } }\nexport const result = new Service().first();\nconst checked: { value: number } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare class Service {\n    first(): {\n        value: number;\n    };\n    second(): {\n        value: number;\n    };\n}\nexport declare const result: {\n    value: number;\n};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ value: number; }' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "class-method-forward-reject",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport class Service { first() { return this.second(); } second() { return { value: 4 }; } }\nexport const result = new Service().first();\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ value: number; }' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 166,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "object-nested-getter-accept",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make() { return { get value() { return 4; }, read() { return 'ok'; } }; }\nexport const result = make();\nconst checked: { readonly value: number; read(): string } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): {\n    readonly value: number;\n    read(): string;\n};\nexport declare const result: {\n    readonly value: number;\n    read(): string;\n};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { readonly value: number; read(): string } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ readonly value: number; read(): string; }' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "object-nested-getter-reject",
+      "area": "member",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make() { return { get value() { return 4; }, read() { return 'ok'; } }; }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ readonly value: number; read(): string; }' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 148,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "async-fresh-value-accept",
+      "area": "async",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed = 'fresh'; export async function make() { return seed; }\nexport const result = await make();\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): Promise<string>;\nexport declare const result: string;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(result);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "fresh\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "async-fresh-value-reject",
+      "area": "async",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed = 'fresh'; export async function make() { return seed; }\nexport const result = await make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 132,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "async-object-result-accept",
+      "area": "async",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport async function make() { return { value: 4 }; }\nexport const result = await make();\nconst checked: { value: number } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): Promise<{\n    value: number;\n}>;\nexport declare const result: {\n    value: number;\n};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ value: number; }' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "async-object-result-reject",
+      "area": "async",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport async function make() { return { value: 4 }; }\nexport const result = await make();\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ value: number; }' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 118,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "async-awaited-import-accept",
+      "area": "async",
+      "files": {
+        "dep.ts": "export async function get(): Promise<'fixed'> { return 'fixed'; }\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { get } from './dep.js'; export async function make() { return await get(); }\nexport const result = await make();\nconst checked: 'fixed' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare function get(): Promise<'fixed'>;\n",
+        "entry.d.ts": "export declare function make(): Promise<\"fixed\">;\nexport declare const result: \"fixed\";\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'fixed' = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'other' = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "async-awaited-import-reject",
+      "area": "async",
+      "files": {
+        "dep.ts": "export async function get(): Promise<'fixed'> { return 'fixed'; }\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { get } from './dep.js'; export async function make() { return await get(); }\nexport const result = await make();\nconst checked: 'other' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"fixed\"' is not assignable to type '\"other\"'.",
+          "module": "entry.ts",
+          "start": 149,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "async-branch-result-accept",
+      "area": "async",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport async function make(flag: boolean) { if (flag) { return 4; } return 'ok'; }\nexport const result = await make(true);\nconst checked: string | number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(flag: boolean): Promise<\"ok\" | 4>;\nexport declare const result: string | number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string | number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: boolean = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | number' is not assignable to type 'boolean'.\n  Type 'string' is not assignable to type 'boolean'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "async-branch-result-reject",
+      "area": "async",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport async function make(flag: boolean) { if (flag) { return 4; } return 'ok'; }\nexport const result = await make(true);\nconst checked: boolean = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string | number' is not assignable to type 'boolean'.\n  Type 'string' is not assignable to type 'boolean'.",
+          "module": "entry.ts",
+          "start": 151,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generator-return-accept",
+      "area": "generator",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function* make() { yield 1; return 'done' as const; }\nexport const result = make();\nconst checked: Generator<number, 'done', unknown> = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): Generator<number, \"done\", unknown>;\nexport declare const result: Generator<number, \"done\", unknown>;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: Generator<number, 'done', unknown> = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Generator<number, \"done\", unknown>' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generator-return-reject",
+      "area": "generator",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function* make() { yield 1; return 'done' as const; }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Generator<number, \"done\", unknown>' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 119,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generator-regular-yield-accept",
+      "area": "generator",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed: 'fixed' = 'fixed'; export function* make() { yield seed; return 4; }\nexport const result = make();\nconst checked: Generator<'fixed', number, unknown> = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): Generator<\"fixed\", number, unknown>;\nexport declare const result: Generator<\"fixed\", number, unknown>;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: Generator<'fixed', number, unknown> = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Generator<\"fixed\", number, unknown>' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generator-regular-yield-reject",
+      "area": "generator",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nconst seed: 'fixed' = 'fixed'; export function* make() { yield seed; return 4; }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Generator<\"fixed\", number, unknown>' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 139,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generator-next-context-accept",
+      "area": "generator",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function* make() { const input: string = yield 1; return input; }\nexport const result = make();\nconst checked: Generator<number, string, string> = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): Generator<number, string, string>;\nexport declare const result: Generator<number, string, string>;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: Generator<number, string, string> = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Generator<number, string, string>' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generator-next-context-reject",
+      "area": "generator",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function* make() { const input: string = yield 1; return input; }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Generator<number, string, string>' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 131,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "async-generator-accept",
+      "area": "generator",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport async function* make() { yield await Promise.resolve(1); return 'done' as const; }\nexport const result = make();\nconst checked: AsyncGenerator<number, 'done', unknown> = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): AsyncGenerator<number, \"done\", unknown>;\nexport declare const result: AsyncGenerator<number, \"done\", unknown>;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: AsyncGenerator<number, 'done', unknown> = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'AsyncGenerator<number, \"done\", unknown>' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "const step = await result.next(); const done = await result.next(); console.log(step.value, step.done, done.value, done.done);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1 false done true\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "async-generator-reject",
+      "area": "generator",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport async function* make() { yield await Promise.resolve(1); return 'done' as const; }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'AsyncGenerator<number, \"done\", unknown>' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 148,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "local-tail-recursion-accept",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make(count: number) { function walk(value: number) { if (value === 0) { return 1; } return walk(value - 1); } return walk(count); }\nexport const result = make(2);\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(count: number): number;\nexport declare const result: number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'number' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(result);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "local-tail-recursion-reject",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make(count: number) { function walk(value: number) { if (value === 0) { return 1; } return walk(value - 1); } return walk(count); }\nexport const result = make(2);\nconst checked: string = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 207,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "local-forward-return-accept",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make() { function first() { return second(); } function second() { return { value: 4 }; } return first(); }\nexport const result = make();\nconst checked: { value: number } = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): {\n    value: number;\n};\nexport declare const result: {\n    value: number;\n};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: { value: number } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ value: number; }' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "local-forward-return-reject",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport function make() { function first() { return second(); } function second() { return { value: 4 }; } return first(); }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ value: number; }' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 182,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "local-embedded-cycle-accept",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\n\nexport function make() { function loop(): { value: number } { return { value: 4 }; } return loop(); } export const result = make();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): {\n    value: number;\n};\nexport declare const result: {\n    value: number;\n};\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: { value: number } = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ value: number; }' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "local-embedded-cycle-reject",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\n\nexport function make() { function loop() { return { value: loop() }; } return loop(); } export const result = make();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 7023,
+          "message": "'loop' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.",
+          "module": "entry.ts",
+          "start": 57,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "local-mutual-cycle-accept",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\n\nexport function make() { function first(): number { return second(); } function second(): number { return 4; } return first(); } export const result = make();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare function make(): number;\nexport declare const result: number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'number' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "local-mutual-cycle-reject",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\n\nexport function make() { function first() { return second(); } function second() { return first(); } return first(); } export const result = make();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 7023,
+          "message": "'first' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.",
+          "module": "entry.ts",
+          "start": 57,
+          "length": 5,
+          "related": []
+        },
+        {
+          "code": 7023,
+          "message": "'second' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.",
+          "module": "entry.ts",
+          "start": 95,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "recursive-expression-accept",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\n\nconst make = function walk(count: number): number { if (count === 0) { return 1; } return walk(count - 1); }; export const result = make(2);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export declare const result: number;\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: number = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected; const checked: string = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'number' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "recursive-expression-reject",
+      "area": "recursion",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\n\nconst make = function walk(count: number) { return { value: walk(count) }; }; export const result = make(2);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 7023,
+          "message": "'walk' implicitly has return type 'any' because it does not have a return type annotation and is referenced directly or indirectly in one of its return expressions.",
+          "module": "entry.ts",
+          "start": 45,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "regular-imported-union-accept",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export declare const seed: 'left' | 'right';\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { seed } from './dep.js'; export function make() { return seed; }\nexport const result = make();\nconst checked: 'left' | 'right' = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const seed: 'left' | 'right';\n",
+        "entry.d.ts": "export declare function make(): \"left\" | \"right\";\nexport declare const result: \"left\" | \"right\";\n"
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: 'left' | 'right' = result;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type { result as Selected } from './entry.js'; declare const result: typeof Selected;\nconst checked: number = result;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string' is not assignable to type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 122,
+              "length": 7,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "regular-imported-union-reject",
+      "area": "freshness",
+      "files": {
+        "dep.ts": "export declare const seed: 'left' | 'right';\n",
+        "entry.ts": "// UTF-16 control: 😀\nimport { seed } from './dep.js'; export function make() { return seed; }\nexport const result = make();\nconst checked: number = result;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "node10",
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "newLine": "lf",
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "exactOptionalPropertyTypes": false,
+        "noUncheckedIndexedAccess": false,
+        "types": []
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.\n  Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 131,
+          "length": 7,
+          "related": []
+        }
+      ]
+    }
+  ],
+  "budget_controls": [
+    {
+      "id": "return-expansion-limit",
+      "kind": "expansion",
+      "source": "export function first() { return second(); } function second() { return 4; }"
+    },
+    {
+      "id": "return-parser-depth",
+      "kind": "depth",
+      "source": "type Nest = { value: { value: { value: number } } }; export function make(value: Nest) { return value; }"
+    }
+  ],
+  "owner_controls": [
+    {
+      "id": "declaration-runtime-import-denied",
+      "source": "import { result } from './entry.js'; const checked: string = result;"
+    }
+  ]
+}

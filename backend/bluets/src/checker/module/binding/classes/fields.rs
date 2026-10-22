@@ -349,7 +349,9 @@ impl ModuleChecker<'_> {
     /// on every path that completes or returns normally from the constructor.
     /// Throwing paths need no initialization; nested functions do not assign it.
     fn check_definite_assignment(&mut self, class: &ClassDeclaration, fields: &[&ClassField]) {
-        if !self.checking.strict_property_initialization {
+        if !self.checking.strict_property_initialization
+            || crate::compiler::is_declaration_module(&self.module.id)
+        {
             return;
         }
         let constructor_bodies: Vec<&[FunctionBodyItem]> = class

@@ -46,7 +46,8 @@ pub(super) fn declaration_module_diagnostics(
                 }
             }
             if let Declaration::Import(import) = declaration {
-                if !import.is_type_only()
+                if !is_declaration_module(module_id)
+                    && !import.is_type_only()
                     && project
                         .resolved_import(module_id, import)
                         .is_some_and(|target| !project.ambient_module_bodies(target).is_empty())
@@ -78,7 +79,8 @@ pub(super) fn declaration_module_diagnostics(
                     );
                     continue;
                 }
-                if !import.is_type_only()
+                if !is_declaration_module(module_id)
+                    && !import.is_type_only()
                     && project
                         .resolved_import(module_id, import)
                         // An installed package's declarations describe code the
@@ -107,10 +109,31 @@ pub(super) fn declaration_module_diagnostics(
         }
         for declaration in &module.declarations {
             let runtime_declaration = match declaration {
-                Declaration::Import(import) => !import.type_only,
+                // An import inside a declaration file is a static graph edge,
+                // never an executable binding or a runtime counterpart grant.
+                Declaration::Import(_) => false,
                 Declaration::Variable(variable) => !variable.declared,
                 Declaration::Function(function) => !function.declared && !function.overload,
-                Declaration::Class(_) => true,
+                Declaration::Class(class) => class.members.iter().any(|member| {
+                    member.static_block.is_some()
+                        || !member.decorators.is_empty()
+                        || member
+                            .constructor
+                            .as_ref()
+                            .is_some_and(|value| value.body.is_some())
+                        || member
+                            .method
+                            .as_ref()
+                            .is_some_and(|value| value.body.is_some())
+                        || member
+                            .accessor
+                            .as_ref()
+                            .is_some_and(|value| value.body_present)
+                        || member
+                            .field
+                            .as_ref()
+                            .is_some_and(|value| value.initializer.is_some())
+                }),
                 Declaration::Enum(_) => true,
                 Declaration::Namespace(namespace) => {
                     !namespace.declared && !ambient::namespace_is_type_only(&namespace.body)

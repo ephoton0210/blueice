@@ -58,13 +58,36 @@ impl<'a> ModuleChecker<'a> {
                 index = end + usize::from(tokens[end].is(","));
                 continue;
             }
-            if let Some((name, member_end, value, setter)) = self.nested_member(tokens, index) {
+            if let Some((name, member_end, value, setter)) =
+                self.nested_member(tokens, index, scope, &fields, expected)
+            {
                 // A setter only supplies the property type when no getter did.
+                if setter {
+                    if let Some(field) = fields
+                        .iter_mut()
+                        .find(|field: &&mut TypeField| field.name == name)
+                    {
+                        field.readonly = false;
+                        field.accessor_write_type = Some(Box::new(value.clone()));
+                    }
+                }
                 if !(setter && fields.iter().any(|field: &TypeField| field.name == name)) {
+                    let previous_write = fields
+                        .iter()
+                        .find(|field| field.name == name)
+                        .and_then(|field| field.accessor_write_type.clone());
+                    let readonly = self
+                        .module
+                        .nested_functions
+                        .get(&tokens[index].start)
+                        .is_some_and(|f| f.kind == NestedFunctionKind::Getter)
+                        && previous_write.is_none();
                     insert_inferred_record_field(
                         &mut fields,
                         TypeField {
-                            accessor_write_type: None,
+                            accessor_write_type: setter
+                                .then(|| Box::new(value.clone()))
+                                .or(previous_write),
                             method: self
                                 .module
                                 .nested_functions
@@ -73,7 +96,7 @@ impl<'a> ModuleChecker<'a> {
                                     function.kind == NestedFunctionKind::Method
                                 }),
                             name,
-                            readonly: false,
+                            readonly,
                             optional: false,
                             value,
                             span: SourceSpan::new(
@@ -120,7 +143,11 @@ impl<'a> ModuleChecker<'a> {
                 (
                     match context {
                         Some(context) => self.infer_in_context(value_tokens, scope, context),
-                        None => self.infer_expression(value_tokens, scope),
+                        None => self.array_element_type(
+                            value_tokens,
+                            scope,
+                            self.infer_expression(value_tokens, scope),
+                        ),
                     },
                     value_end,
                 )
@@ -160,10 +187,28 @@ impl<'a> ModuleChecker<'a> {
     /// its property name, the index of the `,` or `}` ending it, the type it
     /// gives the property (a function type for a method) and whether it is a
     /// setter.
-    fn nested_member(&self, tokens: &[Token], index: usize) -> Option<(String, usize, Type, bool)> {
+    fn nested_member(
+        &self,
+        tokens: &[Token],
+        index: usize,
+        scope: &BTreeMap<String, Type>,
+        fields: &[TypeField],
+        expected: Option<&[TypeField]>,
+    ) -> Option<(String, usize, Type, bool)> {
         let nested = self.module.nested_functions.get(&tokens[index].start)?;
         let end = record_member_end(tokens, index)?;
-        let result = || nested.return_type.clone().unwrap_or(Type::Unknown);
+        let mut local = scope.clone();
+        local.insert("this".into(), Type::Record(fields.to_vec()));
+        let name_index = index + usize::from(nested.async_function || nested.generator);
+        if nested.kind == NestedFunctionKind::Method {
+            if let Some(Type::Function { result, .. }) = expected
+                .and_then(|fields| fields.iter().find(|f| f.name == tokens[name_index].text))
+                .map(|field| &field.value)
+            {
+                self.contextual_return(nested.span.start, result);
+            }
+        }
+        let result = || self.inferred_nested_result(nested, &local);
         let (name, value, setter) = match nested.kind {
             NestedFunctionKind::Method => (
                 // `async name(..)` starts at the `async` token.
@@ -171,11 +216,8 @@ impl<'a> ModuleChecker<'a> {
                     .text
                     .clone(),
                 Type::Function {
-                    parameters: nested.parameters.clone(),
-                    result: Box::new(super::super::super::binding::async_result(
-                        result(),
-                        nested.async_function && nested.return_type.is_none(),
-                    )),
+                    parameters: self.return_parameters(&nested.parameters, &local),
+                    result: Box::new(result()),
                 },
                 false,
             ),

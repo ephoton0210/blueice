@@ -189,6 +189,36 @@ impl ModuleChecker<'_> {
         actual: &Type,
         expected: &Type,
     ) {
+        if let Some(normalized) =
+            crate::checker::type_relations::normalize_more_type(actual, &self.types)
+        {
+            self.assignment_error(span, message, bts_code, &normalized, expected);
+            return;
+        }
+        if matches!(actual, Type::Named {name, ..} if name.starts_with("typeof ")) {
+            let mut source = actual.clone();
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            let mut seen = HashSet::new();
+            while matches!(&source, Type::Named {name, ..} if name.starts_with("typeof ")) {
+                let Some(next) = instantiate_named(
+                    &source,
+                    &self.types,
+                    &mut seen,
+                    &mut budget,
+                    "query diagnostic",
+                ) else {
+                    break;
+                };
+                source = next;
+            }
+            if source != *actual
+                && !budget.exhausted
+                && !matches!(source, Type::Function { .. } | Type::GenericFunction { .. })
+            {
+                self.assignment_error(span, message, bts_code, &source, expected);
+                return;
+            }
+        }
         if self.constructor_assignment_error(span, &message, bts_code, actual, expected) {
             return;
         }
@@ -295,6 +325,41 @@ impl ModuleChecker<'_> {
                         &mut budget,
                     ) && !budget.exhausted
                     {
+                        if self
+                            .module
+                            .nested_functions
+                            .get(&field.span.start)
+                            .is_some_and(|function| {
+                                function.kind == crate::parser::NestedFunctionKind::Getter
+                            })
+                        {
+                            if let Ok(tokens) =
+                                crate::syntax::lex(&self.module.id, &self.module.source)
+                            {
+                                if let Some(pair) = tokens.windows(2).find(|pair| {
+                                    pair[0].start == field.span.start && pair[0].is("get")
+                                }) {
+                                    let mut field = field.clone();
+                                    field.span = pair[1].span(&self.module.id);
+                                    let mut origin = expected_field.clone();
+                                    if let Some(source) = self.project.source(&origin.span.module) {
+                                        if let Ok(tokens) =
+                                            crate::syntax::lex(&origin.span.module, source)
+                                        {
+                                            if let Some(token) = tokens.iter().find(|token| {
+                                                token.start >= origin.span.start
+                                                    && token.end <= origin.span.end
+                                                    && token.is(&origin.name)
+                                            }) {
+                                                origin.span = token.span(&origin.span.module);
+                                            }
+                                        }
+                                    }
+                                    self.asserted_property_error(&field, &origin, expected);
+                                    return;
+                                }
+                            }
+                        }
                         self.typescript_type_error(
                             span,
                             message,
@@ -370,7 +435,17 @@ impl ModuleChecker<'_> {
                 .map(|reason| reason.message)
                 .or_else(|| self.compatibility_detail(actual, expected))
                 .unwrap_or_else(|| {
-                    crate::diagnostic::type_text::detail(actual, expected, self.project)
+                    let original =
+                        crate::diagnostic::type_text::detail(actual, expected, self.project);
+                    if !original.is_empty() {
+                        original
+                    } else {
+                        crate::diagnostic::type_text::detail(
+                            &self.compatibility_shape(actual),
+                            &self.compatibility_shape(expected),
+                            self.project,
+                        )
+                    }
                 });
             if let Some(counterpart) = self
                 .diagnostics

@@ -29,7 +29,7 @@ use modules::specialize_imported_class_type;
 mod namespaces;
 pub(in crate::checker::module) use functions::promise_value_type;
 pub(crate) use namespaces::{ExportedValue, NamespaceExport, NamespaceMembers};
-pub(in crate::checker::module) use nested_functions::{async_result, declared_function_type};
+pub(in crate::checker::module) use nested_functions::declared_function_type;
 mod nested_functions;
 pub(in crate::checker) use classes::{
     class_definition_parameters, class_export, class_instance_type, class_with_interface_heritage,

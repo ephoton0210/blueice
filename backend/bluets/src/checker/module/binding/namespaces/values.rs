@@ -341,7 +341,15 @@ impl ModuleChecker<'_> {
         variable: &crate::parser::VariableDeclaration,
         scope: &BTreeMap<String, Type>,
     ) -> Type {
-        let inferred = self.infer_expression(&variable.initializer, scope);
+        let mut inferred = self.infer_expression(&variable.initializer, scope);
+        if matches!(&inferred, Type::Named {name, ..} if matches!(name.as_str(), "Array" | "ReadonlyArray"))
+        {
+            if let Some(array) =
+                crate::checker::type_relations::normalize_more_type(&inferred, &self.types)
+            {
+                inferred = array;
+            }
+        }
         if inferred == Type::Unknown
             && variable
                 .initializer

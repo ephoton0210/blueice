@@ -67,6 +67,10 @@ impl ModuleChecker<'_> {
                     .results
                     .borrow_mut()
                     .remove(&function.span.start);
+                self.return_inference
+                    .contexts
+                    .borrow_mut()
+                    .remove(&function.span.start);
                 for parameter in &function.parameters {
                     if parameter.annotation.is_none() {
                         self.return_inference

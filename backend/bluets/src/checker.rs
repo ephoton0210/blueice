@@ -38,6 +38,7 @@ pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v3";
 pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v4";
 pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/1";
 pub(crate) const OVERLOAD_CHAINS_VERSION: &str = "bluets-overload-chains/1";
+pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/1";
 mod computed_keys;
 pub(crate) mod tuple_compositions;
 mod type_operators;

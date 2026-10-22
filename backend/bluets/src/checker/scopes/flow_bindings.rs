@@ -10,6 +10,19 @@ use super::*;
 pub(super) struct BindingId(pub(super) ScopeId, pub(super) String);
 
 impl ScopeModel<'_> {
+    /// A local binding blocks a module-level namesake even when it is regular.
+    pub(in crate::checker) fn local_literal_initializer(
+        &self,
+        token: &Token,
+    ) -> Option<Option<Vec<Token>>> {
+        let id = self.flow_binding(&token.text, token.start)?;
+        if id.0 == 0 {
+            return None;
+        }
+        let binding = self.scopes[id.0].values.get(&id.1)?;
+        Some((!binding.annotated).then(|| self.flow_alias(&id)).flatten())
+    }
+
     pub(in crate::checker) fn arguments_reads_at(&self, creation: usize) -> &[SourceSpan] {
         self.arguments_reads
             .get(&self.flow_execution(creation))

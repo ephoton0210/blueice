@@ -113,6 +113,7 @@ pub(super) fn emit_declaration(
             }
             Declaration::Variable(variable)
                 if (!variable.declared
+                    || variable.exported
                     || inferred.is_some_and(|context| context.retained(&variable.name)))
                     && (variable.exported
                         || is_default_export_name(module, &variable.name)

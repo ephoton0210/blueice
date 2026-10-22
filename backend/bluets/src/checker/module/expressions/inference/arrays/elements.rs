@@ -28,7 +28,7 @@ impl ModuleChecker<'_> {
             .collect()
     }
 
-    pub(super) fn array_element_type(
+    pub(in crate::checker::module) fn array_element_type(
         &self,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
@@ -70,6 +70,9 @@ impl ModuleChecker<'_> {
             return false;
         }
         let tokens = strip_outer_parentheses(tokens);
+        if self.fresh_return_call(tokens, scope) {
+            return true;
+        }
         if let [token] = tokens {
             if matches!(
                 token.kind,
@@ -79,10 +82,32 @@ impl ModuleChecker<'_> {
             {
                 return true;
             }
+            if let Some(local) = self
+                .scopes
+                .as_ref()
+                .and_then(|scopes| scopes.local_literal_initializer(token))
+            {
+                let Some(initializer) = local else {
+                    return false;
+                };
+                let Some(first) = initializer.first() else {
+                    return false;
+                };
+                if !seen.insert(format!("local:{}:{}", token.text, first.start)) {
+                    return false;
+                }
+                return self.fresh_array_element(&initializer, scope, seen, depth + 1);
+            }
+            if let Some(fresh) = self.fresh_local_return(&token.text) {
+                return fresh;
+            }
             if scope.get(&token.text) != self.values.get(&token.text)
                 || !seen.insert(token.text.clone())
             {
                 return false;
+            }
+            if let Some(fresh) = self.imported_literal_freshness(&token.text) {
+                return fresh;
             }
             if self.module.declarations.iter().any(|declaration| {
                 matches!(declaration, Declaration::Import(import)

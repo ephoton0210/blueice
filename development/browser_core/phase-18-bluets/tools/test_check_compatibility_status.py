@@ -104,12 +104,14 @@ class CurrentStatusTests(unittest.TestCase):
                 status.render_status(*inputs)
 
     def test_unaccounted_feature_or_refusal_rows_fail(self):
+        refusal_header = self.inputs[4].splitlines()[0]
         for before, after in [
             ("| G-T1 | open |", "| G-T1 | closed |"),
             ("| G-T1 | open |", "| G-T1 | unknown |"),
-            ("213 refusal sites", "212 refusal sites"),
+            (refusal_header, "0 refusal sites in 0 areas"),
         ]:
             inputs = list(self.inputs)
+            self.assertIn(before, inputs[3])
             inputs[3] = inputs[3].replace(before, after)
             with self.subTest(change=before), self.assertRaises(ValueError):
                 status.render_status(*inputs)

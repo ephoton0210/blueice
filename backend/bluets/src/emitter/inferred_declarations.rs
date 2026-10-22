@@ -231,6 +231,10 @@ impl<'a> Context<'a> {
                                 checked.inferred_returns.get(&method.span.start)
                             {
                                 context.references(value);
+                                if record_annotation(value) {
+                                    let rendered = context.render(value, 4, &method.span)?;
+                                    context.return_types.insert(method.span.start, rendered);
+                                }
                             }
                         }
                     }

@@ -366,6 +366,24 @@ pub(crate) fn argument_in(actual: &Type, expected: &Type, project: &crate::Proje
 }
 
 pub(crate) fn assignment_in(actual: &Type, expected: &Type, project: &crate::Project) -> String {
+    if let Type::Union(parts) = actual {
+        if matches!(expected, Type::String | Type::Number | Type::Boolean)
+            && parts.iter().all(|part| matches!(part, Type::Literal(_)))
+        {
+            let mut values = parts
+                .iter()
+                .map(|part| argument_in(part, expected, project))
+                .collect::<Vec<_>>();
+            values.sort_by_key(|value| match value.as_str() {
+                "string" => 0,
+                "number" => 1,
+                "boolean" => 2,
+                _ => 3,
+            });
+            values.dedup();
+            return values.join(" | ");
+        }
+    }
     if matches!(actual, Type::Literal(value) if value.starts_with(['\'', '"'])
         || value.parse::<f64>().is_ok() || matches!(value.as_str(), "true" | "false"))
     {

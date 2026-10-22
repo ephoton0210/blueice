@@ -132,7 +132,12 @@ impl ModuleChecker<'_> {
         false
     }
 
-    fn asserted_property_error(&mut self, actual: &TypeField, expected: &TypeField, parent: &Type) {
+    pub(in crate::checker::module) fn asserted_property_error(
+        &mut self,
+        actual: &TypeField,
+        expected: &TypeField,
+        parent: &Type,
+    ) {
         let point = SourceSpan::new(
             &self.module.id,
             actual.span.start,
