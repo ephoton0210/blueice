@@ -155,8 +155,10 @@ the total at 89,984 KiB (+8 MiB over the warm baseline, within the 32 MiB bound;
 the cause, allocator retention versus a retained document, is not established).
 Not covered: the pixel/frame comparison and a human-visible frontend.
 
-Still to do before M1v–M1z can be called accepted: the full pinned Test262
-inventory, workspace tests and coverage gate, a stability check of the full suite.
+Remaining before M1v–M1z can be called accepted: a stability soak of the full
+suite (the two flakes found so far are fixed; 40 further clean runs would close
+this), the frame/pixel and human-visible frontend comparison for the two-tab
+case, and an owner decision to accept.
 
 ## A. Event loop and scheduling (P0)
 
