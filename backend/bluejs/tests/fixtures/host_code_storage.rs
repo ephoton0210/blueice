@@ -355,6 +355,36 @@ fn host_code_storage_sparse_reclamation_can_decline_without_terminal_failure() {
     assert_eq!(cache.borrow().sources.capacity(), 3);
 }
 
+/// A table's `capacity()` drops when removals leave tombstones and rises again
+/// when later insertions reuse them, with no reallocation. The ledger follows
+/// the real allocation, so pruning never asks for more than it holds. Each
+/// iteration builds fresh tables, hence a fresh random hash seed.
+#[cfg_attr(test, test)]
+fn host_code_storage_prune_ignores_tombstone_capacity_drift() {
+    for round in 0..200 {
+        let vm = page();
+        let (budget, cache) = setup_cache(&vm);
+        let originals: Vec<_> = (0..40)
+            .map(|i| script(&format!("(function kept(){{return {round}+{i};}})")))
+            .collect();
+        let prepare = |range: std::ops::Range<usize>| -> Vec<SharedBytecode> {
+            range
+                .map(|i| {
+                    HostCodeCache::prepare(&cache, &originals[i].functions[0], &budget).unwrap()
+                })
+                .collect()
+        };
+        let mut live = prepare(0..22);
+        live.drain(..16);
+        cache.borrow_mut().prune();
+        live.extend(prepare(22..40));
+        cache.borrow_mut().prune();
+        live.clear();
+        cache.borrow_mut().prune();
+        assert!(vm.check_scheduling_failure().is_ok());
+    }
+}
+
 fn queued(timer: bool) {
     let mut vm = page();
     if timer {

@@ -19,6 +19,12 @@ struct CachedCode {
 pub(crate) struct HostCodeCache {
     code: HashMap<usize, CachedCode>,
     sources: HashMap<usize, WeakSource>,
+    // Slots of each table's real allocation, fixed when it is rebuilt. A
+    // table's `capacity()` is not a size: deletions leave tombstones that lower
+    // it and later insertions raise it again with no reallocation, so the
+    // ledger must not follow it.
+    code_slots: usize,
+    source_slots: usize,
     charge: SharedSchedulingCharge,
 }
 impl Drop for HostCodeCache {
@@ -33,6 +39,7 @@ fn header_bytes() -> usize {
 }
 fn grow<V>(
     map: &mut HashMap<usize, V>,
+    slots: &mut usize,
     owner: &mut SharedSchedulingCharge,
     key: usize,
     budget: &HeapNativeBudget,
@@ -46,23 +53,26 @@ fn grow<V>(
     let mut charge = budget.reserve(minimum)?;
     let mut candidate = HashMap::new();
     candidate.try_reserve(count).map_err(|_| budget.fail())?;
-    charge.resize(candidate.capacity().saturating_mul(slot))?;
-    let old = map.capacity().saturating_mul(slot);
+    let candidate_slots = candidate.capacity();
+    charge.resize(candidate_slots.saturating_mul(slot))?;
+    let old = slots.saturating_mul(slot);
     candidate.extend(map.drain());
     *map = candidate;
+    *slots = candidate_slots;
     owner.release_to(owner.bytes() - old);
     owner.absorb(charge)?;
     Ok(())
 }
-fn shrink<V>(map: &mut HashMap<usize, V>, owner: &mut SharedSchedulingCharge) {
+fn shrink<V>(map: &mut HashMap<usize, V>, slots: &mut usize, owner: &mut SharedSchedulingCharge) {
     let slot = std::mem::size_of::<(usize, V)>();
-    let old_slots = map.capacity().saturating_mul(slot);
+    let old_slots = slots.saturating_mul(slot);
     if map.is_empty() {
         *map = HashMap::new();
+        *slots = 0;
         owner.release_to(owner.bytes() - old_slots);
         return;
     }
-    if map.capacity() <= map.len().saturating_mul(4) {
+    if *slots <= map.len().saturating_mul(4) {
         return;
     }
     let old = owner.bytes();
@@ -75,7 +85,8 @@ fn shrink<V>(map: &mut HashMap<usize, V>, owner: &mut SharedSchedulingCharge) {
         owner.release_to(old);
         return;
     }
-    let admitted = old.saturating_add(candidate.capacity().saturating_mul(slot));
+    let candidate_slots = candidate.capacity();
+    let admitted = old.saturating_add(candidate_slots.saturating_mul(slot));
     if !owner.try_resize_for_reclamation(admitted) {
         drop(candidate);
         owner.release_to(old);
@@ -83,6 +94,7 @@ fn shrink<V>(map: &mut HashMap<usize, V>, owner: &mut SharedSchedulingCharge) {
     }
     candidate.extend(map.drain());
     *map = candidate;
+    *slots = candidate_slots;
     owner.release_to(admitted - old_slots);
 }
 impl HostCodeCache {
@@ -98,6 +110,8 @@ impl HostCodeCache {
         let cache = Rc::new(RefCell::new(Self {
             code: HashMap::new(),
             sources: HashMap::new(),
+            code_slots: 0,
+            source_slots: 0,
             charge,
         }));
         budget.install_host_code_cache(&cache);
@@ -120,9 +134,12 @@ impl HostCodeCache {
         let owner = SourceOwner::host(text, budget)?;
         let mut cache = cache.borrow_mut();
         let Self {
-            sources, charge, ..
+            sources,
+            source_slots,
+            charge,
+            ..
         } = &mut *cache;
-        grow(sources, charge, key, budget)?;
+        grow(sources, source_slots, charge, key, budget)?;
         sources.insert(key, owner.weak());
         Ok(owner)
     }
@@ -153,10 +170,11 @@ impl HostCodeCache {
         let mut cache = cache.borrow_mut();
         let Self {
             code: entries,
+            code_slots,
             charge,
             ..
         } = &mut *cache;
-        grow(entries, charge, key, budget)?;
+        grow(entries, code_slots, charge, key, budget)?;
         entries.insert(
             key,
             CachedCode {
@@ -196,17 +214,15 @@ impl HostCodeCache {
     pub(crate) fn prune(&mut self) {
         self.code.retain(|_, entry| entry.compiled.live());
         self.sources.retain(|_, source| source.live());
-        shrink(&mut self.code, &mut self.charge);
-        shrink(&mut self.sources, &mut self.charge);
+        shrink(&mut self.code, &mut self.code_slots, &mut self.charge);
+        shrink(&mut self.sources, &mut self.source_slots, &mut self.charge);
         let bytes = header_bytes()
             .saturating_add(
-                self.code
-                    .capacity()
+                self.code_slots
                     .saturating_mul(std::mem::size_of::<(usize, CachedCode)>()),
             )
             .saturating_add(
-                self.sources
-                    .capacity()
+                self.source_slots
                     .saturating_mul(std::mem::size_of::<(usize, WeakSource)>()),
             );
         self.charge.release_to(bytes);

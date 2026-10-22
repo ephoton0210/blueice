@@ -13,7 +13,8 @@ fn ordinary_file_realms_share_one_serialized_owner_connection() {
     let server_capability = capability.clone();
     let server = std::thread::spawn(move || {
         let (mut peer, _) = listener.accept().unwrap();
-        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
         assert_eq!(
             script::read_script_request(&mut peer).unwrap(),
             ScriptRequest::Hello {

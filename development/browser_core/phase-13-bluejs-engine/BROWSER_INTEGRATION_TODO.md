@@ -125,6 +125,20 @@ compacted size (0 of 1,000 single runs fail; `dependency_storage`,
 `disposal_map_storage` and `await_registration` showed 0 of 200 each). Rule:
 never pin a RandomState map's `capacity()` after removals.
 
+Measured on the committed tree (2026-10-21): full pinned Test262 inventory
+102,921 pass / 0 fail / 1 `stale_corpus` / 4 `excluded` of 102,926 modes; workspace
+tests and `clippy --workspace -D warnings` green. The workspace run found a real
+defect the bluejs suite had missed: `HostCodeCache::prune` (and `grow`/`shrink`)
+ledgered its tables by `HashMap::capacity()`, which drops with tombstones and
+rises again with no reallocation, so `release_to` could be asked for more than it
+held and panic the page child ("cleanup cannot acquire native storage",
+about half of `real_mcp_keeps_queued_reference_and_nested_assignment_sources`
+runs). The cache now records each table's real slot count; a 200-seed
+regression test fails on the old code. Coverage was run with Homebrew `llvm@22`
+(`LLVM_COV`/`LLVM_PROFDATA`, same LLVM as rustc) and, under `zsh`, with
+`NO_BG_NICE` (a background job's +5 niceness fails the three launcher priority
+tests).
+
 Still to do before M1v–M1z can be called accepted: the full pinned Test262
 inventory, workspace tests and coverage gate, the original integrated
 acceptance (two-tab, long-running) and a stability check of the suite.
