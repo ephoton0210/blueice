@@ -138,6 +138,9 @@ regression test fails on the old code. Coverage was run with Homebrew `llvm@22`
 (`LLVM_COV`/`LLVM_PROFDATA`, same LLVM as rustc) and, under `zsh`, with
 `NO_BG_NICE` (a background job's +5 niceness fails the three launcher priority
 tests).
+Workspace coverage gate on that tree (`cargo llvm-cov --workspace`, `--fail-under-lines 90`,
+no failing test): lines 93.50% (293,263 / 313,664), functions 93.15%
+(24,497 / 26,298), regions 92.97% (449,576 / 483,596).
 
 Still to do before M1v–M1z can be called accepted: the full pinned Test262
 inventory, workspace tests and coverage gate, the original integrated
