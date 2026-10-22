@@ -8,12 +8,12 @@ use super::*;
 pub(super) fn resolve(
     value: &ConditionalType,
     aliases: &BTreeMap<String, TypeDefinition>,
-    visited: &mut HashSet<String>,
+    _visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<Type> {
-    let actual = expanded(&value.check, aliases, &mut visited.clone(), budget);
+    let actual = &value.check;
     let mut substitutions = BTreeMap::new();
-    let matched = matches(&actual, &value.extends, &mut substitutions, aliases, budget);
+    let matched = matches(actual, &value.extends, &mut substitutions, aliases, budget);
     if budget.exhausted {
         return None;
     }
@@ -33,6 +33,56 @@ pub(super) fn matches(
 ) -> bool {
     if !budget.consume() {
         return false;
+    }
+    if let Type::Named {
+        name: expected_name,
+        ..
+    } = pattern
+    {
+        if aliases
+            .get(expected_name)
+            .is_some_and(|definition| definition.kind == TypeDefinitionKind::LibraryInterface)
+        {
+            let mut operand = actual.clone();
+            let mut visited = HashSet::new();
+            while !matches!(&operand, Type::Named {name, ..} if name == expected_name) {
+                let Some(next) = instantiate_named(
+                    &operand,
+                    aliases,
+                    &mut visited,
+                    budget,
+                    "conditional identity",
+                ) else {
+                    break;
+                };
+                operand = next;
+            }
+            if operand != *actual
+                && matches!(&operand, Type::Named {name, ..} if name == expected_name)
+            {
+                return matches(&operand, pattern, bindings, aliases, budget);
+            }
+        }
+    }
+    if let (
+        Type::Named { name, arguments },
+        Type::Named {
+            name: pattern_name,
+            arguments: patterns,
+        },
+    ) = (actual, pattern)
+    {
+        if name == pattern_name
+            && arguments.len() == patterns.len()
+            && aliases
+                .get(name)
+                .is_some_and(|definition| definition.kind == TypeDefinitionKind::LibraryInterface)
+        {
+            return arguments
+                .iter()
+                .zip(patterns)
+                .all(|(actual, pattern)| matches(actual, pattern, bindings, aliases, budget));
+        }
     }
     let actual = expanded(actual, aliases, &mut HashSet::new(), budget);
     let callable = match &actual {

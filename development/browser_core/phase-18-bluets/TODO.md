@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-10-22).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,234 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,687 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 12,661/12,670 (99.9290%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 27 BlueTS owner = 564; excluded from direct agreement |
-| Case labels | 13,225 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 110 suites / 263 ignored Rust functions; not a case denominator |
-| Suite labels | 104 scoped closed, 1 open, 5 refused |
+| Direct agreement | 13,109/13,118 (99.9314%); 3 open, 6 refused observations |
+| Separate controls | 537 native-reference + 32 BlueTS owner = 569; excluded from direct agreement |
+| Case labels | 13,678 scoped closed (including controls), 3 open, 6 refused |
+| Suite inventory | 111 suites / 265 ignored Rust functions; not a case denominator |
+| Suite labels | 105 scoped closed, 1 open, 5 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 212 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,234 recorded case expectations pass; expected differences/refusals are not
+All 13,687 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:b2070eb084f03cff84b53e25269844e2d100a3d8`.
-Input graph SHA-256: `09671b3ebdc55053d03abcc0e067eeb9fa94776f3dd284f5f06ef5c1275393aa`.
+Compiler/oracle source: `backend-tree:62ccfc78ba313e40527b29b4da9af4791d77ccde`.
+Input graph SHA-256: `ddbd29a71054ead392ea2b496e10cdf32b45f8a5859385f3f115c77907a781d0`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -44,8 +44,8 @@ Older dated measurements below retain their original scope; they are not this cu
 **Current work (2026-10-22):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, both
-G-T1 stages, G-T3, G-T2, G-T5, G-T6, G-T4 and G-T8 are complete for their scopes below;
-14 packages remain unchecked. Next: G-T7.**
+G-T1 stages, G-T3, G-T2, G-T5, G-T6, G-T4, G-T8 and G-T7 are complete for their scopes below;
+13 packages remain unchecked. Next: G-T10.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -367,7 +367,7 @@ Existing measured behavior is reused; it is not implemented again.
     assertions and 80 original G-T8 producer observations remain unchanged.
     [Source, commands and acceptance](PLAN.md#phase-l--g-t8-implementation).
 
-- [ ] **G-T7 — Expand the original standard-library API manifest.**
+- [x] **G-T7 — Expand the original standard-library API manifest.**
   - **Scope:** freeze the remaining constructor/overload/member/protocol list from
     STANDARD_LIBRARY omissions: Array/ReadonlyArray callbacks, Promise aggregates
     and chaining, collections/iteration, primitive/Object/Function utilities,
@@ -379,6 +379,37 @@ Existing measured behavior is reused; it is not implemented again.
     content/version fingerprints and no-runtime-grant controls pass. Correct
     STANDARD_LIBRARY.md's stale v1/construct-signature claims against the existing
     v2 profiles/parser before adding declarations; do not reimplement existing forms.
+  - **Frozen minimum:** `gt7_library_manifest/cases.json` / `reference.json`:
+    217 accepted/rejected pairs (434 native observations) in 19 named API
+    families, strict ES2022/ESNext with an explicit ES2022 library. Cover generic
+    Array/ReadonlyArray callbacks and constructors, Promise adoption/chaining/
+    aggregates, collection constructors and computed iterator protocols, primitive/
+    Object/Function utilities, Math/JSON/Symbol, callable/new error constructors
+    and cause options, Date/RegExp, Reflect/Intl/BigInt, buffers/DataView, all eleven
+    numeric/bigint typed arrays and Atomics number/bigint results.
+  - **Acceptance:** 224 byte-exact declaration files (217 API programs plus
+    seven explicit-library profiles), 434 type-only downstream accept/reject
+    diagnostic observations, native bidirectional consumers, syntax checks and
+    five Node executions. Seven ES2015–ES2022 profiles use ES5 output with the
+    eligible library and with the immediately preceding library (14 native
+    observations); no missing library may acquire an opaque fallback. Keep five
+    separate owner controls for replacement, runtime denial, source confinement,
+    exact content/version fingerprints and configured generic-work budgets.
+  - **Completion gate:** preserve all 13,234 previous assertion identities and
+    expectations; run the complete source-frozen oracle cohort and ordinary
+    two-crate tests, cache invalidation, formatting, warnings-denied Clippy and
+    all source/case/log/tool/document audits before checking or submitting this
+    item. Submit implementation and completed measurement together. The broader
+    G-T7 row stays open beyond the frozen manifest; full parity remains OFF.
+  - **Completed (2026-10-22):** all 448 native API/profile observations, 224 exact
+    declaration graphs/files, 434 downstream diagnostics, five executions and
+    five separate owner controls pass. Source-frozen replay: 111 suites / 585
+    tests, including all 265 ignored functions. Final no-exclusion ordinary gate:
+    171 targets / 1,341 tests. All 13,234 old suite-qualified assertion identities
+    and expectations remain unchanged; the denominator adds exactly 453. Cache
+    epoch 16, formatting, warnings-denied Clippy and source/case/log/tool/document
+    audits pass. All modified production modules remain below 1,200 lines.
+    [Source, commands and acceptance](PLAN.md#phase-l--g-t7-implementation).
 
 ### P2 — modules, packages, classes, declarations and projects
 

@@ -13,6 +13,7 @@ mod composition_diagnostics;
 mod computed_indices;
 mod conditional_inputs;
 mod contextual_calls;
+mod contextual_literals;
 mod diagnostics;
 mod flow_checks;
 mod freshness;
@@ -59,8 +60,12 @@ impl<'a> ModuleChecker<'a> {
                 Type::Unknown
             };
         }
-        let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, signatures)
-        else {
+        let Ok(actuals) = self.explicit_call_argument_types(
+            &arguments,
+            scope,
+            signatures,
+            explicit_type_arguments,
+        ) else {
             return Type::Unknown;
         };
         let Ok(Some(signature)) =
@@ -140,7 +145,15 @@ impl<'a> ModuleChecker<'a> {
             self.dedupe_diagnostics_since(before);
             return;
         }
-        let actuals = match self.expanded_call_argument_types_for(&arguments, scope, &signatures) {
+        let explicit = call
+            .generic
+            .then(|| self.module.generic_call_type_arguments[&call.callee.start].as_slice());
+        let actuals = match self.explicit_call_argument_types(
+            &arguments,
+            scope,
+            &signatures,
+            explicit,
+        ) {
             Ok(actuals) => actuals,
             Err(()) => {
                 let message = format!(
@@ -216,13 +229,14 @@ impl<'a> ModuleChecker<'a> {
             }
         };
         if signatures.len() > 1 && selected.is_none() {
+            let rejected = contextual_calls::rejected_signatures(&signatures, explicit);
             self.rejected_call_error(
                 span,
                 format!(
                     "no overload of function {} accepts the supplied argument types",
                     call.callee.text
                 ),
-                &signatures,
+                &rejected,
                 &actuals,
                 false,
             );
@@ -325,8 +339,22 @@ impl<'a> ModuleChecker<'a> {
             }
 
             if !self.is_assignable_bounded(actual, &expected, span) {
-                let displayed_expected =
+                let mut displayed_expected =
                     crate::diagnostic::type_text::default_parameter(&expected, parameter);
+                if matches!(actual, Type::Function { .. } | Type::GenericFunction { .. }) {
+                    if let Type::Union(values) = displayed_expected {
+                        let flattened = crate::checker::type_operators::union(values);
+                        let values = match flattened {
+                            Type::Union(values) => values,
+                            value => vec![value],
+                        };
+                        displayed_expected = crate::checker::type_operators::union(
+                            values
+                                .into_iter()
+                                .filter(|value| !matches!(value, Type::Null | Type::Undefined)),
+                        );
+                    }
+                }
                 let overloaded =
                     call.callee
                         .text
@@ -571,18 +599,59 @@ impl<'a> ModuleChecker<'a> {
             }
             let substitutions =
                 infer_call_substitutions(signature, &evidence, &self.types, &mut budget);
-            if actuals.iter().enumerate().any(|(index, actual)| {
-                let Some(parameter) = function_parameter_for_argument(signature, index) else {
-                    return true;
-                };
-                !is_assignable(
-                    actual,
-                    &call_parameter_expected_type(parameter, &substitutions),
-                    &self.types,
-                    &mut HashSet::new(),
-                    &mut budget,
-                )
+            let mapped = parameter.annotation.as_ref().and_then(|annotation| {
+                self.mapped_sequence_argument(argument, scope, annotation, signature)
+            });
+            // Later context-independent arguments can rule out an overload
+            // before its callback supplies a provisional parameter context.
+            if seeds.is_some_and(|seeds| {
+                seeds.iter().enumerate().any(|(index, actual)| {
+                    index > actuals.len()
+                        && matches!(
+                            actual,
+                            Type::String
+                                | Type::Number
+                                | Type::Boolean
+                                | Type::BigInt
+                                | Type::Null
+                                | Type::Undefined
+                                | Type::Literal(_)
+                        )
+                        && function_parameter_for_argument(signature, index).is_some_and(
+                            |parameter| {
+                                !is_assignable(
+                                    actual,
+                                    &call_parameter_expected_type(parameter, &substitutions),
+                                    &self.types,
+                                    &mut HashSet::new(),
+                                    &mut budget,
+                                )
+                            },
+                        )
+                })
             }) {
+                if rejected.is_none() {
+                    rejected = mapped;
+                }
+                continue;
+            }
+            if signatures.len() > 1
+                && actuals.iter().enumerate().any(|(index, actual)| {
+                    let Some(parameter) = function_parameter_for_argument(signature, index) else {
+                        return true;
+                    };
+                    !is_assignable(
+                        actual,
+                        &call_parameter_expected_type(parameter, &substitutions),
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    )
+                })
+            {
+                if rejected.is_none() {
+                    rejected = mapped;
+                }
                 continue;
             }
             let expected = call_parameter_expected_type(parameter, &substitutions);
@@ -590,8 +659,17 @@ impl<'a> ModuleChecker<'a> {
                 .annotation
                 .as_ref()
                 .and_then(|annotation| {
-                    self.conditional_argument(argument, scope, annotation, signature, &mut budget)
+                    mapped.or_else(|| {
+                        self.conditional_argument(
+                            argument,
+                            scope,
+                            annotation,
+                            signature,
+                            &mut budget,
+                        )
+                    })
                 })
+                .or_else(|| self.constrained_record_argument(argument, scope, parameter, signature))
                 .unwrap_or_else(|| self.infer_in_context(argument, scope, &expected));
             if is_assignable(
                 &actual,

@@ -21,7 +21,12 @@ pub(in crate::checker) fn prepare(
         .map(|p| p.name.clone())
         .collect();
     let mut checked = HashSet::new();
-    collect(&definition.value, &candidates, &mut checked, budget);
+    // Library syntax is immutable, bounded embedded metadata. Inspecting its
+    // dependency slots is not another generic expansion for every API member.
+    // Owner/source definitions retain their work charge; argument expansion
+    // and every selected conditional below still use the same owner's budget.
+    let charge = definition.kind != TypeDefinitionKind::LibraryInterface;
+    collect(&definition.value, &candidates, &mut checked, budget, charge);
     for (parameter, argument) in definition.parameters.iter().zip(&mut arguments) {
         if !checked.contains(&parameter.name) {
             continue;
@@ -55,8 +60,9 @@ fn collect(
     candidates: &HashSet<String>,
     checked: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
+    charge: bool,
 ) {
-    if candidates.is_empty() || !budget.consume() {
+    if candidates.is_empty() || (charge && !budget.consume()) {
         return;
     }
     if let Type::Conditional(conditional) = value {
@@ -72,7 +78,7 @@ fn collect(
             for name in bound {
                 candidates.remove(name);
             }
-            collect(child, &candidates, checked, budget);
+            collect(child, &candidates, checked, budget, charge);
             child.clone()
         })
         .is_some()
@@ -80,10 +86,12 @@ fn collect(
         return;
     }
     match value {
-        Type::Array(inner) | Type::KeyOf(inner) => collect(inner, candidates, checked, budget),
+        Type::Array(inner) | Type::KeyOf(inner) => {
+            collect(inner, candidates, checked, budget, charge)
+        }
         Type::IndexedAccess { object, index, .. } => {
-            collect(object, candidates, checked, budget);
-            collect(index, candidates, checked, budget);
+            collect(object, candidates, checked, budget, charge);
+            collect(index, candidates, checked, budget, charge);
         }
         Type::Union(values)
         | Type::Intersection(values)
@@ -91,24 +99,30 @@ fn collect(
             arguments: values, ..
         } => {
             for value in values {
-                collect(value, candidates, checked, budget);
+                collect(value, candidates, checked, budget, charge);
             }
         }
         Type::Tuple(elements) => {
             for element in elements {
-                collect(&element.annotation, candidates, checked, budget);
+                collect(&element.annotation, candidates, checked, budget, charge);
             }
         }
         Type::Record(fields) | Type::CallableRecord { fields, .. } => {
             for field in fields {
-                collect(&field.value, candidates, checked, budget);
+                collect(&field.value, candidates, checked, budget, charge);
                 if let Some(write) = &field.accessor_write_type {
-                    collect(write, candidates, checked, budget);
+                    collect(write, candidates, checked, budget, charge);
                 }
             }
             if let Type::CallableRecord { signatures, .. } = value {
                 for signature in signatures {
-                    collect(&signature.function_type(), candidates, checked, budget);
+                    collect(
+                        &signature.function_type(),
+                        candidates,
+                        checked,
+                        budget,
+                        charge,
+                    );
                 }
             }
         }
@@ -126,20 +140,20 @@ fn collect(
                 }
                 for parameter in type_parameters {
                     for value in parameter.constraint.iter().chain(parameter.default.iter()) {
-                        collect(value, &candidates, checked, budget);
+                        collect(value, &candidates, checked, budget, charge);
                     }
                 }
             }
             for parameter in parameters {
                 if let Some(annotation) = &parameter.annotation {
-                    collect(annotation, &candidates, checked, budget);
+                    collect(annotation, &candidates, checked, budget, charge);
                 }
             }
-            collect(result, &candidates, checked, budget);
+            collect(result, &candidates, checked, budget, charge);
         }
         Type::Predicate(predicate) => {
             if let Some(target) = &predicate.target {
-                collect(target, candidates, checked, budget);
+                collect(target, candidates, checked, budget, charge);
             }
         }
         _ => {}

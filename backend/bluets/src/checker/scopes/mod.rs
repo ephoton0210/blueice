@@ -530,6 +530,10 @@ impl<'a> ScopeModel<'a> {
         Some(value)
     }
 
+    pub(in crate::checker) fn query_has_value_binding(&self, name: &str, offset: usize) -> bool {
+        self.flow_binding(name, offset).is_some()
+    }
+
     /// Identifies the lexical declaration owning a type name at a reference.
     pub(super) fn type_name_is_bound_in(
         &self,

@@ -6,11 +6,17 @@ subset; they do not copy TypeScript's standard library. The pinned TypeScript
 5.9.3 oracle uses `--lib es2020` or `--lib es2022` to check the selected forms.
 This is a minimum library, and full parity remains off.
 
-The `blue-ts-ecma-lib-v1` identity selects the base declarations for both
-targets and an additional file for ES2022. A content digest includes the
+The current `blue-ts-ecma-lib-v3` identity selects cumulative ES5–ES2023
+profiles. ES2020/ES2022 retain the original base sources, v2 additions and
+async-iteration declarations; ES2022 also selects its original additions.
+Every profile includes the original decorator context declarations and the
+eligible original v3 API layers (core/buffers, iterable/Promise, ES2017–ES2022).
+A content digest includes the
 version, target, source names and exact source bytes. The compiler fingerprint
 includes that identity, and `bluetsc.manifest.json` records `standardLibrary`.
-The sources are embedded and parsed once per target. They never enter an
+An explicit library selection is independent of the output target and is
+included in that identity. The sources are embedded and parsed once per
+selected edition. They never enter an
 owner's source graph, consume its module budget, produce debugger symbols,
 write artifacts, or acquire a loader or runtime binding.
 
@@ -28,15 +34,19 @@ retain the existing conservative readonly protection.
 Primitive and array syntax look up properties through the selected interface
 definitions. Array syntax retains its element type when compared with the
 original Array/ReadonlyArray definitions; owner replacements use ordinary
-structural checking. The otherwise empty Iterable interface retains its
-element compatibility without inventing a computed iterator property that
-the parser cannot represent.
+structural checking. Iterable and the collection/array iterator interfaces have
+declared computed well-known-symbol keys. Those identities come from trusted
+declarations, not a source's same-spelled shadow of `Symbol`. Type-only namespace
+queries bind static exported types without introducing a runtime value.
 
-The declaration parser does not admit `declare class` or construct signatures.
-Date, RegExp and Error-family constructors therefore use parsed function-type
-descriptors named `*Constructor`, connected to the existing `new` checker.
-Their instance interfaces and static fields remain parsed declarations.
-The parser's existing refusals stay in place.
+The parser and checker already admit generic call/construct signatures and
+their overloads. G-T8 also supports signature-only declaration-file classes,
+while refusing runtime bodies/initializers and source-file `declare class`.
+The v3 Date, RegExp and Error-family declarations use actual call and construct
+signatures. Refined layers replace legacy opaque members without leaving the old
+unchecked namespace/function path as an alternate route. Interface augmentations
+retain generic variance/defaults and all constructor overload groups. Their
+instance interfaces and static fields remain parsed declarations.
 
 Array callbacks may ignore trailing arguments supplied by the caller. Their
 consumed parameter types and return types remain checked; broader optional
@@ -52,17 +62,25 @@ General discriminant and control-flow narrowing remains K.4.
 
 | Surface | Selected behavior | Recorded omissions |
 | --- | --- | --- |
-| Array/ReadonlyArray | element types, length, push/pop, basic search, join, slice, sort and filter; ES2022 `at` | numeric index signatures, computed iterator keys, multi-item/zero-item push and unshift, additional methods, polymorphic `this`, predicate narrowing and generic callback result inference; `map` retains an opaque result |
-| String/Number/Boolean | boxed types and selected primitive methods | the complete prototype catalogs, overloads and locale variants |
-| Object/Function | selected properties, string conversion, keys and property names; ES2022 `hasOwn` | complete constructors, reflective descriptors, callable/apply/bind signatures and object utilities |
-| Promise | typed resolve, rejection, awaited values and fulfillment parameters | constructor overloads, aggregate operations, thenable adoption and precise chaining results |
-| Map/Set/WeakMap | generic instance methods and size; object-key constraint for WeakMap | generic constructors, entries/keys/values, computed iteration and the full weak-key model |
-| Math/JSON | selected numeric functions with checked arguments; parse/stringify, callback/key-list replacers and spacing; stringify's pinned declaration result | remaining Math methods, JSON parse reviver and the complete overload catalog |
-| Symbol | boxed/primitive adapter, registry functions and callable factory | unique-symbol checker identity and well-known computed keys; factory const declarations retain tested `unique symbol` spelling |
-| Error family | name/message/stack and selected `new` signatures; ES2022 AggregateError | callable constructor forms, cause/options overloads and all iterable AggregateError inputs |
-| Iterable/Iterator/Generator | generic element/return/next types and selected protocol methods | computed Symbol.iterator, async iteration, full protocol structural checking |
-| Date/RegExp | selected instance/static methods and `new` signatures | callable forms, remaining overloads, UTC arities, regexp match-array/index metadata and the full catalogs |
-| Other ECMAScript names | existing opaque compatibility for Reflect, Intl, BigInt, buffers, typed arrays and Atomics | typed declarations and method precision; these entries confer no runtime authority |
+| Array/ReadonlyArray | numeric indices, computed iteration, rest push/unshift, constructors/from/of, generic map/flatMap/reduce and inferred predicate filter; selected ES2022 methods | full overload/prototype catalog, polymorphic `this`, arbitrary callback and nested protocol compositions |
+| String/Number/Boolean | call/new constructors, boxed methods, selected static/locale/normalization/replace/match forms | complete prototype/static catalogs, locale options and overload combinations |
+| Object/Function | assign/entries/values/fromEntries, descriptors, freeze/seal/create, selected call/apply/bind/new forms | all utility overload combinations, generalized receiver/bind/descriptor compositions |
+| Promise | executor constructor, resolve/reject, value/thenable adoption, then/catch/finally, tuple all, race/allSettled/any | arbitrary recursive/custom thenables, full aggregate/overload compositions and post-ES2022 APIs |
+| Map/Set/WeakMap/WeakSet | generic constructors, methods/callbacks, entries/keys/values and computed iteration | full weak-key and iterable-input combinations, arbitrary custom iterators |
+| Math/JSON | selected full numeric families/constants, parse reviver, stringify callback/key-list/spacing results | complete overload combinations and inference for arbitrary reviver/replacer bodies |
+| Symbol | primitive/boxed adapter, registry/factory, unique well-known computed keys and description | complete well-known key catalog and arbitrary owner-symbol protocol compositions |
+| Error family | seven callable/new constructors, ES2022 cause/options, iterable AggregateError inputs | complete overload and subclass combinations |
+| Iterable/Iterator/Generator | generic element/return/next types, computed sync/async keys and selected iterator result protocols | arbitrary protocol composition and full async-generator/iterator catalogs |
+| Date/RegExp | call/new forms, selected component/UTC/set/get/locale overloads, match arrays/groups/indices/flags and regexp literal receivers | complete locale/overload combinations and general regexp lexical contexts |
+| Reflect/Intl/BigInt | thirteen Reflect operations, seven Intl constructor/method families, canonical locales, BigInt call/truncation | complete Intl option/prototype catalogs, arbitrary generic Reflect compositions |
+| Buffers/DataView/typed arrays/Atomics | buffers/shared buffers, numeric/bigint DataView, all eleven typed arrays and selected static/map/slice/subarray/buffer forms, numeric/bigint Atomics | complete prototype/overload catalogs and arbitrary buffer/iterator compositions |
+
+The frozen G-T7 manifest is 217 native accept/reject pairs, fourteen library
+edition/ES5-output controls, 224 exact declaration graphs/files, 434 downstream
+diagnostic observations and five executions. Five separate owner controls are
+not native agreement. The manifest is finite, not a claim that every combination
+of the declarations above matches TypeScript. Completion and source-frozen
+measurement are tracked separately in TODO.md and PLAN.md.
 
 Broader generic inference, structural protocols, overloads, index signatures
 and declaration precision remain K.4/K.8 and the compatibility inventory.

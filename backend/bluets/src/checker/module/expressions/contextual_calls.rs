@@ -5,7 +5,60 @@
 //! Context-insensitive evidence is gathered before contextual callbacks are read.
 use super::*;
 
+fn specialized(signature: &FunctionSignature, arguments: &[Type]) -> Option<FunctionSignature> {
+    let values = complete_type_arguments(&signature.type_parameters, arguments)?;
+    let substitutions = signature
+        .type_parameters
+        .iter()
+        .map(|p| p.name.clone())
+        .zip(values)
+        .collect();
+    let mut signature = signature.clone();
+    for parameter in &mut signature.parameters {
+        parameter.annotation = parameter
+            .annotation
+            .as_ref()
+            .map(|value| substitute_type(value, &substitutions));
+    }
+    signature.return_type = substitute_type(&signature.return_type, &substitutions);
+    signature.type_parameters.clear();
+    Some(signature)
+}
+
+pub(super) fn rejected_signatures(
+    signatures: &[FunctionSignature],
+    explicit: Option<&[Type]>,
+) -> Vec<FunctionSignature> {
+    signatures
+        .iter()
+        .map(|signature| {
+            explicit
+                .and_then(|arguments| specialized(signature, arguments))
+                .unwrap_or_else(|| signature.clone())
+        })
+        .collect()
+}
+
 impl ModuleChecker<'_> {
+    /// Explicit arguments guide callback contexts before overload selection.
+    /// The original signatures still validate constraints and argument counts.
+    pub(in crate::checker::module) fn explicit_call_argument_types(
+        &self,
+        arguments: &[&[Token]],
+        scope: &BTreeMap<String, Type>,
+        signatures: &[FunctionSignature],
+        explicit: Option<&[Type]>,
+    ) -> Result<Vec<Type>, ()> {
+        let Some(explicit) = explicit else {
+            return self.expanded_call_argument_types_for(arguments, scope, signatures);
+        };
+        let contextual: Vec<_> = signatures
+            .iter()
+            .filter_map(|signature| specialized(signature, explicit))
+            .collect();
+        self.expanded_call_argument_types_for(arguments, scope, &contextual)
+    }
+
     pub(super) fn contextual_callback_widens_parameter(
         &self,
         signature: &FunctionSignature,
@@ -81,6 +134,14 @@ impl ModuleChecker<'_> {
                 }
             }
         }
-        self.expanded_call_argument_types(arguments, scope).ok()
+        let mut seeds = self.expanded_call_argument_types(arguments, scope).ok()?;
+        for (index, seed) in seeds.iter_mut().enumerate() {
+            if signatures.iter().any(|signature| {
+                self.contextual_callback_widens_parameter(signature, index, arguments)
+            }) {
+                *seed = crate::checker::module::return_inference::widen(seed.clone());
+            }
+        }
+        Some(seeds)
     }
 }

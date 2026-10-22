@@ -12,6 +12,18 @@ pub(super) struct Candidates {
 }
 
 impl Candidates {
+    /// Constituents of one covariant union argument are one union-valued
+    /// candidate, not competing independent call arguments. Contravariant
+    /// constraints retain their original directed comparison.
+    pub(super) fn merge_union(&mut self, other: Self) {
+        if !other.covariant.is_empty() {
+            self.add(&super::super::type_operators::union(other.covariant), false);
+        }
+        for value in other.contravariant {
+            self.add(&value, true);
+        }
+    }
+
     pub(super) fn add(&mut self, value: &Type, contra: bool) {
         // An unfinished contextual parameter is not evidence for a solution.
         if matches!(value, Type::Unknown) {

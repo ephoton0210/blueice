@@ -103,7 +103,12 @@ impl ModuleChecker<'_> {
         }
         // These standard-library additions have a declared minimum lib year.
         // This changes metadata only; missing members remain rejected.
-        let year = if (member == "at" && matches!(receiver, Type::Array(_) | Type::String))
+        let year = if let Some(edition) =
+            crate::standard_library::presentation::member_edition(receiver, member)
+                .filter(|edition| self.library_target.is_some_and(|target| target < *edition))
+        {
+            Some(edition.as_str())
+        } else if (member == "at" && matches!(receiver, Type::Array(_) | Type::String))
             || (member == "hasOwn"
                 && receiver_name == Some("Object")
                 && self.library_values.contains("Object"))

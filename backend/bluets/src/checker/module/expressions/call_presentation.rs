@@ -87,12 +87,25 @@ impl ModuleChecker<'_> {
             });
             let Some(mismatch) = mismatch else { continue };
             ordinal += 1;
-            let parameters = crate::diagnostic::type_text::parameter_list_in(
-                &signature.parameters,
-                Some(self.project),
+            let instantiated = substitute_type(
+                &Type::Function {
+                    parameters: signature.parameters.clone(),
+                    result: Box::new(signature.return_type.clone()),
+                },
+                &substitutions,
             );
-            let result =
-                crate::diagnostic::type_text::render_in(&signature.return_type, self.project);
+            let Type::Function { parameters, result } = instantiated else {
+                unreachable!()
+            };
+            let parameters =
+                crate::diagnostic::type_text::parameter_list_in(&parameters, Some(self.project));
+            let result = crate::checker::inference::result_type(
+                &result,
+                &BTreeMap::new(),
+                &self.types,
+                &mut inference_budget,
+            );
+            let result = crate::diagnostic::type_text::render_in(&result, self.project);
             details.push_str(&format!("\n  Overload {ordinal} of {}, '({parameters}): {result}', gave the following error.",signatures.len()));
             for line in mismatch.lines() {
                 details.push_str(&format!("\n    {line}"));
@@ -131,10 +144,12 @@ impl ModuleChecker<'_> {
                 }
                 let (
                     Type::Function {
+                        parameters: actual_parameters,
                         result: actual_result,
                         ..
                     },
                     Type::Function {
+                        parameters: expected_parameters,
                         result: expected_result,
                         ..
                     },
@@ -142,6 +157,21 @@ impl ModuleChecker<'_> {
                 else {
                     break;
                 };
+                if !crate::checker::type_relations::is_assignable(
+                    &Type::Function {
+                        parameters: actual_parameters.clone(),
+                        result: Box::new(Type::Void),
+                    },
+                    &Type::Function {
+                        parameters: expected_parameters.clone(),
+                        result: Box::new(Type::Void),
+                    },
+                    &self.types,
+                    &mut HashSet::new(),
+                    &mut budget,
+                ) {
+                    break;
+                }
                 if is_assignable(
                     actual_result,
                     expected_result,

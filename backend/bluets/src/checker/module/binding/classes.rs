@@ -713,6 +713,20 @@ impl ModuleChecker<'_> {
         let Some(call) = constructor_call_parts(tokens) else {
             return;
         };
+        let root = call
+            .callee
+            .text
+            .split('.')
+            .next()
+            .unwrap_or(&call.callee.text);
+        if self.require_declared_global_calls && !scope.contains_key(root) {
+            self.type_error(
+                span,
+                format!("constructor {root} is not declared by this page profile"),
+                DiagnosticCode::UnknownName,
+            );
+            return;
+        }
         if call
             .receiver
             .is_some_and(|receiver| scope.get(&receiver.text) != self.values.get(&receiver.text))
@@ -729,13 +743,14 @@ impl ModuleChecker<'_> {
             let Some(arguments) = split_call_arguments(call.arguments) else {
                 return;
             };
-            let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, &signatures)
-            else {
-                return;
-            };
             let explicit = call
                 .generic
                 .then(|| self.module.generic_call_type_arguments[&call.callee.start].as_slice());
+            let Ok(actuals) =
+                self.explicit_call_argument_types(&arguments, scope, &signatures, explicit)
+            else {
+                return;
+            };
             match self.select_function_signature(&signatures, &actuals, explicit) {
                 Ok(Some(_)) => {}
                 Ok(None) => {
@@ -749,7 +764,46 @@ impl ModuleChecker<'_> {
                         &actuals,
                         false,
                     );
-                    if let Some(argument) = arguments.first() {
+                    self.present_library_constructor(&call.callee.text, &actuals);
+                    let arity_error = self
+                        .diagnostics
+                        .last()
+                        .and_then(|d| d.typescript.as_ref())
+                        .is_some_and(|d| d.code == 2554);
+                    if arity_error {
+                        if let Some(extra) = arguments.get(
+                            signatures
+                                .iter()
+                                .map(|signature| signature.parameters.len())
+                                .max()
+                                .unwrap_or(0),
+                        ) {
+                            self.point_last_typescript(extra);
+                        } else {
+                            self.point_last_typescript(tokens);
+                        }
+                        if arguments.is_empty() && self.library_values.contains(&call.callee.text) {
+                            if let Some(parameter) = signatures
+                                .first()
+                                .and_then(|signature| signature.parameters.get(actuals.len()))
+                            {
+                                let key = format!("{}.new.0.{}", call.callee.text, parameter.name);
+                                if let Some(related) = crate::diagnostic::related::library_context(
+                                    &key,
+                                    6210,
+                                    vec![parameter.name.clone()],
+                                ) {
+                                    if let Some(counterpart) = self
+                                        .diagnostics
+                                        .last_mut()
+                                        .and_then(|d| d.typescript.as_mut())
+                                    {
+                                        counterpart.related_information.push(related);
+                                    }
+                                }
+                            }
+                        }
+                    } else if let Some(argument) = arguments.first() {
                         self.point_last_typescript(argument);
                     }
                 }

@@ -112,6 +112,10 @@ impl ScopeModel<'_> {
             return diagnostic.with_typescript(1361, vec![root.into()]);
         }
         if binding.is_none() {
+            if let Some(edition) = crate::standard_library::presentation::global_edition(root) {
+                return diagnostic
+                    .with_typescript(2583, vec![root.into(), edition.as_str().into()]);
+            }
             if root == "document" {
                 return diagnostic.with_typescript(2584, vec![root.into()]);
             }

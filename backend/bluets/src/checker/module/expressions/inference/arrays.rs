@@ -26,6 +26,20 @@ impl<'a> ModuleChecker<'a> {
         if let Some(result) = self.infer_generic_result_in_context(tokens, scope, expected) {
             return result;
         }
+        if let Type::Named { name, arguments } = expected {
+            if matches!(name.as_str(), "Iterable" | "ArrayLike")
+                && self.types.get(name).is_some_and(|definition| {
+                    definition.kind == TypeDefinitionKind::LibraryInterface
+                })
+            {
+                if let Some(element) = arguments.first() {
+                    if let Some(value) = self.infer_contextual_array_literal(tokens, scope, element)
+                    {
+                        return value;
+                    }
+                }
+            }
+        }
         let mut contextual =
             crate::checker::type_relations::normalize_more_type(expected, &self.types)
                 .unwrap_or_else(|| expected.clone());

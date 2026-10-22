@@ -7,9 +7,12 @@
 use super::*;
 mod candidates;
 mod collect;
+mod indexed;
 mod mapped;
+mod results;
+mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/2";
+pub(crate) const VERSION: &str = "bluets-generic-inference/3";
 
 pub(super) fn result_type(
     value: &Type,
@@ -28,7 +31,7 @@ pub(super) fn result_type(
     ) {
         super::type_operators::expanded(&value, aliases, &mut HashSet::new(), budget)
     } else {
-        value
+        results::finish(value, aliases, budget)
     }
 }
 
@@ -82,6 +85,7 @@ pub(super) fn infer_contextual_result(
         aliases,
         budget,
         active: HashSet::new(),
+        evidence: 0,
     };
     for (index, actual) in actuals.iter().enumerate() {
         let Some(parameter) = function_parameter_for_argument(signature, index) else {
@@ -104,8 +108,29 @@ pub(super) fn infer_contextual_result(
     };
     for parameter in &signature.type_parameters {
         let literal_constraint = parameter.constraint.as_ref().is_some_and(|constraint| {
-            matches!(constraint, Type::KeyOf(_) | Type::Literal(_))
-                || matches!(constraint, Type::Union(parts) if parts.iter().all(|p| matches!(p, Type::Literal(_))))
+            if matches!(constraint, Type::KeyOf(_) | Type::Literal(_)) {
+                return true;
+            }
+            let constraint = super::type_operators::expanded(
+                constraint,
+                aliases,
+                &mut HashSet::new(),
+                collector.budget,
+            );
+            let primitive = |value: &Type| {
+                matches!(
+                    value,
+                    Type::String
+                        | Type::Number
+                        | Type::BigInt
+                        | Type::Boolean
+                        | Type::Symbol
+                        | Type::UniqueSymbol(_)
+                        | Type::Literal(_)
+                )
+            };
+            primitive(&constraint)
+                || matches!(&constraint, Type::Union(parts) if parts.iter().all(primitive))
         });
         let preserve = literal_constraint
             || (naked == Some(parameter.name.as_str())
@@ -126,6 +151,7 @@ pub(super) fn infer_contextual_result(
             aliases,
             budget,
             active: HashSet::new(),
+            evidence: 0,
         };
         collector.collect(&signature.return_type, context, false);
         for (name, candidates) in &collector.candidates {
@@ -140,10 +166,15 @@ pub(super) fn infer_contextual_result(
             .as_ref()
             .map(|value| substitute_type(value, &substitutions))
             .unwrap_or(Type::StrictUnknown);
-        let value = substitutions
+        substitutions
             .entry(parameter.name.clone())
-            .or_insert(default)
-            .clone();
+            .or_insert(default);
+    }
+    // Constraints may refer to a later parameter. Populate all arguments
+    // before validating any of them, rather than replacing valid earlier
+    // evidence with an unresolved forward constraint.
+    for parameter in &signature.type_parameters {
+        let value = substitutions[&parameter.name].clone();
         if let Some(constraint) = &parameter.constraint {
             let mut constraint = substitute_type(constraint, &substitutions);
             if let Some(resolved) =

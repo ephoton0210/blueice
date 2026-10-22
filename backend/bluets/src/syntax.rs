@@ -21,6 +21,8 @@ pub enum TokenKind {
     Number,
     String,
     Template,
+    /// One complete regexp operand, including its flags.
+    RegExp,
     Punct,
     /// A whole outermost JSX element of a `.tsx` module, as one operand; its
     /// structure is scanned on demand by [`crate::jsx`].
@@ -216,6 +218,62 @@ fn starts_generic_arrow(source: &str, index: usize) -> bool {
             .is_some_and(|more| more.starts_with(|c: char| c.is_whitespace()))
 }
 
+fn regexp_may_start(previous: Option<&Token>) -> bool {
+    previous.is_none()
+        || previous.is_some_and(|token| {
+            matches!(
+                token.text.as_str(),
+                "(" | "["
+                    | "{"
+                    | ","
+                    | ";"
+                    | ":"
+                    | "="
+                    | "=>"
+                    | "?"
+                    | "??"
+                    | "||"
+                    | "&&"
+                    | "!"
+                    | "return"
+                    | "throw"
+                    | "yield"
+                    | "case"
+                    | "void"
+                    | "typeof"
+            )
+        })
+}
+
+fn regexp_end(source: &str, start: usize) -> Option<usize> {
+    let mut escaped = false;
+    let mut class = false;
+    for (offset, character) in source[start + 1..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' => escaped = true,
+            '[' => class = true,
+            ']' => class = false,
+            '\n' | '\r' | '\u{2028}' | '\u{2029}' => return None,
+            '/' if !class => {
+                let mut end = start + 1 + offset + 1;
+                for flag in source[end..].chars() {
+                    if !is_ident_continue(flag) {
+                        break;
+                    }
+                    end += flag.len_utf8();
+                }
+                return Some(end);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// The token loop. With `until_brace` it stops (without consuming) at the first
 /// `}` that is not matched by a `{` inside, and returns its offset.
 fn lex_range(
@@ -291,6 +349,18 @@ fn lex_range(
         }
 
         let start = index;
+        if byte == b'/' && regexp_may_start(tokens.last()) {
+            if let Some(end) = regexp_end(source, index) {
+                tokens.push(Token {
+                    kind: TokenKind::RegExp,
+                    text: source[index..end].into(),
+                    start: index,
+                    end,
+                });
+                index = end;
+                continue;
+            }
+        }
         if is_ident_start(source[index..].chars().next().expect("index is in source")) {
             index += source[index..]
                 .chars()
@@ -586,6 +656,41 @@ mod tests {
             punctuators,
             ["**=", "<<=", ">>=", ">>>=", "&=", "^=", "|=", "&&=", "||=", "??="]
         );
+    }
+
+    #[test]
+    fn regexp_operands_preserve_spans_without_consuming_division_or_comments() {
+        let source = r#"const pattern = /a\/[b/]+/gi; const quotient = 12 / 3 / 2; /* /ignored/ */ const tail = /z/;"#;
+        let tokens = lex("memory:///regexp.ts", source).unwrap();
+        let regexps: Vec<_> = tokens
+            .iter()
+            .filter(|token| token.kind == TokenKind::RegExp)
+            .collect();
+        assert_eq!(
+            regexps
+                .iter()
+                .map(|token| token.text.as_str())
+                .collect::<Vec<_>>(),
+            [r#"/a\/[b/]+/gi"#, "/z/"]
+        );
+        for token in regexps {
+            assert_eq!(&source[token.start..token.end], token.text);
+        }
+        assert_eq!(tokens.iter().filter(|token| token.is("/")).count(), 2);
+        for source in [
+            "return /x/;",
+            "const value = [/x/];",
+            "const value = () => /x/;",
+        ] {
+            assert_eq!(
+                lex("memory:///regexp.ts", source)
+                    .unwrap()
+                    .iter()
+                    .filter(|token| token.kind == TokenKind::RegExp)
+                    .count(),
+                1
+            );
+        }
     }
 
     #[test]

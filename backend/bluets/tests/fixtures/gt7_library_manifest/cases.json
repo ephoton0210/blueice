@@ -1,0 +1,2045 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "options": {
+    "strict": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "target": "ES2022",
+    "lib": [
+      "ES2022"
+    ],
+    "module": "ESNext",
+    "declaration": true,
+    "newLine": "lf",
+    "types": []
+  },
+  "forms": [
+    {
+      "id": "array-map",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.map(value => value.toString()); const witness: string[] = result;",
+      "reject": "export const result = items.map(value => value.toString()); const witness: number[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;"
+    },
+    {
+      "id": "readonly-map",
+      "area": "array",
+      "prefix": "declare const items: ReadonlyArray<number>;",
+      "accept": "export const result = items.map(value => value + 1); const witness: number[] = result;",
+      "reject": "export const result = items.map(value => value + 1); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "array-flat-map",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.flatMap(value => [value.toString()]); const witness: string[] = result;",
+      "reject": "export const result = items.flatMap(value => [value.toString()]); const witness: number[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;"
+    },
+    {
+      "id": "array-reduce-generic",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.reduce((total, value) => total + value.toString(), ''); const witness: string = result;",
+      "reject": "export const result = items.reduce((total, value) => total + value.toString(), ''); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "readonly-reduce",
+      "area": "array",
+      "prefix": "declare const items: ReadonlyArray<number>;",
+      "accept": "export const result = items.reduce((total, value) => total + value, 0); const witness: number = result;",
+      "reject": "export const result = items.reduce((total, value) => total + value, 0); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "array-filter-predicate",
+      "area": "array",
+      "prefix": "declare const items: (number | string)[];",
+      "accept": "export const result = items.filter(value => typeof value === 'string'); const witness: string[] = result;",
+      "reject": "export const result = items.filter(value => typeof value === 'string'); const witness: number[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;"
+    },
+    {
+      "id": "array-find",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.find(value => value > 0); const witness: number | undefined = result;",
+      "reject": "export const result = items.find(value => value > 0); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "readonly-find",
+      "area": "array",
+      "prefix": "declare const items: ReadonlyArray<number>;",
+      "accept": "export const result = items.find(value => value > 0); const witness: number | undefined = result;",
+      "reject": "export const result = items.find(value => value > 0); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "array-every",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.every(value => value > 0); const witness: boolean = result;",
+      "reject": "export const result = items.every(value => value > 0); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "array-some",
+      "area": "array",
+      "prefix": "declare const items: ReadonlyArray<number>;",
+      "accept": "export const result = items.some(value => value > 0); const witness: boolean = result;",
+      "reject": "export const result = items.some(value => value > 0); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "array-concat",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.concat([2], 3); const witness: number[] = result;",
+      "reject": "export const result = items.concat([2], 3); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "array-splice",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.splice(0, 1, 2, 3); const witness: number[] = result;",
+      "reject": "export const result = items.splice(0, 1, 2, 3); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "array-fill",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.fill(2, 0, 1); const witness: number[] = result;",
+      "reject": "export const result = items.fill(2, 0, 1); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "array-copy-within",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.copyWithin(0, 1); const witness: number[] = result;",
+      "reject": "export const result = items.copyWithin(0, 1); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "array-push-rest",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.push(1, 2, 3); const witness: number = result;",
+      "reject": "export const result = items.push(1, 2, 3); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "array-unshift-empty",
+      "area": "array",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items.unshift(); const witness: number = result;",
+      "reject": "export const result = items.unshift(); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "array-from-map",
+      "area": "array",
+      "prefix": "",
+      "accept": "export const result = Array.from([1, 2], value => value.toString()); const witness: string[] = result;",
+      "reject": "export const result = Array.from([1, 2], value => value.toString()); const witness: number[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;"
+    },
+    {
+      "id": "array-of",
+      "area": "array",
+      "prefix": "",
+      "accept": "export const result = Array.of(1, 2); const witness: number[] = result;",
+      "reject": "export const result = Array.of(1, 2); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "array-construct",
+      "area": "array",
+      "prefix": "",
+      "accept": "export const result = new Array<number>(1, 2); const witness: number[] = result;",
+      "reject": "export const result = new Array<number>(1, 2); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "array-call",
+      "area": "array",
+      "prefix": "",
+      "accept": "export const result = Array(1, 2); const witness: number[] = result;",
+      "reject": "export const result = Array(1, 2); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "array-runtime",
+      "area": "array",
+      "prefix": "const items = [1, 2, 3];",
+      "accept": "export const result = items.map(value => value * 2).filter(value => value > 2); const witness: number[] = result;",
+      "reject": "export const result = items.map(value => value * 2).filter(value => value > 2); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;",
+      "invoke": "console.log(JSON.stringify(result));"
+    },
+    {
+      "id": "promise-construct",
+      "area": "promise",
+      "prefix": "",
+      "accept": "export const result = new Promise<number>(resolve => resolve(1)); const witness: Promise<number> = result;",
+      "reject": "export const result = new Promise<number>(resolve => resolve(1)); const witness: Promise<string> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<string> = value;"
+    },
+    {
+      "id": "promise-resolve-adoption",
+      "area": "promise",
+      "prefix": "declare const inner: Promise<number>;",
+      "accept": "export const result = Promise.resolve(inner); const witness: Promise<number> = result;",
+      "reject": "export const result = Promise.resolve(inner); const witness: Promise<string> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<string> = value;"
+    },
+    {
+      "id": "promise-resolve-empty",
+      "area": "promise",
+      "prefix": "",
+      "accept": "export const result = Promise.resolve(); const witness: Promise<void> = result;",
+      "reject": "export const result = Promise.resolve(); const witness: Promise<number> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<void> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number> = value;"
+    },
+    {
+      "id": "promise-then-value",
+      "area": "promise",
+      "prefix": "declare const promise: Promise<number>;",
+      "accept": "export const result = promise.then(value => value.toString()); const witness: Promise<string> = result;",
+      "reject": "export const result = promise.then(value => value.toString()); const witness: Promise<number> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<string> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number> = value;"
+    },
+    {
+      "id": "promise-then-adopt",
+      "area": "promise",
+      "prefix": "declare const promise: Promise<number>;",
+      "accept": "export const result = promise.then(value => Promise.resolve(value.toString())); const witness: Promise<string> = result;",
+      "reject": "export const result = promise.then(value => Promise.resolve(value.toString())); const witness: Promise<number> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<string> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number> = value;"
+    },
+    {
+      "id": "promise-catch",
+      "area": "promise",
+      "prefix": "declare const promise: Promise<number>;",
+      "accept": "export const result = promise.catch(reason => 'failed'); const witness: Promise<number | string> = result;",
+      "reject": "export const result = promise.catch(reason => 'failed'); const witness: Promise<boolean> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number | string> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<boolean> = value;"
+    },
+    {
+      "id": "promise-finally",
+      "area": "promise",
+      "prefix": "declare const promise: Promise<number>;",
+      "accept": "export const result = promise.finally(() => 4); const witness: Promise<number> = result;",
+      "reject": "export const result = promise.finally(() => 4); const witness: Promise<string> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<string> = value;"
+    },
+    {
+      "id": "promise-all-tuple",
+      "area": "promise",
+      "prefix": "",
+      "accept": "export const result = Promise.all([Promise.resolve(1), Promise.resolve('a')] as const); const witness: Promise<[number, string]> = result;",
+      "reject": "export const result = Promise.all([Promise.resolve(1), Promise.resolve('a')] as const); const witness: Promise<[string, number]> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<[number, string]> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<[string, number]> = value;"
+    },
+    {
+      "id": "promise-race",
+      "area": "promise",
+      "prefix": "declare const promises: Promise<number>[];",
+      "accept": "export const result = Promise.race(promises); const witness: Promise<number> = result;",
+      "reject": "export const result = Promise.race(promises); const witness: Promise<string> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<string> = value;"
+    },
+    {
+      "id": "promise-all-settled",
+      "area": "promise",
+      "prefix": "declare const promises: Promise<number>[];",
+      "accept": "export const result = Promise.allSettled(promises); const witness: Promise<PromiseSettledResult<number>[]> = result;",
+      "reject": "export const result = Promise.allSettled(promises); const witness: Promise<string[]> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<PromiseSettledResult<number>[]> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<string[]> = value;"
+    },
+    {
+      "id": "promise-any",
+      "area": "promise",
+      "prefix": "declare const promises: Promise<number>[];",
+      "accept": "export const result = Promise.any(promises); const witness: Promise<number> = result;",
+      "reject": "export const result = Promise.any(promises); const witness: Promise<string> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<string> = value;"
+    },
+    {
+      "id": "promise-runtime",
+      "area": "promise",
+      "prefix": "",
+      "accept": "export const result = Promise.all([Promise.resolve(2), Promise.resolve(3)]).then(values => values[0] + values[1]); const witness: Promise<number> = result;",
+      "reject": "export const result = Promise.all([Promise.resolve(2), Promise.resolve(3)]).then(values => values[0] + values[1]); const witness: Promise<string> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Promise<string> = value;",
+      "invoke": "console.log(await result);"
+    },
+    {
+      "id": "map-construct",
+      "area": "collection",
+      "prefix": "",
+      "accept": "export const result = new Map([[1, 'one']]); const witness: Map<number, string> = result;",
+      "reject": "export const result = new Map([[1, 'one']]); const witness: Map<string, number> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Map<number, string> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Map<string, number> = value;"
+    },
+    {
+      "id": "map-construct-explicit",
+      "area": "collection",
+      "prefix": "",
+      "accept": "export const result = new Map<string, number>(); const witness: Map<string, number> = result;",
+      "reject": "export const result = new Map<string, number>(); const witness: Map<number, string> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Map<string, number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Map<number, string> = value;"
+    },
+    {
+      "id": "set-construct",
+      "area": "collection",
+      "prefix": "",
+      "accept": "export const result = new Set([1, 2]); const witness: Set<number> = result;",
+      "reject": "export const result = new Set([1, 2]); const witness: Set<string> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Set<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Set<string> = value;"
+    },
+    {
+      "id": "weak-map-construct",
+      "area": "collection",
+      "prefix": "",
+      "accept": "export const result = new WeakMap<object, number>(); const witness: WeakMap<object, number> = result;",
+      "reject": "export const result = new WeakMap<object, number>(); const witness: WeakMap<object, string> = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: WeakMap<object, number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: WeakMap<object, string> = value;"
+    },
+    {
+      "id": "weak-set-construct",
+      "area": "collection",
+      "prefix": "",
+      "accept": "export const result = new WeakSet<object>(); const witness: WeakSet<object> = result;",
+      "reject": "export const result = new WeakSet<object>(); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: WeakSet<object> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "weak-set-has",
+      "area": "collection",
+      "prefix": "declare const items: WeakSet<object>;",
+      "accept": "export const result = items.has({}); const witness: boolean = result;",
+      "reject": "export const result = items.has({}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "map-keys",
+      "area": "collection",
+      "prefix": "declare const items: Map<string, number>;",
+      "accept": "export const result = items.keys(); const witness: MapIterator<string> = result;",
+      "reject": "export const result = items.keys(); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: MapIterator<string> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "map-values",
+      "area": "collection",
+      "prefix": "declare const items: Map<string, number>;",
+      "accept": "export const result = items.values(); const witness: MapIterator<number> = result;",
+      "reject": "export const result = items.values(); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: MapIterator<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "map-entries",
+      "area": "collection",
+      "prefix": "declare const items: Map<string, number>;",
+      "accept": "export const result = items.entries(); const witness: MapIterator<[string, number]> = result;",
+      "reject": "export const result = items.entries(); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: MapIterator<[string, number]> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "set-entries",
+      "area": "collection",
+      "prefix": "declare const items: Set<number>;",
+      "accept": "export const result = items.entries(); const witness: SetIterator<[number, number]> = result;",
+      "reject": "export const result = items.entries(); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: SetIterator<[number, number]> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "collection-for-each",
+      "area": "collection",
+      "prefix": "declare const items: Map<string, number>;",
+      "accept": "export const result = items.forEach((value, key) => value.toString() + key); const witness: void = result;",
+      "reject": "export const result = items.forEach((value, key) => value.toString() + key); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: void = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "map-runtime",
+      "area": "collection",
+      "prefix": "",
+      "accept": "export const result = new Map([[1, 'one']]).get(1); const witness: string | undefined = result;",
+      "reject": "export const result = new Map([[1, 'one']]).get(1); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "invoke": "console.log(result);"
+    },
+    {
+      "id": "array-iterator",
+      "area": "iteration",
+      "prefix": "declare const items: number[];",
+      "accept": "export const result = items[Symbol.iterator](); const witness: ArrayIterator<number> = result;",
+      "reject": "export const result = items[Symbol.iterator](); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: ArrayIterator<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "map-iterator",
+      "area": "iteration",
+      "prefix": "declare const items: Map<string, number>;",
+      "accept": "export const result = items[Symbol.iterator](); const witness: MapIterator<[string, number]> = result;",
+      "reject": "export const result = items[Symbol.iterator](); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: MapIterator<[string, number]> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "set-iterator",
+      "area": "iteration",
+      "prefix": "declare const items: Set<number>;",
+      "accept": "export const result = items[Symbol.iterator](); const witness: SetIterator<number> = result;",
+      "reject": "export const result = items[Symbol.iterator](); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: SetIterator<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "iterator-next",
+      "area": "iteration",
+      "prefix": "declare const items: ArrayIterator<number>;",
+      "accept": "export const result = items.next(); const witness: IteratorResult<number, undefined> = result;",
+      "reject": "export const result = items.next(); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: IteratorResult<number, undefined> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "async-iterator",
+      "area": "iteration",
+      "prefix": "declare const items: AsyncIterableIterator<number>;",
+      "accept": "export const result = items[Symbol.asyncIterator](); const witness: AsyncIterableIterator<number> = result;",
+      "reject": "export const result = items[Symbol.asyncIterator](); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: AsyncIterableIterator<number> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "symbol-well-known",
+      "area": "symbol",
+      "prefix": "",
+      "accept": "export const result = Symbol.iterator; const witness: symbol = result;",
+      "reject": "export const result = Symbol.iterator; const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: symbol = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "symbol-description",
+      "area": "symbol",
+      "prefix": "declare const key: symbol;",
+      "accept": "export const result = key.description; const witness: string | undefined = result;",
+      "reject": "export const result = key.description; const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "symbol-key-for",
+      "area": "symbol",
+      "prefix": "",
+      "accept": "export const result = Symbol.keyFor(Symbol.for('blue')); const witness: string | undefined = result;",
+      "reject": "export const result = Symbol.keyFor(Symbol.for('blue')); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "number-call",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = Number('12'); const witness: number = result;",
+      "reject": "export const result = Number('12'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "number-construct",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = new Number(12); const witness: Number = result;",
+      "reject": "export const result = new Number(12); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "boolean-call",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = Boolean(1); const witness: boolean = result;",
+      "reject": "export const result = Boolean(1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "boolean-construct",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = new Boolean(1); const witness: Boolean = result;",
+      "reject": "export const result = new Boolean(1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "string-call",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = String(12); const witness: string = result;",
+      "reject": "export const result = String(12); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "string-construct",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = new String('a'); const witness: String = result;",
+      "reject": "export const result = new String('a'); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: String = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "number-isfinite",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = Number.isFinite(12); const witness: boolean = result;",
+      "reject": "export const result = Number.isFinite(12); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "number-isnan",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = Number.isNaN(12); const witness: boolean = result;",
+      "reject": "export const result = Number.isNaN(12); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "number-isinteger",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = Number.isInteger(12); const witness: boolean = result;",
+      "reject": "export const result = Number.isInteger(12); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "number-issafeinteger",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = Number.isSafeInteger(12); const witness: boolean = result;",
+      "reject": "export const result = Number.isSafeInteger(12); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "number-parse-int",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = Number.parseInt('12', 10); const witness: number = result;",
+      "reject": "export const result = Number.parseInt('12', 10); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "string-from-code-point",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = String.fromCodePoint(65, 66); const witness: string = result;",
+      "reject": "export const result = String.fromCodePoint(65, 66); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "string-from-char-code",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = String.fromCharCode(65, 66); const witness: string = result;",
+      "reject": "export const result = String.fromCharCode(65, 66); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "string-raw",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = String.raw({raw: ['a', 'b']}, 1); const witness: string = result;",
+      "reject": "export const result = String.raw({raw: ['a', 'b']}, 1); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "string-code-point-at",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = 'blue'.codePointAt(0); const witness: number | undefined = result;",
+      "reject": "export const result = 'blue'.codePointAt(0); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "string-locale-compare",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = 'a'.localeCompare('b', 'en'); const witness: number = result;",
+      "reject": "export const result = 'a'.localeCompare('b', 'en'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "string-normalize",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = 'a'.normalize('NFC'); const witness: string = result;",
+      "reject": "export const result = 'a'.normalize('NFC'); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "string-replace",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = 'a'.replace(/a/, 'b'); const witness: string = result;",
+      "reject": "export const result = 'a'.replace(/a/, 'b'); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "string-match",
+      "area": "primitive",
+      "prefix": "",
+      "accept": "export const result = 'a'.match(/a/); const witness: RegExpMatchArray | null = result;",
+      "reject": "export const result = 'a'.match(/a/); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: RegExpMatchArray | null = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "object-assign",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.assign({a: 1}, {b: 'x'}, {c: true}); const witness: {a: number; b: string; c: boolean} = result;",
+      "reject": "export const result = Object.assign({a: 1}, {b: 'x'}, {c: true}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: {a: number; b: string; c: boolean} = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "object-entries",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.entries({a: 1, b: 2}); const witness: [string, number][] = result;",
+      "reject": "export const result = Object.entries({a: 1, b: 2}); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: [string, number][] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "object-values",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.values({a: 1, b: 2}); const witness: number[] = result;",
+      "reject": "export const result = Object.values({a: 1, b: 2}); const witness: string[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;"
+    },
+    {
+      "id": "object-from-entries",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.fromEntries([['a', 1]]); const witness: {[key: string]: number} = result;",
+      "reject": "export const result = Object.fromEntries([['a', 1]]); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: {[key: string]: number} = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "object-is",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.is(1, 1); const witness: boolean = result;",
+      "reject": "export const result = Object.is(1, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "object-freeze",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.freeze({value: 1}); const witness: Readonly<{value: number}> = result;",
+      "reject": "export const result = Object.freeze({value: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Readonly<{value: number}> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "object-seal",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.seal({value: 1}); const witness: {value: number} = result;",
+      "reject": "export const result = Object.seal({value: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: {value: number} = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "object-create",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.create(null); const witness: any = result;",
+      "reject": "export const result = Object.create(1);",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: any = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: never = value;"
+    },
+    {
+      "id": "object-descriptor",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.getOwnPropertyDescriptor({a: 1}, 'a'); const witness: PropertyDescriptor | undefined = result;",
+      "reject": "export const result = Object.getOwnPropertyDescriptor({a: 1}, 'a'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: PropertyDescriptor | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "object-define-properties",
+      "area": "object",
+      "prefix": "",
+      "accept": "export const result = Object.defineProperties({value: 1}, {extra: {value: 2}}); const witness: {value: number} = result;",
+      "reject": "export const result = Object.defineProperties({value: 1}, {extra: {value: 2}}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: {value: number} = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "function-call",
+      "area": "function",
+      "prefix": "declare function value(a: number, b: string): boolean;",
+      "accept": "export const result = value.call(undefined, 1, 'a'); const witness: boolean = result;",
+      "reject": "export const result = value.call(undefined, 1, 'a'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "function-apply",
+      "area": "function",
+      "prefix": "declare function value(a: number, b: string): boolean;",
+      "accept": "export const result = value.apply(undefined, [1, 'a']); const witness: boolean = result;",
+      "reject": "export const result = value.apply(undefined, [1, 'a']); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "function-bind",
+      "area": "function",
+      "prefix": "declare function value(a: number, b: string): boolean;",
+      "accept": "export const result = value.bind(undefined, 1); const witness: (b: string) => boolean = result;",
+      "reject": "export const result = value.bind(undefined, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: (b: string) => boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "function-construct",
+      "area": "function",
+      "prefix": "",
+      "accept": "export const result = new Function('value', 'return value'); const witness: Function = result;",
+      "reject": "export const result = new Function('value', 'return value'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Function = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-acos",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.acos(0.5); const witness: number = result;",
+      "reject": "export const result = Math.acos(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-acosh",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.acosh(0.5); const witness: number = result;",
+      "reject": "export const result = Math.acosh(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-asin",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.asin(0.5); const witness: number = result;",
+      "reject": "export const result = Math.asin(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-asinh",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.asinh(0.5); const witness: number = result;",
+      "reject": "export const result = Math.asinh(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-atan",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.atan(0.5); const witness: number = result;",
+      "reject": "export const result = Math.atan(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-atanh",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.atanh(0.5); const witness: number = result;",
+      "reject": "export const result = Math.atanh(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-cbrt",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.cbrt(0.5); const witness: number = result;",
+      "reject": "export const result = Math.cbrt(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-clz32",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.clz32(0.5); const witness: number = result;",
+      "reject": "export const result = Math.clz32(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-cos",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.cos(0.5); const witness: number = result;",
+      "reject": "export const result = Math.cos(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-cosh",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.cosh(0.5); const witness: number = result;",
+      "reject": "export const result = Math.cosh(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-exp",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.exp(0.5); const witness: number = result;",
+      "reject": "export const result = Math.exp(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-expm1",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.expm1(0.5); const witness: number = result;",
+      "reject": "export const result = Math.expm1(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-fround",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.fround(0.5); const witness: number = result;",
+      "reject": "export const result = Math.fround(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-log",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.log(0.5); const witness: number = result;",
+      "reject": "export const result = Math.log(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-log1p",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.log1p(0.5); const witness: number = result;",
+      "reject": "export const result = Math.log1p(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-log2",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.log2(0.5); const witness: number = result;",
+      "reject": "export const result = Math.log2(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-log10",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.log10(0.5); const witness: number = result;",
+      "reject": "export const result = Math.log10(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-sign",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.sign(0.5); const witness: number = result;",
+      "reject": "export const result = Math.sign(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-sin",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.sin(0.5); const witness: number = result;",
+      "reject": "export const result = Math.sin(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-sinh",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.sinh(0.5); const witness: number = result;",
+      "reject": "export const result = Math.sinh(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-tan",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.tan(0.5); const witness: number = result;",
+      "reject": "export const result = Math.tan(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-tanh",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.tanh(0.5); const witness: number = result;",
+      "reject": "export const result = Math.tanh(0.5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-atan2",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.atan2(1, 2); const witness: number = result;",
+      "reject": "export const result = Math.atan2(1, 2); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-hypot",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.hypot(3, 4, 5); const witness: number = result;",
+      "reject": "export const result = Math.hypot(3, 4, 5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-imul",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.imul(3, 4); const witness: number = result;",
+      "reject": "export const result = Math.imul(3, 4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "math-constants",
+      "area": "math",
+      "prefix": "",
+      "accept": "export const result = Math.LN2 + Math.LN10 + Math.LOG2E + Math.LOG10E + Math.SQRT1_2 + Math.SQRT2; const witness: number = result;",
+      "reject": "export const result = Math.LN2 + Math.LN10 + Math.LOG2E + Math.LOG10E + Math.SQRT1_2 + Math.SQRT2; const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "json-reviver",
+      "area": "json",
+      "prefix": "",
+      "accept": "export const result = JSON.parse('{\"value\":1}', (key, value) => value); const witness: any = result;",
+      "reject": "export const result = JSON.parse(1, (key, value) => value);",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: any = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: never = value;"
+    },
+    {
+      "id": "json-stringify",
+      "area": "json",
+      "prefix": "",
+      "accept": "export const result = JSON.stringify({value: 1}, (key, value) => value, 2); const witness: string = result;",
+      "reject": "export const result = JSON.stringify({value: 1}, (key, value) => value, 2); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "error-call-error",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = Error('message'); const witness: Error = result;",
+      "reject": "export const result = Error('message'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Error = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-construct-error",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = new Error('message', {cause: 1}); const witness: Error = result;",
+      "reject": "export const result = new Error('message', {cause: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Error = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-call-evalerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = EvalError('message'); const witness: EvalError = result;",
+      "reject": "export const result = EvalError('message'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: EvalError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-construct-evalerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = new EvalError('message', {cause: 1}); const witness: EvalError = result;",
+      "reject": "export const result = new EvalError('message', {cause: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: EvalError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-call-rangeerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = RangeError('message'); const witness: RangeError = result;",
+      "reject": "export const result = RangeError('message'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: RangeError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-construct-rangeerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = new RangeError('message', {cause: 1}); const witness: RangeError = result;",
+      "reject": "export const result = new RangeError('message', {cause: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: RangeError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-call-referenceerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = ReferenceError('message'); const witness: ReferenceError = result;",
+      "reject": "export const result = ReferenceError('message'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: ReferenceError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-construct-referenceerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = new ReferenceError('message', {cause: 1}); const witness: ReferenceError = result;",
+      "reject": "export const result = new ReferenceError('message', {cause: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: ReferenceError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-call-syntaxerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = SyntaxError('message'); const witness: SyntaxError = result;",
+      "reject": "export const result = SyntaxError('message'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: SyntaxError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-construct-syntaxerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = new SyntaxError('message', {cause: 1}); const witness: SyntaxError = result;",
+      "reject": "export const result = new SyntaxError('message', {cause: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: SyntaxError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-call-typeerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = TypeError('message'); const witness: TypeError = result;",
+      "reject": "export const result = TypeError('message'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: TypeError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-construct-typeerror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = new TypeError('message', {cause: 1}); const witness: TypeError = result;",
+      "reject": "export const result = new TypeError('message', {cause: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: TypeError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-call-urierror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = URIError('message'); const witness: URIError = result;",
+      "reject": "export const result = URIError('message'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: URIError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-construct-urierror",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = new URIError('message', {cause: 1}); const witness: URIError = result;",
+      "reject": "export const result = new URIError('message', {cause: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: URIError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "error-cause",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = new Error('message', {cause: 1}).cause; const witness: unknown = result;",
+      "reject": "export const result = new Error('message', {cause: 1}).cause; const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: unknown = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "aggregate-error",
+      "area": "error",
+      "prefix": "",
+      "accept": "export const result = new AggregateError(new Set([1, 2]), 'message', {cause: 1}); const witness: AggregateError = result;",
+      "reject": "export const result = new AggregateError(new Set([1, 2]), 'message', {cause: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: AggregateError = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "date-call",
+      "area": "date",
+      "prefix": "",
+      "accept": "export const result = Date(); const witness: string = result;",
+      "reject": "export const result = Date(); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "date-components",
+      "area": "date",
+      "prefix": "",
+      "accept": "export const result = new Date(2020, 0, 1, 2, 3, 4, 5); const witness: Date = result;",
+      "reject": "export const result = new Date(2020, 0, 1, 2, 3, 4, 5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Date = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "date-utc",
+      "area": "date",
+      "prefix": "",
+      "accept": "export const result = Date.UTC(2020, 0, 1, 2, 3, 4, 5); const witness: number = result;",
+      "reject": "export const result = Date.UTC(2020, 0, 1, 2, 3, 4, 5); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "date-set-utc",
+      "area": "date",
+      "prefix": "declare const date: Date;",
+      "accept": "export const result = date.setUTCHours(1, 2, 3, 4); const witness: number = result;",
+      "reject": "export const result = date.setUTCHours(1, 2, 3, 4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "date-get-utc",
+      "area": "date",
+      "prefix": "declare const date: Date;",
+      "accept": "export const result = date.getUTCFullYear(); const witness: number = result;",
+      "reject": "export const result = date.getUTCFullYear(); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "date-locale",
+      "area": "date",
+      "prefix": "declare const date: Date;",
+      "accept": "export const result = date.toLocaleDateString('en', {year: 'numeric'}); const witness: string = result;",
+      "reject": "export const result = date.toLocaleDateString('en', {year: 'numeric'}); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "regexp-call",
+      "area": "regexp",
+      "prefix": "",
+      "accept": "export const result = RegExp('a', 'g'); const witness: RegExp = result;",
+      "reject": "export const result = RegExp('a', 'g'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: RegExp = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "regexp-empty-control",
+      "area": "regexp",
+      "prefix": "",
+      "accept": "export const result = new RegExp(''); const witness: RegExp = result;",
+      "reject": "export const result = new RegExp();",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: RegExp = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "regexp-exec",
+      "area": "regexp",
+      "prefix": "",
+      "accept": "export const result = /a/.exec('a'); const witness: RegExpExecArray | null = result;",
+      "reject": "export const result = /a/.exec('a'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: RegExpExecArray | null = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "regexp-groups",
+      "area": "regexp",
+      "prefix": "declare const match: RegExpExecArray;",
+      "accept": "export const result = match.groups; const witness: {[key: string]: string} | undefined = result;",
+      "reject": "export const result = match.groups; const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: {[key: string]: string} | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "regexp-indices",
+      "area": "regexp",
+      "prefix": "declare const match: RegExpExecArray;",
+      "accept": "export const result = match.indices; const witness: RegExpIndicesArray | undefined = result;",
+      "reject": "export const result = match.indices; const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: RegExpIndicesArray | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "regexp-has-indices",
+      "area": "regexp",
+      "prefix": "",
+      "accept": "export const result = new RegExp('a', 'd').hasIndices; const witness: boolean = result;",
+      "reject": "export const result = new RegExp('a', 'd').hasIndices; const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "regexp-runtime",
+      "area": "regexp",
+      "prefix": "",
+      "accept": "export const result = /a/.exec('a'); const witness: RegExpExecArray | null = result;",
+      "reject": "export const result = /a/.exec('a'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: RegExpExecArray | null = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "invoke": "console.log(result === null ? 'none' : result[0]);"
+    },
+    {
+      "id": "reflect-apply",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.apply((value: number) => value + 1, undefined, [1]); const witness: any = result;",
+      "reject": "export const result = Reflect.apply(1, undefined, [1]);",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: any = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: never = value;"
+    },
+    {
+      "id": "reflect-construct",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.construct(Date, [0]); const witness: any = result;",
+      "reject": "export const result = Reflect.construct(1, [0]);",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: any = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: never = value;"
+    },
+    {
+      "id": "reflect-get",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.get({value: 1}, 'value'); const witness: any = result;",
+      "reject": "export const result = Reflect.get(1, 'value');",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: any = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: never = value;"
+    },
+    {
+      "id": "reflect-set",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.set({value: 1}, 'value', 2); const witness: boolean = result;",
+      "reject": "export const result = Reflect.set({value: 1}, 'value', 2); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "reflect-delete",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.deleteProperty({value: 1}, 'value'); const witness: boolean = result;",
+      "reject": "export const result = Reflect.deleteProperty({value: 1}, 'value'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "reflect-define-property",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.defineProperty({}, 'value', {value: 1}); const witness: boolean = result;",
+      "reject": "export const result = Reflect.defineProperty({}, 'value', {value: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "reflect-descriptor",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.getOwnPropertyDescriptor({value: 1}, 'value'); const witness: PropertyDescriptor | undefined = result;",
+      "reject": "export const result = Reflect.getOwnPropertyDescriptor({value: 1}, 'value'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: PropertyDescriptor | undefined = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "reflect-prototype",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.getPrototypeOf({}); const witness: object | null = result;",
+      "reject": "export const result = Reflect.getPrototypeOf({}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: object | null = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "reflect-has",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.has({value: 1}, 'value'); const witness: boolean = result;",
+      "reject": "export const result = Reflect.has({value: 1}, 'value'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "reflect-extensible",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.isExtensible({}); const witness: boolean = result;",
+      "reject": "export const result = Reflect.isExtensible({}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "reflect-own-keys",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.ownKeys({value: 1}); const witness: (string | symbol)[] = result;",
+      "reject": "export const result = Reflect.ownKeys({value: 1}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: (string | symbol)[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "reflect-prevent-extensions",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.preventExtensions({}); const witness: boolean = result;",
+      "reject": "export const result = Reflect.preventExtensions({}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "reflect-set-prototype",
+      "area": "reflect",
+      "prefix": "",
+      "accept": "export const result = Reflect.setPrototypeOf({}, null); const witness: boolean = result;",
+      "reject": "export const result = Reflect.setPrototypeOf({}, null); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "intl-collator-construct",
+      "area": "intl",
+      "prefix": "",
+      "accept": "export const result = new Intl.Collator('en'); const witness: Intl.Collator = result;",
+      "reject": "export const result = new Intl.Collator('en'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Intl.Collator = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "intl-collator-method",
+      "area": "intl",
+      "prefix": "declare const value: Intl.Collator;",
+      "accept": "export const result = value.compare('a', 'b'); const witness: number = result;",
+      "reject": "export const result = value.compare('a', 'b'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "intl-numberformat-construct",
+      "area": "intl",
+      "prefix": "",
+      "accept": "export const result = new Intl.NumberFormat('en'); const witness: Intl.NumberFormat = result;",
+      "reject": "export const result = new Intl.NumberFormat('en'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Intl.NumberFormat = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "intl-numberformat-method",
+      "area": "intl",
+      "prefix": "declare const value: Intl.NumberFormat;",
+      "accept": "export const result = value.format(12); const witness: string = result;",
+      "reject": "export const result = value.format(12); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "intl-datetimeformat-construct",
+      "area": "intl",
+      "prefix": "",
+      "accept": "export const result = new Intl.DateTimeFormat('en'); const witness: Intl.DateTimeFormat = result;",
+      "reject": "export const result = new Intl.DateTimeFormat('en'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Intl.DateTimeFormat = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "intl-datetimeformat-method",
+      "area": "intl",
+      "prefix": "declare const value: Intl.DateTimeFormat;",
+      "accept": "export const result = value.format(0); const witness: string = result;",
+      "reject": "export const result = value.format(0); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "intl-pluralrules-construct",
+      "area": "intl",
+      "prefix": "",
+      "accept": "export const result = new Intl.PluralRules('en'); const witness: Intl.PluralRules = result;",
+      "reject": "export const result = new Intl.PluralRules('en'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Intl.PluralRules = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "intl-pluralrules-method",
+      "area": "intl",
+      "prefix": "declare const value: Intl.PluralRules;",
+      "accept": "export const result = value.select(1); const witness: string = result;",
+      "reject": "export const result = value.select(1); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "intl-relativetimeformat-construct",
+      "area": "intl",
+      "prefix": "",
+      "accept": "export const result = new Intl.RelativeTimeFormat('en'); const witness: Intl.RelativeTimeFormat = result;",
+      "reject": "export const result = new Intl.RelativeTimeFormat('en'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Intl.RelativeTimeFormat = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "intl-relativetimeformat-method",
+      "area": "intl",
+      "prefix": "declare const value: Intl.RelativeTimeFormat;",
+      "accept": "export const result = value.format(-1, 'day'); const witness: string = result;",
+      "reject": "export const result = value.format(-1, 'day'); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "intl-listformat-construct",
+      "area": "intl",
+      "prefix": "",
+      "accept": "export const result = new Intl.ListFormat('en'); const witness: Intl.ListFormat = result;",
+      "reject": "export const result = new Intl.ListFormat('en'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Intl.ListFormat = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "intl-listformat-method",
+      "area": "intl",
+      "prefix": "declare const value: Intl.ListFormat;",
+      "accept": "export const result = value.format(['a', 'b']); const witness: string = result;",
+      "reject": "export const result = value.format(['a', 'b']); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "intl-locale-construct",
+      "area": "intl",
+      "prefix": "",
+      "accept": "export const result = new Intl.Locale('en'); const witness: Intl.Locale = result;",
+      "reject": "export const result = new Intl.Locale('en'); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Intl.Locale = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "intl-locale-method",
+      "area": "intl",
+      "prefix": "declare const value: Intl.Locale;",
+      "accept": "export const result = value.toString(); const witness: string = result;",
+      "reject": "export const result = value.toString(); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "intl-canonical-locales",
+      "area": "intl",
+      "prefix": "",
+      "accept": "export const result = Intl.getCanonicalLocales('en'); const witness: string[] = result;",
+      "reject": "export const result = Intl.getCanonicalLocales('en'); const witness: number[] = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string[] = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number[] = value;"
+    },
+    {
+      "id": "bigint-call",
+      "area": "bigint",
+      "prefix": "",
+      "accept": "export const result = BigInt('12'); const witness: bigint = result;",
+      "reject": "export const result = BigInt('12'); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: bigint = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "bigint-as-int",
+      "area": "bigint",
+      "prefix": "",
+      "accept": "export const result = BigInt.asIntN(8, BigInt(12)); const witness: bigint = result;",
+      "reject": "export const result = BigInt.asIntN(8, BigInt(12)); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: bigint = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "bigint-as-uint",
+      "area": "bigint",
+      "prefix": "",
+      "accept": "export const result = BigInt.asUintN(8, BigInt(12)); const witness: bigint = result;",
+      "reject": "export const result = BigInt.asUintN(8, BigInt(12)); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: bigint = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "array-buffer",
+      "area": "buffer",
+      "prefix": "",
+      "accept": "export const result = new ArrayBuffer(8); const witness: ArrayBuffer = result;",
+      "reject": "export const result = new ArrayBuffer(8); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: ArrayBuffer = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "array-buffer-slice",
+      "area": "buffer",
+      "prefix": "declare const value: ArrayBuffer;",
+      "accept": "export const result = value.slice(0, 4); const witness: ArrayBuffer = result;",
+      "reject": "export const result = value.slice(0, 4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: ArrayBuffer = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "array-buffer-is-view",
+      "area": "buffer",
+      "prefix": "",
+      "accept": "export const result = ArrayBuffer.isView({}); const witness: boolean = result;",
+      "reject": "export const result = ArrayBuffer.isView({}); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "shared-buffer",
+      "area": "buffer",
+      "prefix": "",
+      "accept": "export const result = new SharedArrayBuffer(8); const witness: SharedArrayBuffer = result;",
+      "reject": "export const result = new SharedArrayBuffer(8); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: SharedArrayBuffer = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "shared-buffer-slice",
+      "area": "buffer",
+      "prefix": "declare const value: SharedArrayBuffer;",
+      "accept": "export const result = value.slice(0, 4); const witness: SharedArrayBuffer = result;",
+      "reject": "export const result = value.slice(0, 4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: SharedArrayBuffer = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "data-view",
+      "area": "buffer",
+      "prefix": "",
+      "accept": "export const result = new DataView(new ArrayBuffer(8), 0, 4); const witness: DataView<ArrayBuffer> = result;",
+      "reject": "export const result = new DataView(new ArrayBuffer(8), 0, 4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: DataView<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "data-view-getuint8",
+      "area": "buffer",
+      "prefix": "declare const value: DataView;",
+      "accept": "export const result = value.getUint8(0); const witness: number = result;",
+      "reject": "export const result = value.getUint8(0); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "data-view-getint16",
+      "area": "buffer",
+      "prefix": "declare const value: DataView;",
+      "accept": "export const result = value.getInt16(0, true); const witness: number = result;",
+      "reject": "export const result = value.getInt16(0, true); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "data-view-getfloat64",
+      "area": "buffer",
+      "prefix": "declare const value: DataView;",
+      "accept": "export const result = value.getFloat64(0, true); const witness: number = result;",
+      "reject": "export const result = value.getFloat64(0, true); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "data-view-getbigint64",
+      "area": "buffer",
+      "prefix": "declare const value: DataView;",
+      "accept": "export const result = value.getBigInt64(0, true); const witness: bigint = result;",
+      "reject": "export const result = value.getBigInt64(0, true); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: bigint = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "data-view-setuint32",
+      "area": "buffer",
+      "prefix": "declare const value: DataView;",
+      "accept": "export const result = value.setUint32(0, 2, true); const witness: void = result;",
+      "reject": "export const result = value.setUint32(0, 2, true); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: void = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "data-view-setbiguint64",
+      "area": "buffer",
+      "prefix": "declare const value: DataView;",
+      "accept": "export const result = value.setBigUint64(0, BigInt(2), true); const witness: void = result;",
+      "reject": "export const result = value.setBigUint64(0, BigInt(2), true); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: void = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "typed-int8array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Int8Array(4); const witness: Int8Array<ArrayBuffer> = result;",
+      "reject": "export const result = new Int8Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Int8Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-uint8array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Uint8Array(4); const witness: Uint8Array<ArrayBuffer> = result;",
+      "reject": "export const result = new Uint8Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint8Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-uint8clampedarray",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Uint8ClampedArray(4); const witness: Uint8ClampedArray<ArrayBuffer> = result;",
+      "reject": "export const result = new Uint8ClampedArray(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint8ClampedArray<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-int16array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Int16Array(4); const witness: Int16Array<ArrayBuffer> = result;",
+      "reject": "export const result = new Int16Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Int16Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-uint16array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Uint16Array(4); const witness: Uint16Array<ArrayBuffer> = result;",
+      "reject": "export const result = new Uint16Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint16Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-int32array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Int32Array(4); const witness: Int32Array<ArrayBuffer> = result;",
+      "reject": "export const result = new Int32Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Int32Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-uint32array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Uint32Array(4); const witness: Uint32Array<ArrayBuffer> = result;",
+      "reject": "export const result = new Uint32Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint32Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-float32array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Float32Array(4); const witness: Float32Array<ArrayBuffer> = result;",
+      "reject": "export const result = new Float32Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Float32Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-float64array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Float64Array(4); const witness: Float64Array<ArrayBuffer> = result;",
+      "reject": "export const result = new Float64Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Float64Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-bigint64array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new BigInt64Array(4); const witness: BigInt64Array<ArrayBuffer> = result;",
+      "reject": "export const result = new BigInt64Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: BigInt64Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-biguint64array",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new BigUint64Array(4); const witness: BigUint64Array<ArrayBuffer> = result;",
+      "reject": "export const result = new BigUint64Array(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: BigUint64Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-from",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = Uint8Array.from([1, 2], value => value + 1); const witness: Uint8Array<ArrayBuffer> = result;",
+      "reject": "export const result = Uint8Array.from([1, 2], value => value + 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint8Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-of",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = Uint8Array.of(1, 2); const witness: Uint8Array<ArrayBuffer> = result;",
+      "reject": "export const result = Uint8Array.of(1, 2); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint8Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-map",
+      "area": "typed-array",
+      "prefix": "declare const value: Uint8Array;",
+      "accept": "export const result = value.map(item => item + 1); const witness: Uint8Array<ArrayBuffer> = result;",
+      "reject": "export const result = value.map(item => item + 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint8Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-slice",
+      "area": "typed-array",
+      "prefix": "declare const value: Uint8Array;",
+      "accept": "export const result = value.slice(0, 1); const witness: Uint8Array<ArrayBuffer> = result;",
+      "reject": "export const result = value.slice(0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint8Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-subarray",
+      "area": "typed-array",
+      "prefix": "declare const value: Uint8Array<SharedArrayBuffer>;",
+      "accept": "export const result = value.subarray(0, 1); const witness: Uint8Array<SharedArrayBuffer> = result;",
+      "reject": "export const result = value.subarray(0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint8Array<SharedArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-buffer",
+      "area": "typed-array",
+      "prefix": "declare const value: Uint8Array<SharedArrayBuffer>;",
+      "accept": "export const result = value.buffer; const witness: SharedArrayBuffer = result;",
+      "reject": "export const result = value.buffer; const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: SharedArrayBuffer = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "typed-runtime",
+      "area": "typed-array",
+      "prefix": "",
+      "accept": "export const result = new Uint8Array([1, 2]).map(value => value + 1); const witness: Uint8Array<ArrayBuffer> = result;",
+      "reject": "export const result = new Uint8Array([1, 2]).map(value => value + 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: Uint8Array<ArrayBuffer> = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;",
+      "invoke": "console.log(result.join(','));"
+    },
+    {
+      "id": "atomics-add",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.add(value, 0, 1); const witness: number = result;",
+      "reject": "export const result = Atomics.add(value, 0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-and",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.and(value, 0, 1); const witness: number = result;",
+      "reject": "export const result = Atomics.and(value, 0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-exchange",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.exchange(value, 0, 1); const witness: number = result;",
+      "reject": "export const result = Atomics.exchange(value, 0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-or",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.or(value, 0, 1); const witness: number = result;",
+      "reject": "export const result = Atomics.or(value, 0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-sub",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.sub(value, 0, 1); const witness: number = result;",
+      "reject": "export const result = Atomics.sub(value, 0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-xor",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.xor(value, 0, 1); const witness: number = result;",
+      "reject": "export const result = Atomics.xor(value, 0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-compare-exchange",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.compareExchange(value, 0, 1, 2); const witness: number = result;",
+      "reject": "export const result = Atomics.compareExchange(value, 0, 1, 2); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-load",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.load(value, 0); const witness: number = result;",
+      "reject": "export const result = Atomics.load(value, 0); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-store",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.store(value, 0, 1); const witness: number = result;",
+      "reject": "export const result = Atomics.store(value, 0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-notify",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.notify(value, 0, 1); const witness: number = result;",
+      "reject": "export const result = Atomics.notify(value, 0, 1); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-wait",
+      "area": "atomics",
+      "prefix": "declare const value: Int32Array;",
+      "accept": "export const result = Atomics.wait(value, 0, 1, 0); const witness: 'ok' | 'not-equal' | 'timed-out' = result;",
+      "reject": "export const result = Atomics.wait(value, 0, 1, 0); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: 'ok' | 'not-equal' | 'timed-out' = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    },
+    {
+      "id": "atomics-lock-free",
+      "area": "atomics",
+      "prefix": "",
+      "accept": "export const result = Atomics.isLockFree(4); const witness: boolean = result;",
+      "reject": "export const result = Atomics.isLockFree(4); const witness: string = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: boolean = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: string = value;"
+    },
+    {
+      "id": "atomics-bigint",
+      "area": "atomics",
+      "prefix": "declare const value: BigInt64Array;",
+      "accept": "export const result = Atomics.add(value, 0, BigInt(1)); const witness: bigint = result;",
+      "reject": "export const result = Atomics.add(value, 0, BigInt(1)); const witness: number = result;",
+      "consumer_accept": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: bigint = value;",
+      "consumer_reject": "import type * as api from './entry.js'; declare const value: typeof api.result; const witness: number = value;"
+    }
+  ],
+  "profile_controls": [
+    {
+      "id": "es2015-with-es5-emit",
+      "edition": "ES2015",
+      "below": "ES5",
+      "source": "export const result = new Map<string, number>();"
+    },
+    {
+      "id": "es2017-with-es5-emit",
+      "edition": "ES2017",
+      "below": "ES2016",
+      "source": "export const result = Object.values({a: 1});"
+    },
+    {
+      "id": "es2018-with-es5-emit",
+      "edition": "ES2018",
+      "below": "ES2017",
+      "source": "declare const value: Promise<number>; export const result = value.finally(() => {});"
+    },
+    {
+      "id": "es2019-with-es5-emit",
+      "edition": "ES2019",
+      "below": "ES2018",
+      "source": "export const result = [1].flatMap((value: number) => [value]);"
+    },
+    {
+      "id": "es2020-with-es5-emit",
+      "edition": "ES2020",
+      "below": "ES2019",
+      "source": "export const result = BigInt(1);"
+    },
+    {
+      "id": "es2021-with-es5-emit",
+      "edition": "ES2021",
+      "below": "ES2020",
+      "source": "export const result = Promise.any([Promise.resolve(1)]);"
+    },
+    {
+      "id": "es2022-with-es5-emit",
+      "edition": "ES2022",
+      "below": "ES2021",
+      "source": "export const result = new Error('message', {cause: 1});"
+    }
+  ],
+  "owner_controls": [
+    {
+      "id": "owner-replacement",
+      "source": "export const result = Array.from('owned');",
+      "owner": "declare const Array: {from(value: string): 'owner'};"
+    },
+    {
+      "id": "library-no-runtime-grant",
+      "source": "export const result = new Map<string, number>();",
+      "owner": "declare const Map: {new <K, V>(): Map<K, V>};"
+    },
+    {
+      "id": "library-no-owner-inputs",
+      "source": "export const result = Math.sin(1);"
+    },
+    {
+      "id": "library-content-fingerprint",
+      "source": "export const result = 1;"
+    },
+    {
+      "id": "generic-library-budget",
+      "source": "export const result = Promise.all([Promise.resolve(1)] as const);"
+    }
+  ]
+}

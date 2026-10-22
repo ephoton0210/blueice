@@ -11,6 +11,26 @@ mod declarations;
 mod jsx;
 use declarations::Index;
 
+pub(crate) fn library_context(
+    key: &str,
+    code: u32,
+    arguments: Vec<String>,
+) -> Option<TypeScriptRelatedInformation> {
+    let declaration = super::templates::library_declaration(key)?;
+    let span = SourceSpan::new(&declaration.file, declaration.start, declaration.end);
+    let message = super::mapping::build(code, &span, arguments, "")?.message;
+    Some(TypeScriptRelatedInformation {
+        code,
+        message,
+        span,
+        position: Some(super::TypeScriptPosition {
+            line: declaration.line,
+            column: declaration.column,
+            length: declaration.length,
+        }),
+    })
+}
+
 pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
     let index = Index::new(project);
     for diagnostic in diagnostics {

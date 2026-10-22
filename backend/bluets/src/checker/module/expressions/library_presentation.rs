@@ -65,6 +65,50 @@ fn optional_target(value: &Type, actual: &Type) -> Type {
     }
 }
 impl ModuleChecker<'_> {
+    pub(in crate::checker::module) fn present_library_constructor(
+        &mut self,
+        name: &str,
+        actuals: &[Type],
+    ) {
+        if !self.library_values.contains(name) {
+            return;
+        }
+        if !matches!(self.values.get(name), Some(Type::Named {name, ..}) if self.types.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::LibraryInterface))
+        {
+            return;
+        }
+        let key = format!("new {name}");
+        let target = self.library_target.unwrap_or(self.target);
+        let Some(signatures) = templates::library_signatures(&format!("{}/{key}", target.as_str()))
+        else {
+            return;
+        };
+        if signatures
+            .iter()
+            .filter(|signature| {
+                signature.minimum <= actuals.len() && actuals.len() <= signature.parameters.len()
+            })
+            .count()
+            <= 1
+        {
+            return;
+        }
+        let Some(counterpart) = self
+            .diagnostics
+            .last_mut()
+            .and_then(|diagnostic| diagnostic.typescript.as_mut())
+            .filter(|counterpart| matches!(counterpart.code, 2345 | 2769))
+        else {
+            return;
+        };
+        let span = counterpart.span.clone();
+        *counterpart = Diagnostic::error(DiagnosticCode::TypeMismatch, span, "")
+            .with_typescript(2769, Vec::new())
+            .typescript
+            .unwrap();
+        self.present_library_overloads(&key, actuals, &BTreeMap::new());
+    }
+
     pub(super) fn present_library_argument(
         &mut self,
         key: &str,
@@ -133,9 +177,12 @@ impl ModuleChecker<'_> {
                 substitutions.insert(name.into(), *result.clone());
             }
         }
-        let pinned = templates::library_signatures(&format!("{}/{key}", self.target.as_str()))
-            .and_then(|signatures| signatures.first())
-            .and_then(|signature| signature.parameters.get(index));
+        let pinned = templates::library_signatures(&format!(
+            "{}/{key}",
+            self.library_target.unwrap_or(self.target).as_str()
+        ))
+        .and_then(|signatures| signatures.first())
+        .and_then(|signature| signature.parameters.get(index));
         let expected = pinned
             .map(|parameter| {
                 optional_target(
@@ -184,9 +231,10 @@ impl ModuleChecker<'_> {
         if !self.enforce_types {
             return;
         }
-        let Some(signatures) =
-            templates::library_signatures(&format!("{}/{key}", self.target.as_str()))
-        else {
+        let Some(signatures) = templates::library_signatures(&format!(
+            "{}/{key}",
+            self.library_target.unwrap_or(self.target).as_str()
+        )) else {
             return;
         };
         let mut detail = String::new();

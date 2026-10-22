@@ -73,6 +73,51 @@ impl ExportedValue {
 }
 
 impl ModuleChecker<'_> {
+    pub(in crate::checker::module) fn bind_imported_query(
+        &mut self,
+        local: &str,
+        value: &ExportedValue,
+        span: &SourceSpan,
+    ) {
+        let source = &value.surface.source_name;
+        let rename: BTreeMap<_, _> = value
+            .surface
+            .types
+            .keys()
+            .filter_map(|key| {
+                let bare = key.strip_prefix("typeof ").unwrap_or(key);
+                let tail = bare.strip_prefix(source)?;
+                (tail.is_empty() || tail.starts_with('.')).then(|| {
+                    (
+                        key.clone(),
+                        format!(
+                            "{}{local}{tail}",
+                            if key.starts_with("typeof ") {
+                                "typeof "
+                            } else {
+                                ""
+                            }
+                        ),
+                    )
+                })
+            })
+            .collect();
+        let query = Qualifier {
+            rename: &rename,
+            argument_prefix: None,
+        }
+        .ty(&value.value_type());
+        self.bind_imported_surface(local, &value.surface, span, false, false, false);
+        self.types.insert(
+            format!("typeof {local}"),
+            TypeDefinition {
+                kind: TypeDefinitionKind::Alias,
+                parameters: Vec::new(),
+                value: query,
+            },
+        );
+    }
+
     pub(in crate::checker) fn exported_values(
         &self,
         seed: bool,

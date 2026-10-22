@@ -2505,6 +2505,15 @@
       "length": 6,
       "sourceLine": "declare var Object: ObjectConstructor;"
     },
+    "Object.new.0.value": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 5053,
+      "end": 5064,
+      "line": 156,
+      "column": 10,
+      "length": 11,
+      "sourceLine": "    new (value?: any): Object;"
+    },
     "Array": {
       "file": "<typescript-lib>/lib.es5.d.ts",
       "start": 70873,
@@ -2513,6 +2522,33 @@
       "column": 13,
       "length": 5,
       "sourceLine": "declare var Array: ArrayConstructor;"
+    },
+    "Array.new.0.arrayLength": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 70589,
+      "end": 70609,
+      "line": 1514,
+      "column": 10,
+      "length": 20,
+      "sourceLine": "    new (arrayLength?: number): any[];"
+    },
+    "Array.new.1.arrayLength": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 70631,
+      "end": 70650,
+      "line": 1515,
+      "column": 13,
+      "length": 19,
+      "sourceLine": "    new <T>(arrayLength: number): T[];"
+    },
+    "Array.new.2.items": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 70670,
+      "end": 70683,
+      "line": 1516,
+      "column": 13,
+      "length": 13,
+      "sourceLine": "    new <T>(...items: T[]): T[];"
     },
     "String": {
       "file": "<typescript-lib>/lib.es5.d.ts",
@@ -2523,6 +2559,15 @@
       "length": 6,
       "sourceLine": "declare var String: StringConstructor;"
     },
+    "String.new.0.value": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 21810,
+      "end": 21821,
+      "line": 535,
+      "column": 10,
+      "length": 11,
+      "sourceLine": "    new (value?: any): String;"
+    },
     "Number": {
       "file": "<typescript-lib>/lib.es5.d.ts",
       "start": 24706,
@@ -2531,6 +2576,15 @@
       "column": 13,
       "length": 6,
       "sourceLine": "declare var Number: NumberConstructor;"
+    },
+    "Number.new.0.value": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 23556,
+      "end": 23567,
+      "line": 589,
+      "column": 10,
+      "length": 11,
+      "sourceLine": "    new (value?: any): Number;"
     },
     "Boolean": {
       "file": "<typescript-lib>/lib.es5.d.ts",
@@ -2541,6 +2595,15 @@
       "length": 7,
       "sourceLine": "declare var Boolean: BooleanConstructor;"
     },
+    "Boolean.new.0.value": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 22254,
+      "end": 22265,
+      "line": 552,
+      "column": 10,
+      "length": 11,
+      "sourceLine": "    new (value?: any): Boolean;"
+    },
     "Date": {
       "file": "<typescript-lib>/lib.es5.d.ts",
       "start": 40005,
@@ -2549,6 +2612,87 @@
       "column": 13,
       "length": 4,
       "sourceLine": "declare var Date: DateConstructor;"
+    },
+    "Date.new.1.value": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 37620,
+      "end": 37642,
+      "line": 927,
+      "column": 10,
+      "length": 22,
+      "sourceLine": "    new (value: number | string): Date;"
+    },
+    "Date.new.2.year": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 38446,
+      "end": 38458,
+      "line": 938,
+      "column": 10,
+      "length": 12,
+      "sourceLine": "    new (year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;"
+    },
+    "Date.new.2.monthIndex": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 38460,
+      "end": 38478,
+      "line": 938,
+      "column": 24,
+      "length": 18,
+      "sourceLine": "    new (year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;"
+    },
+    "Date.new.2.date": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 38480,
+      "end": 38493,
+      "line": 938,
+      "column": 44,
+      "length": 13,
+      "sourceLine": "    new (year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;"
+    },
+    "Date.new.2.hours": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 38495,
+      "end": 38509,
+      "line": 938,
+      "column": 59,
+      "length": 14,
+      "sourceLine": "    new (year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;"
+    },
+    "Date.new.2.minutes": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 38511,
+      "end": 38527,
+      "line": 938,
+      "column": 75,
+      "length": 16,
+      "sourceLine": "    new (year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;"
+    },
+    "Date.new.2.seconds": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 38529,
+      "end": 38545,
+      "line": 938,
+      "column": 93,
+      "length": 16,
+      "sourceLine": "    new (year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;"
+    },
+    "Date.new.2.ms": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 38547,
+      "end": 38558,
+      "line": 938,
+      "column": 111,
+      "length": 11,
+      "sourceLine": "    new (year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;"
+    },
+    "Date.new.3.value": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 4310,
+      "end": 4339,
+      "line": 90,
+      "column": 10,
+      "length": 29,
+      "sourceLine": "    new (value: number | string | Date): Date;"
     },
     "RegExp": {
       "file": "<typescript-lib>/lib.es5.d.ts",
@@ -2559,6 +2703,51 @@
       "length": 6,
       "sourceLine": "declare var RegExp: RegExpConstructor;"
     },
+    "RegExp.new.0.pattern": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 42222,
+      "end": 42246,
+      "line": 1026,
+      "column": 10,
+      "length": 24,
+      "sourceLine": "    new (pattern: RegExp | string): RegExp;"
+    },
+    "RegExp.new.1.pattern": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 42266,
+      "end": 42281,
+      "line": 1027,
+      "column": 10,
+      "length": 15,
+      "sourceLine": "    new (pattern: string, flags?: string): RegExp;"
+    },
+    "RegExp.new.1.flags": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 42283,
+      "end": 42297,
+      "line": 1027,
+      "column": 27,
+      "length": 14,
+      "sourceLine": "    new (pattern: string, flags?: string): RegExp;"
+    },
+    "RegExp.new.2.pattern": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 15607,
+      "end": 15631,
+      "line": 398,
+      "column": 10,
+      "length": 24,
+      "sourceLine": "    new (pattern: RegExp | string, flags?: string): RegExp;"
+    },
+    "RegExp.new.2.flags": {
+      "file": "<typescript-lib>/lib.es2015.core.d.ts",
+      "start": 15633,
+      "end": 15647,
+      "line": 398,
+      "column": 36,
+      "length": 14,
+      "sourceLine": "    new (pattern: RegExp | string, flags?: string): RegExp;"
+    },
     "Error": {
       "file": "<typescript-lib>/lib.es5.d.ts",
       "start": 44357,
@@ -2567,6 +2756,33 @@
       "column": 13,
       "length": 5,
       "sourceLine": "declare var Error: ErrorConstructor;"
+    },
+    "Error.new.0.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44254,
+      "end": 44270,
+      "line": 1082,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): Error;"
+    },
+    "Error.new.1.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1022,
+      "end": 1038,
+      "line": 30,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
+    "Error.new.1.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1040,
+      "end": 1062,
+      "line": 30,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
     },
     "EvalError": {
       "file": "<typescript-lib>/lib.es5.d.ts",
@@ -2577,6 +2793,60 @@
       "length": 9,
       "sourceLine": "declare var EvalError: EvalErrorConstructor;"
     },
+    "EvalError.new.0.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44489,
+      "end": 44505,
+      "line": 1093,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): EvalError;"
+    },
+    "EvalError.new.1.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1172,
+      "end": 1188,
+      "line": 35,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): EvalError;"
+    },
+    "EvalError.new.1.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1190,
+      "end": 1212,
+      "line": 35,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): EvalError;"
+    },
+    "EvalError.new.2.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44254,
+      "end": 44270,
+      "line": 1082,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): Error;"
+    },
+    "EvalError.new.3.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1022,
+      "end": 1038,
+      "line": 30,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
+    "EvalError.new.3.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1040,
+      "end": 1062,
+      "line": 30,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
     "RangeError": {
       "file": "<typescript-lib>/lib.es5.d.ts",
       "start": 44864,
@@ -2585,6 +2855,60 @@
       "column": 13,
       "length": 10,
       "sourceLine": "declare var RangeError: RangeErrorConstructor;"
+    },
+    "RangeError.new.0.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44746,
+      "end": 44762,
+      "line": 1104,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): RangeError;"
+    },
+    "RangeError.new.1.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1331,
+      "end": 1347,
+      "line": 40,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): RangeError;"
+    },
+    "RangeError.new.1.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1349,
+      "end": 1371,
+      "line": 40,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): RangeError;"
+    },
+    "RangeError.new.2.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44254,
+      "end": 44270,
+      "line": 1082,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): Error;"
+    },
+    "RangeError.new.3.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1022,
+      "end": 1038,
+      "line": 30,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
+    "RangeError.new.3.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1040,
+      "end": 1062,
+      "line": 30,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
     },
     "ReferenceError": {
       "file": "<typescript-lib>/lib.es5.d.ts",
@@ -2595,6 +2919,60 @@
       "length": 14,
       "sourceLine": "declare var ReferenceError: ReferenceErrorConstructor;"
     },
+    "ReferenceError.new.0.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 45016,
+      "end": 45032,
+      "line": 1115,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): ReferenceError;"
+    },
+    "ReferenceError.new.1.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1496,
+      "end": 1512,
+      "line": 45,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): ReferenceError;"
+    },
+    "ReferenceError.new.1.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1514,
+      "end": 1536,
+      "line": 45,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): ReferenceError;"
+    },
+    "ReferenceError.new.2.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44254,
+      "end": 44270,
+      "line": 1082,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): Error;"
+    },
+    "ReferenceError.new.3.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1022,
+      "end": 1038,
+      "line": 30,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
+    "ReferenceError.new.3.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1040,
+      "end": 1062,
+      "line": 30,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
     "SyntaxError": {
       "file": "<typescript-lib>/lib.es5.d.ts",
       "start": 45421,
@@ -2603,6 +2981,60 @@
       "column": 13,
       "length": 11,
       "sourceLine": "declare var SyntaxError: SyntaxErrorConstructor;"
+    },
+    "SyntaxError.new.0.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 45300,
+      "end": 45316,
+      "line": 1126,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): SyntaxError;"
+    },
+    "SyntaxError.new.1.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1666,
+      "end": 1682,
+      "line": 50,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): SyntaxError;"
+    },
+    "SyntaxError.new.1.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1684,
+      "end": 1706,
+      "line": 50,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): SyntaxError;"
+    },
+    "SyntaxError.new.2.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44254,
+      "end": 44270,
+      "line": 1082,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): Error;"
+    },
+    "SyntaxError.new.3.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1022,
+      "end": 1038,
+      "line": 30,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
+    "SyntaxError.new.3.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1040,
+      "end": 1062,
+      "line": 30,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
     },
     "TypeError": {
       "file": "<typescript-lib>/lib.es5.d.ts",
@@ -2613,6 +3045,60 @@
       "length": 9,
       "sourceLine": "declare var TypeError: TypeErrorConstructor;"
     },
+    "TypeError.new.0.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 45565,
+      "end": 45581,
+      "line": 1137,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): TypeError;"
+    },
+    "TypeError.new.1.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1828,
+      "end": 1844,
+      "line": 55,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): TypeError;"
+    },
+    "TypeError.new.1.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1846,
+      "end": 1868,
+      "line": 55,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): TypeError;"
+    },
+    "TypeError.new.2.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44254,
+      "end": 44270,
+      "line": 1082,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): Error;"
+    },
+    "TypeError.new.3.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1022,
+      "end": 1038,
+      "line": 30,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
+    "TypeError.new.3.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1040,
+      "end": 1062,
+      "line": 30,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
     "URIError": {
       "file": "<typescript-lib>/lib.es5.d.ts",
       "start": 45930,
@@ -2621,6 +3107,60 @@
       "column": 13,
       "length": 8,
       "sourceLine": "declare var URIError: URIErrorConstructor;"
+    },
+    "URIError.new.0.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 45818,
+      "end": 45834,
+      "line": 1148,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): URIError;"
+    },
+    "URIError.new.1.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1985,
+      "end": 2001,
+      "line": 60,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): URIError;"
+    },
+    "URIError.new.1.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 2003,
+      "end": 2025,
+      "line": 60,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): URIError;"
+    },
+    "URIError.new.2.message": {
+      "file": "<typescript-lib>/lib.es5.d.ts",
+      "start": 44254,
+      "end": 44270,
+      "line": 1082,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string): Error;"
+    },
+    "URIError.new.3.message": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1022,
+      "end": 1038,
+      "line": 30,
+      "column": 10,
+      "length": 16,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
+    },
+    "URIError.new.3.options": {
+      "file": "<typescript-lib>/lib.es2022.error.d.ts",
+      "start": 1040,
+      "end": 1062,
+      "line": 30,
+      "column": 28,
+      "length": 22,
+      "sourceLine": "    new (message?: string, options?: ErrorOptions): Error;"
     },
     "JSON": {
       "file": "<typescript-lib>/lib.es5.d.ts",
@@ -2639,6 +3179,15 @@
       "column": 13,
       "length": 7,
       "sourceLine": "declare var Promise: PromiseConstructor;"
+    },
+    "Promise.new.0.executor": {
+      "file": "<typescript-lib>/lib.es2015.promise.d.ts",
+      "start": 1329,
+      "end": 1425,
+      "line": 31,
+      "column": 13,
+      "length": 96,
+      "sourceLine": "    new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void): Promise<T>;"
     },
     "Array.length": {
       "file": "<typescript-lib>/lib.es5.d.ts",

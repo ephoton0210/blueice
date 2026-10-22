@@ -37,11 +37,28 @@ pub(super) fn reason(
     if depth > 16 || actual == expected {
         return String::new();
     }
+    if let Some(Type::Union(mut values)) =
+        crate::standard_library::presentation::alias_value(actual, project)
+    {
+        // Native library unions put concrete interfaces before generic
+        // instantiations when reporting a failing constituent.
+        values.sort_by_key(
+            |value| matches!(value, Type::Named {arguments, ..} if !arguments.is_empty()),
+        );
+        return reason(&Type::Union(values), expected, project, depth);
+    }
     if let Type::Union(values) = actual {
         if let Some(value) = values
             .iter()
             .find(|value| **value == Type::Undefined)
             .filter(|_| !contains(expected, &Type::Undefined))
+        {
+            return mismatch(value, expected, project, depth);
+        }
+        if let Some(value) = values
+            .iter()
+            .find(|value| **value == Type::Null)
+            .filter(|_| !contains(expected, &Type::Null))
         {
             return mismatch(value, expected, project, depth);
         }

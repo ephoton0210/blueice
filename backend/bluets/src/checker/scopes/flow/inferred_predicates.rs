@@ -48,7 +48,9 @@ impl ScopeModel<'_> {
             }) {
                 continue;
             }
-            let Some(positive) = predicates::narrow(self, &State::new(), tokens, true) else {
+            let mut initial = State::new();
+            initial.insert(id.clone(), declared.clone());
+            let Some(positive) = predicates::narrow(self, &initial, tokens, true) else {
                 continue;
             };
             let narrowed = current(self, &positive, &id);

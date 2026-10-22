@@ -196,6 +196,7 @@ impl ModuleChecker<'_> {
             return;
         }
         if matches!(actual, Type::Named {name, ..} if name.starts_with("typeof ")) {
+            let namespace_query = matches!(actual, Type::Named {name, ..} if name.strip_prefix("typeof ").and_then(|name| name.rsplit_once('@').map(|(name, _)| name).or(Some(name))).is_some_and(|name| self.type_only_namespaces.contains(name)));
             let mut source = actual.clone();
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             let mut seen = HashSet::new();
@@ -213,7 +214,8 @@ impl ModuleChecker<'_> {
             }
             if source != *actual
                 && !budget.exhausted
-                && !matches!(source, Type::Function { .. } | Type::GenericFunction { .. })
+                && (namespace_query
+                    || !matches!(source, Type::Function { .. } | Type::GenericFunction { .. }))
             {
                 self.assignment_error(span, message, bts_code, &source, expected);
                 return;
@@ -503,7 +505,7 @@ impl ModuleChecker<'_> {
                 format!("{minimum}-{maximum}")
             };
             (2554, vec![expected, actuals.len().to_string()])
-        } else if signatures.len() > 1 || typescript_overloads {
+        } else if matching_arity.len() > 1 || typescript_overloads && matching_arity.len() != 1 {
             detail = self.overload_details(signatures, actuals);
             (2769, Vec::new())
         } else if let Some(signature) = matching_arity.first() {
@@ -532,6 +534,19 @@ impl ModuleChecker<'_> {
                     }
                 } else {
                     expected.clone()
+                };
+                let displayed_expected = if !matches!(actual, Type::Null | Type::Undefined) {
+                    if let Type::Union(values) = displayed_expected {
+                        crate::checker::type_operators::union(
+                            values
+                                .into_iter()
+                                .filter(|value| !matches!(value, Type::Null | Type::Undefined)),
+                        )
+                    } else {
+                        displayed_expected
+                    }
+                } else {
+                    displayed_expected
                 };
                 let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
                 budget.checking = self.checking;

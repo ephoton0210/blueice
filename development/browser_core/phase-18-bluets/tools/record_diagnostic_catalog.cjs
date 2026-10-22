@@ -56,6 +56,7 @@ for (const name of ['Object', 'Array', 'String', 'Number', 'Boolean', 'Date', 'R
     recordDeclaration(name,symbol);
     constructors[name] = value.getConstructSignatures().length;
     recordSignatures(`es2022/new ${name}`,value.getConstructSignatures());
+    value.getConstructSignatures().forEach((signature,index)=>signature.parameters.forEach(parameter=>recordDeclaration(`${name}.new.${index}.${parameter.name}`,parameter)));
     for (const member of value.getProperties()) recordSignatures(`es2022/${name}Constructor.${member.name}`,checker.getTypeOfSymbolAtLocation(member,source).getCallSignatures());
     members[`${name}Constructor`] = Object.fromEntries(value.getProperties().map(member => [
         member.name, checker.getTypeOfSymbolAtLocation(member, source).getCallSignatures().length,

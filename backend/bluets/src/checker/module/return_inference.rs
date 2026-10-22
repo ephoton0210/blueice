@@ -295,7 +295,9 @@ impl ModuleChecker<'_> {
             }
         };
         if !asynchronous && !generator && result == Type::Boolean {
-            if let Some(predicate) = self.infer_result_predicate(parameters, span) {
+            if let Some(predicate) =
+                self.infer_result_predicate(&self.return_parameters(parameters, &scope), span)
+            {
                 result = predicate;
             }
         }
@@ -327,7 +329,7 @@ impl ModuleChecker<'_> {
                         result
                     },
                     if found.inputs.is_empty() {
-                        Type::Unknown
+                        Type::StrictUnknown
                     } else {
                         joined(found.inputs)
                     },

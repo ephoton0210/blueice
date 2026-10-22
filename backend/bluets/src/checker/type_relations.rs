@@ -6,6 +6,7 @@ use super::*;
 mod compatibility;
 mod more_types;
 mod parameters;
+mod surfaces;
 mod variance;
 use crate::checker::type_operators::union;
 pub(super) use compatibility::constructor_relation_type;
@@ -123,6 +124,49 @@ pub(super) fn is_assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    if let (
+        Type::Named {
+            name: actual_name, ..
+        },
+        Type::Named {
+            name: expected_name,
+            ..
+        },
+    ) = (actual, expected)
+    {
+        if actual_name != expected_name
+            && [actual_name, expected_name].iter().all(|name| {
+                aliases.get(*name).is_some_and(|definition| {
+                    definition.kind == TypeDefinitionKind::LibraryInterface
+                })
+            })
+        {
+            let pair = format!(
+                "library-relation:{}:{}",
+                type_identity(actual),
+                type_identity(expected)
+            );
+            if !visited.insert(pair.clone()) {
+                return true;
+            }
+            let result = assignable_inner(actual, expected, aliases, visited, budget);
+            visited.remove(&pair);
+            return result;
+        }
+    }
+    assignable_inner(actual, expected, aliases, visited, budget)
+}
+
+fn assignable_inner(
+    actual: &Type,
+    expected: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    if *expected == Type::Never {
+        return *actual == Type::Never;
+    }
     // Every symbolic keyof result is a property key, even before its operand
     // can be instantiated. Concrete, narrower comparisons still use expansion.
     if matches!(actual, Type::KeyOf(_))
@@ -239,6 +283,9 @@ pub(super) fn is_assignable(
         return result;
     }
     if let Some(result) = more_types::assignable(actual, expected, aliases, visited, budget) {
+        return result;
+    }
+    if let Some(result) = surfaces::assignable(actual, expected, aliases, visited, budget) {
         return result;
     }
     if matches!(actual, Type::Any | Type::Unknown) || matches!(expected, Type::Any | Type::Unknown)

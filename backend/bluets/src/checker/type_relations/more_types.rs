@@ -53,6 +53,26 @@ pub(super) fn assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<bool> {
+    if matches!(expected, Type::Named {name, arguments} if name == "object" && arguments.is_empty())
+        && aliases.get("object").is_some_and(|definition| {
+            definition.kind == TypeDefinitionKind::Alias
+                && definition.value == Type::Record(Vec::new())
+        })
+        && matches!(
+            actual,
+            Type::String
+                | Type::Number
+                | Type::Boolean
+                | Type::BigInt
+                | Type::Symbol
+                | Type::UniqueSymbol(_)
+                | Type::Literal(_)
+                | Type::Null
+                | Type::Undefined
+        )
+    {
+        return Some(false);
+    }
     if let Some(value) = normalized(actual, aliases) {
         return Some(is_assignable(&value, expected, aliases, visited, budget));
     }
@@ -95,6 +115,50 @@ pub(super) fn assignable(
             };
             if !object_matches {
                 return Some(false);
+            }
+            match actual {
+                Type::Array(element) => {
+                    return Some(indices.iter().all(|index| {
+                        index.key == Type::Number
+                            && is_assignable(
+                                element,
+                                &index.value,
+                                aliases,
+                                &mut visited.clone(),
+                                budget,
+                            )
+                    }))
+                }
+                Type::Tuple(elements) => {
+                    return Some(indices.iter().all(|index| {
+                        index.key == Type::Number
+                            && elements.iter().all(|element| {
+                                is_assignable(
+                                    &element.indexed_type(),
+                                    &index.value,
+                                    aliases,
+                                    &mut visited.clone(),
+                                    budget,
+                                )
+                            })
+                    }))
+                }
+                Type::String | Type::Literal(_)
+                    if matches!(actual, Type::String)
+                        || matches!(actual, Type::Literal(text) if text.starts_with(['\'', '"', '`'])) =>
+                {
+                    return Some(indices.iter().all(|index| {
+                        index.key == Type::Number
+                            && is_assignable(
+                                &Type::String,
+                                &index.value,
+                                aliases,
+                                &mut visited.clone(),
+                                budget,
+                            )
+                    }))
+                }
+                _ => {}
             }
             let fields = match actual {
                 Type::Record(fields) | Type::CallableRecord { fields, .. } => fields,

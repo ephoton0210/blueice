@@ -10,6 +10,9 @@ pub(super) fn display(name: &str, project: Option<&Project>) -> String {
         return crate::parser::source_type_name(name).into();
     }
     let name = crate::parser::source_type_name(name);
+    if let Some(name) = crate::standard_library::presentation::namespace_name(name) {
+        return name.into();
+    }
     let Some(project) = project else {
         return name.into();
     };

@@ -433,6 +433,17 @@ impl<'a> ModuleChecker<'a> {
                     }
                 }
                 if binding.type_only {
+                    // A type-only namespace may describe exported values in a
+                    // query without installing any of those values as bindings.
+                    if let Some(values) = self.exports.values.get(resolved).cloned() {
+                        for (name, value) in values {
+                            self.bind_imported_query(
+                                &format!("{}.{name}", binding.local),
+                                &value,
+                                &import.span,
+                            );
+                        }
+                    }
                     continue;
                 }
             }

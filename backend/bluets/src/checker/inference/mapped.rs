@@ -21,6 +21,11 @@ pub(super) fn infer(
     if !arguments.is_empty() || !parameters.contains(name) || mapped.name_type.is_some() {
         return None;
     }
+    if matches!(&mapped.value, Type::IndexedAccess {object, index, ..} if matches!(object.as_ref(), Type::Named {name: object, arguments} if object == name && arguments.is_empty()) && matches!(index.as_ref(), Type::Named {name, arguments} if name == &mapped.parameter.name && arguments.is_empty()))
+        && matches!(actual, Type::Array(_) | Type::Tuple(_))
+    {
+        return Some((name.clone(), actual.clone()));
+    }
     let Type::Record(actuals) = actual else {
         return None;
     };
@@ -52,6 +57,7 @@ pub(super) fn infer(
             aliases,
             budget,
             active: HashSet::new(),
+            evidence: 0,
         };
         collector.collect(&template, &field.value, false);
         let value = collector

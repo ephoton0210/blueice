@@ -33,6 +33,27 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt7_library_manifest" => {
+            let path = "backend/bluets/tests/fixtures/gt7_library_manifest/reference.json";
+            let mut controls = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/profile_controls",
+                "target/library-configuration",
+            )?;
+            let mut owner = super::case_sources::json_cases(
+                path,
+                snapshot.source(path)?,
+                "/owner_controls",
+                "owner-library-control",
+            )?;
+            for case in &mut owner {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("Owner replacement, default-denied runtime globals, static source confinement, content/version identity and configured generic-work limits are owner controls, not extra native TypeScript agreements.".into());
+            }
+            controls.append(&mut owner);
+            controls
+        }
         "gt8_return_context" => {
             let path = "backend/bluets/tests/fixtures/gt8_return_context/reference.json";
             let mut controls = super::case_sources::json_cases(

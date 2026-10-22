@@ -13,13 +13,15 @@ pub(super) fn compatible(
     visited: &HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    let actual = expanded(actual, aliases, budget);
+    let expected = expanded(expected, aliases, budget);
     let receiver = |parameters: &[Parameter]| {
         parameters
             .iter()
             .find(|parameter| parameter.name == "this")
             .and_then(|parameter| parameter.annotation.clone())
     };
-    if let (Some(actual), Some(expected)) = (receiver(actual), receiver(expected)) {
+    if let (Some(actual), Some(expected)) = (receiver(&actual), receiver(&expected)) {
         if !is_assignable(&expected, &actual, aliases, &mut visited.clone(), budget) {
             return false;
         }
@@ -87,6 +89,39 @@ pub(super) fn compatible(
         expected_index += usize::from(!expected.rest);
     }
     true
+}
+
+fn expanded(
+    parameters: &[Parameter],
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> Vec<Parameter> {
+    let mut result = Vec::new();
+    for parameter in parameters {
+        let mut annotation = parameter.annotation.clone().unwrap_or(Type::Unknown);
+        if parameter.rest {
+            let mut visited = HashSet::new();
+            while let Some(value) =
+                instantiate_named(&annotation, aliases, &mut visited, budget, "rest relation")
+            {
+                annotation = value;
+            }
+            if let Type::Tuple(values) = annotation {
+                for value in values {
+                    let mut parameter = parameter.clone();
+                    parameter.annotation = Some(value.annotation);
+                    parameter.optional = value.optional;
+                    parameter.rest = value.rest;
+                    result.push(parameter);
+                }
+                continue;
+            }
+        }
+        let mut parameter = parameter.clone();
+        parameter.annotation = Some(annotation);
+        result.push(parameter);
+    }
+    result
 }
 
 pub(in crate::checker) fn canonical_parameter_references(

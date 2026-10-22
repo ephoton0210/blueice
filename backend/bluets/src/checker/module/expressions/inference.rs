@@ -9,6 +9,7 @@ use super::*;
 mod arrays;
 mod invocations;
 mod records;
+mod regexp;
 mod template_constants;
 pub(super) use records::record_member_end;
 
@@ -106,6 +107,9 @@ impl<'a> ModuleChecker<'a> {
             return function;
         }
         let unwrapped = strip_outer_parentheses(tokens);
+        if let Some(value) = self.infer_regexp_literal(unwrapped) {
+            return value;
+        }
         if let Some(expression) = unwrapped
             .first()
             .and_then(|first| self.module.class_expression(first.start))
@@ -277,7 +281,14 @@ impl<'a> ModuleChecker<'a> {
             );
             if let PropertyType::Found { value, .. } = found {
                 match value {
-                    Type::Function { result, .. } => return *result,
+                    Type::Function { result, .. } => {
+                        return crate::checker::inference::result_type(
+                            &result,
+                            &BTreeMap::new(),
+                            &self.types,
+                            &mut budget,
+                        )
+                    }
                     value @ Type::GenericFunction { .. } => {
                         let signatures = signatures::callable_signatures(&value, false)
                             .expect("generic function has call signature");
@@ -541,7 +552,12 @@ impl<'a> ModuleChecker<'a> {
                 &mut HashSet::new(),
                 &mut budget,
             ) {
-                PropertyType::Found { value, .. } => value,
+                PropertyType::Found { value, .. } => crate::checker::inference::result_type(
+                    &value,
+                    &BTreeMap::new(),
+                    &self.types,
+                    &mut budget,
+                ),
                 PropertyType::Missing | PropertyType::Indeterminate | PropertyType::Exhausted => {
                     Type::Unknown
                 }

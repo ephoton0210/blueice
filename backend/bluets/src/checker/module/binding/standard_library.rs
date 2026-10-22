@@ -5,6 +5,8 @@
 //! Bind trusted declarations after source and owner bindings, without symbols.
 
 use super::*;
+mod keys;
+mod merge;
 
 impl ModuleChecker<'_> {
     pub(super) fn bind_standard_library(&mut self) {
@@ -15,6 +17,7 @@ impl ModuleChecker<'_> {
             .into_iter()
             .flat_map(crate::standard_library::modules)
         {
+            let refined = module.id.ends_with(".v3.d.ts>");
             for declaration in &module.declarations {
                 match declaration {
                     Declaration::Interface(interface)
@@ -57,7 +60,16 @@ impl ModuleChecker<'_> {
                             }
                         }
                         if let Some(existing) = self.types.get_mut(&interface.name) {
-                            merge_records(&mut existing.value, value);
+                            merge::definition(&mut existing.value, value, refined);
+                            if refined {
+                                existing.kind = TypeDefinitionKind::LibraryInterface;
+                            }
+                            if refined && !interface.type_parameters.is_empty() {
+                                merge::parameters(
+                                    &mut existing.parameters,
+                                    &interface.type_parameters,
+                                );
+                            }
                         } else {
                             self.types.insert(
                                 interface.name.clone(),
@@ -84,7 +96,16 @@ impl ModuleChecker<'_> {
                             && !protected_values.contains(&variable.name) =>
                     {
                         let value = variable.annotation.clone().unwrap_or(Type::Unknown);
-                        if let Some(existing) = self.values.get_mut(&variable.name) {
+                        if refined {
+                            // The old namespace/opaque descriptor must not remain
+                            // an alternate unchecked route around the new value.
+                            self.functions.retain(|key, _| {
+                                key != &variable.name
+                                    && !key.starts_with(&format!("{}.", variable.name))
+                            });
+                            self.module_namespace_imports.remove(&variable.name);
+                            self.values.insert(variable.name.clone(), value);
+                        } else if let Some(existing) = self.values.get_mut(&variable.name) {
                             merge_records(existing, value);
                         } else {
                             self.values.insert(variable.name.clone(), value);
@@ -114,12 +135,62 @@ impl ModuleChecker<'_> {
                             .push(signature(function));
                     }
                     Declaration::Namespace(namespace)
-                        if !self.require_declared_global_calls
-                            && !protected_values.contains(&namespace.name) =>
+                        if !protected_values.contains(&namespace.name) =>
                     {
                         let mut fields = Vec::new();
                         for declaration in &namespace.body {
+                            if let Declaration::Interface(interface) = declaration {
+                                let name = format!("{}.{}", namespace.name, interface.name);
+                                if !protected_types.contains(&name) {
+                                    let value = interface_value(interface);
+                                    if let Some(existing) = self.types.get_mut(&name) {
+                                        merge::definition(&mut existing.value, value, refined);
+                                        if refined {
+                                            existing.kind = TypeDefinitionKind::LibraryInterface;
+                                        }
+                                        if refined && !interface.type_parameters.is_empty() {
+                                            merge::parameters(
+                                                &mut existing.parameters,
+                                                &interface.type_parameters,
+                                            );
+                                        }
+                                    } else {
+                                        self.types.insert(
+                                            name,
+                                            TypeDefinition {
+                                                kind: TypeDefinitionKind::LibraryInterface,
+                                                parameters: interface.type_parameters.clone(),
+                                                value,
+                                            },
+                                        );
+                                    }
+                                }
+                                continue;
+                            }
+                            if let Declaration::TypeAlias(alias) = declaration {
+                                let name = format!("{}.{}", namespace.name, alias.name);
+                                if !protected_types.contains(&name) {
+                                    self.types.insert(
+                                        name,
+                                        TypeDefinition {
+                                            kind: TypeDefinitionKind::Alias,
+                                            parameters: alias.type_parameters.clone(),
+                                            value: alias.value.clone(),
+                                        },
+                                    );
+                                }
+                                continue;
+                            }
                             if let Declaration::Variable(variable) = declaration {
+                                if self.require_declared_global_calls {
+                                    continue;
+                                }
+                                if refined {
+                                    self.values.insert(
+                                        format!("{}.{}", namespace.name, variable.name),
+                                        variable.annotation.clone().unwrap_or(Type::Unknown),
+                                    );
+                                }
                                 fields.push(TypeField {
                                     accessor_write_type: None,
                                     method: false,
@@ -134,6 +205,9 @@ impl ModuleChecker<'_> {
                             let Declaration::Function(function) = declaration else {
                                 continue;
                             };
+                            if self.require_declared_global_calls {
+                                continue;
+                            }
                             let signature = signature(function);
                             fields.push(TypeField {
                                 accessor_write_type: None,
@@ -152,8 +226,15 @@ impl ModuleChecker<'_> {
                                 .or_default()
                                 .push(signature);
                         }
+                        if self.require_declared_global_calls {
+                            continue;
+                        }
                         if let Some(existing) = self.values.get_mut(&namespace.name) {
-                            merge_records(existing, Type::Record(fields));
+                            if refined && *existing == Type::Any {
+                                *existing = Type::Record(fields);
+                            } else {
+                                merge_records(existing, Type::Record(fields));
+                            }
                         } else {
                             self.values
                                 .insert(namespace.name.clone(), Type::Record(fields));
@@ -164,6 +245,7 @@ impl ModuleChecker<'_> {
                 }
             }
         }
+        self.bind_library_keys(&protected_types, &protected_values);
         if let Some(target) = self.library_target {
             for (owner, value) in crate::type_operator_profiles::keys(target) {
                 if self.types.get(&owner).is_some_and(|definition| {
@@ -208,8 +290,8 @@ impl ModuleChecker<'_> {
                 .filter(|name| !protected_values.contains(*name))
                 .cloned(),
         );
-        // Constructor parameter lists are parsed function-type descriptors:
-        // BlueTS does not admit `declare class` or a construct signature yet.
+        // Preserved legacy descriptors still use this adapter. Refined library
+        // callable/construct records use the ordinary generic signature path.
         if !self.require_declared_global_calls {
             for name in self.values.keys().cloned().collect::<Vec<_>>() {
                 if protected_values.contains(&name) || protected_types.contains(&name) {

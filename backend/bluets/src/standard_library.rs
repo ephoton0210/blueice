@@ -8,13 +8,15 @@ use crate::{parse_module, EcmaTarget, Module};
 use ring::digest::{digest, SHA256};
 use serde::Serialize;
 use std::sync::OnceLock;
+mod manifest;
+pub(crate) mod presentation;
 mod profiles;
 const ASYNC_ITERATION: (&str, &str) = (
     "ecma-async-iteration.v2.d.ts",
     include_str!("standard_library/ecma-async-iteration.v2.d.ts"),
 );
 
-pub const VERSION: &str = "blue-ts-ecma-lib-v2";
+pub const VERSION: &str = "blue-ts-ecma-lib-v3";
 const BASE: &str = include_str!("standard_library/ecma-base.v1.d.ts");
 const ES2022: &str = include_str!("standard_library/ecma-es2022.v1.d.ts");
 const ADDITIONS: &str = include_str!("standard_library/ecma-additions.v2.d.ts");
@@ -46,6 +48,7 @@ fn sources(target: EcmaTarget) -> Vec<(&'static str, &'static str)> {
         profiles::sources(target)
     };
     sources.push(DECORATORS);
+    sources.extend(manifest::sources(target));
     sources
 }
 
@@ -133,8 +136,8 @@ mod tests {
 
     #[test]
     fn declarations_parse_and_the_target_selects_exact_static_content() {
-        assert_eq!(modules(EcmaTarget::Es2020).len(), 4);
-        assert_eq!(modules(EcmaTarget::Es2022).len(), 5);
+        assert_eq!(modules(EcmaTarget::Es2020).len(), 12);
+        assert_eq!(modules(EcmaTarget::Es2022).len(), 15);
         let old = identity(EcmaTarget::Es2020);
         let new = identity(EcmaTarget::Es2022);
         assert_eq!(old.version, VERSION);
@@ -146,7 +149,17 @@ mod tests {
                 "ecma-es2022.v1.d.ts",
                 "ecma-additions.v2.d.ts",
                 "ecma-async-iteration.v2.d.ts",
-                "decorator-contexts.v1.d.ts"
+                "decorator-contexts.v1.d.ts",
+                "ecma-core.v3.d.ts",
+                "ecma-buffers.v3.d.ts",
+                "ecma-iterable.v3.d.ts",
+                "ecma-promise.v3.d.ts",
+                "ecma-es2017.v3.d.ts",
+                "ecma-es2018.v3.d.ts",
+                "ecma-es2019.v3.d.ts",
+                "ecma-es2020.v3.d.ts",
+                "ecma-es2021.v3.d.ts",
+                "ecma-es2022.v3.d.ts"
             ]
         );
     }

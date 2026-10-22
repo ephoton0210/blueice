@@ -21,7 +21,7 @@ GAPS = {
     "G-T1": "narrowing_checker_matrix", "G-T2": "inference_checker_matrix",
     "G-T3": "operators_checker_matrix", "G-T4": "overloads_checker_matrix",
     "G-T5": "more_types_checker_matrix", "G-T6": "compatibility_checker_matrix",
-    "G-T7": "standard_library_checker_matrix", "G-T8": "inferred_return_checker_matrix",
+    "G-T7": "gt7_library_manifest", "G-T8": "inferred_return_checker_matrix",
     "G-T9": "class_dynamic_checker_matrix", "G-T10": "module_types_checker_matrix",
     "G-E1": "targets_checker_matrix", "G-E2": "module_systems",
     "G-E3": "decorator_targets", "G-E4": "output_options",

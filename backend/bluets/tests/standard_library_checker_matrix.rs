@@ -182,7 +182,7 @@ fn manifest_records_library_identity_without_publishing_declarations() {
         let manifest: serde_json::Value =
             serde_json::from_slice(&fs::read(out.join("bluetsc.manifest.json")).unwrap()).unwrap();
         let library = &manifest["standardLibrary"];
-        assert_eq!(library["version"], "blue-ts-ecma-lib-v2");
+        assert_eq!(library["version"], "blue-ts-ecma-lib-v3");
         assert!(library["sources"]
             .as_array()
             .unwrap()

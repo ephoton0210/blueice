@@ -163,7 +163,18 @@ impl ModuleChecker<'_> {
                                 .scopes
                                 .as_ref()
                                 .and_then(|scopes| scopes.query_type(value_name, position))
-                                .or_else(|| self.values.get(value_name).cloned());
+                                .or_else(|| self.values.get(value_name).cloned())
+                                .or_else(|| {
+                                    let root = value_name.split('.').next()?;
+                                    if self.scopes.as_ref().is_some_and(|scopes| {
+                                        scopes.query_has_value_binding(root, position)
+                                    }) {
+                                        return None;
+                                    }
+                                    self.types
+                                        .get(&format!("typeof {value_name}"))
+                                        .map(|definition| definition.value.clone())
+                                });
                             if let Some(value) = value {
                                 self.types.insert(
                                     name.clone(),

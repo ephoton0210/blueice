@@ -86,6 +86,12 @@ fn text_options(
             }
         }
         Type::Named { name, arguments } => {
+            if name == "Readonly"
+                && arguments.len() == 1
+                && matches!(&arguments[0], Type::Array(_) | Type::Tuple(_))
+            {
+                return format!("readonly {}", render(&arguments[0]));
+            }
             if name == "ReadonlyArray" && arguments.len() == 1 {
                 return format!("readonly {}", arguments[0].array_element_text(render));
             }
@@ -262,7 +268,7 @@ fn text_options(
             let mut values = values
                 .iter()
                 .map(|value| {
-                    if matches!(value, Type::Function { .. }) {
+                    if matches!(value, Type::Function { .. }) || matches!(value, Type::CallableRecord {fields, signatures} if fields.is_empty() && signatures.len() == 1 && signatures[0].constructor_arrow) {
                         format!("({})", render(value))
                     } else {
                         render(value)
@@ -366,6 +372,15 @@ pub(crate) fn argument_in(actual: &Type, expected: &Type, project: &crate::Proje
 }
 
 pub(crate) fn assignment_in(actual: &Type, expected: &Type, project: &crate::Project) -> String {
+    if matches!(expected, Type::String | Type::Number | Type::Boolean) {
+        if let Some(Type::Union(parts)) =
+            crate::standard_library::presentation::alias_value(actual, project)
+        {
+            if parts.iter().all(|part| matches!(part, Type::Literal(_))) {
+                return assignment_in(&Type::Union(parts), expected, project);
+            }
+        }
+    }
     if let Type::Union(parts) = actual {
         if matches!(expected, Type::String | Type::Number | Type::Boolean)
             && parts.iter().all(|part| matches!(part, Type::Literal(_)))

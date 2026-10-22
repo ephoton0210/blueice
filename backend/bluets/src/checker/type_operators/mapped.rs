@@ -13,6 +13,20 @@ fn modifier(value: MappedModifier, inherited: bool) -> bool {
     }
 }
 
+fn sequence_value(
+    value: &Type,
+    mapped: &MappedType,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> Type {
+    if mapped.span.module.starts_with("<builtin:") {
+        super::super::inference::result_type(value, &BTreeMap::new(), aliases, budget)
+    } else {
+        expanded(value, aliases, visited, budget)
+    }
+}
+
 pub(super) fn resolve(
     value: &MappedType,
     aliases: &BTreeMap<String, TypeDefinition>,
@@ -40,8 +54,9 @@ pub(super) fn resolve(
                 Type::Array(_) => {
                     let substitutions =
                         BTreeMap::from([(value.parameter.name.clone(), Type::Number)]);
-                    let item = expanded(
+                    let item = sequence_value(
                         &substitute_type(&value.value, &substitutions),
+                        value,
                         aliases,
                         &mut visited.clone(),
                         budget,
@@ -59,8 +74,9 @@ pub(super) fn resolve(
                             Type::Literal(format!("\"{index}\"")),
                         )]);
                         result.push(TupleTypeElement {
-                            annotation: expanded(
+                            annotation: sequence_value(
                                 &substitute_type(&value.value, &substitutions),
+                                value,
                                 aliases,
                                 &mut visited.clone(),
                                 budget,

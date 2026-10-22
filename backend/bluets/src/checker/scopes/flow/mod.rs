@@ -15,7 +15,7 @@ mod inferred_predicates;
 mod predicates;
 mod properties;
 
-pub(crate) const VERSION: &str = "lexical-flow-v10";
+pub(crate) const VERSION: &str = "lexical-flow-v11";
 #[derive(Clone, Debug, PartialEq)]
 struct State {
     reachable: bool,

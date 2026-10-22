@@ -11,6 +11,7 @@ pub(super) struct Collector<'a> {
     pub(super) aliases: &'a BTreeMap<String, TypeDefinition>,
     pub(super) budget: &'a mut TypeExpansionBudget,
     pub(super) active: HashSet<(String, String, bool)>,
+    pub(super) evidence: usize,
 }
 
 impl Collector<'_> {
@@ -29,10 +30,103 @@ impl Collector<'_> {
     fn inner(&mut self, template: &Type, actual: &Type, contra: bool) {
         if let Type::Named { name, arguments } = template {
             if arguments.is_empty() && self.parameters.contains(name) {
+                if *actual != Type::Unknown {
+                    self.evidence += 1;
+                }
                 self.candidates
                     .entry(name.clone())
                     .or_default()
                     .add(actual, contra);
+                return;
+            }
+        }
+        if let Type::Union(values) = actual {
+            let previous = (!contra).then(|| std::mem::take(&mut self.candidates));
+            for value in values {
+                self.collect(template, value, contra);
+            }
+            if let Some(previous) = previous {
+                let collected = std::mem::replace(&mut self.candidates, previous);
+                for (name, candidates) in collected {
+                    self.candidates
+                        .entry(name)
+                        .or_default()
+                        .merge_union(candidates);
+                }
+            }
+            return;
+        }
+        if let (
+            Type::Named { name, .. },
+            Type::Named {
+                name: actual_name,
+                arguments,
+            },
+        ) = (template, actual)
+        {
+            if let Some(definition) = self
+                .aliases
+                .get(actual_name)
+                .filter(|d| d.kind == TypeDefinitionKind::LibraryInterface)
+            {
+                if let Type::Intersection(parts) = &definition.value {
+                    if let Some(parent) = parts.iter().find(
+                        |part| matches!(part, Type::Named {name: parent, ..} if parent == name),
+                    ) {
+                        if let Some(arguments) =
+                            complete_type_arguments(&definition.parameters, arguments)
+                        {
+                            let substitutions = definition
+                                .parameters
+                                .iter()
+                                .map(|p| p.name.clone())
+                                .zip(arguments)
+                                .collect();
+                            let parent = substitute_type(parent, &substitutions);
+                            self.collect(template, &parent, contra);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        if let Type::Union(templates) = template {
+            let naked = |value: &Type| matches!(value, Type::Named {name, arguments} if arguments.is_empty() && self.parameters.contains(name));
+            let (direct, structured): (Vec<_>, Vec<_>) =
+                templates.iter().partition(|value| naked(value));
+            let evidence = self.evidence;
+            for template in structured {
+                if !matches!(template, Type::Undefined | Type::Null) {
+                    self.collect(template, actual, contra);
+                }
+            }
+            if self.evidence == evidence {
+                for template in direct {
+                    self.collect(template, actual, contra);
+                }
+            }
+            return;
+        }
+        // Library container identities carry their declared argument evidence.
+        // Expanding recursive methods first can lose that evidence and exhaust
+        // the same owner's budget. Owner-defined replacements stay structural.
+        if let (
+            Type::Named { name, arguments },
+            Type::Named {
+                name: actual_name,
+                arguments: actual_arguments,
+            },
+        ) = (template, actual)
+        {
+            if name == actual_name
+                && arguments.len() == actual_arguments.len()
+                && self.aliases.get(name).is_some_and(|definition| {
+                    definition.kind == TypeDefinitionKind::LibraryInterface
+                })
+            {
+                for (template, actual) in arguments.iter().zip(actual_arguments) {
+                    self.collect(template, actual, contra);
+                }
                 return;
             }
         }
@@ -46,12 +140,18 @@ impl Collector<'_> {
             if let Some((name, inferred)) =
                 super::mapped::infer(value, actual, self.parameters, self.aliases, self.budget)
             {
+                if inferred != Type::Unknown {
+                    self.evidence += 1;
+                }
                 self.candidates
                     .entry(name)
                     .or_default()
                     .add(&inferred, contra);
                 return;
             }
+        }
+        if self.collect_indices(template, actual, contra) {
+            return;
         }
         if let Some(expanded) = instantiate_named(
             template,
@@ -71,6 +171,9 @@ impl Collector<'_> {
             "inference argument",
         ) {
             self.collect(template, &expanded, contra);
+            return;
+        }
+        if self.collect_surface(template, actual, contra) {
             return;
         }
         match (template, actual) {
@@ -97,6 +200,44 @@ impl Collector<'_> {
                 }
             }
             (
+                Type::GenericFunction {
+                    type_parameters: template_locals,
+                    parameters: template_parameters,
+                    result: template_result,
+                    ..
+                },
+                Type::GenericFunction {
+                    type_parameters: actual_locals,
+                    parameters: actual_parameters,
+                    result: actual_result,
+                    ..
+                },
+            ) => {
+                // Defaults are evaluated in the enclosing generic scope.
+                for (template, actual) in template_locals.iter().zip(actual_locals) {
+                    if let (Some(template), Some(actual)) = (&template.default, &actual.default) {
+                        self.collect(template, actual, contra);
+                    }
+                }
+                let mut parameters = self.parameters.clone();
+                for parameter in template_locals.iter().chain(actual_locals) {
+                    parameters.remove(&parameter.name);
+                }
+                let mut nested = Collector {
+                    parameters: &parameters,
+                    candidates: std::mem::take(&mut self.candidates),
+                    aliases: self.aliases,
+                    budget: self.budget,
+                    active: std::mem::take(&mut self.active),
+                    evidence: self.evidence,
+                };
+                nested.collect_parameters(template_parameters, actual_parameters, contra);
+                nested.collect(template_result, actual_result, contra);
+                self.candidates = nested.candidates;
+                self.active = nested.active;
+                self.evidence = nested.evidence;
+            }
+            (
                 Type::Function {
                     parameters: templates,
                     result: template,
@@ -106,21 +247,8 @@ impl Collector<'_> {
                     result: actual,
                 },
             ) => {
-                for (template, actual) in templates.iter().zip(actuals) {
-                    if let (Some(template), Some(actual)) =
-                        (&template.annotation, &actual.annotation)
-                    {
-                        self.collect(template, actual, !contra);
-                    }
-                }
+                self.collect_parameters(templates, actuals, contra);
                 self.collect(template, actual, contra);
-            }
-            (Type::Union(templates), actual) => {
-                for template in templates {
-                    if !matches!(template, Type::Undefined | Type::Null) {
-                        self.collect(template, actual, contra);
-                    }
-                }
             }
             _ => {}
         }
