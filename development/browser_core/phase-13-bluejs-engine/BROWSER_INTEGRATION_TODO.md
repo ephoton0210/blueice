@@ -115,8 +115,15 @@ over-cap set of child heaps now surface as terminal `SchedulingLimit`.
 registration (`host_scheduling_limits`).
 
 Committed 2026-10-20 at the owner's request as a green but **unaccepted**
-checkpoint (7,593 passed, 0 failed, clippy/fmt clean). M1v–M1z stay open; one
-intermittent lib failure is unidentified and is the next item.
+checkpoint (7,593 passed, 0 failed, clippy/fmt clean). M1v–M1z stay open.
+The intermittent lib failure is identified and fixed: 2 of 40 full runs (and 5 of
+300 single runs) failed `thunk_origin_storage_nested_guard_defers_compaction_until_outer_completion`,
+which pinned `HashMap::capacity() == 14` after deletions. hashbrown's insertion
+headroom then depends on tombstone placement, i.e. on the random hash seed. The
+test now asserts the allocation ledger is unchanged and capacity is not the
+compacted size (0 of 1,000 single runs fail; `dependency_storage`,
+`disposal_map_storage` and `await_registration` showed 0 of 200 each). Rule:
+never pin a RandomState map's `capacity()` after removals.
 
 Still to do before M1v–M1z can be called accepted: the full pinned Test262
 inventory, workspace tests and coverage gate, the original integrated

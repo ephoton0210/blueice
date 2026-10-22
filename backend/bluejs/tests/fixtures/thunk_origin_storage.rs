@@ -390,11 +390,17 @@ fn thunk_origin_storage_nested_guard_defers_compaction_until_outer_completion() 
     }
     vm.preserve_promise_table_capacity = true;
     vm.heap.allow_only(0);
+    let backing = vm.promise_thunk_origins.retained_bytes();
     vm.allocate_finally_thunk_state(&Value::Number(7.0), true)
         .unwrap();
     assert!(vm.preserve_promise_table_capacity);
     assert_eq!(vm.promise_thunk_origins.len(), 2);
-    assert_eq!(vm.promise_thunk_origins.capacity(), 14);
+    // No compaction ran: the backing allocation and its ledger are untouched.
+    // `capacity()` itself is not pinned: after deletions hashbrown's insertion
+    // headroom depends on tombstone placement, which follows the random hash
+    // seed, so only "not the compacted size" is deterministic.
+    assert_eq!(vm.promise_thunk_origins.retained_bytes(), backing);
+    assert!(vm.promise_thunk_origins.capacity() > 3);
     vm.preserve_promise_table_capacity = false;
     vm.reclaim_scheduling_maps();
     assert_eq!(vm.promise_thunk_origins.capacity(), 3);
