@@ -29,13 +29,13 @@ fn leave_room(vm: &mut Vm, bytes: usize) -> SharedSchedulingCharge {
         .unwrap()
 }
 fn fill_roots(vm: &mut Vm, free: usize) {
-    let (mut len, mut capacity, _) = vm.heap.root_storage_state();
+    let (mut len, mut capacity, _) = vm.heap.root_insertion_state();
     assert!(capacity <= 1023);
     if capacity - len < free {
         for _ in 0..=capacity - len {
             vm.heap.root(vm.object_prototype).unwrap();
         }
-        (len, capacity, _) = vm.heap.root_storage_state();
+        (len, capacity, _) = vm.heap.root_insertion_state();
     }
     for _ in len..capacity - free {
         vm.heap.root(vm.object_prototype).unwrap();
@@ -301,7 +301,7 @@ impl Fixture {
     }
 }
 fn root_bytes(vm: &Vm) -> usize {
-    let (len, cap, _) = vm.heap.root_storage_state();
+    let (len, cap, _) = vm.heap.root_insertion_state();
     assert_eq!(len, cap);
     host_scheduling::map_slots(&HashMap::<RootId, ObjectId>::with_capacity(
         (len + 1).max(len * 2),

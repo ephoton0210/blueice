@@ -386,7 +386,7 @@ fn rejected_fixture() -> (Vm, ObjectId) {
     vm.promises.get_mut(&promise).unwrap().status = PromiseStatus::Rejected(Value::Undefined);
     vm.host_rejections = Some(host_rejections::HostRejections::default());
     vm.host_rejections.as_mut().unwrap().pending.reserve(4);
-    let (len, capacity, _) = vm.heap.root_storage_state();
+    let (len, capacity, _) = vm.heap.root_insertion_state();
     assert!(capacity - len < 32);
     for _ in len..capacity {
         vm.heap.root(promise).unwrap();

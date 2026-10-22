@@ -234,6 +234,14 @@ impl Heap {
     pub(crate) fn root_storage_bytes(&self) -> usize {
         self.roots.retained_bytes()
     }
+    /// Insertion headroom as the table reports it right now: `(len,
+    /// HashMap::capacity(), next_root)`. Fixtures that shape the headroom need
+    /// this, and it varies with tombstones; compare state with
+    /// `root_storage_state` instead.
+    #[cfg(any(test, coverage))]
+    pub(crate) fn root_insertion_state(&self) -> (usize, usize, u64) {
+        (self.roots.len(), self.roots.capacity(), self.next_root)
+    }
     #[cfg(any(test, coverage))]
     pub(crate) fn root_storage_state(&self) -> (usize, usize, u64) {
         // Slots of the real allocation, not `HashMap::capacity()`: removals

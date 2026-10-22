@@ -125,7 +125,7 @@ fn serial(vm: &Vm) -> u64 {
     vm.host_scheduling.as_ref().unwrap().task_serial_state()
 }
 fn root_candidate_bytes(vm: &Vm) -> usize {
-    let (len, capacity, _) = vm.heap.root_storage_state();
+    let (len, capacity, _) = vm.heap.root_insertion_state();
     if len < capacity {
         0
     } else {
@@ -135,7 +135,7 @@ fn root_candidate_bytes(vm: &Vm) -> usize {
     }
 }
 fn fill_root_slots(vm: &mut Vm) {
-    let (len, capacity, _) = vm.heap.root_storage_state();
+    let (len, capacity, _) = vm.heap.root_insertion_state();
     assert!(capacity <= 31);
     for _ in len..capacity {
         vm.heap.root(vm.object_prototype).unwrap();

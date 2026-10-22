@@ -35,13 +35,13 @@ fn serial(vm: &Vm) -> u64 {
     vm.host_scheduling.as_ref().unwrap().task_serial_state()
 }
 fn fill_roots(vm: &mut Vm, free: usize) {
-    let (mut len, mut capacity, _) = vm.heap.root_storage_state();
+    let (mut len, mut capacity, _) = vm.heap.root_insertion_state();
     assert!(capacity <= 31);
     if capacity - len < free {
         for _ in 0..=capacity - len {
             vm.heap.root(vm.object_prototype).unwrap();
         }
-        (len, capacity, _) = vm.heap.root_storage_state();
+        (len, capacity, _) = vm.heap.root_insertion_state();
     }
     for _ in len..capacity - free {
         vm.heap.root(vm.object_prototype).unwrap();
@@ -208,7 +208,7 @@ fn timer_registration_full_replacement_allowance_refunds_the_old_table() {
     for _ in 0..4 {
         register(&mut vm, callback.clone(), &[]).unwrap();
     }
-    assert!(vm.heap.root_storage_state().1 > vm.heap.root_storage_state().0);
+    assert!(vm.heap.root_insertion_state().1 > vm.heap.root_insertion_state().0);
     let _peer = leave_room(&mut vm, table_bytes(8) + root_bytes(1));
     assert_eq!(register(&mut vm, callback, &[]), Ok(Value::Number(5.0)));
     assert_eq!(vm.host_timers.capacity(), 8);

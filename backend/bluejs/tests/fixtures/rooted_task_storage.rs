@@ -24,11 +24,11 @@ fn serial(vm: &Vm) -> u64 {
     vm.host_scheduling.as_ref().unwrap().task_serial_state()
 }
 fn fill_roots(vm: &mut Vm, free: usize) {
-    assert!(vm.heap.root_storage_state().1 <= 63);
+    assert!(vm.heap.root_insertion_state().1 <= 63);
     // Reusing a tombstone can increase reported insertion capacity without a
     // new allocation. Shape against each current value, with a fixed small cap.
     for _ in 0..128 {
-        let (len, capacity, _) = vm.heap.root_storage_state();
+        let (len, capacity, _) = vm.heap.root_insertion_state();
         assert!(capacity <= 127);
         if capacity - len == free {
             vm.synchronize_scheduling_usage().unwrap();
@@ -236,7 +236,7 @@ impl Fixture {
     }
 }
 fn root_candidate_bytes(vm: &Vm) -> usize {
-    let (len, capacity, _) = vm.heap.root_storage_state();
+    let (len, capacity, _) = vm.heap.root_insertion_state();
     assert_eq!(len, capacity);
     host_scheduling::map_slots(&HashMap::<RootId, ObjectId>::with_capacity(
         (len + 1).max(len * 2),
