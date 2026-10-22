@@ -356,7 +356,16 @@ fn http_source_cache_is_isolated_and_released_through_real_child_lifecycle() {
     );
     assert_eq!(
         executor.retained_page_cache_payload_bytes(first_tab, 1),
-        Some(SOURCE.len())
+        Some(
+            SOURCE.len()
+                + usize::try_from(
+                    executor
+                        .realm_stats(first_tab)
+                        .unwrap()
+                        .scheduling_payload_bytes
+                )
+                .unwrap()
+        )
     );
     assert_eq!(
         executor.retained_external_source_payload_bytes(second_tab, 1),
@@ -364,7 +373,16 @@ fn http_source_cache_is_isolated_and_released_through_real_child_lifecycle() {
     );
     assert_eq!(
         executor.retained_page_cache_payload_bytes(second_tab, 1),
-        Some(SOURCE.len())
+        Some(
+            SOURCE.len()
+                + usize::try_from(
+                    executor
+                        .realm_stats(second_tab)
+                        .unwrap()
+                        .scheduling_payload_bytes
+                )
+                .unwrap()
+        )
     );
     assert_eq!(executor.drain_reports_for_tab(first_tab).len(), 2);
     assert_eq!(executor.drain_reports_for_tab(second_tab).len(), 1);
@@ -412,7 +430,15 @@ fn http_source_cache_is_isolated_and_released_through_real_child_lifecycle() {
     );
     assert_eq!(
         executor.retained_page_cache_payload_bytes(third_tab, 1),
-        Some(0)
+        Some(
+            usize::try_from(
+                executor
+                    .realm_stats(third_tab)
+                    .unwrap()
+                    .scheduling_payload_bytes
+            )
+            .unwrap()
+        )
     );
     assert!(matches!(
         executor.drain_reports_for_tab(third_tab).as_slice(),

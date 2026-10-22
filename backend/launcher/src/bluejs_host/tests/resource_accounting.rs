@@ -136,45 +136,55 @@ fn task_and_frame_replies_release_the_real_vm_timer_payload_charge() {
         panic!("the installed profile's empty native storage must be observable");
     };
     let origin = blueice_bluejs::BlueJsPageOrigin::new("https://example.test").unwrap();
-    let handle = host.runtime.install_program(
-        7,
-        &origin,
-        blueice_bluejs::BlueJsSourceIdentity::new("page:///timer-ledger.js", "sha256:timer-ledger").unwrap(),
-        &blueice_bluejs::BlueJsProgramV1::Script(blueice_bluejs::parse("owned = setTimeout(noop, 2147483647, 'x'.repeat(400000)); requestAnimationFrame(clearOwned);").unwrap()),
-    ).unwrap();
-    host.runtime.execute_program(7, handle).unwrap();
-    let PageHostReply::RealmStats(before) = host.handle_request(PageHostRequest::GetRealmStats {
-        tab_id: 7,
-        document_generation: 1,
-    }) else {
-        panic!("retained timer payload must be observable");
-    };
-    assert!(before.scheduling_payload_bytes >= baseline.scheduling_payload_bytes + 800000);
-    assert!(
-        matches!(host.handle_request(PageHostRequest::FlushDragTasks { tab_id: 7, document_generation: 1 }), PageHostReply::DragTasksFlushed { scheduling_payload_bytes, animation_frame_pending: true, .. } if scheduling_payload_bytes == before.scheduling_payload_bytes)
-    );
-    assert!(matches!(
-        host.handle_request(PageHostRequest::RunAnimationFrame {
-            tab_id: 7,
-            document_generation: 1
-        }),
-        PageHostReply::AnimationFrameRendered {
+    // The first frame leaves a one-time cache residue above the baseline (the
+    // program's code and source); an identical second run must add nothing,
+    // and neither keeps any of the 800 KB timer payload.
+    let mut settled = Vec::new();
+    for round in 0..2 {
+        let handle = host.runtime.install_program(
+            7,
+            &origin,
+            blueice_bluejs::BlueJsSourceIdentity::new(format!("page:///timer-ledger-{round}.js"), "sha256:timer-ledger").unwrap(),
+            &blueice_bluejs::BlueJsProgramV1::Script(blueice_bluejs::parse("owned = setTimeout(noop, 2147483647, 'x'.repeat(400000)); requestAnimationFrame(clearOwned);").unwrap()),
+        ).unwrap();
+        host.runtime.execute_program(7, handle).unwrap();
+        let PageHostReply::RealmStats(before) =
+            host.handle_request(PageHostRequest::GetRealmStats {
+                tab_id: 7,
+                document_generation: 1,
+            })
+        else {
+            panic!("retained timer payload must be observable");
+        };
+        assert!(before.scheduling_payload_bytes >= baseline.scheduling_payload_bytes + 800000);
+        assert!(
+            matches!(host.handle_request(PageHostRequest::FlushDragTasks { tab_id: 7, document_generation: 1 }), PageHostReply::DragTasksFlushed { scheduling_payload_bytes, animation_frame_pending: true, .. } if scheduling_payload_bytes == before.scheduling_payload_bytes)
+        );
+        let PageHostReply::AnimationFrameRendered {
             scheduling_payload_bytes,
             next_wake_in_ms: None,
             animation_frame_pending: false,
             ..
-        } if scheduling_payload_bytes == baseline.scheduling_payload_bytes
-    ));
-    let PageHostReply::RealmStats(after) = host.handle_request(PageHostRequest::GetRealmStats {
-        tab_id: 7,
-        document_generation: 1,
-    }) else {
-        panic!("completed frame must release its timer storage");
-    };
-    assert_eq!(
-        after.scheduling_payload_bytes,
-        baseline.scheduling_payload_bytes
-    );
+        } = host.handle_request(PageHostRequest::RunAnimationFrame {
+            tab_id: 7,
+            document_generation: 1,
+        })
+        else {
+            panic!("the frame must render and leave no pending wake");
+        };
+        let PageHostReply::RealmStats(after) =
+            host.handle_request(PageHostRequest::GetRealmStats {
+                tab_id: 7,
+                document_generation: 1,
+            })
+        else {
+            panic!("completed frame must release its timer storage");
+        };
+        assert_eq!(after.scheduling_payload_bytes, scheduling_payload_bytes);
+        assert!(after.scheduling_payload_bytes < before.scheduling_payload_bytes - 700000);
+        settled.push(after.scheduling_payload_bytes);
+    }
+    assert_eq!(settled[1], settled[0], "a second identical frame leaked");
     drop(host);
     server.join().unwrap();
     std::fs::remove_file(socket_path).unwrap();

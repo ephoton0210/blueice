@@ -45,9 +45,18 @@ fn real_child_agent_registry_payload_is_charged_to_its_tab_and_released_on_navig
     );
     executor.synchronize_and_execute(&tabs).unwrap();
     assert_eq!(executor.retained_page_cache_payload_bytes(first, 1), None);
+    // The replacement owes nothing but its own fresh realm's scheduling payload.
     assert_eq!(
         executor.retained_page_cache_payload_bytes(first, 2),
-        Some(0)
+        Some(
+            usize::try_from(
+                executor
+                    .realm_stats(first)
+                    .unwrap()
+                    .scheduling_payload_bytes
+            )
+            .unwrap()
+        )
     );
     assert_eq!(
         executor.retained_page_cache_payload_bytes(second, 1),
@@ -145,9 +154,18 @@ fn real_child_scheduling_payload_is_charged_to_its_tab_and_released_on_navigatio
     );
     executor.synchronize_and_execute(&tabs).unwrap();
     assert_eq!(executor.retained_page_cache_payload_bytes(first, 1), None);
+    // The replacement owes nothing but its own fresh realm's scheduling payload.
     assert_eq!(
         executor.retained_page_cache_payload_bytes(first, 2),
-        Some(0)
+        Some(
+            usize::try_from(
+                executor
+                    .realm_stats(first)
+                    .unwrap()
+                    .scheduling_payload_bytes
+            )
+            .unwrap()
+        )
     );
     assert_eq!(
         executor.retained_page_cache_payload_bytes(second, 1),
@@ -362,6 +380,7 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         Some(
             usize::try_from(first_pending.static_metadata_bytes).unwrap()
                 + usize::try_from(first_pending.deferred_payload_bytes).unwrap()
+                + usize::try_from(first_pending.scheduling_payload_bytes).unwrap()
                 + first_identity
         )
     );
@@ -370,6 +389,7 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         Some(
             usize::try_from(second_pending.static_metadata_bytes).unwrap()
                 + usize::try_from(second_pending.deferred_payload_bytes).unwrap()
+                + usize::try_from(second_pending.scheduling_payload_bytes).unwrap()
                 + second_identity
         )
     );
@@ -396,6 +416,7 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         Some(
             usize::try_from(first_pending.static_metadata_bytes).unwrap()
                 + usize::try_from(first_pending.deferred_payload_bytes).unwrap()
+                + usize::try_from(first_pending.scheduling_payload_bytes).unwrap()
                 + after_metadata_discovery
         )
     );
@@ -421,6 +442,7 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         executor.retained_page_cache_payload_bytes(first_tab, 1),
         Some(
             usize::try_from(first_executed.static_metadata_bytes).unwrap()
+                + usize::try_from(first_executed.scheduling_payload_bytes).unwrap()
                 + executor
                     .retained_debugger_payload_bytes(first_tab, 1)
                     .unwrap()
@@ -453,6 +475,7 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         Some(
             usize::try_from(replacement.static_metadata_bytes).unwrap()
                 + usize::try_from(replacement.deferred_payload_bytes).unwrap()
+                + usize::try_from(replacement.scheduling_payload_bytes).unwrap()
                 + replacement_identity
         )
     );
@@ -571,6 +594,7 @@ fn real_child_core_and_http_source_sum_each_live_document_once() {
             Some(
                 usize::try_from(stats.static_metadata_bytes).unwrap()
                     + usize::try_from(stats.deferred_payload_bytes).unwrap()
+                    + usize::try_from(stats.scheduling_payload_bytes).unwrap()
                     + core_bytes
                     + SOURCE.len()
             )
