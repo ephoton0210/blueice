@@ -39,6 +39,8 @@ mod compiler_output;
 mod compiler_round_trip;
 #[path = "core_process/console.rs"]
 mod console;
+#[path = "core_process/long_running.rs"]
+mod long_running;
 
 #[derive(Debug, Clone, Default)]
 struct CompilerMcpClient;

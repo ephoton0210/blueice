@@ -142,9 +142,21 @@ Workspace coverage gate on that tree (`cargo llvm-cov --workspace`, `--fail-unde
 no failing test): lines 93.50% (293,263 / 313,664), functions 93.15%
 (24,497 / 26,298), regions 92.97% (449,576 / 483,596).
 
+Real Core/child two-tab long-running acceptance (2026-10-22, 600 s,
+`BLUEJS_ACCEPT_SECS=600 cargo test -p blueice-mcp-server --test core_process
+long_running -- --ignored --nocapture`, `backend/mcp-server/tests/core_process/long_running.rs`):
+a counter tab (`setInterval`) and a Promise/timer churn tab on one launcher-managed
+Core. Tab A's `generation` and counter advanced together at every 2 s sample
+(7,190 frames, strictly increasing); tab B's churn advanced to 32,300 ticks; resident
+memory of Core plus the BlueJS child stayed at 81.2 → 81.9 MiB (warm baseline
+81,856 KiB, steady-state peak 81,920 KiB). Tab B then exhausted its own document
+budget with tab A still advancing, recovered on navigation, and closing it left
+the total at 89,984 KiB (+8 MiB over the warm baseline, within the 32 MiB bound;
+the cause, allocator retention versus a retained document, is not established).
+Not covered: the pixel/frame comparison and a human-visible frontend.
+
 Still to do before M1v–M1z can be called accepted: the full pinned Test262
-inventory, workspace tests and coverage gate, the original integrated
-acceptance (two-tab, long-running) and a stability check of the suite.
+inventory, workspace tests and coverage gate, a stability check of the full suite.
 
 ## A. Event loop and scheduling (P0)
 
