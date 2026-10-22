@@ -236,6 +236,10 @@ impl Heap {
     }
     #[cfg(any(test, coverage))]
     pub(crate) fn root_storage_state(&self) -> (usize, usize, u64) {
-        (self.roots.len(), self.roots.capacity(), self.next_root)
+        // Slots of the real allocation, not `HashMap::capacity()`: removals
+        // leave tombstones that lower it and later insertions raise it again
+        // with no reallocation, so it varies with the random hash seed.
+        let slots = self.roots.retained_bytes() / size_of::<(RootId, ObjectId)>();
+        (self.roots.len(), slots, self.next_root)
     }
 }
