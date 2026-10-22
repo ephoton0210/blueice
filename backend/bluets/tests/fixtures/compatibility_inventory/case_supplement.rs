@@ -33,6 +33,23 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt10_import_types" => {
+            let path = "backend/bluets/tests/fixtures/gt10_import_types/reference.json";
+            let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;
+            let rows = root["owner_controls"]
+                .as_array()
+                .ok_or("missing G-T10 owner controls")?;
+            if rows.len() != 5 {
+                return Err("incomplete G-T10 owner controls".into());
+            }
+            rows.iter().enumerate().map(|(index,row)| {
+                let label = row.as_str().ok_or("invalid G-T10 owner control")?;
+                let mut case = Case::new(path,&format!("/owner_controls/{index}"),label,"owner-type-edge-control");
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("Canonical owner confinement, declaration/runtime separation, configured work limits, changed/missing/restored type dependencies and non-execution are owner controls, not native TypeScript agreements.".into());
+                Ok(case)
+            }).collect::<Result<Vec<_>>>()?
+        }
         "gt7_library_manifest" => {
             let path = "backend/bluets/tests/fixtures/gt7_library_manifest/reference.json";
             let mut controls = super::case_sources::json_cases(

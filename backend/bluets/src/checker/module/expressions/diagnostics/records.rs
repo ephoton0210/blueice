@@ -17,8 +17,8 @@ impl ModuleChecker<'_> {
     ) -> bool {
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         budget.checking = self.checking;
-        let Some((actual, expected, owner)) =
-            self.nested_mismatch(actual, expected, span, &mut budget, 0)
+        let Some((actual, expected, owner, repeated_relation)) =
+            self.nested_mismatch(actual, expected, span, &mut budget, 0, &[])
         else {
             return false;
         };
@@ -73,6 +73,7 @@ impl ModuleChecker<'_> {
             .diagnostics
             .last_mut()
             .and_then(|diagnostic| diagnostic.typescript.as_mut())
+            .filter(|_| !repeated_relation)
         {
             counterpart.related_information.push(crate::TypeScriptRelatedInformation {
                 code: 6500,
@@ -91,7 +92,8 @@ impl ModuleChecker<'_> {
         span: &SourceSpan,
         budget: &mut TypeExpansionBudget,
         depth: usize,
-    ) -> Option<(TypeField, TypeField, Type)> {
+        ancestors: &[Type],
+    ) -> Option<(TypeField, TypeField, Type, bool)> {
         if depth >= 128 || !budget.consume() {
             return None;
         }
@@ -104,9 +106,10 @@ impl ModuleChecker<'_> {
             &mut HashSet::new(),
             budget,
         );
-        let Type::Record(fields) = shape else {
+        let Type::Record(fields) = &shape else {
             return None;
         };
+        let repeated_relation = ancestors.contains(&shape);
         if fields
             .iter()
             .any(|field| !field.optional && !actual.iter().any(|item| item.name == field.name))
@@ -133,14 +136,33 @@ impl ModuleChecker<'_> {
             if self.checking.exact_optional_property_types
                 && self.exact_optional_mismatch(&item.value, &field.value)
             {
-                return Some((item.clone(), field.clone(), expected.clone()));
+                return Some((
+                    item.clone(),
+                    field.clone(),
+                    expected.clone(),
+                    repeated_relation,
+                ));
             }
-            if let Some(nested) =
-                self.nested_mismatch(&item.value, &field.value, span, budget, depth + 1)
-            {
+            let mut nested_ancestors = ancestors.to_vec();
+            nested_ancestors.push(shape.clone());
+            if let Some(nested) = self.nested_mismatch(
+                &item.value,
+                &field.value,
+                span,
+                budget,
+                depth + 1,
+                &nested_ancestors,
+            ) {
                 return Some(nested);
             }
-            return (depth > 0).then(|| (item.clone(), field.clone(), expected.clone()));
+            return (depth > 0).then(|| {
+                (
+                    item.clone(),
+                    field.clone(),
+                    expected.clone(),
+                    repeated_relation,
+                )
+            });
         }
         None
     }

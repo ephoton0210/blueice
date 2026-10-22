@@ -54,13 +54,18 @@ pub struct Module {
     pub(crate) class_expressions: BTreeMap<usize, ClassExpression>,
     /// Named type uses, including erased assertions, at their original tokens.
     pub(crate) type_references: Vec<TypeReference>,
+    /// Erased module queries retain owner-resolved graph edges and exact spans.
+    pub(crate) import_types: Vec<ImportTypeReference>,
     /// Annotations on declarations retained inside opaque control flow.
     pub(crate) expression_variable_types: BTreeMap<usize, Type>,
     /// Retained static `as` targets, keyed by the assertion keyword.
     pub(crate) type_assertions: BTreeMap<usize, Type>,
 }
 
+#[path = "parser/import_types.rs"]
+mod import_types;
 mod module_kind;
+pub(crate) use import_types::ImportTypeReference;
 
 mod class_expressions;
 pub(crate) use class_expressions::type_parameter_identity;
@@ -970,7 +975,7 @@ pub(crate) fn require_tuple_positions_before_suffix(elements: &mut [TupleTypeEle
 /// two queries with the same spelling can resolve different shadowed values.
 /// Diagnostics and declaration output retain the source spelling.
 pub(crate) fn source_type_name(name: &str) -> &str {
-    if name.starts_with("\0ambient:") {
+    if name.starts_with("\0ambient:") || name.starts_with("\0import:") {
         return name.rsplit_once('\0').map_or(name, |(_, source)| source);
     }
     if let Some(source) = class_expressions::parameter_source_name(name) {

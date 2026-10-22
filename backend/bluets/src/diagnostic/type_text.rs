@@ -4,6 +4,8 @@
 
 //! Diagnostic type spelling is separate from stable BTS prose and checking.
 use crate::parser::{Parameter, Type};
+mod imports;
+pub(crate) use imports::display as import_display;
 mod names;
 mod parameters;
 mod relations;
@@ -86,6 +88,18 @@ fn text_options(
             }
         }
         Type::Named { name, arguments } => {
+            if let Some(Type::Named { name, arguments }) =
+                project.and_then(|project| imports::display(value, project))
+            {
+                return if arguments.is_empty() {
+                    name
+                } else {
+                    format!(
+                        "{name}<{}>",
+                        arguments.iter().map(render).collect::<Vec<_>>().join(", ")
+                    )
+                };
+            }
             if name == "Readonly"
                 && arguments.len() == 1
                 && matches!(&arguments[0], Type::Array(_) | Type::Tuple(_))

@@ -14,14 +14,16 @@ pub(super) fn declaration_module_diagnostics(
     for (module_id, module) in &project.modules {
         for declaration in &module.declarations {
             if let Declaration::ValueExport(export) = declaration {
-                if export.specifier.as_ref().is_some_and(|specifier| {
-                    project.ambient_resolutions.contains_key(&(
-                        module_id.clone(),
-                        specifier.clone(),
-                        None,
-                    ))
-                }) && (export.bindings.is_empty()
-                    || export.bindings.iter().any(|binding| !binding.type_only))
+                if !is_declaration_module(module_id)
+                    && export.specifier.as_ref().is_some_and(|specifier| {
+                        project.ambient_resolutions.contains_key(&(
+                            module_id.clone(),
+                            specifier.clone(),
+                            None,
+                        ))
+                    })
+                    && (export.bindings.is_empty()
+                        || export.bindings.iter().any(|binding| !binding.type_only))
                 {
                     diagnostics.push(Diagnostic::error(
                         DiagnosticCode::InvalidDeclarationFile,
@@ -34,7 +36,8 @@ pub(super) fn declaration_module_diagnostics(
                         .resolutions
                         .get(&(module_id.clone(), specifier.clone()))
                 }) {
-                    if is_declaration_module(resolved)
+                    if !is_declaration_module(module_id)
+                        && is_declaration_module(resolved)
                         && !crate::compiler::is_external_library_module(resolved)
                     {
                         diagnostics.push(Diagnostic::error(

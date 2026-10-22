@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+type ReturnType<F extends (...values: any[]) => any> = F extends (...values: any[]) => infer Result ? Result : never;
+
 // Original finite ECMAScript type model for G-T7; not upstream library text.
 type Readonly<T> = { readonly [P in keyof T]: T[P] };
 type Required<T> = { [P in keyof T]-?: T[P] };

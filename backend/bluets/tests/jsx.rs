@@ -143,3 +143,69 @@ fn jsx_pragmas_override_the_factory_for_the_file() {
         "{messages:?}"
     );
 }
+
+#[test]
+fn import_elision_respects_implicit_factories_fragments_and_lexical_shadows() {
+    let factory = "export default function make(tag: any, props: any, ...children: any[]): any { return {tag, props, children}; } export const Fragment = 'fragment'; export const unused = 1;";
+    for (pragma, mode, body, needs_make, needs_fragment) in [
+        (
+            "",
+            JsxMode::React,
+            "export const value = <div />;",
+            true,
+            false,
+        ),
+        (
+            "",
+            JsxMode::React,
+            "export const value = <><div /></>;",
+            true,
+            true,
+        ),
+        (
+            "",
+            JsxMode::Preserve,
+            "export const value = <div />;",
+            true,
+            false,
+        ),
+        (
+            "/** @jsxRuntime classic */\n/** @jsx make */\n/** @jsxFrag Fragment */\n",
+            JsxMode::ReactJsx,
+            "export const value = <><div /></>;",
+            true,
+            true,
+        ),
+        (
+            "",
+            JsxMode::React,
+            "export function render(make: (tag: any, props: any) => any): any { return <div />; }",
+            false,
+            false,
+        ),
+    ] {
+        let source = format!("{pragma}import make from './factory.ts'; import {{Fragment, unused}} from './factory.ts'; {PRELUDE}{body}");
+        let result = compile(
+            "memory:///main.tsx",
+            &MapLoader::from(vec![
+                ModuleSource::new("memory:///main.tsx", source),
+                ModuleSource::new("memory:///factory.ts", factory),
+            ]),
+            CompilerOptions {
+                jsx: Some(mode),
+                jsx_factory: Some("make".into()),
+                jsx_fragment_factory: Some("Fragment".into()),
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "{body}: {:?}",
+            result.diagnostics
+        );
+        let output = &result.output.unwrap().artifacts["memory:///main.tsx"].javascript;
+        assert_eq!(output.contains("import make"), needs_make, "{output}");
+        assert_eq!(output.contains("{ Fragment }"), needs_fragment, "{output}");
+        assert!(!output.contains("unused"), "{output}");
+    }
+}

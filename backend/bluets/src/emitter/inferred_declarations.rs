@@ -601,7 +601,28 @@ impl<'a> Context<'a> {
                 }
             }
             Type::Named { name, arguments } => {
-                let name = if name.starts_with("typeof ") {
+                if let Some((owner, spelling)) = name
+                    .strip_prefix("\0import:")
+                    .and_then(|name| name.split_once('\0'))
+                {
+                    if owner != self.module.id {
+                        if !spelling.contains('(') {
+                            return self.render(
+                                &Type::Named {
+                                    name: format!("{spelling}@{owner}"),
+                                    arguments: arguments.clone(),
+                                },
+                                indent,
+                                span,
+                            );
+                        }
+                        return Err(Diagnostic::error(DiagnosticCode::TypeMismatch,span.clone(),format!("TS4023: exported variable uses external type `{spelling}` which cannot be named")));
+                    }
+                    self.retain(spelling);
+                }
+                let name = if name.starts_with("\0import:") {
+                    crate::parser::source_type_name(name).to_string()
+                } else if name.starts_with("typeof ") {
                     self.retain(name);
                     crate::parser::source_type_name(name).to_string()
                 } else if name.starts_with("#typeparam@") {

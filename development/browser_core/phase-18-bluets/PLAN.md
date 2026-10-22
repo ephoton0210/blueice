@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-22).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,687 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,827 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 13,109/13,118 (99.9314%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 32 BlueTS owner = 569; excluded from direct agreement |
-| Case labels | 13,678 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 111 suites / 265 ignored Rust functions; not a case denominator |
-| Suite labels | 105 scoped closed, 1 open, 5 refused |
+| Direct agreement | 13,246/13,253 (99.9472%); 3 open, 4 refused observations |
+| Separate controls | 537 native-reference + 37 BlueTS owner = 574; excluded from direct agreement |
+| Case labels | 13,820 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 112 suites / 267 ignored Rust functions; not a case denominator |
+| Suite labels | 107 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 212 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,687 recorded case expectations pass; expected differences/refusals are not
+All 13,827 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:62ccfc78ba313e40527b29b4da9af4791d77ccde`.
-Input graph SHA-256: `ddbd29a71054ead392ea2b496e10cdf32b45f8a5859385f3f115c77907a781d0`.
+Compiler/oracle source: `backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64`.
+Input graph SHA-256: `fedcba9e69384dd7fc9cab41d9dd5c0a9d9ab17076e2c9bdceba672218c7b73b`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -13947,3 +13947,406 @@ TypeScript parity stays **OFF**. Owner replacement, canonical source confinement
 type/value separation and unchanged resource budgets remain enforced. This is
 darwin-arm64 compiler-leaf acceptance, not a new complete-workspace, Windows VM
 or hosted-CI run. Historical Windows 82/82 evidence retains its original scope.
+
+## Phase L — G-T10 implementation
+
+### Native-first matrix and failing boundary — 2026-10-22
+
+Base HEAD: `26d25e02dc228f4a4b390b248f84fd9110043bd7`.
+Before changing production code, freeze 30 accepted/rejected forms and nine
+additional rejection forms in `gt10_import_types`: **133 native observations**,
+**58 accepted declaration graphs / 118 emitted `.d.ts` files**, 116 downstream
+diagnostic observations and 15 Node executions. ESM/CommonJS use ES2022 syntax;
+the verbatim controls use ESM. Compare complete diagnostics/UTF-16 positions,
+exact declaration bytes, native bidirectional consumers, complete emitted
+import retention/elision, selected-edition syntax and execution.
+
+Input SHA-256: `3648f1766c12f85e3a319c537be426a9bed0396f6231de8f2720c7a357038f1c`.
+Native reference SHA-256:
+`204e8e4266bc22c06221c61a9123eb4457b3aeb2a616ef131e4520ca2a5605a4`.
+The original recorder uses only pinned TypeScript 5.9.3. Canonicalize graph-key
+order, not declaration bytes. Normalize only its virtual project prefix in
+native diagnostic paths; keep all other message text and primary/related
+UTF-16 spans. Explicit ES2022/DOM native libs retain console-side-effect
+observations; `skipDefaultLibCheck` skips only vendor default-library checking,
+not owned `.d.ts` files. No DOM/runtime authority is granted to BlueTS.
+
+The first replay records **117 mismatches** in
+`/private/tmp/bluets-gt10-frozen-before.log`; its initial native diagnostic
+messages still contain the recorder's machine-specific virtual prefix.
+After portable path normalization and adding all five separate owner controls,
+`/private/tmp/bluets-gt10-baseline-complete.log` finishes **one passed / six
+failed / two ignored**. The matrix remains 117 mismatches; all five owner
+groups fail before production changes. These are failing baseline records,
+not completed acceptance. Native generation log:
+`/private/tmp/bluets-gt10-native-frozen.log`.
+
+The five controls are canonical host-edge confinement, declaration/runtime
+separation, shared module/edge/depth/byte/expansion limits, incremental changes/
+missing/restored type dependencies and non-execution of type dependencies.
+Keep all 13,687 old suite-qualified identities, native expectations and policy
+boundaries intact. G-T10 explicitly owns the recorded type-only-namespace
+value-import gap: only its two old refusal classifications may become
+agreements after actual native agreement, with neither case removed. Every
+other old classification/expectation remains unchanged.
+G-T10 stays unchecked until the full source-frozen cohort and all ordinary,
+formatting, warnings-denied Clippy and evidence gates pass. Implementation and
+its corresponding completed measurement must be committed together. Broader
+unmeasured compositions and full TypeScript parity remain open.
+
+### Implementation and preflight (not final acceptance)
+
+Import queries have owner-qualified internal identities and preserve their
+original source spelling in declarations. Their dependencies reuse the existing
+authorized resolver, graph limits and fingerprints. Static binding follows
+already-authorized edges once, retains private recursive alias closure and
+export visibility, and never installs an executable binding. Named/default/
+qualified generic surfaces, callable queries, merged declarations, operator
+projections and declaration-only re-exports use the existing type machinery.
+The original conditional `ReturnType` library declaration supplies the measured
+callable-query prerequisite. No work budget or stack limit was raised.
+
+Import elision uses lexical binding identities, not identifier spelling. A
+failed native execution exposed a real imported `Counter` being erased; the
+erasure index now seeds import binding identities independently of value
+checking, preserving live value uses and shadowing. Verbatim imports retain
+their source form and report native TS1484 for the measured type-only misuse.
+Inferred declarations never expose private internal query keys. Complete
+primary/related diagnostics retain imported declaration provenance and bounded
+recursive structural context rather than fixture-specific name exceptions.
+
+Checker/module-export caches advance to epoch 17 / exports v5; type operators
+advance to profile 4 and diagnostic presentation to v5. Existing stale-state
+tests reject the old epochs. The incremental owner controls check changed,
+missing and restored dependencies, including transactional retention of the
+last successful cache after failure and a valid byte-identical restoration hit.
+
+Preflight history remains separate from accepted evidence:
+
+- `/private/tmp/bluets-gt10-native-preflight2.log`: eight passed / one failed;
+  native import retention/execution caught the erased value import.
+- `/private/tmp/bluets-gt10-native-preflight3.log`: all nine tests passed,
+  including both ignored native functions, all 133 comparisons, 58 exact
+  declaration graphs, 116 downstream observations and 15 executions.
+- `/private/tmp/bluets-gt10-regressions-preflight.log`: 349 passed / one failed /
+  35 ignored. The sole failure was the stale G-C1 assertion expecting epoch 16;
+  it now requires 17 and checks stale epochs 4–16.
+- `/private/tmp/bluets-gt10-regressions-native-preflight.log`: all **23 targets /
+  385 tests passed, zero ignored**, including the focused G-T1–G-T8/G-T10 native
+  regressions, 253 library unit tests and project/cache/namespace regressions.
+- `/private/tmp/bluets-gt10-clippy-preflight.log`: warnings-denied Clippy for
+  both BlueTS crates and all their targets passed.
+- `/private/tmp/bluets-gt10-diagnostics-native-preflight.log`: all **three
+  targets / eleven tests passed, zero ignored**, including the unchanged full
+  diagnostic corpus, native presentation and project-coordinate matrices.
+- `/private/tmp/bluets-gt10-node-tools-preflight.log`: all fifteen Node tooling
+  tests passed. Workspace formatting passed with the repository's Rust 1.95
+  rustfmt; no alternate target directory was created.
+- `/private/tmp/bluets-gt10-maintainability-preflight.json`: new source headers
+  and frozen fixture hashes verified; all 38 changed production modules remain
+  below 1,200 lines (largest: parser 1,196; emitter 1,179; namespace binder 1,167).
+
+These focused results do not yet complete G-T10. The old diagnostic matrix,
+immutable-source whole oracle cohort, ordinary two-crate gate and publication
+audits must also pass before checking the item or committing.
+
+### Rejected first immutable-source cohort
+
+The staged implementation is frozen as root tree
+`df812c1a21aa6db303cad6e9112deb4cd21ee56f`, with compiler/oracle source
+`backend-tree:da4c18e1bba5fe234d1eab1ed17dfc5b65d4b219` and input graph SHA-256
+`8ff9700e3ad4307db2bd304d471064890806ff66334b03da6ec1581ee2444751`.
+The primary-source audit finds all 112 suite providers, including G-T10's
+133 comparisons and five separate controls, with no missing inline provider.
+That source audit is deliberately not publishable measurement evidence.
+
+The complete cohort runs without recording/filter variables, with
+`BLUEICE_BLUETSC_ORACLE=/private/tmp/bluets-gt6-oracles-5c8vA3/node_modules/.bin/tsc`,
+`BLUEICE_ACORN_ORACLE=/private/tmp/bluets-gt6-oracles-5c8vA3/node_modules/.bin/acorn`,
+`BLUEJS_REGEXP_WORKER=/Users/ephoton/git/blueice-bluets/target/debug/bluejs-regexp-worker`,
+`FORCE_COLOR=0`, `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_DEV_DEBUG=0` and
+`CARGO_PROFILE_TEST_DEBUG=0`. Cargo commands remain sequential on the existing
+target. Tool versions are Rust 1.98.0, Node 26.7.0, TypeScript 5.9.3 and Acorn
+8.15.0 on darwin-arm64.
+
+```sh
+cargo run --offline -p blueice-bluets --example compatibility_inventory -- \
+  --write backend-tree:da4c18e1bba5fe234d1eab1ed17dfc5b65d4b219
+target/debug/examples/compatibility_inventory --cases-audit \
+  backend-tree:da4c18e1bba5fe234d1eab1ed17dfc5b65d4b219
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs \
+  --output-dir /private/tmp/bluets-gt10-measurement.BebWR7 --staged-source
+```
+
+Source catalog log: `/private/tmp/bluets-gt10-suite-freeze.log`; provider audit:
+`/private/tmp/bluets-gt10-case-provider-audit.json`; cohort driver:
+`/private/tmp/bluets-gt10-cohort-driver.log`. Only a completed successful cohort
+may replace the versioned case/measurement artifacts. The driver verifies source,
+suite catalog and oracle tool hashes again at the end; no production, fixture or
+tool body may change during this run.
+
+**Rejected, not acceptance:** this cohort stopped at suite 63/112,
+`jsx_oracle.rs`. The first 62 suites passed 249 tests; the complete JSX oracle
+then failed on `classic-imported-factory-cjs`: elision removed the implicit
+`make` factory import and Node reported `ReferenceError: make is not defined`.
+No result from this cohort is published or spliced into a later run. Its source
+tree, logs and failed `measurement.json` remain a reproducible failure record.
+
+The repair adds a small lexical-emission JSX module. Actual JSX elements and
+fragments supply implicit factory references at their own lexical locations;
+the existing binding resolver still distinguishes imported bindings from local
+shadows. Pragma/option selection, preserved JSX and nested elements retain only
+the needed classic aliases; automatic-runtime source imports still follow their
+ordinary uses. New public-boundary coverage checks factory/fragment retention,
+unused binding elision, pragma overrides and a local factory parameter shadow.
+The unchanged original JSX oracle must pass before a fresh complete source
+freeze. No original native source, expectation or frozen G-T10 input changes.
+
+Repair preflight: `/private/tmp/bluets-gt10-jsx-repair-preflight2.log` passes all
+**seven targets / 51 tests, zero ignored**, including the original complete
+JSX oracle and G-T10. The initial command named a nonexistent `jsx_residuals`
+target and exited before testing; it is not accepted evidence.
+Before repeating the expensive complete cohort, freshly compile both crates'
+test binaries with `cargo test --offline --locked -p blueice-bluets -p
+blueice-bluets-bluejs --no-run --message-format=json`. A temporary diagnostic-only
+runner executes all 49 suites after the original failed JSX oracle, without
+filters and with `--include-ignored`: **49/49 suites / 344 tests passed**.
+Logs and a deliberately non-publishable preflight report are in
+`/private/tmp/bluets-gt10-remaining-preflight.ShD6ZL`; driver log:
+`/private/tmp/bluets-gt10-remaining-driver.log`. These are diagnostic checks, not
+resumed/spliced acceptance. They do not replace a fresh complete cohort.
+
+### Second cohort — complete native pass, ordinary stale-assertion failure
+
+After the JSX repair, workspace formatting and both crates' all-target
+warnings-denied Clippy pass (`/private/tmp/bluets-gt10-clippy-repair.log`, 22.04s).
+The replacement root tree is `c8b35a00f021cf85d1cba8fe2e2ee967565a41cc`;
+compiler/oracle source: `backend-tree:84f807ad883f80e95861fc1c01427831adc5b2b0`;
+input graph SHA-256:
+`411050d333723142f435fd2c1b748965e797c21f1b2d593f230b786b8d1b6ad9`.
+All 39 changed production modules remain below 1,200 lines, with unchanged
+frozen native input/reference hashes and MPL headers verified in
+`/private/tmp/bluets-gt10-maintainability-final.json`.
+
+Use the same pinned tools/environment above, regenerate the source catalog and
+provider audit for this replacement tree, then run the complete driver from the
+first suite with a new empty directory:
+
+```sh
+cargo run --offline -p blueice-bluets --example compatibility_inventory -- \
+  --write backend-tree:84f807ad883f80e95861fc1c01427831adc5b2b0
+target/debug/examples/compatibility_inventory --cases-audit \
+  backend-tree:84f807ad883f80e95861fc1c01427831adc5b2b0
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs \
+  --output-dir /private/tmp/bluets-gt10-measurement2.tzkiTk --staged-source
+```
+
+The replacement catalog remains **112 suites / 267 selected ignored functions**.
+Logs: `/private/tmp/bluets-gt10-suite-freeze2.log`,
+`/private/tmp/bluets-gt10-case-provider-audit2.json` and
+`/private/tmp/bluets-gt10-cohort-driver2.log`. This fresh run completed
+**112/112 suites / 594 tests / all 267 selected ignored functions**, with zero
+failures, skipped or filtered tests. It ran from `2026-10-22T12:10:38.005Z` to
+`2026-10-22T13:09:13.290Z` (3,515.285 seconds). Both end-of-run source checks,
+the unchanged catalog and all 66 oracle-tool body hashes passed.
+
+Measurement SHA-256:
+`dcf079ef58cf6377e399bb0f1ad0acf5f2e6b685a4673dcd199bdcc59aa43f09`.
+Driver log SHA-256:
+`374ccbcb56c254e385322e134674aa650ef39dd2f5cebdc02deeb9efbd89a9b3`.
+Warnings-denied Clippy repair log SHA-256:
+`fdd76806c5151d4ec524e7eb15c92a7da30d872b68df88c5e1b0dfe38d5c96ff`.
+
+### Second-cohort native accounting and independent audit
+
+Only the successful fresh measurement is published, byte-for-byte, using:
+
+```sh
+target/debug/examples/compatibility_inventory --write-cases \
+  backend-tree:84f807ad883f80e95861fc1c01427831adc5b2b0 \
+  /private/tmp/bluets-gt10-measurement2.tzkiTk/measurement.json
+target/debug/examples/compatibility_inventory --write \
+  backend-tree:84f807ad883f80e95861fc1c01427831adc5b2b0
+python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --write
+python3 development/browser_core/phase-18-bluets/tools/check_compatibility_status.py --write
+```
+
+All **13,687 old suite-qualified identities and native expectations** remain.
+Only the two explicitly owned refusal classifications become agreements. There
+are **140 added assertions**: 133 frozen G-T10 comparisons, five separate owner
+controls and two newly exercised legacy namespace execution configurations.
+The latter are the unchanged `namespace-imported/value-import-of-types-only-valid.ts`
+at `namespace-checker-matrix.tsv#line:43`, under `namespace_oracle.rs`'s
+`TARGETS/0` ES2022 and `TARGETS/1` ES2020. Removing the repaired case's deferred
+allowance makes that existing harness actually compile/execute both targets;
+they were previously skipped and absent from its published case denominator.
+Both now pass the native execution oracle. They are not two extra frozen G-T10
+forms, and no old row is removed to make room for them.
+
+The first independent audit rejected the predicted 138 additions; inspection
+identified exactly those two live target selectors. The strict audit now
+permits only those exact two additional selectors alongside the 138 G-T10
+assertions, still rejects any other addition/change and preserves every old
+native input/expectation. `/private/tmp/bluets-gt10-acceptance-audit.json` passes
+the complete identity, original fixture hash, immutable backend/index,
+measurement-byte, per-suite log/summary/hash, all 66 tool-body, MPL and size
+checks. It independently totals all 594 passed tests and 267 executed ignored
+functions; the failed first cohort contributes nothing.
+
+Published accounting: **13,827 listed/checked**, **13,246/13,253 direct
+agreements**, three open and four refused; 537 native-reference and 37 owner
+controls are separate from agreement. All 13,827 recorded expectations pass.
+The 23 broader feature rows remain one scoped closed / 22 open, including open
+G-T10, and full TypeScript parity stays **OFF**.
+
+The staged-source suite/case consistency commands pass, as do all fifteen Node
+and thirteen Python tooling tests (`/private/tmp/bluets-gt10-node-tools-final.log`
+and `/private/tmp/bluets-gt10-python-tools-final.log`). The complete ordinary
+two-crate gate is still required before checking G-T10 or committing.
+
+### Ordinary-gate failure and stale namespace assertion repair
+
+The first complete ordinary two-crate run finishes **172 targets / 1,348 passed /
+one failed / 267 ignored**, exit 101, 1,706.42 seconds. Its log is retained at
+`/private/tmp/bluets-gt10-ordinary-accepted.log`; despite that intended filename,
+this is a **failed run, not acceptance**. The sole failure is the old
+`namespaces.rs` assertion requiring a blanket `UnsupportedSyntax` for
+`import { Only } from './lib.ts'; const o: Only.T = { v: 1 };`. That assertion
+contradicts the unchanged native-accepted case that G-T10 explicitly repairs.
+No second failure appears in any target, including the BlueJS bridge/doc tests.
+
+Only this ordinary regression test is corrected; production, native fixtures,
+the frozen G-T10 inputs and all oracle tool bodies remain unchanged. Its original
+positive source must now compile, keep the dependency in the authorized graph
+and erase the runtime import. A new negative control using `Only` as an actual
+value must still produce the precise existing no-runtime-members refusal and
+no output. The qualified-alias assertion remains. The test is renamed to
+describe that behavior; it is not part of the suite-qualified native case list.
+
+`cargo test --offline -p blueice-bluets --test namespaces` passes **44/44 tests**,
+zero ignored, in `/private/tmp/bluets-gt10-namespace-assertion-repair.log`.
+Workspace Rust 1.95 formatting also passes. Because the immutable source graph
+includes this non-oracle regression file, the second cohort is not relabelled
+as a measurement of the corrected tree. A new source freeze, complete native
+cohort and complete ordinary gate are required before checking or committing
+G-T10. The second cohort's source-bound evidence remains historical only.
+
+### Final source freeze after the ordinary regression repair
+
+The third freeze differs from the second only in `backend/bluets/tests/namespaces.rs`;
+production, all native inputs and all 66 oracle tool bodies are identical.
+Warnings-denied two-crate all-target Clippy passes again (1.23 seconds,
+`/private/tmp/bluets-gt10-clippy-final.log`). Root tree:
+`00f4c5698f3547a6049f1e995fa965c1d4650b99`; backend source:
+`backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64`;
+input graph SHA-256:
+`fedcba9e69384dd7fc9cab41d9dd5c0a9d9ab17076e2c9bdceba672218c7b73b`.
+The source audit still finds all 112 providers / 267 selected ignored functions,
+and the independent maintainability/frozen-input check passes at
+`/private/tmp/bluets-gt10-maintainability-final3.json`.
+
+Using the same pinned tool environment, repeat the complete driver from suite 1;
+do not reuse either previous cohort's test logs or rewrite its measurement:
+
+```sh
+cargo run --offline -p blueice-bluets --example compatibility_inventory -- \
+  --write backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64
+target/debug/examples/compatibility_inventory --cases-audit \
+  backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs \
+  --output-dir /private/tmp/bluets-gt10-measurement3.qOclW9 --staged-source
+```
+
+Logs: `/private/tmp/bluets-gt10-suite-freeze3.log`,
+`/private/tmp/bluets-gt10-case-provider-audit3.json`,
+`/private/tmp/bluets-gt10-cohort-driver3.log`. G-T10 remains unchecked until this
+source's full measurement, publication, ordinary gate and final audits pass.
+
+### Final-source native measurement and publication
+
+The final-source run completes **112/112 suites / 594 tests / all 267 selected
+ignored functions**, with zero failed, skipped or filtered tests. It runs from
+`2026-10-22T13:41:13.644Z` to `2026-10-22T14:38:20.256Z` (3,426.612 seconds),
+on the exact `backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64` /
+`fedcba9e69384dd7fc9cab41d9dd5c0a9d9ab17076e2c9bdceba672218c7b73b`
+source and input graph above. Both end checks pass; the catalog and all 66 tool
+bodies remain unchanged throughout. No prior cohort log is reused.
+
+Final measurement SHA-256:
+`14b073243a758683ee8ba57093622d035a7c758b9a5b59d5075e28678e6b2039`.
+Final driver log SHA-256:
+`4cd115a68ec2add0e38d2ec9bc04b9ed2c1e909457c0fa737ae99ef1079db6f8`.
+Final pre-freeze Clippy log SHA-256:
+`932144493512249b391182b60dfeb34473a6c6c411c375b94d0e3f3cdd447e00`.
+
+Publish only this successful final-source report, preserving its exact bytes:
+
+```sh
+target/debug/examples/compatibility_inventory --write-cases \
+  backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64 \
+  /private/tmp/bluets-gt10-measurement3.qOclW9/measurement.json
+target/debug/examples/compatibility_inventory --write \
+  backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64
+python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --write
+python3 development/browser_core/phase-18-bluets/tools/check_compatibility_status.py --write
+target/debug/examples/compatibility_inventory --check-cases-staged
+target/debug/examples/compatibility_inventory --check-staged
+```
+
+All commands pass. The final independent audit,
+`/private/tmp/bluets-gt10-acceptance-audit3.json`, again preserves all 13,687 old
+IDs/expectations, changes only the two repaired refusal classifications, and
+admits exactly 138 G-T10 plus the two named legacy target observations.
+It checks all fixture hashes, backend/index bytes, 112 log hashes/summaries,
+594 tests, 267 ignored functions, 66 tool bodies, headers and maintenance sizes.
+The final accounting remains **13,827 listed/checked; 13,246/13,253 direct
+agreements; three open / four refused; 537 reference-only / 37 owner controls**.
+Full parity remains **OFF**, and broader G-T10 remains open.
+
+All fifteen Node tooling tests and thirteen Python tooling tests pass against
+this publication (`/private/tmp/bluets-gt10-node-tools-final3.log`,
+`/private/tmp/bluets-gt10-python-tools-final3.log`). The final complete ordinary
+gate runs without target exclusions or test-name filters, with the same pinned
+environment, as:
+
+```sh
+cargo test --offline -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast
+```
+
+Log: `/private/tmp/bluets-gt10-ordinary-final.log`. This complete gate passes
+**172 targets / 1,349 tests / zero failures**, exit 0, in **1,601.90 seconds**.
+Its 267 ignored functions are the exact set already executed successfully in
+the final-source complete native cohort, not untested exclusions. No target or
+test-name filter is used. The corrected namespace regression passes all 44
+tests, including runtime elision, graph retention, alias following and the
+retained no-runtime-authority negative control.
+
+Ordinary log SHA-256:
+`341bd4afc4a345b0130b4e355786d54db3b97e35f8e4ee038600707f2ab2c57c`.
+Final handoff Clippy log (`/private/tmp/bluets-gt10-clippy-handoff.log`, 0.66s)
+SHA-256:
+`e299a21b142d460a3074f887747f65bb248f29a8395ac9ab2c80f4bf5d8198d7`.
+Workspace Rust 1.95 formatting passes again. The source/case/measurement audit
+passes again after the complete ordinary run, with the same frozen backend,
+original native fixture bytes, 66 tool bodies and complete log evidence. No
+production/test/fixture/tool source changes follow the final freeze.
+
+### Finite G-T10 acceptance decision — 2026-10-22
+
+**G-T10 is complete for its frozen checklist scope.** Implementation, fixtures,
+source-bound measurement and this acceptance record are submitted together,
+only after all required gates pass. All 13,687 old case identities and native
+expectations remain; only the two explicitly repaired refusal classifications
+change. The additional legacy observations are exactly the same repaired
+program's ES2022/ES2020 execution targets, not invented replacement cases.
+The final 13,827 expectations all pass, with expected differences/refusals kept
+separate from direct agreement and owner/reference controls.
+
+TODO has **12 unchecked finite packages; next is G-M1**. The broader G-T10 row
+remains open for unmeasured merging/type/module compositions, import attributes/
+resolution modes, private/generic/ambient combinations and decorator-metadata
+retention. Full TypeScript parity remains **OFF**. Canonical owner confinement,
+type/value separation, lexical shadowing, opaque metadata boundaries and the
+existing work limits are retained. This is darwin-arm64 compiler-leaf evidence,
+not a fresh complete-workspace, Windows VM or hosted-CI result. Historical
+Windows VM 82/82 acceptance retains its original recorded source/scope.

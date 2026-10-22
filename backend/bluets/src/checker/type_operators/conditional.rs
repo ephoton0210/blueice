@@ -84,6 +84,19 @@ pub(super) fn matches(
                 .all(|(actual, pattern)| matches(actual, pattern, bindings, aliases, budget));
         }
     }
+    if matches!(pattern, Type::Named { .. }) && !pattern.infer_parameters().is_empty() {
+        if let Some(expanded) = instantiate_named(
+            pattern,
+            aliases,
+            &mut HashSet::new(),
+            budget,
+            "conditional pattern",
+        ) {
+            if expanded != *pattern {
+                return matches(actual, &expanded, bindings, aliases, budget);
+            }
+        }
+    }
     let actual = expanded(actual, aliases, &mut HashSet::new(), budget);
     let callable = match &actual {
         Type::CallableRecord { signatures, .. } => signatures

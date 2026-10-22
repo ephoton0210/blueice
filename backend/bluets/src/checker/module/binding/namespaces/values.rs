@@ -16,6 +16,35 @@ pub(crate) struct ExportedValue {
 }
 
 impl ExportedValue {
+    /// A query retains callable binders; it never installs the value itself.
+    pub(super) fn query_type(&self, span: &SourceSpan) -> Type {
+        let Some(signatures) = self.surface.functions.get(&self.surface.source_name) else {
+            return self.value_type();
+        };
+        let mut types = signatures
+            .iter()
+            .map(|signature| {
+                if signature.type_parameters.is_empty() {
+                    Type::Function {
+                        parameters: signature.parameters.clone(),
+                        result: Box::new(signature.return_type.clone()),
+                    }
+                } else {
+                    Type::GenericFunction {
+                        type_parameters: signature.type_parameters.clone(),
+                        parameters: signature.parameters.clone(),
+                        result: Box::new(signature.return_type.clone()),
+                        span: span.clone(),
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+        if types.len() == 1 {
+            types.pop().expect("one signature")
+        } else {
+            Type::Intersection(types)
+        }
+    }
     pub(in crate::checker) fn type_only(&self, span: &SourceSpan) -> Self {
         let mut value = self.clone();
         value.surface.has_values = false;
@@ -106,7 +135,7 @@ impl ModuleChecker<'_> {
             rename: &rename,
             argument_prefix: None,
         }
-        .ty(&value.value_type());
+        .ty(&value.query_type(span));
         self.bind_imported_surface(local, &value.surface, span, false, false, false);
         self.types.insert(
             format!("typeof {local}"),

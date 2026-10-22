@@ -32,6 +32,7 @@ pub(in crate::checker::module::binding) fn rename_type_names(
 }
 use crate::parser::NamespaceDeclaration;
 
+mod import_types;
 mod type_traversal;
 mod values;
 use type_traversal::{named_types, Qualifier};
@@ -74,6 +75,7 @@ impl std::fmt::Debug for ClassConstructorBinding {
 /// The entries one body publishes, all under qualified keys.
 #[derive(Default)]
 struct Published {
+    namespace_members: BTreeMap<String, NamespaceMembers>,
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
     class_constructors: BTreeMap<String, ClassConstructorBinding>,
@@ -170,6 +172,7 @@ fn declared_in(namespace: &NamespaceDeclaration) -> Declared {
 impl ModuleChecker<'_> {
     fn policy(&self) -> CheckerPolicy {
         CheckerPolicy {
+            verbatim_module_syntax: self.verbatim_module_syntax,
             check_javascript: self.check_javascript,
             checking: self.explicit_checking.then_some(self.checking),
             target: self.target,
@@ -277,6 +280,7 @@ impl ModuleChecker<'_> {
             nested_functions: owner.nested_functions.clone(),
             class_expressions: owner.class_expressions.clone(),
             type_references: owner.type_references.clone(),
+            import_types: owner.import_types.clone(),
             expression_variable_types: owner.expression_variable_types.clone(),
             type_assertions: owner.type_assertions.clone(),
         };
@@ -534,6 +538,12 @@ impl ModuleChecker<'_> {
                     || key == inner_object
                     || key.starts_with(&inner_object_nested)
             };
+            published.namespace_members.extend(
+                self.namespaces
+                    .iter()
+                    .filter(|(key, _)| belongs(key))
+                    .map(|(key, members)| (key.clone(), members.clone())),
+            );
             // A type the inner namespace named from this one's scope is bare
             // there and qualified here.
             for (key, value) in &self.values {
@@ -617,6 +627,7 @@ impl ModuleChecker<'_> {
             }
             self.types.insert(key, definition);
         }
+        self.namespaces.extend(published.namespace_members);
         let members = self.namespaces.entry(path.to_string()).or_default();
         members.values.extend(published.members.values);
         members.types.extend(published.members.types);

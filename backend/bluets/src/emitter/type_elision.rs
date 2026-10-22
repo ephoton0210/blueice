@@ -6,58 +6,42 @@
 
 use crate::compiler::ModuleKind;
 use crate::parser::{Declaration, Module, TextEdit};
-use crate::syntax::{Token, TokenKind};
+use crate::syntax::Token;
 use std::borrow::Cow;
-use std::collections::BTreeSet;
 
 /// A value query is erased syntax. An ordinary import used only by these
 /// retained query nodes must not require an executable binding in JavaScript.
 /// Other uses keep their original binding, including unchecked value uses.
-pub(super) fn queries(module: &Module) -> Cow<'_, Module> {
-    let query_names = module
-        .type_references
-        .iter()
-        .filter(|reference| reference.value_query)
-        .map(|reference| reference.name.split('.').next().unwrap_or(&reference.name))
-        .collect::<BTreeSet<_>>();
-    if query_names.is_empty() {
-        return Cow::Borrowed(module);
+pub(super) fn queries<'a>(
+    module: &'a Module,
+    project: &crate::Project,
+    options: &crate::CompilerOptions,
+) -> Cow<'a, Module> {
+    if !module.declarations.iter().any(|declaration| matches!(declaration,Declaration::Import(import) if !import.bindings.is_empty() && !import.is_type_only())) { return Cow::Borrowed(module); }
+    let mut runtime_names = crate::checker::runtime_import_uses(
+        project,
+        module,
+        options.limits.max_type_expansions,
+        options.jsx,
+        options.jsx_factory.as_deref(),
+        options.jsx_fragment_factory.as_deref(),
+    );
+    // Imported decorator metadata remains a separately measured ABI boundary.
+    // Do not erase an annotation's potential runtime class under that profile.
+    if options.emit_decorator_metadata {
+        runtime_names.extend(
+            module
+                .declarations
+                .iter()
+                .filter_map(|declaration| {
+                    let Declaration::Import(import) = declaration else {
+                        return None;
+                    };
+                    Some(import.bindings.iter().map(|binding| binding.local.clone()))
+                })
+                .flatten(),
+        );
     }
-    let Ok(tokens) = crate::lex(&module.id, &module.source) else {
-        return Cow::Borrowed(module);
-    };
-    let mut ranges = module
-        .type_references
-        .iter()
-        .filter(|reference| reference.value_query)
-        .map(|reference| (reference.span.start, reference.span.end))
-        .chain(module.declarations.iter().filter_map(|declaration| {
-            let Declaration::Import(import) = declaration else {
-                return None;
-            };
-            Some((import.span.start, import.span.end))
-        }))
-        .collect::<Vec<_>>();
-    ranges.sort_unstable();
-    let mut merged: Vec<(usize, usize)> = Vec::new();
-    for (start, end) in ranges {
-        if let Some(last) = merged.last_mut().filter(|last| start <= last.1) {
-            last.1 = last.1.max(end);
-        } else {
-            merged.push((start, end));
-        }
-    }
-    let runtime_names = tokens
-        .iter()
-        .filter(|token| token.kind == TokenKind::Identifier)
-        .filter(|token| {
-            merged
-                .partition_point(|range| range.0 <= token.start)
-                .checked_sub(1)
-                .is_none_or(|index| token.end > merged[index].1)
-        })
-        .map(|token| token.text.as_str())
-        .collect::<BTreeSet<_>>();
     let mut result = module.clone();
     for declaration in &mut result.declarations {
         let Declaration::Import(import) = declaration else {
@@ -67,9 +51,7 @@ pub(super) fn queries(module: &Module) -> Cow<'_, Module> {
             continue;
         }
         for binding in &mut import.bindings {
-            if query_names.contains(binding.local.as_str())
-                && !runtime_names.contains(binding.local.as_str())
-            {
+            if !runtime_names.contains(binding.local.as_str()) {
                 binding.type_only = true;
             }
         }

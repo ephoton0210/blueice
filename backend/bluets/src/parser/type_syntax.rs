@@ -6,6 +6,8 @@
 
 #[path = "type_syntax/callable_objects.rs"]
 mod callable_objects;
+#[path = "type_syntax/imports.rs"]
+mod imports;
 #[path = "type_syntax/operators.rs"]
 mod operators;
 
@@ -457,6 +459,16 @@ impl Parser {
             Type::Null
         } else if self.consume("undefined") {
             Type::Undefined
+        } else if self.peek("import") {
+            self.parse_import_type(false)
+        } else if self.peek("typeof")
+            && self
+                .tokens
+                .get(self.index + 1)
+                .is_some_and(|token| token.is("import"))
+        {
+            self.bump();
+            self.parse_import_type(true)
         } else if self.consume("typeof") {
             let start = self.current().start;
             let mut name = self.consume_identifier_or_keyword().unwrap_or_else(|| {

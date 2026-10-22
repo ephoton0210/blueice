@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-pub(crate) const VERSION: &str = "bluets-type-operators/3/ts5.9.3";
+pub(crate) const VERSION: &str = "bluets-type-operators/4/ts5.9.3";
 #[derive(Deserialize)]
 struct Catalog {
     schema: u8,

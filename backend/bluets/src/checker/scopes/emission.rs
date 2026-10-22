@@ -7,6 +7,63 @@
 use super::*;
 use crate::parser::TextEdit;
 
+mod jsx;
+
+/// Erasure uses lexical binding identity, not same-spelled property/type tokens.
+pub(crate) fn runtime_import_uses(
+    project: &Project,
+    module: &Module,
+    budget: usize,
+    jsx_mode: Option<crate::JsxMode>,
+    jsx_factory: Option<&str>,
+    jsx_fragment_factory: Option<&str>,
+) -> BTreeSet<String> {
+    let imported = module
+        .declarations
+        .iter()
+        .filter_map(|declaration| {
+            let Declaration::Import(import) = declaration else {
+                return None;
+            };
+            Some(import.bindings.iter().map(|binding| binding.local.as_str()))
+        })
+        .flatten()
+        .collect::<BTreeSet<_>>();
+    if imported.is_empty() {
+        return BTreeSet::new();
+    }
+    // Only binding identity is inspected here. An uninhabited marker seeds
+    // external imports without granting a checker type or a runtime value.
+    let imports = imported
+        .iter()
+        .map(|name| (name.to_string(), Type::Never))
+        .collect();
+    let model = ScopeModel::new(
+        project,
+        module,
+        &imports,
+        &BTreeMap::new(),
+        None,
+        None,
+        budget,
+    );
+    let implicit = jsx::references(&model, jsx_mode, jsx_factory, jsx_fragment_factory);
+    model
+        .references
+        .iter()
+        .chain(&implicit)
+        .filter(|reference| reference.meaning == Meaning::Value)
+        .filter_map(|reference| {
+            let root = reference.name.split('.').next()?;
+            if !imported.contains(root) {
+                return None;
+            }
+            let (owner, binding) = model.resolve(reference.scope, root, Meaning::Value)?;
+            (owner == 0 && binding.is_some()).then(|| root.to_string())
+        })
+        .collect()
+}
+
 #[derive(Default)]
 pub(crate) struct LexicalEmission {
     pub(crate) edits: Vec<TextEdit>,

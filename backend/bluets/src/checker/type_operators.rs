@@ -106,6 +106,10 @@ pub(super) fn diagnostic_type(
     let mut indexed = false;
     loop {
         if let Type::KeyOf(operand) = &value {
+            if matches!(operand.as_ref(),Type::Named{name,..} if aliases.get(name).is_some_and(|definition| matches!(definition.kind, TypeDefinitionKind::Interface | TypeDefinitionKind::Class)))
+            {
+                return value;
+            }
             let operand = expanded(operand, aliases, &mut HashSet::new(), budget);
             if matches!(operand, Type::Array(_) | Type::Tuple(_))
                 || matches!(&operand, Type::Readonly(inner) if matches!(inner.as_ref(),Type::Array(_) | Type::Tuple(_)))

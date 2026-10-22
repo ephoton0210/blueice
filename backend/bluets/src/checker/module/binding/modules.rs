@@ -287,6 +287,16 @@ impl<'a> ModuleChecker<'a> {
         &mut self,
         import: &crate::parser::ImportDeclaration,
     ) {
+        if self.runtime_imports.is_none() {
+            self.runtime_imports = Some(crate::checker::runtime_import_uses(
+                self.project,
+                self.module,
+                self.max_type_expansions,
+                self.jsx_mode,
+                self.jsx_factory.as_deref(),
+                self.jsx_fragment_factory.as_deref(),
+            ));
+        }
         let Some(resolved) = self.project.resolved_import(&self.module.id, import) else {
             return;
         };
@@ -382,7 +392,13 @@ impl<'a> ModuleChecker<'a> {
                         &binding.local,
                         namespace,
                         &import.span,
-                        !binding.type_only,
+                        !binding.type_only
+                            && (namespace.has_values
+                                || self.verbatim_module_syntax
+                                || self
+                                    .runtime_imports
+                                    .as_ref()
+                                    .is_some_and(|names| names.contains(&binding.local))),
                         false,
                     );
                     continue;
@@ -505,7 +521,7 @@ impl<'a> ModuleChecker<'a> {
                         .push(self.missing_type_import(import, binding, resolved, diagnostic));
                     continue;
                 };
-                let mut source_type = source_type.clone();
+                let mut source_type = self.qualify_type_import_definition(resolved, source_type);
                 if let Some(class) =
                     exported_classes.and_then(|classes| classes.get(&binding.imported))
                 {
@@ -661,9 +677,10 @@ impl<'a> ModuleChecker<'a> {
                 } else if let Some(definition) =
                     exported.and_then(|types| types.get(&binding.imported))
                 {
+                    let definition = self.qualify_type_import_definition(resolved, definition);
                     self.insert_type(
                         &binding.local,
-                        definition.clone(),
+                        definition,
                         import.span.clone(),
                         SymbolKind::Import,
                         false,

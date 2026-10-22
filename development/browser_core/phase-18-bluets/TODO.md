@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-10-22).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,687 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,827 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 13,109/13,118 (99.9314%); 3 open, 6 refused observations |
-| Separate controls | 537 native-reference + 32 BlueTS owner = 569; excluded from direct agreement |
-| Case labels | 13,678 scoped closed (including controls), 3 open, 6 refused |
-| Suite inventory | 111 suites / 265 ignored Rust functions; not a case denominator |
-| Suite labels | 105 scoped closed, 1 open, 5 refused |
+| Direct agreement | 13,246/13,253 (99.9472%); 3 open, 4 refused observations |
+| Separate controls | 537 native-reference + 37 BlueTS owner = 574; excluded from direct agreement |
+| Case labels | 13,820 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 112 suites / 267 ignored Rust functions; not a case denominator |
+| Suite labels | 107 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 212 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,687 recorded case expectations pass; expected differences/refusals are not
+All 13,827 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:62ccfc78ba313e40527b29b4da9af4791d77ccde`.
-Input graph SHA-256: `ddbd29a71054ead392ea2b496e10cdf32b45f8a5859385f3f115c77907a781d0`.
+Compiler/oracle source: `backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64`.
+Input graph SHA-256: `fedcba9e69384dd7fc9cab41d9dd5c0a9d9ab17076e2c9bdceba672218c7b73b`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -44,8 +44,8 @@ Older dated measurements below retain their original scope; they are not this cu
 **Current work (2026-10-22):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, both
-G-T1 stages, G-T3, G-T2, G-T5, G-T6, G-T4, G-T8 and G-T7 are complete for their scopes below;
-13 packages remain unchecked. Next: G-T10.**
+G-T1 stages, G-T3, G-T2, G-T5, G-T6, G-T4, G-T8, G-T7 and G-T10 are complete for their scopes below;
+12 packages remain unchecked. Next: G-M1.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -413,7 +413,7 @@ Existing measured behavior is reused; it is not implemented again.
 
 ### P2 — modules, packages, classes, declarations and projects
 
-- [ ] **G-T10 — Import type expressions and remaining module/type compositions.**
+- [x] **G-T10 — Import type expressions and remaining module/type compositions.**
   - **Scope:** `import('specifier').Type`, `typeof import('specifier')`, qualified/
     generic projections, remaining merged declaration/import-elision forms and the
     recorded value import of a type-only namespace.
@@ -421,6 +421,47 @@ Existing measured behavior is reused; it is not implemented again.
     declarations, import retention/elision and execution. Newly discovered type
     dependencies enter the authorized graph, budgets and fingerprints; a type
     expression never grants runtime or outside-root access.
+  - **Frozen minimum:** `gt10_import_types/cases.json` / `reference.json` records
+    30 accept/reject forms and nine additional rejection forms: **133 native
+    observations** under ES2022 / ESM and CommonJS (verbatim forms use ESM).
+    Cover named/default/qualified/generic imports, defaults/constraints, whole
+    and qualified value queries, generic function queries, indexed/keyof/mapped/
+    conditional projections, recursion/type cycles, named/star re-exports,
+    merged interfaces/function/class/namespaces, ordinary unused/mixed/type-only
+    namespace imports, declaration-file edges and verbatim retention/diagnostics.
+  - **Acceptance:** 58 byte-exact declaration graphs (**118 emitted `.d.ts`
+    files**), 116 type-only downstream accept/reject observations, native
+    bidirectional consumers, complete emitted import retention/elision, ES2022
+    syntax and **15 Node executions**. Native options explicitly select ES2022 /
+    DOM libraries; only TypeScript's vendor default-lib checking is skipped,
+    never owned declaration checking. This grants no DOM/runtime authority.
+    Normalize only the recorder's virtual root in native diagnostic paths;
+    preserve messages and all primary/related UTF-16 spans otherwise.
+  - **Completion gate:** preserve all 13,687 old suite-qualified identities and
+    native expectations. Only the two recorded type-only-namespace value-import
+    refusal allowances may become agreements, after their actual native behavior
+    matches; no case is deleted or removed from the denominator.
+    Retain both newly exercised ES2022/ES2020 execution configurations of that
+    same legacy namespace program; they are not extra frozen G-T10 forms. Then
+    run the full source-bound native cohort, ordinary two-crate gate, cache
+    invalidation, formatting, warnings-denied Clippy and evidence audits. Five
+    separate owner controls cover canonical confinement, declaration/runtime
+    separation, unchanged work limits, changed/missing/restored type-edge
+    invalidation and non-execution. No new opaque fallback, runtime grant or
+    budget increase is allowed. Implementation and completed measurement must
+    be submitted together; broader unmeasured compositions and full parity
+    remain open.
+  - **Accepted (2026-10-22):** all 133 native observations, 58 exact declaration
+    graphs / 118 `.d.ts` files, 116 downstream observations, 15 executions and
+    five separate owner controls pass. The two old refusal classifications are
+    repaired without deleting any old ID/expectation; both newly exercised
+    legacy namespace targets pass. Final immutable-source replay: **112 suites /
+    594 tests / all 267 ignored functions**; complete ordinary two-crate gate:
+    **172 targets / 1,349 passed**, zero failures. Epoch 17 invalidation,
+    formatting, warnings-denied Clippy and case/source/log/tool/document audits
+    pass; all 39 changed production modules stay below 1,200 lines. This closes
+    the finite package only: broader G-T10 stays open and full parity stays OFF.
+    [Source, commands and acceptance](PLAN.md#phase-l--g-t10-implementation).
 
 - [ ] **G-M1 — Package/mapped JavaScript, JSDoc and resolver compositions.**
   - **Scope:** package and paths-mapped `allowJs/checkJs` inputs, JSDoc types,

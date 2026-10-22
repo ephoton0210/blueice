@@ -20,6 +20,7 @@ mod node_modules;
 mod project_builder;
 mod resolutions;
 mod targets;
+mod type_imports;
 
 pub(crate) use fingerprint::fingerprint;
 use project_builder::ProjectBuilder;
@@ -499,6 +500,7 @@ pub fn is_external_library_module(module_id: &str) -> bool {
 /// callers alike.
 #[derive(Debug, Clone)]
 pub struct Project {
+    pub(crate) has_import_types: bool,
     pub entry: String,
     pub modules: BTreeMap<String, Module>,
     pub(crate) module_kinds: BTreeMap<String, ModuleKind>,
@@ -644,6 +646,7 @@ impl IncrementalCompiler {
 impl Project {
     fn empty(entry: impl Into<String>) -> Self {
         Self {
+            has_import_types: false,
             entry: entry.into(),
             modules: BTreeMap::new(),
             module_kinds: BTreeMap::new(),
@@ -743,6 +746,7 @@ fn compile_with_cache(
     let (checked, checker_diagnostics) = checker::check_incremental(
         &project,
         checker::CheckerPolicy {
+            verbatim_module_syntax: options.verbatim_module_syntax,
             target: options.target,
             library_target: options
                 .library_target()

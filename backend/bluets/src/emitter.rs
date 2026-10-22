@@ -385,7 +385,7 @@ fn emit_javascript(
     let emitting_module = if options.verbatim_module_syntax {
         std::borrow::Cow::Borrowed(module)
     } else {
-        type_elision::queries(module)
+        type_elision::queries(module, project, options)
     };
     let module = emitting_module.as_ref();
     let mut edits = module.edits.clone();
@@ -692,7 +692,8 @@ fn type_to_ts(value: &Type) -> String {
             crate::parser::source_type_name(name).to_string()
         }
         Type::Named { name, arguments } => format!(
-            "{name}<{}>",
+            "{}<{}>",
+            crate::parser::source_type_name(name),
             arguments
                 .iter()
                 .map(type_to_ts)

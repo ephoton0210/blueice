@@ -702,14 +702,30 @@ fn an_imported_namespace_keeps_its_hidden_members_hidden_and_checks_arguments() 
 }
 
 #[test]
-fn a_type_only_namespace_must_be_imported_as_a_type_and_an_alias_is_followed() {
+fn an_ordinary_type_only_namespace_import_is_elided_and_an_alias_is_followed() {
     let compiled = compile_two(
         "import { Only } from './lib.ts'; const o: Only.T = { v: 1 };",
         LIB,
     );
-    assert!(compiled.diagnostics.iter().any(|diagnostic| diagnostic.code
-        == DiagnosticCode::UnsupportedSyntax
-        && diagnostic.message.contains("import it with `import type`")));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:?}",
+        compiled.diagnostics
+    );
+    let javascript = &compiled.output.unwrap().artifacts[ENTRY].javascript;
+    assert!(!javascript.contains("./lib"), "{javascript}");
+    assert!(compiled.project.modules.contains_key("memory:///lib.ts"));
+    // Erasure is not a runtime grant: the same import used as a value is
+    // still rejected rather than materializing a namespace with no values.
+    let runtime_use = compile_two("import { Only } from './lib.ts'; const value = Only;", LIB);
+    assert!(runtime_use.output.is_none());
+    assert!(runtime_use
+        .diagnostics
+        .iter()
+        .any(
+            |diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax
+                && diagnostic.message.contains("import it with `import type`")
+        ));
     let aliased = compile_two(
         "import { Geo as G } from './lib.ts'; const n: number = G.Deep.depth; const p: G.Point = new G.Point();",
         LIB,

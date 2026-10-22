@@ -72,6 +72,14 @@ impl Project {
             })
     }
 
+    /// Static type queries reuse the same authorized and ambient edge ledger.
+    pub(crate) fn resolved_import_type(&self, from: &str, specifier: &str) -> Option<&String> {
+        self.resolution_target(from, specifier, None).or_else(|| {
+            self.ambient_resolutions
+                .get(&(from.to_string(), specifier.to_string(), None))
+        })
+    }
+
     pub(crate) fn resolved_type_export(
         &self,
         from: &str,

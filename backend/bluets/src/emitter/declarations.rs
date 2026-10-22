@@ -352,7 +352,19 @@ pub(super) fn emit_declaration(
                     if let Some(name) = &export.namespace {
                         output.push_str(&format!(" as {name}"));
                     }
-                    output.push_str(&format!(" from \"{}\"", export.specifier.as_ref().unwrap()));
+                    output.push_str(" from ");
+                    if let Some(raw) = export
+                        .specifier_span
+                        .as_ref()
+                        .and_then(|span| module.source.get(span.start..span.end))
+                    {
+                        output.push_str(raw);
+                    } else {
+                        output.push_str(
+                            &serde_json::to_string(export.specifier.as_ref().unwrap())
+                                .expect("module string"),
+                        );
+                    }
                     output.push_str(";\n");
                     continue;
                 }
@@ -480,6 +492,26 @@ pub(super) fn emit_type_parameters(output: &mut String, parameters: &[TypeParame
 
 fn declaration_type_to_ts(value: &Type) -> String {
     match value {
+        Type::Mapped(_) => {
+            let text = value
+                .operator_text(declaration_type_to_ts)
+                .expect("mapped type");
+            format!(
+                "{{\n    {}\n}}",
+                text.strip_prefix("{ ")
+                    .and_then(|text| text.strip_suffix(" }"))
+                    .unwrap_or(&text)
+            )
+        }
+        Type::Named { name, arguments } if !arguments.is_empty() => format!(
+            "{}<{}>",
+            crate::parser::source_type_name(name),
+            arguments
+                .iter()
+                .map(declaration_type_to_ts)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         Type::Record(fields) if !fields.is_empty() => callable_objects::render(fields, &[]),
         _ => type_to_ts(value),
     }

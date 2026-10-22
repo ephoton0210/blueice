@@ -192,7 +192,9 @@ impl ModuleChecker<'_> {
                     return;
                 }
                 if let Some(definition) = self.types.get(name).cloned() {
-                    self.check_type_arguments(name, arguments, &definition, span);
+                    if !self.check_import_type_arguments(name, arguments, &definition, span) {
+                        self.check_type_arguments(name, arguments, &definition, span);
+                    }
                 }
             }
             Type::Array(value) => self.check_type(value, span),

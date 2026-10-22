@@ -15,6 +15,7 @@ mod enums;
 mod functions;
 mod generators;
 mod import_attributes;
+mod import_elision;
 pub(in crate::checker::module) use generators::GeneratorContext;
 mod modules;
 mod names;
@@ -62,6 +63,8 @@ impl<'a> ModuleChecker<'a> {
                 .no_implicit_any = false;
         }
         Self {
+            verbatim_module_syntax: policy.verbatim_module_syntax,
+            runtime_imports: None,
             checking: policy
                 .checking
                 .unwrap_or_else(crate::CheckingOptions::legacy),
@@ -132,6 +135,7 @@ impl<'a> ModuleChecker<'a> {
     pub(crate) fn bind(&mut self) {
         self.bind_declarations();
         self.bind_ambient_declarations();
+        self.bind_import_types();
         self.bind_standard_library();
         self.bind_computed_key_values();
         self.canonicalize_rest_signatures();
@@ -142,6 +146,7 @@ impl<'a> ModuleChecker<'a> {
         self.validate_value_exports();
         self.validate_module_system();
         self.validate_import_attributes();
+        self.validate_verbatim_type_imports();
     }
 
     /// Binds what the module's (or a namespace body's) own declarations declare.

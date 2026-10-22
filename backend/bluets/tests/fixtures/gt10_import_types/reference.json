@@ -1,0 +1,5782 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "interface-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "interface-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "interface-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "interface-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "generic-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box<string>;\nexport const value: Value = {value: 'yes'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Box<string>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<string>'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generic-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box<string>;\nexport const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 103,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Box<string>'",
+              "module": "dep.ts",
+              "start": 26,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "generic-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box<string>;\nexport const value: Value = {value: 'yes'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Box<string>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<string>'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generic-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box<string>;\nexport const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 103,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Box<string>'",
+              "module": "dep.ts",
+              "start": 26,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "generic-default-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Box<T = number> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box;\nexport const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T = number> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Box;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<number>'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generic-default-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Box<T = number> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box;\nexport const value: Value = {value: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 95,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Box<number>'",
+              "module": "dep.ts",
+              "start": 35,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "generic-default-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Box<T = number> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box;\nexport const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T = number> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Box;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<number>'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generic-default-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Box<T = number> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box;\nexport const value: Value = {value: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 95,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Box<number>'",
+              "module": "dep.ts",
+              "start": 35,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "generic-constraint-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Box<T extends string> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\n\nexport type Value = import('./dep.js').Box<'yes'>; export const value: Value = {value: 'yes'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T extends string> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Box<'yes'>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<\"yes\">'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generic-constraint-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Box<T extends string> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\n\nexport type Value = import('./dep.js').Box<number>; export const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2344,
+          "message": "Type 'number' does not satisfy the constraint 'string'.",
+          "module": "entry.ts",
+          "start": 66,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-constraint-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Box<T extends string> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\n\nexport type Value = import('./dep.js').Box<'yes'>; export const value: Value = {value: 'yes'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T extends string> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Box<'yes'>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<\"yes\">'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generic-constraint-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Box<T extends string> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\n\nexport type Value = import('./dep.js').Box<number>; export const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2344,
+          "message": "Type 'number' does not satisfy the constraint 'string'.",
+          "module": "entry.ts",
+          "start": 66,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "nested-namespace-esnext-accept",
+      "files": {
+        "dep.ts": "export namespace N { export namespace Deep { export interface Box<T> { value: T; } } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Deep.Box<number>;\nexport const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare namespace N {\n    namespace Deep {\n        interface Box<T> {\n            value: T;\n        }\n    }\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').N.Deep.Box<number>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<number>'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "nested-namespace-esnext-reject",
+      "files": {
+        "dep.ts": "export namespace N { export namespace Deep { export interface Box<T> { value: T; } } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Deep.Box<number>;\nexport const value: Value = {value: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 110,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Box<number>'",
+              "module": "dep.ts",
+              "start": 71,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nested-namespace-commonjs-accept",
+      "files": {
+        "dep.ts": "export namespace N { export namespace Deep { export interface Box<T> { value: T; } } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Deep.Box<number>;\nexport const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare namespace N {\n    namespace Deep {\n        interface Box<T> {\n            value: T;\n        }\n    }\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').N.Deep.Box<number>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<number>'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "nested-namespace-commonjs-reject",
+      "files": {
+        "dep.ts": "export namespace N { export namespace Deep { export interface Box<T> { value: T; } } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Deep.Box<number>;\nexport const value: Value = {value: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 110,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Box<number>'",
+              "module": "dep.ts",
+              "start": 71,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "named-type-reexport-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "bridge.ts": "export type {Box as Crate} from './dep.js';",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./bridge.js').Crate<number>;\nexport const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "bridge.d.ts": "export type { Box as Crate } from './dep.js';\n",
+        "dep.d.ts": "export interface Box<T> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./bridge.js').Crate<number>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "bridge.js": [],
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<number>'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "named-type-reexport-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "bridge.ts": "export type {Box as Crate} from './dep.js';",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./bridge.js').Crate<number>;\nexport const value: Value = {value: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 108,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Box<number>'",
+              "module": "dep.ts",
+              "start": 26,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "named-type-reexport-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "bridge.ts": "export type {Box as Crate} from './dep.js';",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./bridge.js').Crate<number>;\nexport const value: Value = {value: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "bridge.d.ts": "export type { Box as Crate } from './dep.js';\n",
+        "dep.d.ts": "export interface Box<T> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./bridge.js').Crate<number>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "bridge.js": [],
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Box<number>'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "named-type-reexport-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "bridge.ts": "export type {Box as Crate} from './dep.js';",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./bridge.js').Crate<number>;\nexport const value: Value = {value: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 108,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Box<number>'",
+              "module": "dep.ts",
+              "start": 26,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "star-reexport-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "bridge.ts": "export * from './dep.js';",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./bridge.js').Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "bridge.d.ts": "export * from './dep.js';\n",
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./bridge.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "bridge.js": [],
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "star-reexport-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "bridge.ts": "export * from './dep.js';",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./bridge.js').Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 99,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "star-reexport-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "bridge.ts": "export * from './dep.js';",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./bridge.js').Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "bridge.d.ts": "export * from './dep.js';\n",
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./bridge.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "bridge.js": [
+          {
+            "specifier": "./dep.js"
+          }
+        ],
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "star-reexport-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "bridge.ts": "export * from './dep.js';",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./bridge.js').Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 99,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "default-interface-esnext-accept",
+      "files": {
+        "dep.ts": "export default interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').default;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export default interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').default;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "default-interface-esnext-reject",
+      "files": {
+        "dep.ts": "export default interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').default;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 99,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 32,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "default-interface-commonjs-accept",
+      "files": {
+        "dep.ts": "export default interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').default;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export default interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').default;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "default-interface-commonjs-reject",
+      "files": {
+        "dep.ts": "export default interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').default;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 99,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 32,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "class-instance-esnext-accept",
+      "files": {
+        "dep.ts": "export class Counter { value: number = 1; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Counter} from './dep.js'; export type Value = import('./dep.js').Counter;\nexport const value: Value = new Counter();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare class Counter {\n    value: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Counter;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": [
+          {
+            "specifier": "./dep.js",
+            "bindings": [
+              "Counter"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Counter'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "class-instance-esnext-reject",
+      "files": {
+        "dep.ts": "export class Counter { value: number = 1; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Counter} from './dep.js'; export type Value = import('./dep.js').Counter;\nexport const value: Value = {value: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 133,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Counter'",
+              "module": "dep.ts",
+              "start": 23,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "class-instance-commonjs-accept",
+      "files": {
+        "dep.ts": "export class Counter { value: number = 1; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Counter} from './dep.js'; export type Value = import('./dep.js').Counter;\nexport const value: Value = new Counter();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare class Counter {\n    value: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Counter;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": [
+          {
+            "specifier": "./dep.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Counter'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "class-instance-commonjs-reject",
+      "files": {
+        "dep.ts": "export class Counter { value: number = 1; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Counter} from './dep.js'; export type Value = import('./dep.js').Counter;\nexport const value: Value = {value: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 133,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Counter'",
+              "module": "dep.ts",
+              "start": 23,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "module-value-query-esnext-accept",
+      "files": {
+        "dep.ts": "export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Surface = typeof import('./dep.js'); export type Value = Surface['answer'];\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const answer: number;\n",
+        "entry.d.ts": "export type Surface = typeof import('./dep.js');\nexport type Value = Surface['answer'];\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "module-value-query-esnext-reject",
+      "files": {
+        "dep.ts": "export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Surface = typeof import('./dep.js'); export type Value = Surface['answer'];\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 123,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "module-value-query-commonjs-accept",
+      "files": {
+        "dep.ts": "export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Surface = typeof import('./dep.js'); export type Value = Surface['answer'];\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const answer: number;\n",
+        "entry.d.ts": "export type Surface = typeof import('./dep.js');\nexport type Value = Surface['answer'];\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "module-value-query-commonjs-reject",
+      "files": {
+        "dep.ts": "export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Surface = typeof import('./dep.js'); export type Value = Surface['answer'];\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 123,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "qualified-value-query-esnext-accept",
+      "files": {
+        "dep.ts": "export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = typeof import('./dep.js').answer;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const answer: number;\n",
+        "entry.d.ts": "export type Value = typeof import('./dep.js').answer;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "qualified-value-query-esnext-reject",
+      "files": {
+        "dep.ts": "export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = typeof import('./dep.js').answer;\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 89,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "qualified-value-query-commonjs-accept",
+      "files": {
+        "dep.ts": "export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = typeof import('./dep.js').answer;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const answer: number;\n",
+        "entry.d.ts": "export type Value = typeof import('./dep.js').answer;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "qualified-value-query-commonjs-reject",
+      "files": {
+        "dep.ts": "export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = typeof import('./dep.js').answer;\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 89,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "function-query-esnext-accept",
+      "files": {
+        "dep.ts": "export function f(n: number): string { return String(n); }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = ReturnType<typeof import('./dep.js').f>;\nexport const value: Value = 'yes';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare function f(n: number): string;\n",
+        "entry.d.ts": "export type Value = ReturnType<typeof import('./dep.js').f>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "function-query-esnext-reject",
+      "files": {
+        "dep.ts": "export function f(n: number): string { return String(n); }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = ReturnType<typeof import('./dep.js').f>;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "function-query-commonjs-accept",
+      "files": {
+        "dep.ts": "export function f(n: number): string { return String(n); }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = ReturnType<typeof import('./dep.js').f>;\nexport const value: Value = 'yes';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare function f(n: number): string;\n",
+        "entry.d.ts": "export type Value = ReturnType<typeof import('./dep.js').f>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "function-query-commonjs-reject",
+      "files": {
+        "dep.ts": "export function f(n: number): string { return String(n); }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = ReturnType<typeof import('./dep.js').f>;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-function-query-esnext-accept",
+      "files": {
+        "dep.ts": "export function identity<T>(value: T): T { return value; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = ReturnType<typeof import('./dep.js').identity<string>>;\nexport const value: Value = 'yes';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare function identity<T>(value: T): T;\n",
+        "entry.d.ts": "export type Value = ReturnType<typeof import('./dep.js').identity<string>>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generic-function-query-esnext-reject",
+      "files": {
+        "dep.ts": "export function identity<T>(value: T): T { return value; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = ReturnType<typeof import('./dep.js').identity<string>>;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 111,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "generic-function-query-commonjs-accept",
+      "files": {
+        "dep.ts": "export function identity<T>(value: T): T { return value; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = ReturnType<typeof import('./dep.js').identity<string>>;\nexport const value: Value = 'yes';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare function identity<T>(value: T): T;\n",
+        "entry.d.ts": "export type Value = ReturnType<typeof import('./dep.js').identity<string>>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'string'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generic-function-query-commonjs-reject",
+      "files": {
+        "dep.ts": "export function identity<T>(value: T): T { return value; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = ReturnType<typeof import('./dep.js').identity<string>>;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 111,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "indexed-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box<number>['value'];\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Box<number>['value'];\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "indexed-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box<number>['value'];\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "indexed-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box<number>['value'];\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Box<number>['value'];\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "indexed-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box<number>['value'];\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "keyof-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; label: string; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = keyof import('./dep.js').Item;\nexport const value: Value = 'n';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n    label: string;\n}\n",
+        "entry.d.ts": "export type Value = keyof import('./dep.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'keyof Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "keyof-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; label: string; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = keyof import('./dep.js').Item;\nexport const value: Value = 'missing';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"missing\"' is not assignable to type 'keyof Item'.",
+          "module": "entry.ts",
+          "start": 86,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "keyof-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; label: string; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = keyof import('./dep.js').Item;\nexport const value: Value = 'n';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n    label: string;\n}\n",
+        "entry.d.ts": "export type Value = keyof import('./dep.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'keyof Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "keyof-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; label: string; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = keyof import('./dep.js').Item;\nexport const value: Value = 'missing';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '\"missing\"' is not assignable to type 'keyof Item'.",
+          "module": "entry.ts",
+          "start": 86,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "mapped-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = {[K in keyof import('./dep.js').Item]: import('./dep.js').Item[K]};\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "export type Value = {\n    [K in keyof import('./dep.js').Item]: import('./dep.js').Item[K];\n};\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Value'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "mapped-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = {[K in keyof import('./dep.js').Item]: import('./dep.js').Item[K]};\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 139,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Value'",
+              "module": "dep.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mapped-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = {[K in keyof import('./dep.js').Item]: import('./dep.js').Item[K]};\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "export type Value = {\n    [K in keyof import('./dep.js').Item]: import('./dep.js').Item[K];\n};\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Value'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "mapped-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = {[K in keyof import('./dep.js').Item]: import('./dep.js').Item[K]};\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 139,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Value'",
+              "module": "dep.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conditional-infer-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Unbox<T> = T extends import('./dep.js').Box<infer U> ? U : never; export type Value = Unbox<{value: number}>;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Unbox<T> = T extends import('./dep.js').Box<infer U> ? U : never;\nexport type Value = Unbox<{\n    value: number;\n}>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "conditional-infer-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Unbox<T> = T extends import('./dep.js').Box<infer U> ? U : never; export type Value = Unbox<{value: number}>;\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 157,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "conditional-infer-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Unbox<T> = T extends import('./dep.js').Box<infer U> ? U : never; export type Value = Unbox<{value: number}>;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Box<T> {\n    value: T;\n}\n",
+        "entry.d.ts": "export type Unbox<T> = T extends import('./dep.js').Box<infer U> ? U : never;\nexport type Value = Unbox<{\n    value: number;\n}>;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "conditional-infer-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Unbox<T> = T extends import('./dep.js').Box<infer U> ? U : never; export type Value = Unbox<{value: number}>;\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 157,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "recursive-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Node { n: number; next?: Node; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Node;\nexport const value: Value = {n: 1, next: {n: 2}};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Node {\n    n: number;\n    next?: Node;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Node;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Node'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "recursive-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Node { n: number; next?: Node; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Node;\nexport const value: Value = {n: 1, next: {n: 'bad'}};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 109,
+          "length": 1,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "recursive-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Node { n: number; next?: Node; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Node;\nexport const value: Value = {n: 1, next: {n: 2}};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Node {\n    n: number;\n    next?: Node;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Node;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Node'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "recursive-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Node { n: number; next?: Node; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Node;\nexport const value: Value = {n: 1, next: {n: 'bad'}};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 109,
+          "length": 1,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "type-cycle-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Wrapped { root: import('./entry.js').Root; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport interface Root { n: number; } export type Value = import('./dep.js').Wrapped;\nexport const value: Value = {root: {n: 1}};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Wrapped {\n    root: import('./entry.js').Root;\n}\n",
+        "entry.d.ts": "export interface Root {\n    n: number;\n}\nexport type Value = import('./dep.js').Wrapped;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Wrapped'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "type-cycle-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Wrapped { root: import('./entry.js').Root; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport interface Root { n: number; } export type Value = import('./dep.js').Wrapped;\nexport const value: Value = {root: {n: 'bad'}};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 143,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Root'",
+              "module": "entry.ts",
+              "start": 46,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "type-cycle-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Wrapped { root: import('./entry.js').Root; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport interface Root { n: number; } export type Value = import('./dep.js').Wrapped;\nexport const value: Value = {root: {n: 1}};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Wrapped {\n    root: import('./entry.js').Root;\n}\n",
+        "entry.d.ts": "export interface Root {\n    n: number;\n}\nexport type Value = import('./dep.js').Wrapped;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Wrapped'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "type-cycle-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Wrapped { root: import('./entry.js').Root; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport interface Root { n: number; } export type Value = import('./dep.js').Wrapped;\nexport const value: Value = {root: {n: 'bad'}};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 143,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Root'",
+              "module": "entry.ts",
+              "start": 46,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "merged-interface-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; } export interface Item { label: string; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 1, label: 'yes'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\nexport interface Item {\n    label: string;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merged-interface-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; } export interface Item { label: string; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2741,
+          "message": "Property 'label' is missing in type '{ n: number; }' but required in type 'Item'.",
+          "module": "entry.ts",
+          "start": 80,
+          "length": 5,
+          "related": [
+            {
+              "code": 2728,
+              "message": "'label' is declared here.",
+              "module": "dep.ts",
+              "start": 61,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "merged-interface-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; } export interface Item { label: string; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 1, label: 'yes'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\nexport interface Item {\n    label: string;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merged-interface-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; } export interface Item { label: string; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2741,
+          "message": "Property 'label' is missing in type '{ n: number; }' but required in type 'Item'.",
+          "module": "entry.ts",
+          "start": 80,
+          "length": 5,
+          "related": [
+            {
+              "code": 2728,
+              "message": "'label' is declared here.",
+              "module": "dep.ts",
+              "start": 61,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "merged-function-namespace-esnext-accept",
+      "files": {
+        "dep.ts": "export function Factory(n: number): number { return n; } export namespace Factory { export interface Options { n: number; } export const version: number = 1; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Factory.Options;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare function Factory(n: number): number;\nexport declare namespace Factory {\n    interface Options {\n        n: number;\n    }\n    const version: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Factory.Options;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Options'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merged-function-namespace-esnext-reject",
+      "files": {
+        "dep.ts": "export function Factory(n: number): number { return n; } export namespace Factory { export interface Options { n: number; } export const version: number = 1; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Factory.Options;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 107,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Options'",
+              "module": "dep.ts",
+              "start": 111,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "merged-function-namespace-commonjs-accept",
+      "files": {
+        "dep.ts": "export function Factory(n: number): number { return n; } export namespace Factory { export interface Options { n: number; } export const version: number = 1; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Factory.Options;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare function Factory(n: number): number;\nexport declare namespace Factory {\n    interface Options {\n        n: number;\n    }\n    const version: number;\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Factory.Options;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Options'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merged-function-namespace-commonjs-reject",
+      "files": {
+        "dep.ts": "export function Factory(n: number): number { return n; } export namespace Factory { export interface Options { n: number; } export const version: number = 1; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Factory.Options;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 107,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Options'",
+              "module": "dep.ts",
+              "start": 111,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "merged-class-namespace-esnext-accept",
+      "files": {
+        "dep.ts": "export class Factory { n: number = 1; } export namespace Factory { export interface Options { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Factory.Options;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare class Factory {\n    n: number;\n}\nexport declare namespace Factory {\n    interface Options {\n        n: number;\n    }\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Factory.Options;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Options'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merged-class-namespace-esnext-reject",
+      "files": {
+        "dep.ts": "export class Factory { n: number = 1; } export namespace Factory { export interface Options { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Factory.Options;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 107,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Options'",
+              "module": "dep.ts",
+              "start": 94,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "merged-class-namespace-commonjs-accept",
+      "files": {
+        "dep.ts": "export class Factory { n: number = 1; } export namespace Factory { export interface Options { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Factory.Options;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare class Factory {\n    n: number;\n}\nexport declare namespace Factory {\n    interface Options {\n        n: number;\n    }\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').Factory.Options;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Options'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merged-class-namespace-commonjs-reject",
+      "files": {
+        "dep.ts": "export class Factory { n: number = 1; } export namespace Factory { export interface Options { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Factory.Options;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 107,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Options'",
+              "module": "dep.ts",
+              "start": 94,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "merged-namespace-esnext-accept",
+      "files": {
+        "dep.ts": "export namespace N { export interface Item { n: number; } } export namespace N { export interface Item { label: string; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Item;\nexport const value: Value = {n: 1, label: 'yes'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare namespace N {\n    interface Item {\n        n: number;\n    }\n}\nexport declare namespace N {\n    interface Item {\n        label: string;\n    }\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').N.Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merged-namespace-esnext-reject",
+      "files": {
+        "dep.ts": "export namespace N { export interface Item { n: number; } } export namespace N { export interface Item { label: string; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2741,
+          "message": "Property 'label' is missing in type '{ n: number; }' but required in type 'Item'.",
+          "module": "entry.ts",
+          "start": 82,
+          "length": 5,
+          "related": [
+            {
+              "code": 2728,
+              "message": "'label' is declared here.",
+              "module": "dep.ts",
+              "start": 105,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "merged-namespace-commonjs-accept",
+      "files": {
+        "dep.ts": "export namespace N { export interface Item { n: number; } } export namespace N { export interface Item { label: string; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Item;\nexport const value: Value = {n: 1, label: 'yes'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare namespace N {\n    interface Item {\n        n: number;\n    }\n}\nexport declare namespace N {\n    interface Item {\n        label: string;\n    }\n}\n",
+        "entry.d.ts": "export type Value = import('./dep.js').N.Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "merged-namespace-commonjs-reject",
+      "files": {
+        "dep.ts": "export namespace N { export interface Item { n: number; } } export namespace N { export interface Item { label: string; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2741,
+          "message": "Property 'label' is missing in type '{ n: number; }' but required in type 'Item'.",
+          "module": "entry.ts",
+          "start": 82,
+          "length": 5,
+          "related": [
+            {
+              "code": 2728,
+              "message": "'label' is declared here.",
+              "module": "dep.ts",
+              "start": 105,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "implicit-interface-elision-esnext-accept",
+      "files": {
+        "dep.ts": "console.log('unused dependency'); export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Item} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "import { Item } from './dep.js';\nexport type Value = Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "implicit-interface-elision-esnext-reject",
+      "files": {
+        "dep.ts": "console.log('unused dependency'); export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Item} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 108,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 58,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "implicit-interface-elision-commonjs-accept",
+      "files": {
+        "dep.ts": "console.log('unused dependency'); export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Item} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "import { Item } from './dep.js';\nexport type Value = Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "implicit-interface-elision-commonjs-reject",
+      "files": {
+        "dep.ts": "console.log('unused dependency'); export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Item} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 108,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 58,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unused-value-elision-esnext-accept",
+      "files": {
+        "dep.ts": "console.log('unused dependency'); export const unused: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {unused} from './dep.js'; export type Value = number;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const unused: number;\n",
+        "entry.d.ts": "export type Value = number;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "unused-value-elision-esnext-reject",
+      "files": {
+        "dep.ts": "console.log('unused dependency'); export const unused: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {unused} from './dep.js'; export type Value = number;\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "unused-value-elision-commonjs-accept",
+      "files": {
+        "dep.ts": "console.log('unused dependency'); export const unused: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {unused} from './dep.js'; export type Value = number;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const unused: number;\n",
+        "entry.d.ts": "export type Value = number;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "unused-value-elision-commonjs-reject",
+      "files": {
+        "dep.ts": "console.log('unused dependency'); export const unused: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {unused} from './dep.js'; export type Value = number;\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "mixed-import-elision-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; } export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Item, answer} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: answer};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\nexport declare const answer: number;\n",
+        "entry.d.ts": "import { Item } from './dep.js';\nexport type Value = Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": [
+          {
+            "specifier": "./dep.js",
+            "bindings": [
+              "answer"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "7\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "mixed-import-elision-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; } export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Item, answer} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 116,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mixed-import-elision-commonjs-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; } export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Item, answer} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: answer};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\nexport declare const answer: number;\n",
+        "entry.d.ts": "import { Item } from './dep.js';\nexport type Value = Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": [
+          {
+            "specifier": "./dep.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "7\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "mixed-import-elision-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; } export const answer: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Item, answer} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 116,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "namespace-type-import-elision-esnext-accept",
+      "files": {
+        "dep.ts": "export namespace N { export interface Item { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {N} from './dep.js'; export type Value = N.Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare namespace N {\n    interface Item {\n        n: number;\n    }\n}\n",
+        "entry.d.ts": "import { N } from './dep.js';\nexport type Value = N.Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "namespace-type-import-elision-esnext-reject",
+      "files": {
+        "dep.ts": "export namespace N { export interface Item { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {N} from './dep.js'; export type Value = N.Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 107,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 45,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "namespace-type-import-elision-commonjs-accept",
+      "files": {
+        "dep.ts": "export namespace N { export interface Item { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {N} from './dep.js'; export type Value = N.Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare namespace N {\n    interface Item {\n        n: number;\n    }\n}\n",
+        "entry.d.ts": "import { N } from './dep.js';\nexport type Value = N.Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "namespace-type-import-elision-commonjs-reject",
+      "files": {
+        "dep.ts": "export namespace N { export interface Item { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {N} from './dep.js'; export type Value = N.Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 107,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 45,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "declaration-type-edge-esnext-accept",
+      "files": {
+        "dep.d.ts": "export interface Item { n: number; } export declare const hidden: number;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export type Value = import('./dep.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "declaration-type-edge-esnext-reject",
+      "files": {
+        "dep.d.ts": "export interface Item { n: number; } export declare const hidden: number;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.d.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "declaration-type-edge-commonjs-accept",
+      "files": {
+        "dep.d.ts": "export interface Item { n: number; } export declare const hidden: number;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "entry.d.ts": "export type Value = import('./dep.js').Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value.n);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "declaration-type-edge-commonjs-reject",
+      "files": {
+        "dep.d.ts": "export interface Item { n: number; } export declare const hidden: number;",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.d.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "verbatim-type-only-esnext-accept",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport type {Item} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: 1};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "verbatimModuleSyntax": true,
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export interface Item {\n    n: number;\n}\n",
+        "entry.d.ts": "import type { Item } from './dep.js';\nexport type Value = Item;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": []
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'Item'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "verbatim-type-only-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport type {Item} from './dep.js'; export type Value = Item;\nexport const value: Value = {n: 'bad'};\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "verbatimModuleSyntax": true,
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 113,
+          "length": 1,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'n' which is declared here on type 'Item'",
+              "module": "dep.ts",
+              "start": 24,
+              "length": 1,
+              "related": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "verbatim-value-retained-esnext-accept",
+      "files": {
+        "dep.ts": "console.log('retained dependency'); export const unused: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {unused} from './dep.js'; export type Value = number;\nexport const value: Value = 1;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "verbatimModuleSyntax": true,
+        "module": "ESNext"
+      },
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "dep.d.ts": "export declare const unused: number;\n",
+        "entry.d.ts": "export type Value = number;\nexport declare const value: Value;\n"
+      },
+      "imports": {
+        "dep.js": [],
+        "entry.js": [
+          {
+            "specifier": "./dep.js",
+            "bindings": [
+              "unused"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport declare const accepted: Value;\n",
+          "diagnostics": []
+        },
+        "reject": {
+          "source": "// UTF-16 consumer: 😀\nimport type {Value} from './entry.js';\nexport const rejected: Value = undefined;\n",
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'undefined' is not assignable to type 'number'.",
+              "module": "consumer.ts",
+              "start": 75,
+              "length": 8,
+              "related": []
+            }
+          ]
+        }
+      },
+      "invoke": "console.log(entry.value);",
+      "runtime": {
+        "exit": 0,
+        "stdout": "retained dependency\n1\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "verbatim-value-retained-esnext-reject",
+      "files": {
+        "dep.ts": "console.log('retained dependency'); export const unused: number = 7;",
+        "entry.ts": "// UTF-16 control: 😀\nimport {unused} from './dep.js'; export type Value = number;\nexport const value: Value = 'bad';\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "verbatimModuleSyntax": true,
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 96,
+          "length": 5,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "bare-module-as-type-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1340,
+          "message": "Module './dep.js' does not refer to a type, but is used as a type here. Did you mean 'typeof import('./dep.js')'?",
+          "module": "entry.ts",
+          "start": 42,
+          "length": 18,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "bare-module-as-type-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1340,
+          "message": "Module './dep.js' does not refer to a type, but is used as a type here. Did you mean 'typeof import('./dep.js')'?",
+          "module": "entry.ts",
+          "start": 42,
+          "length": 18,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "missing-type-export-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Missing;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2694,
+          "message": "Namespace '\"dep\"' has no exported member 'Missing'.",
+          "module": "entry.ts",
+          "start": 61,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "missing-type-export-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Missing;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2694,
+          "message": "Namespace '\"dep\"' has no exported member 'Missing'.",
+          "module": "entry.ts",
+          "start": 61,
+          "length": 7,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "type-only-value-query-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = typeof import('./dep.js').Item;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2694,
+          "message": "Namespace '\"dep\"' has no exported member 'Item'.",
+          "module": "entry.ts",
+          "start": 68,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "type-only-value-query-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = typeof import('./dep.js').Item;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2694,
+          "message": "Namespace '\"dep\"' has no exported member 'Item'.",
+          "module": "entry.ts",
+          "start": 68,
+          "length": 4,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "missing-module-esnext-reject",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./missing.js').Item;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2307,
+          "message": "Cannot find module './missing.js' or its corresponding type declarations.",
+          "module": "entry.ts",
+          "start": 49,
+          "length": 14,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "missing-module-commonjs-reject",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./missing.js').Item;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2307,
+          "message": "Cannot find module './missing.js' or its corresponding type declarations.",
+          "module": "entry.ts",
+          "start": 49,
+          "length": 14,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "missing-type-argument-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2314,
+          "message": "Generic type 'Box<T>' requires 1 type argument(s).",
+          "module": "entry.ts",
+          "start": 42,
+          "length": 22,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "missing-type-argument-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Box<T> { value: T; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Box;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2314,
+          "message": "Generic type 'Box<T>' requires 1 type argument(s).",
+          "module": "entry.ts",
+          "start": 42,
+          "length": 22,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "extra-type-argument-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item<number>;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2315,
+          "message": "Type 'Item' is not generic.",
+          "module": "entry.ts",
+          "start": 42,
+          "length": 31,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "extra-type-argument-commonjs-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').Item<number>;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2315,
+          "message": "Type 'Item' is not generic.",
+          "module": "entry.ts",
+          "start": 42,
+          "length": 31,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "non-string-specifier-esnext-reject",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import(42).Item;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1141,
+          "message": "String literal expected.",
+          "module": "entry.ts",
+          "start": 49,
+          "length": 2,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "non-string-specifier-commonjs-reject",
+      "files": {
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import(42).Item;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1141,
+          "message": "String literal expected.",
+          "module": "entry.ts",
+          "start": 49,
+          "length": 2,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "private-namespace-member-esnext-reject",
+      "files": {
+        "dep.ts": "export namespace N { interface Hidden { n: number; } export interface Public { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Hidden;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2694,
+          "message": "Namespace '\"dep\".N' has no exported member 'Hidden'.",
+          "module": "entry.ts",
+          "start": 63,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "private-namespace-member-commonjs-reject",
+      "files": {
+        "dep.ts": "export namespace N { interface Hidden { n: number; } export interface Public { n: number; } }",
+        "entry.ts": "// UTF-16 control: 😀\nexport type Value = import('./dep.js').N.Hidden;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "module": "CommonJS"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2694,
+          "message": "Namespace '\"dep\".N' has no exported member 'Hidden'.",
+          "module": "entry.ts",
+          "start": 63,
+          "length": 6,
+          "related": []
+        }
+      ]
+    },
+    {
+      "id": "verbatim-requires-type-esnext-reject",
+      "files": {
+        "dep.ts": "export interface Item { n: number; }",
+        "entry.ts": "// UTF-16 control: 😀\nimport {Item} from './dep.js'; export type Value = Item;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "moduleResolution": "Node10",
+        "lib": [
+          "ES2022",
+          "DOM"
+        ],
+        "skipDefaultLibCheck": true,
+        "declaration": true,
+        "types": [],
+        "newLine": "lf",
+        "verbatimModuleSyntax": true,
+        "module": "ESNext"
+      },
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 1484,
+          "message": "'Item' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.",
+          "module": "entry.ts",
+          "start": 30,
+          "length": 4,
+          "related": []
+        }
+      ]
+    }
+  ],
+  "owner_controls": [
+    "canonical-loader-confinement",
+    "declaration-no-runtime-authority",
+    "type-edge-work-bounds",
+    "incremental-type-edge-invalidation",
+    "type-edge-does-not-execute"
+  ]
+}

@@ -212,7 +212,17 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
                             })
                     });
                 let name = if child_type { "children" } else { selected };
-                let props = index.jsx_owner(span, child_type).unwrap_or_default();
+                let props = index
+                    .jsx_owner(span, child_type)
+                    .or_else(|| {
+                        index.import_assignment_owner(span).and_then(|owner| {
+                            let crate::Type::Named { name, .. } = owner else {
+                                return None;
+                            };
+                            Some(name)
+                        })
+                    })
+                    .unwrap_or_default();
                 if let Some(field) = index
                     .field(name, &props, &span.module)
                     .filter(|field| (child_type || attribute_type || nested_record)

@@ -17,6 +17,7 @@ pub(super) struct Parser {
     nested_functions: BTreeMap<usize, NestedFunction>,
     class_expressions: BTreeMap<usize, ClassExpression>,
     type_references: Vec<TypeReference>,
+    import_types: Vec<ImportTypeReference>,
     expression_variable_types: BTreeMap<usize, Type>,
     type_assertions: BTreeMap<usize, Type>,
     diagnostics: Vec<Diagnostic>,

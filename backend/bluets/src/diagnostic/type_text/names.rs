@@ -10,6 +10,11 @@ pub(super) fn display(name: &str, project: Option<&Project>) -> String {
         return crate::parser::source_type_name(name).into();
     }
     let name = crate::parser::source_type_name(name);
+    if name.starts_with("import(") {
+        if let Some((_, member)) = name.rsplit_once(").") {
+            return member.rsplit('.').next().unwrap_or(member).into();
+        }
+    }
     if let Some(name) = crate::standard_library::presentation::namespace_name(name) {
         return name.into();
     }

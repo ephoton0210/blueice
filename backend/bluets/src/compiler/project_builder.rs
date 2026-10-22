@@ -274,7 +274,9 @@ impl<'a> ProjectBuilder<'a> {
             }
         };
         self.visit_augmentations(&module, depth);
+        self.project.has_import_types |= !module.import_types.is_empty();
         self.visit_references(&module, depth);
+        let mut edges = Vec::new();
         for declaration in &module.declarations {
             let (specifier, span, mode) = match declaration {
                 crate::parser::Declaration::Import(import) => (
@@ -315,6 +317,15 @@ impl<'a> ProjectBuilder<'a> {
                 }
                 _ => continue,
             };
+            edges.push((specifier, span, mode));
+        }
+        edges.extend(
+            module
+                .import_types
+                .iter()
+                .map(|reference| (&reference.specifier, &reference.specifier_span, None)),
+        );
+        for (specifier, span, mode) in edges {
             if self.project.ambient_declaration_modules.contains(module_id) {
                 self.diagnostics.push(Diagnostic::error(
                     DiagnosticCode::InvalidDeclarationFile,

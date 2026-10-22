@@ -36,6 +36,7 @@ impl Parser {
             nested_functions: BTreeMap::new(),
             class_expressions: BTreeMap::new(),
             type_references: Vec::new(),
+            import_types: Vec::new(),
             expression_variable_types: BTreeMap::new(),
             type_assertions: BTreeMap::new(),
             diagnostics: Vec::new(),
@@ -82,6 +83,7 @@ impl Parser {
                 nested_functions: self.nested_functions,
                 class_expressions: self.class_expressions,
                 type_references: self.type_references,
+                import_types: self.import_types,
                 expression_variable_types: self.expression_variable_types,
                 type_assertions: self.type_assertions,
             };

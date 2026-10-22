@@ -39,6 +39,14 @@ declared computed well-known-symbol keys. Those identities come from trusted
 declarations, not a source's same-spelled shadow of `Symbol`. Type-only namespace
 queries bind static exported types without introducing a runtime value.
 
+G-T10 adds an original conditional `ReturnType<F>` declaration for its frozen
+generic-function import-query witnesses. It uses the existing conditional/infer
+operators, not an unchecked utility-name shortcut. Owner-local and imported
+`import('specifier').Type` / `typeof import('specifier')` queries reuse the
+authorized project graph and static export surfaces; they do not acquire a
+runtime loader, execute dependencies or broaden the library catalog. This
+finite matrix does not establish every utility or recursive query composition.
+
 The parser and checker already admit generic call/construct signatures and
 their overloads. G-T8 also supports signature-only declaration-file classes,
 while refusing runtime bodies/initializers and source-file `declare class`.

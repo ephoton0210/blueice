@@ -199,6 +199,9 @@ impl<'a> Index<'a> {
             })
     }
     pub(super) fn expected_owner(&self, field: &Field, span: &SourceSpan) -> String {
+        if let Some(value) = self.import_assignment_owner(span) {
+            return super::super::type_text::render_in(&value, self.project);
+        }
         if field.owner.is_empty() {
             return field
                 .container
@@ -268,6 +271,26 @@ impl<'a> Index<'a> {
     pub(super) fn jsx_owner(&self, span: &SourceSpan, children: bool) -> Option<String> {
         super::jsx::owner(self.project, span, children, &self.classes, &self.functions)
     }
+
+    pub(super) fn import_assignment_owner(&self, span: &SourceSpan) -> Option<Type> {
+        let module = self.project.modules.get(&span.module)?;
+        let annotation = module.declarations.iter().find_map(|declaration| {
+            let Declaration::Variable(variable) = declaration else {
+                return None;
+            };
+            (variable.span.start <= span.start && span.end <= variable.span.end)
+                .then_some(variable.annotation.as_ref())
+                .flatten()
+        })?;
+        if let Some(value) = super::super::type_text::import_display(annotation, self.project) {
+            return Some(value);
+        }
+        let Type::Named { name, .. } = annotation else {
+            return None;
+        };
+        module.declarations.iter().any(|declaration|matches!(declaration,Declaration::TypeAlias(alias) if alias.name == *name && matches!(alias.value,Type::Mapped(_)))).then(||annotation.clone())
+    }
+
     pub(super) fn named(
         &self,
         name: &str,
