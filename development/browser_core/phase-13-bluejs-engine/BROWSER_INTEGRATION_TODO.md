@@ -155,10 +155,20 @@ the total at 89,984 KiB (+8 MiB over the warm baseline, within the 32 MiB bound;
 the cause, allocator retention versus a retained document, is not established).
 Not covered: the pixel/frame comparison and a human-visible frontend.
 
-Remaining before M1v–M1z can be called accepted: a stability soak of the full
-suite (the two flakes found so far are fixed; 40 further clean runs would close
-this), the frame/pixel and human-visible frontend comparison for the two-tab
-case, and an owner decision to accept.
+Stability soak (2026-10-22/23): 1,000 consecutive full `blueice-bluejs` lib runs
+(4,137 tests each, 3 workers in parallel for load) on the tree at commit
+`152ba271f`: 1,000 pass, 0 fail. It found, and the fixes at `01f14bd57`
+and `152ba271f` closed, every flake seen so far: all were `HashMap::capacity()`
+drifting with tombstones under the random hash seed (a test pinned it, a
+fixture shaped headroom with the wrong accessor, and one real ledger bug in
+`HostCodeCache`). Rule for any shared test helper: stress every caller
+(200+ runs each) before committing a change to it. Scope: lib tests only;
+integration targets were run once (workspace) plus the focused stress runs
+above.
+
+Remaining before M1v–M1z can be called accepted: the frame/pixel and
+human-visible frontend comparison for the two-tab case, and an owner decision
+to accept.
 
 ## A. Event loop and scheduling (P0)
 
