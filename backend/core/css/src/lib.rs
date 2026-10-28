@@ -22,7 +22,9 @@
 //!   order) with a `blueice_dom::Document` into a per-element
 //!   [`ComputedStyle`] map, ready for `blueice-layout` once it exists.
 
+mod calc;
 mod cascade;
+mod color;
 mod media;
 mod parser;
 mod selector;
@@ -30,11 +32,12 @@ mod supports;
 mod tokenizer;
 mod value;
 
+pub use calc::Calc;
 pub use cascade::{cascade, ua_stylesheet, ComputedStyle, Origin};
 pub use media::{matches_media, MediaEnvironment};
 pub use parser::{Declaration, Rule};
 pub use selector::{matches, ComplexSelector, Compound, SimpleSelector, Specificity};
-pub use value::{Color, Length, Value};
+pub use value::{Color, Length, LengthContext, Value};
 
 /// A parsed CSS stylesheet: its rules, in source order. Not yet matched
 /// against any DOM -- see [`cascade`] for that.
