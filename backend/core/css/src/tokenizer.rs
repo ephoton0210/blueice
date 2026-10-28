@@ -135,6 +135,7 @@ impl Tokenizer {
             }
             Some('-') if self.starts_ident_after_minus() => self.consume_ident_like(),
             Some(c) if c != '-' && is_ident_start(c) => self.consume_ident_like(),
+            Some('\\') if self.escape_at(0) => self.consume_ident_like(),
             Some(':') => {
                 self.advance();
                 Token::Colon
@@ -182,6 +183,7 @@ impl Tokenizer {
         match self.peek_at(1) {
             Some(c) if is_ident_start(c) => true,
             Some('-') => true,
+            Some('\\') => self.escape_at(1),
             _ => false,
         }
     }
@@ -217,44 +219,64 @@ impl Tokenizer {
         Token::QuotedString(s)
     }
 
+    /// Whether a backslash at `offset` starts a valid escape (anything but a
+    /// newline follows it).
+    fn escape_at(&self, offset: usize) -> bool {
+        self.peek_at(offset) == Some('\\') && self.peek_at(offset + 1).is_some_and(|c| c != '\n')
+    }
+
+    /// Consumes the rest of a name -- identifier characters and escapes
+    /// (`\:` is a literal colon, `\31 ` the character U+0031) -- into `out`.
+    fn consume_name(&mut self, out: &mut String) {
+        loop {
+            match self.peek() {
+                Some(c) if is_ident_continue(c) => {
+                    out.push(c);
+                    self.advance();
+                }
+                Some('\\') if self.escape_at(0) => {
+                    self.advance();
+                    let mut hex = String::new();
+                    while hex.len() < 6 && self.peek().is_some_and(|c| c.is_ascii_hexdigit()) {
+                        hex.push(self.advance().unwrap());
+                    }
+                    if hex.is_empty() {
+                        out.push(self.advance().unwrap());
+                    } else {
+                        // One whitespace character may end a hex escape.
+                        if self.peek().is_some_and(char::is_whitespace) {
+                            self.advance();
+                        }
+                        let code = u32::from_str_radix(&hex, 16).unwrap_or(0xFFFD);
+                        out.push(
+                            char::from_u32(code)
+                                .filter(|c| *c != '\0')
+                                .unwrap_or('\u{FFFD}'),
+                        );
+                    }
+                }
+                _ => break,
+            }
+        }
+    }
+
     fn consume_hash(&mut self) -> Token {
         self.advance(); // '#'
         let mut s = String::new();
-        while let Some(c) = self.peek() {
-            if is_ident_continue(c) {
-                s.push(c);
-                self.advance();
-            } else {
-                break;
-            }
-        }
+        self.consume_name(&mut s);
         Token::Hash(s)
     }
 
     fn consume_at_keyword(&mut self) -> Token {
         self.advance(); // '@'
         let mut s = String::new();
-        while let Some(c) = self.peek() {
-            if is_ident_continue(c) {
-                s.push(c);
-                self.advance();
-            } else {
-                break;
-            }
-        }
+        self.consume_name(&mut s);
         Token::AtKeyword(s)
     }
 
     fn consume_ident_like(&mut self) -> Token {
         let mut s = String::new();
-        while let Some(c) = self.peek() {
-            if is_ident_continue(c) {
-                s.push(c);
-                self.advance();
-            } else {
-                break;
-            }
-        }
+        self.consume_name(&mut s);
         Token::Ident(s)
     }
 
@@ -282,6 +304,22 @@ impl Tokenizer {
                 }
             }
         }
+        // `1e3` / `1E-3`: an exponent needs digits, or `em`/`ex` would be one.
+        if matches!(self.peek(), Some('e' | 'E')) {
+            let signed = matches!(self.peek_at(1), Some('+' | '-'));
+            if self
+                .peek_at(if signed { 2 } else { 1 })
+                .is_some_and(|c| c.is_ascii_digit())
+            {
+                s.push(self.advance().unwrap());
+                if signed {
+                    s.push(self.advance().unwrap());
+                }
+                while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+                    s.push(self.advance().unwrap());
+                }
+            }
+        }
         let value: f64 = s.parse().unwrap_or(0.0);
 
         if self.peek() == Some('%') {
@@ -290,14 +328,7 @@ impl Tokenizer {
         }
         if self.peek().is_some_and(is_ident_start) {
             let mut unit = String::new();
-            while let Some(c) = self.peek() {
-                if is_ident_continue(c) {
-                    unit.push(c);
-                    self.advance();
-                } else {
-                    break;
-                }
-            }
+            self.consume_name(&mut unit);
             return Token::Dimension(value, unit.to_ascii_lowercase());
         }
         Token::Number(value)
@@ -550,5 +581,42 @@ mod tests {
                 Token::RightBrace,
             ]
         );
+    }
+
+    #[test]
+    fn escapes_in_identifiers_hashes_and_at_keywords() {
+        assert_eq!(
+            tokenize(r"md\:flex"),
+            vec![Token::Ident("md:flex".to_string())]
+        );
+        assert_eq!(tokenize(r"w-1\/2"), vec![Token::Ident("w-1/2".to_string())]);
+        assert_eq!(tokenize(r"\31 0px"), vec![Token::Ident("10px".to_string())]);
+        // The single space ends the hex escape and is not a token of its own.
+        assert_eq!(tokenize(r"\2d x"), vec![Token::Ident("-x".to_string())]);
+        assert_eq!(tokenize(r"#a\.b"), vec![Token::Hash("a.b".to_string())]);
+        assert_eq!(tokenize(r"-\!x"), vec![Token::Ident("-!x".to_string())]);
+        assert_eq!(
+            tokenize("\\\n"),
+            vec![Token::Delim('\\'), Token::Whitespace]
+        );
+    }
+
+    #[test]
+    fn numbers_with_exponents_keep_em_and_ex_as_units() {
+        assert_eq!(tokenize("1e3"), vec![Token::Number(1000.0)]);
+        assert_eq!(tokenize("2E-1"), vec![Token::Number(0.2)]);
+        assert_eq!(
+            tokenize("3.40282e38px"),
+            vec![Token::Dimension(3.40282e38, "px".to_string())]
+        );
+        assert_eq!(
+            tokenize("1em"),
+            vec![Token::Dimension(1.0, "em".to_string())]
+        );
+        assert_eq!(
+            tokenize("2ex"),
+            vec![Token::Dimension(2.0, "ex".to_string())]
+        );
+        assert_eq!(tokenize("1e+2%"), vec![Token::Percentage(100.0)]);
     }
 }
