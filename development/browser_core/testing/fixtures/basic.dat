@@ -21,17 +21,26 @@ Lines before the first "#data" (like these) are ignored by the parser.
 |   <body>
 |     display=block
 |     color=#000000
+|     margin-bottom=8px
+|     margin-left=8px
+|     margin-right=8px
+|     margin-top=8px
 |     <p>
 |       display=block
 |       color=#000000
+|       margin-bottom=1em
+|       margin-top=1em
+
 #layout
-| <html> block 0.0,0.0 320.0x19.2
-|   <body> block 0.0,0.0 320.0x19.2
-|     <p> block 0.0,0.0 320.0x19.2
+| <html> block 0.0,0.0 320.0x51.2
+|   <body> block 8.0,16.0 304.0x19.2
+|     <p> block 0.0,0.0 304.0x19.2
 |       line 0.0,0.0 14.6x19.2
 |         "hi" 0.0,0.0 14.6x19.2
+
 #paint
-text 0.0,0.0 "hi" #000000 16.0 normal normal
+text 8.0,16.0 "hi" #000000 16.0 normal normal
+
 
 #data
 <div id="x" class="y">z</div>

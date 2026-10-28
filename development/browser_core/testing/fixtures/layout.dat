@@ -11,25 +11,27 @@ geometry dump pins down what would actually be drawn, the same way
 #css
 div { height: 20px; }
 #layout
-| <html> block 0.0,0.0 320.0x40.0
-|   <body> block 0.0,0.0 320.0x40.0
-|     <div> block 0.0,0.0 320.0x20.0
+| <html> block 0.0,0.0 320.0x56.0
+|   <body> block 8.0,8.0 304.0x40.0
+|     <div> block 0.0,0.0 304.0x20.0
 |       line 0.0,0.0 9.8x19.2
 |         "a" 0.0,0.0 9.8x19.2
-|     <div> block 0.0,20.0 320.0x20.0
+|     <div> block 0.0,20.0 304.0x20.0
 |       line 0.0,0.0 10.2x19.2
 |         "b" 0.0,0.0 10.2x19.2
+
 
 #data
 <p>a <b>bold</b> c</p>
 #layout
-| <html> block 0.0,0.0 320.0x19.2
-|   <body> block 0.0,0.0 320.0x19.2
-|     <p> block 0.0,0.0 320.0x19.2
+| <html> block 0.0,0.0 320.0x51.2
+|   <body> block 8.0,16.0 304.0x19.2
+|     <p> block 0.0,0.0 304.0x19.2
 |       line 0.0,0.0 68.2x19.2
 |         "a" 0.0,0.0 9.8x19.2
 |         "bold" 14.9,0.0 39.4x19.2
 |         "c" 59.4,0.0 8.8x19.2
+
 
 #data
 <div>x</div>
@@ -37,7 +39,7 @@ div { height: 20px; }
 div { width: 100px; margin: 10px; padding: 5px; }
 #layout
 | <html> block 0.0,0.0 320.0x49.2
-|   <body> block 0.0,10.0 320.0x29.2
+|   <body> block 8.0,10.0 304.0x29.2
 |     <div> block 10.0,0.0 110.0x29.2
 |       line 5.0,5.0 9.5x19.2
 |         "x" 0.0,0.0 9.5x19.2

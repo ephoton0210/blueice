@@ -39,7 +39,7 @@ impl Browser {
             height,
             HistorySnapshotMode::Snapshot,
         );
-        tabs.get_mut(tabs.default_tab()).unwrap().load_html_str("<div style='width:100px;height:40px;background-color:#006400'></div><input aria-label='Editor' value='frost' style='display:block;width:100px;height:32px'><p aria-label='Wrapped'>one two three four five six seven eight nine ten eleven twelve thirteen</p><div style='height:800px'></div><p>Lower frost</p>",Some("https://viewport.test/one".into()));
+        tabs.get_mut(tabs.default_tab()).unwrap().load_html_str("<style>body{margin:0}</style><div style='width:100px;height:40px;background-color:#006400'></div><input aria-label='Editor' value='frost' style='display:block;width:100px;height:32px'><p aria-label='Wrapped'>one two three four five six seven eight nine ten eleven twelve thirteen</p><div style='height:800px'></div><p>Lower frost</p>",Some("https://viewport.test/one".into()));
         tabs.open_tab();
         let (mut client, mut server) = UnixStream::pair().unwrap();
         client

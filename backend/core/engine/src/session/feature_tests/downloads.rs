@@ -414,8 +414,10 @@ fn a_link_to_about_downloads_is_followed_like_any_built_in_page() {
     let handle = thread::spawn(move || {
         let mut tabs = TabManager::new(400.0, 300.0);
         tabs.set_downloads_source(Arc::new(DownloadsSource::without_spawner(socket)));
-        default_page(&mut tabs)
-            .load_html_str(r#"<a href="about:downloads">Open downloads</a>"#, None);
+        default_page(&mut tabs).load_html_str(
+            r#"<style>body{margin:0}</style><a href="about:downloads">Open downloads</a>"#,
+            None,
+        );
         let mut generation = 0u64;
         run_session(
             &mut tabs,

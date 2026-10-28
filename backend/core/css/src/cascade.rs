@@ -617,12 +617,15 @@ fn compute_style_for(
 /// table layout itself is deferred, so there's no `table`/`table-row`/
 /// `table-cell` display value for them to use yet).
 pub const UA_STYLESHEET_SOURCE: &str = r#"
+/* Display types, after the HTML Standard's "Rendering" section. */
 html, body, div, p, ul, ol, li, section, article, header, footer, nav,
 main, aside, figure, figcaption, blockquote, pre, form, fieldset, legend,
+address, hgroup, details, summary, dialog, dl, dt, dd, menu, center,
 table, thead, tbody, tfoot, tr, td, th, caption, colgroup,
-h1, h2, h3, h4, h5, h6 {
+h1, h2, h3, h4, h5, h6, hr, search, optgroup {
   display: block;
 }
+li { display: list-item; }
 button, input, select, textarea {
   display: inline-block;
 }
@@ -643,21 +646,38 @@ textarea { height: 6em; }
 input[type="checkbox"], input[type="radio"] { width: 1.5em; height: 1.5em; padding: 1px; }
 input[type="range"] { width: 12em; height: 1.5em; }
 [hidden], input[type="hidden"] { display: none; }
-head, title, style, script, link, meta, colgroup {
+area, base, basefont, datalist, head, link, meta, noembed, noframes, param,
+rp, script, style, template, title, colgroup {
   display: none;
 }
-b, strong {
-  font-weight: bold;
-}
-i, em {
-  font-style: italic;
-}
-h1 { font-size: 2em; font-weight: bold; }
-h2 { font-size: 1.5em; font-weight: bold; }
-h3 { font-size: 1.17em; font-weight: bold; }
-h4 { font-size: 1em; font-weight: bold; }
-h5 { font-size: 0.83em; font-weight: bold; }
-h6 { font-size: 0.67em; font-weight: bold; }
+/* Text-level semantics. */
+b, strong, th { font-weight: bold; }
+i, em, cite, dfn, var, address { font-style: italic; }
+u, ins { text-decoration: underline; }
+s, strike, del { text-decoration: line-through; }
+a:link { color: #0000ee; text-decoration: underline; }
+small { font-size: 0.83em; }
+big { font-size: 1.17em; }
+sub { font-size: 0.83em; vertical-align: sub; }
+sup { font-size: 0.83em; vertical-align: super; }
+code, kbd, samp, tt, pre, textarea { font-family: monospace; }
+pre { white-space: pre; }
+th { text-align: center; }
+/* Flow content. */
+body { margin: 8px; }
+p, blockquote, figure, dl, menu, ul, ol, pre { margin-top: 1em; margin-bottom: 1em; }
+blockquote, figure { margin-left: 40px; margin-right: 40px; }
+dd { margin-left: 40px; }
+ul, ol, menu { padding-left: 40px; }
+ul ul, ul ol, ol ul, ol ol { margin-top: 0; margin-bottom: 0; }
+hr { margin: 0.5em auto; border: 1px solid #9a9a9a; height: 0; overflow: hidden; }
+fieldset { margin: 0 2px; padding: 0.35em 0.75em 0.625em; border: 2px solid #c0c0c0; }
+h1 { font-size: 2em; font-weight: bold; margin-top: 0.67em; margin-bottom: 0.67em; }
+h2 { font-size: 1.5em; font-weight: bold; margin-top: 0.83em; margin-bottom: 0.83em; }
+h3 { font-size: 1.17em; font-weight: bold; margin-top: 1em; margin-bottom: 1em; }
+h4 { font-size: 1em; font-weight: bold; margin-top: 1.33em; margin-bottom: 1.33em; }
+h5 { font-size: 0.83em; font-weight: bold; margin-top: 1.67em; margin-bottom: 1.67em; }
+h6 { font-size: 0.67em; font-weight: bold; margin-top: 2.33em; margin-bottom: 2.33em; }
 "#;
 
 pub fn ua_stylesheet() -> Vec<Rule> {

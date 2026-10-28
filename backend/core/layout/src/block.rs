@@ -976,7 +976,8 @@ mod tests {
         let _ = doc;
         let doc = blueice_html::parse(html);
         let ua = ua_stylesheet();
-        let author = blueice_css::parse(css).rules;
+        // Tests here are about the algorithm, not the UA's default margins.
+        let author = blueice_css::parse(&format!("html,body,div,p,ul,ol,li,h1,h2,h3,h4,h5,h6,pre,blockquote,figure,dl,dd,menu,fieldset,hr,section,address{{margin:0;padding:0}} {css}")).rules;
         let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
         (doc, styles)
     }
@@ -1520,7 +1521,7 @@ mod tests {
         let doc = blueice_html::parse("<div style='height:50px'>a</div><p class=x>x</p>");
         let ua = ua_stylesheet();
         let author = blueice_css::parse(
-            ".x { position: absolute; right: 0; bottom: 0; width: 100px; height: 10px; }",
+            ".x { position: absolute; right: 0; bottom: 0; width: 100px; height: 10px; margin: 0; }",
         )
         .rules;
         let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);

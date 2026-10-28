@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-const HTML: &str = r#"<style>
+const HTML: &str = r#"<style>body{margin:0}
 #surface {width:100px;height:40px;background-color:#aabbcc}
 #dark, #more, #reduce {display:none}
 @media (prefers-color-scheme:dark) {#surface {background-color:#102030} #light {display:none} #dark {display:block}}
@@ -309,7 +309,7 @@ fn preferences_reach_new_tabs_navigation_and_retained_history_without_new_docume
 
 #[test]
 fn media_reacts_to_css_size_backing_density_and_zoom_through_the_same_core() {
-    let html="<style>#s{width:100px;height:40px;background-color:#ff0000}@media (min-width:300px){#s{background-color:#00ff00}}@media (min-resolution:2dppx){#s{height:20px}}</style><div id='s'></div>";
+    let html="<style>body{margin:0}#s{width:100px;height:40px;background-color:#ff0000}@media (min-width:300px){#s{background-color:#00ff00}}@media (min-resolution:2dppx){#s{height:20px}}</style><div id='s'></div>";
     let mut browser = Browser::new(html);
     browser.viewport(300.0, 1.0);
     browser.prefs(DisplayPreferences::default());

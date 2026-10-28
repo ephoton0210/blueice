@@ -335,6 +335,44 @@ fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
     vec![("background-color".to_string(), color)]
 }
 
+/// `text-decoration`: the line keywords go to `text-decoration-line` (a single
+/// keyword or a list) and a colour to `text-decoration-color`; the style and
+/// thickness components are accepted and ignored.
+fn expand_text_decoration(tokens: &[Token]) -> Vec<(String, Value)> {
+    let mut lines: Vec<Value> = Vec::new();
+    let mut color = None;
+    for part in components(tokens) {
+        match parse_value(part) {
+            Some(Value::Keyword(k))
+                if matches!(
+                    k.as_str(),
+                    "none" | "underline" | "overline" | "line-through" | "blink"
+                ) =>
+            {
+                lines.push(Value::Keyword(k))
+            }
+            Some(Value::Keyword(k))
+                if matches!(
+                    k.as_str(),
+                    "solid" | "double" | "dotted" | "dashed" | "wavy" | "from-font" | "auto"
+                ) => {}
+            Some(c @ Value::Color(_)) => color = Some(c),
+            Some(Value::Length(_) | Value::Percentage(_) | Value::Calc(_)) => {}
+            _ => return vec![],
+        }
+    }
+    let mut out = Vec::new();
+    match lines.len() {
+        0 => out.push(("text-decoration-line".to_string(), keyword("none"))),
+        1 => out.push(("text-decoration-line".to_string(), lines.remove(0))),
+        _ => out.push(("text-decoration-line".to_string(), Value::List(lines))),
+    }
+    if let Some(color) = color {
+        out.push(("text-decoration-color".to_string(), color));
+    }
+    out
+}
+
 /// `border`-style shorthands over the given sides.
 fn expand_border_sides(sides: &[&str], value_tokens: &[Token]) -> Vec<(String, Value)> {
     // Order-independent: a width (a length, or bare `0`), a style keyword, and
@@ -448,6 +486,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
         "place-content" => expand_pair("align-content", "justify-content", value_tokens),
         "place-self" => expand_pair("align-self", "justify-self", value_tokens),
         "background" => expand_background(value_tokens),
+        "text-decoration" => expand_text_decoration(value_tokens),
         "inset" => {
             expand_box_shorthand_property_named(["top", "right", "bottom", "left"], value_tokens)
         }
@@ -1360,6 +1399,44 @@ mod tests {
         assert!(
             props.contains(&"color") && props.contains(&"margin-top"),
             "{props:?}"
+        );
+    }
+
+    #[test]
+    fn text_decoration_shorthand_splits_into_line_and_colour() {
+        assert_eq!(
+            value_of("text-decoration: underline;", "text-decoration-line"),
+            Some(Value::Keyword("underline".to_string()))
+        );
+        assert_eq!(
+            value_of(
+                "text-decoration: underline line-through red;",
+                "text-decoration-line"
+            ),
+            Some(Value::List(vec![
+                Value::Keyword("underline".to_string()),
+                Value::Keyword("line-through".to_string())
+            ]))
+        );
+        assert_eq!(
+            value_of("text-decoration: none;", "text-decoration-line"),
+            Some(Value::Keyword("none".to_string()))
+        );
+        assert_eq!(
+            value_of(
+                "text-decoration: underline dotted #00f 2px;",
+                "text-decoration-color"
+            ),
+            Some(Value::Color(crate::value::Color::Rgba(0, 0, 255, 255)))
+        );
+        assert_eq!(
+            value_of("text-decoration: sparkly;", "text-decoration-line"),
+            None
+        );
+        assert_eq!(
+            value_of("text-decoration-line: underline;", "text-decoration-line"),
+            Some(Value::Keyword("underline".to_string())),
+            "the longhand passes through"
         );
     }
 }

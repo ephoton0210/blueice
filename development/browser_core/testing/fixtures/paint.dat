@@ -13,9 +13,9 @@ point: both must agree.
 #css
 div { background-color: red; border: 2px solid black; }
 #paint
-rect 0.0,0.0 320.0x23.2 #ff0000
-border 0.0,0.0 320.0x2.0 #000000
-border 318.0,0.0 2.0x23.2 #000000
-border 0.0,21.2 320.0x2.0 #000000
-border 0.0,0.0 2.0x23.2 #000000
-text 2.0,2.0 "x" #000000 16.0 normal normal
+rect 8.0,8.0 304.0x23.2 #ff0000
+border 8.0,8.0 304.0x2.0 #000000
+border 310.0,8.0 2.0x23.2 #000000
+border 8.0,29.2 304.0x2.0 #000000
+border 8.0,8.0 2.0x23.2 #000000
+text 10.0,10.0 "x" #000000 16.0 normal normal

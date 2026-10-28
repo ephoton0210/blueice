@@ -28,7 +28,7 @@
 //! child's edges through the other, unlike a real browser's isolated
 //! compositing layer for that box.
 
-use blueice_css::{ComputedStyle, Length, Value};
+use blueice_css::{ComputedStyle, Value};
 use blueice_dom::NodeId;
 use blueice_layout::{Fragment, FragmentKind};
 use std::collections::HashMap;
@@ -170,13 +170,16 @@ pub fn dump_frame(frame: &Frame) -> String {
 
 const BORDER_SIDES: [&str; 4] = ["top", "right", "bottom", "left"];
 
-fn length_px(value: &Value) -> Option<f64> {
-    match value {
-        Value::Length(Length::Px(n)) => Some(*n),
-        Value::Length(Length::Em(_)) => None, // already resolved to px by the time it reaches paint in practice; not a length paint can resolve itself (no font-size context here)
-        Value::Length(Length::Zero) => Some(0.0),
-        _ => None,
-    }
+/// A border width in pixels: any length unit resolves against the element's own
+/// font size (`1px`, `0.1em`, `calc(...)`).
+fn length_px(value: &Value, font_size: f64) -> Option<f64> {
+    value.to_px(&blueice_css::LengthContext {
+        font_size,
+        root_font_size: 16.0,
+        viewport_width: 1280.0,
+        viewport_height: 720.0,
+        percent_base: f64::NAN,
+    })
 }
 
 fn as_color(value: &Value, current_color: Color) -> Option<Color> {
@@ -196,6 +199,7 @@ fn border_side_rect(
     side: &str,
     box_rect: Rect,
     other: &HashMap<String, Value>,
+    font_size: f64,
 ) -> Option<(Rect, f64)> {
     let style_ok = matches!(other.get(&format!("border-{side}-style")), Some(Value::Keyword(k)) if k != "none" && k != "hidden");
     if !style_ok {
@@ -203,7 +207,7 @@ fn border_side_rect(
     }
     let width = other
         .get(&format!("border-{side}-width"))
-        .and_then(length_px)?;
+        .and_then(|v| length_px(v, font_size))?;
     if width <= 0.0 {
         return None;
     }
@@ -251,20 +255,112 @@ fn apply_opacity(color: Color, opacity: f32) -> Color {
     }
 }
 
+/// What flows down the fragment tree while painting: the product of the
+/// ancestors' `opacity`, and the text decorations that propagate to descendants.
+#[derive(Clone, Copy)]
+struct Inherited {
+    opacity: f32,
+    underline: bool,
+    overline: bool,
+    line_through: bool,
+}
+
+impl Inherited {
+    fn root() -> Inherited {
+        Inherited {
+            opacity: 1.0,
+            underline: false,
+            overline: false,
+            line_through: false,
+        }
+    }
+
+    /// The state for the descendants of an element with `style`.
+    fn below(self, style: &ComputedStyle) -> Inherited {
+        let (underline, overline, line_through) = decoration_lines(style);
+        Inherited {
+            opacity: self.opacity * style.opacity(),
+            underline: self.underline || underline,
+            overline: self.overline || overline,
+            line_through: self.line_through || line_through,
+        }
+    }
+}
+
+/// `(underline, overline, line-through)` from `text-decoration-line`.
+fn decoration_lines(style: &ComputedStyle) -> (bool, bool, bool) {
+    let mut lines = (false, false, false);
+    let mut note = |value: &Value| {
+        if let Value::Keyword(k) = value {
+            match k.as_str() {
+                "underline" => lines.0 = true,
+                "overline" => lines.1 = true,
+                "line-through" => lines.2 = true,
+                _ => {}
+            }
+        }
+    };
+    match style.other.get("text-decoration-line") {
+        Some(Value::List(items)) => items.iter().for_each(&mut note),
+        Some(single) => note(single),
+        None => {}
+    }
+    lines
+}
+
+/// A parent's children in CSS paint order, approximated per parent: negative
+/// `z-index` boxes, in-flow content, positioned boxes (`auto`/0), then
+/// positive `z-index` boxes -- each group in tree order, z-indexed ones by z.
+fn paint_order(children: &[Fragment]) -> Vec<&Fragment> {
+    let mut negative: Vec<&Fragment> = Vec::new();
+    let mut flow: Vec<&Fragment> = Vec::new();
+    let mut zero: Vec<&Fragment> = Vec::new();
+    let mut positive: Vec<&Fragment> = Vec::new();
+    for child in children {
+        match (child.positioned, child.z_index.unwrap_or(0)) {
+            (false, _) => flow.push(child),
+            (true, z) if z < 0 => negative.push(child),
+            (true, 0) => zero.push(child),
+            (true, _) => positive.push(child),
+        }
+    }
+    negative.sort_by_key(|f| f.z_index);
+    positive.sort_by_key(|f| f.z_index);
+    negative
+        .into_iter()
+        .chain(flow)
+        .chain(zero)
+        .chain(positive)
+        .collect()
+}
+
 fn paint_fragment(
     fragment: &Fragment,
     offset_x: f64,
     offset_y: f64,
     styles: &StyleMap,
+    inherited: Inherited,
     out: &mut Vec<PaintCommand>,
 ) {
     let x = offset_x + fragment.x;
     let y = offset_y + fragment.y;
+    let own_style = fragment.node.and_then(|n| styles.get(&n));
+    let below = match own_style {
+        Some(style)
+            if matches!(
+                fragment.kind,
+                FragmentKind::Block | FragmentKind::NativeControl { .. }
+            ) =>
+        {
+            inherited.below(style)
+        }
+        _ => inherited,
+    };
 
     match &fragment.kind {
-        FragmentKind::Block | FragmentKind::NativeControl { .. } => {
-            if let Some(style) = fragment.node.and_then(|n| styles.get(&n)) {
-                let opacity = style.opacity();
+        FragmentKind::Block | FragmentKind::NativeControl { .. } if !fragment.hidden => {
+            if let Some(style) = own_style {
+                let opacity = below.opacity;
                 let rect = Rect {
                     x,
                     y,
@@ -282,7 +378,9 @@ fn paint_fragment(
                     });
                 }
                 for side in BORDER_SIDES {
-                    if let Some((edge_rect, _)) = border_side_rect(side, rect, &style.other) {
+                    if let Some((edge_rect, _)) =
+                        border_side_rect(side, rect, &style.other, style.font_size_px)
+                    {
                         let color = style
                             .other
                             .get(&format!("border-{side}-color"))
@@ -296,12 +394,13 @@ fn paint_fragment(
                 }
             }
         }
-        FragmentKind::Line => {}
-        FragmentKind::Text(text) | FragmentKind::NativeText { text, .. } => {
-            if let Some(style) = fragment.node.and_then(|n| styles.get(&n)) {
+        FragmentKind::Block | FragmentKind::NativeControl { .. } | FragmentKind::Line => {}
+        FragmentKind::Text(text) | FragmentKind::NativeText { text, .. } if !fragment.hidden => {
+            if let Some(style) = own_style {
                 let bold = style.is_bold();
                 let italic = style.is_italic();
-                let color = apply_opacity(style.color, style.opacity());
+                // The nearest block ancestor's opacity is already in `inherited`.
+                let color = apply_opacity(style.color, inherited.opacity);
                 out.push(PaintCommand::Text {
                     x,
                     y,
@@ -311,11 +410,13 @@ fn paint_fragment(
                     bold,
                     italic,
                 });
+                paint_decorations(fragment, x, y, style, inherited, color, out);
             }
         }
+        FragmentKind::Text(_) | FragmentKind::NativeText { .. } => {}
     }
 
-    let clip = if let FragmentKind::NativeControl {
+    let native_clip = if let FragmentKind::NativeControl {
         content_x,
         content_y,
         content_width,
@@ -332,6 +433,14 @@ fn paint_fragment(
     } else {
         None
     };
+    // `overflow` other than visible clips the children to the box.
+    let overflow_clip = (fragment.clips && native_clip.is_none()).then_some(Rect {
+        x,
+        y,
+        width: fragment.width,
+        height: fragment.height,
+    });
+    let clip = native_clip.or(overflow_clip);
     if let Some(rect) = clip {
         out.push(PaintCommand::PushClip { rect });
     }
@@ -340,17 +449,66 @@ fn paint_fragment(
         _ => None,
     };
     if form.is_none() {
-        for child in &fragment.children {
-            paint_fragment(child, x, y, styles, out);
+        for child in paint_order(&fragment.children) {
+            paint_fragment(child, x, y, styles, below, out);
         }
     }
-    if let (Some(form), Some(rect), Some(style)) =
-        (form, clip, fragment.node.and_then(|id| styles.get(&id)))
-    {
+    if let (Some(form), Some(rect), Some(style)) = (form, native_clip, own_style) {
         paint_native_form(form, rect, style, out);
     }
     if clip.is_some() {
         out.push(PaintCommand::PopClip);
+    }
+}
+
+/// The underline, overline and line-through strokes of one text run.
+fn paint_decorations(
+    fragment: &Fragment,
+    x: f64,
+    y: f64,
+    style: &ComputedStyle,
+    inherited: Inherited,
+    color: Color,
+    out: &mut Vec<PaintCommand>,
+) {
+    let (underline, overline, line_through) = decoration_lines(style);
+    let (underline, overline, line_through) = (
+        underline || inherited.underline,
+        overline || inherited.overline,
+        line_through || inherited.line_through,
+    );
+    if !(underline || overline || line_through) {
+        return;
+    }
+    let size = style.font_size_px;
+    let (ascent, descent) = blueice_font::ascent_descent(size, style.is_bold(), style.is_italic());
+    let baseline = y + (fragment.height - (ascent + descent)) / 2.0 + ascent;
+    let thickness = (size / 16.0).max(1.0);
+    let decoration_color = match style.other.get("text-decoration-color") {
+        Some(Value::Color(Color::Rgba(r, g, b, a))) => {
+            apply_opacity(Color::Rgba(*r, *g, *b, *a), inherited.opacity)
+        }
+        _ => color,
+    };
+    let mut stroke = |top: f64| {
+        out.push(PaintCommand::Rect {
+            rect: Rect {
+                x,
+                y: top,
+                width: fragment.width,
+                height: thickness,
+            },
+            color: decoration_color,
+        });
+    };
+    if underline {
+        stroke(baseline + size * 0.1);
+    }
+    if overline {
+        stroke(baseline - ascent);
+    }
+    if line_through {
+        stroke(baseline - size * 0.3);
     }
 }
 
@@ -481,7 +639,7 @@ fn paint_native_form(
 /// from `styles` (the same computed-style map layout was built from).
 pub fn paint(fragment: &Fragment, styles: &HashMap<NodeId, ComputedStyle>) -> Frame {
     let mut commands = Vec::new();
-    paint_fragment(fragment, 0.0, 0.0, styles, &mut commands);
+    paint_fragment(fragment, 0.0, 0.0, styles, Inherited::root(), &mut commands);
     Frame {
         width: fragment.width,
         height: fragment.height,
@@ -498,12 +656,13 @@ mod tests {
     fn paint_html(html: &str, css: &str, width: f64) -> Frame {
         let doc = blueice_html::parse(html);
         let ua = ua_stylesheet();
-        let author = blueice_css::parse(css).rules;
-        let sheets: Vec<(Origin, &[blueice_css::Rule])> = if author.is_empty() {
-            vec![(Origin::Ua, &ua)]
-        } else {
-            vec![(Origin::Ua, &ua), (Origin::Author, &author)]
-        };
+        // These tests are about painting, not the UA's default margins.
+        let author = blueice_css::parse(&format!(
+            "html,body,div,p,ul,ol,li,h1,h2,h3,pre,blockquote,hr {{ margin: 0; }} {css}"
+        ))
+        .rules;
+        let sheets: Vec<(Origin, &[blueice_css::Rule])> =
+            vec![(Origin::Ua, &ua), (Origin::Author, &author)];
         let styles = cascade(&doc, &sheets);
         let fragment = blueice_layout::layout(
             &doc,
@@ -923,5 +1082,189 @@ mod tests {
             commands: vec![],
         };
         assert_eq!(dump_frame(&frame), "");
+    }
+
+    // ---- inherited opacity, visibility, clipping, paint order, decoration ----
+
+    fn rects(frame: &Frame) -> Vec<(Rect, Color)> {
+        frame
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Rect { rect, color } => Some((*rect, *color)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn nested_opacity_multiplies_down_the_tree() {
+        let frame = paint_html(
+            "<div class=a><div class=b>x</div></div>",
+            ".a { opacity: 0.5; background-color: #000000; } .b { opacity: 0.5; background-color: #ffffff; }",
+            200.0,
+        );
+        let colors: Vec<_> = rects(&frame).into_iter().map(|(_, c)| c).collect();
+        assert_eq!(colors[0], Color::Rgba(0, 0, 0, 128));
+        assert_eq!(
+            colors[1],
+            Color::Rgba(255, 255, 255, 64),
+            "0.5 of 0.5, not just 0.5"
+        );
+        let text = frame
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                PaintCommand::Text { color, .. } => Some(*color),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(
+            text,
+            Color::Rgba(0, 0, 0, 64),
+            "text takes the whole chain too, once"
+        );
+    }
+
+    #[test]
+    fn a_fully_transparent_parent_hides_its_whole_subtree_visually() {
+        let frame = paint_html(
+            "<div class=a><p>kept</p></div>",
+            ".a { opacity: 0; }",
+            200.0,
+        );
+        for command in &frame.commands {
+            if let PaintCommand::Text {
+                color: Color::Rgba(_, _, _, a),
+                ..
+            } = command
+            {
+                assert_eq!(*a, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn visibility_hidden_paints_nothing_of_its_own_but_visible_children_show() {
+        let frame = paint_html(
+            "<div class=a>hidden <b class=v>shown</b></div>",
+            ".a { visibility: hidden; background-color: #ff0000; } .v { visibility: visible; }",
+            200.0,
+        );
+        assert!(
+            rects(&frame).is_empty(),
+            "the hidden box's background is skipped"
+        );
+        let texts: Vec<_> = frame
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, vec!["shown"], "only the visible descendant paints");
+    }
+
+    #[test]
+    fn overflow_hidden_clips_its_children_to_the_box() {
+        let frame = paint_html(
+            "<div class=a><p>x</p></div>",
+            ".a { overflow: hidden; width: 50px; height: 30px; }",
+            200.0,
+        );
+        let dump = dump_frame(&frame);
+        assert!(dump.contains("clip 0.0,0.0 50.0x30.0"), "{dump}");
+        let clip = dump.find("clip ").unwrap();
+        let text = dump.find("text ").unwrap();
+        let endclip = dump.find("endclip").unwrap();
+        assert!(clip < text && text < endclip);
+    }
+
+    #[test]
+    fn positioned_boxes_paint_in_z_index_order_over_in_flow_content() {
+        let frame = paint_html(
+            "<div class=c><i class=hi></i><i class=lo></i><i class=back></i><b class=flow>text</b></div>",
+            ".c { position: relative; width: 100px; height: 100px; } \
+             i { position: absolute; width: 10px; height: 10px; } \
+             .hi { z-index: 5; background-color: #ff0000; } \
+             .lo { z-index: 1; background-color: #00ff00; } \
+             .back { z-index: -1; background-color: #0000ff; } \
+             .flow { display: block; background-color: #ffff00; }",
+            200.0,
+        );
+        let order: Vec<_> = rects(&frame)
+            .into_iter()
+            .map(|(_, c)| match c {
+                Color::Rgba(255, 0, 0, _) => "hi",
+                Color::Rgba(0, 255, 0, _) => "lo",
+                Color::Rgba(0, 0, 255, _) => "back",
+                Color::Rgba(255, 255, 0, _) => "flow",
+                _ => "?",
+            })
+            .collect();
+        assert_eq!(order, vec!["back", "flow", "lo", "hi"]);
+    }
+
+    #[test]
+    fn text_decoration_draws_strokes_and_propagates_from_a_block() {
+        let underlined = paint_html(
+            "<p class=u>hi</p>",
+            ".u { text-decoration: underline; }",
+            200.0,
+        );
+        let rs = rects(&underlined);
+        assert_eq!(rs.len(), 1, "one underline stroke");
+        let text_y = underlined
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                PaintCommand::Text { y, .. } => Some(*y),
+                _ => None,
+            })
+            .unwrap();
+        assert!(
+            rs[0].0.y > text_y + 10.0 && rs[0].0.y < text_y + 19.2,
+            "below the baseline: {}",
+            rs[0].0.y
+        );
+        assert!(rs[0].0.width > 5.0 && rs[0].0.height >= 1.0);
+        let none = paint_html("<p>hi</p>", "", 200.0);
+        assert!(rects(&none).is_empty());
+        let through = paint_html(
+            "<div class=u><p>hi</p></div>",
+            ".u { text-decoration: line-through; }",
+            200.0,
+        );
+        assert_eq!(
+            rects(&through).len(),
+            1,
+            "a block's decoration reaches its descendants' text"
+        );
+        let coloured = paint_html(
+            "<p class=u>hi</p>",
+            ".u { text-decoration: underline #ff0000; }",
+            200.0,
+        );
+        assert_eq!(rects(&coloured)[0].1, Color::Rgba(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn border_widths_accept_any_length_unit() {
+        let frame = paint_html(
+            "<div class=a>x</div>",
+            ".a { border: 0.5em solid #000000; font-size: 20px; }",
+            200.0,
+        );
+        let borders: Vec<_> = frame
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::BorderEdge { rect, .. } => Some(*rect),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(borders.len(), 4);
+        assert_eq!(borders[0].height, 10.0, "0.5em of 20px");
     }
 }

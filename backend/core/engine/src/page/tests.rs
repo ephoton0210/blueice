@@ -941,12 +941,12 @@ fn dom_dump_includes_nodes_the_ai_snapshot_would_exclude() {
 fn script_appended_element_receives_author_style_before_rasterization() {
     let mut page = Page::new(320.0, 200.0);
     page.load_html_str(
-        "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'></div>",
+        "<style>body{margin:0} span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'></div>",
         None,
     );
     let mut static_page = Page::new(320.0, 200.0);
     static_page.load_html_str(
-        "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'><span></span></div>",
+        "<style>body{margin:0} span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'><span></span></div>",
         None,
     );
     assert_eq!(
@@ -1098,7 +1098,10 @@ fn scroll_clamps_to_the_content_range() {
 #[test]
 fn click_on_a_link_returns_its_href() {
     let mut page = Page::new(320.0, 200.0);
-    page.load_html_str(r#"<a href="https://example.com/next">click me</a>"#, None);
+    page.load_html_str(
+        r#"<style>body{margin:0}</style><a href="https://example.com/next">click me</a>"#,
+        None,
+    );
     // the link is the only content, at the top-left of the page
     assert_eq!(
         page.click(2.0, 2.0),
@@ -1109,7 +1112,10 @@ fn click_on_a_link_returns_its_href() {
 #[test]
 fn click_on_nested_content_inside_a_link_still_finds_the_href() {
     let mut page = Page::new(320.0, 200.0);
-    page.load_html_str(r#"<a href="/x"><b>bold link text</b></a>"#, None);
+    page.load_html_str(
+        r#"<style>body{margin:0}</style><a href="/x"><b>bold link text</b></a>"#,
+        None,
+    );
     assert_eq!(page.click(2.0, 2.0), Some("/x".to_string()));
 }
 
@@ -1117,7 +1123,7 @@ fn click_on_nested_content_inside_a_link_still_finds_the_href() {
 fn clicking_a_relative_link_resolves_it_against_the_current_page_url() {
     let mut page = Page::new(320.0, 200.0);
     page.load_html_str(
-        r#"<a href="../next?q=blue#section">next</a>"#,
+        r#"<style>body{margin:0}</style><a href="../next?q=blue#section">next</a>"#,
         Some("https://example.com/guide/start/index.html?old=query".to_string()),
     );
 
@@ -1172,7 +1178,7 @@ fn render_visible_crops_to_the_viewport_size() {
 fn render_visible_shows_content_at_the_current_scroll_offset() {
     let mut page = Page::new(20.0, 10.0);
     page.load_html_str(
-        "<div style=\"height: 10px; background-color: red;\"></div><div style=\"height: 10px; background-color: blue;\"></div>",
+        "<style>body{margin:0}</style><div style=\"height: 10px; background-color: red;\"></div><div style=\"height: 10px; background-color: blue;\"></div>",
         None,
     );
     let top = page.render_visible();

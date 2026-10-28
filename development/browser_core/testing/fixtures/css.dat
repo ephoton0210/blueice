@@ -17,9 +17,16 @@ checked against UA + author cascaded together.
 |   <body>
 |     display=block
 |     color=#000000
+|     margin-bottom=8px
+|     margin-left=8px
+|     margin-right=8px
+|     margin-top=8px
 |     <p>
 |       display=block
 |       color=#ff0000
+|       margin-bottom=1em
+|       margin-top=1em
+
 
 #data
 <div id="x" class="y"><span>inner</span></div>
@@ -36,12 +43,17 @@ checked against UA + author cascaded together.
 |   <body>
 |     display=block
 |     color=#000000
+|     margin-bottom=8px
+|     margin-left=8px
+|     margin-right=8px
+|     margin-top=8px
 |     <div>
 |       display=block
 |       color=#0000ff
 |       <span>
 |         display=inline
 |         color=#0000ff
+
 
 #data
 <p style="color: green;">hi</p>
@@ -57,9 +69,16 @@ p { color: red; }
 |   <body>
 |     display=block
 |     color=#000000
+|     margin-bottom=8px
+|     margin-left=8px
+|     margin-right=8px
+|     margin-top=8px
 |     <p>
 |       display=block
 |       color=#008000
+|       margin-bottom=1em
+|       margin-top=1em
+
 
 #data
 <p style="background-color: currentColor;">hi</p>
@@ -75,7 +94,13 @@ p { color: purple; }
 |   <body>
 |     display=block
 |     color=#000000
+|     margin-bottom=8px
+|     margin-left=8px
+|     margin-right=8px
+|     margin-top=8px
 |     <p>
 |       display=block
 |       color=#800080
 |       background-color=#800080
+|       margin-bottom=1em
+|       margin-top=1em

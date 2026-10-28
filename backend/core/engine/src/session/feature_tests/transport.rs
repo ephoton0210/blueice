@@ -69,7 +69,10 @@ fn click_on_a_link_navigates_and_a_click_elsewhere_produces_no_reply() {
     let dir_for_thread = dir.clone();
     let handle = thread::spawn(move || {
         let mut tabs = TabManager::new(320.0, 200.0);
-        default_page(&mut tabs).load_html_str(&format!(r#"<a href="{url}">go</a>"#), None);
+        default_page(&mut tabs).load_html_str(
+            &format!(r#"<style>body{{margin:0}}</style><a href="{url}">go</a>"#),
+            None,
+        );
         let mut generation = 0u64;
         run_session(
             &mut tabs,
@@ -138,7 +141,8 @@ fn hover_updates_state_silently_with_no_reply() {
     let (mut client, mut server) = client_pair();
     let handle = thread::spawn(move || {
         let mut tabs = TabManager::new(320.0, 200.0);
-        default_page(&mut tabs).load_html_str(r#"<a href="/x">go</a>"#, None);
+        default_page(&mut tabs)
+            .load_html_str(r#"<style>body{margin:0}</style><a href="/x">go</a>"#, None);
         let mut generation = 0u64;
         run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
         dir

@@ -850,7 +850,7 @@ mod tests {
 
     #[test]
     fn hovered_and_focused_state_reflect_the_pages_own_interaction_state() {
-        let mut page = page_with(r#"<a href="/x">Go</a>"#);
+        let mut page = page_with(r#"<style>body{margin:0}</style><a href="/x">Go</a>"#);
         let before = build(&page, 0, 1);
         assert!(!find(&before.nodes, "Go").state.hovered);
 

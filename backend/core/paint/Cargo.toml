@@ -8,6 +8,7 @@ license.workspace = true
 blueice-layout = { path = "../layout" }
 blueice-css = { path = "../css" }
 blueice-dom = { path = "../dom" }
+blueice-font = { path = "../font" }
 
 [dev-dependencies]
 blueice-html = { path = "../html" }

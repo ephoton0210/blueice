@@ -550,9 +550,10 @@ impl Browser {
         std::fs::create_dir(&root).unwrap();
         let mut tabs = TabManager::new(500.0, 300.0);
         let tab = tabs.default_tab();
-        tabs.get_mut(tab)
-            .unwrap()
-            .load_html_str(html, Some("https://example.test/form".into()));
+        tabs.get_mut(tab).unwrap().load_html_str(
+            &format!("<style>body{{margin:0}}</style>{html}"),
+            Some("https://example.test/form".into()),
+        );
         let (mut stream, mut server) = UnixStream::pair().unwrap();
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
@@ -861,7 +862,9 @@ impl PageJavaScriptExecutor for ClickExecutor {
     ) -> std::io::Result<Option<bool>> {
         self.calls.fetch_add(1, Ordering::Relaxed);
         if let Some(html) = self.replacement {
-            tabs.get_mut(tab).unwrap().load_html_str(html, None);
+            tabs.get_mut(tab)
+                .unwrap()
+                .load_html_str(&format!("<style>body{{margin:0}}</style>{html}"), None);
         }
         Ok(Some(self.prevent))
     }

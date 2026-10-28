@@ -948,7 +948,7 @@ mod tests {
     fn body(html: &str, css: &str, width: f64) -> Fragment {
         let doc = blueice_html::parse(html);
         let ua = ua_stylesheet();
-        let author = blueice_css::parse(css).rules;
+        let author = blueice_css::parse(&format!("html,body,div,p,ul,ol,li,h1,h2,h3,h4,h5,h6,pre,blockquote,figure,dl,dd,menu,fieldset,hr,section,address{{margin:0;padding:0}} {css}")).rules;
         let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
         let body = find(&doc, doc.root(), "body").unwrap();
         layout_block(&doc, body, &styles, width)
