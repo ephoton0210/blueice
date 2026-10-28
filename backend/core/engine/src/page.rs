@@ -59,6 +59,10 @@ pub struct Page {
     url: Option<String>,
     network_response: Option<blueice_ipc::extension::NetworkResponseInfo>,
     network_trace: Option<blueice_ipc::extension::NetworkTraceInfo>,
+    /// Fetched `<link rel=stylesheet>` text for the current document, keyed by
+    /// `href` as written; `pending_linked_styles` is what the next load adopts.
+    linked_styles: crate::stylesheet::LinkedStyles,
+    pending_linked_styles: crate::stylesheet::LinkedStyles,
     /// Monotonically changes whenever this navigable context receives a
     /// replacement document. Page-script realms use it to distinguish a
     /// same-origin navigation from the document that preceded it.
@@ -146,6 +150,8 @@ impl Page {
             url: None,
             network_response: None,
             network_trace: None,
+            linked_styles: Default::default(),
+            pending_linked_styles: Default::default(),
             document_generation: 0,
             script_nodes: HashMap::new(),
             script_node_handles: HashMap::new(),
@@ -195,6 +201,7 @@ impl Page {
     fn load_html_translating(&mut self, html: &str, translations: Option<&[String]>) {
         self.object_url_environment = None;
         self.object_url_origin = None;
+        self.linked_styles = std::mem::take(&mut self.pending_linked_styles);
         // `parse_continuing_from` (not `parse`) so this replacement
         // document's NodeIds never collide with -- or get numerically
         // confused with -- the document it's replacing. A client that
@@ -275,9 +282,10 @@ impl Page {
 
     fn recascade(&mut self) {
         self.remember_native_form_defaults();
-        let author = crate::stylesheet::extract_inline_stylesheets_with_environment(
+        let author = crate::stylesheet::extract_inline_stylesheets_with_linked(
             &self.doc,
             &self.media_environment(),
+            &self.linked_styles,
         );
         self.styles = cascade(
             &self.doc,
@@ -445,11 +453,12 @@ impl Page {
     /// page, never instead of one.
     pub(crate) fn apply_fetched_translated(
         &mut self,
-        _clearance: crate::gatekeeper_client::GatekeeperClearance,
+        clearance: crate::gatekeeper_client::GatekeeperClearance,
         url: &str,
         html: &str,
         translations: Option<&[String]>,
     ) {
+        self.pending_linked_styles = clearance.into_linked_styles();
         self.load_html_translating(html, translations);
         self.url = Some(url.to_string());
     }

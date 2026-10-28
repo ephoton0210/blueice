@@ -238,6 +238,81 @@ pub fn fetch(url: &str) -> Result<FetchedPage, FetchError> {
     })
 }
 
+/// The resolved, validated HTTP(S) `Location` of a redirect response, or
+/// `None` when the response is not a redirect.
+fn redirect_target(
+    url: &str,
+    response: &ureq::http::Response<ureq::Body>,
+) -> Result<Option<(String, u16)>, FetchError> {
+    let status = response.status().as_u16();
+    if !matches!(status, 301 | 302 | 303 | 307 | 308) {
+        return Ok(None);
+    }
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| {
+            FetchError::Request("redirect response has no valid Location header".to_string())
+        })?;
+    let base = Url::parse(url).map_err(|error| {
+        FetchError::InvalidUrl(format!("invalid navigation URL {url:?}: {error}"))
+    })?;
+    let location = base.join(location).map_err(|error| {
+        FetchError::InvalidUrl(format!("redirect Location is invalid for {url:?}: {error}"))
+    })?;
+    validate_url_scheme(location.as_str())?;
+    Ok(Some((location.to_string(), status)))
+}
+
+/// One hop of a subresource request (a stylesheet today).
+pub enum SubresourceHop {
+    /// A resolved HTTP(S) redirect target; nothing was requested from it.
+    Redirect { location: String, status: u16 },
+    /// A non-redirect response, whatever its status or type, read in full.
+    Response {
+        final_url: String,
+        status: u16,
+        content_type: Option<String>,
+        body: Vec<u8>,
+    },
+    /// The body is longer than the caller's byte limit; reading stopped there.
+    TooLarge,
+}
+
+/// Fetches exactly one GET hop for a subresource. Unlike a navigation hop it
+/// never treats the response type as a download -- the caller decides whether
+/// the type is acceptable -- and it reads at most `max_bytes` of body. Redirects
+/// stay off so the caller can review every target before it is requested.
+pub fn fetch_subresource_hop(url: &str, max_bytes: usize) -> Result<SubresourceHop, FetchError> {
+    validate_url_scheme(url)?;
+    let agent = navigation_transport::agent(ResponseCancellation::default());
+    let mut response = agent
+        .get(url)
+        .call()
+        .map_err(|error| FetchError::Request(error.to_string()))?;
+    if let Some((location, status)) = redirect_target(url, &response)? {
+        return Ok(SubresourceHop::Redirect { location, status });
+    }
+    let status = response.status().as_u16();
+    let content_type = safe_content_type(&response);
+    let limit = u64::try_from(max_bytes)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let body = response.body_mut().with_config().limit(limit).read_to_vec();
+    match body {
+        Ok(body) if body.len() > max_bytes => Ok(SubresourceHop::TooLarge),
+        Ok(body) => Ok(SubresourceHop::Response {
+            final_url: url.to_string(),
+            status,
+            content_type,
+            body,
+        }),
+        Err(ureq::Error::BodyExceedsLimit(_)) => Ok(SubresourceHop::TooLarge),
+        Err(error) => Err(FetchError::Body(error.to_string())),
+    }
+}
+
 /// Fetches exactly one HTTP navigation hop, never following a `Location`
 /// response automatically. A redirect target is resolved against `url` and
 /// must itself be HTTP(S), but no request to it is made here. This preserves a
@@ -262,25 +337,8 @@ pub fn fetch_navigation_request_hop(request: &NavigationRequest) -> Result<Fetch
         agent.get(url).call()
     }
     .map_err(|error| FetchError::Request(error.to_string()))?;
-    if matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
-        let location = response
-            .headers()
-            .get("location")
-            .and_then(|value| value.to_str().ok())
-            .ok_or_else(|| {
-                FetchError::Request("redirect response has no valid Location header".to_string())
-            })?;
-        let base = Url::parse(url).map_err(|error| {
-            FetchError::InvalidUrl(format!("invalid navigation URL {url:?}: {error}"))
-        })?;
-        let location = base.join(location).map_err(|error| {
-            FetchError::InvalidUrl(format!("redirect Location is invalid for {url:?}: {error}"))
-        })?;
-        validate_url_scheme(location.as_str())?;
-        return Ok(FetchHop::Redirect {
-            location: location.to_string(),
-            status: response.status().as_u16(),
-        });
+    if let Some((location, status)) = redirect_target(url, &response)? {
+        return Ok(FetchHop::Redirect { location, status });
     }
     let status = response.status().as_u16();
     let content_type = safe_content_type(&response);
@@ -463,5 +521,78 @@ mod tests {
             fetch_navigation_hop(&url),
             Err(FetchError::Request(message)) if message.contains("Location")
         ));
+    }
+
+    fn serve_n(responses: Vec<&'static str>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            for response in responses {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    #[test]
+    fn a_subresource_hop_returns_a_css_body_that_a_navigation_would_download() {
+        let url = serve_once(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nContent-Length: 6\r\nConnection: close\r\n\r\np{a:b}",
+        );
+        match fetch_subresource_hop(&url, 1024).unwrap() {
+            SubresourceHop::Response {
+                status,
+                content_type,
+                body,
+                ..
+            } => {
+                assert_eq!(status, 200);
+                assert_eq!(content_type.as_deref(), Some("text/css"));
+                assert_eq!(body, b"p{a:b}");
+            }
+            _ => panic!("expected a response"),
+        }
+    }
+
+    #[test]
+    fn a_subresource_hop_reports_a_redirect_without_following_it() {
+        let url = serve_once(
+            "HTTP/1.1 302 Found\r\nLocation: /next.css\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+        match fetch_subresource_hop(&url, 1024).unwrap() {
+            SubresourceHop::Redirect { location, status } => {
+                assert_eq!(status, 302);
+                assert!(location.ends_with("/next.css"), "{location}");
+                assert!(location.starts_with("http://127.0.0.1:"));
+            }
+            _ => panic!("expected a redirect"),
+        }
+    }
+
+    #[test]
+    fn a_subresource_hop_stops_reading_past_the_byte_limit() {
+        let url = serve_once(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nContent-Length: 20\r\nConnection: close\r\n\r\n01234567890123456789",
+        );
+        assert!(matches!(
+            fetch_subresource_hop(&url, 10).unwrap(),
+            SubresourceHop::TooLarge
+        ));
+        let exact = serve_n(vec![
+            "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nContent-Length: 10\r\nConnection: close\r\n\r\n0123456789",
+        ]);
+        assert!(matches!(
+            fetch_subresource_hop(&exact, 10).unwrap(),
+            SubresourceHop::Response { .. }
+        ));
+    }
+
+    #[test]
+    fn a_subresource_hop_refuses_a_non_http_url_before_any_request() {
+        assert!(fetch_subresource_hop("file:///etc/passwd", 10).is_err());
+        assert!(fetch_subresource_hop("data:text/css,p{}", 10).is_err());
     }
 }

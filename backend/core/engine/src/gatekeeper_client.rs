@@ -53,6 +53,17 @@ pub(crate) struct GatekeeperClearance {
     tab_id: TabId,
     #[allow(dead_code)]
     url: String,
+    /// The page's `<link rel=stylesheet>` text, fetched after both stages
+    /// cleared, each connection reviewed first. Optional content: a sheet
+    /// that could not be loaded is simply absent.
+    linked_styles: crate::stylesheet::LinkedStyles,
+}
+
+impl GatekeeperClearance {
+    /// Hands the reviewed stylesheets to the page being applied.
+    pub(crate) fn into_linked_styles(self) -> crate::stylesheet::LinkedStyles {
+        self.linked_styles
+    }
 }
 
 /// One background gated-navigation's eventual result -- reported back
@@ -282,10 +293,31 @@ pub(crate) fn check_and_fetch_request(
             };
         }
 
+        // Stylesheets are subresources of a page that is already cleared:
+        // each connection, redirect hops included, passes the same URL
+        // review and extension block rules as a navigation hop would.
+        let linked_styles = crate::linked_styles::fetch_linked_styles(
+            &fetched.body,
+            &fetched.final_url,
+            &|url: &str| {
+                !extension_navigation_rules_block_url(&navigation_rules, url)
+                    && matches!(
+                        check_stage(
+                            gatekeeper_socket,
+                            &GatekeeperRequest::CheckUrl {
+                                url: url.to_string(),
+                            },
+                        ),
+                        StageOutcome::Cleared
+                    )
+            },
+            crate::linked_styles::DEFAULT_SHEET_LIMITS,
+        );
         return NavOutcome::Cleared {
             clearance: GatekeeperClearance {
                 tab_id,
                 url: fetched.final_url.clone(),
+                linked_styles,
             },
             final_url: fetched.final_url,
             html: fetched.body,
@@ -365,6 +397,106 @@ mod tests {
                 assert!(html.contains("hi"));
             }
             _ => panic!("expected Cleared"),
+        }
+    }
+
+    /// `/` serves `page`, `/site.css` serves `css` as text/css, until the test ends.
+    fn serve_page_with_stylesheet(page: &'static str, css: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let mut buf = [0u8; 1024];
+                let read = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..read]).to_string();
+                let (kind, body) = if request.starts_with("GET /site.css") {
+                    ("text/css", css)
+                } else {
+                    ("text/html", page)
+                };
+                let _ = stream.write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                );
+            }
+        });
+        format!("http://{addr}/")
+    }
+
+    #[test]
+    fn a_cleared_navigation_carries_the_pages_reviewed_linked_stylesheets() {
+        let gatekeeper = clearing_gatekeeper("linked-css");
+        let url = serve_page_with_stylesheet(
+            "<link rel=stylesheet href=/site.css><p>hi</p>",
+            "p{color:red}",
+        );
+        match check_and_fetch(TabId::from_u64(1), url, &gatekeeper) {
+            NavOutcome::Cleared { clearance, .. } => {
+                let sheets = clearance.into_linked_styles();
+                assert_eq!(
+                    sheets.get("/site.css").map(String::as_str),
+                    Some("p{color:red}")
+                );
+            }
+            _ => panic!("expected Cleared"),
+        }
+    }
+
+    #[test]
+    fn a_linked_stylesheet_reaches_the_pixels_of_the_applied_page() {
+        let gatekeeper = clearing_gatekeeper("linked-css-pixels");
+        let url = serve_page_with_stylesheet(
+            "<link rel=stylesheet href=/site.css><div>hi</div>",
+            "div{background-color:#ff0000;height:40px}",
+        );
+        let NavOutcome::Cleared {
+            clearance,
+            final_url,
+            html,
+            ..
+        } = check_and_fetch(TabId::from_u64(1), url, &gatekeeper)
+        else {
+            panic!("expected Cleared");
+        };
+        let mut page = crate::Page::new(200.0, 100.0);
+        page.apply_fetched_translated(clearance, &final_url, &html, None);
+        let pixels = page.render_visible().pixels;
+        assert!(
+            pixels.chunks_exact(4).any(|p| p[..3] == [255, 0, 0]),
+            "the linked sheet's red background is painted"
+        );
+        let mut unstyled = crate::Page::new(200.0, 100.0);
+        unstyled.load_html_str(&html, None);
+        assert!(
+            !unstyled
+                .render_visible()
+                .pixels
+                .chunks_exact(4)
+                .any(|p| p[..3] == [255, 0, 0]),
+            "without the sheet there is no red"
+        );
+    }
+
+    #[test]
+    fn an_extension_block_rule_also_keeps_a_stylesheet_from_being_requested() {
+        let gatekeeper = clearing_gatekeeper("linked-css-blocked");
+        let url = serve_page_with_stylesheet(
+            "<link rel=stylesheet href=/site.css><p>hi</p>",
+            "p{color:red}",
+        );
+        let rules = HashSet::from([ExtensionNavigationBlockRule::ExactUrl(format!(
+            "{url}site.css"
+        ))])
+        .into();
+        match check_and_fetch_with_navigation_rules(TabId::from_u64(1), url, &gatekeeper, rules) {
+            NavOutcome::Cleared { clearance, .. } => {
+                assert!(clearance.into_linked_styles().is_empty());
+            }
+            _ => panic!("the page itself is not blocked"),
         }
     }
 

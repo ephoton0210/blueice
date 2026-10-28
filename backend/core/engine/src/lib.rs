@@ -18,6 +18,7 @@ pub mod debugger;
 pub mod downloads_page;
 mod gatekeeper_client;
 pub mod gatekeeper_settings_page;
+mod linked_styles;
 mod navigation_request;
 mod object_urls;
 mod page;

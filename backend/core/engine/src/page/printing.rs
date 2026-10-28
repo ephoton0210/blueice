@@ -12,6 +12,7 @@ use blueice_layout::FragmentKind;
 pub struct FrozenPrintDocument {
     doc: Document,
     ua: Vec<Rule>,
+    linked_styles: crate::stylesheet::LinkedStyles,
 }
 pub struct PrintedDocument {
     pub frame: Frame,
@@ -23,6 +24,7 @@ impl Page {
         FrozenPrintDocument {
             doc: self.doc.clone(),
             ua: self.ua.clone(),
+            linked_styles: self.linked_styles.clone(),
         }
     }
 }
@@ -36,7 +38,11 @@ impl FrozenPrintDocument {
             resolution: PRINT_RASTER_SCALE,
             ..Default::default()
         };
-        let author = stylesheet::extract_inline_stylesheets_with_environment(&self.doc, &env);
+        let author = stylesheet::extract_inline_stylesheets_with_linked(
+            &self.doc,
+            &env,
+            &self.linked_styles,
+        );
         let mut styles = cascade(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
