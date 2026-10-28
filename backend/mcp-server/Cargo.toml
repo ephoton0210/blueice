@@ -35,3 +35,4 @@ rmcp = { version = "3.2.0", features = ["client", "transport-child-process"] }
 tokio = { version = "1.53.1", features = ["process"] }
 blueice-bluets = { path = "../bluets" }
 blueice-engine = { path = "../core/engine" }
+png = "0.17"

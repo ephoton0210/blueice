@@ -481,6 +481,7 @@ dependencies = [
  "blueice-ipc",
  "blueice-launcher",
  "blueice-raster",
+ "png",
  "rmcp",
  "serde",
  "serde_json",

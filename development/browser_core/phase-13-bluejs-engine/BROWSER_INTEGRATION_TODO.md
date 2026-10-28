@@ -153,7 +153,20 @@ memory of Core plus the BlueJS child stayed at 81.2 → 81.9 MiB (warm baseline
 budget with tab A still advancing, recovered on navigation, and closing it left
 the total at 89,984 KiB (+8 MiB over the warm baseline, within the 32 MiB bound;
 the cause, allocator retention versus a retained document, is not established).
-Not covered: the pixel/frame comparison and a human-visible frontend.
+
+Frame/pixel comparison (2026-10-27, `long_running.rs`): a second direct client
+of the shared Core stands in for a human's frontend. Connected before any tab
+renders, it maps every announced frame at once and pairs a tab's
+`GetRepresentation` with the frame of the generation that representation
+reports. In a 300 s run, 147 samples of tab A matched the frame/representation
+generation and were pixel-identical to an independent `blueice-engine` render of
+exactly the counter text the representation showed ("count K"); tab B's frame
+equalled a fresh render of its page at every sample, and again after it
+recovered; the two tabs' pixels differed. (A frame is announced by broadcast, not
+with the request id; the MCP `screenshot` tool maps only its cached reply frame,
+so it cannot catch a page that re-renders every 50 ms.)
+Not covered: the windowed `frontend-reference` itself (it maps the same frame
+files but cannot run headless) and a human looking at it.
 
 Stability soak (2026-10-22/23): 1,000 consecutive full `blueice-bluejs` lib runs
 (4,137 tests each, 3 workers in parallel for load) on the tree at commit
@@ -166,9 +179,8 @@ fixture shaped headroom with the wrong accessor, and one real ledger bug in
 integration targets were run once (workspace) plus the focused stress runs
 above.
 
-Remaining before M1v–M1z can be called accepted: the frame/pixel and
-human-visible frontend comparison for the two-tab case, and an owner decision
-to accept.
+Remaining before M1v–M1z can be called accepted: a manual look at the windowed
+frontend for the two-tab case, and an owner decision to accept.
 
 ## A. Event loop and scheduling (P0)
 

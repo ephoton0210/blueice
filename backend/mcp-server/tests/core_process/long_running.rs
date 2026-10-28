@@ -153,6 +153,124 @@ fn counter(snapshot: &serde_json::Value) -> (u64, Option<u64>) {
     (generation, value)
 }
 
+/// One tab's frame and representation from the same render pass.
+struct Shot {
+    snapshot: serde_json::Value,
+    generation: u64,
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
+/// A second, direct client of the shared Core, standing in for a human's
+/// frontend: it maps every frame it is told about at once (a ticking page
+/// replaces its frame files every few milliseconds and keeps only the latest
+/// few) and, on request, pairs a tab's representation with the frame of the
+/// generation that representation reports.
+struct Observer {
+    stream: std::os::unix::net::UnixStream,
+    next_id: u64,
+    frames: std::collections::HashMap<(u64, u64), (u32, u32, Vec<u8>)>,
+}
+
+impl Observer {
+    fn connect(socket: &std::path::Path) -> Self {
+        let mut stream = std::os::unix::net::UnixStream::connect(socket).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        blueice_ipc::write_client_message(
+            &mut stream,
+            &blueice_ipc::ClientMessage::Hello {
+                protocol_version: blueice_ipc::PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        let mut observer = Observer {
+            stream,
+            next_id: 0xF4A3_0000,
+            frames: Default::default(),
+        };
+        // Frames of a busy page may be broadcast ahead of the handshake reply.
+        while !matches!(observer.next(), blueice_ipc::ServerMessage::Hello { .. }) {}
+        observer
+    }
+
+    /// The next message that is not a frame announcement, which is mapped
+    /// and kept here instead, plus the id it answers.
+    fn next(&mut self) -> blueice_ipc::ServerMessage {
+        self.next_with_id().1
+    }
+
+    fn next_with_id(&mut self) -> (Option<u64>, blueice_ipc::ServerMessage) {
+        use blueice_ipc::ServerMessage;
+        loop {
+            let (frame_tab, reply_id, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream).unwrap();
+            let ServerMessage::FrameReady {
+                shm_path,
+                width,
+                height,
+                generation,
+            } = &message
+            else {
+                return (reply_id, message);
+            };
+            if let (Some(tab), Ok(mapped)) = (
+                frame_tab,
+                blueice_ipc::shm::map_frame(std::path::Path::new(shm_path)),
+            ) {
+                self.frames
+                    .insert((tab, *generation), (*width, *height, mapped.to_vec()));
+                let newest = *generation;
+                self.frames
+                    .retain(|(t, g), _| *t != tab || *g + 32 > newest);
+            }
+        }
+    }
+
+    fn shot(&mut self, tab_id: u64) -> Shot {
+        use blueice_ipc::{ClientMessage, ServerMessage};
+        self.next_id += 1;
+        let request_id = self.next_id;
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            Some(tab_id),
+            Some(request_id),
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
+        let snapshot = loop {
+            if let (reply_id, ServerMessage::Representation(value)) = self.next_with_id() {
+                if reply_id == Some(request_id) {
+                    break serde_json::to_value(value).unwrap();
+                }
+            }
+        };
+        let generation = snapshot["generation"].as_u64().unwrap();
+        let (width, height, pixels) = self
+            .frames
+            .get(&(tab_id, generation))
+            .unwrap_or_else(|| panic!("no frame of tab {tab_id} generation {generation}"))
+            .clone();
+        Shot {
+            snapshot,
+            generation,
+            width,
+            height,
+            pixels,
+        }
+    }
+}
+
+/// Pixels an independent engine render of `html` produces at `shot`'s size,
+/// as RGBA (the PNG round trip keeps alpha).
+fn reference(html: &str, shot: &Shot) -> Vec<u8> {
+    let mut page = blueice_engine::Page::new(f64::from(shot.width), f64::from(shot.height));
+    page.load_html_str(html, None);
+    page.render_visible().pixels
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "minutes-long real-process acceptance; run explicitly"]
 async fn two_tab_long_running_acceptance() {
@@ -179,6 +297,8 @@ async fn two_tab_long_running_acceptance() {
     });
     let client = CompilerMcpClient.serve(client_transport).await.unwrap();
 
+    // Connected before any tab renders, so a static page's one frame is seen.
+    let mut observer = Observer::connect(&launcher.rendezvous_socket);
     let a = 1;
     call(
         &client,
@@ -209,6 +329,7 @@ async fn two_tab_long_running_acceptance() {
     let mut last_generation = 0;
     let mut last_count = 0;
     let mut churn_ticks = 0;
+    let mut frames_checked = 0;
     while Instant::now() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let snapshot = call(
@@ -248,6 +369,32 @@ async fn two_tab_long_running_acceptance() {
                 churn_ticks = n;
             }
         }
+        // A's frame and representation come from one request, so they share a
+        // generation, and the pixels equal an independent render of exactly
+        // the counter value that representation reports.
+        let shot = observer.shot(a);
+        let (shot_generation, shot_count) = counter(&shot.snapshot);
+        assert_eq!(
+            shot.generation, shot_generation,
+            "frame and representation must come from one render pass"
+        );
+        let shot_count = shot_count.expect("A's representation shows its counter");
+        assert_eq!(
+            reference(&format!("<p id=n>count {shot_count}</p>"), &shot),
+            shot.pixels,
+            "A's frame (gen {shot_generation}) is not the render of 'count {shot_count}'"
+        );
+        let churn_shot = observer.shot(b);
+        assert_eq!(
+            reference("<p>churn</p>", &churn_shot),
+            churn_shot.pixels,
+            "B's frame differs from a fresh render of its page"
+        );
+        assert_ne!(
+            shot.pixels, churn_shot.pixels,
+            "the two tabs show different pages"
+        );
+        frames_checked += 1;
         let rss = total_rss();
         samples.push((start.elapsed().as_secs(), rss, generation, count));
         eprintln!(
@@ -257,6 +404,8 @@ async fn two_tab_long_running_acceptance() {
         );
     }
     assert!(churn_ticks > 0, "tab B never reported its churn");
+    assert!(frames_checked > 0);
+    eprintln!("{frames_checked} A/B frame pairs matched an independent render");
 
     // Resident memory must be bounded once warm: allow allocator noise only.
     let warm: Vec<_> = samples.iter().filter(|s| s.0 >= warmup.as_secs()).collect();
@@ -322,6 +471,13 @@ async fn two_tab_long_running_acceptance() {
         "B must run scripts again after navigating away from exhaustion"
     );
 
+    let recovered_shot = observer.shot(b);
+    assert_eq!(
+        reference("<p>recovered</p>", &recovered_shot),
+        recovered_shot.pixels,
+        "B's recovered frame differs from a fresh render"
+    );
+
     // Closing B releases its document; memory returns near the warm baseline.
     call(&client, "close_tab", serde_json::json!({"tab_id": b})).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -341,6 +497,7 @@ async fn two_tab_long_running_acceptance() {
     );
     assert!(count.unwrap() > before, "A must still run after B closed");
 
+    drop(observer);
     drop(client);
     server_task.abort();
     launcher.shutdown();
