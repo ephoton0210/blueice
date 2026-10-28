@@ -99,6 +99,8 @@ pub struct Fragment {
     pub fixed: bool,
     /// `visibility: hidden`: occupies space but paints nothing of its own.
     pub hidden: bool,
+    /// For a line box: where its baseline sits, from the top of the line.
+    pub baseline: Option<f64>,
 }
 
 impl Fragment {
@@ -116,6 +118,7 @@ impl Fragment {
             clips: false,
             fixed: false,
             hidden: false,
+            baseline: None,
         }
     }
 }

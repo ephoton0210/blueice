@@ -17,9 +17,7 @@
 
 use crate::ctx::{Ctx, Display, Position, Style};
 use crate::fragment::{Fragment, FragmentKind};
-use crate::text::{
-    break_into_lines, collect_words, default_line_height, space_width, StyleMap, Word,
-};
+use crate::text::{default_line_height, StyleMap};
 use blueice_css::Value;
 use blueice_dom::{Document, NodeData, NodeId};
 
@@ -109,6 +107,35 @@ enum Item {
     Abs(NodeId),
 }
 
+pub(crate) fn is_replaced_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "img" | "svg" | "canvas" | "video" | "iframe" | "embed" | "object"
+    )
+}
+
+/// Whether an inline element has a block-level descendant reachable through
+/// inline boxes alone: such an element splits its line, which this engine
+/// renders by letting the element's children stand in for it.
+fn has_block_descendant(ctx: &Ctx<'_>, node: NodeId) -> bool {
+    ctx.doc.children(node).any(|child| {
+        let Some(tag) = ctx.tag(child) else {
+            return false;
+        };
+        let style = ctx.style(child);
+        let display = style.display();
+        if display == Display::None || style.is_out_of_flow() || style.float().is_some() {
+            false
+        } else if display == Display::Contents
+            || (display == Display::Inline && !is_replaced_tag(tag))
+        {
+            has_block_descendant(ctx, child)
+        } else {
+            !display.is_atomic_inline() && !is_replaced_tag(tag)
+        }
+    })
+}
+
 /// The children of `node` as layout sees them: `display: none` removed,
 /// `display: contents` replaced by its own children.
 fn flow_items(ctx: &Ctx<'_>, node: NodeId, out: &mut Vec<Item>) {
@@ -116,7 +143,7 @@ fn flow_items(ctx: &Ctx<'_>, node: NodeId, out: &mut Vec<Item>) {
         match ctx.doc.data(child) {
             NodeData::Text { .. } => out.push(Item::Inline(child)),
             NodeData::Document => {}
-            NodeData::Element { .. } => {
+            NodeData::Element { tag_name, .. } => {
                 let style = ctx.style(child);
                 let display = style.display();
                 if display == Display::None || display == Display::TableColumn {
@@ -129,7 +156,15 @@ fn flow_items(ctx: &Ctx<'_>, node: NodeId, out: &mut Vec<Item>) {
                 } else if style.float().is_some() {
                     // Floats are laid out as blocks for now.
                     out.push(Item::Block(child));
-                } else if display == Display::Inline {
+                } else if display == Display::Inline && !is_replaced_tag(tag_name) {
+                    if has_block_descendant(ctx, child) {
+                        flow_items(ctx, child, out);
+                    } else {
+                        out.push(Item::Inline(child));
+                    }
+                } else if display.is_atomic_inline()
+                    || is_replaced_tag(tag_name) && display == Display::Inline
+                {
                     out.push(Item::Inline(child));
                 } else {
                     out.push(Item::Block(child));
@@ -152,7 +187,7 @@ struct Flow {
     empty: bool,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, unused_assignments)]
 fn layout_flow(
     ctx: &Ctx<'_>,
     node: NodeId,
@@ -180,13 +215,17 @@ fn layout_flow(
     let mut top_open = true;
     let mut inline_run: Vec<NodeId> = Vec::new();
 
+    let mut no_lines_yet = true;
     macro_rules! flush_inline {
         () => {
             if !inline_run.is_empty() {
-                let (lines, used_height) =
-                    layout_inline_run(ctx.doc, &inline_run, ctx.styles, content_width, 0.0);
+                let run =
+                    crate::inline::layout_run(ctx, node, &inline_run, content_width, no_lines_yet);
                 inline_run.clear();
-                if !lines.is_empty() {
+                let start = cursor_y + if top_open { 0.0 } else { pending.value() };
+                flow.pending_abs
+                    .extend(shift_pending(run.pending_abs, 0.0, start));
+                if !run.lines.is_empty() {
                     if top_open && collapse_top {
                         flow.top_margin = flow.top_margin.join(pending);
                     } else {
@@ -194,13 +233,14 @@ fn layout_flow(
                     }
                     pending = Margin::default();
                     top_open = false;
+                    no_lines_yet = false;
                     flow.empty = false;
-                    for mut line in lines {
+                    flow.extent = flow.extent.max(run.extent);
+                    for mut line in run.lines {
                         line.y += cursor_y;
-                        flow.extent = flow.extent.max(line.x + line.width);
                         flow.children.push(line);
                     }
-                    cursor_y += used_height;
+                    cursor_y += run.height;
                 }
             }
         };
@@ -245,6 +285,7 @@ fn layout_flow(
                     cursor_y += pending.join(placed.margin_top).value();
                 }
                 top_open = false;
+                no_lines_yet = false;
                 flow.empty = false;
                 let mut fragment = std::mem::replace(&mut placed.fragment, Fragment::empty_block());
                 fragment.x = placed.margin_left;
@@ -804,96 +845,6 @@ pub(crate) fn layout_root(
         root: true,
     };
     layout_block_level(&ctx, node, &c, None).fragment
-}
-
-/// Line-height in pixels from a computed `line-height`, for the line-box code
-/// below (which is handed a bare font size rather than a style).
-fn resolve_line_height(value: &Value, font_size: f64) -> Option<f64> {
-    use blueice_css::LengthContext;
-    match value {
-        Value::Number(n) => Some(n * font_size),
-        Value::Keyword(_) => None,
-        other => other.to_px(&LengthContext {
-            font_size,
-            root_font_size: 16.0,
-            viewport_width: 1280.0,
-            viewport_height: 720.0,
-            percent_base: font_size,
-        }),
-    }
-}
-
-fn layout_inline_run(
-    doc: &Document,
-    pending: &[NodeId],
-    styles: &StyleMap,
-    available_width: f64,
-    y_offset: f64,
-) -> (Vec<Fragment>, f64) {
-    let mut words: Vec<Word> = Vec::new();
-    for &n in pending {
-        match doc.data(n) {
-            NodeData::Text { .. } => {
-                if let Some(parent) = doc.parent(n) {
-                    collect_words(doc, n, styles, parent, &mut words);
-                }
-            }
-            NodeData::Element { .. } => collect_words(doc, n, styles, n, &mut words),
-            NodeData::Document => {}
-        }
-    }
-    if words.is_empty() {
-        return (Vec::new(), 0.0);
-    }
-
-    let first_style = styles.get(&words[0].style_node);
-    let font_size = first_style.map(|s| s.font_size_px).unwrap_or(16.0);
-    let line_height = first_style
-        .and_then(|s| s.line_height.as_ref())
-        .and_then(|v| resolve_line_height(v, font_size))
-        .unwrap_or_else(|| default_line_height(font_size));
-    let space_width = space_width(font_size);
-
-    let lines = break_into_lines(&words, available_width, space_width);
-    let mut fragments = Vec::new();
-    let mut y = y_offset;
-    for line_words in &lines {
-        fragments.push(layout_line(line_words, line_height, y, space_width));
-        y += line_height;
-    }
-    let total_height = lines.len() as f64 * line_height;
-    (fragments, total_height)
-}
-
-fn layout_line(words: &[Word], line_height: f64, y: f64, space_width: f64) -> Fragment {
-    let mut x = 0.0;
-    let mut children = Vec::new();
-    for (i, w) in words.iter().enumerate() {
-        if i > 0 {
-            x += space_width;
-        }
-        children.push(Fragment {
-            node: Some(w.style_node),
-            kind: FragmentKind::Text(w.text.clone()),
-            x,
-            y: 0.0,
-            width: w.width,
-            height: line_height,
-            children: Vec::new(),
-            ..Fragment::empty_block()
-        });
-        x += w.width;
-    }
-    Fragment {
-        node: None,
-        kind: FragmentKind::Line,
-        x: 0.0,
-        y,
-        width: x,
-        height: line_height,
-        children,
-        ..Fragment::empty_block()
-    }
 }
 
 /// Apply the list's scroll position and clip option hit/AX bounds to its content.

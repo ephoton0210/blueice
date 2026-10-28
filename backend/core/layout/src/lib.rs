@@ -19,6 +19,7 @@
 mod block;
 mod ctx;
 mod fragment;
+mod inline;
 mod intrinsic;
 mod native_text;
 mod text;

@@ -137,9 +137,29 @@ pub fn measure_text_width(text: &str, font_size_px: f64, bold: bool, italic: boo
         .sum()
 }
 
+/// The bundled font's ascent and descent (both positive, in pixels) at
+/// `font_size_px`: how far text of that size reaches above and below its
+/// baseline. Line boxes use these to place text on a shared baseline.
+pub fn ascent_descent(font_size_px: f64, bold: bool, italic: bool) -> (f64, f64) {
+    match font_for(bold, italic).horizontal_line_metrics(font_size_px as f32) {
+        Some(metrics) => (f64::from(metrics.ascent), f64::from(-metrics.descent)),
+        None => (font_size_px * 0.93, font_size_px * 0.24),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ascent_and_descent_are_positive_and_scale_with_the_size() {
+        let (ascent, descent) = ascent_descent(16.0, false, false);
+        assert!(ascent > 10.0 && ascent < 20.0, "{ascent}");
+        assert!(descent > 2.0 && descent < 8.0, "{descent}");
+        let (double_ascent, double_descent) = ascent_descent(32.0, false, false);
+        assert!((double_ascent - 2.0 * ascent).abs() < 0.01);
+        assert!((double_descent - 2.0 * descent).abs() < 0.01);
+    }
 
     #[test]
     fn empty_text_measures_to_zero() {

@@ -81,6 +81,7 @@ impl Display {
         )
     }
 
+    #[allow(dead_code)] // used by float and flex layout, which follow
     /// The block-level form of this display (what `float` and absolute
     /// positioning compute to).
     pub fn blockified(self) -> Display {
@@ -110,6 +111,7 @@ pub(crate) enum Side {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // used by float layout, which follows
 pub(crate) enum Clear {
     None,
     Left,
@@ -138,6 +140,7 @@ impl Edges {
 /// A node's computed style with typed accessors. A node without a computed
 /// style (a text node, say) reads as all-initial values.
 pub(crate) struct Style<'a> {
+    #[allow(dead_code)]
     pub node: NodeId,
     pub style: Option<&'a ComputedStyle>,
     ctx: &'a Ctx<'a>,
@@ -152,6 +155,7 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_element(&self, node: NodeId) -> bool {
         matches!(self.doc.data(node), NodeData::Element { .. })
     }
@@ -239,6 +243,7 @@ impl<'a> Style<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn clear(&self) -> Clear {
         match self.keyword("clear") {
             Some("left" | "inline-start") => Clear::Left,
