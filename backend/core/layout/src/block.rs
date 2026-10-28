@@ -47,6 +47,14 @@ impl Margin {
     }
 }
 
+/// Border-box sizes imposed from outside (a flex item's resolved size, a
+/// shrink-to-fit width); `None` leaves the dimension to the box's own style.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Forced {
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+}
+
 /// What a block child needs to know about the box it sits in.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Constraint {
@@ -69,7 +77,19 @@ pub(crate) struct PendingAbs {
     pub y: f64,
 }
 
+/// What a block-level layout depends on besides the (immutable) document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct LayoutKey {
+    node: NodeId,
+    cb_width: u64,
+    cb_height: Option<u64>,
+    root: bool,
+    forced_width: Option<u64>,
+    forced_height: Option<u64>,
+}
+
 /// A laid-out block box plus what its parent needs to place it.
+#[derive(Clone)]
 pub(crate) struct Placed {
     pub fragment: Fragment,
     pub margin_top: Margin,
@@ -329,7 +349,7 @@ fn shift_pending(pending: Vec<PendingAbs>, dx: f64, dy: f64) -> Vec<PendingAbs> 
 
 /// Lays out one block-level child according to its `display`.
 pub(crate) fn layout_child_block(ctx: &Ctx<'_>, node: NodeId, c: &Constraint) -> Placed {
-    layout_block_level(ctx, node, c, None)
+    layout_block_level(ctx, node, c, Forced::default())
 }
 
 /// The offsets `position: relative` applies, in pixels.
@@ -377,7 +397,29 @@ pub(crate) fn layout_block_level(
     ctx: &Ctx<'_>,
     node: NodeId,
     c: &Constraint,
-    forced_width: Option<f64>,
+    forced: Forced,
+) -> Placed {
+    let key = LayoutKey {
+        node,
+        cb_width: c.cb_width.to_bits(),
+        cb_height: c.cb_height.map(f64::to_bits),
+        root: c.root,
+        forced_width: forced.width.map(f64::to_bits),
+        forced_height: forced.height.map(f64::to_bits),
+    };
+    if let Some(hit) = ctx.layouts.borrow().get(&key) {
+        return hit.clone();
+    }
+    let placed = layout_block_level_uncached(ctx, node, c, forced);
+    ctx.layouts.borrow_mut().insert(key, placed.clone());
+    placed
+}
+
+fn layout_block_level_uncached(
+    ctx: &Ctx<'_>,
+    node: NodeId,
+    c: &Constraint,
+    forced: Forced,
 ) -> Placed {
     let style = ctx.style(node);
     let display = style.display();
@@ -421,7 +463,7 @@ pub(crate) fn layout_block_level(
         let w = max_width.map_or(w, |m| w.min(m));
         w.max(min_width)
     };
-    let specified_width = match forced_width {
+    let specified_width = match forced.width {
         Some(w) => Some((w - pb_h).max(0.0)),
         None => style.px("width", cbw).map(to_content_w),
     };
@@ -433,7 +475,7 @@ pub(crate) fn layout_block_level(
             (clamped, clamped != available)
         }
     };
-    if width_determined && forced_width.is_none() {
+    if width_determined && forced.width.is_none() {
         let free = cbw - content_width - pb_h - margin_left - margin_right;
         match (auto_left, auto_right) {
             (true, true) => {
@@ -450,7 +492,10 @@ pub(crate) fn layout_block_level(
 
     // ---- vertical: height ----
     let height_base = c.cb_height.unwrap_or(f64::NAN);
-    let specified_height = style.px("height", height_base).map(to_content_h);
+    let specified_height = match forced.height {
+        Some(h) => Some((h - pb_v).max(0.0)),
+        None => style.px("height", height_base).map(to_content_h),
+    };
     let min_height = style
         .px("min-height", height_base)
         .map(to_content_h)
@@ -490,6 +535,24 @@ pub(crate) fn layout_block_level(
         bottom_pass = Margin::default();
         pending_abs = Vec::new();
         extent = 0.0;
+        empty = false;
+    } else if matches!(display, Display::Flex | Display::InlineFlex) {
+        let flex = crate::flex::layout_flex(
+            ctx,
+            node,
+            &crate::flex::FlexInput {
+                content_width,
+                definite_height: child_cb_height,
+                min_height,
+                max_height,
+            },
+        );
+        children = flex.children;
+        content_flow_height = flex.height;
+        top_pass = Margin::default();
+        bottom_pass = Margin::default();
+        pending_abs = flex.pending_abs;
+        extent = flex.extent;
         empty = false;
     } else {
         let flow = layout_flow(
@@ -761,7 +824,15 @@ fn layout_abs(ctx: &Ctx<'_>, pending: &PendingAbs, cb: (f64, f64, f64, f64)) -> 
         root: false,
     };
     // Laid out as a block of the computed width; `Display` is blockified.
-    let mut placed = layout_block_level(ctx, pending.node, &constraint, Some(content_width + pb_h));
+    let mut placed = layout_block_level(
+        ctx,
+        pending.node,
+        &constraint,
+        Forced {
+            width: Some(content_width + pb_h),
+            height: None,
+        },
+    );
     let mut fragment = placed.fragment;
     if let Some(h) = forced_height {
         fragment.height = clamp_h(h) + pb_v;
@@ -813,13 +884,15 @@ pub(crate) fn layout_block(
         viewport_height: 720.0,
         root_font_size: 16.0,
         intrinsic: Default::default(),
+        content_widths: Default::default(),
+        layouts: Default::default(),
     };
     let c = Constraint {
         cb_width: available_width,
         cb_height: None,
         root: false,
     };
-    layout_block_level(&ctx, node, &c, None).fragment
+    layout_block_level(&ctx, node, &c, Forced::default()).fragment
 }
 
 /// Lays out the root element against the viewport.
@@ -838,13 +911,15 @@ pub(crate) fn layout_root(
         viewport_height,
         root_font_size,
         intrinsic: Default::default(),
+        content_widths: Default::default(),
+        layouts: Default::default(),
     };
     let c = Constraint {
         cb_width: viewport_width,
         cb_height: Some(viewport_height),
         root: true,
     };
-    layout_block_level(&ctx, node, &c, None).fragment
+    layout_block_level(&ctx, node, &c, Forced::default()).fragment
 }
 
 /// Apply the list's scroll position and clip option hit/AX bounds to its content.

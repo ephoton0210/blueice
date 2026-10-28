@@ -20,6 +20,12 @@ pub(crate) struct Ctx<'a> {
     pub root_font_size: f64,
     /// Memoised `(min-content, max-content)` widths, by node, for one pass.
     pub intrinsic: std::cell::RefCell<HashMap<NodeId, (f64, f64)>>,
+    /// Memoised content-only widths (ignoring the node's own `width`).
+    pub content_widths: std::cell::RefCell<HashMap<NodeId, (f64, f64)>>,
+    /// Block-level layouts already computed in this pass, by node and
+    /// constraint: layout is a pure function of both, and flex measuring
+    /// would otherwise redo nested subtrees at every level.
+    pub layouts: std::cell::RefCell<HashMap<crate::block::LayoutKey, crate::block::Placed>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

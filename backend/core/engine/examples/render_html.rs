@@ -4,8 +4,9 @@
 
 //! Renders an HTML file to a PNG with the same `render` + `rasterize` path the
 //! engine tests use, for comparing a saved page against a browser by eye:
-//! `cargo run -p blueice-engine --example render_html -- page.html out.png [width]`
-//! (width defaults to 1280). Linked stylesheets are not fetched.
+//! `cargo run -p blueice-engine --example render_html -- page.html out.png [width] [sheet.css...]`
+//! (width defaults to 1280). Any further arguments are stylesheet files applied
+//! before the page's own `<style>` tags; linked stylesheets are not fetched.
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -17,7 +18,16 @@ fn main() {
     let width: f64 = args
         .get(3)
         .map_or(1280.0, |w| w.parse().expect("numeric viewport width"));
-    let pixmap = blueice_raster::rasterize(&blueice_engine::render(&html, "", width));
+    let css: String = args
+        .iter()
+        .skip(4)
+        .map(|path| std::fs::read_to_string(path).expect("readable stylesheet"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let started = std::time::Instant::now();
+    let frame = blueice_engine::render(&html, &css, width);
+    eprintln!("laid out and painted in {:?}", started.elapsed());
+    let pixmap = blueice_raster::rasterize(&frame);
     eprintln!("{}x{}", pixmap.width, pixmap.height);
     pixmap
         .save_png(std::path::Path::new(output))

@@ -18,6 +18,7 @@
 
 mod block;
 mod ctx;
+mod flex;
 mod fragment;
 mod inline;
 mod intrinsic;

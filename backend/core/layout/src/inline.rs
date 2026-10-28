@@ -13,7 +13,7 @@
 //! including the container's strut; `text-align` and `text-indent` place the
 //! content on the line.
 
-use crate::block::{layout_block_level, Constraint, PendingAbs};
+use crate::block::{layout_block_level, Constraint, Forced, PendingAbs};
 use crate::ctx::{Ctx, Display, Style};
 use crate::fragment::{Fragment, FragmentKind};
 use blueice_dom::{NodeData, NodeId};
@@ -356,7 +356,15 @@ fn atomic_for(ctx: &Ctx<'_>, node: NodeId, cb_width: f64) -> Atomic {
             let available = (cb_width - margin_left - margin_right).max(0.0);
             max_content.min(available.max(min_content))
         });
-        let placed = layout_block_level(ctx, node, &constraint, Some(width));
+        let placed = layout_block_level(
+            ctx,
+            node,
+            &constraint,
+            Forced {
+                width: Some(width),
+                height: None,
+            },
+        );
         pending = placed.pending_abs;
         line_baseline = last_baseline(&placed.fragment);
         fragment = placed.fragment;
@@ -376,6 +384,23 @@ fn atomic_for(ctx: &Ctx<'_>, node: NodeId, cb_width: f64) -> Atomic {
         fragment,
         pending,
     }
+}
+
+/// The baseline of the first line box inside `fragment`, from its top edge.
+pub(crate) fn first_baseline(fragment: &Fragment) -> Option<f64> {
+    for child in &fragment.children {
+        if matches!(child.kind, FragmentKind::Line) {
+            if let Some(b) = child.baseline {
+                return Some(child.y + b);
+            }
+        }
+        if matches!(child.kind, FragmentKind::Block) && !child.positioned {
+            if let Some(b) = first_baseline(child) {
+                return Some(child.y + b);
+            }
+        }
+    }
+    None
 }
 
 /// The baseline of the last line box inside `fragment`, from its top edge.
