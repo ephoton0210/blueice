@@ -280,6 +280,45 @@ and `AbortSignal` cases, the full `cargo test --workspace`, clippy with
 `-D warnings`, and the Test262 inventory run recorded in
 `phase-13-bluejs-engine/TEST262_ANALYSIS_REPORT.md`.
 
+## Real-site layout gap (measured 2026-10-28)
+
+Rendering `https://www.google.com` and `https://www.cloudflare.com` (HTML saved
+with a desktop user agent, laid out at 1280 px by `render`, pixels by
+`blueice_raster::rasterize`) shows the engine is still the Phase 3 block/inline
+skeleton, which makes real-page BlueJS acceptance unreliable: scripts mutate
+pages whose layout is wrong. Measured, not inferred:
+
+| Page | Observed | Cause |
+| --- | --- | --- |
+| Google | CSS source printed as text; one stacked column; black rectangles for SVG; no search box layout | `<style>` inside a `<span>` leaked into the line (fixed 2026-10-28, `collect_words` skips `display:none` descendants); no flex, positioning or `var()`/`calc()`; no SVG |
+| Cloudflare | Entirely unstyled, 12,272 px tall, empty boxes for images | all site CSS is in 4 external `<link rel=stylesheet>` files, which core never fetches; no images/SVG |
+
+What the two pages' inline CSS uses (counts of declarations): Google `display:flex`
+92, `none` 56, `block` 32, `inline-block` 27, `-webkit-box` 11, `inline-flex` 4,
+`table-cell` 2; `position` absolute 58 / relative 52 / fixed 12 / sticky 1;
+`var(` 324, `calc(` 26, `@media` 39, `@keyframes` 24, `transform` 56, `z-index` 37,
+`overflow` 72, `float` 8, `:not(` 37. Cloudflare's inline CSS is small (10 KB); its
+64 `<img>`/140 inline `<svg>` and external sheets carry the rest.
+
+Order of work (each step test-first, with a fixture rendered to pixels):
+
+1. **External stylesheets**: fetch `<link rel=stylesheet>` (and `@import`) through
+   `blueice-net`, with the same URL review as other subresources, a size/time
+   bound and a failure that leaves the document styled by what loaded.
+2. **Computed values**: custom properties (`var()` with fallback and inheritance),
+   `calc()`/`min()`/`max()`/`clamp()`, viewport units, `inherit`/`initial`.
+3. **Box generation and layout**: `inline-block`, `overflow`, `position`
+   (relative, absolute, fixed, sticky) with containing blocks, `z-index`
+   stacking, `float`, flexbox (`flex`/`inline-flex`, `-webkit-box`), then
+   `table`/`table-cell` and grid.
+4. **Replaced content**: `<img>` fetch/decode/paint and inline `<svg>` raster
+   (Phase 21 owns the general pipeline; this phase needs a minimum).
+
+Acceptance for this gap: the two pages above render with their text readable in
+the intended regions, the search field and navigation visible and clickable, and
+a Chromium side-by-side recorded (Phase 15 differential harness) with the known
+remaining differences listed, not hidden. It does not claim site compatibility.
+
 ## Non-goals
 
 - Raw HTTP/DOM handles for AI clients; the MCP surface stays typed and

@@ -91,6 +91,12 @@ pub fn collect_words(
             }
         }
         NodeData::Element { .. } => {
+            // A nested element that generates no box (`<style>`/`<script>`
+            // inside a `<span>`, `[hidden]`, author `display: none`) must not
+            // leak its text into the line.
+            if node != style_node && styles.get(&node).is_some_and(|s| s.display == "none") {
+                return;
+            }
             for child in doc.children(node) {
                 collect_words(doc, child, styles, node, out);
             }
@@ -289,6 +295,48 @@ mod tests {
         assert_eq!(
             words[1].style_node, b,
             "word inside <b> is tagged with <b>, not <p>"
+        );
+    }
+
+    #[test]
+    fn collect_words_skips_nested_elements_that_generate_no_box() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let p = doc.create_node(NodeData::Element {
+            tag_name: "p".to_string(),
+            attributes: vec![],
+        });
+        doc.append_child(root, p);
+        let before = doc.create_node(NodeData::Text {
+            data: "before".to_string(),
+        });
+        doc.append_child(p, before);
+        let span = doc.create_node(NodeData::Element {
+            tag_name: "span".to_string(),
+            attributes: vec![],
+        });
+        doc.append_child(p, span);
+        let style = doc.create_node(NodeData::Element {
+            tag_name: "style".to_string(),
+            attributes: vec![],
+        });
+        doc.append_child(span, style);
+        let css = doc.create_node(NodeData::Text {
+            data: ".a{color:red}".to_string(),
+        });
+        doc.append_child(style, css);
+        let after = doc.create_node(NodeData::Text {
+            data: "after".to_string(),
+        });
+        doc.append_child(span, after);
+
+        let ua = blueice_css::ua_stylesheet();
+        let styles = blueice_css::cascade(&doc, &[(blueice_css::Origin::Ua, &ua)]);
+        let mut words = Vec::new();
+        collect_words(&doc, p, &styles, p, &mut words);
+        assert_eq!(
+            words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>(),
+            vec!["before", "after"]
         );
     }
 
