@@ -690,6 +690,16 @@ impl Parser {
     }
 
     pub(super) fn consume(&mut self, text: &str) -> bool {
+        // Rescan a generic closer only in a type-closing context. Runtime
+        // comparisons keep their original >= token and source provenance.
+        if text == ">" && self.peek(">=") {
+            let mut equal = self.current().clone();
+            equal.text = "=".into();
+            equal.start += 1;
+            self.tokens[self.index].text = ">".into();
+            self.tokens[self.index].end -= 1;
+            self.tokens.insert(self.index + 1, equal);
+        }
         if self.peek(text) {
             self.bump();
             true

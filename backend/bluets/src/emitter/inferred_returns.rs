@@ -13,6 +13,7 @@ pub(super) fn declaration_module(checked: &CheckedModule, order: &literal_order:
         &mut module.declarations,
         &checked.inferred_returns,
         &checked.inferred_parameters,
+        &checked.inferred_fields,
         order,
     );
     module
@@ -22,14 +23,17 @@ fn apply(
     declarations: &mut [Declaration],
     inferred: &BTreeMap<usize, Type>,
     parameters: &BTreeMap<usize, Type>,
+    fields: &BTreeMap<usize, Type>,
     order: &literal_order::Order,
 ) {
     for declaration in declarations {
         match declaration {
-            Declaration::Function(function) if function.return_type.is_none() => {
-                function.return_type = inferred
-                    .get(&function.span.start)
-                    .map(|value| order.function(function, value));
+            Declaration::Function(function) => {
+                if function.return_type.is_none() {
+                    function.return_type = inferred
+                        .get(&function.span.start)
+                        .map(|value| order.function(function, value));
+                }
                 for parameter in &mut function.parameters {
                     if parameter.annotation.is_none() {
                         parameter.annotation = parameters.get(&parameter.span.start).cloned();
@@ -38,6 +42,11 @@ fn apply(
             }
             Declaration::Class(class) => {
                 for member in &mut class.members {
+                    if let Some(field) = &mut member.field {
+                        if field.annotation.is_none() && field.declared_type().is_none() {
+                            field.annotation = fields.get(&field.span.start).cloned();
+                        }
+                    }
                     if let Some(method) = &mut member.method {
                         for parameter in &mut method.parameters {
                             if parameter.annotation.is_none() {
@@ -63,7 +72,7 @@ fn apply(
                 }
             }
             Declaration::Namespace(namespace) => {
-                apply(&mut namespace.body, inferred, parameters, order)
+                apply(&mut namespace.body, inferred, parameters, fields, order)
             }
             _ => {}
         }

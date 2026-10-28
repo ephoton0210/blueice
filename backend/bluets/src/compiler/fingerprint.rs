@@ -18,6 +18,8 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     };
     add(LANGUAGE_VERSION);
     add(crate::diagnostic::DIAGNOSTICS_VERSION);
+    add(super::isolated_declarations::VERSION);
+    add(crate::emitter::DECLARATION_MAP_VERSION);
     add(crate::checker::FLOW_VERSION);
     add(crate::checker::inference::VERSION);
     add(crate::symbol_keys::VERSION);
@@ -61,7 +63,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     });
     add(options.module_kind.as_str());
     add("bluets-output-options/1");
-    add("bluets-declaration-options/1");
+    add("bluets-declaration-options/2");
     if options.declaration {
         add(crate::emitter::LITERAL_ORDER_VERSION);
     }

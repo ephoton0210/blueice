@@ -294,6 +294,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "gt10_import_types" => "gt10_import_types/reference.json",
         "gt9_classes" => "gt9_classes/reference.json",
         "gd1_declarations" => "gd1_declarations/reference.json",
+        "gd2_declaration_maps" => "gd2_declaration_maps/reference.json",
         "gm1_resolver_compositions" => "gm1_resolver_compositions/reference.json",
         "gt3_operators" => "gt3_operators/reference.json",
         "gt1_declaration_order" => "gt1_declaration_order/reference.json",

@@ -43,3 +43,27 @@ pub(super) fn declaration_union(value: Type, fresh: bool) -> Type {
     }
     value
 }
+
+/// Broad primitive element unions use the native allocation order. Explicit
+/// array annotations and regular literal-member unions keep their source order.
+pub(super) fn inferred_array(mut value: Type) -> Type {
+    if let Type::Array(element) = &mut value {
+        if let Type::Union(parts) = element.as_mut() {
+            if parts.iter().all(|part| {
+                matches!(
+                    part,
+                    Type::String | Type::Number | Type::Boolean | Type::Null | Type::Undefined
+                )
+            }) {
+                parts.sort_by_key(|part| match part {
+                    Type::String => 0,
+                    Type::Number => 1,
+                    Type::Boolean => 2,
+                    Type::Null => 8,
+                    _ => 9,
+                });
+            }
+        }
+    }
+    value
+}

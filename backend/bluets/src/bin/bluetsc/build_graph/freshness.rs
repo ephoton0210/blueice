@@ -10,8 +10,8 @@ use std::io::Write;
 #[path = "freshness/resolution_inputs.rs"]
 mod resolution_inputs;
 
-// G-D1 changes inference, declaration names and output: old state must rebuild.
-const STATE_VERSION: u8 = 20;
+// G-D2 changes declaration provenance, isolated checks and output signatures.
+const STATE_VERSION: u8 = 21;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 

@@ -33,14 +33,15 @@ pub(crate) use decorator_types::replacement_type as decorator_replacement_type;
 mod properties;
 mod scopes;
 pub(crate) use scopes::emission::{
-    lexical_emission, module_value_reference_positions, runtime_import_uses, LexicalEmission,
+    lexical_emission, module_value_reference_positions, non_namespace_value_ranges,
+    runtime_import_uses, LexicalEmission,
 };
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
-pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v4";
-pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v8";
+pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v5";
+pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v9";
 pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/2";
 pub(crate) const OVERLOAD_CHAINS_VERSION: &str = "bluets-overload-chains/1";
-pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/2";
+pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/3";
 mod computed_keys;
 pub(crate) mod tuple_compositions;
 mod type_operators;
@@ -91,6 +92,7 @@ pub struct CheckedModule {
     /// Return types inferred without changing source annotations or runtime policy.
     pub(crate) inferred_returns: BTreeMap<usize, Type>,
     pub(crate) inferred_parameters: BTreeMap<usize, Type>,
+    pub(crate) inferred_fields: BTreeMap<usize, Type>,
     /// Fresh literal call results keep their precision for checking, but widen
     /// mutable declaration unions just as literal initializers do.
     pub(crate) fresh_variables: BTreeSet<usize>,

@@ -25,9 +25,8 @@
 //! lines and maps do not move. A body with nothing at run time, and an ambient
 //! one, is removed.
 //!
-//! A reference is rewritten from the tokens. That is only safe when no local
-//! shadows the variable, so a parameter, local, catch binding or pattern with
-//! the name of an exported variable it could see is refused instead.
+//! Reference edits resolve lexical binding identities, so local declarations
+//! and parameters keep their own values even when they share an export's name.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -51,6 +50,7 @@ enum Scope {
 
 struct Walk<'a> {
     module: &'a Module,
+    project: &'a crate::Project,
     tokens: &'a [Token],
     exports: &'a NamespaceExports,
     edits: &'a mut Vec<TextEdit>,
@@ -62,6 +62,7 @@ struct Walk<'a> {
 
 pub(super) fn lower_namespaces(
     module: &Module,
+    project: &crate::Project,
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
@@ -88,6 +89,7 @@ pub(super) fn lower_namespaces(
         .collect();
     let mut walk = Walk {
         module,
+        project,
         tokens: &tokens,
         exports: &exports,
         edits,
@@ -241,7 +243,7 @@ impl Walk<'_> {
         let range = (innermost.header_span.end, innermost.closing_span.start);
         let body = &innermost.body;
 
-        let references = self.exports.references(
+        let references = self.exports.references_lexical(
             self.module,
             self.tokens,
             &BodyInput {
@@ -409,6 +411,12 @@ impl Walk<'_> {
             .map(|edit| (edit.start, edit.end))
             .collect();
         covered.extend_from_slice(nested);
+        covered.extend(crate::checker::non_namespace_value_ranges(
+            self.project,
+            self.module,
+            &references.keys().cloned().collect(),
+            self.options.limits.max_type_expansions,
+        ));
         let members = class_member_names(self.module, body);
         let start = self.token_at(range.0);
         let end = self.token_at(range.1);

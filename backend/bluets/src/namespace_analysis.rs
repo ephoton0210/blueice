@@ -251,6 +251,26 @@ impl NamespaceExports {
         tokens: &[Token],
         input: &BodyInput<'_>,
     ) -> Result<BTreeMap<String, String>, Diagnostic> {
+        self.references_with_policy(module, tokens, input, true)
+    }
+
+    /// The emitter separately resolves every edit through lexical identities.
+    pub(crate) fn references_lexical(
+        &self,
+        module: &Module,
+        tokens: &[Token],
+        input: &BodyInput<'_>,
+    ) -> Result<BTreeMap<String, String>, Diagnostic> {
+        self.references_with_policy(module, tokens, input, false)
+    }
+
+    fn references_with_policy(
+        &self,
+        module: &Module,
+        tokens: &[Token],
+        input: &BodyInput<'_>,
+        validate_shadowing: bool,
+    ) -> Result<BTreeMap<String, String>, Diagnostic> {
         let BodyInput {
             own_path,
             param,
@@ -296,7 +316,9 @@ impl NamespaceExports {
             }
         }
         let nested = nested_spans(body);
-        refuse_shadowing(module, tokens, body, range, &nested, &references, namespace)?;
+        if validate_shadowing {
+            refuse_shadowing(module, tokens, body, range, &nested, &references, namespace)?;
+        }
         Ok(references)
     }
 }

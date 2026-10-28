@@ -153,6 +153,7 @@ pub(crate) fn check_incremental(
         let fresh_variables = checker.inferred_fresh_variables();
         let inferred_returns = checker.inferred_return_types();
         let inferred_parameters = checker.inferred_parameter_types();
+        let inferred_fields = checker.inferred_field_types();
         let class_expression_surfaces = checker.class_expression_surfaces();
         diagnostics.extend(checker.diagnostics);
         let symbols = checker.symbols;
@@ -172,6 +173,7 @@ pub(crate) fn check_incremental(
                 symbols,
                 inferred_returns,
                 inferred_parameters,
+                inferred_fields,
                 fresh_variables,
                 class_expression_surfaces,
                 namespace_exports: exported_namespaces,

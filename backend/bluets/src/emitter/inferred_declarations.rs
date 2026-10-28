@@ -106,6 +106,7 @@ impl<'a> Context<'a> {
                 expanded,
                 checked.fresh_variables.contains(&variable.span.start),
             );
+            let expanded = super::inference_literals::inferred_array(expanded);
             let value = &expanded;
             let value = if variable.kind == VariableKind::Const
                 && matches!(value, Type::Named { name, arguments } if name == "symbol" && arguments.is_empty())

@@ -427,13 +427,6 @@ pub(super) fn emit_class_declaration(
                 output,
                 options,
             );
-            let Some(value) = field.declared_type() else {
-                return Err(Diagnostic::error(
-                    DiagnosticCode::UnsupportedSyntax,
-                    field.span.clone(),
-                    "declaration output requires a class field type",
-                ));
-            };
             output.push_str("    ");
             output.push_str(visibility_prefix(field.visibility));
             if member.abstract_modifier.is_some() {
@@ -457,6 +450,13 @@ pub(super) fn emit_class_declaration(
                 output.push_str(";\n");
                 continue;
             }
+            let Some(value) = field.declared_type() else {
+                return Err(Diagnostic::error(
+                    DiagnosticCode::UnsupportedSyntax,
+                    field.span.clone(),
+                    "declaration output requires a class field type",
+                ));
+            };
             // TypeScript prints a `readonly` field with a literal initializer
             // and no annotation as its literal value, not as a type.
             if let (true, None, Type::Literal(literal)) =

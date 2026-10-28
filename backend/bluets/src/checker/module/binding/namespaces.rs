@@ -90,6 +90,7 @@ struct BodyRun {
     published: Published,
     inferred_returns: BTreeMap<usize, Type>,
     inferred_parameters: BTreeMap<usize, Type>,
+    inferred_fields: BTreeMap<usize, Type>,
 }
 
 /// What a body declares, and which of it the namespace exports.
@@ -205,6 +206,10 @@ impl ModuleChecker<'_> {
             .parameters
             .borrow_mut()
             .extend(run.inferred_parameters);
+        self.return_inference
+            .fields
+            .borrow_mut()
+            .extend(run.inferred_fields);
         self.diagnostics.extend(run.diagnostics);
         for mut symbol in run.symbols {
             symbol.name = join(&path, &symbol.name);
@@ -225,6 +230,10 @@ impl ModuleChecker<'_> {
             .parameters
             .borrow_mut()
             .extend(run.inferred_parameters);
+        self.return_inference
+            .fields
+            .borrow_mut()
+            .extend(run.inferred_fields);
         self.diagnostics.extend(run.diagnostics);
         for symbol in run.symbols {
             if let Some(bound) = self
@@ -367,6 +376,7 @@ impl ModuleChecker<'_> {
             published,
             inferred_returns: sub.inferred_return_types(),
             inferred_parameters: sub.inferred_parameter_types(),
+            inferred_fields: sub.inferred_field_types(),
         }
     }
 

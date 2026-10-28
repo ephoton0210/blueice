@@ -9,6 +9,64 @@ use crate::parser::TextEdit;
 
 mod jsx;
 
+/// Cover declarations and references resolved to local/module bindings before
+/// rewriting namespace values, including references inside template literals.
+pub(crate) fn non_namespace_value_ranges(
+    project: &Project,
+    module: &Module,
+    names: &BTreeSet<String>,
+    budget: usize,
+) -> Vec<(usize, usize)> {
+    let model = ScopeModel::new(
+        project,
+        module,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        None,
+        None,
+        budget,
+    );
+    let permitted = model
+        .references
+        .iter()
+        .filter(|r| r.meaning == Meaning::Value)
+        .filter_map(|r| {
+            let root = r.name.split('.').next()?;
+            if !names.contains(root) {
+                return None;
+            }
+            let (owner, _) = model.resolve(r.scope, root, Meaning::Value)?;
+            let scope = &model.scopes[owner];
+            (!scope.namespace_identity.is_empty()
+                && scope.parent.is_none_or(|parent| {
+                    model.scopes[parent].namespace_identity != scope.namespace_identity
+                }))
+            .then_some(r.span.start)
+        })
+        .collect::<BTreeSet<_>>();
+    let mut excluded = model
+        .tokens
+        .iter()
+        .filter(|t| names.contains(&t.text) && !permitted.contains(&t.start))
+        .map(|t| (t.start, t.end))
+        .collect::<Vec<_>>();
+    excluded.extend(
+        model
+            .references
+            .iter()
+            .filter(|r| {
+                r.meaning == Meaning::Value
+                    && r.name
+                        .split('.')
+                        .next()
+                        .is_some_and(|name| names.contains(name))
+                    && !permitted.contains(&r.span.start)
+            })
+            .map(|r| (r.span.start, r.span.end)),
+    );
+    excluded
+}
+
 /// Source positions of value references resolved to a module binding. Local
 /// parameters, blocks and class self names retain their lexical identities.
 pub(crate) fn module_value_reference_positions(

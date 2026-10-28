@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-10-28).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 14,644 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 15,042 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 14,046/14,053 (99.9502%); 3 open, 4 refused observations |
-| Separate controls | 539 native-reference + 52 BlueTS owner = 591; excluded from direct agreement |
-| Case labels | 14,637 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 115 suites / 273 ignored Rust functions; not a case denominator |
-| Suite labels | 110 scoped closed, 1 open, 4 refused |
+| Direct agreement | 14,438/14,445 (99.9515%); 3 open, 4 refused observations |
+| Separate controls | 539 native-reference + 58 BlueTS owner = 597; excluded from direct agreement |
+| Case labels | 15,035 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 116 suites / 275 ignored Rust functions; not a case denominator |
+| Suite labels | 111 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 14,644 recorded case expectations pass; expected differences/refusals are not
+All 15,042 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:7dadd56b93991faf367c2998d88c23ebf94fc820`.
-Input graph SHA-256: `5575ed432769f6b08d7807b1016efe2d35395eefb93cbc9d0ada373efab8efd4`.
+Compiler/oracle source: `backend-tree:aa78e53136e7b27cc8e8f1826266b888f577b5ed`.
+Input graph SHA-256: `31eca41227834e33af29d809479929895d478851d891dd383ece10a3de2c57d4`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -44,8 +44,8 @@ Older dated measurements below retain their original scope; they are not this cu
 **Current work (2026-10-28):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, G-T1
-(both stages), G-T2–G-T10, G-M1 and G-D1 are complete for their scopes below;
-9 packages remain unchecked. Next: G-D2.**
+(both stages), G-T2–G-T10, G-M1 and G-D1–G-D2 are complete for their scopes below;
+8 packages remain unchecked. Next: G-M2.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -582,13 +582,47 @@ Existing measured behavior is reused; it is not implemented again.
     complete evidence are recorded in [PLAN](PLAN.md#phase-l--g-d1-implementation).
     The broader G-D1 row stays open; full parity remains OFF.
 
-- [ ] **G-D2 — Non-scalar declaration maps and isolated-declaration checking.**
+- [x] **G-D2 — Non-scalar declaration maps and isolated-declaration checking.**
   - **Scope:** class, generic, namespace, inferred and merged declaration maps,
     plus their `isolatedDeclarations`/declaration-only output combinations.
   - **Pass:** complete decoded maps, names/source metadata, declarations and artifact
     inventories match native fixtures; unsupported scalar-only refusals are removed
     only for implemented forms. CLI output-root/symlink and corrupt-map bounds stay
     enforced; accepted declarations compile in the native consumer.
+  - **Frozen minimum (2026-10-28):** `gd2_declaration_maps/cases.json` and
+    `reference.json` name **31 forms / 392 native observations** before production
+    changes: 18 class/generic/interface/alias/namespace/merged/inferred/imported/
+    Unicode map forms with source-rejected pairs, plus 13 isolated-inference
+    boundaries. Cross CommonJS/ESNext, declaration-only/runtime output and
+    isolated on/off under strict ES2022 with explicit ES2022 libraries and no
+    skipped declarations; include field assignment mode, CRLF, declarationDir,
+    mapRoot/sourceRoot and Unicode coordinates in their named configurations.
+  - **Acceptance:** all verdicts and complete primary/related diagnostics with
+    original UTF-16 positions agree. The 196 accepted graphs contain **204 exact
+    declaration files / 204 complete decoded declaration maps / 4,824 segments**;
+    compare every metadata field, artifact key and retained import. Require **392
+    separate consumer observations** and **98 actual Node executions**, selected
+    inputs and ES2022 syntax. Raw VLQ spelling and sampled mappings are not the
+    comparator. The metadata form's JS maps are inventory-only here; broader JS
+    mapping precision remains G-E5.
+  - **Owner/gates:** six separate controls cover charged map work, canonical
+    source/declaration authority, output-root/symlink confinement, atomic failed
+    publication, cached/fresh/repeated map-symbol stability, and bounded rejection
+    of corrupt maps. Preserve all **14,644 previous case identities and
+    classifications** and all old native fixture bytes. Complete focused/broad
+    preflight, immutable full-cohort measurement, unfiltered ordinary two-crate
+    tests, format, warnings-denied Clippy and all source/case/tool/status audits
+    before checking this item or committing implementation with matching data.
+  - **Completion (2026-10-28):** all 392 native observations, 204 byte-exact
+    declarations, 204 complete decoded declaration maps / 4,824 segments,
+    392 consumer observations, 98 actual executions and six owner controls pass.
+    The immutable cohort passes **116 suites / 643 tests / all 275 ignored
+    functions**; the unfiltered ordinary gate passes **176 targets / 1,390
+    tests**. All 14,644 previous case identities/classifications and old native
+    fixture bytes remain unchanged. Format, warnings-denied Clippy and all
+    source/case/tool/status audits pass. Backend tree `aa78e531` and complete
+    evidence are in [PLAN](PLAN.md#phase-l--g-d2-implementation). The broader
+    G-D2 row stays open; full parity remains OFF.
 
 - [ ] **G-M2 — Native build continuation, state interchange and watch integration.**
   - **Scope:** default `--build` error continuation (distinct from

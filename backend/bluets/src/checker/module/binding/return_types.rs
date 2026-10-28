@@ -24,11 +24,33 @@ impl ModuleChecker<'_> {
         self.values = scope.clone();
         for declaration in &self.module.declarations {
             if let Declaration::Function(function) = declaration {
-                if function.return_type.is_some() || function.overload || function.declared {
+                if function.overload || function.declared {
+                    continue;
+                }
+                let parameters = self.return_parameters(&function.parameters, &scope);
+                if function.return_type.is_some() {
+                    let overloaded = self.module.declarations.iter().any(|item| {
+                        matches!(item, Declaration::Function(other)
+                            if other.name == function.name && other.overload)
+                    });
+                    if !overloaded {
+                        if let Some(signatures) = self.functions.get_mut(&function.name) {
+                            for signature in signatures {
+                                for (bound, inferred) in
+                                    signature.parameters.iter_mut().zip(&parameters)
+                                {
+                                    // Retain canonical rest aliases and explicit
+                                    // binders; only fill newly inferred defaults.
+                                    if bound.annotation.is_none() {
+                                        bound.annotation = inferred.annotation.clone();
+                                    }
+                                }
+                            }
+                        }
+                    }
                     continue;
                 }
                 let result = self.inferred_function_result(function, &scope, false);
-                let parameters = self.return_parameters(&function.parameters, &scope);
                 if !self.module.declarations.iter().any(|declaration| {
                     matches!(declaration, Declaration::Function(other) if other.name == function.name && other.overload)
                 }) {
@@ -90,6 +112,10 @@ impl ModuleChecker<'_> {
                     let value = self.infer_expression(tokens, &self.values);
                     if !matches!(value, Type::Unknown | Type::Any) {
                         field.annotation = Some(return_inference::widen(value));
+                        self.return_inference.fields.borrow_mut().insert(
+                            field.span.start,
+                            field.annotation.clone().expect("inferred field"),
+                        );
                     }
                 }
             }

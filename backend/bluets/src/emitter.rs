@@ -30,6 +30,7 @@ mod classes;
 mod commonjs;
 mod computed_fields;
 mod declaration_maps;
+pub(crate) use declaration_maps::VERSION as DECLARATION_MAP_VERSION;
 mod declarations;
 mod decorators;
 mod enums;
@@ -461,7 +462,7 @@ fn emit_javascript(
     };
     class_lowering::lower_class_members(module, options, &mut edits)?;
     enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
-    namespaces::lower_namespaces(module, options, &mut edits)?;
+    namespaces::lower_namespaces(module, project, options, &mut edits)?;
     if options.experimental_decorators {
         legacy_decorators::lower_legacy_decorators(module, options, &mut edits)?;
     } else {

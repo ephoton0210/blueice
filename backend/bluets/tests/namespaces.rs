@@ -506,13 +506,21 @@ fn a_reference_to_a_member_another_block_exported_goes_through_the_object() {
 }
 
 #[test]
-fn what_could_shadow_an_exported_variable_is_refused() {
-    for source in [
-        "namespace N { export const a: number = 1; export function f(a: number): number { return a; } }",
-        "namespace N { export const a: number = 1; export function f(): number { const a: number = 2; return a; } }",
-        "namespace N { export let a: number = 1, b: number = 2; }",
-        "namespace N { export const a: number = 1; export const g = (a: number): number => a; }",
+fn namespace_shadowed_locals_keep_their_own_values() {
+    for (source,call,expected) in [
+        ("namespace N { export const a: number = 1; export function f(a: number): number { return a; } }","N.f(42)","[1,42]\n"),
+        ("namespace N { export const a: number = 1; export function f(): number { const a: number = 2; return a; } }","N.f()","[1,2]\n"),
+        ("namespace N { export const a: number = 1; export const g = (a: number): number => a; }","N.g(42)","[1,42]\n"),
     ] {
+        let output=emit(source);
+        let script=format!("{output}\nconsole.log(JSON.stringify([N.a,{call}]));");
+        let node=std::env::var_os("BLUEICE_NODE").unwrap_or_else(||"node".into());
+        let result=std::process::Command::new(node).args(["-e",&script]).output().unwrap();
+        assert!(result.status.success(),"{source}: {result:?}");
+        assert_eq!(String::from_utf8_lossy(&result.stdout),expected);assert!(result.stderr.is_empty());
+    }
+    {
+        let source = "namespace N { export let a: number = 1, b: number = 2; }";
         let compiled = compile(
             ENTRY,
             &MapLoader::from([ModuleSource::new(ENTRY, source)]),

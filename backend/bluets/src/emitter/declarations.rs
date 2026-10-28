@@ -532,6 +532,22 @@ fn declaration_type_to_ts(value: &Type) -> String {
 }
 
 fn declaration_alias_to_ts(value: &Type, source: &str, options: &CompilerOptions) -> String {
+    if let Type::Union(parts) | Type::Intersection(parts) = value {
+        if parts
+            .iter()
+            .all(|part| matches!(part, Type::Record(_) | Type::CallableRecord { .. }))
+        {
+            return parts
+                .iter()
+                .map(|part| declaration_alias_to_ts(part, source, options))
+                .collect::<Vec<_>>()
+                .join(if matches!(value, Type::Union(_)) {
+                    " | "
+                } else {
+                    " & "
+                });
+        }
+    }
     callable_objects::render_alias(value, source, options)
         .unwrap_or_else(|| declaration_type_to_ts(value))
 }

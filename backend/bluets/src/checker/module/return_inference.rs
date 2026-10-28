@@ -18,6 +18,7 @@ pub(super) use completion::has_return;
 pub(super) struct ReturnInference {
     pub(super) results: RefCell<BTreeMap<usize, Type>>,
     pub(super) parameters: RefCell<BTreeMap<usize, Type>>,
+    pub(super) fields: RefCell<BTreeMap<usize, Type>>,
     pub(super) contexts: RefCell<BTreeMap<usize, Type>>,
     pub(super) fresh_results: RefCell<BTreeSet<usize>>,
     active: RefCell<Vec<Frame>>,
@@ -47,6 +48,9 @@ struct BodyResults {
 impl ModuleChecker<'_> {
     pub(in crate::checker) fn inferred_parameter_types(&self) -> BTreeMap<usize, Type> {
         self.return_inference.parameters.borrow().clone()
+    }
+    pub(in crate::checker) fn inferred_field_types(&self) -> BTreeMap<usize, Type> {
+        self.return_inference.fields.borrow().clone()
     }
 
     pub(super) fn return_parameters(

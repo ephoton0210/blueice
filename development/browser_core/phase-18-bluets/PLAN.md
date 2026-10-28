@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-28).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 14,644 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 15,042 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 14,046/14,053 (99.9502%); 3 open, 4 refused observations |
-| Separate controls | 539 native-reference + 52 BlueTS owner = 591; excluded from direct agreement |
-| Case labels | 14,637 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 115 suites / 273 ignored Rust functions; not a case denominator |
-| Suite labels | 110 scoped closed, 1 open, 4 refused |
+| Direct agreement | 14,438/14,445 (99.9515%); 3 open, 4 refused observations |
+| Separate controls | 539 native-reference + 58 BlueTS owner = 597; excluded from direct agreement |
+| Case labels | 15,035 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 116 suites / 275 ignored Rust functions; not a case denominator |
+| Suite labels | 111 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 14,644 recorded case expectations pass; expected differences/refusals are not
+All 15,042 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:7dadd56b93991faf367c2998d88c23ebf94fc820`.
-Input graph SHA-256: `5575ed432769f6b08d7807b1016efe2d35395eefb93cbc9d0ada373efab8efd4`.
+Compiler/oracle source: `backend-tree:aa78e53136e7b27cc8e8f1826266b888f577b5ed`.
+Input graph SHA-256: `31eca41227834e33af29d809479929895d478851d891dd383ece10a3de2c57d4`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -14890,3 +14890,220 @@ All finite G-D1 acceptance items are complete. Mark the checklist accordingly;
 and the direct runtime profile retain their recorded open scope, and full parity
 stays OFF. Implementation, frozen native authority, matching complete measured
 data and updated plans form one G-D1 commit, followed by the authorized push.
+
+## Phase L — G-D2 implementation
+
+### Native-first maps and isolated-declaration matrix — 2026-10-28
+
+Start from clean `9b8e8833f7a057621c8e95ef036d370048236772`. Before production
+changes, probe **31 forms / 392 observations** with pinned TypeScript 5.9.3,
+Acorn 8.15.0 and actual Node 26.7.0 execution. The 18 positive map forms include
+class fields/private field elision, generic classes and parameter properties/
+accessors, generic interfaces/aliases/functions, default/rest parameters, nested
+and merged namespaces, function/namespace and class/interface merges, merged
+interfaces, inferred records/returns/const tuples, annotated record unions,
+cross-module type imports and Unicode/JSDoc/CRLF metadata. Every such form has
+a source-rejected pair. Thirteen inference boundaries cover variable calls,
+class properties/methods/accessors, function returns, return/object shorthand,
+object spreads, mutable arrays, computed class keys, default expressions,
+parameter defaults and namespace members; each accepts with isolated checking
+off and rejects with the exact native isolated diagnostics when on.
+
+The configurations cross CommonJS/ESNext, runtime/declaration-only output and
+isolated on/off, with strict ES2022, explicit ES2022 libraries, no skip, owner
+outDir/declarationDir and noEmitOnError. Named forms add assignment-field mode,
+CRLF, relative sourceRoot/mapRoot and astral/CJK source text. Native probing
+first identifies TS5051 when sourceRoot lacks a JS sourceMap option; the metadata
+form explicitly enables it before the freeze. Only declaration maps are decoded
+and compared by this leaf; those JS-map artifact keys and execution remain
+checked, with broader JS mapping precision still owned by G-E5.
+
+Input SHA-256:
+`49750c8d6e76d71c35a36a498a8d808b96c4500eaf86c244a165155dc1877bcc`.
+Reference SHA-256:
+`71b044a104e5adfb7afe8218bec061ba2021e942d6b465bc92c8b49ab0f1f68f`.
+The native-only freeze (`/private/tmp/bluets-gd2-native-freeze.log`) reports
+**196 accepted / 196 rejected**, **204 declaration files**, **204 declaration
+maps / 4,824 complete decoded segments**, **392 consumer observations** and
+**98 successful Node executions**, all returning 42. Diagnostic code, full
+primary/related text and UTF-16 source positions are native authority; BlueTS
+supplies no expectations. Keep `BLUEICE_WRITE_GD2` unset after this freeze.
+
+The public CLI regression and six separate owner controls precede production.
+They cover work limits, source/declaration authority, output-root and symlink
+confinement, atomic failures, warm/fresh/repeated maps and symbols, and pure
+bounded map lookup rejecting malformed maps. G-D2 stays unchecked until all
+acceptance, complete source-bound measurements and gates pass together.
+Preserve all previous 14,644 suite-qualified case identities/classifications
+and old native fixture bytes. This leaf adds no fresh Windows or hosted-CI gate;
+broader feature rows and full parity remain open/OFF.
+
+The pre-production replay (`/private/tmp/bluets-gd2-before.log`) reports
+**6 passed / 5 failed / 2 ignored**, with **272 CLI mismatches**. Four owner
+controls fail on the existing non-scalar map refusal; the matrix comparison
+also fails. The frozen manifest, output-root confinement and failed-publication
+controls pass. The matrix additionally exposes adjacent generic-closing and
+assignment tokens (`Box<number>=...`) in three source forms; their legal native
+syntax must be parsed rather than edited out of the frozen input. Production
+begins only after this failing record. No old native fixture is rewritten.
+
+### Implementation and focused replay
+
+Declaration maps now pair the original and declaration-only syntax trees,
+preserving source node boundaries instead of matching arbitrary source words.
+The builder is split into declaration, type and class-member modules. Explicit
+type/signature nodes, namespace blocks, merged declarations, imports, parameter
+properties, comments and original UTF-16 positions contribute their native
+boundaries. Inferred/synthetic type bodies retain the native mapping gaps.
+Configured parser/segment limits and pure corrupt-map lookup remain enforced;
+map URLs never authorize an extra source load or write destination.
+
+Isolated checking is split into declaration traversal, literal-container rules
+and class-member rules. It validates public/protected fields, methods, accessor
+pairs, parameter defaults, default exports and namespace members, retaining exact
+related diagnostics. Private implementation fields do not acquire public types.
+Adjacent `>=` is rescanned only when the parser consumes a generic closer;
+runtime comparisons retain their tokens and original spans.
+
+Previously checked class-field and parameter-default types now reach the
+declaration-only AST without mutating the checked source AST. The private-field
+printer elides the type before requiring inference. Record-only union aliases
+use multiline declaration syntax, and inferred broad primitive array unions use
+native allocation order while annotated/regular literal unions retain theirs.
+Namespace reference edits use lexical binding identity, preserving same-name
+parameters/locals; the direct bridge retains its separate existing refusal
+policy. The ordinary namespace test now executes those forms under Node and
+keeps the unrelated multiple-declarator refusal. Semantic fingerprint versions
+and disk-state epoch 21 invalidate older output.
+
+The first implementation reduces CLI differences from **272 to 112**; the
+second leaves **eight import-map boundary differences**, then precise import
+node boundaries remove those. The focused native replay
+(`/private/tmp/bluets-gd2-focused-native.log`) passes **13/13 tests**, including
+both ignored oracle functions, every frozen diagnostic/declaration/map,
+independent consumers, actual executions and all six owner controls. Workspace
+Rustfmt 1.95.0, warnings-denied two-crate all-target Clippy and the 15 Node tooling
+tests pass. The complete ordinary preflight and source-bound cohort follow;
+G-D2 remains unchecked until all matching implementation gates pass.
+
+The ordinary preflight catches a genuine accessor regression in the retained
+K.8.2 `dtsopts-{commonjs,esnext}-i8` cases: native accepts an unannotated getter
+returning `42`, while the first member traversal rejects every unannotated
+getter. A pinned native probe also accepts a literal record and diagnoses
+shorthand/array/call returns at their specific boundaries. Accessors now use the
+same syntax-local return analysis as functions/methods, retaining TS9009 and its
+related information for a call return. Neither the old reference bytes nor the
+new frozen matrix is changed; the corrected source will be replayed by the
+immutable cohort and final ordinary gate.
+
+The same preflight also catches `rest-alias-wrong-call` in the existing G-C1
+controls: publishing defaults for an explicitly return-annotated function had
+replaced its canonicalized rest alias with the original named annotation.
+Publication now fills only missing parameter annotations, retaining canonical
+rest types, explicit binders and overload signatures. The old TS2345 expectation
+stays unchanged; this regression joins the focused correction replay.
+
+The complete ordinary preflight (`/private/tmp/bluets-gd2-ordinary-preflight.log`)
+finishes all **176 targets / 1,390 ordinary entries** in 1,720.98 seconds:
+1,378 pass, 12 fail, 275 ignored, zero filtered. Ten failures are the stale
+source-bound inventory/status checks; the two behavior failures are exactly the
+accessor and canonical-rest regressions above. No other target fails. Workspace
+Rustfmt 1.95.0 is rerun, then `declaration_options`, `gc1_source_diagnostics` and
+`gd2_declaration_maps` are replayed together with `--include-ignored` on the
+corrected source before freezing the backend tree.
+
+The correction replay (`/private/tmp/bluets-gd2-corrections.log`) passes
+**21/21 tests with zero ignored or filtered** in 70.50 seconds: both existing
+four-test suites and all 13 G-D2 tests, including live native reproducers,
+independent consumers, actual executions and the six owner controls. This
+verifies both reported regressions without changing any native expectation.
+
+### Immutable source and complete cohort
+
+After the correction replay, warnings-denied two-crate all-target Clippy passes
+again (`/private/tmp/bluets-gd2-clippy-final.log`). Freeze production, tests,
+fixtures and the 72 oracle/accounting tools for the complete measurement:
+
+- Backend tree: `aa78e53136e7b27cc8e8f1826266b888f577b5ed`.
+- Source graph SHA-256:
+  `31eca41227834e33af29d809479929895d478851d891dd383ece10a3de2c57d4`.
+- Regenerated inventory: **116 suites / 275 ignored functions**.
+- Run directory: `/private/tmp/bluets-gd2-measurement`; runner log:
+  `/private/tmp/bluets-gd2-measurement-runner.log`.
+
+```sh
+export CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export BLUEICE_BLUETSC_ORACLE=/private/tmp/bluets-gm1-oracles.PG2KnX/node_modules/.bin/tsc
+export BLUEICE_ACORN_ORACLE=/private/tmp/bluets-gm1-oracles.PG2KnX/node_modules/.bin/acorn
+export BLUEJS_REGEXP_WORKER="$PWD/target/debug/bluejs-regexp-worker" FORCE_COLOR=0
+cargo run --offline -p blueice-bluets \
+  --example compatibility_inventory -- --write backend-tree:aa78e53136e7b27cc8e8f1826266b888f577b5ed
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs \
+  --output-dir /private/tmp/bluets-gd2-measurement --staged-source
+```
+
+The command block runs from the repository root, with incremental/dev/test debug
+growth disabled, pinned TypeScript 5.9.3 and Acorn 8.15.0, the shared-target
+`bluejs-regexp-worker` executable and `FORCE_COLOR=0`. Cargo runs sequentially;
+the runner verifies every ignored function and complete test list, hashes every
+suite log and tool, and rechecks the immutable source/catalog before success.
+No write/record/filter environment is set. Publishing and completion wait for
+the successful full cohort, final unfiltered ordinary gate and consistency
+audits below.
+
+The immutable runner completes **116/116 suites / 643 tests / all 275 ignored
+functions**, with no failure, ignored or filtered entry in its selected suites.
+Wall time is **2,994.126 seconds** (2026-10-28 11:09:50.891–11:59:45.017 UTC).
+The source/catalog and all 72 tool hashes pass the runner's final recheck.
+Measurement SHA-256:
+`c6f4257f685eeb7f58382b6b3f1aaa5bd78f8975c9e3d00757937a40c65eb450`.
+
+Publish the successful report and regenerate the case/suite inventory, row
+accounting and four-document status from that exact backend tree. The audit
+(`/private/tmp/bluets-gd2-measurement-audit.log`) verifies all **116 log hashes**,
+all **72 tool hashes**, both frozen G-D2 hashes, byte-identical published/run
+measurement and matching source/graph bindings. It preserves every one of the
+**14,644 previous suite-qualified case identities and classifications**, and
+every old native fixture byte. Exactly **398 new assertions** belong to G-D2:
+392 direct native comparisons and six owner-only controls.
+
+The generated denominator is **15,042 checked/listed assertions**, with
+**14,438/14,445 direct agreements**, three deliberate open observations and
+four refusals. The 539 native-reference and 58 owner controls stay separate;
+no difference/refusal is relabeled as agreement. Broader G-D2 remains open and
+full parity stays OFF. The complete finite map/isolated scope adds no new
+Windows or hosted-CI prerequisite.
+
+On the published matching evidence, the focused inventory gate passes
+**22/22**, Python accounting/status tools pass **13/13** and Node tooling passes
+**15/15** (`/private/tmp/bluets-gd2-inventory-final.log`,
+`/private/tmp/bluets-gd2-python-tools.log`,
+`/private/tmp/bluets-gd2-node-tools-final.log`). The unfiltered ordinary two-crate
+gate is then run on the same immutable source before completion/commit.
+
+### Final ordinary gate and completed scope
+
+The unfiltered `cargo test --offline -p blueice-bluets -p blueice-bluets-bluejs
+--no-fail-fast` gate (`/private/tmp/bluets-gd2-ordinary-final.log`) passes
+**176 targets / 1,390 ordinary tests**, zero failures and zero filtered entries,
+in **1,602.70 seconds**. Log SHA-256:
+`7125d23ab36345808b44978330edf5cda31c8f6a42d04f9b74d58434c708f9d6`.
+All 275 ordinarily ignored functions ran successfully in the immutable cohort;
+together these gates cover **1,665 suite-qualified Rust test entries**. Both
+preflight behavior regressions and all ten stale-inventory failures are resolved.
+
+Final workspace Rustfmt 1.95.0, `--check-cases-staged`, `--check-staged`, Python
+row/status checks, the complete measurement audit and staged/unstaged whitespace
+checks pass. Warnings-denied two-crate all-target Clippy passed on this exact
+source before the immutable cohort. All 25 changed production files remain below
+1,200 lines (maximum 1,185), and all nine new source files retain MPL-2.0 headers.
+No unstaged backend change, old fixture rewrite, denominator/classification loss,
+budget increase or parity claim is introduced. All evidence stays bound to
+backend tree `aa78e53136e7b27cc8e8f1826266b888f577b5ed`.
+
+All finite G-D2 acceptance items are complete. Mark its checklist accordingly:
+**eight Phase L packages remain unchecked, next G-M2**. Broader G-D2, the other
+unmeasured feature rows and the direct runtime profile retain their recorded
+open scope; full parity stays OFF. Implementation, frozen native authority,
+matching complete measurement and updated plans form one G-D2 commit, followed
+by the authorized automatic push.
