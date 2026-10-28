@@ -37,7 +37,7 @@ div { height: 20px; }
 div { width: 100px; margin: 10px; padding: 5px; }
 #layout
 | <html> block 0.0,0.0 320.0x49.2
-|   <body> block 0.0,0.0 320.0x49.2
-|     <div> block 10.0,10.0 110.0x29.2
+|   <body> block 0.0,10.0 320.0x29.2
+|     <div> block 10.0,0.0 110.0x29.2
 |       line 5.0,5.0 9.5x19.2
 |         "x" 0.0,0.0 9.5x19.2

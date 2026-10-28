@@ -230,6 +230,7 @@ pub(super) fn lines(
             width: measured,
             height: line_height,
             children: Vec::new(),
+            ..Fragment::empty_block()
         });
     };
     for cluster in value.value.graphemes(true) {

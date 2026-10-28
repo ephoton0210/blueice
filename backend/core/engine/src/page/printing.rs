@@ -60,6 +60,7 @@ impl FrozenPrintDocument {
             &styles,
             Constraints {
                 available_width: width,
+                viewport_height: height,
             },
         );
         let frame = paint(&fragment, &styles);

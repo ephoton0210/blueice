@@ -100,6 +100,7 @@ fn layout_geometry_fixtures() {
             &styles,
             Constraints {
                 available_width: VIEWPORT_WIDTH,
+                viewport_height: 720.0,
             },
         );
         let mut actual = String::new();

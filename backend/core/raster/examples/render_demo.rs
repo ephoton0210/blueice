@@ -25,6 +25,7 @@ fn main() {
         &styles,
         Constraints {
             available_width: 500.0,
+            viewport_height: 720.0,
         },
     );
     let frame = paint(&fragment, &styles);

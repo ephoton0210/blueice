@@ -87,6 +87,18 @@ pub struct Fragment {
     pub width: f64,
     pub height: f64,
     pub children: Vec<Fragment>,
+    /// Paint-order data for a box with `position` other than `static`:
+    /// `Some(z)` for an explicit `z-index`. Painting orders a parent's children
+    /// as negative z, in-flow content, positioned boxes, then positive z.
+    pub z_index: Option<i32>,
+    /// `position` is not `static`.
+    pub positioned: bool,
+    /// `overflow` is not `visible`: children are clipped to the padding box.
+    pub clips: bool,
+    /// `position: fixed`: laid out against the viewport, not the page.
+    pub fixed: bool,
+    /// `visibility: hidden`: occupies space but paints nothing of its own.
+    pub hidden: bool,
 }
 
 impl Fragment {
@@ -99,6 +111,11 @@ impl Fragment {
             width: 0.0,
             height: 0.0,
             children: Vec::new(),
+            z_index: None,
+            positioned: false,
+            clips: false,
+            fixed: false,
+            hidden: false,
         }
     }
 }
@@ -113,4 +130,7 @@ impl Fragment {
 #[derive(Debug, Clone, Copy)]
 pub struct Constraints {
     pub available_width: f64,
+    /// The viewport height: what `vh` units and a root's percentage height
+    /// resolve against.
+    pub viewport_height: f64,
 }

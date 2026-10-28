@@ -60,6 +60,7 @@ pub fn render(html: &str, css: &str, viewport_width: f64) -> Frame {
         &styles,
         blueice_layout::Constraints {
             available_width: viewport_width,
+            viewport_height: viewport_width * 9.0 / 16.0,
         },
     );
     blueice_paint::paint(&fragment, &styles)

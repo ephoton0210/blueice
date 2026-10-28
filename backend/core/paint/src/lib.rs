@@ -511,6 +511,7 @@ mod tests {
             &styles,
             Constraints {
                 available_width: width,
+                viewport_height: 720.0,
             },
         );
         paint(&fragment, &styles)
@@ -857,6 +858,7 @@ mod tests {
             width: 10.0,
             height: 10.0,
             children: vec![],
+            ..Fragment::empty_block()
         };
         let styles = StyleMap::new();
         let frame = paint(&fragment, &styles);

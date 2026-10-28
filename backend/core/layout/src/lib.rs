@@ -17,7 +17,9 @@
 //! positioning yet).
 
 mod block;
+mod ctx;
 mod fragment;
+mod intrinsic;
 mod native_text;
 mod text;
 
@@ -49,7 +51,13 @@ pub fn layout(
         doc.children(root).find(|c| styles.contains_key(c))
     };
     match effective_root {
-        Some(node) => block::layout_block(doc, node, styles, constraints.available_width),
+        Some(node) => block::layout_root(
+            doc,
+            node,
+            styles,
+            constraints.available_width,
+            constraints.viewport_height,
+        ),
         None => Fragment::empty_block(),
     }
 }
@@ -72,6 +80,7 @@ mod tests {
             &styles,
             Constraints {
                 available_width: 800.0,
+                viewport_height: 600.0,
             },
         );
         assert_eq!(fragment.kind, FragmentKind::Block);
@@ -95,6 +104,7 @@ mod tests {
             &styles,
             Constraints {
                 available_width: 800.0,
+                viewport_height: 600.0,
             },
         );
         assert_eq!(fragment.node, Some(p));
@@ -110,6 +120,7 @@ mod tests {
             &styles,
             Constraints {
                 available_width: 800.0,
+                viewport_height: 600.0,
             },
         );
         assert_eq!(fragment.node, None);

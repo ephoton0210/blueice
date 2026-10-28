@@ -49,6 +49,7 @@ fn paint_command_fixtures() {
             &styles,
             Constraints {
                 available_width: VIEWPORT_WIDTH,
+                viewport_height: 720.0,
             },
         );
         let frame = paint(&fragment, &styles);

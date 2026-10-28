@@ -2,201 +2,473 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The block/inline layout algorithm, per `research/layout.md` §4: a
-//! single-pass, top-down walk that stacks block-level children in the
-//! block direction and groups consecutive inline-level children
-//! (elements and text) into anonymous line-box runs. No BFC-offset
-//! bubbling, no float exclusion space, no CSS2 margin-collapsing
-//! "strut" machinery -- `research/layout.md` names these as refinements
-//! *within* the block algorithm, safe to cut for an MVP that isn't
-//! rendering floats yet.
+//! Block layout, per `research/layout.md` §4: a single-pass, top-down walk
+//! that stacks block-level children in the block direction (collapsing their
+//! vertical margins) and groups consecutive inline-level children into
+//! anonymous line-box runs.
 //!
-//! `display` dispatch happens once, in [`classify`]: `none` removes the
-//! element and its whole subtree from layout, `inline` joins the
-//! current line-box run, and everything else (`block`, `inline-block`,
-//! `flex`) currently falls through to an ordinary block box -- this is
-//! the seam `research/layout.md` says flex/grid/table plug into later
-//! as new arms, not a rewrite. `inline-block`'s real behavior (an
-//! atomic inline-level box whose *own* content lays out like a block)
-//! isn't implemented -- it's simplified to plain `block` for now, since
-//! atomic-inline sizing needs the same text-measurement infrastructure
-//! `text.rs` already flags as a placeholder.
+//! Lengths resolve through [`crate::ctx::Style`], so `rem`, viewport units,
+//! `calc()` and percentages work everywhere; `auto` side margins centre or
+//! push a box; `min-`/`max-` width and height clamp; `position: relative`
+//! offsets a box without moving its siblings; absolutely positioned boxes
+//! are collected on the way up and placed against their containing block
+//! (the nearest positioned ancestor, or the initial containing block) once
+//! its size is known.
 
+use crate::ctx::{Ctx, Display, Position, Style};
 use crate::fragment::{Fragment, FragmentKind};
 use crate::text::{
     break_into_lines, collect_words, default_line_height, space_width, StyleMap, Word,
 };
-use blueice_css::{Length, Value};
+use blueice_css::Value;
 use blueice_dom::{Document, NodeData, NodeId};
-use std::collections::HashMap;
 
-enum BoxGen {
-    Block,
-    Inline,
-    None,
+/// A margin that can collapse: the largest positive and most negative parts
+/// contributing to it.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct Margin {
+    pos: f64,
+    neg: f64,
 }
 
-fn classify(doc: &Document, styles: &StyleMap, node: NodeId) -> BoxGen {
-    match doc.data(node) {
-        NodeData::Text { .. } => BoxGen::Inline,
-        NodeData::Element { .. } => match styles.get(&node).map(|s| s.display.as_str()) {
-            Some("none") => BoxGen::None,
-            Some("inline") => BoxGen::Inline,
-            _ => BoxGen::Block,
-        },
-        NodeData::Document => BoxGen::None,
+impl Margin {
+    pub fn of(value: f64) -> Margin {
+        Margin {
+            pos: value.max(0.0),
+            neg: value.min(0.0),
+        }
+    }
+    pub fn join(self, other: Margin) -> Margin {
+        Margin {
+            pos: self.pos.max(other.pos),
+            neg: self.neg.min(other.neg),
+        }
+    }
+    pub fn value(self) -> f64 {
+        self.pos + self.neg
     }
 }
 
-fn length_px(value: &Value, font_size: f64, percentage_base: f64) -> Option<f64> {
-    match value {
-        Value::Length(Length::Px(n)) => Some(*n),
-        Value::Length(Length::Em(n)) => Some(n * font_size),
-        Value::Length(Length::Zero) => Some(0.0),
-        Value::Percentage(p) => Some(percentage_base * p / 100.0),
-        _ => None,
-    }
+/// What a block child needs to know about the box it sits in.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Constraint {
+    /// The containing block's content width: what percentages and `auto`
+    /// margins resolve against.
+    pub cb_width: f64,
+    /// The containing block's content height when it is definite.
+    pub cb_height: Option<f64>,
+    /// The root element's box.
+    pub root: bool,
 }
 
-/// A box-model side (margin/padding/border-width): 0 if unset, if the
-/// value doesn't resolve to a length (e.g. `margin: auto`), or if it's
-/// an outright unsupported shape -- auto-margin centering is a named
-/// MVP cut (`phase-2-mvp-scope/PLAN.md` doesn't call for it, and a
-/// "just don't center" fallback is a safe, visible-not-silent
-/// degradation rather than a crash).
-fn side(other: &HashMap<String, Value>, prop: &str, font_size: f64, percentage_base: f64) -> f64 {
-    other
-        .get(prop)
-        .and_then(|v| length_px(v, font_size, percentage_base))
-        .unwrap_or(0.0)
+/// An absolutely positioned box waiting for its containing block.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingAbs {
+    pub node: NodeId,
+    /// Static position, in the coordinates of the fragment currently holding
+    /// the pending box (its border-box origin).
+    pub x: f64,
+    pub y: f64,
 }
 
-fn is_border_box(other: &HashMap<String, Value>) -> bool {
-    matches!(other.get("box-sizing"), Some(Value::Keyword(k)) if k == "border-box")
+/// A laid-out block box plus what its parent needs to place it.
+pub(crate) struct Placed {
+    pub fragment: Fragment,
+    pub margin_top: Margin,
+    pub margin_bottom: Margin,
+    pub margin_left: f64,
+    pub margin_right: f64,
+    pub pending_abs: Vec<PendingAbs>,
+    /// No height, padding or border: its margins collapse through it.
+    pub collapses_through: bool,
+    /// The border-box width this box would take given unlimited room: its
+    /// specified width, or its content plus padding and border (for
+    /// shrink-to-fit sizing).
+    pub preferred_width: f64,
+    /// The farthest right edge of its in-flow content from its content-box
+    /// origin.
+    pub content_extent: f64,
 }
 
-/// `None` means "auto" (or absent) -- the caller fills remaining space.
-fn resolve_width(
-    other: &HashMap<String, Value>,
-    font_size: f64,
-    containing_width: f64,
-) -> Option<f64> {
-    match other.get("width") {
-        None => None,
-        Some(Value::Keyword(k)) if k == "auto" => None,
-        Some(v) => length_px(v, font_size, containing_width),
-    }
+/// Whether the box establishes a new block formatting context: its margins do
+/// not collapse with its children's.
+fn is_bfc_root(style: &Style<'_>, display: Display, root: bool) -> bool {
+    root || style.float().is_some()
+        || style.is_out_of_flow()
+        || style.clips_overflow()
+        || !matches!(
+            display,
+            Display::Block | Display::ListItem | Display::Inline
+        )
 }
 
-/// Only resolves an explicit length -- a percentage height against an
-/// (MVP-only-ever) auto-sized containing block is indeterminate per
-/// spec anyway, so treating it the same as "auto" here is a conservative
-/// simplification, not a wrong general rule.
-fn resolve_height(other: &HashMap<String, Value>, font_size: f64) -> Option<f64> {
-    match other.get("height") {
-        Some(Value::Length(Length::Px(n))) => Some(*n),
-        Some(Value::Length(Length::Em(n))) => Some(n * font_size),
-        Some(Value::Length(Length::Zero)) => Some(0.0),
-        _ => None,
-    }
+/// What an in-flow child of a block container is.
+enum Item {
+    Block(NodeId),
+    Inline(NodeId),
+    Abs(NodeId),
 }
 
-fn resolve_line_height(value: &Value, font_size: f64) -> Option<f64> {
-    match value {
-        Value::Number(n) => Some(n * font_size),
-        Value::Length(Length::Px(n)) => Some(*n),
-        Value::Length(Length::Em(n)) => Some(n * font_size),
-        Value::Length(Length::Zero) => Some(0.0),
-        Value::Percentage(p) => Some(font_size * p / 100.0),
-        _ => None,
-    }
-}
-
-pub(crate) fn layout_block(
-    doc: &Document,
-    node: NodeId,
-    styles: &StyleMap,
-    available_width: f64,
-) -> Fragment {
-    let style = styles.get(&node);
-    let font_size = style.map(|s| s.font_size_px).unwrap_or(16.0);
-    let empty = HashMap::new();
-    let other = style.map(|s| &s.other).unwrap_or(&empty);
-
-    // A fragment's own margin never affects its own box or its
-    // children's layout -- only how its *parent* positions it (see the
-    // `child_margin_*` computation in the loop below). Only the
-    // horizontal margins matter here, for how much width is left over
-    // for an `auto`-width box to fill.
-    let margin_right = side(other, "margin-right", font_size, available_width);
-    let margin_left = side(other, "margin-left", font_size, available_width);
-    let padding_top = side(other, "padding-top", font_size, available_width);
-    let padding_right = side(other, "padding-right", font_size, available_width);
-    let padding_bottom = side(other, "padding-bottom", font_size, available_width);
-    let padding_left = side(other, "padding-left", font_size, available_width);
-    let border_top = side(other, "border-top-width", font_size, available_width);
-    let border_right = side(other, "border-right-width", font_size, available_width);
-    let border_bottom = side(other, "border-bottom-width", font_size, available_width);
-    let border_left = side(other, "border-left-width", font_size, available_width);
-
-    let border_box_sizing = is_border_box(other);
-    let horizontal_padding_border = padding_left + padding_right + border_left + border_right;
-
-    let content_width = match resolve_width(other, font_size, available_width) {
-        Some(w) if border_box_sizing => (w - horizontal_padding_border).max(0.0),
-        Some(w) => w,
-        None => (available_width - margin_left - margin_right - horizontal_padding_border).max(0.0),
-    };
-
-    let mut children_fragments = Vec::new();
-    let mut cursor_y = 0.0;
-    let mut pending_inline: Vec<NodeId> = Vec::new();
-
-    let native = crate::native_text::control_text(doc, node);
-    let mut form = crate::native_text::form_control(doc, node);
-    for child in doc
-        .children(node)
-        .filter(|_| native.is_none() && form.is_none())
-    {
-        match classify(doc, styles, child) {
-            BoxGen::None => continue,
-            BoxGen::Inline => pending_inline.push(child),
-            BoxGen::Block => {
-                if !pending_inline.is_empty() {
-                    let (lines, used_height) =
-                        layout_inline_run(doc, &pending_inline, styles, content_width, cursor_y);
-                    children_fragments.extend(lines);
-                    cursor_y += used_height;
-                    pending_inline.clear();
+/// The children of `node` as layout sees them: `display: none` removed,
+/// `display: contents` replaced by its own children.
+fn flow_items(ctx: &Ctx<'_>, node: NodeId, out: &mut Vec<Item>) {
+    for child in ctx.doc.children(node) {
+        match ctx.doc.data(child) {
+            NodeData::Text { .. } => out.push(Item::Inline(child)),
+            NodeData::Document => {}
+            NodeData::Element { .. } => {
+                let style = ctx.style(child);
+                let display = style.display();
+                if display == Display::None || display == Display::TableColumn {
+                    continue;
                 }
-
-                let child_style = styles.get(&child);
-                let child_font_size = child_style.map(|s| s.font_size_px).unwrap_or(font_size);
-                let child_empty = HashMap::new();
-                let child_other = child_style.map(|s| &s.other).unwrap_or(&child_empty);
-                let child_margin_top =
-                    side(child_other, "margin-top", child_font_size, content_width);
-                let child_margin_bottom =
-                    side(child_other, "margin-bottom", child_font_size, content_width);
-                let child_margin_left =
-                    side(child_other, "margin-left", child_font_size, content_width);
-
-                cursor_y += child_margin_top;
-                let mut child_fragment = layout_block(doc, child, styles, content_width);
-                child_fragment.x = child_margin_left;
-                child_fragment.y = cursor_y;
-                cursor_y += child_fragment.height + child_margin_bottom;
-                children_fragments.push(child_fragment);
+                if style.is_out_of_flow() {
+                    out.push(Item::Abs(child));
+                } else if display == Display::Contents {
+                    flow_items(ctx, child, out);
+                } else if style.float().is_some() {
+                    // Floats are laid out as blocks for now.
+                    out.push(Item::Block(child));
+                } else if display == Display::Inline {
+                    out.push(Item::Inline(child));
+                } else {
+                    out.push(Item::Block(child));
+                }
             }
         }
     }
-    if !pending_inline.is_empty() {
-        let (lines, used_height) =
-            layout_inline_run(doc, &pending_inline, styles, content_width, cursor_y);
-        children_fragments.extend(lines);
-        cursor_y += used_height;
+}
+
+struct Flow {
+    children: Vec<Fragment>,
+    /// Height of the in-flow content, including margins that did not pass
+    /// through to the parent.
+    height: f64,
+    top_margin: Margin,
+    bottom_margin: Margin,
+    pending_abs: Vec<PendingAbs>,
+    extent: f64,
+    /// Nothing in flow took any height.
+    empty: bool,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn layout_flow(
+    ctx: &Ctx<'_>,
+    node: NodeId,
+    content_width: f64,
+    content_height: Option<f64>,
+    collapse_top: bool,
+    collapse_bottom: bool,
+) -> Flow {
+    let mut items = Vec::new();
+    flow_items(ctx, node, &mut items);
+
+    let mut flow = Flow {
+        children: Vec::new(),
+        height: 0.0,
+        top_margin: Margin::default(),
+        bottom_margin: Margin::default(),
+        pending_abs: Vec::new(),
+        extent: 0.0,
+        empty: true,
+    };
+    let mut cursor_y = 0.0;
+    let mut pending = Margin::default();
+    // Until something takes space, a first child's top margin may still pass
+    // through to this box's own top margin.
+    let mut top_open = true;
+    let mut inline_run: Vec<NodeId> = Vec::new();
+
+    macro_rules! flush_inline {
+        () => {
+            if !inline_run.is_empty() {
+                let (lines, used_height) =
+                    layout_inline_run(ctx.doc, &inline_run, ctx.styles, content_width, 0.0);
+                inline_run.clear();
+                if !lines.is_empty() {
+                    if top_open && collapse_top {
+                        flow.top_margin = flow.top_margin.join(pending);
+                    } else {
+                        cursor_y += pending.value();
+                    }
+                    pending = Margin::default();
+                    top_open = false;
+                    flow.empty = false;
+                    for mut line in lines {
+                        line.y += cursor_y;
+                        flow.extent = flow.extent.max(line.x + line.width);
+                        flow.children.push(line);
+                    }
+                    cursor_y += used_height;
+                }
+            }
+        };
     }
 
+    for item in items {
+        match item {
+            Item::Inline(child) => inline_run.push(child),
+            Item::Abs(child) => {
+                flow.pending_abs.push(PendingAbs {
+                    node: child,
+                    x: 0.0,
+                    y: cursor_y + if top_open { 0.0 } else { pending.value() },
+                });
+            }
+            Item::Block(child) => {
+                flush_inline!();
+                let constraint = Constraint {
+                    cb_width: content_width,
+                    cb_height: content_height,
+                    root: false,
+                };
+                let mut placed = layout_child_block(ctx, child, &constraint);
+                let child_style = ctx.style(child);
+                if placed.collapses_through {
+                    pending = pending.join(placed.margin_top).join(placed.margin_bottom);
+                    let mut fragment = placed.fragment;
+                    fragment.x = placed.margin_left;
+                    fragment.y = cursor_y + if top_open { 0.0 } else { pending.value() };
+                    apply_relative(ctx, &child_style, &mut fragment, &constraint);
+                    flow.pending_abs.extend(shift_pending(
+                        placed.pending_abs,
+                        fragment.x,
+                        fragment.y,
+                    ));
+                    flow.children.push(fragment);
+                    continue;
+                }
+                if top_open && collapse_top {
+                    flow.top_margin = flow.top_margin.join(pending).join(placed.margin_top);
+                } else {
+                    cursor_y += pending.join(placed.margin_top).value();
+                }
+                top_open = false;
+                flow.empty = false;
+                let mut fragment = std::mem::replace(&mut placed.fragment, Fragment::empty_block());
+                fragment.x = placed.margin_left;
+                fragment.y = cursor_y;
+                flow.extent = flow
+                    .extent
+                    .max(placed.margin_left + placed.preferred_width + placed.margin_right);
+                cursor_y += fragment.height;
+                pending = placed.margin_bottom;
+                apply_relative(ctx, &child_style, &mut fragment, &constraint);
+                flow.pending_abs
+                    .extend(shift_pending(placed.pending_abs, fragment.x, fragment.y));
+                flow.children.push(fragment);
+            }
+        }
+    }
+    flush_inline!();
+
+    if collapse_bottom && !top_open {
+        flow.bottom_margin = pending;
+    } else if top_open && collapse_top && collapse_bottom {
+        // Nothing but collapsed-through margins: they all pass through.
+        flow.top_margin = flow.top_margin.join(pending);
+    } else {
+        cursor_y += pending.value();
+    }
+    flow.height = cursor_y;
+    flow
+}
+
+fn shift_pending(pending: Vec<PendingAbs>, dx: f64, dy: f64) -> Vec<PendingAbs> {
+    pending
+        .into_iter()
+        .map(|p| PendingAbs {
+            node: p.node,
+            x: p.x + dx,
+            y: p.y + dy,
+        })
+        .collect()
+}
+
+/// Lays out one block-level child according to its `display`.
+pub(crate) fn layout_child_block(ctx: &Ctx<'_>, node: NodeId, c: &Constraint) -> Placed {
+    layout_block_level(ctx, node, c, None)
+}
+
+/// The offsets `position: relative` applies, in pixels.
+fn relative_offset(style: &Style<'_>, c: &Constraint) -> (f64, f64) {
+    let horizontal_base = c.cb_width;
+    let vertical_base = c.cb_height.unwrap_or(f64::NAN);
+    let left = style.px("left", horizontal_base);
+    let right = style.px("right", horizontal_base);
+    let top = style.px("top", vertical_base);
+    let bottom = style.px("bottom", vertical_base);
+    (
+        left.or(right.map(|r| -r)).unwrap_or(0.0),
+        top.or(bottom.map(|b| -b)).unwrap_or(0.0),
+    )
+}
+
+/// Moves a `position: relative` box by its offsets; siblings do not move.
+fn apply_relative(ctx: &Ctx<'_>, style: &Style<'_>, fragment: &mut Fragment, c: &Constraint) {
+    let _ = ctx;
+    if style.position() == Position::Relative {
+        let (dx, dy) = relative_offset(style, c);
+        fragment.x += dx;
+        fragment.y += dy;
+    }
+}
+
+/// The `Fragment` flags every laid-out element box carries.
+fn mark(style: &Style<'_>, fragment: &mut Fragment) {
+    let position = style.position();
+    fragment.positioned = position != Position::Static;
+    fragment.fixed = position == Position::Fixed;
+    fragment.z_index = if fragment.positioned {
+        style.z_index()
+    } else {
+        None
+    };
+    fragment.clips = style.clips_overflow();
+    fragment.hidden = !style.is_visible();
+}
+
+/// Lays out `node` as a block-level box inside the containing block `c`.
+/// `forced_width` is a border-box width imposed from outside (a stretched
+/// flex item); otherwise the width comes from `width`/`auto`.
+pub(crate) fn layout_block_level(
+    ctx: &Ctx<'_>,
+    node: NodeId,
+    c: &Constraint,
+    forced_width: Option<f64>,
+) -> Placed {
+    let style = ctx.style(node);
+    let display = style.display();
+    let cbw = c.cb_width;
+    let padding = style.padding(cbw);
+    let border = style.border(cbw);
+    let pb_h = padding.horizontal() + border.horizontal();
+    let pb_v = padding.vertical() + border.vertical();
+    let border_box = style.is_border_box();
+    let to_content_w = |v: f64| {
+        if border_box {
+            (v - pb_h).max(0.0)
+        } else {
+            v.max(0.0)
+        }
+    };
+    let to_content_h = |v: f64| {
+        if border_box {
+            (v - pb_v).max(0.0)
+        } else {
+            v.max(0.0)
+        }
+    };
+
+    // ---- horizontal: width and side margins ----
+    let auto_left = style.is_auto("margin-left");
+    let auto_right = style.is_auto("margin-right");
+    let mut margin_left = if auto_left {
+        0.0
+    } else {
+        style.side("margin-left", cbw)
+    };
+    let mut margin_right = if auto_right {
+        0.0
+    } else {
+        style.side("margin-right", cbw)
+    };
+    let min_width = style.px("min-width", cbw).map(to_content_w).unwrap_or(0.0);
+    let max_width = style.px("max-width", cbw).map(to_content_w);
+    let clamp_width = |w: f64| {
+        let w = max_width.map_or(w, |m| w.min(m));
+        w.max(min_width)
+    };
+    let specified_width = match forced_width {
+        Some(w) => Some((w - pb_h).max(0.0)),
+        None => style.px("width", cbw).map(to_content_w),
+    };
+    let (content_width, width_determined) = match specified_width {
+        Some(w) => (clamp_width(w), true),
+        None => {
+            let available = (cbw - margin_left - margin_right - pb_h).max(0.0);
+            let clamped = clamp_width(available);
+            (clamped, clamped != available)
+        }
+    };
+    if width_determined && forced_width.is_none() {
+        let free = cbw - content_width - pb_h - margin_left - margin_right;
+        match (auto_left, auto_right) {
+            (true, true) => {
+                margin_left = (free / 2.0).max(0.0);
+                margin_right = free.max(0.0) - margin_left;
+            }
+            (true, false) => margin_left = free.max(0.0),
+            (false, true) => margin_right = free.max(0.0),
+            (false, false) => {}
+        }
+    }
+    let margin_top = style.side("margin-top", cbw);
+    let margin_bottom = style.side("margin-bottom", cbw);
+
+    // ---- vertical: height ----
+    let height_base = c.cb_height.unwrap_or(f64::NAN);
+    let specified_height = style.px("height", height_base).map(to_content_h);
+    let min_height = style
+        .px("min-height", height_base)
+        .map(to_content_h)
+        .unwrap_or(0.0);
+    let max_height = style.px("max-height", height_base).map(to_content_h);
+    let clamp_height = |h: f64| {
+        let h = max_height.map_or(h, |m| h.min(m));
+        h.max(min_height)
+    };
+    let child_cb_height = specified_height.map(clamp_height);
+
+    let bfc = is_bfc_root(&style, display, c.root);
+    let collapse_top = !bfc && padding.top == 0.0 && border.top == 0.0;
+    let collapse_bottom = !bfc
+        && padding.bottom == 0.0
+        && border.bottom == 0.0
+        && specified_height.is_none()
+        && min_height == 0.0;
+
+    let native = crate::native_text::control_text(ctx.doc, node);
+    let mut form = crate::native_text::form_control(ctx.doc, node);
+    let is_native = native.is_some() || form.is_some();
+
+    let (
+        mut children,
+        mut content_flow_height,
+        top_pass,
+        bottom_pass,
+        mut pending_abs,
+        extent,
+        empty,
+    );
+    if is_native {
+        children = Vec::new();
+        content_flow_height = 0.0;
+        top_pass = Margin::default();
+        bottom_pass = Margin::default();
+        pending_abs = Vec::new();
+        extent = 0.0;
+        empty = false;
+    } else {
+        let flow = layout_flow(
+            ctx,
+            node,
+            content_width,
+            child_cb_height,
+            collapse_top,
+            collapse_bottom,
+        );
+        children = flow.children;
+        content_flow_height = flow.height;
+        top_pass = flow.top_margin;
+        bottom_pass = flow.bottom_margin;
+        pending_abs = flow.pending_abs;
+        extent = flow.extent;
+        empty = flow.empty;
+    }
+
+    let font_size = style.font_size();
     if let Some(crate::NativeForm::SelectList {
         options,
         first,
@@ -209,41 +481,30 @@ pub(crate) fn layout_block(
             .iter()
             .position(|option| option.selected)
             .unwrap_or(0)
-            .saturating_sub(crate::select_display_size(doc, node).min(1000) as usize - 1);
-        cursor_y = *row_height * crate::select_display_size(doc, node).min(1000) as f64;
+            .saturating_sub(crate::select_display_size(ctx.doc, node).min(1000) as usize - 1);
+        content_flow_height =
+            *row_height * crate::select_display_size(ctx.doc, node).min(1000) as f64;
     } else if matches!(form, Some(crate::NativeForm::Select(_))) {
-        cursor_y = default_line_height(font_size).max(20.0);
+        content_flow_height = default_line_height(font_size).max(20.0);
     }
+    let option_placeholder = |node: NodeId| Fragment {
+        node: Some(node),
+        ..Fragment::empty_block()
+    };
     if let Some(crate::NativeForm::SelectList { options, .. }) = &form {
-        children_fragments.extend(options.iter().map(|option| Fragment {
-            node: Some(option.node),
-            kind: FragmentKind::Block,
-            x: 0.0,
-            y: 0.0,
-            width: 0.0,
-            height: 0.0,
-            children: Vec::new(),
-        }));
+        children.extend(options.iter().map(|option| option_placeholder(option.node)));
     } else if matches!(form, Some(crate::NativeForm::Select(_))) {
-        children_fragments.extend(
-            crate::select_options(doc, node)
+        children.extend(
+            crate::select_options(ctx.doc, node)
                 .iter()
-                .map(|option| Fragment {
-                    node: Some(option.node),
-                    kind: FragmentKind::Block,
-                    x: 0.0,
-                    y: 0.0,
-                    width: 0.0,
-                    height: 0.0,
-                    children: Vec::new(),
-                }),
+                .map(|option| option_placeholder(option.node)),
         );
     }
-    let is_native = native.is_some() || form.is_some();
     if let Some(value) = native {
         let line_height = style
+            .style
             .and_then(|s| s.line_height.as_ref())
-            .and_then(|line_height| resolve_line_height(line_height, font_size))
+            .and_then(|line_height| line_height_for(&style, line_height))
             .unwrap_or_else(|| default_line_height(font_size));
         let lines = crate::native_text::lines(
             &value,
@@ -251,35 +512,42 @@ pub(crate) fn layout_block(
             content_width,
             font_size,
             line_height,
-            style.is_some_and(|s| s.is_bold()),
-            style.is_some_and(|s| s.is_italic()),
+            style.style.is_some_and(|s| s.is_bold()),
+            style.style.is_some_and(|s| s.is_italic()),
         );
-        cursor_y += lines.len() as f64 * line_height;
-        children_fragments.extend(lines);
+        content_flow_height += lines.len() as f64 * line_height;
+        children.extend(lines);
     }
 
-    let intrinsic_content_height = cursor_y;
-    let content_height = match resolve_height(other, font_size) {
-        Some(h) if border_box_sizing => {
-            (h - padding_top - padding_bottom - border_top - border_bottom).max(0.0)
-        }
-        Some(h) => h,
-        None => intrinsic_content_height,
-    };
-
-    let content_origin_x = padding_left + border_left;
-    let content_origin_y = padding_top + border_top;
-    for f in &mut children_fragments {
-        f.x += content_origin_x;
-        f.y += content_origin_y;
+    // ---- final box ----
+    let intrinsic_height = content_flow_height;
+    let content_height = clamp_height(specified_height.unwrap_or(intrinsic_height));
+    let origin_x = border.left + padding.left;
+    let origin_y = border.top + padding.top;
+    for f in &mut children {
+        f.x += origin_x;
+        f.y += origin_y;
+    }
+    for p in &mut pending_abs {
+        p.x += origin_x;
+        p.y += origin_y;
     }
 
+    let collapses_through = !bfc
+        && !is_native
+        && empty
+        && specified_height.is_none()
+        && min_height == 0.0
+        && padding.vertical() == 0.0
+        && border.vertical() == 0.0
+        && children.is_empty()
+        && content_flow_height == 0.0;
     let mut fragment = Fragment {
         node: Some(node),
         kind: if is_native {
             FragmentKind::NativeControl {
-                content_x: content_origin_x,
-                content_y: content_origin_y,
+                content_x: origin_x,
+                content_y: origin_y,
                 content_width,
                 content_height,
                 form,
@@ -289,12 +557,270 @@ pub(crate) fn layout_block(
         },
         x: 0.0,
         y: 0.0,
-        width: content_width + horizontal_padding_border,
-        height: content_height + padding_top + padding_bottom + border_top + border_bottom,
-        children: children_fragments,
+        width: content_width + pb_h,
+        height: content_height + pb_v,
+        children,
+        ..Fragment::empty_block()
     };
-    update_select_option_bounds(&mut fragment);
+    mark(&style, &mut fragment);
+    crate::update_select_option_bounds(&mut fragment);
+
+    // Absolutely positioned descendants whose containing block is this box.
+    let is_container = style.position() != Position::Static || c.root;
+    let mut escaping = Vec::new();
+    if is_container {
+        let (container_x, container_y, container_w, container_h) = if c.root {
+            (
+                0.0,
+                0.0,
+                ctx.viewport_width.max(fragment.width),
+                ctx.viewport_height.max(fragment.height),
+            )
+        } else {
+            (
+                border.left,
+                border.top,
+                content_width + padding.horizontal(),
+                content_height + padding.vertical(),
+            )
+        };
+        let mut placed_abs = Vec::new();
+        for pending in std::mem::take(&mut pending_abs) {
+            let fixed = ctx.style(pending.node).position() == Position::Fixed;
+            if fixed && !c.root {
+                escaping.push(pending);
+            } else {
+                let (vx, vy, vw, vh) = if fixed {
+                    (0.0, 0.0, ctx.viewport_width, ctx.viewport_height)
+                } else {
+                    (container_x, container_y, container_w, container_h)
+                };
+                placed_abs.push(layout_abs(ctx, &pending, (vx, vy, vw, vh)));
+            }
+        }
+        fragment.children.extend(placed_abs);
+    } else {
+        escaping = pending_abs;
+    }
+
+    let pass_top = if collapse_top {
+        Margin::of(margin_top).join(top_pass)
+    } else {
+        Margin::of(margin_top)
+    };
+    let pass_bottom = if collapse_bottom {
+        Margin::of(margin_bottom).join(bottom_pass)
+    } else {
+        Margin::of(margin_bottom)
+    };
+    let preferred_width = if specified_width.is_some() {
+        content_width + pb_h
+    } else {
+        extent.max(0.0) + pb_h
+    };
+    Placed {
+        fragment,
+        margin_top: pass_top,
+        margin_bottom: pass_bottom,
+        margin_left,
+        margin_right,
+        pending_abs: escaping,
+        collapses_through,
+        preferred_width,
+        content_extent: extent,
+    }
+}
+
+/// An absolutely positioned box placed against `cb` (x, y, width, height in
+/// the coordinates of the fragment that contains it).
+fn layout_abs(ctx: &Ctx<'_>, pending: &PendingAbs, cb: (f64, f64, f64, f64)) -> Fragment {
+    let (cb_x, cb_y, cb_w, cb_h) = cb;
+    let style = ctx.style(pending.node);
+    let padding = style.padding(cb_w);
+    let border = style.border(cb_w);
+    let pb_h = padding.horizontal() + border.horizontal();
+    let pb_v = padding.vertical() + border.vertical();
+    let border_box = style.is_border_box();
+    let to_w = |v: f64| {
+        if border_box {
+            (v - pb_h).max(0.0)
+        } else {
+            v.max(0.0)
+        }
+    };
+    let to_h = |v: f64| {
+        if border_box {
+            (v - pb_v).max(0.0)
+        } else {
+            v.max(0.0)
+        }
+    };
+
+    let left = style.px("left", cb_w);
+    let right = style.px("right", cb_w);
+    let top = style.px("top", cb_h);
+    let bottom = style.px("bottom", cb_h);
+    let auto_ml = style.is_auto("margin-left");
+    let auto_mr = style.is_auto("margin-right");
+    let mut ml = if auto_ml {
+        0.0
+    } else {
+        style.side("margin-left", cb_w)
+    };
+    let mut mr = if auto_mr {
+        0.0
+    } else {
+        style.side("margin-right", cb_w)
+    };
+    let mt = style.side("margin-top", cb_w);
+    let mb = style.side("margin-bottom", cb_w);
+
+    let min_w = style.px("min-width", cb_w).map(to_w).unwrap_or(0.0);
+    let max_w = style.px("max-width", cb_w).map(to_w);
+    let clamp_w = |w: f64| max_w.map_or(w, |m| w.min(m)).max(min_w);
+    let specified_w = style.px("width", cb_w).map(to_w);
+    let content_width = match (specified_w, left, right) {
+        (Some(w), _, _) => clamp_w(w),
+        (None, Some(l), Some(r)) => clamp_w((cb_w - l - r - ml - mr - pb_h).max(0.0)),
+        _ => {
+            // Shrink-to-fit: the preferred width, but no wider than what is
+            // left of the containing block.
+            let available =
+                (cb_w - left.unwrap_or(0.0) - right.unwrap_or(0.0) - ml - mr - pb_h).max(0.0);
+            let (min_content, max_content) = crate::intrinsic::preferred_widths(ctx, pending.node);
+            clamp_w(max_content.min(available.max(min_content)) - pb_h).max(0.0)
+        }
+    };
+    if let (true, Some(l), Some(r)) = (specified_w.is_some(), left, right) {
+        let free = cb_w - l - r - content_width - pb_h - ml - mr;
+        match (auto_ml, auto_mr) {
+            (true, true) => {
+                ml = (free / 2.0).max(0.0);
+                mr = free.max(0.0) - ml;
+            }
+            (true, false) => ml = free.max(0.0),
+            (false, true) => mr = free.max(0.0),
+            _ => {}
+        }
+    }
+
+    let specified_h = style.px("height", cb_h).map(to_h);
+    let min_h = style.px("min-height", cb_h).map(to_h).unwrap_or(0.0);
+    let max_h = style.px("max-height", cb_h).map(to_h);
+    let clamp_h = |h: f64| max_h.map_or(h, |m| h.min(m)).max(min_h);
+    let stretched_h = match (specified_h, top, bottom) {
+        (None, Some(t), Some(b)) => Some(to_h((cb_h - t - b - mt - mb).max(0.0)).max(0.0)),
+        _ => None,
+    };
+    let forced_height = specified_h.or(stretched_h);
+
+    let constraint = Constraint {
+        cb_width: cb_w,
+        cb_height: Some(cb_h),
+        root: false,
+    };
+    // Laid out as a block of the computed width; `Display` is blockified.
+    let mut placed = layout_block_level(ctx, pending.node, &constraint, Some(content_width + pb_h));
+    let mut fragment = placed.fragment;
+    if let Some(h) = forced_height {
+        fragment.height = clamp_h(h) + pb_v;
+    } else {
+        fragment.height = clamp_h((fragment.height - pb_v).max(0.0)) + pb_v;
+    }
+    let width = fragment.width;
+    let height = fragment.height;
+    fragment.x = match (left, right) {
+        (Some(l), _) => cb_x + l + ml,
+        (None, Some(r)) => cb_x + cb_w - r - mr - width,
+        (None, None) => pending.x + ml,
+    };
+    fragment.y = match (top, bottom) {
+        (Some(t), _) => cb_y + t + mt,
+        (None, Some(b)) => cb_y + cb_h - b - mb - height,
+        (None, None) => pending.y + mt,
+    };
+    fragment.positioned = true;
+    fragment.fixed = style.position() == Position::Fixed;
+    fragment.z_index = style.z_index();
+    // An abspos box's own descendants escape only if they are fixed.
+    let _ = &mut placed.pending_abs;
     fragment
+}
+
+fn line_height_for(style: &Style<'_>, value: &Value) -> Option<f64> {
+    let font_size = style.font_size();
+    match value {
+        Value::Number(n) => Some(n * font_size),
+        Value::Keyword(k) if k == "normal" => None,
+        other => other.to_px(&style.length_context(font_size)),
+    }
+}
+
+/// Compatibility entry point: lays out `node` at `available_width` against a
+/// default viewport. Used by tests; real callers go through [`layout_root`].
+#[cfg(test)]
+pub(crate) fn layout_block(
+    doc: &Document,
+    node: NodeId,
+    styles: &StyleMap,
+    available_width: f64,
+) -> Fragment {
+    let ctx = Ctx {
+        doc,
+        styles,
+        viewport_width: available_width,
+        viewport_height: 720.0,
+        root_font_size: 16.0,
+        intrinsic: Default::default(),
+    };
+    let c = Constraint {
+        cb_width: available_width,
+        cb_height: None,
+        root: false,
+    };
+    layout_block_level(&ctx, node, &c, None).fragment
+}
+
+/// Lays out the root element against the viewport.
+pub(crate) fn layout_root(
+    doc: &Document,
+    node: NodeId,
+    styles: &StyleMap,
+    viewport_width: f64,
+    viewport_height: f64,
+) -> Fragment {
+    let root_font_size = styles.get(&node).map_or(16.0, |s| s.font_size_px);
+    let ctx = Ctx {
+        doc,
+        styles,
+        viewport_width,
+        viewport_height,
+        root_font_size,
+        intrinsic: Default::default(),
+    };
+    let c = Constraint {
+        cb_width: viewport_width,
+        cb_height: Some(viewport_height),
+        root: true,
+    };
+    layout_block_level(&ctx, node, &c, None).fragment
+}
+
+/// Line-height in pixels from a computed `line-height`, for the line-box code
+/// below (which is handed a bare font size rather than a style).
+fn resolve_line_height(value: &Value, font_size: f64) -> Option<f64> {
+    use blueice_css::LengthContext;
+    match value {
+        Value::Number(n) => Some(n * font_size),
+        Value::Keyword(_) => None,
+        other => other.to_px(&LengthContext {
+            font_size,
+            root_font_size: 16.0,
+            viewport_width: 1280.0,
+            viewport_height: 720.0,
+            percent_base: font_size,
+        }),
+    }
 }
 
 fn layout_inline_run(
@@ -354,6 +880,7 @@ fn layout_line(words: &[Word], line_height: f64, y: f64, space_width: f64) -> Fr
             width: w.width,
             height: line_height,
             children: Vec::new(),
+            ..Fragment::empty_block()
         });
         x += w.width;
     }
@@ -365,6 +892,7 @@ fn layout_line(words: &[Word], line_height: f64, y: f64, space_width: f64) -> Fr
         width: x,
         height: line_height,
         children,
+        ..Fragment::empty_block()
     }
 }
 
@@ -407,6 +935,7 @@ pub fn update_select_option_bounds(fragment: &mut Fragment) {
 mod tests {
     use super::*;
     use blueice_css::{cascade, ua_stylesheet, Origin};
+    use std::collections::HashMap;
 
     fn find_by_tag(doc: &Document, root: NodeId, tag: &str) -> Option<NodeId> {
         if let NodeData::Element { tag_name, .. } = doc.data(root) {
@@ -443,7 +972,13 @@ mod tests {
 
     #[test]
     fn explicit_width_and_px_margin_are_respected() {
-        let f = body_fragment("<div>x</div>", "div { width: 200px; margin: 10px; }", 800.0);
+        // `overflow` makes body a block formatting context, so the div's margin
+        // stays inside it instead of collapsing through (see the collapsing tests).
+        let f = body_fragment(
+            "<div>x</div>",
+            "body { overflow: hidden; } div { width: 200px; margin: 10px; }",
+            800.0,
+        );
         let div = &f.children[0];
         assert_eq!(div.width, 200.0);
         assert_eq!(div.x, 10.0, "left margin offsets the box");
@@ -460,7 +995,7 @@ mod tests {
     fn em_margin_resolves_against_the_elements_own_font_size() {
         let f = body_fragment(
             "<div>x</div>",
-            "div { font-size: 20px; margin-top: 2em; }",
+            "body { overflow: hidden; } div { font-size: 20px; margin-top: 2em; }",
             800.0,
         );
         assert_eq!(f.children[0].y, 40.0);
@@ -667,5 +1202,352 @@ mod tests {
         let f = body_fragment("<p>hi</p>", "p { line-height: 2; }", 800.0);
         let line = &f.children[0].children[0];
         assert_eq!(line.height, 32.0);
+    }
+
+    // ---- margin collapsing, auto margins, min/max, units, positioning ----
+
+    /// The body's fragment with `body { overflow: hidden }` so the body is a
+    /// block formatting context and its children's margins stay measurable.
+    fn contained(html: &str, css: &str) -> Fragment {
+        body_fragment(html, &format!("body {{ overflow: hidden; }} {css}"), 800.0)
+    }
+
+    fn child_y(f: &Fragment) -> Vec<f64> {
+        f.children.iter().map(|c| c.y).collect()
+    }
+
+    #[test]
+    fn adjacent_sibling_margins_collapse_to_the_larger() {
+        let f = contained(
+            "<div>a</div><div>b</div>",
+            "div { height: 20px; margin-top: 10px; margin-bottom: 10px; }",
+        );
+        assert_eq!(
+            child_y(&f),
+            vec![10.0, 40.0],
+            "10 + 20 + max(10,10) + ... not 10+20+10+10"
+        );
+        let f = contained(
+            "<div>a</div><div>b</div>",
+            "div { height: 20px; } div:first-child { margin-bottom: 10px; } div + div { margin-top: 30px; }",
+        );
+        assert_eq!(
+            child_y(&f),
+            vec![0.0, 50.0],
+            "the 30px margin wins over the 10px one"
+        );
+    }
+
+    #[test]
+    fn negative_margins_collapse_by_summing_the_extremes() {
+        let f = contained(
+            "<div>a</div><div>b</div>",
+            "div { height: 20px; } div:first-child { margin-bottom: 20px; } div + div { margin-top: -5px; }",
+        );
+        assert_eq!(
+            child_y(&f)[1],
+            35.0,
+            "20 + (-5) = 15 gap after the 20px box"
+        );
+        let f = contained(
+            "<div>a</div><div>b</div>",
+            "div { height: 20px; } div:first-child { margin-bottom: -5px; } div + div { margin-top: -8px; }",
+        );
+        assert_eq!(
+            child_y(&f)[1],
+            12.0,
+            "two negatives collapse to the more negative"
+        );
+    }
+
+    #[test]
+    fn a_first_childs_margin_collapses_through_its_parent_unless_padding_blocks_it() {
+        let f = contained(
+            "<div class=o><div class=i>x</div></div>",
+            ".i { margin-top: 20px; height: 10px; }",
+        );
+        assert_eq!(
+            f.children[0].y, 20.0,
+            "the parent is pushed down by the child's margin"
+        );
+        assert_eq!(
+            f.children[0].children[0].y, 0.0,
+            "and the child sits at the parent's top"
+        );
+        let f = contained(
+            "<div class=o><div class=i>x</div></div>",
+            ".o { padding-top: 1px; } .i { margin-top: 20px; height: 10px; }",
+        );
+        assert_eq!(f.children[0].y, 0.0);
+        assert_eq!(
+            f.children[0].children[0].y, 21.0,
+            "padding keeps the margin inside"
+        );
+        let f = contained(
+            "<div class=o><div class=i>x</div></div>",
+            ".o { overflow: hidden; } .i { margin-top: 20px; height: 10px; }",
+        );
+        assert_eq!(
+            f.children[0].children[0].y, 20.0,
+            "a BFC root does not collapse with its child"
+        );
+    }
+
+    #[test]
+    fn a_last_childs_bottom_margin_collapses_through_an_auto_height_parent() {
+        let f = contained(
+            "<div class=o><div class=i>x</div></div><div class=n>y</div>",
+            ".i { height: 10px; margin-bottom: 20px; } .n { height: 5px; }",
+        );
+        assert_eq!(
+            f.children[0].height, 10.0,
+            "the margin is not part of the parent's height"
+        );
+        assert_eq!(
+            f.children[1].y, 30.0,
+            "it separates the parent from the next sibling"
+        );
+        let f = contained(
+            "<div class=o><div class=i>x</div></div><div class=n>y</div>",
+            ".o { height: 40px; } .i { height: 10px; margin-bottom: 20px; } .n { height: 5px; }",
+        );
+        assert_eq!(
+            f.children[1].y, 40.0,
+            "a fixed height keeps the margin inside"
+        );
+    }
+
+    #[test]
+    fn empty_blocks_let_margins_collapse_through_them() {
+        let f = contained(
+            "<div class=a></div><div class=e></div><div class=b></div>",
+            ".a { height: 10px; margin-bottom: 10px; } .e { margin-top: 30px; margin-bottom: 5px; } .b { height: 10px; margin-top: 20px; }",
+        );
+        assert_eq!(f.children[2].y, 40.0, "10 + max(10,30,5,20) = 40");
+    }
+
+    #[test]
+    fn auto_side_margins_centre_or_push_a_box() {
+        let f = contained("<div>x</div>", "div { width: 200px; margin: 0 auto; }");
+        assert_eq!(f.children[0].x, 300.0);
+        let f = contained("<div>x</div>", "div { width: 200px; margin-left: auto; }");
+        assert_eq!(f.children[0].x, 600.0);
+        let f = contained("<div>x</div>", "div { width: 200px; margin-right: auto; }");
+        assert_eq!(f.children[0].x, 0.0);
+        let f = contained("<div>x</div>", "div { margin: 0 auto; }");
+        assert_eq!(
+            (f.children[0].x, f.children[0].width),
+            (0.0, 800.0),
+            "auto width fills"
+        );
+        let f = contained("<div>x</div>", "div { max-width: 300px; margin: 0 auto; }");
+        assert_eq!((f.children[0].x, f.children[0].width), (250.0, 300.0));
+    }
+
+    #[test]
+    fn min_and_max_sizes_clamp_the_used_size() {
+        let w = |css: &str| contained("<div>x</div>", css).children[0].width;
+        assert_eq!(w("div { width: 50%; max-width: 300px; }"), 300.0);
+        assert_eq!(w("div { width: 100px; min-width: 500px; }"), 500.0);
+        assert_eq!(
+            w("div { max-width: 100px; min-width: 200px; }"),
+            200.0,
+            "min beats max"
+        );
+        assert_eq!(
+            w("div { width: 100px; padding: 10px; max-width: 100px; box-sizing: border-box; }"),
+            100.0
+        );
+        let h = |css: &str| contained("<div>x</div>", css).children[0].height;
+        assert_eq!(h("div { height: 10px; min-height: 40px; }"), 40.0);
+        assert_eq!(h("div { height: 100px; max-height: 40px; }"), 40.0);
+        assert_eq!(h("div { min-height: 100vh; }"), 720.0);
+        assert_eq!(
+            h("div { min-height: 50%; }"),
+            19.2,
+            "a percentage min-height with an auto-height parent is ignored"
+        );
+    }
+
+    #[test]
+    fn rem_viewport_units_and_calc_are_lengths_everywhere() {
+        let f = contained(
+            "<div>x</div>",
+            "div { width: calc(100% - 2rem); margin-top: 1rem; height: 10vh; }",
+        );
+        let div = &f.children[0];
+        assert_eq!(div.width, 768.0);
+        assert_eq!(div.y, 16.0);
+        assert_eq!(div.height, 72.0, "10vh of the 720px test viewport");
+        let f = contained(
+            "<div>x</div>",
+            "div { width: 50vw; padding: 1em; font-size: 10px; }",
+        );
+        assert_eq!(f.children[0].width, 400.0 + 20.0);
+    }
+
+    #[test]
+    fn percentage_heights_need_a_definite_parent_height() {
+        let f = contained(
+            "<div class=o><div class=i>x</div></div>",
+            ".o { height: 200px; } .i { height: 50%; }",
+        );
+        assert_eq!(f.children[0].children[0].height, 100.0);
+        let f = contained(
+            "<div class=o><div class=i>x</div></div>",
+            ".i { height: 50%; }",
+        );
+        assert_eq!(
+            f.children[0].children[0].height, 19.2,
+            "auto parent: height behaves as auto"
+        );
+    }
+
+    #[test]
+    fn border_styles_decide_whether_a_border_takes_space() {
+        let f = contained("<div>x</div>", "div { border: 4px solid red; }");
+        assert_eq!(f.children[0].width, 800.0);
+        assert_eq!(f.children[0].height, 19.2 + 8.0);
+        let f = contained(
+            "<div>x</div>",
+            "div { border-width: 4px; border-style: none; }",
+        );
+        assert_eq!(f.children[0].height, 19.2, "no style, no border");
+    }
+
+    #[test]
+    fn relative_positioning_offsets_the_box_without_moving_siblings() {
+        let f = contained(
+            "<div class=a>a</div><div class=b>b</div>",
+            ".a { position: relative; top: 5px; left: 7px; height: 10px; } .b { height: 10px; }",
+        );
+        assert_eq!((f.children[0].x, f.children[0].y), (7.0, 5.0));
+        assert_eq!(
+            f.children[1].y, 10.0,
+            "the sibling is where it would have been"
+        );
+        assert!(f.children[0].positioned && !f.children[1].positioned);
+        let f = contained(
+            "<div class=a>a</div>",
+            ".a { position: relative; bottom: 3px; right: 4px; top: auto; left: auto; height: 10px; }",
+        );
+        assert_eq!(
+            (f.children[0].x, f.children[0].y),
+            (-4.0, -3.0),
+            "right/bottom push the other way"
+        );
+    }
+
+    #[test]
+    fn absolute_boxes_are_placed_against_the_positioned_ancestor() {
+        let f = contained(
+            "<div class=c><div class=x>x</div></div><div class=after>y</div>",
+            ".c { position: relative; width: 200px; height: 100px; margin: 7px; } \
+             .x { position: absolute; top: 10px; left: 20px; width: 50px; height: 30px; } \
+             .after { height: 5px; }",
+        );
+        let container = &f.children[0];
+        let abs = container.children.last().unwrap();
+        assert_eq!(
+            (abs.x, abs.y, abs.width, abs.height),
+            (20.0, 10.0, 50.0, 30.0)
+        );
+        assert!(abs.positioned);
+        assert_eq!(
+            f.children[1].y,
+            7.0 + 100.0 + 7.0,
+            "the absolute box took no space"
+        );
+    }
+
+    #[test]
+    fn absolute_boxes_anchor_to_any_edge_and_may_stretch() {
+        let place = |css: &str| {
+            let f = contained(
+                "<div class=c><div class=x>x</div></div>",
+                &format!(".c {{ position: relative; width: 200px; height: 100px; padding: 5px; border: 3px solid red; }} .x {{ position: absolute; {css} }}"),
+            );
+            let abs = f.children[0].children.last().unwrap().clone();
+            (abs.x, abs.y, abs.width, abs.height)
+        };
+        // The containing block is the padding box: inside the 3px border.
+        assert_eq!(
+            place("right: 0; bottom: 0; width: 50px; height: 30px;"),
+            (3.0 + 210.0 - 50.0, 3.0 + 110.0 - 30.0, 50.0, 30.0)
+        );
+        assert_eq!(
+            place("left: 0; right: 0; top: 0; bottom: 0;"),
+            (3.0, 3.0, 210.0, 110.0)
+        );
+        assert_eq!(
+            place("left: 10px; width: 50px; height: 5px; margin-left: 4px;"),
+            (17.0, 8.0, 50.0, 5.0)
+        );
+        assert_eq!(
+            place("left: 0; right: 0; width: 100px; height: 10px; margin: 0 auto;").0,
+            3.0 + 55.0
+        );
+    }
+
+    #[test]
+    fn an_absolute_box_with_no_positioned_ancestor_uses_the_initial_containing_block() {
+        let doc = blueice_html::parse("<div style='height:50px'>a</div><p class=x>x</p>");
+        let ua = ua_stylesheet();
+        let author = blueice_css::parse(
+            ".x { position: absolute; right: 0; bottom: 0; width: 100px; height: 10px; }",
+        )
+        .rules;
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        let root = crate::layout(
+            &doc,
+            doc.root(),
+            &styles,
+            crate::Constraints {
+                available_width: 800.0,
+                viewport_height: 600.0,
+            },
+        );
+        let abs = root.children.last().unwrap();
+        assert!(abs.positioned, "the box was placed in the root fragment");
+        assert_eq!(
+            (abs.x, abs.y),
+            (700.0, 590.0),
+            "against the 800x600 initial containing block"
+        );
+        let body = &root.children[0];
+        assert!(
+            body.children.iter().all(|c| !c.positioned),
+            "and left the body"
+        );
+    }
+
+    #[test]
+    fn z_index_overflow_and_visibility_are_recorded_on_the_fragment() {
+        let f = contained(
+            "<div class=a>a</div><div class=b>b</div><div class=c>c</div>",
+            ".a { position: relative; z-index: 3; } .b { overflow: hidden; } .c { visibility: hidden; }",
+        );
+        assert_eq!(f.children[0].z_index, Some(3));
+        assert!(f.children[1].clips && !f.children[0].clips);
+        assert!(f.children[2].hidden && !f.children[0].hidden);
+        let plain = contained("<div class=a>a</div>", ".a { z-index: 3; }");
+        assert_eq!(
+            plain.children[0].z_index, None,
+            "z-index applies to positioned boxes only"
+        );
+    }
+
+    #[test]
+    fn display_contents_replaces_the_element_with_its_children() {
+        let f = contained(
+            "<div class=w><p>a</p><p>b</p></div>",
+            ".w { display: contents; padding: 50px; } p { height: 10px; }",
+        );
+        assert_eq!(
+            f.children.len(),
+            2,
+            "no wrapper box, and its padding is not applied"
+        );
+        assert_eq!(child_y(&f), vec![0.0, 10.0]);
     }
 }

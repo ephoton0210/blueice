@@ -269,6 +269,7 @@ impl Page {
             &self.styles,
             Constraints {
                 available_width: self.viewport_width,
+                viewport_height: self.viewport_height,
             },
         );
         self.adjust_native_select_scroll();

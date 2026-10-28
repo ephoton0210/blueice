@@ -43,6 +43,7 @@ fn popup_height_does_not_grow_with_option_count_and_labels_respect_disabled_grou
         &styles,
         Constraints {
             available_width: 500.0,
+            viewport_height: 720.0,
         },
     );
     let select = control(&fragment);
@@ -76,6 +77,7 @@ fn size_and_multiple_controls_have_clipped_rows_and_keep_empty_selection() {
         &styles,
         Constraints {
             available_width: 500.0,
+            viewport_height: 720.0,
         },
     );
     let select = control(&fragment);
