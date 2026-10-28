@@ -366,6 +366,7 @@ mod tests {
                 line_height: None,
                 text_align: None,
                 other: Default::default(),
+                custom: Default::default(),
             },
         );
         let mut words = Vec::new();
@@ -405,6 +406,7 @@ mod tests {
             line_height: None,
             text_align: None,
             other: Default::default(),
+            custom: Default::default(),
         };
         style.other.insert(
             "font-weight".to_string(),

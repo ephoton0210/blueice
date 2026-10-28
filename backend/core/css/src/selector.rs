@@ -110,36 +110,39 @@ pub struct ComplexSelector {
 
 /// The most selective thing the rightmost compound requires, used to find the
 /// rules that can possibly match an element without testing every rule.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SelectorKey {
-    Id(String),
-    Class(String),
-    Type(String),
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SelectorKey<'a> {
+    Id(&'a str),
+    Class(&'a str),
+    Type(&'a str),
     Universal,
 }
 
 impl ComplexSelector {
-    pub fn key(&self) -> SelectorKey {
+    pub fn key(&self) -> SelectorKey<'_> {
         let simple = self
             .compounds
             .last()
             .map(|c| c.simple_selectors.as_slice())
             .unwrap_or(&[]);
-        if let Some(SimpleSelector::Id(id)) =
-            simple.iter().find(|s| matches!(s, SimpleSelector::Id(_)))
-        {
-            return SelectorKey::Id(id.clone());
+        let find = |wanted: fn(&SimpleSelector) -> Option<&str>| simple.iter().find_map(wanted);
+        if let Some(id) = find(|s| match s {
+            SimpleSelector::Id(id) => Some(id.as_str()),
+            _ => None,
+        }) {
+            return SelectorKey::Id(id);
         }
-        if let Some(SimpleSelector::Class(class)) = simple
-            .iter()
-            .find(|s| matches!(s, SimpleSelector::Class(_)))
-        {
-            return SelectorKey::Class(class.clone());
+        if let Some(class) = find(|s| match s {
+            SimpleSelector::Class(class) => Some(class.as_str()),
+            _ => None,
+        }) {
+            return SelectorKey::Class(class);
         }
-        if let Some(SimpleSelector::Type(tag)) =
-            simple.iter().find(|s| matches!(s, SimpleSelector::Type(_)))
-        {
-            return SelectorKey::Type(tag.clone());
+        if let Some(tag) = find(|s| match s {
+            SimpleSelector::Type(tag) => Some(tag.as_str()),
+            _ => None,
+        }) {
+            return SelectorKey::Type(tag);
         }
         SelectorKey::Universal
     }
@@ -1199,9 +1202,9 @@ mod tests {
 
     #[test]
     fn selector_keys_prefer_id_then_class_then_type() {
-        assert_eq!(one("div p#x.y").key(), SelectorKey::Id("x".to_string()));
-        assert_eq!(one("div p.y.z").key(), SelectorKey::Class("y".to_string()));
-        assert_eq!(one("div > p").key(), SelectorKey::Type("p".to_string()));
+        assert_eq!(one("div p#x.y").key(), SelectorKey::Id("x"));
+        assert_eq!(one("div p.y.z").key(), SelectorKey::Class("y"));
+        assert_eq!(one("div > p").key(), SelectorKey::Type("p"));
         assert_eq!(one("div > *").key(), SelectorKey::Universal);
         assert_eq!(one(":is(a, b)").key(), SelectorKey::Universal);
         assert_eq!(one("[x]").key(), SelectorKey::Universal);

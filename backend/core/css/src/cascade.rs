@@ -29,8 +29,8 @@
 //! is a layout concern, not a cascade one.
 
 use crate::parser::{parse, Declaration, Rule};
-use crate::selector::{matches, specificity, Specificity};
-use crate::value::{Color, Value};
+use crate::selector::{matches, specificity, SelectorKey, Specificity};
+use crate::value::{Color, LengthContext, Value};
 use blueice_dom::{Document, NodeData, NodeId};
 use std::collections::HashMap;
 
@@ -52,6 +52,9 @@ pub struct ComputedStyle {
     /// Every other supported longhand's *specified* value (not
     /// inherited, not computed against a containing block or parent).
     pub other: HashMap<String, Value>,
+    /// The element's resolved custom properties (`--name`), inherited from
+    /// its parent and overlaid with its own.
+    pub custom: HashMap<String, Vec<crate::tokenizer::Token>>,
 }
 
 impl ComputedStyle {
@@ -97,6 +100,7 @@ impl ComputedStyle {
             line_height: None,
             text_align: None,
             other: HashMap::new(),
+            custom: HashMap::new(),
         }
     }
 }
@@ -115,15 +119,64 @@ const INHERITED_PROPERTIES: &[&str] = &[
 /// handled generically by copying the parent's [`ComputedStyle::other`]
 /// entry when the element itself doesn't set one, rather than adding a
 /// bespoke field + fallback arm per property the way the others need.
-const OTHER_INHERITED_PROPERTIES: &[&str] = &["font-weight"];
+const OTHER_INHERITED_PROPERTIES: &[&str] = &[
+    "font-weight",
+    "font-variant",
+    "font-stretch",
+    "letter-spacing",
+    "word-spacing",
+    "text-transform",
+    "text-indent",
+    "text-shadow",
+    "text-rendering",
+    "white-space",
+    "word-break",
+    "overflow-wrap",
+    "word-wrap",
+    "hyphens",
+    "tab-size",
+    "direction",
+    "visibility",
+    "cursor",
+    "pointer-events",
+    "list-style-type",
+    "list-style-position",
+    "list-style-image",
+    "quotes",
+    "border-collapse",
+    "border-spacing",
+    "caption-side",
+    "empty-cells",
+    "color-scheme",
+    "fill",
+    "stroke",
+    "-webkit-text-size-adjust",
+    "-webkit-font-smoothing",
+];
 
-fn resolve_font_size(value: &Value, parent_font_size_px: f64) -> Option<f64> {
+/// The absolute-size keywords (CSS Fonts 4), in CSS pixels, at the default
+/// medium of 16px.
+fn font_size_keyword(word: &str) -> Option<f64> {
+    Some(match word {
+        "xx-small" => 9.0,
+        "x-small" => 10.0,
+        "small" => 13.0,
+        "medium" => 16.0,
+        "large" => 18.0,
+        "x-large" => 24.0,
+        "xx-large" => 32.0,
+        "xxx-large" => 48.0,
+        _ => return None,
+    })
+}
+
+fn resolve_font_size(value: &Value, ctx: &LengthContext) -> Option<f64> {
     match value {
-        Value::Length(crate::value::Length::Px(n)) => Some(*n),
-        Value::Length(crate::value::Length::Em(n)) => Some(n * parent_font_size_px),
-        Value::Length(crate::value::Length::Zero) => Some(0.0),
-        Value::Percentage(p) => Some(parent_font_size_px * p / 100.0),
-        _ => None,
+        Value::Keyword(word) if word == "smaller" => Some(ctx.font_size / 1.2),
+        Value::Keyword(word) if word == "larger" => Some(ctx.font_size * 1.2),
+        Value::Keyword(word) => font_size_keyword(word),
+        // A percentage of the parent's font size, like `em`.
+        other => other.to_px(ctx).filter(|px| *px >= 0.0),
     }
 }
 
@@ -142,29 +195,154 @@ struct Matched<'a> {
     declaration: &'a Declaration,
 }
 
+/// The viewport `vw`/`vh` resolve against when a caller does not supply one.
+const DEFAULT_VIEWPORT: (f64, f64) = (1280.0, 720.0);
+
 /// Cascades `stylesheets` (in ascending origin precedence) against
 /// every element in `doc`, returning each element [`NodeId`]'s computed
 /// style. Non-element nodes (the document node, text nodes) never
-/// appear in the returned map.
+/// appear in the returned map. Viewport units resolve against a 1280x720
+/// viewport; use [`cascade_with_viewport`] to supply the real one.
 pub fn cascade(
     doc: &Document,
     stylesheets: &[(Origin, &[Rule])],
 ) -> HashMap<NodeId, ComputedStyle> {
+    cascade_with_viewport(doc, stylesheets, DEFAULT_VIEWPORT.0, DEFAULT_VIEWPORT.1)
+}
+
+/// [`cascade`] with the viewport that `vw`/`vh`/`vmin`/`vmax` font sizes and
+/// custom-property-fed values resolve against.
+pub fn cascade_with_viewport(
+    doc: &Document,
+    stylesheets: &[(Origin, &[Rule])],
+    viewport_width: f64,
+    viewport_height: f64,
+) -> HashMap<NodeId, ComputedStyle> {
+    let index = RuleIndex::build(stylesheets);
     let mut styles = HashMap::new();
-    cascade_subtree(doc, doc.root(), stylesheets, None, &mut styles);
+    let environment = Environment {
+        viewport_width,
+        viewport_height,
+    };
+    cascade_subtree(
+        doc,
+        doc.root(),
+        &index,
+        &environment,
+        None,
+        16.0,
+        &mut styles,
+    );
     styles
+}
+
+#[derive(Clone, Copy)]
+struct Environment {
+    viewport_width: f64,
+    viewport_height: f64,
+}
+
+/// Every rule once, with the buckets that find the rules that can match an
+/// element without testing them all: by the id, a class or the type its
+/// rightmost compound requires, plus the rules that require none.
+struct RuleIndex<'a> {
+    rules: Vec<IndexedRule<'a>>,
+    by_id: HashMap<&'a str, Vec<u32>>,
+    by_class: HashMap<&'a str, Vec<u32>>,
+    by_type: HashMap<&'a str, Vec<u32>>,
+    universal: Vec<u32>,
+}
+
+struct IndexedRule<'a> {
+    origin: Origin,
+    source_order: usize,
+    rule: &'a Rule,
+}
+
+impl<'a> RuleIndex<'a> {
+    fn build(stylesheets: &'a [(Origin, &'a [Rule])]) -> Self {
+        let mut index = RuleIndex {
+            rules: Vec::new(),
+            by_id: HashMap::new(),
+            by_class: HashMap::new(),
+            by_type: HashMap::new(),
+            universal: Vec::new(),
+        };
+        for (origin, rules) in stylesheets {
+            for (source_order, rule) in rules.iter().enumerate() {
+                let id = index.rules.len() as u32;
+                index.rules.push(IndexedRule {
+                    origin: *origin,
+                    source_order,
+                    rule,
+                });
+                let mut keys: Vec<SelectorKey<'a>> =
+                    rule.selectors.iter().map(|s| s.key()).collect();
+                keys.dedup();
+                for key in keys {
+                    let bucket = match key {
+                        SelectorKey::Id(name) => index.by_id.entry(name).or_default(),
+                        SelectorKey::Class(name) => index.by_class.entry(name).or_default(),
+                        SelectorKey::Type(name) => index.by_type.entry(name).or_default(),
+                        SelectorKey::Universal => &mut index.universal,
+                    };
+                    if bucket.last() != Some(&id) {
+                        bucket.push(id);
+                    }
+                }
+            }
+        }
+        index
+    }
+
+    /// The rule ids that might match `node`, ascending and without repeats.
+    fn candidates(&self, doc: &Document, node: NodeId) -> Vec<u32> {
+        let NodeData::Element {
+            tag_name,
+            attributes,
+        } = doc.data(node)
+        else {
+            return Vec::new();
+        };
+        let mut found: Vec<u32> = self.universal.clone();
+        if let Some(rules) = self.by_type.get(tag_name.as_str()) {
+            found.extend(rules);
+        }
+        for (name, value) in attributes {
+            if name == "id" {
+                if let Some(rules) = self.by_id.get(value.as_str()) {
+                    found.extend(rules);
+                }
+            } else if name == "class" {
+                for class in value.split_whitespace() {
+                    if let Some(rules) = self.by_class.get(class) {
+                        found.extend(rules);
+                    }
+                }
+            }
+        }
+        found.sort_unstable();
+        found.dedup();
+        found
+    }
 }
 
 fn cascade_subtree(
     doc: &Document,
     node: NodeId,
-    stylesheets: &[(Origin, &[Rule])],
+    index: &RuleIndex<'_>,
+    environment: &Environment,
     parent_style: Option<&ComputedStyle>,
+    root_font_size: f64,
     styles: &mut HashMap<NodeId, ComputedStyle>,
 ) {
     let is_element = matches!(doc.data(node), NodeData::Element { .. });
+    let mut child_root_font_size = root_font_size;
     let own_style = if is_element {
-        let style = compute_style_for(doc, node, stylesheets, parent_style);
+        let style = compute_style_for(doc, node, index, environment, parent_style, root_font_size);
+        if doc.parent(node) == Some(doc.root()) {
+            child_root_font_size = style.font_size_px;
+        }
         styles.insert(node, style.clone());
         Some(style)
     } else {
@@ -172,7 +350,15 @@ fn cascade_subtree(
     };
 
     for child in doc.children(node) {
-        cascade_subtree(doc, child, stylesheets, own_style.as_ref(), styles);
+        cascade_subtree(
+            doc,
+            child,
+            index,
+            environment,
+            own_style.as_ref(),
+            child_root_font_size,
+            styles,
+        );
     }
 }
 
@@ -186,32 +372,54 @@ fn inline_style_declarations(doc: &Document, node: NodeId) -> Vec<Declaration> {
     crate::parser::parse_declarations(&crate::tokenizer::tokenize(style_attr))
 }
 
+/// The parent's value for `property`, as the specified value `inherit` stands
+/// for, or `None` when the parent has none (the property's initial value).
+fn parent_value(parent: &ComputedStyle, property: &str) -> Option<Value> {
+    let keyword = |text: &Option<String>| text.clone().map(Value::Keyword);
+    match property {
+        "font-size" => Some(Value::Length(crate::value::Length::Px(parent.font_size_px))),
+        "color" => Some(Value::Color(parent.color)),
+        "display" => Some(Value::Keyword(parent.display.clone())),
+        "font-family" => keyword(&parent.font_family),
+        "font-style" => keyword(&parent.font_style),
+        "text-align" => keyword(&parent.text_align),
+        "line-height" => parent.line_height.clone(),
+        other => parent.other.get(other).cloned(),
+    }
+}
+
+fn is_inherited(property: &str) -> bool {
+    INHERITED_PROPERTIES.contains(&property) || OTHER_INHERITED_PROPERTIES.contains(&property)
+}
+
 fn compute_style_for(
     doc: &Document,
     node: NodeId,
-    stylesheets: &[(Origin, &[Rule])],
+    index: &RuleIndex<'_>,
+    environment: &Environment,
     parent_style: Option<&ComputedStyle>,
+    root_font_size: f64,
 ) -> ComputedStyle {
     let mut matched: Vec<Matched> = Vec::new();
-    for (origin, rules) in stylesheets {
-        for (source_order, rule) in rules.iter().enumerate() {
-            let best_specificity = rule
-                .selectors
-                .iter()
-                .filter(|s| matches(doc, node, s))
-                .map(specificity)
-                .max();
-            let Some(spec) = best_specificity else {
-                continue;
-            };
-            for decl in &rule.declarations {
-                matched.push(Matched {
-                    origin: *origin,
-                    specificity: spec,
-                    source_order,
-                    declaration: decl,
-                });
-            }
+    for rule_id in index.candidates(doc, node) {
+        let indexed = &index.rules[rule_id as usize];
+        let best_specificity = indexed
+            .rule
+            .selectors
+            .iter()
+            .filter(|s| matches(doc, node, s))
+            .map(specificity)
+            .max();
+        let Some(spec) = best_specificity else {
+            continue;
+        };
+        for decl in &indexed.rule.declarations {
+            matched.push(Matched {
+                origin: indexed.origin,
+                specificity: spec,
+                source_order: indexed.source_order,
+                declaration: decl,
+            });
         }
     }
 
@@ -254,18 +462,87 @@ fn compute_style_for(
         )
     });
 
-    let mut winners: HashMap<&str, &Value> = HashMap::new();
-    for m in &matched {
-        winners.insert(m.declaration.property.as_str(), &m.declaration.value);
-    }
-
     let default = ComputedStyle::initial();
     let parent = parent_style.unwrap_or(&default);
-    let mut style = ComputedStyle::initial();
 
+    // Custom properties first: every `var()` below reads the finished set.
+    let mut own_custom: HashMap<String, Vec<crate::tokenizer::Token>> = HashMap::new();
+    for m in &matched {
+        if m.declaration.property.starts_with("--") {
+            if let Value::Unparsed(tokens) = &m.declaration.value {
+                own_custom.insert(m.declaration.property.clone(), tokens.clone());
+            }
+        }
+    }
+    let custom = crate::vars::resolve(&parent.custom, own_custom);
+
+    // Winning value per property, later (higher precedence) declarations
+    // overriding earlier ones. A `var()` declaration is substituted and then
+    // parsed here -- a shorthand may expand to several longhands -- and is
+    // dropped entirely when a reference cannot be satisfied.
+    let mut winners: HashMap<String, Value> = HashMap::new();
+    for m in &matched {
+        let property = m.declaration.property.as_str();
+        if property.starts_with("--") {
+            continue;
+        }
+        match &m.declaration.value {
+            Value::Unparsed(tokens) => {
+                let Some(substituted) = crate::vars::substitute(tokens, &custom) else {
+                    continue;
+                };
+                for (longhand, value) in crate::parser::expand_property(property, &substituted) {
+                    winners.insert(longhand, value);
+                }
+            }
+            value => {
+                winners.insert(property.to_string(), value.clone());
+            }
+        }
+    }
+
+    // CSS-wide keywords: `inherit`, `initial`, `unset` (and `revert`, which
+    // with no user origin behaves like `unset`).
+    let wide: Vec<(String, String)> = winners
+        .iter()
+        .filter_map(|(property, value)| match value {
+            Value::Keyword(k)
+                if matches!(k.as_str(), "inherit" | "initial" | "unset" | "revert") =>
+            {
+                Some((property.clone(), k.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    // Properties explicitly returned to their initial value must not pick the
+    // parent's value back up through ordinary inheritance below.
+    let mut reset: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (property, keyword) in wide {
+        let inherit = keyword == "inherit" || (keyword != "initial" && is_inherited(&property));
+        match inherit.then(|| parent_value(parent, &property)).flatten() {
+            Some(value) => {
+                winners.insert(property, value);
+            }
+            None => {
+                winners.remove(&property);
+                reset.insert(property);
+            }
+        }
+    }
+
+    let mut style = ComputedStyle::initial();
+    style.custom = custom;
+
+    let font_context = LengthContext {
+        font_size: parent.font_size_px,
+        root_font_size,
+        viewport_width: environment.viewport_width,
+        viewport_height: environment.viewport_height,
+        percent_base: parent.font_size_px,
+    };
     style.font_size_px = winners
         .get("font-size")
-        .and_then(|v| resolve_font_size(v, parent.font_size_px))
+        .and_then(|v| resolve_font_size(v, &font_context))
         .unwrap_or(parent.font_size_px);
 
     style.color = winners
@@ -284,46 +561,30 @@ fn compute_style_for(
         })
         .unwrap_or_else(|| default.display.clone());
 
-    style.font_family = winners
-        .get("font-family")
-        .and_then(|v| {
-            if let Value::Keyword(k) = v {
-                Some(k.clone())
-            } else {
-                None
-            }
-        })
-        .or_else(|| parent.font_family.clone());
-
-    style.font_style = winners
-        .get("font-style")
-        .and_then(|v| {
-            if let Value::Keyword(k) = v {
-                Some(k.clone())
-            } else {
-                None
-            }
-        })
-        .or_else(|| parent.font_style.clone());
-
-    style.text_align = winners
-        .get("text-align")
-        .and_then(|v| {
-            if let Value::Keyword(k) = v {
-                Some(k.clone())
-            } else {
-                None
-            }
-        })
-        .or_else(|| parent.text_align.clone());
+    let inherited_keyword = |property: &str, fallback: &Option<String>| {
+        winners
+            .get(property)
+            .and_then(|v| {
+                if let Value::Keyword(k) = v {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| fallback.clone())
+    };
+    style.font_family = inherited_keyword("font-family", &parent.font_family);
+    style.font_style = inherited_keyword("font-style", &parent.font_style);
+    style.text_align = inherited_keyword("text-align", &parent.text_align);
 
     style.line_height = winners
         .get("line-height")
-        .map(|v| (*v).clone())
+        .cloned()
         .or_else(|| parent.line_height.clone());
 
     for (prop, value) in &winners {
-        if INHERITED_PROPERTIES.contains(prop) || *prop == "display" {
+        let prop = prop.as_str();
+        if INHERITED_PROPERTIES.contains(&prop) || prop == "display" {
             continue;
         }
         // currentColor can appear on any color-valued property
@@ -332,12 +593,12 @@ fn compute_style_for(
         // above, rather than leaving it unresolved in `other`.
         let resolved = match value {
             Value::Color(Color::CurrentColor) => Value::Color(style.color),
-            other => (*other).clone(),
+            other => other.clone(),
         };
         style.other.insert(prop.to_string(), resolved);
     }
     for prop in OTHER_INHERITED_PROPERTIES {
-        if !style.other.contains_key(*prop) {
+        if !style.other.contains_key(*prop) && !reset.contains(*prop) {
             if let Some(v) = parent.other.get(*prop) {
                 style.other.insert(prop.to_string(), v.clone());
             }
@@ -855,5 +1116,246 @@ mod tests {
             1.0,
             "opacity must not inherit from an ancestor"
         );
+    }
+
+    // ---- custom properties, var(), CSS-wide keywords, units, the rule index ----
+
+    /// Cascades `css` against `html` and returns the style of the first element
+    /// with the given tag.
+    fn style_of(html: &str, css: &str, tag: &str) -> ComputedStyle {
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let author = parse(css);
+        let styles = cascade_with_viewport(
+            &doc,
+            &[(Origin::Ua, &ua), (Origin::Author, &author)],
+            1000.0,
+            500.0,
+        );
+        let node = styles
+            .keys()
+            .copied()
+            .filter(
+                |n| matches!(doc.data(*n), NodeData::Element { tag_name, .. } if tag_name == tag),
+            )
+            .min_by_key(|n| n.as_u64())
+            .unwrap();
+        styles[&node].clone()
+    }
+    fn px(n: f64) -> Value {
+        Value::Length(Length::Px(n))
+    }
+
+    #[test]
+    fn var_substitutes_into_values_and_shorthands() {
+        let style = style_of(
+            "<p>x</p>",
+            "p { --gap: 4px; --c: #102030; margin: var(--gap) 2px; color: var(--c); width: calc(var(--gap) * 3); }",
+            "p",
+        );
+        assert_eq!(style.other["margin-top"], px(4.0));
+        assert_eq!(style.other["margin-right"], px(2.0));
+        assert_eq!(style.color, Color::Rgba(0x10, 0x20, 0x30, 255));
+        assert!(matches!(style.other["width"], Value::Calc(_)));
+    }
+
+    #[test]
+    fn custom_properties_inherit_and_can_be_overridden_per_element() {
+        let html = "<div><p>a</p><section><p>b</p></section></div>";
+        let css = "div { --x: 10px; } section { --x: 30px; } p { width: var(--x); }";
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let author = parse(css);
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        let mut widths: Vec<(u64, Value)> = styles
+            .iter()
+            .filter(|(n, _)| matches!(doc.data(**n), NodeData::Element { tag_name, .. } if tag_name == "p"))
+            .map(|(n, s)| (n.as_u64(), s.other["width"].clone()))
+            .collect();
+        widths.sort_by_key(|(id, _)| *id);
+        assert_eq!(widths[0].1, px(10.0), "inherited from div");
+        assert_eq!(widths[1].1, px(30.0), "section overrides for its subtree");
+    }
+
+    #[test]
+    fn var_uses_its_fallback_and_an_unsatisfied_reference_drops_the_declaration() {
+        let style = style_of(
+            "<p>x</p>",
+            "p { width: 7px; width: var(--nope, 9px); height: 5px; height: var(--nope); }",
+            "p",
+        );
+        assert_eq!(style.other["width"], px(9.0), "fallback applies");
+        assert_eq!(
+            style.other["height"],
+            px(5.0),
+            "an invalid var() declaration leaves the earlier value standing... as if never declared"
+        )
+    }
+
+    #[test]
+    fn var_cycles_make_the_property_invalid() {
+        let style = style_of(
+            "<p>x</p>",
+            "p { --a: var(--b); --b: var(--a); width: var(--a, 3px); }",
+            "p",
+        );
+        assert_eq!(
+            style.other["width"],
+            px(3.0),
+            "the cycle is invalid, so the fallback is used"
+        );
+    }
+
+    #[test]
+    fn important_and_specificity_apply_to_custom_properties() {
+        let style = style_of(
+            "<p id=a class=b>x</p>",
+            "#a { --w: 1px; } .b { --w: 2px !important; } p { --w: 3px; } p { width: var(--w); }",
+            "p",
+        );
+        assert_eq!(style.other["width"], px(2.0));
+    }
+
+    #[test]
+    fn inherit_initial_and_unset() {
+        let css = "div { color: #123456; width: 40px; visibility: hidden; } \
+                   p { color: inherit; width: inherit; visibility: initial; }";
+        let style = style_of("<div><p>x</p></div>", css, "p");
+        assert_eq!(style.color, Color::Rgba(0x12, 0x34, 0x56, 255));
+        assert_eq!(
+            style.other["width"],
+            px(40.0),
+            "inherit copies a non-inherited property"
+        );
+        assert!(
+            !style.other.contains_key("visibility"),
+            "initial discards the inherited value"
+        );
+        let unset = style_of(
+            "<div><p>x</p></div>",
+            "div { color: red; width: 9px; } p { color: unset; width: unset; }",
+            "p",
+        );
+        assert_eq!(
+            unset.color,
+            Color::Rgba(255, 0, 0, 255),
+            "unset inherits an inherited property"
+        );
+        assert!(
+            !unset.other.contains_key("width"),
+            "unset resets a non-inherited one"
+        );
+    }
+
+    #[test]
+    fn visibility_and_other_text_properties_inherit() {
+        let style = style_of(
+            "<div><p>x</p></div>",
+            "div { visibility: hidden; letter-spacing: 2px; white-space: nowrap; cursor: pointer; }",
+            "p",
+        );
+        assert_eq!(
+            style.other["visibility"],
+            Value::Keyword("hidden".to_string())
+        );
+        assert_eq!(style.other["letter-spacing"], px(2.0));
+        assert_eq!(
+            style.other["white-space"],
+            Value::Keyword("nowrap".to_string())
+        );
+    }
+
+    #[test]
+    fn font_size_resolves_rem_viewport_units_keywords_and_calc() {
+        let rem = |css: &str| style_of("<html><body><p>x</p></body></html>", css, "p").font_size_px;
+        assert_eq!(
+            rem("html { font-size: 20px; } p { font-size: 2rem; }"),
+            40.0
+        );
+        assert_eq!(
+            rem("p { font-size: 1.5rem; }"),
+            24.0,
+            "default root is 16px"
+        );
+        assert_eq!(rem("p { font-size: 4vw; }"), 40.0, "1000px wide viewport");
+        assert_eq!(rem("p { font-size: 10vh; }"), 50.0);
+        assert_eq!(rem("p { font-size: large; }"), 18.0);
+        assert_eq!(
+            rem("body { font-size: 20px; } p { font-size: smaller; }"),
+            20.0 / 1.2
+        );
+        assert_eq!(
+            rem("body { font-size: 20px; } p { font-size: 150%; }"),
+            30.0
+        );
+        assert_eq!(
+            rem("body { font-size: 10px; } p { font-size: calc(1em + 2px); }"),
+            12.0
+        );
+        assert_eq!(rem("body { font-size: 10px; } p { font-size: 2em; }"), 20.0);
+    }
+
+    #[test]
+    fn rem_inside_the_root_font_size_uses_the_initial_size() {
+        let doc = blueice_html::parse("<html><body>x</body></html>");
+        let ua = ua_stylesheet();
+        let author = parse("html { font-size: 2rem; }");
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        let html = *styles
+            .keys()
+            .find(|n| doc.parent(**n) == Some(doc.root()))
+            .unwrap();
+        assert_eq!(
+            styles[&html].font_size_px, 32.0,
+            "rem on the root is relative to the 16px initial"
+        );
+    }
+
+    #[test]
+    fn indexed_matching_agrees_with_testing_every_rule() {
+        // Many rules reachable only through different index buckets, plus
+        // multi-selector rules and attribute/pseudo selectors the index cannot key.
+        let css = "* { margin: 1px; } p { padding: 2px; } .a { color: red; } #x { width: 5px; } \
+                   .a.b, #y, span { height: 6px; } [title] { opacity: 0.5; } :first-child { top: 1px; } \
+                   div > .c { left: 3px; } .zz { right: 9px; }";
+        let html =
+            "<div><p id=x class='a b' title=t>1</p><span class=c>2</span><b id=y>3</b></div>";
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let author = parse(css);
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        let get = |tag: &str| {
+            let node = styles
+                .keys()
+                .copied()
+                .find(|n| matches!(doc.data(*n), NodeData::Element { tag_name, .. } if tag_name == tag))
+                .unwrap();
+            styles[&node].clone()
+        };
+        let p = get("p");
+        assert_eq!(p.other["margin-top"], px(1.0), "universal");
+        assert_eq!(p.other["padding-top"], px(2.0), "type");
+        assert_eq!(p.color, Color::Rgba(255, 0, 0, 255), "class");
+        assert_eq!(p.other["width"], px(5.0), "id");
+        assert_eq!(
+            p.other["height"],
+            px(6.0),
+            "a multi-selector rule matched through its .a.b selector"
+        );
+        assert_eq!(p.other["opacity"], Value::Number(0.5), "attribute");
+        assert_eq!(p.other["top"], px(1.0), "pseudo-class");
+        assert!(!p.other.contains_key("right"));
+        let span = get("span");
+        assert_eq!(
+            span.other["height"],
+            px(6.0),
+            "same rule through its type selector"
+        );
+        assert_eq!(
+            span.other["left"],
+            px(3.0),
+            "descendant chain keyed on its rightmost class"
+        );
+        assert_eq!(get("b").other["height"], px(6.0), "same rule through #y");
     }
 }

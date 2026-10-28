@@ -73,13 +73,24 @@ fn parse_component_value(property: &str, tokens: &[Token]) -> Option<Value> {
     Some(value)
 }
 
+/// Splits `tokens` at every separator that is not inside parentheses,
+/// brackets or braces, so `calc(1px + 2px)` stays one component and a `;`
+/// inside `url(data:...;base64,...)` does not end a declaration.
 fn split_on(tokens: &[Token], is_sep: impl Fn(&Token) -> bool) -> Vec<&[Token]> {
     let mut parts = Vec::new();
     let mut start = 0;
+    let mut depth = 0usize;
     for (i, t) in tokens.iter().enumerate() {
-        if is_sep(t) {
-            parts.push(&tokens[start..i]);
-            start = i + 1;
+        match t {
+            Token::LeftParen | Token::LeftBracket | Token::LeftBrace => depth += 1,
+            Token::RightParen | Token::RightBracket | Token::RightBrace => {
+                depth = depth.saturating_sub(1)
+            }
+            _ if depth == 0 && is_sep(t) => {
+                parts.push(&tokens[start..i]);
+                start = i + 1;
+            }
+            _ => {}
         }
     }
     parts.push(&tokens[start..]);
@@ -135,6 +146,26 @@ const BORDER_STYLE_KEYWORDS: &[&str] = &[
     "none", "hidden", "solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset",
 ];
 
+/// `inset` and friends: a 1-to-4-value box shorthand onto four named longhands.
+fn expand_box_shorthand_property_named(
+    names: [&str; 4],
+    value_tokens: &[Token],
+) -> Vec<(String, Value)> {
+    let values: Option<Vec<Value>> = components(value_tokens)
+        .iter()
+        .map(|c| parse_component_value("top", c))
+        .collect();
+    let Some(values) = values else { return vec![] };
+    let Some(expanded) = expand_box_shorthand(values) else {
+        return vec![];
+    };
+    names
+        .iter()
+        .zip(expanded)
+        .map(|(name, value)| (name.to_string(), value))
+        .collect()
+}
+
 /// Expands a 1-to-4-value box shorthand (`margin`, `padding`,
 /// `border-width`, `border-style`, `border-color`) into its four
 /// per-side longhands, named `{prefix}-top{suffix}` etc. `is_length`
@@ -175,54 +206,250 @@ fn expand_box_shorthand_property(
     ]
 }
 
-fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(String, Value)> {
+/// The whitespace-separated components of a value, none empty.
+fn components(tokens: &[Token]) -> Vec<&[Token]> {
+    split_on(tokens, |t| *t == Token::Whitespace)
+        .into_iter()
+        .map(trim_ws)
+        .filter(|c| !c.is_empty())
+        .collect()
+}
+
+fn keyword(value: &str) -> Value {
+    Value::Keyword(value.to_string())
+}
+
+/// `flex: <grow> [<shrink>] [<basis>]` and its keyword forms.
+fn expand_flex(tokens: &[Token]) -> Vec<(String, Value)> {
+    let parts = components(tokens);
+    let single_keyword = match parts.as_slice() {
+        [one] => match parse_value(one) {
+            Some(Value::Keyword(k)) => Some(k),
+            _ => None,
+        },
+        _ => None,
+    };
+    let (grow, shrink, basis) = match single_keyword.as_deref() {
+        Some("none") => (Value::Number(0.0), Value::Number(0.0), keyword("auto")),
+        Some("auto") => (Value::Number(1.0), Value::Number(1.0), keyword("auto")),
+        Some("initial") => (Value::Number(0.0), Value::Number(1.0), keyword("auto")),
+        Some(_) => return vec![],
+        None => {
+            let values: Option<Vec<Value>> = parts.iter().map(|p| parse_value(p)).collect();
+            let Some(values) = values else { return vec![] };
+            let number = |v: &Value| matches!(v, Value::Number(n) if *n >= 0.0);
+            let basis_of = |v: &Value| match v {
+                Value::Number(n) if *n == 0.0 => Some(Value::Length(Length::Zero)),
+                Value::Number(_) | Value::Color(_) | Value::List(_) | Value::Unparsed(_) => None,
+                other => Some(other.clone()),
+            };
+            match values.as_slice() {
+                [grow] if number(grow) => {
+                    (grow.clone(), Value::Number(1.0), Value::Percentage(0.0))
+                }
+                [basis] => (
+                    Value::Number(1.0),
+                    Value::Number(1.0),
+                    match basis_of(basis) {
+                        Some(basis) => basis,
+                        None => return vec![],
+                    },
+                ),
+                [grow, shrink] if number(grow) && number(shrink) => {
+                    (grow.clone(), shrink.clone(), Value::Percentage(0.0))
+                }
+                [grow, basis] if number(grow) => (
+                    grow.clone(),
+                    Value::Number(1.0),
+                    match basis_of(basis) {
+                        Some(basis) => basis,
+                        None => return vec![],
+                    },
+                ),
+                [grow, shrink, basis] if number(grow) && number(shrink) => (
+                    grow.clone(),
+                    shrink.clone(),
+                    match basis_of(basis) {
+                        Some(basis) => basis,
+                        None => return vec![],
+                    },
+                ),
+                _ => return vec![],
+            }
+        }
+    };
+    vec![
+        ("flex-grow".to_string(), grow),
+        ("flex-shrink".to_string(), shrink),
+        ("flex-basis".to_string(), basis),
+    ]
+}
+
+/// Two-value shorthands (`gap`, `overflow`, `flex-flow`, `place-*`): one
+/// value sets both longhands, two set them in order.
+fn expand_pair(first: &str, second: &str, tokens: &[Token]) -> Vec<(String, Value)> {
+    let values: Option<Vec<Value>> = components(tokens)
+        .iter()
+        .map(|c| parse_component_value(first, c))
+        .collect();
+    match values.as_deref() {
+        Some([a]) => vec![
+            (first.to_string(), a.clone()),
+            (second.to_string(), a.clone()),
+        ],
+        Some([a, b]) => vec![
+            (first.to_string(), a.clone()),
+            (second.to_string(), b.clone()),
+        ],
+        _ => vec![],
+    }
+}
+
+fn expand_flex_flow(tokens: &[Token]) -> Vec<(String, Value)> {
+    let mut out = Vec::new();
+    for part in components(tokens) {
+        match parse_value(part) {
+            Some(Value::Keyword(k))
+                if ["row", "row-reverse", "column", "column-reverse"].contains(&k.as_str()) =>
+            {
+                out.push(("flex-direction".to_string(), Value::Keyword(k)))
+            }
+            Some(Value::Keyword(k)) if ["nowrap", "wrap", "wrap-reverse"].contains(&k.as_str()) => {
+                out.push(("flex-wrap".to_string(), Value::Keyword(k)))
+            }
+            _ => return vec![],
+        }
+    }
+    out
+}
+
+/// The colour of a `background` shorthand; a layer with none resets it.
+fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
+    let color = components(tokens)
+        .into_iter()
+        .find_map(|c| match parse_value(c) {
+            Some(color @ Value::Color(_)) => Some(color),
+            _ => None,
+        })
+        .unwrap_or(Value::Color(crate::value::Color::Rgba(0, 0, 0, 0)));
+    vec![("background-color".to_string(), color)]
+}
+
+/// `border`-style shorthands over the given sides.
+fn expand_border_sides(sides: &[&str], value_tokens: &[Token]) -> Vec<(String, Value)> {
+    // Order-independent: a width (a length, or bare `0`), a style keyword, and
+    // a colour. Any component that is not one of the three (or is simply
+    // omitted, as in `border: solid;`) is left unset rather than failing the
+    // whole declaration -- matching the parser's "ignore, don't crash" posture.
+    let mut width = None;
+    let mut style = None;
+    let mut color = None;
+    for component in components(value_tokens) {
+        let Some(v) = parse_value(component) else {
+            continue;
+        };
+        match v {
+            Value::Color(_) => color = Some(v),
+            Value::Keyword(ref k) if BORDER_STYLE_KEYWORDS.contains(&k.as_str()) => style = Some(v),
+            Value::Keyword(ref k) if ["thin", "medium", "thick"].contains(&k.as_str()) => {
+                width = Some(Value::Length(Length::Px(match k.as_str() {
+                    "thin" => 1.0,
+                    "medium" => 3.0,
+                    _ => 5.0,
+                })))
+            }
+            Value::Length(_) | Value::Calc(_) => width = Some(v),
+            Value::Number(0.0) => width = Some(Value::Length(Length::Zero)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for side in sides {
+        if let Some(w) = &width {
+            out.push((format!("border-{side}-width"), w.clone()));
+        }
+        if let Some(s) = &style {
+            out.push((format!("border-{side}-style"), s.clone()));
+        }
+        if let Some(c) = &color {
+            out.push((format!("border-{side}-color"), c.clone()));
+        }
+    }
+    out
+}
+
+/// Logical (flow-relative) properties, mapped for a left-to-right,
+/// top-to-bottom document: inline is horizontal, block is vertical.
+fn logical_longhands(property: &str) -> Option<&'static [&'static str]> {
+    Some(match property {
+        "margin-inline" => &["margin-left", "margin-right"],
+        "margin-block" => &["margin-top", "margin-bottom"],
+        "padding-inline" => &["padding-left", "padding-right"],
+        "padding-block" => &["padding-top", "padding-bottom"],
+        "inset-inline" => &["left", "right"],
+        "inset-block" => &["top", "bottom"],
+        "margin-inline-start" => &["margin-left"],
+        "margin-inline-end" => &["margin-right"],
+        "margin-block-start" => &["margin-top"],
+        "margin-block-end" => &["margin-bottom"],
+        "padding-inline-start" => &["padding-left"],
+        "padding-inline-end" => &["padding-right"],
+        "padding-block-start" => &["padding-top"],
+        "padding-block-end" => &["padding-bottom"],
+        "inset-inline-start" => &["left"],
+        "inset-inline-end" => &["right"],
+        "inset-block-start" => &["top"],
+        "inset-block-end" => &["bottom"],
+        "inline-size" => &["width"],
+        "block-size" => &["height"],
+        "min-inline-size" => &["min-width"],
+        "min-block-size" => &["min-height"],
+        "max-inline-size" => &["max-width"],
+        "max-block-size" => &["max-height"],
+        _ => return None,
+    })
+}
+
+pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(String, Value)> {
+    if let Some(longhands) = logical_longhands(property) {
+        let values: Option<Vec<Value>> = components(value_tokens)
+            .iter()
+            .map(|c| parse_component_value(longhands[0], c))
+            .collect();
+        return match (values.as_deref(), longhands) {
+            (Some([v]), longhands) => longhands
+                .iter()
+                .map(|l| (l.to_string(), v.clone()))
+                .collect(),
+            (Some([a, b]), [first, second]) => {
+                vec![
+                    (first.to_string(), a.clone()),
+                    (second.to_string(), b.clone()),
+                ]
+            }
+            _ => vec![],
+        };
+    }
     match property {
         "margin" | "padding" => expand_box_shorthand_property(property, "", value_tokens, true),
         "border-width" => expand_box_shorthand_property("border", "-width", value_tokens, true),
         "border-style" => expand_box_shorthand_property("border", "-style", value_tokens, false),
         "border-color" => expand_box_shorthand_property("border", "-color", value_tokens, false),
-        "border" => {
-            // Order-independent: a width (a length, or bare `0`), a
-            // style keyword, and a color, applied to all four sides at
-            // once. Any component that doesn't parse as one of the
-            // three (or is simply omitted, as in `border: solid;`) is
-            // just left unset rather than failing the whole
-            // declaration -- matching the tokenizer/parser's general
-            // "ignore, don't crash" posture.
-            let mut width = None;
-            let mut style = None;
-            let mut color = None;
-            for component in split_on(value_tokens, |t| *t == Token::Whitespace)
-                .into_iter()
-                .map(trim_ws)
-                .filter(|c| !c.is_empty())
-            {
-                let Some(v) = parse_value(component) else {
-                    continue;
-                };
-                match v {
-                    Value::Color(_) => color = Some(v),
-                    Value::Keyword(ref k) if BORDER_STYLE_KEYWORDS.contains(&k.as_str()) => {
-                        style = Some(v)
-                    }
-                    Value::Length(_) => width = Some(v),
-                    Value::Number(0.0) => width = Some(Value::Length(Length::Zero)),
-                    _ => {}
-                }
-            }
-            let mut out = Vec::new();
-            for side in ["top", "right", "bottom", "left"] {
-                if let Some(w) = &width {
-                    out.push((format!("border-{side}-width"), w.clone()));
-                }
-                if let Some(s) = &style {
-                    out.push((format!("border-{side}-style"), s.clone()));
-                }
-                if let Some(c) = &color {
-                    out.push((format!("border-{side}-color"), c.clone()));
-                }
-            }
-            out
+        "border" => expand_border_sides(&["top", "right", "bottom", "left"], value_tokens),
+        "border-top" => expand_border_sides(&["top"], value_tokens),
+        "border-right" => expand_border_sides(&["right"], value_tokens),
+        "border-bottom" => expand_border_sides(&["bottom"], value_tokens),
+        "border-left" => expand_border_sides(&["left"], value_tokens),
+        "flex" => expand_flex(value_tokens),
+        "flex-flow" => expand_flex_flow(value_tokens),
+        "gap" | "grid-gap" => expand_pair("row-gap", "column-gap", value_tokens),
+        "overflow" => expand_pair("overflow-x", "overflow-y", value_tokens),
+        "place-items" => expand_pair("align-items", "justify-items", value_tokens),
+        "place-content" => expand_pair("align-content", "justify-content", value_tokens),
+        "place-self" => expand_pair("align-self", "justify-self", value_tokens),
+        "background" => expand_background(value_tokens),
+        "inset" => {
+            expand_box_shorthand_property_named(["top", "right", "bottom", "left"], value_tokens)
         }
         "font-family" => {
             // MVP doesn't do font fallback matching -- take the first
@@ -238,11 +465,80 @@ fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(String, Value
                 None => vec![],
             }
         }
-        _ => match parse_component_value(property, value_tokens) {
-            Some(v) => vec![(property.to_string(), v)],
-            None => vec![],
-        },
+        _ => {
+            if let Some(v) = parse_component_value(property, value_tokens) {
+                return vec![(property.to_string(), v)];
+            }
+            let parts = components(value_tokens);
+            if parts.len() < 2 {
+                return vec![];
+            }
+            let list: Option<Vec<Value>> = parts
+                .iter()
+                .map(|p| parse_component_value(property, p))
+                .collect();
+            match list {
+                Some(list) => vec![(property.to_string(), Value::List(list))],
+                None => vec![],
+            }
+        }
     }
+}
+
+/// The `;`-separated declarations of a block, skipping nested rules
+/// (`&:hover { ... }`, whose own parsing is not supported yet) so that the
+/// declarations after one are not swallowed with it. A custom property's value
+/// may itself contain braces, so those chunks are read to the next `;`.
+fn declaration_chunks(tokens: &[Token]) -> Vec<&[Token]> {
+    let mut chunks = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        while matches!(tokens.get(i), Some(Token::Whitespace | Token::Semicolon)) {
+            i += 1;
+        }
+        let start = i;
+        let custom = matches!(tokens.get(i), Some(Token::Ident(name)) if name.starts_with("--"));
+        let mut depth = 0usize;
+        let mut nested_rule = false;
+        while i < tokens.len() {
+            match &tokens[i] {
+                Token::LeftParen | Token::LeftBracket => depth += 1,
+                Token::RightParen | Token::RightBracket => depth = depth.saturating_sub(1),
+                Token::LeftBrace if custom => depth += 1,
+                Token::RightBrace if custom => depth = depth.saturating_sub(1),
+                Token::LeftBrace if depth == 0 => {
+                    nested_rule = true;
+                    break;
+                }
+                Token::Semicolon if depth == 0 => break,
+                _ => {}
+            }
+            i += 1;
+        }
+        if nested_rule {
+            // Skip the whole `{ ... }` block.
+            let mut braces = 0usize;
+            while i < tokens.len() {
+                match tokens[i] {
+                    Token::LeftBrace => braces += 1,
+                    Token::RightBrace => {
+                        braces -= 1;
+                        if braces == 0 {
+                            i += 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            continue;
+        }
+        if start < i {
+            chunks.push(&tokens[start..i]);
+        }
+    }
+    chunks
 }
 
 /// Parses one declaration block's tokens (the contents between `{` and
@@ -250,7 +546,7 @@ fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(String, Value
 /// that fail to parse (unknown property syntax, unsupported value) are
 /// dropped individually rather than failing the whole block.
 pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
-    split_on(tokens, |t| *t == Token::Semicolon)
+    declaration_chunks(tokens)
         .into_iter()
         .filter_map(|decl_tokens| {
             let decl_tokens = trim_ws(decl_tokens);
@@ -280,7 +576,15 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
             Some((property, value_tokens, important))
         })
         .flat_map(|(property, value_tokens, important)| {
-            expand_property(&property, value_tokens)
+            // Custom properties and anything using `var()` cannot be parsed
+            // until the cascade knows the element's custom properties.
+            let expanded = if property.starts_with("--") || crate::vars::contains_var(value_tokens)
+            {
+                vec![(property, Value::Unparsed(value_tokens.to_vec()))]
+            } else {
+                expand_property(&property, value_tokens)
+            };
+            expanded
                 .into_iter()
                 .map(move |(property, value)| Declaration {
                     property,
@@ -289,6 +593,22 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
                 })
         })
         .collect()
+}
+
+/// Offset of the `}` that closes a block whose `{` precedes `tokens`,
+/// skipping over nested `{ ... }` pairs (a custom property's braces, or a
+/// nested rule whose own parsing is not supported yet).
+fn matching_brace(tokens: &[Token]) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            Token::LeftBrace => depth += 1,
+            Token::RightBrace if depth == 0 => return Some(i),
+            Token::RightBrace => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn skip_at_rule(tokens: &[Token], start: usize) -> usize {
@@ -387,10 +707,7 @@ fn parse_rules_in(
                 };
                 let selector_tokens = &tokens[i..i + brace];
                 let body_start = i + brace + 1;
-                let Some(close_offset) = tokens[body_start..]
-                    .iter()
-                    .position(|t| *t == Token::RightBrace)
-                else {
+                let Some(close_offset) = matching_brace(&tokens[body_start..]) else {
                     break; // unterminated block
                 };
                 let body_tokens = &tokens[body_start..body_start + close_offset];
@@ -779,5 +1096,270 @@ mod tests {
             "@container (min-width: 10px) { p { color: red; } } @property --x { syntax: '*'; inherits: false; } b { color: blue; }",
         );
         assert_eq!(rules.len(), 1);
+    }
+
+    // ---- custom properties, var(), multi-value properties and shorthands ----
+
+    fn decls(css: &str) -> Vec<(String, Value)> {
+        parse(&format!("p {{ {css} }}"))
+            .remove(0)
+            .declarations
+            .into_iter()
+            .map(|d| (d.property, d.value))
+            .collect()
+    }
+    fn value_of(css: &str, property: &str) -> Option<Value> {
+        decls(css)
+            .into_iter()
+            .find(|(p, _)| p == property)
+            .map(|(_, v)| v)
+    }
+    fn px(n: f64) -> Value {
+        Value::Length(Length::Px(n))
+    }
+
+    #[test]
+    fn custom_properties_and_var_declarations_stay_unparsed() {
+        let d = decls("--gap: 4px 8px; margin: var(--gap); color: red;");
+        assert_eq!(d.len(), 3);
+        assert_eq!(d[0].0, "--gap");
+        assert!(
+            matches!(&d[0].1, Value::Unparsed(t) if t.contains(&Token::Dimension(8.0, "px".to_string())))
+        );
+        assert_eq!(
+            d[1].0, "margin",
+            "a shorthand is expanded after substitution"
+        );
+        assert!(matches!(d[1].1, Value::Unparsed(_)));
+        assert_eq!(
+            d[2],
+            (
+                "color".to_string(),
+                Value::Color(crate::value::Color::Rgba(255, 0, 0, 255))
+            )
+        );
+    }
+
+    #[test]
+    fn a_custom_property_value_may_hold_semicolons_in_parentheses_and_braces() {
+        let d = decls("--bg: url(data:image/png;base64,AAAA); --obj: {a:b;c:d}; color: red;");
+        assert_eq!(d.len(), 3, "{d:?}");
+    }
+
+    #[test]
+    fn important_applies_to_custom_properties() {
+        let rule = parse("p { --x: 1 !important; }").remove(0);
+        assert!(rule.declarations[0].important);
+    }
+
+    #[test]
+    fn function_values_survive_space_splitting() {
+        assert_eq!(
+            value_of("margin: calc(1px + 2px) 4px;", "margin-top"),
+            Some(Value::Calc(crate::Calc::Sum(
+                Box::new(crate::Calc::Length(Length::Px(1.0))),
+                Box::new(crate::Calc::Length(Length::Px(2.0)))
+            )))
+        );
+        assert_eq!(
+            value_of("margin: calc(1px + 2px) 4px;", "margin-left"),
+            Some(px(4.0))
+        );
+        assert_eq!(
+            value_of("border: 1px solid rgb(0 0 0 / 50%);", "border-top-color"),
+            Some(Value::Color(crate::value::Color::Rgba(0, 0, 0, 128)))
+        );
+    }
+
+    #[test]
+    fn unknown_multi_component_values_become_lists() {
+        assert_eq!(
+            value_of("aspect-ratio: 16 9;", "aspect-ratio"),
+            Some(Value::List(vec![Value::Number(16.0), Value::Number(9.0)]))
+        );
+        assert_eq!(
+            value_of("margin-trim: block inline;", "margin-trim"),
+            Some(Value::List(vec![
+                Value::Keyword("block".to_string()),
+                Value::Keyword("inline".to_string())
+            ]))
+        );
+        assert_eq!(
+            value_of("transition: opacity 0.3s;", "transition"),
+            None,
+            "a component the engine cannot represent drops the declaration"
+        );
+    }
+
+    #[test]
+    fn flex_shorthand_expands_to_its_three_longhands() {
+        let flex = |css: &str| {
+            let d = decls(css);
+            let get = |name: &str| d.iter().find(|(p, _)| p == name).map(|(_, v)| v.clone());
+            (get("flex-grow"), get("flex-shrink"), get("flex-basis"))
+        };
+        let n = Value::Number;
+        let auto = || Value::Keyword("auto".to_string());
+        assert_eq!(
+            flex("flex: none;"),
+            (Some(n(0.0)), Some(n(0.0)), Some(auto()))
+        );
+        assert_eq!(
+            flex("flex: auto;"),
+            (Some(n(1.0)), Some(n(1.0)), Some(auto()))
+        );
+        assert_eq!(
+            flex("flex: initial;"),
+            (Some(n(0.0)), Some(n(1.0)), Some(auto()))
+        );
+        assert_eq!(
+            flex("flex: 2;"),
+            (Some(n(2.0)), Some(n(1.0)), Some(Value::Percentage(0.0)))
+        );
+        assert_eq!(
+            flex("flex: 2 3;"),
+            (Some(n(2.0)), Some(n(3.0)), Some(Value::Percentage(0.0)))
+        );
+        assert_eq!(
+            flex("flex: 1 0 10px;"),
+            (Some(n(1.0)), Some(n(0.0)), Some(px(10.0)))
+        );
+        assert_eq!(
+            flex("flex: 10px;"),
+            (Some(n(1.0)), Some(n(1.0)), Some(px(10.0)))
+        );
+        assert_eq!(
+            flex("flex: 1 1 0;"),
+            (
+                Some(n(1.0)),
+                Some(n(1.0)),
+                Some(Value::Length(Length::Zero))
+            )
+        );
+        assert_eq!(
+            flex("flex: 1 1 0%;"),
+            (Some(n(1.0)), Some(n(1.0)), Some(Value::Percentage(0.0)))
+        );
+        assert_eq!(flex("flex: 1 2 3 4;"), (None, None, None));
+    }
+
+    #[test]
+    fn flex_flow_gap_inset_and_overflow_shorthands() {
+        assert_eq!(
+            value_of("flex-flow: column wrap;", "flex-direction"),
+            Some(Value::Keyword("column".to_string()))
+        );
+        assert_eq!(
+            value_of("flex-flow: column wrap;", "flex-wrap"),
+            Some(Value::Keyword("wrap".to_string()))
+        );
+        assert_eq!(
+            value_of("flex-flow: wrap-reverse;", "flex-wrap"),
+            Some(Value::Keyword("wrap-reverse".to_string()))
+        );
+        assert_eq!(value_of("gap: 4px 8px;", "row-gap"), Some(px(4.0)));
+        assert_eq!(value_of("gap: 4px 8px;", "column-gap"), Some(px(8.0)));
+        assert_eq!(value_of("gap: 4px;", "column-gap"), Some(px(4.0)));
+        assert_eq!(value_of("grid-gap: 6px;", "row-gap"), Some(px(6.0)));
+        assert_eq!(value_of("inset: 1px 2px;", "top"), Some(px(1.0)));
+        assert_eq!(value_of("inset: 1px 2px;", "right"), Some(px(2.0)));
+        assert_eq!(
+            value_of("inset: 0;", "left"),
+            Some(Value::Length(Length::Zero))
+        );
+        assert_eq!(
+            value_of("overflow: hidden auto;", "overflow-x"),
+            Some(Value::Keyword("hidden".to_string()))
+        );
+        assert_eq!(
+            value_of("overflow: hidden auto;", "overflow-y"),
+            Some(Value::Keyword("auto".to_string()))
+        );
+        assert_eq!(
+            value_of("overflow: clip;", "overflow-y"),
+            Some(Value::Keyword("clip".to_string()))
+        );
+    }
+
+    #[test]
+    fn background_shorthand_keeps_only_the_colour() {
+        assert_eq!(
+            value_of("background: url(x.png) no-repeat #fff;", "background-color"),
+            Some(Value::Color(crate::value::Color::Rgba(255, 255, 255, 255)))
+        );
+        assert_eq!(
+            value_of("background: rgb(1 2 3) url(x.png);", "background-color"),
+            Some(Value::Color(crate::value::Color::Rgba(1, 2, 3, 255)))
+        );
+        assert_eq!(
+            value_of("background: url(x.png);", "background-color"),
+            Some(Value::Color(crate::value::Color::Rgba(0, 0, 0, 0))),
+            "a layer without a colour resets it"
+        );
+        assert_eq!(
+            value_of("background: none;", "background-color"),
+            Some(Value::Color(crate::value::Color::Rgba(0, 0, 0, 0)))
+        );
+    }
+
+    #[test]
+    fn per_side_border_shorthands_and_logical_properties() {
+        assert_eq!(
+            value_of("border-bottom: 2px solid red;", "border-bottom-width"),
+            Some(px(2.0))
+        );
+        assert_eq!(
+            value_of("border-bottom: 2px solid red;", "border-bottom-style"),
+            Some(Value::Keyword("solid".to_string()))
+        );
+        assert_eq!(
+            value_of("border-bottom: 2px solid red;", "border-top-width"),
+            None
+        );
+        assert_eq!(
+            value_of("margin-inline: 4px 8px;", "margin-left"),
+            Some(px(4.0))
+        );
+        assert_eq!(
+            value_of("margin-inline: 4px 8px;", "margin-right"),
+            Some(px(8.0))
+        );
+        assert_eq!(
+            value_of("margin-block: 1px;", "margin-bottom"),
+            Some(px(1.0))
+        );
+        assert_eq!(
+            value_of("padding-inline-start: 3px;", "padding-left"),
+            Some(px(3.0))
+        );
+        assert_eq!(
+            value_of("padding-block-end: 3px;", "padding-bottom"),
+            Some(px(3.0))
+        );
+        assert_eq!(
+            value_of("inset-inline: 0;", "right"),
+            Some(Value::Length(Length::Zero))
+        );
+        assert_eq!(value_of("inset-block-start: 5px;", "top"), Some(px(5.0)));
+        assert_eq!(
+            value_of("margin-inline-end: auto;", "margin-right"),
+            Some(Value::Keyword("auto".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_nested_rule_inside_a_body_does_not_corrupt_the_sheet() {
+        let rules =
+            parse("a { color: red; &:hover { color: blue; } margin: 1px; } b { color: green; }");
+        assert_eq!(rules.len(), 2, "a and b");
+        let props: Vec<_> = rules[0]
+            .declarations
+            .iter()
+            .map(|d| d.property.as_str())
+            .collect();
+        assert!(
+            props.contains(&"color") && props.contains(&"margin-top"),
+            "{props:?}"
+        );
     }
 }
