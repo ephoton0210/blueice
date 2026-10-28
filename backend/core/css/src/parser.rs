@@ -353,6 +353,33 @@ fn parse_rules_in(
                 }
                 i = end;
             }
+            Token::AtKeyword(name)
+                if name.eq_ignore_ascii_case("layer") || name.eq_ignore_ascii_case("supports") =>
+            {
+                // `@layer` has no ordering effect yet: its rules join the
+                // sheet in source order. `@supports` includes its block only
+                // when the engine really supports the condition.
+                let end = skip_at_rule(tokens, i + 1);
+                let open = tokens[i + 1..end]
+                    .iter()
+                    .position(|t| *t == Token::LeftBrace)
+                    .map(|v| i + 1 + v);
+                if let Some(open) = open {
+                    let wanted = name.eq_ignore_ascii_case("layer")
+                        || crate::supports::condition_holds(&tokens[i + 1..open]);
+                    if wanted
+                        && depth < 64
+                        && tokens.get(end.saturating_sub(1)) == Some(&Token::RightBrace)
+                    {
+                        rules.extend(parse_rules_in(
+                            &tokens[open + 1..end - 1],
+                            environment,
+                            depth + 1,
+                        ));
+                    }
+                }
+                i = end;
+            }
             Token::AtKeyword(_) => i = skip_at_rule(tokens, i + 1),
             _ => {
                 let Some(brace) = tokens[i..].iter().position(|t| *t == Token::LeftBrace) else {
@@ -673,6 +700,84 @@ mod tests {
     #[test]
     fn whitespace_and_comments_around_rules_are_ignored() {
         let rules = parse("/* comment */ p /* c */ { /* c */ color: red; /* c */ } /* c */");
+        assert_eq!(rules.len(), 1);
+    }
+
+    fn selectors_of(css: &str) -> usize {
+        parse(css).len()
+    }
+
+    #[test]
+    fn layer_blocks_are_flattened_and_a_bare_layer_statement_is_ignored() {
+        let rules = parse(
+            "@layer base, utilities; @layer base { p { color: red; } @layer inner { b { color: blue; } } } i { color: green; }",
+        );
+        assert_eq!(rules.len(), 3, "p, b (nested layer) and i");
+    }
+
+    #[test]
+    fn supports_includes_its_block_only_when_the_condition_holds() {
+        assert_eq!(
+            selectors_of("@supports (color: red) { p { color: red; } }"),
+            1
+        );
+        assert_eq!(
+            selectors_of("@supports (display: block) { p { color: red; } }"),
+            1
+        );
+        assert_eq!(
+            selectors_of("@supports (display: flex) { p { color: red; } }"),
+            0,
+            "flex is not laid out, so a page must get its fallback"
+        );
+        assert_eq!(
+            selectors_of("@supports (made-up-property: 1) { p { color: red; } }"),
+            0
+        );
+        assert_eq!(
+            selectors_of("@supports (--custom: anything) { p { color: red; } }"),
+            1
+        );
+    }
+
+    #[test]
+    fn supports_combinators_and_not() {
+        for (condition, included) in [
+            ("not (display: flex)", true),
+            ("not (display: block)", false),
+            ("(display: block) and (color: red)", true),
+            ("(display: block) and (display: grid)", false),
+            ("(display: grid) or (color: red)", true),
+            ("(display: grid) or (display: flex)", false),
+            ("((display: block))", true),
+            (
+                "(display: grid) or ((color: red) and (not (display: flex)))",
+                true,
+            ),
+            ("selector(a > b)", true),
+            ("selector(", false),
+            ("font-tech(color-COLRv1)", false),
+        ] {
+            let css = format!("@supports {condition} {{ p {{ color: red; }} }}");
+            assert_eq!(
+                selectors_of(&css),
+                usize::from(included),
+                "@supports {condition}"
+            );
+        }
+    }
+
+    #[test]
+    fn rules_after_a_skipped_supports_block_still_parse() {
+        let rules = parse("@supports (display: grid) { p { color: red; } } b { color: blue; }");
+        assert_eq!(rules.len(), 1);
+    }
+
+    #[test]
+    fn container_and_property_at_rules_are_skipped() {
+        let rules = parse(
+            "@container (min-width: 10px) { p { color: red; } } @property --x { syntax: '*'; inherits: false; } b { color: blue; }",
+        );
         assert_eq!(rules.len(), 1);
     }
 }

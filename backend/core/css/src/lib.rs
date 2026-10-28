@@ -26,6 +26,7 @@ mod cascade;
 mod media;
 mod parser;
 mod selector;
+mod supports;
 mod tokenizer;
 mod value;
 
