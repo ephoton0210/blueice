@@ -165,8 +165,16 @@ equalled a fresh render of its page at every sample, and again after it
 recovered; the two tabs' pixels differed. (A frame is announced by broadcast, not
 with the request id; the MCP `screenshot` tool maps only its cached reply frame,
 so it cannot catch a page that re-renders every 50 ms.)
-Not covered: the windowed `frontend-reference` itself (it maps the same frame
-files but cannot run headless) and a human looking at it.
+Windowed frontend (2026-10-27, `frontend_window_shows_the_cores_frame`, opt-in,
+needs a display): the real `blueice-frontend` binary joins the same launcher-owned
+Core (`--socket`, `--url` the counter page) with `BLUEICE_FRONTEND_SNAPSHOT` set,
+which writes the window's actual `0x00RRGGBB` buffer to a PNG. In a run on macOS
+27.0, 20 of 20 window pictures (1600x1200, taken ~0.7 s apart) were pixel-identical,
+below the 34-pixel tab strip, to an independent engine render of "count K" for a
+K within a few ticks of the Core's newest counter value, so the window shows
+the Core's frame, not a separate render. Not covered: a person looking at the
+window, and the second tab (the window shows one selected tab and the test
+sends it no input).
 
 Stability soak (2026-10-22/23): 1,000 consecutive full `blueice-bluejs` lib runs
 (4,137 tests each, 3 workers in parallel for load) on the tree at commit
@@ -179,8 +187,8 @@ fixture shaped headroom with the wrong accessor, and one real ledger bug in
 integration targets were run once (workspace) plus the focused stress runs
 above.
 
-Remaining before M1v–M1z can be called accepted: a manual look at the windowed
-frontend for the two-tab case, and an owner decision to accept.
+Remaining before M1v–M1z can be called accepted: a person looking at the window
+(and switching to the second tab), and an owner decision to accept.
 
 ## A. Event loop and scheduling (P0)
 

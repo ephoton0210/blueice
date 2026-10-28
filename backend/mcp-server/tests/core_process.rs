@@ -289,7 +289,24 @@ impl LauncherManagedCore {
             return;
         };
         if let Ok(mut browser) = std::os::unix::net::UnixStream::connect(&self.rendezvous_socket) {
-            if blueice_ipc::client_handshake(&mut browser).is_ok() {
+            // A ticking page broadcasts frames that can arrive before the
+            // handshake reply, so wait for the `Hello` rather than expect it
+            // first.
+            let hello = blueice_ipc::write_client_message(
+                &mut browser,
+                &blueice_ipc::ClientMessage::Hello {
+                    protocol_version: blueice_ipc::PROTOCOL_VERSION,
+                },
+            )
+            .is_ok()
+                && std::iter::repeat_with(|| blueice_ipc::read_server_message(&mut browser))
+                    .find_map(|message| match message {
+                        Ok(blueice_ipc::ServerMessage::Hello { .. }) => Some(true),
+                        Ok(_) => None,
+                        Err(_) => Some(false),
+                    })
+                    .unwrap_or(false);
+            if hello {
                 let _ = blueice_ipc::write_client_message(
                     &mut browser,
                     &blueice_ipc::ClientMessage::Shutdown,

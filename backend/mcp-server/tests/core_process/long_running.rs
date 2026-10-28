@@ -502,3 +502,129 @@ async fn two_tab_long_running_acceptance() {
     server_task.abort();
     launcher.shutdown();
 }
+
+fn decode_png(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    pixels.truncate(info.buffer_size());
+    (info.width, info.height, pixels)
+}
+
+/// The reference frontend's tab strip, in window pixels.
+const TAB_STRIP_HEIGHT: usize = 34;
+
+/// Opens the real windowed `blueice-frontend` on the shared Core and compares
+/// what it actually draws (its own snapshot of the window buffer, enabled by
+/// `BLUEICE_FRONTEND_SNAPSHOT`) with an independent render of the counter text.
+/// Needs a display, so it is opt-in:
+/// `cargo test -p blueice-mcp-server --test core_process frontend_window -- --ignored --nocapture`.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "opens a native window; needs a display"]
+async fn frontend_window_shows_the_cores_frame() {
+    let site = Site::start();
+    let mut launcher = LauncherManagedCore::spawn_with_profile(None, true);
+    let mut observer = Observer::connect(&launcher.rendezvous_socket);
+    let server = BlueIceMcpServer::connect_with_core_and_compiler_sockets(
+        &launcher.rendezvous_socket,
+        &launcher.compiler_socket,
+    )
+    .unwrap();
+    let (server_transport, client_transport) = tokio::io::duplex(256 * 1024);
+    let server_task = tokio::spawn(async move {
+        server
+            .serve(server_transport)
+            .await
+            .unwrap()
+            .waiting()
+            .await
+            .unwrap();
+    });
+    let client = CompilerMcpClient.serve(client_transport).await.unwrap();
+    let a = 1;
+    call(
+        &client,
+        "navigate",
+        serde_json::json!({"url": format!("{}/counter", site.url), "tab_id": a}),
+    )
+    .await;
+
+    let snapshots =
+        std::env::temp_dir().join(format!("blueice-frontend-snap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&snapshots);
+    let exe = std::env::current_exe().unwrap();
+    let frontend = exe
+        .parent()
+        .and_then(|deps| deps.parent())
+        .unwrap()
+        .join("blueice-frontend");
+    let mut window = Command::new(&frontend)
+        .arg("--socket")
+        .arg(&launcher.rendezvous_socket)
+        .arg("--url")
+        .arg(format!("{}/counter", site.url))
+        .env("BLUEICE_FRONTEND_SNAPSHOT", &snapshots)
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|error| panic!("cannot start {}: {error}", frontend.display()));
+
+    let snapshot = snapshots.join("native-window.png");
+    let mut matched = 0;
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut last_generation = 0;
+    while matched < 20 {
+        assert!(
+            Instant::now() < deadline,
+            "only {matched} window pictures matched a render of the core's frame"
+        );
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        let Ok(bytes) = std::fs::read(&snapshot) else {
+            continue;
+        };
+        // The picture is a few hundred ms old; the observer's newest shot of A
+        // bounds which counter values it can be showing.
+        let shot = observer.shot(a);
+        let (_, newest) = counter(&shot.snapshot);
+        let Some(newest) = newest else {
+            continue;
+        };
+        let (width, height, window_pixels) = decode_png(&bytes);
+        let (width, height) = (width as usize, height as usize);
+        let (frame_width, frame_height) = (shot.width as usize, shot.height as usize);
+        if width < frame_width || height < TAB_STRIP_HEIGHT + frame_height {
+            continue; // the core has not resized to this window yet
+        }
+        let matches_count = |k: u64| {
+            let expected = reference(&format!("<p id=n>count {k}</p>"), &shot);
+            (0..frame_height).all(|row| {
+                (0..frame_width).all(|column| {
+                    let window_at = ((row + TAB_STRIP_HEIGHT) * width + column) * 4;
+                    let frame_at = (row * frame_width + column) * 4;
+                    window_pixels[window_at..window_at + 3] == expected[frame_at..frame_at + 3]
+                })
+            })
+        };
+        let shown = (newest.saturating_sub(40)..=newest).find(|k| matches_count(*k));
+        if let Some(k) = shown {
+            assert!(
+                shot.generation >= last_generation,
+                "generations must not go backwards"
+            );
+            last_generation = shot.generation;
+            matched += 1;
+            eprintln!("window shows 'count {k}' (core newest {newest}, {width}x{height})");
+        } else {
+            let _ = std::fs::write(snapshots.join("mismatch.png"), &bytes);
+            panic!("window picture matches no render of counts {}..={newest}; saved mismatch.png in {}", newest.saturating_sub(40), snapshots.display());
+        }
+    }
+    let _ = window.kill();
+    let _ = window.wait();
+    drop(observer);
+    drop(client);
+    server_task.abort();
+    launcher.shutdown();
+    let _ = std::fs::remove_dir_all(&snapshots);
+}
