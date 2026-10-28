@@ -43,9 +43,11 @@ impl FrozenPrintDocument {
             &env,
             &self.linked_styles,
         );
-        let mut styles = cascade(
+        let mut styles = cascade_with_viewport(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
+            width,
+            height,
         );
         if !profile.backgrounds {
             for style in styles.values_mut() {

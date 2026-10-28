@@ -24,7 +24,7 @@ use crate::gatekeeper_settings_page::{
     gatekeeper_settings_html, is_gatekeeper_settings_url, GatekeeperSettingsSource,
     GatekeeperSettingsView, SettingsNotice,
 };
-use blueice_css::{cascade, ua_stylesheet, ComputedStyle, Origin, Rule};
+use blueice_css::{cascade_with_viewport, ua_stylesheet, ComputedStyle, Origin, Rule};
 use blueice_dom::{Document, NodeData, NodeId};
 use blueice_ipc::gatekeeper::GatekeeperSettingsChange;
 use blueice_ipc::{AiSnapshot, NodeAction};
@@ -287,9 +287,11 @@ impl Page {
             &self.media_environment(),
             &self.linked_styles,
         );
-        self.styles = cascade(
+        self.styles = cascade_with_viewport(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
+            self.viewport_width,
+            self.viewport_height,
         );
     }
 
