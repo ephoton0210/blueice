@@ -14,6 +14,7 @@ fn generic_heritage_methods_and_declare_fields_preserve_runtime_values() {
         for (source, expected) in [
             ("class B<T> { constructor(public value: T) {} read(): T { return this.value; } } class C extends B<number> {} new C(7).read();", 7.0),
             ("class C { read<T>(value: T): T { return value; } static read<T>(value: T): T { return value; } } new C().read(3) + C.read(4);", 7.0),
+            ("class C { *read(): Generator<number, number, unknown> { yield 3; return 4; } } const iterator = new C().read(); iterator.next().value + iterator.next().value;", 7.0),
             ("class B { value = 7; } class C extends B { declare value: number; } new C().value;", 7.0),
             ("class C { \"value\" = 3; 1(): number { return this.value; } } new C()[1]();", 3.0),
             ("const key = \"value\"; class C { [key] = 3; static [key] = 4; } new C().value + C.value;", 7.0),

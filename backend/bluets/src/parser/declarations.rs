@@ -375,7 +375,6 @@ impl Parser {
     /// merges into the class's instance type.
     fn merge_class_interfaces(&mut self) {
         let mut merged: Vec<(usize, Vec<TypeField>)> = Vec::new();
-        let mut refused: Vec<(SourceSpan, &'static str)> = Vec::new();
         for (index, declaration) in self.declarations.iter().enumerate() {
             let Declaration::Class(class) = declaration else {
                 continue;
@@ -388,21 +387,11 @@ impl Parser {
                 if interface.name != class.name {
                     continue;
                 }
-                if !interface.type_parameters.is_empty() {
-                    refused.push((
-                        interface.span.clone(),
-                        "an interface with type parameters merged with a class is not supported yet",
-                    ));
-                    continue;
-                }
                 fields.extend(interface.fields.iter().cloned());
             }
             if !fields.is_empty() {
                 merged.push((index, fields));
             }
-        }
-        for (span, message) in refused {
-            self.unsupported(span, message);
         }
         for (index, fields) in merged {
             if let Declaration::Class(class) = &mut self.declarations[index] {

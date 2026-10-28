@@ -10,8 +10,8 @@ use std::io::Write;
 #[path = "freshness/resolution_inputs.rs"]
 mod resolution_inputs;
 
-// G-M1 adds resolved sources and manifest observations: old state must rebuild.
-const STATE_VERSION: u8 = 18;
+// G-T9 changes class surfaces, diagnostics and output: old state must rebuild.
+const STATE_VERSION: u8 = 19;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 

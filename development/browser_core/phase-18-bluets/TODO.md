@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-10-28).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,966 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 14,223 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 13,380/13,387 (99.9477%); 3 open, 4 refused observations |
-| Separate controls | 537 native-reference + 42 BlueTS owner = 579; excluded from direct agreement |
-| Case labels | 13,959 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 113 suites / 269 ignored Rust functions; not a case denominator |
-| Suite labels | 108 scoped closed, 1 open, 4 refused |
+| Direct agreement | 13,630/13,637 (99.9487%); 3 open, 4 refused observations |
+| Separate controls | 539 native-reference + 47 BlueTS owner = 586; excluded from direct agreement |
+| Case labels | 14,216 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 114 suites / 271 ignored Rust functions; not a case denominator |
+| Suite labels | 109 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,966 recorded case expectations pass; expected differences/refusals are not
+All 14,223 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:9223a6fc09845e5990303f2ce8babd52df673dce`.
-Input graph SHA-256: `c138108a6968ac71c6b35d9396301e38f3e51b09789e3aa490e6a3e5f4e043f9`.
+Compiler/oracle source: `backend-tree:8c851b1fecfaa9382fd965b339aa2810fad37beb`.
+Input graph SHA-256: `8345e5f8477bf71fdc3aea83061a7ca807d32e362d2f0b4e618b3db628eeaf5a`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -43,9 +43,9 @@ Older dated measurements below retain their original scope; they are not this cu
 
 **Current work (2026-10-28):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
-compatibility packages and deferred platform evidence G-M3. **G-C1, both
-G-T1 stages, G-T3, G-T2, G-T5, G-T6, G-T4, G-T8, G-T7, G-T10 and G-M1 are complete for their scopes below;
-11 packages remain unchecked. Next: G-T9.**
+compatibility packages and deferred platform evidence G-M3. **G-C1, G-T1
+(both stages), G-T2–G-T10 and G-M1 are complete for their scopes below;
+10 packages remain unchecked. Next: G-D1.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -503,7 +503,7 @@ Existing measured behavior is reused; it is not implemented again.
     13,827 case identities/classifications and native fixtures are preserved.
     See [implementation and measured evidence](PLAN.md#phase-l--g-m1-implementation).
 
-- [ ] **G-T9 — Remaining class representation and checking.**
+- [x] **G-T9 — Remaining class representation and checking.**
   - **Scope:** unresolved getter bodies, generic merged interfaces/heritage,
     computed heritage, generator/auto-accessor members, and stateful class-expression
     keys involving await/yield. Setter-destructuring and compatible method/property
@@ -513,6 +513,34 @@ Existing measured behavior is reused; it is not implemented again.
     retain the documented native-runtime defect boundary rather than publishing
     unsafe output. Decorator-specific and low-target lowering combinations belong
     to G-E3/G-E1 and are not counted twice as new class work.
+  - **Frozen minimum (2026-10-28):** `gt9_classes/cases.json` / `reference.json`
+    pins **28 forms / 252 native observations**, CommonJS/ESNext, both field
+    modes, ES2022 and ES2020 suspension controls, strict ES2022 libraries and no
+    skipped declarations. Getter calls/flow/records/inheritance; own, parent,
+    imported and inherited generic merges; parenthesized/called/indexed/imported
+    heritage; explicit/inferred/async generators; instance/static/inherited
+    auto-accessors; await/yield keys with private/static state; root/branch super;
+    existing setter-destructuring and method/property regressions are named.
+  - **Acceptance:** 124 safe declaration graphs / **136 byte-exact files**,
+    248 downstream observations, retained imports, selected inputs, complete
+    diagnostics/related UTF-16 positions, selected-edition syntax and **124 actual
+    executions**. Two additional native-accepted define-mode branch-super rows
+    reproduce ReferenceError before super; record their two declaration files
+    and four consumers as native references, with BlueTS refusing publication.
+    Assignment-mode branch super retains native TS2401. These safe refusals are
+    not counted as TypeScript agreements or fixed runtime bugs.
+  - **Owner/gates:** five separate controls cover charged class-type work,
+    constructor-type/runtime-global separation, per-evaluation key/store effects,
+    precise getter/member origins and refusal of the native runtime defect.
+    Preserve all 13,966 old case identities/native fixtures and unrelated labels;
+    change an existing allowance only with measured repaired behavior. Complete
+    broad preflight, an immutable full cohort, no-exclusion ordinary two-crate
+    tests, format, warnings-denied Clippy and all source/case/tool audits before
+    checking this item and committing implementation with matching measurement.
+  - **Accepted 2026-10-28:** 114 source-bound suites / 618 tests, including all
+    271 ignored functions; 1,369 ordinary tests across 174 targets, format,
+    Clippy and source/status audits pass. All 13,966 old case identities and
+    classifications remain intact. See [the acceptance record](PLAN.md#phase-l--g-t9-implementation).
 
 - [ ] **G-D1 — Anonymous, contextual and cross-module declaration precision.**
   - **Scope:** anonymous object unions, imported/local freshness, const/contextual

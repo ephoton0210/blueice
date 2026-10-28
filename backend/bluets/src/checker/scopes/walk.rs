@@ -307,6 +307,19 @@ impl ScopeModel<'_> {
     }
 
     pub(super) fn variable(&mut self, variable: &VariableDeclaration, scope: ScopeId) {
+        if variable.span.start == variable.span.end {
+            // A computed heritage alias has no declaration token in the input.
+            // Its initializer still participates in lexical value-use analysis.
+            let value = self.scopes[scope]
+                .values
+                .get(&variable.name)
+                .map(|binding| binding.declared_type.clone())
+                .unwrap_or(Type::Unknown);
+            self.value(scope, &variable.name, variable.span.end, true, false, value);
+            self.binding_kind(scope, &variable.name, BindingKind::Const);
+            self.expression(&variable.initializer, scope);
+            return;
+        }
         let tokens = self.tokens_in(&variable.span);
         if let Some(keyword) = tokens
             .iter()

@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-28).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,966 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 14,223 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 13,380/13,387 (99.9477%); 3 open, 4 refused observations |
-| Separate controls | 537 native-reference + 42 BlueTS owner = 579; excluded from direct agreement |
-| Case labels | 13,959 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 113 suites / 269 ignored Rust functions; not a case denominator |
-| Suite labels | 108 scoped closed, 1 open, 4 refused |
+| Direct agreement | 13,630/13,637 (99.9487%); 3 open, 4 refused observations |
+| Separate controls | 539 native-reference + 47 BlueTS owner = 586; excluded from direct agreement |
+| Case labels | 14,216 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 114 suites / 271 ignored Rust functions; not a case denominator |
+| Suite labels | 109 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,966 recorded case expectations pass; expected differences/refusals are not
+All 14,223 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:9223a6fc09845e5990303f2ce8babd52df673dce`.
-Input graph SHA-256: `c138108a6968ac71c6b35d9396301e38f3e51b09789e3aa490e6a3e5f4e043f9`.
+Compiler/oracle source: `backend-tree:8c851b1fecfaa9382fd965b339aa2810fad37beb`.
+Input graph SHA-256: `8345e5f8477bf71fdc3aea83061a7ca807d32e362d2f0b4e618b3db628eeaf5a`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -14553,3 +14553,170 @@ including explicitly unsupported nested runtime-body JSDoc. Full TypeScript
 parity stays OFF. Commit implementation, frozen observations, complete matching
 measurement and updated plans together, then push under the existing user
 authorization. This leaf carries no fresh Windows VM or hosted-CI claim.
+
+## Phase L — G-T9 implementation
+
+### Native-first class matrix — 2026-10-28
+
+Start at clean `8070cbe41dac4c131b6cc09c8019509d7646289c`. Before changing
+production, freeze **28 forms / 252 observations**, CommonJS/ESNext and both
+field modes, ES2022 plus ES2020 stateful-expression controls. Native TypeScript
+5.9.3 with explicit ES2022 libraries checks declarations without skip flags.
+Acorn 8.15.0 checks the selected syntax edition; actual Node execution awaits
+asynchronous exported results and captures exit/stdout/stderr.
+
+Input SHA-256:
+`31a2b31dde388a270373a81b6d83a21552503b81f6be66d09d5fe0be10b33524`.
+Reference SHA-256:
+`24551b10e332826c9eb18f5c7b8e7338f0c8b2c688495db7a830409fbad9cecf`.
+Native freeze: `/private/tmp/bluets-gt9-native-freeze.log`, **126 accepted /
+126 rejected**, 126 declaration graphs / 138 files, 124 successful executions
+and two reproduced native runtime defects. Safe BlueTS acceptance requires
+**124 graphs / 136 exact files / 248 consumers / 124 executions**. The two
+define-mode branch-super observations have native declarations/consumers but
+throw ReferenceError before super; they stay reference-only with explicit
+BlueTS refusal. Assignment mode diagnoses TS2401. No unsafe native output is
+copied merely to improve agreement.
+
+Probe-time input corrections precede this freeze and all production changes:
+TypeScript does not expose an arbitrary suspended computed-key method as a
+statically named member. A separate public `read` contract and `in` checks now
+observe representation and actual method presence independently. Explicit
+constructor interfaces replace the preliminary generator fixture's `any`;
+key counters plus separate factories detect repeated/missing effects or shared
+stores. The executor catches both synchronous require and asynchronous import
+failures. These are native input-design corrections, not rewritten BlueTS
+expectations. `BLUEICE_WRITE_GT9` remains unset throughout later acceptance.
+
+The public CLI regression and five owner controls are added before production.
+The finite TODO minimum and gates are explicit; G-T9 remains unchecked and full
+parity stays OFF. Preserve all 13,966 old suite-qualified case identities/native
+fixtures; any allowance promotion requires actual measured repair.
+
+The corrected pre-implementation public-boundary replay reports **6 passed /
+4 failed / 2 ignored** (`/private/tmp/bluets-gt9-before-corrected.log`). A first
+harness copy retained G-M1's accepted count and is not accepted baseline proof;
+correct that assertion to the native manifest's 126 before this replay. The
+frozen native inputs/reference remain unchanged. Failures cover inherited
+getter false acceptance, generic merged surfaces, computed heritage parsing,
+generator methods, lexical suspension keys, exact declaration regressions and
+the assignment-mode TS2401 boundary. Existing undecorated auto-accessor forms
+already agree and remain controls; no new implementation claim is made for
+those passing paths. Production changes begin only after this failure record.
+
+### Class implementation and focused acceptance
+
+Merged generic interfaces now retain class binders and specialize inherited
+surfaces. Getter inference uses checked calls, control flow, local records and
+the specialized base surface; captured field initializers receive their inferred
+type without an `any`/unknown fallback. Method syntax retains async/generator
+flags through checking and direct BlueJS lowering. Setter patterns and retained
+private interface/class dependencies produce the frozen declaration bytes.
+
+Named parenthesized/called/indexed heritage gets a fresh constructor alias.
+The checker preserves its constructor capabilities and qualified imported
+identity. Alias expressions remain in lexical use analysis; emit moves them
+only after CommonJS reference rewriting. The first real-output replay exposed
+an incorrectly elided imported factory despite passing declarations; fixing
+that ordering is required, not weakening the import observation. An additional
+owner replay checks a colliding alias name and exactly one factory evaluation;
+a cross-module shadowed `typeof` parameter keeps its lexical constructor type.
+Computed heritage in broader class-expression lexical contexts is unmeasured
+and remains explicit rather than becoming a generic acceptance claim.
+
+Suspended computed keys are evaluated as outer-context arguments, in source
+order, while private/static stores remain inside each class evaluation. Native
+ES2020/ES2022 cases and direct execution retain effect counts and independent
+stores. Assignment-mode branch-super errors use native TS2401; define-mode
+native runtime defects still refuse output. New responsibilities are in small
+heritage, method-prefix and suspension modules, with no new 1,500-line source.
+Class/module/diagnostic capability versions and the build-state epoch advance
+to invalidate prior cached results.
+
+Focused `/private/tmp/bluets-gt9-twelfth-implementation.log`: **12/12 passed**,
+including both ignored native functions, 124 safe graphs / 136 exact declaration
+files / 248 consumer observations / 124 successful actual executions and the
+unchanged 252-row Native reference replay. The additional lexical constructor
+query replay passes in `/private/tmp/bluets-gt9-query-shadow-before-corrected.log`.
+The frozen input/reference hashes above remain unchanged. Full source-bound
+cohort, ordinary tests and static gates remain pending; no completion is claimed
+from focused tests alone.
+
+The broad diagnostic preflight (`/private/tmp/bluets-gt9-ordinary-preflight.log`)
+finishes all **174 targets: 1,351 passed / 18 failed / 271 ignored**, in
+1,467.40 seconds. Eight old unit/class/coverage assertions still expected
+computed heritage, inferred owned field expressions or generator members to
+be refused; replace those assertions with structured syntax/type controls,
+including ordinary/generic methods named `async`. Ten inventory checks correctly
+reject the old source-bound measurement while implementation is uncommitted.
+There are no other failing targets. This run is diagnostic, not accepted final
+evidence; the immutable measurement and an unfiltered ordinary replay must
+follow with matching source and refreshed accounting. No old native fixture
+or case classification is rewritten to conceal these failures.
+
+### Immutable G-T9 measurement — 2026-10-28
+
+The accepted backend tree is
+`8c851b1fecfaa9382fd965b339aa2810fad37beb`; input graph SHA-256 is
+`8345e5f8477bf71fdc3aea83061a7ca807d32e362d2f0b4e618b3db628eeaf5a`.
+Run `measure_compatibility_cases.cjs --staged-source` against this immutable
+source, with the same pinned tools and disabled incremental/debug growth as
+the preflight. No backend/test/tool edit occurs during or after this run.
+Environment: darwin-arm64, Rust 1.98.0 (Homebrew), Node 26.7.0, TypeScript
+5.9.3 and Acorn 8.15.0; workspace formatting uses Rustfmt 1.95.0.
+
+`/private/tmp/bluets-gt9-measurement/measurement.json` succeeds from
+2026-10-28 04:19:16.521 UTC to 05:01:02.239 UTC: **114/114 suites,
+618/618 tests**, including **all 271 ignored Rust functions**, with zero failed,
+ignored or filtered tests in the measured binaries. G-T9's source-bound suite
+is **12/12**, at measurement index 55, log SHA-256
+`8311b97baa97916ac5c1723b2320b13a5029f50a737e7cd88244fe902fb27f99`.
+It reproduces the unchanged 252 native observations and verifies 124 safe
+executions / 136 exact declaration files / 248 consumers. Both native runtime
+defects and all five owner controls retain their explicit scope. The 82 core
+oracles pass locally in the 87-test core binary; this is darwin-arm64 evidence,
+not a fresh Windows run.
+
+Publish `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json` and
+`COMPATIBILITY_MEASUREMENT.json` together only after that complete success.
+Measurement SHA-256:
+`d7867c6fe6839257b82244c1a23344a7560c3509dfa5cc2bae3f4c4845ff63c7`.
+`/private/tmp/bluets-gt9-evidence-audit.log` verifies all **114 log hashes**,
+**70 tool hashes**, frozen native fixture hashes and the original **13,966
+suite-qualified case identities/classifications** (nine assertion fields).
+Only 257 G-T9 assertions are added: 250 compared, two native references and
+five owner controls. The resulting **14,223 assertions** contain 13,630/13,637
+direct agreements, three deliberate differences, four deliberate refusals,
+539 references and 47 owner controls. No old native fixture bytes change.
+
+Fresh inventory regressions pass **22/22**; Node tooling **15/15**, Python tooling
+**13/13**, and warnings-denied two-crate all-target Clippy pass. At this point
+source stays fixed and G-T9 remains unchecked pending the final ordinary and
+source/status gates below. The broader G-T9 row remains open for
+unmeasured getter/merge, generic computed-call, lexical class, decorator and
+target/lib/flag compositions; full TypeScript parity stays OFF.
+
+### Final G-T9 acceptance
+
+With the same frozen backend tree, the complete unfiltered command
+`cargo test --offline -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast`
+passes **174 targets / 1,369 ordinary tests / zero failures**, in **1,389.93
+seconds** (`/private/tmp/bluets-gt9-ordinary-final.log`). The 271 functions ignored
+by that ordinary invocation were all executed successfully by the complete
+immutable cohort above; they are not skipped acceptance. Together this verifies
+all 1,640 suite-qualified Rust test entries without a case allowance change.
+
+Workspace `cargo fmt --all -- --check` with Rustfmt 1.95.0 passes, as does
+`cargo clippy --offline -p blueice-bluets -p blueice-bluets-bluejs --all-targets
+-- -D warnings`. The strict `--check-cases-staged` and `--check-staged` inventory
+checks match 14,223 cases / 114 suites and the frozen input graph; both Python
+accounting/status checks and Git whitespace checks pass. All production files
+changed by this leaf stay below the 1,200-line review threshold, including the
+1,172-line namespace binder and 1,155-line parser data model. New responsibilities
+live in small modules with MPL-2.0 headers.
+
+Mark the finite G-T9 checklist complete only after these gates. Ten Phase L
+packages remain unchecked; next is G-D1. Broader feature rows and the direct
+runtime profile retain their recorded open scope, and full parity remains OFF.
+Implementation, frozen observations, the complete corresponding measurement and
+updated plans form one G-T9 commit, followed by the already authorized push.

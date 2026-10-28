@@ -34,6 +34,7 @@ use crate::parser::{ClassDeclaration, ClassField, ClassMemberShell, Declaration}
 use crate::Token;
 
 mod expressions;
+mod heritage;
 
 /// The emitted form of a class's fields for one target and option set.
 #[derive(Clone, Copy)]
@@ -57,6 +58,7 @@ pub(super) fn lower_class_members(
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
+    heritage::lower(module, edits);
     lower_classes(module, options, edits, false)
 }
 
@@ -246,7 +248,7 @@ fn lower_class(
         erase_member(edits, member);
     }
     if !prologue.is_empty() {
-        insert_prologue(class, &prologue, edits)?;
+        insert_prologue(class, &prologue, edits, emit.define)?;
     }
 
     // After the class: the private storage and functions first (a static
@@ -453,11 +455,49 @@ fn insert_prologue(
     class: &ClassDeclaration,
     text: &str,
     edits: &mut Vec<TextEdit>,
+    define: bool,
 ) -> Result<(), Diagnostic> {
     match implementation(class) {
         Some(constructor) => {
             let Some(insertion) = constructor.prologue_insertion else {
-                return Err(missing_super(constructor.span.clone()));
+                let mut diagnostic = missing_super(constructor.span.clone());
+                if !define {
+                    let tokens = class
+                        .body
+                        .iter()
+                        .filter(|token| {
+                            constructor.span.start <= token.start
+                                && token.end <= constructor.span.end
+                        })
+                        .collect::<Vec<_>>();
+                    if let Some(start) = tokens
+                        .windows(2)
+                        .position(|tokens| tokens[0].is("super") && tokens[1].is("("))
+                    {
+                        let mut depth = 0;
+                        let mut end = start + 1;
+                        for (index, token) in tokens.iter().enumerate().skip(start + 1) {
+                            if token.is("(") {
+                                depth += 1;
+                            } else if token.is(")") {
+                                depth -= 1;
+                                if depth == 0 {
+                                    end = index;
+                                    break;
+                                }
+                            }
+                        }
+                        diagnostic = diagnostic.with_typescript(2401, Vec::new());
+                        if let Some(counterpart) = &mut diagnostic.typescript {
+                            counterpart.span = SourceSpan::new(
+                                &class.span.module,
+                                tokens[start].start,
+                                tokens[end].end,
+                            );
+                        }
+                    }
+                }
+                return Err(diagnostic);
             };
             insert(edits, insertion.offset, text.to_string());
         }

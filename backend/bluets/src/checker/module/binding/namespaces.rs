@@ -909,6 +909,7 @@ impl ModuleChecker<'_> {
                 .map(|expression| expression.class.name.clone()),
         );
         let mut dependencies: BTreeSet<String> = BTreeSet::new();
+        let mut query_names = BTreeMap::new();
         let mut pending: Vec<Type> = Vec::new();
         let scan = |export: &NamespaceExport, pending: &mut Vec<Type>| {
             pending.extend(export.values.values().cloned());
@@ -940,10 +941,14 @@ impl ModuleChecker<'_> {
             let mut names = BTreeSet::new();
             named_types(&value, &mut names);
             for name in names {
-                let bare = name.strip_prefix("typeof ").unwrap_or(&name);
+                let spelling = crate::parser::source_type_name(&name);
+                let bare = spelling.strip_prefix("typeof ").unwrap_or(spelling);
                 let root = bare.split('.').next().unwrap_or(bare);
                 if !local_roots.contains(root) || belongs(bare) {
                     continue;
+                }
+                if name != spelling {
+                    query_names.insert(name.clone(), format!("{spelling}@{}", self.module.id));
                 }
                 if dependencies.insert(root.to_string()) {
                     let root_nested = format!("{root}.");
@@ -963,7 +968,7 @@ impl ModuleChecker<'_> {
         if dependencies.is_empty() {
             return export;
         }
-        let mut rename: BTreeMap<String, String> = BTreeMap::new();
+        let mut rename: BTreeMap<String, String> = query_names;
         for root in &dependencies {
             let root_nested = format!("{root}.");
             let root_object = format!("typeof {root}");

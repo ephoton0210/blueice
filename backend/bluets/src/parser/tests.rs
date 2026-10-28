@@ -201,8 +201,8 @@ fn retains_named_class_headers_and_bodies_without_claiming_class_semantics() {
 }
 
 #[test]
-fn class_header_errors_and_unimplemented_forms_fail_closed_and_a_plain_class_compiles() {
-    for source in ["class Missing", "class { }", "class C extends Base[0] {}"] {
+fn class_header_errors_fail_closed_and_a_plain_class_compiles() {
+    for source in ["class Missing", "class { }"] {
         assert!(
             parse_module("memory:///classes.ts", source).is_err(),
             "{source}"
@@ -535,14 +535,32 @@ fn opaque_class_member_interrupts_method_overload_group() {
 }
 
 #[test]
-fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
-    for source in ["class C { async read() {} }", "class C { *generate() {} }"] {
+fn retains_suspension_metadata_and_rejects_misordered_class_modifiers() {
+    for (source, asynchronous, generator) in [
+        ("class C { async read() {} }", true, false),
+        ("class C { *generate() {} }", false, true),
+        ("class C { async *generate() {} }", true, true),
+        (
+            "class C { async static():Promise<number> { return 1; } }",
+            true,
+            false,
+        ),
+        ("class C { async() {} }", false, false),
+        (
+            "class C { async<T>(value:T):T { return value; } }",
+            false,
+            false,
+        ),
+    ] {
         let module = parse_module("memory:///opaque.ts", source).unwrap();
         let Declaration::Class(class) = &module.declarations[0] else {
             panic!("expected a class");
         };
         assert_eq!(class.members.len(), 1, "{source}");
-        assert_eq!(class.members[0].kind, ClassMemberKind::Opaque, "{source}");
+        assert_eq!(class.members[0].kind, ClassMemberKind::Method, "{source}");
+        let method = class.members[0].method.as_ref().unwrap();
+        assert_eq!(method.async_function, asynchronous, "{source}");
+        assert_eq!(method.generator, generator, "{source}");
     }
     let diagnostics = parse_module(
         "memory:///opaque.ts",

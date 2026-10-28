@@ -79,8 +79,21 @@ impl ModuleChecker<'_> {
         self.with_class_access(class, |checker| checker.infer_class_return_types(class))
     }
 
-    fn infer_class_return_types(&self, class: &ClassDeclaration) -> ClassDeclaration {
+    fn infer_class_return_types(&mut self, class: &ClassDeclaration) -> ClassDeclaration {
         let mut inferred = class.clone();
+        for member in &mut inferred.members {
+            let Some(field) = &mut member.field else {
+                continue;
+            };
+            if field.annotation.is_none() && field.declared_type().is_none() {
+                if let Some(tokens) = &field.initializer {
+                    let value = self.infer_expression(tokens, &self.values);
+                    if !matches!(value, Type::Unknown | Type::Any) {
+                        field.annotation = Some(return_inference::widen(value));
+                    }
+                }
+            }
+        }
         for _ in 0..class
             .members
             .len()
@@ -96,39 +109,65 @@ impl ModuleChecker<'_> {
         inferred
     }
 
-    fn infer_class_return_pass(&self, class: &ClassDeclaration) -> ClassDeclaration {
+    fn infer_class_return_pass(&mut self, class: &ClassDeclaration) -> ClassDeclaration {
+        let previous = self.types.get(&class.name).cloned();
+        if let (Some(mut definition), Some(Type::Record(base))) = (
+            previous.clone(),
+            self.specialized_base_surface(class, false),
+        ) {
+            if let Type::Record(own) = &mut definition.value {
+                for field in base {
+                    if !own.iter().any(|own| own.name == field.name) {
+                        own.push(field);
+                    }
+                }
+                self.types.insert(class.name.clone(), definition);
+            }
+        }
         let mut inferred = class.clone();
         for member in &mut inferred.members {
             let getter = member
                 .accessor
                 .as_ref()
                 .is_some_and(|accessor| accessor.getter);
-            let (parameters, body, result, span, is_static, type_parameters) =
-                if let Some(method) = &mut member.method {
-                    let Some(body) = &method.body else { continue };
-                    (
-                        &mut method.parameters,
-                        body,
-                        &mut method.return_type,
-                        &method.span,
-                        method.is_static,
-                        method.type_parameters.clone(),
-                    )
-                } else if let Some(accessor) = &mut member.accessor {
-                    if !accessor.getter {
-                        continue;
-                    }
-                    (
-                        &mut accessor.parameters,
-                        &accessor.body,
-                        &mut accessor.return_type,
-                        &accessor.span,
-                        accessor.is_static,
-                        Vec::new(),
-                    )
-                } else {
+            let (
+                parameters,
+                body,
+                result,
+                span,
+                is_static,
+                type_parameters,
+                async_function,
+                generator,
+            ) = if let Some(method) = &mut member.method {
+                let Some(body) = &method.body else { continue };
+                (
+                    &mut method.parameters,
+                    body,
+                    &mut method.return_type,
+                    &method.span,
+                    method.is_static,
+                    method.type_parameters.clone(),
+                    method.async_function,
+                    method.generator,
+                )
+            } else if let Some(accessor) = &mut member.accessor {
+                if !accessor.getter {
                     continue;
-                };
+                }
+                (
+                    &mut accessor.parameters,
+                    &accessor.body,
+                    &mut accessor.return_type,
+                    &accessor.span,
+                    accessor.is_static,
+                    Vec::new(),
+                    false,
+                    false,
+                )
+            } else {
+                continue;
+            };
             let mut scope = self.values.clone();
             scope.insert(
                 "this".to_string(),
@@ -164,8 +203,8 @@ impl ModuleChecker<'_> {
             }
             let function = FunctionDeclaration {
                 name: "<method>".to_string(),
-                async_function: false,
-                generator: false,
+                async_function,
+                generator,
                 body_open: None,
                 type_parameters,
                 parameters: parameters.clone(),
@@ -205,6 +244,9 @@ impl ModuleChecker<'_> {
                 }
                 *result = Some(value);
             }
+        }
+        if let Some(previous) = previous {
+            self.types.insert(class.name.clone(), previous);
         }
         let getters = inferred
             .members

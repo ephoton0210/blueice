@@ -115,7 +115,7 @@ impl ModuleChecker<'_> {
         }
     }
 
-    pub(super) fn specialized_base_surface(
+    pub(in crate::checker::module) fn specialized_base_surface(
         &self,
         class: &ClassDeclaration,
         is_static: bool,

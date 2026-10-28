@@ -139,7 +139,15 @@ impl ModuleChecker<'_> {
                             && other.is_static == accessor.is_static
                             && setter_type(other).is_some()
                     });
-                if !setter_annotated {
+                let unresolved_name = self.scopes.as_ref().is_some_and(|scopes| {
+                    scopes.diagnostics().iter().any(|diagnostic| {
+                        diagnostic.code == DiagnosticCode::UnknownName
+                            && diagnostic.span.module == accessor.span.module
+                            && accessor.span.start <= diagnostic.span.start
+                            && diagnostic.span.end <= accessor.span.end
+                    })
+                });
+                if !setter_annotated && !unresolved_name {
                     self.diagnostics.push(Diagnostic::error(
                         DiagnosticCode::UnsupportedSyntax,
                         accessor.name_span.clone(),

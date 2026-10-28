@@ -174,7 +174,21 @@ fn parameters_to_ts(parameters: &[Parameter]) -> String {
             format!(
                 "{}{}{}: {}",
                 if parameter.rest { "..." } else { "" },
-                parameter.name,
+                match &parameter.pattern {
+                    Some(crate::parser::BindingPattern::Object(fields)) => format!(
+                        "{{ {} }}",
+                        fields
+                            .iter()
+                            .map(|field| if field.key == field.name {
+                                field.name.clone()
+                            } else {
+                                format!("{}: {}", field.key, field.name)
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    _ => parameter.name.clone(),
+                },
                 if parameter.optional || parameter.default.is_some() {
                     "?"
                 } else {
@@ -191,7 +205,22 @@ fn parameters_to_ts(parameters: &[Parameter]) -> String {
                             .as_deref()
                             .and_then(|tokens| widen_literal_tokens(tokens, false))
                     })
-                    .map(|annotation| type_to_ts(&annotation))
+                    .map(|annotation| match (&parameter.pattern, &annotation) {
+                        (Some(_), Type::Record(fields)) => format!(
+                            "{{\n{}\n    }}",
+                            fields
+                                .iter()
+                                .map(|field| format!(
+                                    "        {}{}: {};",
+                                    field.name,
+                                    if field.optional { "?" } else { "" },
+                                    type_to_ts(&field.value)
+                                ))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        ),
+                        _ => type_to_ts(&annotation),
+                    })
                     .unwrap_or_else(|| "unknown".to_string())
             )
         })

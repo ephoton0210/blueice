@@ -311,7 +311,7 @@ fn class_method_groups_report_original_source_checker_failures() {
 }
 
 #[test]
-fn transpile_only_emits_structured_classes_and_still_refuses_unstructured_ones() {
+fn transpile_only_emits_structured_classes_and_generator_methods() {
     let compile_transpile = |source: &str| {
         compile(
             ENTRY,
@@ -327,15 +327,18 @@ fn transpile_only_emits_structured_classes_and_still_refuses_unstructured_ones()
         "fixtures/typescript_oracle/class-method-overloads/main.ts"
     ));
     assert!(structured.output.is_some(), "{:#?}", structured.diagnostics);
-    // A member the parser cannot erase is refused even without checking.
+    // Computed members and generator syntax are structurally retained.
     let computed = compile_transpile("class A { ['x'] = 1; }");
     assert!(computed.output.is_some(), "{:?}", computed.diagnostics);
     let unstructured = compile_transpile("class A { *generate() {} }");
-    assert!(unstructured.output.is_none());
-    assert!(unstructured
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+    assert!(
+        unstructured.diagnostics.is_empty(),
+        "{:?}",
+        unstructured.diagnostics
+    );
+    assert!(unstructured.output.unwrap().artifacts[ENTRY]
+        .javascript
+        .contains("*generate()"));
 }
 
 #[test]
@@ -5407,18 +5410,16 @@ fn class_output_stays_atomic_and_refuses_unstructured_classes() {
         .iter()
         .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
 
-    // A class with a member outside the structured grammar cannot be emitted
-    // faithfully, so it stays refused.
+    // Generator methods now retain structured syntax and declaration metadata.
     let opaque = compile(
         ENTRY,
         &MapLoader::from([ModuleSource::new(ENTRY, "class A { *generate() {} }")]),
         emit_all_artifacts_options(),
     );
-    assert!(opaque.output.is_none());
-    assert!(opaque
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+    assert!(opaque.diagnostics.is_empty(), "{:?}", opaque.diagnostics);
+    assert!(opaque.output.unwrap().artifacts[ENTRY]
+        .javascript
+        .contains("*generate()"));
 
     // Structured methods infer their declaration result from the body.
     let untyped = compile(
@@ -5756,28 +5757,22 @@ fn an_assignment_to_a_typed_variable_or_element_is_read_against_its_type() {
 
 #[test]
 fn function_annotations_that_survive_erasure_are_refused_before_output() {
-    // Every form below is valid TypeScript whose annotation the parser does
-    // not structurally erase. Emitting it would produce invalid JavaScript, so
-    // it must be refused instead.
-    for source in [
-        "export const h = <T>({ x: { y } }) => y;",
-        "export class C { *m(a: number) { yield a; } }",
-    ] {
-        let result = compile(
-            ENTRY,
-            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
-            CompilerOptions::default(),
-        );
-        assert!(result.output.is_none(), "{source}");
-        assert!(
-            result.diagnostics.iter().any(|diagnostic| {
-                diagnostic.code == DiagnosticCode::UnsupportedSyntax
-                    && diagnostic.span.module == ENTRY
-            }),
-            "{source}: {:#?}",
-            result.diagnostics
-        );
-    }
+    // This nested pattern is not structurally erased. Publishing its remaining
+    // annotation would produce invalid JavaScript.
+    let source = "export const h = <T>({ x: { y } }) => y;";
+    let result = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    );
+    assert!(result.output.is_none(), "{source}");
+    assert!(
+        result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::UnsupportedSyntax && diagnostic.span.module == ENTRY
+        }),
+        "{source}: {:#?}",
+        result.diagnostics
+    );
 }
 
 #[test]
@@ -6965,11 +6960,6 @@ fn generator_functions_are_checked_erased_and_emitted_as_written() {
             "export async function* g(): Generator<number> { yield 1; }",
             DiagnosticCode::UnsupportedSyntax,
             "async generator",
-        ),
-        (
-            "export class C { *g(): Generator<number> { yield 1; } }",
-            DiagnosticCode::UnsupportedSyntax,
-            "annotations on functions nested in expressions",
         ),
     ] {
         let rejected = compile_source(source);

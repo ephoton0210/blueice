@@ -8,6 +8,7 @@ use super::*;
 use crate::parser::ClassExpression;
 
 mod names;
+mod suspension;
 
 pub(super) fn needs_wrapper(class: &ClassDeclaration) -> bool {
     class.members.iter().any(|member| {
@@ -36,19 +37,6 @@ pub(super) fn lower(
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
     let mut class = expression.class.clone();
-    for member in &class.members {
-        if member
-            .key
-            .iter()
-            .any(|token| token.is("await") || token.is("yield"))
-        {
-            return Err(Diagnostic::error(
-                DiagnosticCode::UnsupportedSyntax,
-                member.span.clone(),
-                "an ES2020 class expression with state and an await/yield key needs lexical suspension lowering",
-            ));
-        }
-    }
     let tokens = crate::lex(&module.id, &module.source).map_err(|mut errors| errors.remove(0))?;
     class.name = expression.name.clone().unwrap_or_else(|| {
         let mut name = format!("_btsClass{}", class.span.start);
@@ -68,6 +56,7 @@ pub(super) fn lower(
             replacement: format!(" {}", class.name),
         });
     }
+    let suspension = suspension::capture(module, &mut class, edits, &tokens);
     let private = PrivateNames::collect(module, &class)?;
     let mut helpers = BTreeSet::new();
     if let Some(private) = &private {
@@ -109,10 +98,12 @@ pub(super) fn lower(
         start: class.span.start,
         end: class.span.end,
         replacement: format!(
-            "(() => {{{variables}{}{before}const {} = {body};{name}{after}return {};}})()",
+            "(({}) => {{{variables}{}{before}const {} = {body};{name}{after}return {};}})({})",
+            suspension.parameters.join(", "),
             helper_definitions(&helpers),
             class.name,
-            class.name
+            class.name,
+            suspension.arguments.join(", ")
         ),
     });
     Ok(())

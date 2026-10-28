@@ -14,6 +14,11 @@ mod keys;
 use keys::*;
 #[path = "class/indices.rs"]
 mod indices;
+#[path = "class/methods.rs"]
+mod methods;
+use methods::method_prefix;
+#[path = "class/heritage.rs"]
+mod heritage;
 
 impl Parser {
     pub(in crate::parser::implementation) fn parse_class(
@@ -40,28 +45,31 @@ impl Parser {
         }
 
         let heritage = if self.consume("extends") {
-            if self.current().kind != TokenKind::Identifier {
+            if self.computed_heritage_ahead() {
+                self.parse_computed_heritage(&name_token.text, start)
+            } else if self.current().kind != TokenKind::Identifier {
                 self.error_here(DiagnosticCode::ParseError, "expected a class heritage name");
                 self.index = self.tokens.len() - 1;
                 return;
-            }
-            let mut token = self.current().clone();
-            self.bump();
-            // A qualified name, `N.Base`, is one token, as the second parse pass
-            // merges it for a namespace member.
-            while self.peek(".")
-                && self
-                    .tokens
-                    .get(self.index + 1)
-                    .is_some_and(|member| member.kind == TokenKind::Identifier)
-            {
+            } else {
+                let mut token = self.current().clone();
                 self.bump();
-                let member = self.current().clone();
-                self.bump();
-                token.text = format!("{}.{}", token.text, member.text);
-                token.end = member.end;
+                // A qualified name, `N.Base`, is one token, as the second parse pass
+                // merges it for a namespace member.
+                while self.peek(".")
+                    && self
+                        .tokens
+                        .get(self.index + 1)
+                        .is_some_and(|member| member.kind == TokenKind::Identifier)
+                {
+                    self.bump();
+                    let member = self.current().clone();
+                    self.bump();
+                    token.text = format!("{}.{}", token.text, member.text);
+                    token.end = member.end;
+                }
+                Some(token)
             }
-            Some(token)
         } else {
             None
         };
@@ -642,7 +650,8 @@ impl Parser {
         };
         self.erase_visibility_keyword(&modifiers);
         let is_static = modifiers.is_static;
-        let name_index = modifiers.name_index;
+        let (name_index, async_function, generator) =
+            method_prefix(&self.tokens, modifiers.name_index, end);
         let Some(key_end) = class_key_end(&self.tokens, name_index, end) else {
             return;
         };
@@ -707,6 +716,8 @@ impl Parser {
             return;
         }
         member.method = Some(ClassMethod {
+            async_function,
+            generator,
             name,
             name_span,
             optional,
@@ -865,6 +876,7 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
         let name_index = modifiers
             .as_ref()
             .map_or(index, |modifiers| modifiers.name_index);
+        let (name_index, _, _) = method_prefix(tokens, name_index, tokens.len());
         let name_token = &tokens[name_index];
         // `get name(` / `set name(` is an accessor; a member named `get`
         // followed by `(` is an ordinary method.

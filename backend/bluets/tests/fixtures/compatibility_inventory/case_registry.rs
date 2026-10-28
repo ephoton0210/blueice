@@ -34,6 +34,24 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
             "/observations"
         };
         let mut cases = case_sources::json_cases(&path, text, pointer, "program/configuration")?;
+        if stem == "gt9_classes" {
+            let defects = root["cases"]
+                .as_array()
+                .ok_or("missing G-T9 rows")?
+                .iter()
+                .filter(|row| row["nativeRuntimeDefect"] == true)
+                .map(|row| {
+                    row["id"]
+                        .as_str()
+                        .map(str::to_owned)
+                        .ok_or("invalid G-T9 runtime defect")
+                })
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            if defects.len() != 2 {
+                return Err("incomplete G-T9 native runtime defect references".into());
+            }
+            case_sources::classify(&mut cases,&defects,"",Comparison::ReferenceOnly,"Pinned TypeScript 5.9.3 define-mode branch-super output throws ReferenceError before super; BlueTS refuses publication. Native declarations/execution are references, not TypeScript agreement.")?;
+        }
         if stem == "gt1_flow" {
             let facts = rust_facts::parse(snapshot.source(&suite.harness)?)?;
             // Historical stage-one snapshots retain their real allowance.
@@ -274,6 +292,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "gt8_return_context" => "gt8_return_context/reference.json",
         "gt7_library_manifest" => "gt7_library_manifest/reference.json",
         "gt10_import_types" => "gt10_import_types/reference.json",
+        "gt9_classes" => "gt9_classes/reference.json",
         "gm1_resolver_compositions" => "gm1_resolver_compositions/reference.json",
         "gt3_operators" => "gt3_operators/reference.json",
         "gt1_declaration_order" => "gt1_declaration_order/reference.json",

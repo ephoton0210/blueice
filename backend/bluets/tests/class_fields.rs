@@ -119,7 +119,7 @@ fn field_initializers_are_checked_against_the_annotation_in_a_this_scope() {
 }
 
 #[test]
-fn unannotated_fields_take_a_literal_type_or_need_an_annotation() {
+fn unannotated_fields_infer_literals_and_owned_expressions() {
     assert_accepted(
         "class A { n = 1; s = 'a'; b = true; m = -1; } const a = new A(); const x: number = a.n;",
     );
@@ -129,10 +129,11 @@ fn unannotated_fields_take_a_literal_type_or_need_an_annotation() {
         "not assignable to `string`",
     );
     assert_accepted("class A { readonly n = 1; } const a = new A(); const x: 1 = a.n;");
+    assert_accepted("class A { x = [1]; } const value:number[] = new A().x;");
     assert_rejected(
-        "class A { x = [1]; }",
-        DiagnosticCode::UnsupportedSyntax,
-        "needs a type annotation",
+        "class A { x = [1]; } const value:string[] = new A().x;",
+        DiagnosticCode::TypeMismatch,
+        "not assignable",
     );
     assert_rejected(
         "class A { x; }",
@@ -284,8 +285,12 @@ fn fields_are_lowered_for_an_es2020_target() {
 }
 
 #[test]
-fn computed_members_are_structured_and_generator_members_remain_refused() {
-    for source in ["class A { ['computed'] = 1; }", "class A { ['m']() {} }"] {
+fn computed_and_generator_members_are_structured() {
+    for source in [
+        "class A { ['computed'] = 1; }",
+        "class A { ['m']() {} }",
+        "class A { *generate() {} }",
+    ] {
         let compiled = compile_with(source, CompilerOptions::default());
         assert!(
             compiled.output.is_some() && compiled.diagnostics.is_empty(),
@@ -293,12 +298,10 @@ fn computed_members_are_structured_and_generator_members_remain_refused() {
             compiled.diagnostics
         );
     }
-    let source = "class A { *generate() {} }";
-    let compiled = compile_with(source, CompilerOptions::default());
-    assert!(
-        compiled.output.is_none() && !compiled.diagnostics.is_empty(),
-        "`{source}` must be refused, not emitted: {:?}",
-        compiled.diagnostics
+    assert_rejected(
+        "class A { *generate():Generator<number,void,unknown> { yield 'wrong'; } }",
+        DiagnosticCode::TypeMismatch,
+        "not assignable",
     );
 }
 

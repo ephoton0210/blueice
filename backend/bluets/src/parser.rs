@@ -68,6 +68,7 @@ mod module_kind;
 pub(crate) use import_types::ImportTypeReference;
 
 mod class_expressions;
+mod class_methods;
 pub(crate) use class_expressions::type_parameter_identity;
 pub use class_expressions::ClassExpression;
 
@@ -427,6 +428,8 @@ impl ClassDeclaration {
             .iter()
             .filter_map(|member| member.accessor.as_ref())
             .map(|accessor| ClassMethod {
+                async_function: false,
+                generator: false,
                 name: accessor.name.clone(),
                 name_span: accessor.name_span.clone(),
                 visibility: accessor.visibility,
@@ -581,6 +584,8 @@ pub struct ParameterPropertyInsertion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassMethod {
+    pub async_function: bool,
+    pub generator: bool,
     pub name: String,
     pub name_span: SourceSpan,
     pub visibility: Visibility,

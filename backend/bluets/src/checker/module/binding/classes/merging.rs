@@ -18,13 +18,13 @@ pub(in crate::checker) fn class_with_interface_heritage(
         let Declaration::Interface(interface) = declaration else {
             continue;
         };
-        if interface.name != class.name || !interface.type_parameters.is_empty() {
+        if interface.name != class.name {
             continue;
         }
         for parent in &interface.heritage {
             let mut inherited = Vec::new();
             fields(
-                parent,
+                &formal_class_type(class, parent),
                 definitions,
                 &mut HashSet::new(),
                 &mut budget,

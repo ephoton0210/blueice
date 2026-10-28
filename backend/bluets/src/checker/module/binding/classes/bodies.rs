@@ -125,6 +125,10 @@ impl ModuleChecker<'_> {
                         class_body_this_type(class)
                     },
                 );
+                if method.generator || method.async_function {
+                    checker.check_function_in_scope(&method.as_function(), scope);
+                    return;
+                }
                 let allows_implicit_undefined = return_type.is_none_or(|return_type| {
                     checker.return_type_allows_implicit_undefined(return_type, &method.span)
                 });

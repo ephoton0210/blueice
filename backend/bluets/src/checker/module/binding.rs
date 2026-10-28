@@ -751,7 +751,11 @@ impl<'a> ModuleChecker<'a> {
         }
         if variable.annotation.is_none() && !variable.initializer.is_empty() && !variable.declared {
             let inferred = self
-                .alias_function_signatures(variable, &scope)
+                .class_constructors
+                .contains_key(&variable.name)
+                .then(|| self.values.get(&variable.name).cloned())
+                .flatten()
+                .or_else(|| self.alias_function_signatures(variable, &scope))
                 .unwrap_or_else(|| self.infer_variable_type(variable, &scope));
             self.values.insert(variable.name.clone(), inferred.clone());
             self.refresh_variable_symbol(variable, inferred);

@@ -33,6 +33,23 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gt9_classes" => {
+            let path = "backend/bluets/tests/fixtures/gt9_classes/reference.json";
+            let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;
+            let rows = root["ownerControls"]
+                .as_array()
+                .ok_or("missing G-T9 owner controls")?;
+            if rows.len() != 5 {
+                return Err("incomplete G-T9 owner controls".into());
+            }
+            rows.iter().enumerate().map(|(index,row)|{
+                let label=row.as_str().ok_or("invalid G-T9 owner control")?;
+                let mut case=Case::new(path,&format!("/ownerControls/{index}"),label,"owner-class-control");
+                case.comparison=Comparison::BoundaryControl;
+                case.reason=Some("Class-type budgets, constructor/runtime authority separation, per-evaluation stores/effects, source origins and safe refusal of the native branch-super runtime defect are owner controls, not native agreements.".into());
+                Ok(case)
+            }).collect::<Result<Vec<_>>>()?
+        }
         "gm1_resolver_compositions" => {
             let path = "backend/bluets/tests/fixtures/gm1_resolver_compositions/reference.json";
             let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;

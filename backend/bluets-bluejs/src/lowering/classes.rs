@@ -204,8 +204,20 @@ pub(crate) fn lower_class(
         let Some(body) = body else {
             continue;
         };
-        let mut function =
-            lower_function_value(module, Some(name.clone()), parameters, body, false, false)?;
+        let mut function = lower_function_value(
+            module,
+            Some(name.clone()),
+            parameters,
+            body,
+            member
+                .method
+                .as_ref()
+                .is_some_and(|method| method.async_function),
+            member
+                .method
+                .as_ref()
+                .is_some_and(|method| method.generator),
+        )?;
         if let Some(constructor) = &member.constructor {
             insert_constructor_prologue(
                 module,

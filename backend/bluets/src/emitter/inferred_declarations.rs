@@ -192,6 +192,9 @@ impl<'a> Context<'a> {
                     if let Some(name) = &class.extends_name {
                         context.retain(name);
                     }
+                    for (value, _) in &class.implements {
+                        context.references(value);
+                    }
                     for member in &class.members {
                         if let Some(field) = &member.field {
                             if let Some(value) = &field.annotation {
@@ -252,6 +255,45 @@ impl<'a> Context<'a> {
         for _ in 0..module.declarations.len() {
             let before = (context.private_aliases.len(), context.used_imports.len());
             for declaration in &module.declarations {
+                if let Declaration::Interface(interface) = declaration {
+                    if interface.exported || context.used_imports.contains(&interface.name) {
+                        for parent in &interface.heritage {
+                            context.references(parent);
+                        }
+                        for field in &interface.fields {
+                            context.references(&field.value);
+                        }
+                    }
+                }
+                if let Declaration::Variable(variable) = declaration {
+                    if context.used_imports.contains(&variable.name)
+                        && !context.variables.contains_key(&variable.span.start)
+                    {
+                        if let Some(value) = context.value_types.get(&variable.name) {
+                            if let Type::CallableRecord { signatures, .. } = value.object_type() {
+                                if let Some(name) = signatures.iter().find_map(|signature| {
+                                    match &signature.result {
+                                        Type::Named { name, .. } if signature.construct => {
+                                            Some(name.clone())
+                                        }
+                                        _ => None,
+                                    }
+                                }) {
+                                    let value = Type::Named {
+                                        name,
+                                        arguments: Vec::new(),
+                                    };
+                                    context.references(&value);
+                                    let rendered = context.render(&value, 0, &variable.span)?;
+                                    context.variables.insert(
+                                        variable.span.start,
+                                        (format!("typeof {rendered}"), false),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
                 if let Declaration::Class(class) = declaration {
                     if context.used_imports.contains(&class.name) {
                         if let Some(parent) = &class.extends_name {
