@@ -92,7 +92,6 @@ const KEYWORDS: &[&str] = &[
     "new",
     "null",
     "number",
-    "object",
     "of",
     "override",
     "private",

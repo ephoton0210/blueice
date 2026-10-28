@@ -140,6 +140,23 @@ fn source_name_fresh(
                         });
                 }
             }
+            Declaration::ValueExport(export) => {
+                if let Some(binding) = export
+                    .bindings
+                    .iter()
+                    .find(|binding| binding.exported == name && !binding.type_only)
+                {
+                    if let Some(specifier) = &export.specifier {
+                        return project
+                            .resolved_module(&module.id, specifier)
+                            .and_then(|id| project.modules.get(id))
+                            .is_some_and(|target| {
+                                source_name_fresh(project, target, &binding.local, seen, limit - 1)
+                            });
+                    }
+                    return source_name_fresh(project, module, &binding.local, seen, limit - 1);
+                }
+            }
             _ => {}
         }
     }

@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-28).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 14,223 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 14,644 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 13,630/13,637 (99.9487%); 3 open, 4 refused observations |
-| Separate controls | 539 native-reference + 47 BlueTS owner = 586; excluded from direct agreement |
-| Case labels | 14,216 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 114 suites / 271 ignored Rust functions; not a case denominator |
-| Suite labels | 109 scoped closed, 1 open, 4 refused |
+| Direct agreement | 14,046/14,053 (99.9502%); 3 open, 4 refused observations |
+| Separate controls | 539 native-reference + 52 BlueTS owner = 591; excluded from direct agreement |
+| Case labels | 14,637 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 115 suites / 273 ignored Rust functions; not a case denominator |
+| Suite labels | 110 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 14,223 recorded case expectations pass; expected differences/refusals are not
+All 14,644 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:8c851b1fecfaa9382fd965b339aa2810fad37beb`.
-Input graph SHA-256: `8345e5f8477bf71fdc3aea83061a7ca807d32e362d2f0b4e618b3db628eeaf5a`.
+Compiler/oracle source: `backend-tree:7dadd56b93991faf367c2998d88c23ebf94fc820`.
+Input graph SHA-256: `5575ed432769f6b08d7807b1016efe2d35395eefb93cbc9d0ada373efab8efd4`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -14720,3 +14720,173 @@ packages remain unchecked; next is G-D1. Broader feature rows and the direct
 runtime profile retain their recorded open scope, and full parity remains OFF.
 Implementation, frozen observations, the complete corresponding measurement and
 updated plans form one G-T9 commit, followed by the already authorized push.
+
+## Phase L — G-D1 implementation
+
+### Native-first declaration matrix — 2026-10-28
+
+Start from clean `94b9d289423e898da436e2a8ff4446b5deb6b599`. Before modifying
+production, probe and freeze **28 forms / 416 observations** using TypeScript
+5.9.3, Acorn 8.15.0 and actual Node 26.7.0 execution. All programs use strict
+ES2022, explicit ES2022 libraries, no skipped declarations, CommonJS/ESNext,
+both field modes and both exact-optional settings. Each of 24 accepting forms
+has a paired source rejection and an independent accepted/rejected consumer;
+four additional external private-type forms freeze full TS4023/TS4058 diagnostics,
+including a non-ASCII exported name for original UTF-16 coordinates.
+
+The six anonymous forms cover disjoint arrays, function-return unions,
+conditional discriminants, nested records, const tuples and shared properties.
+Local/imported/re-exported literals and imported enum freshness, const record/
+rest generic inference, satisfies/object-method/return contexts, local/imported/
+generic overload aliases, four merged surfaces and two public external naming
+forms complete the accepted set. The private external controls cover records,
+tuples, exported function returns and generic arguments.
+
+Input SHA-256:
+`caef32a34057d810c41100712055ca2ed0a1b9f1b9039643defab29f453dadb0`.
+Reference SHA-256:
+`633784a08f3cd9559cd6b698360d778b8682c9edc9501d62f53aa61c167b14cf`.
+The Native-only freeze (`/private/tmp/bluets-gd1-native-freeze.log`) reports
+**192 accepted / 224 rejected**, **248 declaration files**, **384 consumer
+observations** and **192 successful executions**, all returning 42. Declaration
+bytes and diagnostics come solely from pinned TypeScript; BlueTS does not supply
+expectations. Keep `BLUEICE_WRITE_GD1` unset after this freeze.
+
+The new CLI regression and five separate owner controls precede production.
+G-D1 remains unchecked until implementation and all matching evidence/gates
+pass. Preserve the previous 14,223 case identities and classifications and all
+old native fixture bytes. Broader rows and full parity remain open/OFF; this
+leaf adds no fresh Windows or hosted-CI prerequisite.
+
+The pre-implementation public replay (`/private/tmp/bluets-gd1-before.log`)
+reports **8 passed / 2 failed / 2 ignored**, with **260 CLI mismatches**.
+The repeated-symbol/import owner control also fails on native-valid imported
+overload bodies. Canonical confinement, work limits, declaration/runtime
+separation and atomic publication already pass. Failures include missing or
+misformatted anonymous-union members, fresh/regular literal distinctions,
+const/contextual argument inference, overload references, merged ambient
+interfaces, public external namespace/alias naming, and full TS4023/TS4058
+diagnostic text/origins. Production work begins only after this failing record;
+the native inputs/reference above remain fixed.
+
+### Implementation and focused replay
+
+Declaration rendering is split into dedicated rendering, origin, anonymous-union
+and diagnostic modules. Inferred record order and missing optional members follow
+the frozen native output, including exact-optional `never`; explicitly annotated
+records retain their source identity. Property reads on inferred record unions
+include absent members as undefined. Fresh local/imported/re-exported literals
+and enum members retain the measured widening rules. Const-generic object/rest
+arguments preserve literal and readonly information through the existing charged
+inference path; contextual object methods receive their parameter signatures.
+Flow evaluation now visits object property expressions, preserving their local
+conditional refinements in generic overload implementations.
+
+Retained local overload declarations and imported `typeof` aliases, merged
+interface surfaces, pure-type export elision, and publicly nameable external
+namespace/renamed symbols use the admitted source graph. Unnameable exported
+variables/functions produce TS4023/TS4058 with the original name token and full
+native message; CLI physical module spellings use only already-authorized loader
+identities. No new resolver access, metadata permission or runtime value is
+granted by declaration emission.
+
+CommonJS rewrites only references resolved to module bindings, keeping same-name
+parameters/locals intact. The old ordinary test that asserted blanket refusal of
+an imported-name shadow is replaced by actual Node execution requiring `1 3`,
+empty stderr and successful exit. Existing native fixture bytes and case
+classifications remain unchanged. Semantic fingerprint versions and the disk
+state epoch (20) invalidate older declaration/inference output.
+
+The focused CLI replay (`/private/tmp/bluets-gd1-fourth-implementation.log`)
+passes all **10 ordinary tests**, including every one of the **416 full CLI
+comparisons** and five owner controls. The immutable native matrix is unchanged.
+Actual-output consumer/execution replay and complete source-bound gates are
+required before completion below.
+
+The initial broad preflight (`/private/tmp/bluets-gd1-ordinary-preflight.log`)
+runs all **175 targets**. Its 13 failures are fully localized: one inherited
+interface regression, two virtual-root diagnostic adapters and ten expected
+stale inventory/measurement checks. Expand the merged interface definition once
+instead of appending its heritage again. Both affected diagnostic adapters now
+share a helper that removes only the current canonical owner's separator-ended
+`import("<root>/` prefix; foreign owners, filenames, type/member suffixes, codes,
+related information and UTF-16 locations remain compared exactly. Neither
+adapter changes native fixture bytes or case classifications. Corrected replay
+passes all 253 library unit tests and the CommonJS runtime regression; the full
+diagnostic and declaration replay follows before freezing source. This initial
+preflight is not recorded as a passing completion gate.
+
+The corrected focused replay
+(`/private/tmp/bluets-gd1-corrected-regressions.log`) passes **279 tests across
+five targets**, including both complete diagnostic comparisons and the G-D1 and
+module-export CLI matrices. Workspace Rustfmt 1.95.0 and warnings-denied
+two-crate all-target Clippy pass on this source.
+
+### Immutable full-cohort source
+
+Freeze backend tree `7dadd56b93991faf367c2998d88c23ebf94fc820`; its BlueTS source
+graph SHA-256 is
+`5575ed432769f6b08d7807b1016efe2d35395eefb93cbc9d0ada373efab8efd4`.
+The source audit lists **115 suites** with no missing inline provider. Start
+the full `measure_compatibility_cases.cjs --staged-source` run at
+`2026-10-28T07:12:39.990Z`, using the unchanged frozen G-D1 inputs/references,
+TypeScript 5.9.3, Acorn 8.15.0, Node 26.7.0 and Rust 1.98.0 on darwin-arm64.
+The runner binds all **71 oracle tool hashes**, checks the staged source before
+and after execution, and executes every ordinary/ignored entry in each listed
+binary. Its working directory is `/private/tmp/bluets-gd1-measurement`; publish
+its report only after its conclusion is `success`. Source and tools remain
+unchanged throughout this run.
+
+### Complete source-bound measurement and accounting
+
+The immutable run finishes at `2026-10-28T07:57:18.012Z` with conclusion
+`success`: **115/115 suites / 630 tests**, including **all 273 ignored oracle
+functions**, zero failures, zero filtered entries and zero remaining ignored
+entries. Elapsed time is 2,678.022 seconds. The G-D1 suite passes all 12 of its
+ordinary/native entries, covering every frozen CLI observation, declaration,
+consumer and actual execution. The retained 82 core oracles also execute in this
+local cohort; this is darwin-arm64 evidence and does not claim a fresh Windows
+VM run.
+
+Publish the successful report unchanged with `--write-cases`, regenerate suite
+accounting, then run `account_inventory_rows.py --write` and
+`check_compatibility_status.py --write`. Published measurement SHA-256:
+`cacbc3cec38b13f8a9d7ee0bb93793251af72188c8946cc22e671943930452a2`.
+The independent `/private/tmp/audit-bluets-gd1-measurement.py` verifies all **115
+log hashes**, **71 tool hashes**, source/measurement byte bindings and every one
+of the previous **14,223 suite-qualified case identities and classifications**.
+All old native fixture bytes remain unchanged; both G-D1 frozen SHA-256 values
+above still match. Exactly **421 new cases** belong to G-D1: **416 native
+comparisons and five separate owner controls**.
+
+Regenerated accounting lists **14,644 checked cases**, **14,046/14,053 direct
+agreements**, three open differences, four refusals, 539 reference-only controls
+and 52 owner controls. The existing intentional differences/refusals are
+unchanged. Both strict staged inventory checks pass; the 22 inventory tests and
+13 Python accounting/status tests pass, as do the 15 Node tooling tests. These
+facts close only this finite declaration matrix; all broader feature rows stay
+open and full parity remains OFF.
+
+### Final ordinary gate and completed scope
+
+The unfiltered `cargo test --offline -p blueice-bluets -p blueice-bluets-bluejs
+--no-fail-fast` replay (`/private/tmp/bluets-gd1-ordinary-final.log`) passes
+**175 targets / 1,379 ordinary tests**, with no failure or filtered test, in
+1,573.49 seconds. Its 273 ordinary-run ignored entries are all executed in the
+successful immutable cohort above; together the two gates verify **1,652
+suite-qualified Rust test entries**. The initial inherited-interface and both
+diagnostic-path regressions are fixed, and all 22 inventory checks pass with
+the matching successful measurement.
+
+Final workspace Rustfmt 1.95.0, warnings-denied two-crate all-target Clippy,
+`--check-cases-staged`, `--check-staged`, Python accounting/status and Git
+whitespace checks pass. Every changed production file stays below 1,200 lines
+(maximum 1,184); declaration responsibilities are split into small modules,
+and all nine new source files retain MPL-2.0 headers. The exact measured backend
+tree and frozen native fixture hashes remain unchanged through finalization.
+
+All finite G-D1 acceptance items are complete. Mark the checklist accordingly;
+**nine Phase L packages remain unchecked, next G-D2**. Broader inventory rows
+and the direct runtime profile retain their recorded open scope, and full parity
+stays OFF. Implementation, frozen native authority, matching complete measured
+data and updated plans form one G-D1 commit, followed by the authorized push.

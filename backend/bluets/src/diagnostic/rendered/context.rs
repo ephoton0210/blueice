@@ -60,7 +60,9 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
                             let Declaration::Enum(group) = item else {
                                 continue;
                             };
-                            if args[0].starts_with(&format!("{}.", group.name))
+                            let owned_enum = args[0] == format!("{}@{resolved}", group.name);
+                            if owned_enum
+                                || args[0].starts_with(&format!("{}.", group.name))
                                 || args[0]
                                     .starts_with(&format!("{}.{}.", binding.local, group.name))
                             {
@@ -69,6 +71,9 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
                                     "import(\"{target}\").{}",
                                     if default { "default" } else { &group.name }
                                 );
+                                if owned_enum {
+                                    detail = Some(String::new());
+                                }
                             }
                         }
                     }

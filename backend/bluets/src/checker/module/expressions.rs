@@ -517,6 +517,13 @@ impl<'a> ModuleChecker<'a> {
                 continue;
             }
             if positions_known {
+                if let Some(value) = signatures.iter().find_map(|signature| {
+                    let parameter = function_parameter_for_argument(signature, actuals.len())?;
+                    self.const_generic_argument(argument, scope, parameter, signature)
+                }) {
+                    actuals.push(value);
+                    continue;
+                }
                 if let [token] = strip_outer_parentheses(argument) {
                     if matches!(token.kind, TokenKind::Number | TokenKind::String)
                         || token.is("true")

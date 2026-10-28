@@ -24,7 +24,15 @@ impl ModuleChecker<'_> {
             annotation = expanded;
         }
         let message = "the bounded rest-parameter rule requires an array annotation".to_string();
-        if matches!(annotation, Type::Array(_)) {
+        if let Type::Named { name, .. } = &annotation {
+            if self.bound_parameters.get(name).and_then(|parameter| parameter.constraint.as_ref())
+                .is_some_and(|constraint| matches!(constraint, Type::Array(_)) || matches!(constraint, Type::Readonly(inner) if matches!(inner.as_ref(),Type::Array(_)))) {
+                return;
+            }
+        }
+        if matches!(annotation, Type::Array(_))
+            || matches!(annotation, Type::Readonly(ref inner) if matches!(inner.as_ref(), Type::Array(_)))
+        {
             return;
         }
         if matches!(annotation, Type::Tuple(_)) {

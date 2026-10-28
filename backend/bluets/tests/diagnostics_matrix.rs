@@ -11,6 +11,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "oracle_support/diagnostic_import_paths.rs"]
+mod diagnostic_import_paths;
+
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
@@ -43,7 +46,7 @@ fn legacy_flags(flags: &[Value]) -> Vec<String> {
     result
 }
 
-fn replay(case: &Value) -> std::process::Output {
+fn replay(case: &Value) -> (std::process::Output, Option<PathBuf>) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let mut command = Command::new(env!("CARGO_BIN_EXE_bluetsc"));
@@ -129,10 +132,23 @@ fn replay(case: &Value) -> std::process::Output {
         command.args(legacy_flags(case["flags"].as_array().unwrap()));
     }
     let output = command.arg("--diagnostics-json").output().unwrap();
+    let physical_root = scratch
+        .as_ref()
+        .map(|directory| directory.canonicalize().unwrap())
+        .or_else(|| {
+            case["config"].as_str().map(|config| {
+                fixtures()
+                    .join(config)
+                    .parent()
+                    .unwrap()
+                    .canonicalize()
+                    .unwrap()
+            })
+        });
     if let Some(directory) = scratch {
         fs::remove_dir_all(directory).unwrap();
     }
-    output
+    (output, physical_root)
 }
 
 #[test]
@@ -184,7 +200,7 @@ fn primary_codes_templates_and_positions_match_the_pinned_corpus() {
     let mut failures = Vec::new();
     for case in reference["cases"].as_array().unwrap() {
         let id = case["id"].as_str().unwrap();
-        let output = replay(case);
+        let (output, _) = replay(case);
         let text = String::from_utf8_lossy(&output.stderr);
         let diagnostics = text
             .lines()
@@ -333,7 +349,7 @@ fn primary_messages_and_related_information_match_pinned_typescript() {
                 .unwrap()
                 .to_path_buf()
         };
-        let output = replay(case);
+        let (output, physical_root) = replay(case);
         let diagnostics = String::from_utf8_lossy(&output.stderr)
             .lines()
             .map(|line| serde_json::from_str::<Value>(line).unwrap())
@@ -343,6 +359,15 @@ fn primary_messages_and_related_information_match_pinned_typescript() {
             continue;
         };
         let actual = &primary["typescript"];
+        // Keep this corpus's established virtual-root comparison while the
+        // public project CLI prints the physical origin, as native tsc does.
+        // Only an admitted root followed by a path separator is normalized.
+        let normalize = |message: &str| {
+            let Some(root) = &physical_root else {
+                return message.to_string();
+            };
+            diagnostic_import_paths::relative_message(message, root)
+        };
         let related = expected["related"]
             .as_array()
             .into_iter()
@@ -367,7 +392,7 @@ fn primary_messages_and_related_information_match_pinned_typescript() {
             .into_iter()
             .flatten()
             .map(|item| {
-                serde_json::json!({"code":item["code"],"message":item["message"],
+                serde_json::json!({"code":item["code"],"message":normalize(item["message"].as_str().unwrap()),
                 "module":item["span"]["module"],"position":item["position"]})
             })
             .collect::<Vec<_>>();
@@ -380,7 +405,8 @@ fn primary_messages_and_related_information_match_pinned_typescript() {
             ),
             "",
         );
-        if actual["message"] != expected_message || actual_related != related {
+        let actual_message = normalize(actual["message"].as_str().unwrap());
+        if actual_message != expected_message || actual_related != related {
             failures.push(format!(
                 "{}: expected message {} and related {:?}; received {} and {:?}",
                 case["id"], expected["message"], related, actual["message"], actual_related

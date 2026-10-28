@@ -32,13 +32,15 @@ mod decorator_types;
 pub(crate) use decorator_types::replacement_type as decorator_replacement_type;
 mod properties;
 mod scopes;
-pub(crate) use scopes::emission::{lexical_emission, runtime_import_uses, LexicalEmission};
+pub(crate) use scopes::emission::{
+    lexical_emission, module_value_reference_positions, runtime_import_uses, LexicalEmission,
+};
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v4";
-pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v7";
-pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/1";
+pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v8";
+pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/2";
 pub(crate) const OVERLOAD_CHAINS_VERSION: &str = "bluets-overload-chains/1";
-pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/1";
+pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/2";
 mod computed_keys;
 pub(crate) mod tuple_compositions;
 mod type_operators;

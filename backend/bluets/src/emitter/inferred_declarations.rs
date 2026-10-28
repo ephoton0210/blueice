@@ -9,6 +9,15 @@ use crate::checker::CheckedModule;
 use crate::parser::{ImportDeclaration, VariableDeclaration, VariableKind};
 use std::collections::BTreeSet;
 
+mod diagnostics;
+mod origins;
+mod render;
+mod unions;
+use origins::{
+    declared_function, declares_symbol_value, exported_local, fresh_variable, public_type_name,
+    record_annotation,
+};
+
 pub(super) struct Context<'a> {
     module: &'a Module,
     project: &'a Project,
@@ -19,6 +28,9 @@ pub(super) struct Context<'a> {
     return_types: BTreeMap<usize, String>,
     parameter_types: BTreeMap<usize, String>,
     private_aliases: BTreeMap<String, String>,
+    interface_fields: BTreeMap<usize, Vec<crate::parser::TypeField>>,
+    checking: crate::CheckingOptions,
+    max_expansions: usize,
 }
 
 impl<'a> Context<'a> {
@@ -26,6 +38,7 @@ impl<'a> Context<'a> {
         checked: &'a CheckedModule,
         project: &'a Project,
         order: &literal_order::Order,
+        options: &CompilerOptions,
     ) -> Result<Self, Diagnostic> {
         let module = &checked.module;
         let mut context = Self {
@@ -51,6 +64,9 @@ impl<'a> Context<'a> {
             return_types: BTreeMap::new(),
             parameter_types: BTreeMap::new(),
             private_aliases: BTreeMap::new(),
+            interface_fields: BTreeMap::new(),
+            checking: checked.checking,
+            max_expansions: options.limits.max_type_expansions,
         };
         for (declaration, _) in super::runtime_declarations(&module.declarations) {
             let Declaration::Variable(variable) = declaration else {
@@ -115,6 +131,7 @@ impl<'a> Context<'a> {
                     if text.starts_with(['\'', '"', '`']) || text.parse::<f64>().is_ok() || matches!(text.as_str(), "true" | "false"));
             let initializer = variable.kind == VariableKind::Const
                 && literal
+                && !value.starts_with("import(")
                 && !module.declarations.iter().any(|declaration| matches!(declaration,
                     Declaration::DefaultExport(export) if export.expression && export.name == variable.name))
                 && (!primitive
@@ -142,6 +159,7 @@ impl<'a> Context<'a> {
                 }
                 Declaration::Function(function)
                     if function.exported
+                        || context.used_imports.contains(&function.name)
                         || is_default_export_name(module, &function.name)
                         || is_value_export_name(module, &function.name) =>
                 {
@@ -176,13 +194,19 @@ impl<'a> Context<'a> {
                         context.return_types.insert(function.span.start, rendered);
                     }
                 }
-                Declaration::Interface(interface) if interface.exported => {
+                Declaration::Interface(interface)
+                    if interface.exported || context.used_imports.contains(&interface.name) =>
+                {
                     for parent in &interface.heritage {
                         context.references(parent);
                     }
                     for field in &interface.fields {
                         context.references(&field.value);
                     }
+                    let fields = context.render_fields(&interface.fields, 0, &interface.span)?;
+                    context
+                        .interface_fields
+                        .insert(interface.span.start, fields);
                 }
                 Declaration::Class(class)
                     if class.exported
@@ -321,6 +345,10 @@ impl<'a> Context<'a> {
 
     pub(super) fn retained(&self, name: &str) -> bool {
         self.used_imports.contains(name)
+    }
+
+    pub(super) fn interface_fields(&self, start: usize) -> Option<&[crate::parser::TypeField]> {
+        self.interface_fields.get(&start).map(Vec::as_slice)
     }
 
     pub(super) fn private_alias(&self, name: &str) -> Option<&str> {
@@ -482,6 +510,9 @@ impl<'a> Context<'a> {
             _ => return None,
         };
         let first = name.split('.').next()?;
+        if declared_function(self.module, &name, self.project, &mut BTreeSet::new(), 0) {
+            return Some(name);
+        }
         let import = self
             .module
             .declarations
@@ -503,325 +534,6 @@ impl<'a> Context<'a> {
         };
         let local = exported_local(source, exported);
         declared_function(source, &local, self.project, &mut BTreeSet::new(), 0).then_some(name)
-    }
-
-    fn render_operator(
-        &mut self,
-        value: &Type,
-        indent: usize,
-        span: &SourceSpan,
-    ) -> Option<Result<String, Diagnostic>> {
-        if let Type::IndexedRecord { object, indices } = value {
-            return Some((|| {
-                let mut indices = indices.clone();
-                for index in &mut indices {
-                    index.key = Type::Literal(self.render(&index.key, indent + 4, span)?);
-                    index.value = Type::Literal(self.render(&index.value, indent + 4, span)?);
-                }
-                let fields = match object.as_ref() {
-                    Type::Record(fields) => fields,
-                    _ => return Ok(type_to_ts(value)),
-                };
-                let fields = self.render_fields(fields, indent, span)?;
-                Ok(callable_objects::render_with_indent(
-                    &fields,
-                    &[],
-                    &indices,
-                    indent,
-                ))
-            })());
-        }
-        let mut failure = None;
-        let mapped = value.map_operator(|child, _| {
-            match self.render(
-                child,
-                indent + usize::from(matches!(value, Type::Mapped(_))) * 4,
-                span,
-            ) {
-                Ok(text) => Type::Literal(text),
-                Err(error) => {
-                    failure = Some(error);
-                    Type::Unknown
-                }
-            }
-        })?;
-        if let Some(error) = failure {
-            return Some(Err(error));
-        }
-        let text = mapped
-            .operator_text(|value| {
-                if let Type::Literal(text) = value {
-                    text.clone()
-                } else {
-                    type_to_ts(value)
-                }
-            })
-            .expect("mapped operator");
-        Some(Ok(if matches!(value, Type::Mapped(_)) {
-            let member = text
-                .strip_prefix("{ ")
-                .and_then(|text| text.strip_suffix(" }"))
-                .expect("mapped spelling");
-            format!(
-                "{{\n{}{member}\n{}}}",
-                " ".repeat(indent + 4),
-                " ".repeat(indent)
-            )
-        } else {
-            text
-        }))
-    }
-
-    fn render_fields(
-        &mut self,
-        fields: &[crate::parser::TypeField],
-        indent: usize,
-        span: &SourceSpan,
-    ) -> Result<Vec<crate::parser::TypeField>, Diagnostic> {
-        let mut rendered = Vec::with_capacity(fields.len());
-        for field in fields {
-            let mut field = field.clone();
-            match &mut field.value {
-                Type::Function { parameters, result }
-                | Type::GenericFunction {
-                    parameters, result, ..
-                } if field.method => {
-                    for parameter in parameters {
-                        parameter.annotation = parameter
-                            .annotation
-                            .as_ref()
-                            .map(|value| self.render(value, indent + 4, span).map(Type::Literal))
-                            .transpose()?;
-                    }
-                    **result = Type::Literal(self.render(result, indent + 4, span)?);
-                }
-                value => *value = Type::Literal(self.render(value, indent + 4, span)?),
-            }
-            rendered.push(field);
-        }
-        Ok(rendered)
-    }
-
-    fn render(
-        &mut self,
-        value: &Type,
-        indent: usize,
-        span: &SourceSpan,
-    ) -> Result<String, Diagnostic> {
-        if let Some(rendered) = self.render_operator(value, indent, span) {
-            return rendered;
-        }
-        Ok(match value {
-            Type::Predicate(predicate) => {
-                let target = predicate
-                    .target
-                    .as_deref()
-                    .map(|target| self.render(target, indent, span))
-                    .transpose()?;
-                predicate.text(|_| target.unwrap_or_default())
-            }
-            Type::CallableRecord { fields, signatures } => {
-                let fields = self.render_fields(fields, indent, span)?;
-                let mut mapped = Vec::new();
-                for signature in signatures {
-                    let mut signature = signature.clone();
-                    for parameter in &mut signature.parameters {
-                        parameter.annotation = parameter
-                            .annotation
-                            .as_ref()
-                            .map(|value| self.render(value, indent + 4, span).map(Type::Literal))
-                            .transpose()?;
-                    }
-                    signature.result =
-                        Type::Literal(self.render(&signature.result, indent + 4, span)?);
-                    mapped.push(signature);
-                }
-                if fields.is_empty() && mapped.len() == 1 && mapped[0].constructor_arrow {
-                    callable_objects::render(&fields, &mapped)
-                } else {
-                    callable_objects::render_with_indent(&fields, &mapped, &[], indent)
-                }
-            }
-            Type::Named { name, arguments } => {
-                if let Some((owner, spelling)) = name
-                    .strip_prefix("\0import:")
-                    .and_then(|name| name.split_once('\0'))
-                {
-                    if owner != self.module.id {
-                        if !spelling.contains('(') {
-                            return self.render(
-                                &Type::Named {
-                                    name: format!("{spelling}@{owner}"),
-                                    arguments: arguments.clone(),
-                                },
-                                indent,
-                                span,
-                            );
-                        }
-                        return Err(Diagnostic::error(DiagnosticCode::TypeMismatch,span.clone(),format!("TS4023: exported variable uses external type `{spelling}` which cannot be named")));
-                    }
-                    self.retain(spelling);
-                }
-                let name = if name.starts_with("\0import:") {
-                    if crate::parser::is_javascript(&self.module.id) {
-                        declarations::canonical_import_type(crate::parser::source_type_name(name))
-                    } else {
-                        crate::parser::source_type_name(name).to_string()
-                    }
-                } else if name.starts_with("typeof ") {
-                    self.retain(name);
-                    crate::parser::source_type_name(name).to_string()
-                } else if name.starts_with("#typeparam@") {
-                    crate::parser::source_type_name(name).to_string()
-                } else if let Some((bare, id)) = name.split_once('@') {
-                    let (root, suffix) = bare
-                        .split_once('.')
-                        .map_or((bare, "".to_string()), |(root, rest)| {
-                            (root, format!(".{rest}"))
-                        });
-                    let source = self.project.modules.get(id);
-                    let public = source.and_then(|source| public_type_name(source, root));
-                    let specifier =
-                        self.module
-                            .declarations
-                            .iter()
-                            .find_map(|declaration| match declaration {
-                                Declaration::Import(import)
-                                    if self
-                                        .project
-                                        .resolved_import(&self.module.id, import)
-                                        .is_some_and(|source| source == id) =>
-                                {
-                                    Some(import.specifier.clone())
-                                }
-                                _ => None,
-                            });
-                    let Some((public, specifier)) = public.zip(specifier) else {
-                        return Err(Diagnostic::error(DiagnosticCode::TypeMismatch, span.clone(), format!("TS4023: exported variable uses external type `{root}` which cannot be named")));
-                    };
-                    format!("import(\"{specifier}\").{public}{suffix}")
-                } else {
-                    self.retain(name);
-                    crate::parser::source_type_name(name).to_string()
-                };
-                if arguments.is_empty() {
-                    name
-                } else {
-                    format!(
-                        "{name}<{}>",
-                        arguments
-                            .iter()
-                            .map(|value| self.render(value, indent, span))
-                            .collect::<Result<Vec<_>, _>>()?
-                            .join(", ")
-                    )
-                }
-            }
-            Type::Record(fields) => {
-                let fields = self.render_fields(fields, indent, span)?;
-                callable_objects::render_with_indent(&fields, &[], &[], indent)
-            }
-            Type::Array(element) => {
-                let text = self.render(element, indent, span)?;
-                format!(
-                    "{}[]",
-                    if matches!(
-                        element.as_ref(),
-                        Type::Union(_)
-                            | Type::Intersection(_)
-                            | Type::Function { .. }
-                            | Type::Infer(_)
-                    ) {
-                        format!("({text})")
-                    } else {
-                        text
-                    }
-                )
-            }
-            Type::Readonly(inner) => format!("readonly {}", self.render(inner, indent, span)?),
-            Type::Tuple(elements) => {
-                let mut members = Vec::new();
-                for element in elements {
-                    let annotation = self.render(&element.annotation, indent, span)?;
-                    members.push(if let Some(label) = &element.label {
-                        format!(
-                            "{}{label}{}: {annotation}",
-                            if element.rest { "..." } else { "" },
-                            if element.optional { "?" } else { "" },
-                        )
-                    } else {
-                        format!(
-                            "{}{annotation}{}",
-                            if element.rest { "..." } else { "" },
-                            if element.optional { "?" } else { "" },
-                        )
-                    });
-                }
-                format!("[{}]", members.join(", "))
-            }
-            Type::Function { parameters, result }
-            | Type::GenericFunction {
-                parameters, result, ..
-            } => {
-                let mut binders = String::new();
-                if let Type::GenericFunction {
-                    type_parameters, ..
-                } = value
-                {
-                    emit_type_parameters(&mut binders, type_parameters);
-                }
-                let mut members = Vec::new();
-                for parameter in parameters {
-                    let annotation = self.render(
-                        parameter.annotation.as_ref().unwrap_or(&Type::Unknown),
-                        indent,
-                        span,
-                    )?;
-                    members.push(format!(
-                        "{}{}{}: {annotation}",
-                        if parameter.rest { "..." } else { "" },
-                        parameter.name,
-                        if parameter.optional { "?" } else { "" },
-                    ));
-                }
-                format!(
-                    "{binders}({}) => {}",
-                    members.join(", "),
-                    self.render(result, indent, span)?
-                )
-            }
-            Type::Union(options) | Type::Intersection(options) => options
-                .iter()
-                .map(|option| {
-                    self.render(option, indent, span).map(|text| {
-                        if matches!(option, Type::Function { .. } | Type::GenericFunction { .. }) {
-                            format!("({text})")
-                        } else {
-                            text
-                        }
-                    })
-                })
-                .collect::<Result<Vec<_>, _>>()?
-                .join(if matches!(value, Type::Union(_)) {
-                    " | "
-                } else {
-                    " & "
-                }),
-            Type::KeyOf(value) => format!("keyof {}", self.render(value, indent, span)?),
-            Type::IndexedAccess { object, index, .. } => format!(
-                "{}[{}]",
-                self.render(object, indent, span)?,
-                self.render(index, indent, span)?
-            ),
-            Type::Literal(name) => {
-                self.retain(name);
-                name.clone()
-            }
-            _ => {
-                self.references(value);
-                type_to_ts(value)
-            }
-        })
     }
 
     pub(super) fn import(&self, import: &ImportDeclaration) -> Option<String> {
@@ -901,192 +613,5 @@ impl<'a> Context<'a> {
             if import.type_only { "type " } else { "" },
             clauses.join(", ")
         ))
-    }
-}
-
-fn public_type_name(module: &Module, name: &str) -> Option<String> {
-    for declaration in &module.declarations {
-        let direct = match declaration {
-            Declaration::Interface(item) => item.exported && item.name == name,
-            Declaration::TypeAlias(item) => item.exported && item.name == name,
-            Declaration::Class(item) => item.exported && item.name == name,
-            Declaration::Enum(item) => item.exported && item.name == name,
-            _ => false,
-        };
-        if direct {
-            return Some(name.to_string());
-        }
-        if let Declaration::TypeExport(export) = declaration {
-            if export.specifier.is_none() {
-                for binding in &export.bindings {
-                    if binding.local == name {
-                        return Some(binding.exported.clone());
-                    }
-                }
-            }
-        }
-        if let Declaration::ValueExport(export) = declaration {
-            if let Some(binding) = export.bindings.iter().find(|binding| binding.local == name) {
-                return Some(binding.exported.clone());
-            }
-        }
-    }
-    None
-}
-
-fn exported_local(module: &Module, exported: &str) -> String {
-    for declaration in &module.declarations {
-        match declaration {
-            Declaration::DefaultExport(item) if exported == "default" => return item.name.clone(),
-            Declaration::Function(item) if item.default_export && exported == "default" => {
-                return item.name.clone()
-            }
-            Declaration::ValueExport(item) => {
-                if let Some(binding) = item
-                    .bindings
-                    .iter()
-                    .find(|binding| binding.exported == exported)
-                {
-                    return binding.local.clone();
-                }
-            }
-            _ => {}
-        }
-    }
-    exported.to_string()
-}
-
-fn declared_function(
-    module: &Module,
-    name: &str,
-    project: &Project,
-    seen: &mut BTreeSet<(String, String)>,
-    depth: usize,
-) -> bool {
-    if depth >= 128 || !seen.insert((module.id.clone(), name.to_string())) {
-        return false;
-    }
-    for declaration in &module.declarations {
-        match declaration {
-            Declaration::Function(function) if function.name == name => return true,
-            Declaration::Variable(variable)
-                if variable.name == name && variable.annotation.is_none() =>
-            {
-                if let [source] = variable.initializer.as_slice() {
-                    return declared_function(module, &source.text, project, seen, depth + 1);
-                }
-            }
-            Declaration::Import(import) => {
-                if let Some(binding) = import.bindings.iter().find(|binding| binding.local == name)
-                {
-                    if let Some(source) = project
-                        .resolved_import(&module.id, import)
-                        .and_then(|id| project.modules.get(id))
-                    {
-                        return declared_function(
-                            source,
-                            &exported_local(source, &binding.imported),
-                            project,
-                            seen,
-                            depth + 1,
-                        );
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
-fn fresh_variable(
-    module: &Module,
-    variable: &VariableDeclaration,
-    project: &Project,
-    seen: &mut BTreeSet<(String, String)>,
-    depth: usize,
-) -> bool {
-    if depth >= 128
-        || variable.annotation.is_some()
-        || variable.kind != VariableKind::Const
-        || !seen.insert((module.id.clone(), variable.name.clone()))
-    {
-        return false;
-    }
-    let [value] = variable.initializer.as_slice() else {
-        return false;
-    };
-    if matches!(
-        value.kind,
-        crate::syntax::TokenKind::Number
-            | crate::syntax::TokenKind::String
-            | crate::syntax::TokenKind::Template
-    ) || value.is("true")
-        || value.is("false")
-    {
-        return true;
-    }
-    for declaration in &module.declarations {
-        if let Declaration::Variable(local) = declaration {
-            if local.name == value.text {
-                return fresh_variable(module, local, project, seen, depth + 1);
-            }
-        }
-        if let Declaration::Import(import) = declaration {
-            if let Some(binding) = import
-                .bindings
-                .iter()
-                .find(|binding| binding.local == value.text)
-            {
-                let source = project
-                    .resolved_import(&module.id, import)
-                    .and_then(|id| project.modules.get(id));
-                if let Some(source) = source {
-                    let local = exported_local(source, &binding.imported);
-                    if let Some(variable) =
-                        source
-                            .declarations
-                            .iter()
-                            .find_map(|declaration| match declaration {
-                                Declaration::Variable(variable) if variable.name == local => {
-                                    Some(variable)
-                                }
-                                _ => None,
-                            })
-                    {
-                        return fresh_variable(source, variable, project, seen, depth + 1);
-                    }
-                }
-            }
-        }
-    }
-    false
-}
-
-fn declares_symbol_value(module: &Module) -> bool {
-    module
-        .declarations
-        .iter()
-        .any(|declaration| match declaration {
-            Declaration::Variable(value) => value.name == "Symbol",
-            Declaration::Function(value) => value.name == "Symbol",
-            Declaration::Class(value) => value.name == "Symbol",
-            Declaration::Enum(value) => value.name == "Symbol",
-            Declaration::Namespace(value) => value.name == "Symbol",
-            Declaration::Import(value) => value
-                .bindings
-                .iter()
-                .any(|binding| binding.local == "Symbol"),
-            _ => false,
-        })
-}
-
-fn record_annotation(value: &Type) -> bool {
-    match value {
-        Type::Record(_) | Type::Mapped(_) => true,
-        Type::Named { arguments, .. } => arguments.iter().any(record_annotation),
-        Type::Predicate(predicate) => predicate.target.as_deref().is_some_and(record_annotation),
-        Type::Union(parts) | Type::Intersection(parts) => parts.iter().any(record_annotation),
-        _ => false,
     }
 }

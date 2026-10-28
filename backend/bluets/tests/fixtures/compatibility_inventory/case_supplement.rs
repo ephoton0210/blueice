@@ -33,6 +33,23 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gd1_declarations" => {
+            let path = "backend/bluets/tests/fixtures/gd1_declarations/reference.json";
+            let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;
+            let rows = root["ownerControls"]
+                .as_array()
+                .ok_or("missing G-D1 owner controls")?;
+            if rows.len() != 5 {
+                return Err("incomplete G-D1 owner controls".into());
+            }
+            rows.iter().enumerate().map(|(index,row)| {
+                let label=row.as_str().ok_or("invalid G-D1 owner control")?;
+                let mut case=Case::new(path,&format!("/ownerControls/{index}"),label,"owner-declaration-control");
+                case.comparison=Comparison::BoundaryControl;
+                case.reason=Some("Charged declaration work, declaration/runtime separation, stable repeat-build symbols/imports, atomic failed publication and canonical source confinement are owner controls, not native agreements.".into());
+                Ok(case)
+            }).collect::<Result<Vec<_>>>()?
+        }
         "gt9_classes" => {
             let path = "backend/bluets/tests/fixtures/gt9_classes/reference.json";
             let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;

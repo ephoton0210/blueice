@@ -445,6 +445,32 @@ fn expression(
             index = end.max(index + 1);
             continue;
         }
+        if token.is("{") {
+            if let Some(end) = super::super::targets::close(tokens, index) {
+                let mut members = &tokens[index + 1..end];
+                while !members.is_empty() {
+                    let boundary =
+                        super::super::targets::top_level(members, ",").unwrap_or(members.len());
+                    let member = &members[..boundary];
+                    let value = super::super::targets::top_level(member, ":")
+                        .map_or(member, |colon| &member[colon + 1..]);
+                    next = expression(
+                        scopes,
+                        model,
+                        value,
+                        &next,
+                        false,
+                        infer,
+                        execution,
+                        depth + 1,
+                        remaining,
+                    );
+                    members = members.get(boundary + 1..).unwrap_or(&[]);
+                }
+                index = end + 1;
+                continue;
+            }
+        }
         if matches!(token.text.as_str(), "(" | "[") {
             if let Some(end) = super::super::targets::close(tokens, index) {
                 let immediate = tokens[index + 1..end]

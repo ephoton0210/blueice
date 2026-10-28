@@ -619,12 +619,14 @@ pub(super) fn exported_interface_value(
     declared: &BTreeMap<String, TypeDefinition>,
 ) -> Type {
     let mut active = HashSet::new();
-    let heritage = interface
-        .heritage
-        .iter()
-        .map(|parent| expand_exported_heritage(parent, declared, &mut active))
-        .collect::<Vec<_>>();
-    interface_value_with_heritage(&heritage, interface.body_type())
+    // The merged definition already includes every declaration's heritage.
+    // Expand it once so private parents do not leak into importing modules.
+    let value = declared
+        .get(&interface.name)
+        .filter(|definition| definition.kind == TypeDefinitionKind::Interface)
+        .map(|definition| definition.value.clone())
+        .unwrap_or_else(|| interface_value(interface));
+    expand_exported_heritage(&value, declared, &mut active)
 }
 
 pub(super) fn expand_exported_heritage(

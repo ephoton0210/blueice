@@ -10,6 +10,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::{env, fs};
 
+#[path = "oracle_support/diagnostic_import_paths.rs"]
+mod diagnostic_import_paths;
+
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typescript_oracle")
 }
@@ -267,6 +270,10 @@ fn module_exports_match_pinned_verdicts_and_primary_diagnostics() {
     let mut failures = Vec::new();
     for (index, case) in cases().into_iter().enumerate() {
         let config = prepare(&case, &root.join(index.to_string()));
+        let physical_root = config.parent().unwrap().canonicalize().unwrap();
+        let normalize = |message: &Value| {
+            diagnostic_import_paths::relative_message(message.as_str().unwrap(), &physical_root)
+        };
         let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
             .arg("--project")
             .arg(config)
@@ -304,11 +311,11 @@ fn module_exports_match_pinned_verdicts_and_primary_diagnostics() {
             .into_iter()
             .flatten()
             .map(|item| {
-                json!({"code":item["code"],"message":item["message"],
+                json!({"code":item["code"],"message":normalize(&item["message"]),
                     "module":item["span"]["module"],"position":item["position"],"related":[]})
             })
             .collect::<Vec<_>>();
-        let actual = json!({"code":primary["code"],"message":primary["message"],
+        let actual = json!({"code":primary["code"],"message":normalize(&primary["message"]),
             "module":primary["span"]["module"],"position":primary["position"],"related":related});
         if actual != case["first"] {
             failures.push(format!(

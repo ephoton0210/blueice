@@ -12,7 +12,7 @@ mod mapped;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/3";
+pub(crate) const VERSION: &str = "bluets-generic-inference/4";
 
 pub(super) fn result_type(
     value: &Type,
@@ -92,6 +92,27 @@ pub(super) fn infer_contextual_result(
             break;
         };
         let annotation = if parameter.rest {
+            if let Some(annotation @ Type::Named { name, arguments }) = &parameter.annotation {
+                if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name)
+                {
+                    let mut value = Type::Tuple(
+                        actuals[index..]
+                            .iter()
+                            .cloned()
+                            .map(crate::parser::TupleTypeElement::required)
+                            .collect(),
+                    );
+                    if signature.type_parameters.iter().any(|p| {
+                        p.name == *name
+                            && p.is_const
+                            && matches!(p.constraint, Some(Type::Readonly(_)))
+                    }) {
+                        value = Type::Readonly(Box::new(value));
+                    }
+                    collector.collect(annotation, &value, false);
+                    break;
+                }
+            }
             rest_parameter_element_annotation(parameter)
         } else {
             parameter.annotation.as_ref()
@@ -132,7 +153,8 @@ pub(super) fn infer_contextual_result(
             primitive(&constraint)
                 || matches!(&constraint, Type::Union(parts) if parts.iter().all(primitive))
         });
-        let preserve = literal_constraint
+        let preserve = parameter.is_const
+            || literal_constraint
             || (naked == Some(parameter.name.as_str())
                 && context.is_none_or(|value| matches!(value, Type::Literal(_))));
         if let Some(value) = collector

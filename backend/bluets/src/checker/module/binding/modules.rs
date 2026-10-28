@@ -201,7 +201,7 @@ impl<'a> ModuleChecker<'a> {
                             _ => false,
                         })
                 };
-                if !has_local_runtime_binding {
+                if !has_local_runtime_binding && !self.types.contains_key(&binding.local) {
                     self.diagnostics.push(Diagnostic::error(
                         DiagnosticCode::UnknownName,
                         binding.span.clone(),

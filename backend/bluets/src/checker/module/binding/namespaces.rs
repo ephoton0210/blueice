@@ -900,6 +900,7 @@ impl ModuleChecker<'_> {
                 Declaration::TypeAlias(item) => Some(item.name.clone()),
                 Declaration::Class(item) => Some(item.name.clone()),
                 Declaration::Enum(item) => Some(item.name.clone()),
+                Declaration::Namespace(item) => Some(item.name.clone()),
                 _ => None,
             })
             .collect();

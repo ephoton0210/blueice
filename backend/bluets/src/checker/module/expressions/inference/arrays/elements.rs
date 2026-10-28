@@ -45,9 +45,15 @@ impl ModuleChecker<'_> {
                 .get(name)
                 .is_some_and(|definition| definition.kind == TypeDefinitionKind::EnumMember)
             {
-                if let Some((owner, _)) = name.rsplit_once('.') {
+                let (bare, module) = name
+                    .split_once('@')
+                    .map_or((name.as_str(), None), |(name, module)| (name, Some(module)));
+                if let Some((owner, _)) = bare.rsplit_once('.') {
                     return Type::Named {
-                        name: owner.into(),
+                        name: module.map_or_else(
+                            || owner.to_string(),
+                            |module| format!("{owner}@{module}"),
+                        ),
                         arguments: Vec::new(),
                     };
                 }

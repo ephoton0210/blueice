@@ -331,9 +331,9 @@ fn top_level_await_is_refused_in_a_commonjs_module() {
 }
 
 #[test]
-fn a_local_that_shadows_an_imported_name_is_refused_rather_than_misrewritten() {
-    let messages = diagnostics(
-        ModuleKind::CommonJs,
+fn a_local_that_shadows_an_import_keeps_its_lexical_value() {
+    let program = (
+        "lexical-import-shadow",
         false,
         &[
             (
@@ -341,13 +341,25 @@ fn a_local_that_shadows_an_imported_name_is_refused_rather_than_misrewritten() {
                 "import { v2 } from \"./b.ts\";\nfunction g(v2: number) { return v2; }\nconsole.log(g(1), v2);\n",
             ),
             ("b.ts", "export const v2 = 3;\n"),
-        ],
-    )
-    .join("\n");
-    assert!(
-        messages.contains("shadows an imported or exported binding"),
-        "{messages}"
+        ][..],
     );
+    let directory = Directory::new();
+    fs::write(
+        directory.path().join("package.json"),
+        "{\"type\":\"commonjs\"}\n",
+    )
+    .unwrap();
+    for (file, javascript) in compile_program(&program) {
+        fs::write(directory.path().join(file), javascript).unwrap();
+    }
+    let node = env::var_os("BLUEICE_NODE").unwrap_or_else(|| "node".into());
+    let run = Command::new(node)
+        .arg(directory.path().join("main.js"))
+        .output()
+        .unwrap();
+    assert!(run.status.success(), "{run:?}");
+    assert_eq!(run.stdout, b"1 3\n");
+    assert!(run.stderr.is_empty(), "{run:?}");
 }
 
 #[test]

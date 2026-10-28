@@ -23,8 +23,8 @@
 //! namespace is assigned when it is built; `export =` is `module.exports =`.
 //! `exports.x = void 0` first creates the keys in declaration order.
 //!
-//! Rewriting a reference by its text is sound only when no local binds the same
-//! name, so, as for namespaces, a body in which something could is refused.
+//! Reference edits use lexical module binding identities, so parameters and
+//! local declarations with the same spelling keep their own values.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -32,7 +32,7 @@ use super::namespaces::{class_member_names, scan, Replacement};
 use super::{javascript_specifier, Module, TextEdit};
 use crate::compiler::CompilerOptions;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::namespace_analysis::{has_runtime_values, refuse_shadowing_of};
+use crate::namespace_analysis::has_runtime_values;
 use crate::parser::Declaration;
 use crate::{Token, TokenKind};
 
@@ -77,6 +77,7 @@ fn unsupported(span: SourceSpan, message: impl Into<String>) -> Diagnostic {
 
 pub(super) fn lower_commonjs(
     module: &Module,
+    project: &crate::Project,
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
     system_wrapper: bool,
@@ -469,35 +470,25 @@ pub(super) fn lower_commonjs(
     if references.is_empty() {
         return Ok(references);
     }
-    // References are rewritten by their text, so nothing may bind them locally.
+    // Only references whose lexical owner is the module may be rewritten.
     let names: BTreeSet<String> = references.keys().cloned().collect();
-    let own: BTreeSet<&str> = exported_variables.iter().map(String::as_str).collect();
-    let first_span = module
-        .declarations
-        .first()
-        .map(|declaration| declaration.span().clone())
-        .unwrap_or_else(|| SourceSpan::new(&module.id, 0, 0));
-    refuse_shadowing_of(
+    let positions = crate::checker::module_value_reference_positions(
+        project,
         module,
-        &tokens,
-        &module.declarations,
-        (0, module.source.len()),
-        &[],
         &names,
-        &own,
-        first_span,
-        &|name| {
-            format!(
-                "a local named `{name}` shadows an imported or exported binding of the module \
-                 it is used in, which CommonJS output does not support yet"
-            )
-        },
-    )?;
+        options.limits.max_type_expansions,
+    );
     let mut covered: Vec<(usize, usize)> = edits
         .iter()
         .filter(|edit| edit.end > edit.start)
         .map(|edit| (edit.start, edit.end))
         .collect();
+    covered.extend(
+        tokens
+            .iter()
+            .filter(|token| names.contains(&token.text) && !positions.contains(&token.start))
+            .map(|token| (token.start, token.end)),
+    );
     // Enums and namespaces are rebuilt whole by their own lowering.
     for declaration in &module.declarations {
         match declaration {

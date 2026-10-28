@@ -6,6 +6,55 @@
 use super::*;
 
 impl ModuleChecker<'_> {
+    pub(super) fn const_generic_argument(
+        &self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        parameter: &Parameter,
+        signature: &FunctionSignature,
+    ) -> Option<Type> {
+        let Type::Named { name, arguments } = parameter.annotation.as_ref()? else {
+            return None;
+        };
+        if !arguments.is_empty() {
+            return None;
+        }
+        let binder = signature
+            .type_parameters
+            .iter()
+            .find(|binder| binder.name == *name && binder.is_const)?;
+        let tokens = strip_outer_parentheses(tokens);
+        let first = tokens.first()?;
+        if !(first.is("{")
+            || first.is("[")
+            || matches!(
+                first.kind,
+                TokenKind::String | TokenKind::Number | TokenKind::Template
+            )
+            || first.is("true")
+            || first.is("false"))
+        {
+            return None;
+        }
+        let value = self.infer_const_assertion(tokens, scope);
+        if !parameter.rest {
+            if let Some(constraint) = &binder.constraint {
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                budget.checking = self.checking;
+                if !is_assignable(
+                    &value,
+                    constraint,
+                    &self.types,
+                    &mut HashSet::new(),
+                    &mut budget,
+                ) {
+                    return None;
+                }
+            }
+        }
+        Some(value)
+    }
+
     pub(super) fn mapped_sequence_argument(
         &self,
         tokens: &[Token],

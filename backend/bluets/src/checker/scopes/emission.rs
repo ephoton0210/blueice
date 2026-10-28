@@ -2,12 +2,46 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Preserve the checker's lexical binding identities when ES5 hoists variables.
+//! Preserve lexical binding identities through runtime lowering and type elision.
 
 use super::*;
 use crate::parser::TextEdit;
 
 mod jsx;
+
+/// Source positions of value references resolved to a module binding. Local
+/// parameters, blocks and class self names retain their lexical identities.
+pub(crate) fn module_value_reference_positions(
+    project: &Project,
+    module: &Module,
+    names: &BTreeSet<String>,
+    budget: usize,
+) -> BTreeSet<usize> {
+    let values = names
+        .iter()
+        .map(|name| (name.clone(), Type::Never))
+        .collect();
+    let model = ScopeModel::new(
+        project,
+        module,
+        &values,
+        &BTreeMap::new(),
+        None,
+        None,
+        budget,
+    );
+    model
+        .references
+        .iter()
+        .filter(|reference| reference.meaning == Meaning::Value)
+        .filter_map(|reference| {
+            let root = reference.name.split('.').next()?;
+            let (owner, binding) = model.resolve(reference.scope, root, Meaning::Value)?;
+            (owner == 0 && binding.is_some() && names.contains(root))
+                .then_some(reference.span.start)
+        })
+        .collect()
+}
 
 /// Erasure uses lexical binding identity, not same-spelled property/type tokens.
 pub(crate) fn runtime_import_uses(

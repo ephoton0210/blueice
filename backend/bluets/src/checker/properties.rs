@@ -265,6 +265,10 @@ fn property_type_with_access(
             }
         }
         Type::Union(parts) => {
+            let inferred_records = parts.iter().all(|part| matches!(part,
+                Type::Record(fields) if fields.iter().all(|field| field.span.module == "<inferred>")))
+                && parts.iter().any(|part| matches!(part,
+                    Type::Record(fields) if fields.iter().any(|field| field.name == property)));
             let mut values = Vec::new();
             let mut readonly = false;
             let mut indeterminate = false;
@@ -287,6 +291,7 @@ fn property_type_with_access(
                         values.push(value);
                         readonly |= part_readonly;
                     }
+                    PropertyType::Missing if inferred_records => values.push(Type::Undefined),
                     PropertyType::Missing => return PropertyType::Missing,
                     PropertyType::Indeterminate => indeterminate = true,
                     PropertyType::Exhausted => return PropertyType::Exhausted,

@@ -156,7 +156,11 @@ impl<'a> ModuleChecker<'a> {
                 .is_some_and(|token| token.is(",") || token.is("}"))
             {
                 (
-                    scope.get(&name).cloned().unwrap_or(Type::Unknown),
+                    self.array_element_type(
+                        &tokens[index..index + 1],
+                        scope,
+                        self.infer_expression(&tokens[index..index + 1], scope),
+                    ),
                     index + 1,
                 )
             } else {
@@ -201,10 +205,20 @@ impl<'a> ModuleChecker<'a> {
         local.insert("this".into(), Type::Record(fields.to_vec()));
         let name_index = index + usize::from(nested.async_function || nested.generator);
         if nested.kind == NestedFunctionKind::Method {
-            if let Some(Type::Function { result, .. }) = expected
+            if let Some(Type::Function { parameters, result }) = expected
                 .and_then(|fields| fields.iter().find(|f| f.name == tokens[name_index].text))
                 .map(|field| &field.value)
             {
+                for (actual, expected) in nested.parameters.iter().zip(parameters) {
+                    if actual.annotation.is_none() {
+                        if let Some(annotation) = &expected.annotation {
+                            self.return_inference
+                                .parameters
+                                .borrow_mut()
+                                .insert(actual.span.start, annotation.clone());
+                        }
+                    }
+                }
                 self.contextual_return(nested.span.start, result);
             }
         }

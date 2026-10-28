@@ -202,8 +202,12 @@ pub(crate) fn emit(
                 .declaration
                 .then(|| {
                     let order = literal_order::Order::new(&checked_module.module, options)?;
-                    let context =
-                        inferred_declarations::Context::new(checked_module, project, &order)?;
+                    let context = inferred_declarations::Context::new(
+                        checked_module,
+                        project,
+                        &order,
+                        options,
+                    )?;
                     emit_declaration(
                         &inferred_returns::declaration_module(checked_module, &order),
                         &checked_module.symbols,
@@ -447,6 +451,7 @@ fn emit_javascript(
     let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
         commonjs::lower_commonjs(
             module,
+            project,
             options,
             &mut edits,
             wrapper == crate::ModuleKind::System,

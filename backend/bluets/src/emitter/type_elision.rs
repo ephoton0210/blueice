@@ -17,7 +17,32 @@ pub(super) fn queries<'a>(
     project: &crate::Project,
     options: &crate::CompilerOptions,
 ) -> Cow<'a, Module> {
-    if !module.declarations.iter().any(|declaration| matches!(declaration,Declaration::Import(import) if !import.bindings.is_empty() && !import.is_type_only())) { return Cow::Borrowed(module); }
+    let pure_types: std::collections::BTreeSet<_> = module
+        .declarations
+        .iter()
+        .filter_map(|declaration| match declaration {
+            Declaration::TypeAlias(item) => Some(item.name.as_str()),
+            Declaration::Interface(item) => Some(item.name.as_str()),
+            _ => None,
+        })
+        .filter(|name| {
+            !module.declarations.iter().any(|other| match other {
+                Declaration::Variable(item) => item.name == *name,
+                Declaration::Function(item) => item.name == *name,
+                Declaration::Class(item) => item.name == *name,
+                Declaration::Enum(item) => item.name == *name,
+                Declaration::Namespace(item) => {
+                    item.name == *name && crate::namespace_analysis::has_runtime_values(&item.body)
+                }
+                Declaration::Import(item) => item
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.local == *name && !binding.type_only && !item.type_only),
+                _ => false,
+            })
+        })
+        .collect();
+    if pure_types.is_empty() && !module.declarations.iter().any(|declaration| matches!(declaration,Declaration::Import(import) if !import.bindings.is_empty() && !import.is_type_only())) { return Cow::Borrowed(module); }
     let mut runtime_names = crate::checker::runtime_import_uses(
         project,
         module,
@@ -44,6 +69,15 @@ pub(super) fn queries<'a>(
     }
     let mut result = module.clone();
     for declaration in &mut result.declarations {
+        if let Declaration::ValueExport(export) = declaration {
+            if export.specifier.is_none() && !export.export_assignment {
+                for binding in &mut export.bindings {
+                    if pure_types.contains(binding.local.as_str()) {
+                        binding.type_only = true;
+                    }
+                }
+            }
+        }
         let Declaration::Import(import) = declaration else {
             continue;
         };

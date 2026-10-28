@@ -110,8 +110,14 @@ pub(super) fn emit_declaration(
                     );
                 }
                 output.push(' ');
+                let mut rendered_interface = interface.clone();
+                if let Some(fields) =
+                    inferred.and_then(|context| context.interface_fields(interface.span.start))
+                {
+                    rendered_interface.fields = fields.to_vec();
+                }
                 output.push_str(&callable_objects::render_interface(
-                    interface,
+                    &rendered_interface,
                     &module.source,
                     options,
                 ));

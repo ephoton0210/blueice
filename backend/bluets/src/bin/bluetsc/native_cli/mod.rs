@@ -8,6 +8,7 @@ use super::*;
 use blueice_bluets::{Diagnostic, Project};
 use serde_json::Value;
 mod args;
+mod declaration_diagnostics;
 mod explanations;
 mod output;
 pub(crate) mod presentation;
@@ -403,6 +404,7 @@ fn compile_project(
             }
         }
         has_errors |= result.has_errors();
+        declaration_diagnostics::qualify(&mut result.diagnostics, &result.project, loader);
         diagnostics.extend(result.diagnostics);
         ordered_sources(
             &result.project.entry,
