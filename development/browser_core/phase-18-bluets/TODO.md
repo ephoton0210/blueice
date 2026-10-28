@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-22).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-28).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,827 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,966 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 13,246/13,253 (99.9472%); 3 open, 4 refused observations |
-| Separate controls | 537 native-reference + 37 BlueTS owner = 574; excluded from direct agreement |
-| Case labels | 13,820 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 112 suites / 267 ignored Rust functions; not a case denominator |
-| Suite labels | 107 scoped closed, 1 open, 4 refused |
+| Direct agreement | 13,380/13,387 (99.9477%); 3 open, 4 refused observations |
+| Separate controls | 537 native-reference + 42 BlueTS owner = 579; excluded from direct agreement |
+| Case labels | 13,959 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 113 suites / 269 ignored Rust functions; not a case denominator |
+| Suite labels | 108 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 212 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,827 recorded case expectations pass; expected differences/refusals are not
+All 13,966 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,19 +33,19 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64`.
-Input graph SHA-256: `fedcba9e69384dd7fc9cab41d9dd5c0a9d9ab17076e2c9bdceba672218c7b73b`.
+Compiler/oracle source: `backend-tree:9223a6fc09845e5990303f2ce8babd52df673dce`.
+Input graph SHA-256: `c138108a6968ac71c6b35d9396301e38f3e51b09789e3aa490e6a3e5f4e043f9`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
 
-**Current work (2026-10-22):** A–J and K.1–K.14 are the completed baseline,
+**Current work (2026-10-28):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, both
-G-T1 stages, G-T3, G-T2, G-T5, G-T6, G-T4, G-T8, G-T7 and G-T10 are complete for their scopes below;
-12 packages remain unchecked. Next: G-M1.**
+G-T1 stages, G-T3, G-T2, G-T5, G-T6, G-T4, G-T8, G-T7, G-T10 and G-M1 are complete for their scopes below;
+11 packages remain unchecked. Next: G-T9.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -463,7 +463,7 @@ Existing measured behavior is reused; it is not implemented again.
     the finite package only: broader G-T10 stays open and full parity stays OFF.
     [Source, commands and acceptance](PLAN.md#phase-l--g-t10-implementation).
 
-- [ ] **G-M1 — Package/mapped JavaScript, JSDoc and resolver compositions.**
+- [x] **G-M1 — Package/mapped JavaScript, JSDoc and resolver compositions.**
   - **Scope:** package and paths-mapped `allowJs/checkJs` inputs, JSDoc types,
     combined exports/typesVersions/conditions/rootDirs/typeRoots selection and
     missing-type-library diagnostics.
@@ -471,6 +471,37 @@ Existing measured behavior is reused; it is not implemented again.
     declarations and execution agree for the frozen resolution matrix; changed/
     missing manifests invalidate correctly. Include owner escape, symlink, ordered
     fallback and TypeScript-sibling precedence controls before any outside read.
+  - **Frozen minimum (2026-10-28):** `gm1_resolver_compositions/cases.json` /
+    `reference.json` pins **37 forms / 134 observations** (67 accept / 67 reject)
+    against TypeScript 5.9.3. Cover package main/CommonJS/`.cjs`, mapped `.mjs`,
+    JSDoc type/param/return/typedef/property/template/optional/rest/array/union/
+    import types, checkJs and per-file directives, declaration/@types precedence,
+    package JS depth, explicit-JS versus extensionless sibling selection, ordered/
+    longest-prefix/baseUrl/rootDirs mapping, typesVersions, exports/conditions,
+    scoped typeRoots, missing explicit/implicit libraries and a combined graph.
+  - **Acceptance:** 67 exact declaration graphs (**118 `.d.ts`/`.d.mts` files**),
+    134 downstream observations, complete diagnostics/related UTF-16 positions,
+    selected inputs, artifact/suffix inventories, retained imports, ES2022 syntax
+    and **67 Node executions**. Paths/rootDirs use separately frozen, confined
+    owner runtime mappings shared by both compilers; they do not claim TypeScript
+    or BlueTS rewrites those specifiers. ES2022 is the explicit library profile;
+    vendor/owned declaration checking is not skipped.
+  - **Completion gate:** preserve all 13,827 old case identities, classifications
+    and native expectations. Five separately counted owner controls cover
+    canonical confinement, terminal authority failures, native sibling priority,
+    manifest change/missing/restoration invalidation and shared JSDoc/type-edge
+    work/runtime bounds. Freeze the final source only after broad preflight
+    regressions, then complete the source-bound cohort, no-exclusion ordinary
+    two-crate gate, formatting, warnings-denied Clippy and all evidence audits.
+    No commit/checkmark before complete implementation and matching measured
+    evidence; broader unmeasured combinations/full parity remain open.
+  - **Result (2026-10-28, darwin-arm64):** all frozen observations, declarations,
+    consumers, executions and five owner controls pass. Immutable **113-suite /
+    606-test** measurement executes all **269** selected ignored functions;
+    the no-exclusion ordinary gate passes **173 targets / 1,359 tests**.
+    Format, warnings-denied Clippy and source/case/tool audits pass. The old
+    13,827 case identities/classifications and native fixtures are preserved.
+    See [implementation and measured evidence](PLAN.md#phase-l--g-m1-implementation).
 
 - [ ] **G-T9 — Remaining class representation and checking.**
   - **Scope:** unresolved getter bodies, generic merged interfaces/heritage,

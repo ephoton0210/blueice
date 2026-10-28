@@ -9,24 +9,24 @@
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-22).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-28).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,827 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,966 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 13,246/13,253 (99.9472%); 3 open, 4 refused observations |
-| Separate controls | 537 native-reference + 37 BlueTS owner = 574; excluded from direct agreement |
-| Case labels | 13,820 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 112 suites / 267 ignored Rust functions; not a case denominator |
-| Suite labels | 107 scoped closed, 1 open, 4 refused |
+| Direct agreement | 13,380/13,387 (99.9477%); 3 open, 4 refused observations |
+| Separate controls | 537 native-reference + 42 BlueTS owner = 579; excluded from direct agreement |
+| Case labels | 13,959 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 113 suites / 269 ignored Rust functions; not a case denominator |
+| Suite labels | 108 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 212 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,827 recorded case expectations pass; expected differences/refusals are not
+All 13,966 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64`.
-Input graph SHA-256: `fedcba9e69384dd7fc9cab41d9dd5c0a9d9ab17076e2c9bdceba672218c7b73b`.
+Compiler/oracle source: `backend-tree:9223a6fc09845e5990303f2ce8babd52df673dce`.
+Input graph SHA-256: `c138108a6968ac71c6b35d9396301e38f3e51b09789e3aa490e6a3e5f4e043f9`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -14350,3 +14350,206 @@ type/value separation, lexical shadowing, opaque metadata boundaries and the
 existing work limits are retained. This is darwin-arm64 compiler-leaf evidence,
 not a fresh complete-workspace, Windows VM or hosted-CI result. Historical
 Windows VM 82/82 acceptance retains its original recorded source/scope.
+
+## Phase L — G-M1 implementation
+
+### Native-first contract and failing boundary — 2026-10-28
+
+Base: `1d572921e7f97550c0c954ed6e9f63d6ed627105`, clean worktree before work.
+Before changing production, freeze 37 forms / **134 native observations**
+(67 accepted / 67 rejected), **67 exact declaration graphs / 118 declaration
+files**, 134 downstream observations and 67 actual Node executions in
+`gm1_resolver_compositions`. The finite scope is enumerated in TODO; it includes
+CommonJS package exports, `.mjs/.cjs`, JSDoc metadata, package/mapped source
+selection, directives, type libraries and composed resolver options.
+
+Input SHA-256: `f0a16ef16739c9f212d2cd08afc756024153fea4111543072289536bceb04d74`.
+Reference SHA-256: `67b828c914a1c39aec9b52011991802479ad7c6254ab2286acf057113c610214`.
+The original recorder consumes only TypeScript 5.9.3; BlueTS supplies no expected
+verdict, graph, declaration or runtime result. ES2022 libraries are explicit,
+with no skipped vendor/owned declaration checking. Only temporary project-root
+prefixes and existing platform path separators are normalized; declaration
+bytes, messages and primary/related UTF-16 positions are not relaxed.
+
+Native probing establishes that explicit existing `.js` paths targets select
+that exact JS file, while extensionless targets substitute a TS sibling first.
+Both rules have paired controls. Correct native scoped typeRoots use the actual
+scoped directory, not an assumed mangled layout. These input-construction
+corrections precede the freeze and all production changes; no frozen native
+expectation is rewritten to fit implementation.
+
+Runtime mappings are a separate frozen test-owner policy: Node's bounded hook
+uses only exact mappings from the input manifest, identically for native and
+BlueTS output. They are never derived from actual BlueTS selection. Original
+specifier retention and the selected graph are checked independently. This
+demonstrates emitted execution without pretending paths/rootDirs are runtime
+rewrites or granting a direct BlueJS package-loader capability.
+
+The previous temporary oracle packages had been cleaned, leaving dangling
+symlinks. Reinstall only pinned TypeScript 5.9.3 / Acorn 8.15.0 in
+`/private/tmp/bluets-gm1-oracles.PG2KnX`, with scripts disabled and a private
+temporary npm cache. Native freeze command (before production):
+
+```sh
+BLUEICE_BLUETSC_ORACLE=/private/tmp/bluets-gm1-oracles.PG2KnX/node_modules/.bin/tsc \
+BLUEICE_ACORN_ORACLE=/private/tmp/bluets-gm1-oracles.PG2KnX/node_modules/.bin/acorn \
+BLUEICE_WRITE_GM1=1 node development/browser_core/phase-18-bluets/tools/record_gm1_resolver_compositions.cjs
+```
+
+`/private/tmp/bluets-gm1-native-freeze2.log` records 134 observations / 67 accepted
+graphs / 118 declaration files / 67 executions. Recording is disabled during
+acceptance. The new public-boundary regression and all five owner controls
+fail before production changes: `/private/tmp/bluets-gm1-before.log` reports
+**four passed / six failed / two ignored**, including **134 mismatches**.
+G-M1 remains unchecked. All 13,827 old case identities/classifications/native
+expectations must remain; full parity remains OFF.
+
+### Implementation and diagnostic preflight
+
+Extract parser entry points and resolver file probes before extending them.
+JavaScript package admission runs after the complete typed/@types search; both
+passes retain the same canonical roots, manifest observations and terminal
+authority/exports refusals. Paths distinguish explicit existing JS targets from
+extensionless sibling substitution. `.mjs/.cjs`, package JS depth and configured
+custom conditions reach the existing loader and output suffix selection.
+
+JSDoc uses the ordinary type grammar, depth limit and shared token allowance.
+Typedefs/properties/templates and parameter/result metadata retain source byte
+spans for UTF-16 diagnostics. Erased import queries enter the authorized graph,
+file listings and declaration output without creating executable imports.
+Per-file check directives change checking while retaining the exported static
+surface. Static CommonJS function exports contribute named metadata; this adds
+no runtime global grant. Missing explicit/implicit type libraries use TS2688,
+including the explicit config-related diagnostic. Native diagnostic spelling,
+nullable/optional presentations and literal-array element origins are retained.
+
+Build state epoch 18 records the selected sources and resolver probes, including
+missing candidates, canonical targets and manifest bodies. Changed/missing/
+restored sources and manifests revalidate before warm reuse. Export metadata
+and diagnostic identities advance to v6; older state epochs rebuild. Resolver
+identity advances to v4. Owner confinement remains checked before source reads.
+
+The first complete implementation replay reports 29 mismatches, then two raw
+import-query declaration quote differences, then zero. The pinned focused gate
+in `/private/tmp/bluets-gm1-native-focused.log` passes all twelve tests, including
+the live native recorder, exact declarations/consumers/imports/syntax/execution
+and all five owner controls. This is focused evidence, not the final immutable
+source acceptance. The two-crate broad ordinary preflight is still running;
+stale source/inventory/refusal pointers fail explicitly until the full source-
+bound measurement is published. No partial rate, TODO checkmark or commit is
+published from that diagnostic preflight.
+
+The broad diagnostic preflight finds one actual presentation regression in
+`diagnostics_matrix`: `Symbol(true)` must retain `string | number | undefined`,
+while G-M1's single primitive optional/null parameter prints that primitive.
+The old expected record is unchanged. Narrow simplification to the one-member
+non-nullish case; the full matrix reports exactly that single difference in
+`/private/tmp/bluets-gm1-ordinary-preflight.log`. Final acceptance must execute
+the corrected binary, not carry forward the failed preflight result.
+
+The preflight completes all **173 targets / 1,348 passed / eleven failed /
+269 ignored**, exit 101, in **1,440.75 seconds**. Ten failures are stale
+inventory/refusal/source bindings; one is the unchanged native Symbol record.
+The final fix flattens nested unions before deciding whether only one concrete
+member remains. A first narrow fix was insufficient for Symbol's nested union;
+the rebuilt CLI now reports the exact original message including `undefined`.
+The new depth control initially used an invented case id incompatible with the
+configuration-byte recorder; isolate it in its own temporary directory while
+retaining the frozen case id. This changes no native fixture or expected result.
+
+`/private/tmp/bluets-gm1-focused-corrected.log` passes **12/12**, including all
+134 rows, both live oracle functions, changed/missing/restored JS source bodies,
+manifest invalidation, transitive package JS depth, canonical confinement and
+shared comment/graph budgets. SHA-256:
+`770c918cb5b00e3c4d73d7f7680df6d5543519e3919dcf625691b1f0a87d3a99`.
+Nested runtime-body JSDoc declarations remain explicitly unsupported rather than
+being attached to the next top-level declaration. All changed production sources
+are below 1,200 lines; `parser.rs` is largest at 1,150. MPL headers and the two
+frozen input/reference hashes still match. Rust 1.95 workspace format check and
+warnings-denied two-crate all-target Clippy pass before source freeze.
+
+Immutable staged root: `b0005e808eea8a3c090a5dca0266ae3f6450e669`.
+Backend source: `backend-tree:9223a6fc09845e5990303f2ce8babd52df673dce`.
+Source graph SHA-256:
+`c138108a6968ac71c6b35d9396301e38f3e51b09789e3aa490e6a3e5f4e043f9`.
+The source-only inventory lists **113 suites / 269 selected ignored functions**;
+the primary-source audit is not published as a measured pass rate. Start the
+complete cohort with recording/filter variables unset:
+
+```sh
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs \
+  --output-dir /private/tmp/bluets-gm1-measurement.JIMOM0 --staged-source
+```
+
+Use the same pinned TypeScript/Acorn executables and existing target, with
+incremental/debug-info growth disabled. Driver log:
+`/private/tmp/bluets-gm1-cohort.log`. Compiler, tests, frozen fixtures and tool
+bodies are immutable from this point. G-M1 remains unchecked until the cohort,
+accepted no-exclusion ordinary gate and regenerated evidence audits all pass.
+
+Within that immutable cohort, G-M1 passes **12/12** in **17.948 seconds**,
+including both live native functions and all five owner controls. Its log is
+`/private/tmp/bluets-gm1-measurement.JIMOM0/044-backend_bluets_tests_gm1_resolver_compositions_rs.log`,
+SHA-256 `6e3f36077ef45efa11924a769a9fbf81129b0598ec58fb155497444cc0c3c8e7`.
+The unchanged 3,182-configuration diagnostic matrix also passes all primary
+codes, complete messages, related information, UTF-16 positions and its live
+native replay. The complete cohort remains in progress; these results alone do
+not close G-M1 or authorize an incomplete implementation/measurement commit.
+
+### Complete immutable native cohort and published case accounting
+
+The same frozen backend/source graph completes successfully from
+`2026-10-28T01:42:20.457Z` to `2026-10-28T02:24:30.006Z` (**2,529.549 seconds**):
+**113 suites / 606 tests / zero failed / zero ignored / zero filtered**.
+All **269 selected ignored Rust functions** execute; all **68 oracle tool
+bodies**, 113 raw log hashes and end-of-run source/index checks agree.
+Measurement SHA-256:
+`ef968394ff5339fff9ec6e4dacb7efeba4f63dbfea7343a3486d43940df99648`.
+The run is darwin-arm64 evidence; it makes no new Windows/hosted-CI claim.
+
+Publish case/suite artifacts only from this successful complete measurement.
+The ledger now contains **13,966** suite-qualified cases: **13,380 agreements /
+13,387 comparison cases**, three open, four refused, 537 reference-only and
+42 owner controls. Its 139 additions are exactly G-M1's **134 native programs /
+configurations plus five owner controls**. The original **13,827** suite-qualified
+ids, labels, units, sources/selectors, classifications, statuses, scopes and
+reasons all remain unchanged. All old native fixture bytes remain unchanged;
+only the two inventory adapter Rust files change among existing fixture files.
+Independent audit records:
+`/private/tmp/bluets-gm1-evidence-audit.json` and
+`/private/tmp/bluets-gm1-case-preservation-audit.json`.
+
+The regenerated inventory's **22/22** tests pass. Both strict staged source and
+case/measurement checks pass. All **15/15 Node tooling** and **13/13 Python
+tooling** tests pass with the published data. The former stale-pointer failures
+are resolved by complete measurement/accounting, not exclusions or relaxed
+checks. The final no-exclusion ordinary two-crate gate is now running at
+`/private/tmp/bluets-gm1-ordinary-final.log`; G-M1 remains unchecked until it and
+the final validation complete. Broader feature G-M1 remains open; full parity
+remains OFF.
+
+### Final ordinary acceptance and finite G-M1 closure
+
+The final, unfiltered ordinary two-crate command exits **0** in **1,321.25
+seconds**: **173 target/doctest groups / 1,359 passed / zero failed**. Its
+269 default-ignored functions are exactly those already executed successfully
+in the complete immutable cohort. No suite/test is excluded. Log:
+`/private/tmp/bluets-gm1-ordinary-final.log`, SHA-256
+`3143d54ffebed585b9b9294e5741dc9fca08a8642f0b8091ec98e166f881ffac`.
+Workspace Rust 1.95 format check and warnings-denied two-crate all-target Clippy
+pass again on the unchanged frozen source. No backend/tool body changes follow
+the successful cohort. All source, case, native-fixture, log and tool hashes
+remain bound to `backend-tree:9223a6fc09845e5990303f2ce8babd52df673dce`.
+
+The failed broad preflight is retained as failure evidence; its single Symbol
+presentation regression passes both the complete native cohort and final
+ordinary gate after correction. Published rates use the complete successful
+measurement, with owner/reference controls outside native agreement.
+
+Only the frozen finite **G-M1** checklist is now complete. TODO has **11
+unchecked finite packages; G-T9 is next**. The broader G-M1 feature row retains
+unmeasured declaration, library, target/flag and resolver/source compositions,
+including explicitly unsupported nested runtime-body JSDoc. Full TypeScript
+parity stays OFF. Commit implementation, frozen observations, complete matching
+measurement and updated plans together, then push under the existing user
+authorization. This leaf carries no fresh Windows VM or hosted-CI claim.

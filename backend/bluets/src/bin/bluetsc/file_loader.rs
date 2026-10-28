@@ -30,12 +30,21 @@ pub(super) struct FileLoader {
     pub(super) relative: PackageResolver<OsPackageFs>,
     pub(super) resolve_json_module: bool,
     pub(super) allow_js: bool,
+    pub(super) max_node_module_js_depth: usize,
+    pub(super) javascript_depths: std::sync::Mutex<BTreeMap<String, usize>>,
     /// The verified cache and the pinned sources whose specifiers resolve to it.
     pub(super) remote: Option<(DeclarationCache, Vec<RemoteDeclarationSource>)>,
     pub(super) import_mode: ImportMode,
     /// Exact, previously emitted declaration for each selected source in a
     /// directly referenced project. No other file in that project is granted.
     pub(super) references: BTreeMap<PathBuf, ReferencedOutput>,
+}
+
+fn is_javascript(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("js" | "mjs" | "cjs")
+    )
 }
 
 impl ModuleLoader for FileLoader {
@@ -56,7 +65,10 @@ impl ModuleLoader for FileLoader {
 
     fn resolution_error_typescript_arguments(&self, message: &str, specifier: &str) -> Vec<String> {
         let mut arguments = vec![specifier.to_string()];
-        if let Some((_, path)) = message.split_once("requires allowJs: ") {
+        if let Some((_, path)) = message
+            .split_once("requires allowJs: ")
+            .or_else(|| message.split_once("exceeds maxNodeModuleJsDepth: "))
+        {
             arguments.push(path.to_string());
         }
         arguments
@@ -111,7 +123,7 @@ impl ModuleLoader for FileLoader {
         if !(matches!(
             path.extension().and_then(|extension| extension.to_str()),
             Some("ts" | "tsx" | "mts" | "cts" | "json")
-        ) || self.allow_js && path.extension().is_some_and(|extension| extension == "js"))
+        ) || self.allow_js && is_javascript(&path))
         {
             return Err(format!(
                 "module `{module_id}` is not a supported .ts, .tsx, or .d.ts source file"
@@ -182,7 +194,7 @@ impl ModuleLoader for FileLoader {
                         .expect("configured mappings")
                         .relative(self, &from_directory, specifier)?
                     {
-                        Some(path) => return self.module_id(&path),
+                        Some(path) => return Ok(self.inherit_javascript_depth(from_module, self.module_id(&path)?)),
                         None => found,
                     }
                 }
@@ -197,27 +209,23 @@ impl ModuleLoader for FileLoader {
                 ),
                 error => format!("`{specifier}` from `{from_module}`: {error}"),
             })?;
-            if found
-                .path
-                .extension()
-                .is_some_and(|extension| extension == "js")
-                && !self.allow_js
-            {
+            if is_javascript(&found.path) && !self.allow_js {
                 return Err(format!(
                     "JavaScript source `{specifier}` requires allowJs: {}",
                     found.path.display()
                 ));
             }
-            return if blueice_bluets::is_external_library_module(from_module) {
+            let id = if blueice_bluets::is_external_library_module(from_module) {
                 self.package_module_id(&found.path)
             } else {
                 self.module_id(&found.path)
-            };
+            }?;
+            return Ok(self.inherit_javascript_depth(from_module, id));
         }
         if !self.imports.contains_key(specifier) && !self.matches_import_prefix(specifier) {
             if let Some(mappings) = &self.mappings {
                 if let Some(path) = mappings.bare(self, specifier)? {
-                    return self.module_id(&path);
+                    return Ok(self.inherit_javascript_depth(from_module, self.module_id(&path)?));
                 }
             }
         }
@@ -228,26 +236,57 @@ impl ModuleLoader for FileLoader {
                 .map(Path::to_path_buf)
                 .ok_or_else(|| format!("module `{from_module}` has no directory"))?;
             if !self.imports.contains_key(specifier) && !self.matches_import_prefix(specifier) {
-                return match packages.resolve(
-                    &from_directory,
-                    specifier,
-                    mode.unwrap_or(self.import_mode),
-                ) {
+                let result = if self.allow_js {
+                    packages.resolve_javascript(
+                        &from_directory,
+                        specifier,
+                        mode.unwrap_or(self.import_mode),
+                    )
+                } else {
+                    packages.resolve(&from_directory, specifier, mode.unwrap_or(self.import_mode))
+                };
+                return match result {
                     Ok(found) => {
                         let internal = found
                             .package
                             .as_ref()
                             .is_none_or(|package| from_directory.starts_with(&package.root));
-                        if internal && !blueice_bluets::is_external_library_module(from_module) {
+                        let depth = self
+                            .javascript_depths
+                            .lock()
+                            .expect("JavaScript depths")
+                            .get(from_module)
+                            .copied()
+                            .unwrap_or(0)
+                            + usize::from(!internal);
+                        if is_javascript(&found.path) && depth > self.max_node_module_js_depth {
+                            return Err(format!(
+                                "JavaScript source `{specifier}` exceeds maxNodeModuleJsDepth: {}",
+                                found.path.display()
+                            ));
+                        }
+                        let id = if internal
+                            && !blueice_bluets::is_external_library_module(from_module)
+                        {
                             self.module_id(&found.path)
                         } else {
                             self.package_module_id(&found.path)
-                        }
+                        }?;
+                        self.javascript_depths
+                            .lock()
+                            .expect("JavaScript depths")
+                            .entry(id.clone())
+                            .and_modify(|old| *old = (*old).min(depth))
+                            .or_insert(depth);
+                        Ok(id)
                     }
                     Err(
                         error @ (ResolveError::NotFound { .. }
                         | ResolveError::JavaScriptOnly { .. }),
                     ) => Err(format!(
+                        "cannot resolve `{specifier}` from `{from_module}`: {error}"
+                    )),
+                    Err(error @ ResolveError::ExportsNotDefined { .. }) => Err(format!(
                         "cannot resolve `{specifier}` from `{from_module}`: {error}"
                     )),
                     Err(error) => Err(format!("`{specifier}` from `{from_module}`: {error}")),
@@ -263,7 +302,7 @@ impl ModuleLoader for FileLoader {
                 "specifier `{specifier}` resolves outside the declared project root"
             ));
         }
-        self.module_id(&resolved)
+        Ok(self.inherit_javascript_depth(from_module, self.module_id(&resolved)?))
     }
 
     fn resolve_reference_types(&self, from_module: &str, name: &str) -> Result<String, String> {
@@ -292,6 +331,15 @@ impl ModuleLoader for FileLoader {
 }
 
 impl FileLoader {
+    fn inherit_javascript_depth(&self, from: &str, id: String) -> String {
+        let mut depths = self.javascript_depths.lock().expect("JavaScript depths");
+        let depth = depths.get(from).copied().unwrap_or(0);
+        depths
+            .entry(id.clone())
+            .and_modify(|old| *old = (*old).min(depth))
+            .or_insert(depth);
+        id
+    }
     /// The module id of a file found by package resolution: ordinary, except
     /// that a package reached through a symlink to a directory with no
     /// `node_modules` in its path is still marked as an installed package.

@@ -32,11 +32,12 @@ use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 
 mod features;
 mod javascript;
+mod loading;
 mod module_scope;
 mod version_ranges;
 
 /// The TypeScript release whose resolution this follows.
-pub const RESOLUTION_VERSION: &str = "typescript-5.9.3-resolution-v3";
+pub const RESOLUTION_VERSION: &str = "typescript-5.9.3-resolution-v4";
 
 /// TypeScript's `moduleResolution` for a bare specifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,6 +245,7 @@ enum Observation {
 
 pub struct PackageResolver<F: PackageFs> {
     fs: F,
+    javascript: bool,
     config: PackageResolverConfig,
     observed: Mutex<BTreeMap<PathBuf, Observation>>,
     packages: Mutex<BTreeMap<PathBuf, PackageIdentity>>,
@@ -343,10 +345,21 @@ impl<F: PackageFs> PackageResolver<F> {
     pub fn new(fs: F, config: PackageResolverConfig) -> Self {
         Self {
             fs,
+            javascript: false,
             config,
             observed: Mutex::new(BTreeMap::new()),
             packages: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    /// Paths already probed by this owner-confined resolver, including absences.
+    pub fn observed_paths(&self) -> Vec<PathBuf> {
+        self.observed
+            .lock()
+            .expect("observation lock")
+            .keys()
+            .cloned()
+            .collect()
     }
 
     /// Every package a lookup has resolved into, by canonical directory.
@@ -635,84 +648,6 @@ impl<F: PackageFs> PackageResolver<F> {
         }
         self.observe(path, Observation::Canonical(canonical.clone()));
         Ok(canonical)
-    }
-
-    /// The first of an entry's targets that is a file, with TypeScript's
-    /// substitution of a JavaScript extension for its source or declaration.
-    fn load_export_targets(&self, package_dir: &Path, targets: &Targets) -> Option<PathBuf> {
-        for target in targets {
-            let target = target.as_ref()?;
-            let path = package_dir.join(target.strip_prefix("./").unwrap_or(target));
-            for candidate in exact_candidates(&path) {
-                if self.probe_file(&candidate) {
-                    return Some(candidate);
-                }
-            }
-        }
-        None
-    }
-
-    /// `types`/`typings`/`main`, then `index`, of a package or directory.
-    fn load_package_main(
-        &self,
-        directory: &Path,
-        manifest: Option<&Value>,
-    ) -> Result<Option<PathBuf>, ResolveError> {
-        if let Some(manifest) = manifest {
-            for field in ["typings", "types", "main"] {
-                let Some(entry) = manifest.get(field).and_then(Value::as_str) else {
-                    continue;
-                };
-                if entry.is_empty() {
-                    continue;
-                }
-                // A manifest field never leads out of its own package, and the
-                // probe does not even look at what is outside it.
-                if Path::new(entry).components().any(|component| {
-                    matches!(
-                        component,
-                        Component::ParentDir | Component::RootDir | Component::Prefix(_)
-                    )
-                }) {
-                    continue;
-                }
-                let path = directory.join(entry.trim_start_matches("./"));
-                if let Some(found) = self.load_as_file_or_directory(&path)? {
-                    return Ok(Some(found));
-                }
-            }
-        }
-        self.load_index(directory)
-    }
-
-    fn load_index(&self, directory: &Path) -> Result<Option<PathBuf>, ResolveError> {
-        for extension in TYPESCRIPT_EXTENSIONS {
-            let candidate = directory.join(format!("index{extension}"));
-            if self.probe_file(&candidate) {
-                return Ok(Some(candidate));
-            }
-        }
-        Ok(None)
-    }
-
-    fn load_as_file_or_directory(&self, path: &Path) -> Result<Option<PathBuf>, ResolveError> {
-        if let Some(found) = self.load_as_file(path) {
-            return Ok(Some(found));
-        }
-        if self.fs.is_dir(path) {
-            let manifest = self.read_package_json(path)?;
-            return self.load_package_main(path, manifest.as_ref());
-        }
-        self.observe(path, Observation::Absent);
-        Ok(None)
-    }
-
-    /// A file by its name, with the TypeScript extensions added, or a
-    /// JavaScript extension substituted.
-    fn load_as_file(&self, path: &Path) -> Option<PathBuf> {
-        file_candidates(path)
-            .into_iter()
-            .find(|candidate| self.probe_file(candidate))
     }
 
     fn resolve_package_imports(

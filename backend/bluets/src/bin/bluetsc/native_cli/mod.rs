@@ -16,7 +16,7 @@ mod statistics;
 use args::Args;
 
 pub(super) fn run(arguments: Vec<String>) -> ExitCode {
-    run_with_mode(arguments, false, None, None, None, &BTreeMap::new())
+    run_with_mode(arguments, false, None, None, None, &BTreeMap::new(), None)
 }
 
 pub(super) fn run_build_project(
@@ -25,6 +25,7 @@ pub(super) fn run_build_project(
     declarations: &mut BTreeMap<PathBuf, PathBuf>,
     runtimes: &mut BTreeMap<PathBuf, PathBuf>,
     references: &BTreeMap<PathBuf, file_loader::ReferencedOutput>,
+    resolution_inputs: &mut Vec<PathBuf>,
 ) -> ExitCode {
     run_with_mode(
         arguments,
@@ -33,6 +34,7 @@ pub(super) fn run_build_project(
         Some(declarations),
         Some(runtimes),
         references,
+        Some(resolution_inputs),
     )
 }
 
@@ -43,6 +45,7 @@ fn run_with_mode(
     emitted_declarations: Option<&mut BTreeMap<PathBuf, PathBuf>>,
     emitted_runtimes: Option<&mut BTreeMap<PathBuf, PathBuf>>,
     references: &BTreeMap<PathBuf, file_loader::ReferencedOutput>,
+    resolution_inputs: Option<&mut Vec<PathBuf>>,
 ) -> ExitCode {
     let started = std::time::Instant::now();
     let empty_command = arguments.is_empty();
@@ -173,6 +176,15 @@ fn run_with_mode(
         mut statistics,
         explanations,
     } = compile_project(&invocation, &loader, !no_emit && !no_emit_on_error);
+    if let Some(inputs) = resolution_inputs {
+        inputs.extend(files.iter().cloned());
+        inputs.extend(loader.relative.observed_paths());
+        if let Some(packages) = &loader.packages {
+            inputs.extend(packages.observed_paths());
+        }
+        inputs.sort();
+        inputs.dedup();
+    }
     for diagnostic in &diagnostics {
         if diagnostics_json {
             eprintln!("{}", diagnostic.to_json());
@@ -290,6 +302,8 @@ fn loader(
         relative: relative_resolver(&invocation.root),
         resolve_json_module: invocation.options.resolve_json_module,
         allow_js: invocation.options.allow_js,
+        max_node_module_js_depth: invocation.max_node_module_js_depth,
+        javascript_depths: Default::default(),
         remote: match invocation.remote.as_ref() {
             Some(settings) => {
                 let cache = DeclarationCache::new(
@@ -493,6 +507,9 @@ fn ordered_sources(
     }
     if let Some(provider) = project.jsx_runtime_namespace_provider(module_id) {
         ordered_sources(provider, project, seen, ordered);
+    }
+    for (_, target) in project.resolved_import_queries(module_id) {
+        ordered_sources(target, project, seen, ordered);
     }
     ordered.push(module_id.to_string());
 }

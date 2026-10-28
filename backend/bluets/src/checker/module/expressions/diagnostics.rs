@@ -13,6 +13,23 @@ mod operators;
 mod records;
 mod structural;
 
+fn diagnostic_expected(actual: &Type, expected: &Type) -> Type {
+    if !matches!(actual, Type::Null | Type::Undefined) {
+        if let Type::Union(values) = expected {
+            let values = values
+                .iter()
+                .filter(|value| !matches!(value, Type::Null | Type::Undefined))
+                .cloned()
+                .collect::<Vec<_>>();
+            let value = crate::checker::type_operators::union(values);
+            if !matches!(value, Type::Union(_) | Type::Never) {
+                return value;
+            }
+        }
+    }
+    expected.clone()
+}
+
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn call_argument_error(
         &mut self,
@@ -42,6 +59,9 @@ impl ModuleChecker<'_> {
             expected,
         ) {
             self.point_last_typescript(argument);
+            return;
+        }
+        if self.check_array_element_assignment(argument, expected, actual, &self.values.clone()) {
             return;
         }
         if argument.first().is_some_and(|token| token.is("{")) {
@@ -85,7 +105,7 @@ impl ModuleChecker<'_> {
                             vec![
                                 crate::diagnostic::type_text::render_in(&field.value, self.project),
                                 crate::diagnostic::type_text::render_in(
-                                    &expected.value,
+                                    &diagnostic_expected(&field.value, &expected.value),
                                     self.project,
                                 ),
                             ],
@@ -98,18 +118,19 @@ impl ModuleChecker<'_> {
                 }
             }
         }
+        let displayed_expected = diagnostic_expected(actual, expected);
         self.typescript_type_error(
             span,
             message,
             DiagnosticCode::TypeMismatch,
             2345,
             vec![
-                crate::diagnostic::type_text::argument(actual, expected),
-                crate::diagnostic::type_text::render_in(expected, self.project),
+                crate::diagnostic::type_text::argument(actual, &displayed_expected),
+                crate::diagnostic::type_text::render_in(&displayed_expected, self.project),
             ],
         );
         self.point_last_typescript(argument);
-        self.explain_last_type_pair(actual, expected);
+        self.explain_last_type_pair(actual, &displayed_expected);
         if let Type::Function { result, .. } = actual {
             if let Some(body) = argument
                 .windows(2)

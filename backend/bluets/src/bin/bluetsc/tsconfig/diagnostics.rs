@@ -9,6 +9,59 @@ use blueice_bluets::{Diagnostic, DiagnosticCode, TypeScriptDiagnostic};
 pub(crate) fn error(message: &str, path: &Path, bytes: Option<&[u8]>) -> Option<Diagnostic> {
     let source = bytes.and_then(|bytes| std::str::from_utf8(bytes).ok());
     let name = message.split('`').nth(1);
+    if message.starts_with("cannot resolve configured type library ")
+        || message.starts_with("cannot resolve implicit type library ")
+    {
+        let name = name?;
+        let mut diagnostic = Diagnostic::error(
+            DiagnosticCode::ModuleNotFound,
+            SourceSpan::new(path.file_name()?.to_string_lossy(), 0, 0),
+            message,
+        )
+        .with_typescript(2688, vec![name.into()]);
+        let reason = if message.starts_with("cannot resolve configured") {
+            format!("Entry point of type library '{name}' specified in compilerOptions")
+        } else {
+            format!("Entry point for implicit type library '{name}'")
+        };
+        diagnostic.typescript.as_mut()?.message.push_str(&format!(
+            "\n  The file is in the program because:\n    {reason}"
+        ));
+        if message.starts_with("cannot resolve configured") {
+            if let Some(source) = source {
+                let quoted = serde_json::to_string(name).ok()?;
+                let tokens = blueice_bluets::lex("tsconfig.json", source).ok()?;
+                let array = tokens.windows(3).position(|tokens| {
+                    tokens[0].is("\"types\"") && tokens[1].is(":") && tokens[2].is("[")
+                })? + 3;
+                if let Some(start) = tokens[array..]
+                    .iter()
+                    .take_while(|token| !token.is("]"))
+                    .find(|token| token.is(&quoted))
+                    .map(|token| token.start)
+                {
+                    let prefix = &source[..start];
+                    diagnostic.typescript.as_mut()?.related_information.push(
+                        blueice_bluets::TypeScriptRelatedInformation {
+                            code: 1419,
+                            message: "File is entry point of type library specified here.".into(),
+                            span: SourceSpan::new(
+                                path.file_name()?.to_string_lossy(),
+                                start,
+                                start + quoted.len(),
+                            ),
+                            position: Some(blueice_bluets::TypeScriptPosition {
+                                line: prefix.bytes().filter(|byte| *byte == b'\n').count() + 1,
+                                column: prefix.rsplit('\n').next()?.encode_utf16().count() + 1,
+                                length: quoted.encode_utf16().count(),
+                            }),
+                        },
+                    );
+                }
+            }
+        }
+        return Some(diagnostic);
+    }
     let code = if message == "no inputs were found in the tsconfig file" {
         18003
     } else if message == "config `files` must not be an empty array" {

@@ -78,6 +78,10 @@ pub(super) fn files(invocation: &mut Invocation) -> Result<Vec<PathBuf>, String>
             name.clone()
         };
         if encoded.is_empty()
+            || name.contains('\\')
+            || Path::new(&name)
+                .components()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
             || Path::new(&encoded)
                 .components()
                 .any(|component| !matches!(component, std::path::Component::Normal(_)))
@@ -86,7 +90,12 @@ pub(super) fn files(invocation: &mut Invocation) -> Result<Vec<PathBuf>, String>
         }
         let mut found = None;
         for root in &canonical_roots {
-            match resolver.resolve_relative(root, &format!("./{encoded}")) {
+            let request = if name.starts_with('@') && root.join(&name).is_dir() {
+                &name
+            } else {
+                &encoded
+            };
+            match resolver.resolve_relative(root, &format!("./{request}")) {
                 Ok(file) => {
                     if !file.declaration {
                         return Err(format!(
@@ -100,8 +109,16 @@ pub(super) fn files(invocation: &mut Invocation) -> Result<Vec<PathBuf>, String>
                 Err(error) => return Err(error.to_string()),
             }
         }
-        let file =
-            found.ok_or_else(|| format!("cannot resolve configured type library `{name}`"))?;
+        let file = found.ok_or_else(|| {
+            format!(
+                "cannot resolve {} type library `{name}`",
+                if project.options.contains_key("types") {
+                    "configured"
+                } else {
+                    "implicit"
+                }
+            )
+        })?;
         selected_libraries.insert(file.clone(), name);
         files.push(file);
     }

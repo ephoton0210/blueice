@@ -32,7 +32,7 @@ fn checked_errors_preserve_bts_identity_and_expose_a_typescript_counterpart() {
     );
     assert!(json["noTypeScriptCounterpart"].is_null());
     assert!(json.get("source").is_none());
-    assert_eq!(DIAGNOSTICS_VERSION, "typescript-5.9.3-diagnostics-v5");
+    assert_eq!(DIAGNOSTICS_VERSION, "typescript-5.9.3-diagnostics-v6");
 }
 
 #[test]

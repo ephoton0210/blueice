@@ -298,6 +298,12 @@ impl<'a> ModuleChecker<'a> {
             ));
         }
         let Some(resolved) = self.project.resolved_import(&self.module.id, import) else {
+            // The loader already reports the unresolved import at its source.
+            // Retain its lexical binding to avoid a fabricated unknown-name
+            // cascade. Failed loading still prevents output publication.
+            for binding in &import.bindings {
+                self.values.insert(binding.local.clone(), Type::Any);
+            }
             return;
         };
         let bodies = self.project.ambient_module_bodies(resolved);

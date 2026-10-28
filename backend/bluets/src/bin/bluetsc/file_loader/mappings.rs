@@ -138,7 +138,12 @@ impl PathMappings {
             .ok_or("mapped path has no filename")?
             .to_string_lossy();
         let resolver = loader.packages.as_ref().unwrap_or(&loader.relative);
-        match resolver.resolve_relative(parent, &format!("./{name}")) {
+        let result = if loader.allow_js {
+            resolver.resolve_mapped_javascript(parent, &format!("./{name}"))
+        } else {
+            resolver.resolve_relative(parent, &format!("./{name}"))
+        };
+        match result {
             Ok(found) => Ok(Some(found.path)),
             Err(ResolveError::NotFound { .. }) => Ok(None),
             Err(error) => Err(error.to_string()),

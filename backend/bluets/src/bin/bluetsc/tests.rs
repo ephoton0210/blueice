@@ -66,6 +66,7 @@ fn referenced_source_only_error_is_not_checked_in_dependent() {
         &mut declarations,
         &mut runtimes,
         &references,
+        &mut Vec::new(),
     );
     assert_eq!(result, ExitCode::SUCCESS);
     assert!(emitted.contains(&root.join("main.d.ts")));

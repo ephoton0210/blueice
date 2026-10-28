@@ -55,7 +55,10 @@ impl<'a> ModuleChecker<'a> {
         max_type_expansions: usize,
     ) -> Self {
         let mut policy = policy;
-        if module.id.ends_with(".js") && policy.check_javascript == Some(false) {
+        if crate::parser::is_javascript(&module.id)
+            && crate::parser::checking_directive(&module.source).or(policy.check_javascript)
+                == Some(false)
+        {
             policy.enforce_types = false;
             policy
                 .checking

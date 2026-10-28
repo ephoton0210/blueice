@@ -6,24 +6,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-22).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-28).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 13,827 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 13,966 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 13,246/13,253 (99.9472%); 3 open, 4 refused observations |
-| Separate controls | 537 native-reference + 37 BlueTS owner = 574; excluded from direct agreement |
-| Case labels | 13,820 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 112 suites / 267 ignored Rust functions; not a case denominator |
-| Suite labels | 107 scoped closed, 1 open, 4 refused |
+| Direct agreement | 13,380/13,387 (99.9477%); 3 open, 4 refused observations |
+| Separate controls | 537 native-reference + 42 BlueTS owner = 579; excluded from direct agreement |
+| Case labels | 13,959 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 113 suites / 269 ignored Rust functions; not a case denominator |
+| Suite labels | 108 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 212 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 13,827 recorded case expectations pass; expected differences/refusals are not
+All 13,966 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -31,8 +31,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:c09b2f8b70b4136ecc80aa1b57ec6bb7142cae64`.
-Input graph SHA-256: `fedcba9e69384dd7fc9cab41d9dd5c0a9d9ab17076e2c9bdceba672218c7b73b`.
+Compiler/oracle source: `backend-tree:9223a6fc09845e5990303f2ce8babd52df673dce`.
+Input graph SHA-256: `c138108a6968ac71c6b35d9396301e38f3e51b09789e3aa490e6a3e5f4e043f9`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.

@@ -1128,57 +1128,11 @@ pub(crate) struct TextEdit {
     pub replacement: String,
 }
 
-/// Parses one source record.  The caller owns resolution and can decide which
-/// source records are authorized to participate in the project.
-pub fn parse_module(
-    id: impl Into<String>,
-    source: impl Into<String>,
-) -> Result<Module, Vec<Diagnostic>> {
-    parse_module_with_limits(id, source, ParserLimits::default())
-}
-
-pub(crate) fn parse_module_with_limits(
-    id: impl Into<String>,
-    source: impl Into<String>,
-    limits: ParserLimits,
-) -> Result<Module, Vec<Diagnostic>> {
-    parse_module_with_namespaces(id, source, limits, &[])
-}
-
-/// Parses a module that imports namespaces, given each by its local name and
-/// what it exports, so a reference to one of their members is one token.
-pub(crate) fn parse_module_with_namespaces(
-    id: impl Into<String>,
-    source: impl Into<String>,
-    limits: ParserLimits,
-    imported_namespaces: &[(String, NamespaceTree)],
-) -> Result<Module, Vec<Diagnostic>> {
-    let id = id.into();
-    let source = source.into();
-    let tokens = if limits == ParserLimits::default() {
-        lex(&id, &source)?
-    } else {
-        lex_with_limits(&id, &source, limits.max_source_bytes, limits.max_tokens)?
-    };
-    // A module with namespaces is parsed twice: the first pass learns which
-    // names are namespaces and what they export, and the second merges each
-    // qualified reference (`N.x`) into one token before parsing again.
-    let first = Parser::new(
-        id.clone(),
-        source.clone(),
-        tokens.clone(),
-        limits.max_type_depth,
-    )
-    .parse_module()?;
-    let Some(names) =
-        namespace_names::NamespaceNames::collect(&first.declarations, imported_namespaces)
-    else {
-        return Ok(first);
-    };
-    Parser::new(id, source, tokens, limits.max_type_depth)
-        .with_namespace_names(&names)
-        .parse_module()
-}
+mod entry;
+pub use entry::parse_module;
+pub(crate) use entry::{parse_module_with_limits, parse_module_with_namespaces};
+mod jsdoc;
+pub(crate) use jsdoc::{checking_directive, is_javascript};
 
 #[path = "parser/implementation.rs"]
 mod implementation;

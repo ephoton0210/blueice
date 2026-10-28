@@ -7,7 +7,7 @@
 use super::*;
 
 impl ModuleChecker<'_> {
-    pub(super) fn check_array_element_assignment(
+    pub(in crate::checker::module) fn check_array_element_assignment(
         &mut self,
         tokens: &[Token],
         annotation: &Type,

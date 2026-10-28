@@ -621,7 +621,11 @@ impl<'a> Context<'a> {
                     self.retain(spelling);
                 }
                 let name = if name.starts_with("\0import:") {
-                    crate::parser::source_type_name(name).to_string()
+                    if crate::parser::is_javascript(&self.module.id) {
+                        declarations::canonical_import_type(crate::parser::source_type_name(name))
+                    } else {
+                        crate::parser::source_type_name(name).to_string()
+                    }
                 } else if name.starts_with("typeof ") {
                     self.retain(name);
                     crate::parser::source_type_name(name).to_string()

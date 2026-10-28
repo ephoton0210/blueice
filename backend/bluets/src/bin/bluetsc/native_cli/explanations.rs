@@ -54,6 +54,16 @@ impl Explanations {
             if !self.nodes.contains_key(id) {
                 continue;
             }
+            for (specifier, target) in graph.resolved_import_queries(id) {
+                if self.nodes.contains_key(target) {
+                    let from = &self.nodes[id].display;
+                    self.edge(
+                        id,
+                        target,
+                        format!("Imported via '{specifier}' from file '{from}'"),
+                    );
+                }
+            }
             for declaration in &module.declarations {
                 let edge = match declaration {
                     blueice_bluets::Declaration::Import(import) => Some((

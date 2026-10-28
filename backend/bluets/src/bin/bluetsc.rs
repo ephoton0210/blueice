@@ -133,6 +133,8 @@ fn main() -> ExitCode {
         relative: relative_resolver(&invocation.root),
         resolve_json_module: invocation.options.resolve_json_module,
         allow_js: invocation.options.allow_js,
+        max_node_module_js_depth: invocation.max_node_module_js_depth,
+        javascript_depths: Default::default(),
         remote: match invocation.remote.as_ref() {
             Some(settings) => {
                 let cache = DeclarationCache::new(
@@ -612,8 +614,8 @@ fn output_module_path(root: &Path, module: &Path, preserve_jsx: bool) -> String 
 /// JSX is preserved.
 fn output_extension(source: &Path, preserve_jsx: bool) -> &'static str {
     match source.extension().and_then(|extension| extension.to_str()) {
-        Some("mts") => return "mjs",
-        Some("cts") => return "cjs",
+        Some("mts" | "mjs") => return "mjs",
+        Some("cts" | "cjs") => return "cjs",
         _ => {}
     }
     if preserve_jsx

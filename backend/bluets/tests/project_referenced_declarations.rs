@@ -462,6 +462,6 @@ fn legacy_build_state_rebuilds_before_references_are_reused() {
         report(&rebuilt)
     );
     let updated: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-    assert_eq!(updated["version"], 17);
+    assert_eq!(updated["version"], 18);
     fs::remove_dir_all(root).unwrap();
 }

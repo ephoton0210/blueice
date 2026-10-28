@@ -1,0 +1,4226 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "jsdoc-param-return-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.double = double;\n/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.double)(21);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-param-return-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 64,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-param-return-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"./api.js\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-param-return-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 64,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-type-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.value = void 0;\n/** @type {number} */\nexports.value = 42;\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = api_js_1.value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-type-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "api.js",
+          "start": 35,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-type-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "/** @type {number} */\nexport const value = 42;\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { value } from './api.js';\nexport const result = value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "value"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-type-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "api.js",
+          "start": 35,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-return-body-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @returns {number} */\nexport function answer(): number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.answer = answer;\n/** @returns {number} */\nfunction answer() { return 42; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.answer)();\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-return-body-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "api.js",
+          "start": 52,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-return-body-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @returns {number} */\nexport function answer(): number;\n",
+        "out/api.js": "/** @returns {number} */\nexport function answer() { return 42; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { answer } from './api.js';\nexport const result = answer();\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "answer"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-return-body-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "api.js",
+          "start": 52,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-typedef-record-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @typedef {{value: number}} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item: Item): number;\nexport type Item = {\n    value: number;\n};\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.read = read;\n/** @typedef {{value: number}} Item */\n/** @param {Item} item\n * @returns {number} */\nfunction read(item) { return item.value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.read)({ value: 42 });\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-typedef-record-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+              "module": "api.js",
+              "start": 15,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-typedef-record-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @typedef {{value: number}} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item: Item): number;\nexport type Item = {\n    value: number;\n};\n",
+        "out/api.js": "/** @typedef {{value: number}} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { read } from './api.js';\nexport const result = read({ value: 42 });\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-typedef-record-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+              "module": "api.js",
+              "start": 15,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-typedef-properties-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/**\n * @typedef {Object} Options\n * @property {number} value\n * @property {string} [label]\n */\n/** @param {Options} options\n * @returns {number} */\nexport function read(options: Options): number;\nexport type Options = {\n    value: number;\n    label?: string | undefined;\n};\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.read = read;\n/**\n * @typedef {Object} Options\n * @property {number} value\n * @property {string} [label]\n */\n/** @param {Options} options\n * @returns {number} */\nfunction read(options) { return options.value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.read)({ value: 42 });\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-typedef-properties-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 68,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'label' which is declared here on type 'Options'",
+              "module": "api.js",
+              "start": 64,
+              "length": 26,
+              "related": []
+            }
+          ]
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-typedef-properties-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/**\n * @typedef {Object} Options\n * @property {number} value\n * @property {string} [label]\n */\n/** @param {Options} options\n * @returns {number} */\nexport function read(options: Options): number;\nexport type Options = {\n    value: number;\n    label?: string | undefined;\n};\n",
+        "out/api.js": "/**\n * @typedef {Object} Options\n * @property {number} value\n * @property {string} [label]\n */\n/** @param {Options} options\n * @returns {number} */\nexport function read(options) { return options.value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { read } from './api.js';\nexport const result = read({ value: 42 });\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "read"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-typedef-properties-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 68,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'label' which is declared here on type 'Options'",
+              "module": "api.js",
+              "start": 64,
+              "length": 26,
+              "related": []
+            }
+          ]
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-template-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @template T\n * @param {T} value\n * @returns {T} */\nexport function identity<T>(value: T): T;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.identity = identity;\n/** @template T\n * @param {T} value\n * @returns {T} */\nfunction identity(value) { return value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.identity)(42);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-template-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 48,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-template-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @template T\n * @param {T} value\n * @returns {T} */\nexport function identity<T>(value: T): T;\n",
+        "out/api.js": "/** @template T\n * @param {T} value\n * @returns {T} */\nexport function identity(value) { return value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { identity } from './api.js';\nexport const result = identity(42);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "identity"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-template-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 48,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-optional-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @param {number} [value]\n * @returns {number} */\nexport function answer(value?: number): number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.answer = answer;\n/** @param {number} [value]\n * @returns {number} */\nfunction answer(value) { return value === undefined ? 42 : value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.answer)();\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-optional-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 62,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-optional-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @param {number} [value]\n * @returns {number} */\nexport function answer(value?: number): number;\n",
+        "out/api.js": "/** @param {number} [value]\n * @returns {number} */\nexport function answer(value) { return value === undefined ? 42 : value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { answer } from './api.js';\nexport const result = answer();\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "answer"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-optional-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 62,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-array-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @param {number[]} values\n * @returns {number} */\nexport function first(values: number[]): number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.first = first;\n/** @param {number[]} values\n * @returns {number} */\nfunction first(values) { return values[0]; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.first)([42]);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-array-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 61,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-array-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @param {number[]} values\n * @returns {number} */\nexport function first(values: number[]): number;\n",
+        "out/api.js": "/** @param {number[]} values\n * @returns {number} */\nexport function first(values) { return values[0]; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { first } from './api.js';\nexport const result = first([42]);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "first"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-array-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 61,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-rest-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @param {...number} values\n * @returns {number} */\nexport function first(...values: number[]): number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.first = first;\n/** @param {...number} values\n * @returns {number} */\nfunction first(...values) { return values[0]; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.first)(42, 7);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-rest-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 60,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-rest-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @param {...number} values\n * @returns {number} */\nexport function first(...values: number[]): number;\n",
+        "out/api.js": "/** @param {...number} values\n * @returns {number} */\nexport function first(...values) { return values[0]; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { first } from './api.js';\nexport const result = first(42, 7);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "first"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-rest-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 60,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-null-union-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @param {number | null} value\n * @returns {number} */\nexport function answer(value: number | null): number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.answer = answer;\n/** @param {number | null} value\n * @returns {number} */\nfunction answer(value) { return value === null ? 42 : value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.answer)(null);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-null-union-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 62,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-null-union-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @param {number | null} value\n * @returns {number} */\nexport function answer(value: number | null): number;\n",
+        "out/api.js": "/** @param {number | null} value\n * @returns {number} */\nexport function answer(value) { return value === null ? 42 : value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { answer } from './api.js';\nexport const result = answer(null);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "answer"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-null-union-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 62,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-import-typedef-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts",
+        "schema.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @typedef {import('./schema.js').Item} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item: Item): number;\nexport type Item = import(\"./schema.js\").Item;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.read = read;\n/** @typedef {import('./schema.js').Item} Item */\n/** @param {Item} item\n * @returns {number} */\nfunction read(item) { return item.value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = (0, api_js_1.read)({ value: 42 });\n",
+        "out/schema.d.ts": "export interface Item {\n    value: number;\n}\n",
+        "out/schema.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ],
+        "out/schema.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-import-typedef-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+              "module": "schema.ts",
+              "start": 24,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts",
+        "schema.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-import-typedef-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts",
+        "schema.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @typedef {import('./schema.js').Item} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item: Item): number;\nexport type Item = import(\"./schema.js\").Item;\n",
+        "out/api.js": "/** @typedef {import('./schema.js').Item} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { read } from './api.js';\nexport const result = read({ value: 42 });\n",
+        "out/schema.d.ts": "export interface Item {\n    value: number;\n}\n",
+        "out/schema.js": "export {};\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "read"
+            ]
+          }
+        ],
+        "out/schema.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-import-typedef-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+              "module": "schema.ts",
+              "start": 24,
+              "length": 5,
+              "related": []
+            }
+          ]
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts",
+        "schema.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-check-off-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.value = void 0;\n/** @type {number} */\nexports.value = 'unchecked';\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = api_js_1.value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "\"unchecked\"",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-check-off-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 45,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-check-off-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "/** @type {number} */\nexport const value = 'unchecked';\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { value } from './api.js';\nexport const result = value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "value"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "\"unchecked\"",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-check-off-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 45,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-ts-check-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.value = void 0;\n// @ts-check\n/** @type {number} */\nexports.value = 42;\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = api_js_1.value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-ts-check-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "api.js",
+          "start": 48,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-ts-check-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "// @ts-check\n/** @type {number} */\nexport const value = 42;\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { value } from './api.js';\nexport const result = value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "value"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-ts-check-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "module": "api.js",
+          "start": 48,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-ts-nocheck-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.value = void 0;\n// @ts-nocheck\n/** @type {number} */\nexports.value = 'unchecked';\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = api_js_1.value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "\"unchecked\"",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-ts-nocheck-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 45,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-ts-nocheck-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "// @ts-nocheck\n/** @type {number} */\nexport const value = 'unchecked';\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { value } from './api.js';\nexport const result = value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "value"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "\"unchecked\"",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-ts-nocheck-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "entry.ts",
+          "start": 45,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-unknown-type-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.value = void 0;\n// π 😀\n/** @type {number} */\nexports.value = 42;\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nexports.result = api_js_1.value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-unknown-type-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'MissingType'.",
+          "module": "api.js",
+          "start": 19,
+          "length": 11,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "jsdoc-unknown-type-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/** @type {number} */\nexport const value: number;\n",
+        "out/api.js": "// π 😀\n/** @type {number} */\nexport const value = 42;\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { value } from './api.js';\nexport const result = value;\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "value"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "jsdoc-unknown-type-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'MissingType'.",
+          "module": "api.js",
+          "start": 19,
+          "length": 11,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-main-js-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst pkg_1 = require(\"pkg\");\nexports.result = (0, pkg_1.double)(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-main-js-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-main-js-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-main-js-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-commonjs-js-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst pkg_1 = require(\"pkg\");\nexports.result = (0, pkg_1.double)(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-commonjs-js-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-types-sibling-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst pkg_1 = require(\"pkg\");\nexports.result = (0, pkg_1.double)(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-types-sibling-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.d.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-types-sibling-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-types-sibling-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.d.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-attypes-precedence-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/@types/pkg/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst pkg_1 = require(\"pkg\");\nexports.result = (0, pkg_1.double)(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-attypes-precedence-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/@types/pkg/index.d.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-attypes-precedence-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/@types/pkg/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-attypes-precedence-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/@types/pkg/index.d.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-depth-zero-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst pkg_1 = require(\"pkg\");\nexports.result = (0, pkg_1.double)(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-depth-zero-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 7016,
+          "message": "Could not find a declaration file for module 'pkg'. '<root>/node_modules/pkg/index.js' implicitly has an 'any' type.",
+          "module": "entry.ts",
+          "start": 23,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-depth-zero-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-depth-zero-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 7016,
+          "message": "Could not find a declaration file for module 'pkg'. '<root>/node_modules/pkg/index.js' implicitly has an 'any' type.",
+          "module": "entry.ts",
+          "start": 23,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-exact-js-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst math_1 = require(\"math\");\nexports.result = (0, math_1.double)(21);\n",
+        "out/vendor/math.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/vendor/math.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.double = double;\n/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math"
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-exact-js-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 60,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-exact-js-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"math\";\nexport const result = double(21);\n",
+        "out/vendor/math.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math",
+            "names": [
+              "double"
+            ]
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-exact-js-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 60,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-ordered-fallback-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst math_1 = require(\"math/math\");\nexports.result = (0, math_1.double)(21);\n",
+        "out/vendor/math.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/vendor/math.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.double = double;\n/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math/math"
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-ordered-fallback-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 65,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-ordered-fallback-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"math/math\";\nexport const result = double(21);\n",
+        "out/vendor/math.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math/math",
+            "names": [
+              "double"
+            ]
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-ordered-fallback-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 65,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-longest-prefix-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst math_1 = require(\"math/math\");\nexports.result = (0, math_1.double)(21);\n",
+        "out/vendor/math.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/vendor/math.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.double = double;\n/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math/math"
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-longest-prefix-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 65,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-longest-prefix-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"math/math\";\nexport const result = double(21);\n",
+        "out/vendor/math.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math/math",
+            "names": [
+              "double"
+            ]
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-longest-prefix-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 65,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-typescript-sibling-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst math_1 = require(\"math\");\nexports.result = (0, math_1.double)(21);\n",
+        "out/vendor/math.d.ts": "export declare function double(value: number): number;\n",
+        "out/vendor/math.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.double = double;\nfunction double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math"
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-typescript-sibling-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 60,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-typescript-sibling-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"math\";\nexport const result = double(21);\n",
+        "out/vendor/math.d.ts": "export declare function double(value: number): number;\n",
+        "out/vendor/math.js": "export function double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math",
+            "names": [
+              "double"
+            ]
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-typescript-sibling-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 60,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "baseurl-package-precedence-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "pkg.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst pkg_1 = require(\"pkg\");\nexports.result = (0, pkg_1.double)(21);\n",
+        "out/pkg.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/pkg.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.double = double;\n/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg"
+          }
+        ],
+        "out/pkg.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "baseurl-package-precedence-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "pkg.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "baseurl-package-precedence-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "pkg.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"pkg\";\nexport const result = double(21);\n",
+        "out/pkg.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/pkg.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg",
+            "names": [
+              "double"
+            ]
+          }
+        ],
+        "out/pkg.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "baseurl-package-precedence-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "pkg.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "rootdirs-js-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "generated/view/math.js",
+        "src/view/entry.ts"
+      ],
+      "outputs": {
+        "out/generated/view/math.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/generated/view/math.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.double = double;\n/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\n",
+        "out/src/view/entry.d.ts": "export declare const result: number;\n",
+        "out/src/view/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst math_js_1 = require(\"./math.js\");\nexports.result = (0, math_js_1.double)(21);\n"
+      },
+      "imports": {
+        "out/generated/view/math.js": [],
+        "out/src/view/entry.js": [
+          {
+            "specifier": "./math.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 54,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "rootdirs-js-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "src/view/entry.ts",
+          "start": 65,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "generated/view/math.js",
+        "src/view/entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "rootdirs-js-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "generated/view/math.js",
+        "src/view/entry.ts"
+      ],
+      "outputs": {
+        "out/generated/view/math.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/generated/view/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "out/src/view/entry.d.ts": "export declare const result: number;\n",
+        "out/src/view/entry.js": "import { double } from \"./math.js\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/generated/view/math.js": [],
+        "out/src/view/entry.js": [
+          {
+            "specifier": "./math.js",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 54,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "rootdirs-js-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "src/view/entry.ts",
+          "start": 65,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "generated/view/math.js",
+        "src/view/entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "typesversions-js-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/typed/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst math_js_1 = require(\"pkg/math.js\");\nexports.result = (0, math_js_1.double)(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg/math.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "typesversions-js-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 67,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/typed/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "typesversions-js-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/typed/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"pkg/math.js\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg/math.js",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "typesversions-js-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 67,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/typed/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "exports-conditions-js-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/dev.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "exports-conditions-js-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/dev.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "exports-typesversions-precedence-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/public.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"pkg/math\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg/math",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "exports-typesversions-precedence-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 64,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/public.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "exports-blocked-js-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "exports-blocked-js-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2307,
+          "message": "Cannot find module 'pkg/hidden' or its corresponding type declarations.",
+          "module": "entry.ts",
+          "start": 23,
+          "length": 12,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "mapped-mjs-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.mts",
+        "vendor/math.mjs"
+      ],
+      "outputs": {
+        "out/entry.d.mts": "export declare const result: number;\n",
+        "out/entry.mjs": "import { double } from \"math\";\nexport const result = double(21);\n",
+        "out/vendor/math.d.mts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/vendor/math.mjs": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n"
+      },
+      "imports": {
+        "out/entry.mjs": [
+          {
+            "specifier": "math",
+            "names": [
+              "double"
+            ]
+          }
+        ],
+        "out/vendor/math.mjs": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 46,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "mapped-mjs-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.mts",
+          "start": 60,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.mts",
+        "vendor/math.mjs"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "package-cjs-extension-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.cjs"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst pkg_1 = require(\"pkg\");\nexports.result = (0, pkg_1.double)(21);\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "pkg"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "package-cjs-extension-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 59,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "node_modules/pkg/index.cjs"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "typesroots-scoped-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts",
+        "types/@scope/seed/index.d.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/api.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.double = double;\n/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst api_js_1 = require(\"./api.js\");\nconst witness = 0;\nexports.result = (0, api_js_1.double)(21);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js"
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "typesroots-scoped-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 100,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts",
+        "types/@scope/seed/index.d.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "typesroots-scoped-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts",
+        "types/@scope/seed/index.d.ts"
+      ],
+      "outputs": {
+        "out/api.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from './api.js';\nconst witness = 0;\nexport const result = double(21);\n"
+      },
+      "imports": {
+        "out/api.js": [],
+        "out/entry.js": [
+          {
+            "specifier": "./api.js",
+            "names": [
+              "double"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "typesroots-scoped-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "entry.ts",
+          "start": 100,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "api.js",
+        "entry.ts",
+        "types/@scope/seed/index.d.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "missing-explicit-type-library-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "types/seed/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result = 42;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {
+        "out/entry.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "missing-explicit-type-library-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2688,
+          "message": "Cannot find type definition file for 'missing'.\n  The file is in the program because:\n    Entry point of type library 'missing' specified in compilerOptions",
+          "module": null,
+          "start": null,
+          "length": null,
+          "related": [
+            {
+              "code": 1419,
+              "message": "File is entry point of type library specified here.",
+              "module": "tsconfig.json",
+              "start": 316,
+              "length": 9,
+              "related": []
+            }
+          ]
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "missing-explicit-type-library-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "types/seed/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result = 42;\n",
+        "out/entry.js": "export const result = 42;\n"
+      },
+      "imports": {
+        "out/entry.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "missing-explicit-type-library-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2688,
+          "message": "Cannot find type definition file for 'missing'.\n  The file is in the program because:\n    Entry point of type library 'missing' specified in compilerOptions",
+          "module": null,
+          "start": null,
+          "length": null,
+          "related": [
+            {
+              "code": 1419,
+              "message": "File is entry point of type library specified here.",
+              "module": "tsconfig.json",
+              "start": 314,
+              "length": 9,
+              "related": []
+            }
+          ]
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "missing-implicit-type-library-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "types/seed/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result = 42;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {
+        "out/entry.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "missing-implicit-type-library-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2688,
+          "message": "Cannot find type definition file for 'seed'.\n  The file is in the program because:\n    Entry point for implicit type library 'seed'",
+          "module": null,
+          "start": null,
+          "length": null,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "missing-implicit-type-library-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "types/seed/index.d.ts"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result = 42;\n",
+        "out/entry.js": "export const result = 42;\n"
+      },
+      "imports": {
+        "out/entry.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "missing-implicit-type-library-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2688,
+          "message": "Cannot find type definition file for 'seed'.\n  The file is in the program because:\n    Entry point for implicit type library 'seed'",
+          "module": null,
+          "start": null,
+          "length": null,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "resolver-composition-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "generated/math.js",
+        "generated/view/helper.js",
+        "node_modules/pkg/dev.js",
+        "src/view/entry.ts",
+        "types/seed/index.d.ts"
+      ],
+      "outputs": {
+        "out/generated/math.d.ts": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value: number): number;\n",
+        "out/generated/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "out/generated/view/helper.d.ts": "/** @returns {number} */\nexport function extra(): number;\n",
+        "out/generated/view/helper.js": "/** @returns {number} */\nexport function extra() { return 0; }\n",
+        "out/src/view/entry.d.ts": "export declare const result: number;\n",
+        "out/src/view/entry.js": "import { double as local } from 'local/math';\nimport { double as packaged } from 'pkg/math';\nimport { extra } from './helper.js';\nconst witness = 0;\nexport const result = local(10) + packaged(11) + extra();\n"
+      },
+      "imports": {
+        "out/generated/math.js": [],
+        "out/generated/view/helper.js": [],
+        "out/src/view/entry.js": [
+          {
+            "specifier": "local/math",
+            "names": [
+              "double"
+            ]
+          },
+          {
+            "specifier": "pkg/math",
+            "names": [
+              "double"
+            ]
+          },
+          {
+            "specifier": "./helper.js",
+            "names": [
+              "extra"
+            ]
+          }
+        ]
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 54,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "resolver-composition-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "module": "src/view/entry.ts",
+          "start": 190,
+          "length": 5,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "generated/math.js",
+        "generated/view/helper.js",
+        "node_modules/pkg/dev.js",
+        "src/view/entry.ts",
+        "types/seed/index.d.ts"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-explicit-js-sibling-commonjs-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst math_1 = require(\"math\");\nexports.result = (0, math_1.double)(\"native\");\n",
+        "out/vendor/math.d.ts": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value: string): number;\n",
+        "out/vendor/math.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.double = double;\n/**\n * @param {string} value\n * @returns {number}\n */\nfunction double(value) { return 42; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math"
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-explicit-js-sibling-commonjs-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "module": "entry.ts",
+          "start": 58,
+          "length": 2,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    },
+    {
+      "id": "paths-explicit-js-sibling-esnext-accept",
+      "diagnostics": [],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {
+        "out/entry.d.ts": "export declare const result: number;\n",
+        "out/entry.js": "import { double } from 'math';\nexport const result = double(\"native\");\n",
+        "out/vendor/math.d.ts": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value: string): number;\n",
+        "out/vendor/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n"
+      },
+      "imports": {
+        "out/entry.js": [
+          {
+            "specifier": "math",
+            "names": [
+              "double"
+            ]
+          }
+        ],
+        "out/vendor/math.js": []
+      },
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'string'.",
+            "module": "consumer.ts",
+            "start": 45,
+            "length": 5,
+            "related": []
+          }
+        ]
+      },
+      "execution": {
+        "exit": 0,
+        "stdout": "42",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "paths-explicit-js-sibling-esnext-reject",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "module": "entry.ts",
+          "start": 58,
+          "length": 2,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "entry.ts",
+        "vendor/math.js"
+      ],
+      "outputs": {},
+      "imports": {},
+      "consumers": null,
+      "execution": null
+    }
+  ],
+  "ownerControls": [
+    "canonical-js-source-confinement",
+    "ordered-fallback-is-not-authority-fallback",
+    "typescript-sibling-precedence",
+    "manifest-change-missing-restoration-invalidation",
+    "jsdoc-shared-work-and-runtime-bounds"
+  ]
+}

@@ -7,9 +7,11 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+#[path = "freshness/resolution_inputs.rs"]
+mod resolution_inputs;
 
-// G-T2 changes inference and declarations: older state must rebuild.
-const STATE_VERSION: u8 = 17;
+// G-M1 adds resolved sources and manifest observations: old state must rebuild.
+const STATE_VERSION: u8 = 18;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -159,6 +161,7 @@ impl Inputs {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct State {
+    resolution_inputs: Vec<String>,
     producer: String,
     version: u8,
     fingerprint: String,
@@ -291,6 +294,7 @@ impl State {
         outputs: &[PathBuf],
         declarations: &BTreeMap<PathBuf, PathBuf>,
         runtimes: &BTreeMap<PathBuf, PathBuf>,
+        resolution_inputs: Vec<String>,
     ) -> io::Result<Self> {
         let directory = project.parent().expect("canonical config has parent");
         let outputs = outputs
@@ -341,6 +345,7 @@ impl State {
             })
             .collect::<io::Result<BTreeMap<_, _>>>()?;
         let state = Self {
+            resolution_inputs,
             producer: STATE_PRODUCER.into(),
             version: STATE_VERSION,
             fingerprint,
@@ -520,10 +525,14 @@ pub(super) fn run(
         let outputs_exist = state
             .as_ref()
             .is_some_and(|state| state.outputs_exist(project));
+        let inputs_match = state.as_ref().is_some_and(|state| {
+            resolution_inputs::fingerprint(graph, &fingerprint, &state.resolution_inputs)
+                .is_ok_and(|fingerprint| state.fingerprint == fingerprint)
+        });
         if verbose
             && state
                 .as_ref()
-                .is_some_and(|state| state.fingerprint == fingerprint && !outputs_exist)
+                .is_some_and(|_| inputs_match && !outputs_exist)
         {
             println!(
                 "Project {} is out of date because a recorded build output is missing or unsafe",
@@ -540,7 +549,7 @@ pub(super) fn run(
         });
         let up_to_date = state
             .as_ref()
-            .is_some_and(|state| state.fingerprint == fingerprint && outputs_exist)
+            .is_some_and(|_| inputs_match && outputs_exist)
             && !dependency_changed;
         if let Some(paths) = state_declarations.filter(|_| up_to_date) {
             if verbose {
@@ -560,6 +569,7 @@ pub(super) fn run(
             println!("Building project: {}", graph.display_path(project));
         }
         let mut emitted = Vec::new();
+        let mut observed_inputs = Vec::new();
         let mut declarations = BTreeMap::new();
         let mut runtimes = BTreeMap::new();
         let mut references = BTreeMap::new();
@@ -583,6 +593,7 @@ pub(super) fn run(
             &mut declarations,
             &mut runtimes,
             &references,
+            &mut observed_inputs,
         );
         if result != ExitCode::SUCCESS {
             if stop_build_on_errors {
@@ -615,7 +626,26 @@ pub(super) fn run(
                 return ExitCode::FAILURE;
             }
         }
-        let state = match State::save(project, fingerprint, &emitted, &declarations, &runtimes) {
+        let observed_inputs = observed_inputs
+            .into_iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let fingerprint =
+            match resolution_inputs::fingerprint(graph, &fingerprint, &observed_inputs) {
+                Ok(fingerprint) => fingerprint,
+                Err(error) => {
+                    eprintln!("bluetsc: cannot fingerprint resolved inputs: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+        let state = match State::save(
+            project,
+            fingerprint,
+            &emitted,
+            &declarations,
+            &runtimes,
+            observed_inputs,
+        ) {
             Ok(state) => state,
             Err(error) => {
                 eprintln!("bluetsc: cannot publish build state: {error}");

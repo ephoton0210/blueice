@@ -41,6 +41,7 @@ pub(super) struct Invocation {
     pub(super) out_dir: Option<PathBuf>,
     pub(super) declaration_dir: Option<PathBuf>,
     pub(super) options: CompilerOptions,
+    pub(super) max_node_module_js_depth: usize,
     pub(super) inline_source_map: bool,
     pub(super) imports: BTreeMap<String, PathBuf>,
     pub(super) packages: Option<PackageSettings>,
@@ -136,6 +137,8 @@ pub(super) struct BlueTscConfig {
     pub(super) allow_js: bool,
     #[serde(default)]
     pub(super) check_js: bool,
+    #[serde(default)]
+    pub(super) max_node_module_js_depth: usize,
     #[serde(default)]
     pub(super) module: Option<String>,
     #[serde(default)]
@@ -378,6 +381,7 @@ pub(super) fn resolve_explicit_invocation(
         declaration_dir: None,
         options,
         inline_source_map: false,
+        max_node_module_js_depth: 0,
         imports: BTreeMap::new(),
         packages: None,
         remote: None,
@@ -677,6 +681,7 @@ pub(super) fn resolve_config_document(
         declaration_dir,
         options,
         inline_source_map: config.inline_source_map,
+        max_node_module_js_depth: config.max_node_module_js_depth,
         imports,
         packages,
         remote,

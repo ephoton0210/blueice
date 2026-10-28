@@ -105,6 +105,8 @@ pub(super) fn validate(
                     | "rootDirs"
                     | "types"
                     | "typeRoots"
+                    | "maxNodeModuleJsDepth"
+                    | "customConditions"
             )
         {
             return Err(format!("unknown or unsupported compiler option `{name}`"));
@@ -117,7 +119,11 @@ pub(super) fn validate(
             result.insert(name.clone(), checked);
             continue;
         }
-        let checked = if name == "lib" {
+        let checked = if name == "maxNodeModuleJsDepth" {
+            json!(value.as_u64().ok_or_else(|| {
+                "compiler option `maxNodeModuleJsDepth` requires a number".to_string()
+            })?)
+        } else if name == "lib" {
             let libraries = value
                 .as_array()
                 .ok_or_else(|| "compiler option `lib` requires an array".to_string())?;
@@ -373,6 +379,8 @@ pub(super) fn owner_options(
         "resolveJsonModule",
         "allowJs",
         "checkJs",
+        "maxNodeModuleJsDepth",
+        "customConditions",
         "sourceMap",
         "inlineSourceMap",
         "declaration",

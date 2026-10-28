@@ -52,6 +52,28 @@ mod runtime_syntax;
 #[path = "type_syntax.rs"]
 mod type_syntax;
 
+/// Parse an erased JSDoc type with original byte offsets and ordinary limits.
+pub(super) fn parse_jsdoc_type(
+    module: &mut Module,
+    tokens: Vec<Token>,
+    depth: usize,
+) -> Result<Type, Vec<Diagnostic>> {
+    let mut parser = Parser::new(module.id.clone(), module.source.clone(), tokens, depth);
+    let value = parser.parse_type_until(&[]);
+    if !parser.at_eof() {
+        parser.error_here(
+            DiagnosticCode::UnsupportedSyntax,
+            "unsupported JSDoc type syntax",
+        );
+    }
+    if !parser.diagnostics.is_empty() {
+        return Err(parser.diagnostics);
+    }
+    module.type_references.extend(parser.type_references);
+    module.import_types.extend(parser.import_types);
+    Ok(value)
+}
+
 /// Parse an owned JSX tag's erased type arguments with the ordinary type grammar.
 pub(crate) fn parse_jsx_type_arguments(
     module: &Module,

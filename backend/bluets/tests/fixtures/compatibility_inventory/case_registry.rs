@@ -274,6 +274,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "gt8_return_context" => "gt8_return_context/reference.json",
         "gt7_library_manifest" => "gt7_library_manifest/reference.json",
         "gt10_import_types" => "gt10_import_types/reference.json",
+        "gm1_resolver_compositions" => "gm1_resolver_compositions/reference.json",
         "gt3_operators" => "gt3_operators/reference.json",
         "gt1_declaration_order" => "gt1_declaration_order/reference.json",
         "indexed_call_context" => "indexed-call-context-reference.json",

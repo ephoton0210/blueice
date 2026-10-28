@@ -21,7 +21,7 @@ pub(super) fn validate(
             reader.authorize_future(&path, name, true)?;
             json!(path.to_string_lossy())
         }
-        "rootDirs" | "typeRoots" | "types" => {
+        "rootDirs" | "typeRoots" | "types" | "customConditions" => {
             let values = value
                 .as_array()
                 .ok_or_else(|| format!("compiler option `{name}` requires an array"))?;
@@ -30,7 +30,7 @@ pub(super) fn validate(
                 let text = item
                     .as_str()
                     .ok_or_else(|| format!("compiler option `{name}` requires strings"))?;
-                if name == "types" {
+                if name == "types" || name == "customConditions" {
                     result.push(json!(text));
                 } else {
                     let path = clean_path(&directory.join(text));

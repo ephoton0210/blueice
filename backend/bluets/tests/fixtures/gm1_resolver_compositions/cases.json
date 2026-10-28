@@ -1,0 +1,4573 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "jsdoc-param-return-commonjs-accept",
+      "form": "jsdoc-param-return",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"./api.js\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-param-return-commonjs-reject",
+      "form": "jsdoc-param-return",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"./api.js\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-param-return-esnext-accept",
+      "form": "jsdoc-param-return",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"./api.js\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-param-return-esnext-reject",
+      "form": "jsdoc-param-return",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"./api.js\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-type-commonjs-accept",
+      "form": "jsdoc-type",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @type {number} */\nexport const value = 42;\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-type-commonjs-reject",
+      "form": "jsdoc-type",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @type {number} */\nexport const value = \"bad\";\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-type-esnext-accept",
+      "form": "jsdoc-type",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @type {number} */\nexport const value = 42;\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-type-esnext-reject",
+      "form": "jsdoc-type",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @type {number} */\nexport const value = \"bad\";\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-return-body-commonjs-accept",
+      "form": "jsdoc-return-body",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @returns {number} */\nexport function answer() { return 42; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-return-body-commonjs-reject",
+      "form": "jsdoc-return-body",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @returns {number} */\nexport function answer() { return \"bad\"; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-return-body-esnext-accept",
+      "form": "jsdoc-return-body",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @returns {number} */\nexport function answer() { return 42; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-return-body-esnext-reject",
+      "form": "jsdoc-return-body",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @returns {number} */\nexport function answer() { return \"bad\"; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-typedef-record-commonjs-accept",
+      "form": "jsdoc-typedef-record",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @typedef {{value: number}} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:42});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-typedef-record-commonjs-reject",
+      "form": "jsdoc-typedef-record",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @typedef {{value: number}} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:'bad'});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-typedef-record-esnext-accept",
+      "form": "jsdoc-typedef-record",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @typedef {{value: number}} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:42});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-typedef-record-esnext-reject",
+      "form": "jsdoc-typedef-record",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @typedef {{value: number}} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:'bad'});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-typedef-properties-commonjs-accept",
+      "form": "jsdoc-typedef-properties",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/**\n * @typedef {Object} Options\n * @property {number} value\n * @property {string} [label]\n */\n/** @param {Options} options\n * @returns {number} */\nexport function read(options) { return options.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:42});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-typedef-properties-commonjs-reject",
+      "form": "jsdoc-typedef-properties",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/**\n * @typedef {Object} Options\n * @property {number} value\n * @property {string} [label]\n */\n/** @param {Options} options\n * @returns {number} */\nexport function read(options) { return options.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:42,label:0});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-typedef-properties-esnext-accept",
+      "form": "jsdoc-typedef-properties",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/**\n * @typedef {Object} Options\n * @property {number} value\n * @property {string} [label]\n */\n/** @param {Options} options\n * @returns {number} */\nexport function read(options) { return options.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:42});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-typedef-properties-esnext-reject",
+      "form": "jsdoc-typedef-properties",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/**\n * @typedef {Object} Options\n * @property {number} value\n * @property {string} [label]\n */\n/** @param {Options} options\n * @returns {number} */\nexport function read(options) { return options.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:42,label:0});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-template-commonjs-accept",
+      "form": "jsdoc-template",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @template T\n * @param {T} value\n * @returns {T} */\nexport function identity(value) { return value; }\n",
+        "entry.ts": "import {identity} from './api.js'; export const result: number = identity(42);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-template-commonjs-reject",
+      "form": "jsdoc-template",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @template T\n * @param {T} value\n * @returns {T} */\nexport function identity(value) { return value; }\n",
+        "entry.ts": "import {identity} from './api.js'; export const result: number = identity('bad');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-template-esnext-accept",
+      "form": "jsdoc-template",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @template T\n * @param {T} value\n * @returns {T} */\nexport function identity(value) { return value; }\n",
+        "entry.ts": "import {identity} from './api.js'; export const result: number = identity(42);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-template-esnext-reject",
+      "form": "jsdoc-template",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @template T\n * @param {T} value\n * @returns {T} */\nexport function identity(value) { return value; }\n",
+        "entry.ts": "import {identity} from './api.js'; export const result: number = identity('bad');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-optional-commonjs-accept",
+      "form": "jsdoc-optional",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @param {number} [value]\n * @returns {number} */\nexport function answer(value) { return value === undefined ? 42 : value; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-optional-commonjs-reject",
+      "form": "jsdoc-optional",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @param {number} [value]\n * @returns {number} */\nexport function answer(value) { return value === undefined ? 42 : value; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer('bad');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-optional-esnext-accept",
+      "form": "jsdoc-optional",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @param {number} [value]\n * @returns {number} */\nexport function answer(value) { return value === undefined ? 42 : value; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-optional-esnext-reject",
+      "form": "jsdoc-optional",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @param {number} [value]\n * @returns {number} */\nexport function answer(value) { return value === undefined ? 42 : value; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer('bad');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-array-commonjs-accept",
+      "form": "jsdoc-array",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @param {number[]} values\n * @returns {number} */\nexport function first(values) { return values[0]; }\n",
+        "entry.ts": "import {first} from './api.js'; export const result = first([42]);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-array-commonjs-reject",
+      "form": "jsdoc-array",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @param {number[]} values\n * @returns {number} */\nexport function first(values) { return values[0]; }\n",
+        "entry.ts": "import {first} from './api.js'; export const result = first(['bad']);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-array-esnext-accept",
+      "form": "jsdoc-array",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @param {number[]} values\n * @returns {number} */\nexport function first(values) { return values[0]; }\n",
+        "entry.ts": "import {first} from './api.js'; export const result = first([42]);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-array-esnext-reject",
+      "form": "jsdoc-array",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @param {number[]} values\n * @returns {number} */\nexport function first(values) { return values[0]; }\n",
+        "entry.ts": "import {first} from './api.js'; export const result = first(['bad']);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-rest-commonjs-accept",
+      "form": "jsdoc-rest",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @param {...number} values\n * @returns {number} */\nexport function first(...values) { return values[0]; }\n",
+        "entry.ts": "import {first} from './api.js'; export const result = first(42,7);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-rest-commonjs-reject",
+      "form": "jsdoc-rest",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @param {...number} values\n * @returns {number} */\nexport function first(...values) { return values[0]; }\n",
+        "entry.ts": "import {first} from './api.js'; export const result = first('bad');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-rest-esnext-accept",
+      "form": "jsdoc-rest",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @param {...number} values\n * @returns {number} */\nexport function first(...values) { return values[0]; }\n",
+        "entry.ts": "import {first} from './api.js'; export const result = first(42,7);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-rest-esnext-reject",
+      "form": "jsdoc-rest",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @param {...number} values\n * @returns {number} */\nexport function first(...values) { return values[0]; }\n",
+        "entry.ts": "import {first} from './api.js'; export const result = first('bad');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-null-union-commonjs-accept",
+      "form": "jsdoc-null-union",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @param {number | null} value\n * @returns {number} */\nexport function answer(value) { return value === null ? 42 : value; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer(null);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-null-union-commonjs-reject",
+      "form": "jsdoc-null-union",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @param {number | null} value\n * @returns {number} */\nexport function answer(value) { return value === null ? 42 : value; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer('bad');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-null-union-esnext-accept",
+      "form": "jsdoc-null-union",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @param {number | null} value\n * @returns {number} */\nexport function answer(value) { return value === null ? 42 : value; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer(null);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-null-union-esnext-reject",
+      "form": "jsdoc-null-union",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @param {number | null} value\n * @returns {number} */\nexport function answer(value) { return value === null ? 42 : value; }\n",
+        "entry.ts": "import {answer} from './api.js'; export const result = answer('bad');\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-import-typedef-commonjs-accept",
+      "form": "jsdoc-import-typedef",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "schema.ts": "export interface Item { value: number; }\n",
+        "api.js": "/** @typedef {import('./schema.js').Item} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:42});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-import-typedef-commonjs-reject",
+      "form": "jsdoc-import-typedef",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "schema.ts": "export interface Item { value: number; }\n",
+        "api.js": "/** @typedef {import('./schema.js').Item} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:\"bad\"});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-import-typedef-esnext-accept",
+      "form": "jsdoc-import-typedef",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "schema.ts": "export interface Item { value: number; }\n",
+        "api.js": "/** @typedef {import('./schema.js').Item} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:42});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-import-typedef-esnext-reject",
+      "form": "jsdoc-import-typedef",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "schema.ts": "export interface Item { value: number; }\n",
+        "api.js": "/** @typedef {import('./schema.js').Item} Item */\n/** @param {Item} item\n * @returns {number} */\nexport function read(item) { return item.value; }\n",
+        "entry.ts": "import {read} from './api.js'; export const result = read({value:\"bad\"});\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-check-off-commonjs-accept",
+      "form": "jsdoc-check-off",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @type {number} */\nexport const value = 'unchecked';\n",
+        "entry.ts": "import {value} from './api.js'; export const result: number = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": false,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-check-off-commonjs-reject",
+      "form": "jsdoc-check-off",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "/** @type {number} */\nexport const value = 'unchecked';\n",
+        "entry.ts": "import {value} from './api.js'; export const result: string = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": false,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-check-off-esnext-accept",
+      "form": "jsdoc-check-off",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @type {number} */\nexport const value = 'unchecked';\n",
+        "entry.ts": "import {value} from './api.js'; export const result: number = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": false,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-check-off-esnext-reject",
+      "form": "jsdoc-check-off",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "/** @type {number} */\nexport const value = 'unchecked';\n",
+        "entry.ts": "import {value} from './api.js'; export const result: string = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": false,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-ts-check-commonjs-accept",
+      "form": "jsdoc-ts-check",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "// @ts-check\n/** @type {number} */\nexport const value = 42;\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": false,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-ts-check-commonjs-reject",
+      "form": "jsdoc-ts-check",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "// @ts-check\n/** @type {number} */\nexport const value = \"bad\";\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": false,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-ts-check-esnext-accept",
+      "form": "jsdoc-ts-check",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "// @ts-check\n/** @type {number} */\nexport const value = 42;\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": false,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-ts-check-esnext-reject",
+      "form": "jsdoc-ts-check",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "// @ts-check\n/** @type {number} */\nexport const value = \"bad\";\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": false,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-ts-nocheck-commonjs-accept",
+      "form": "jsdoc-ts-nocheck",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "// @ts-nocheck\n/** @type {number} */\nexport const value = 'unchecked';\n",
+        "entry.ts": "import {value} from './api.js'; export const result: number = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-ts-nocheck-commonjs-reject",
+      "form": "jsdoc-ts-nocheck",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "// @ts-nocheck\n/** @type {number} */\nexport const value = 'unchecked';\n",
+        "entry.ts": "import {value} from './api.js'; export const result: string = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-ts-nocheck-esnext-accept",
+      "form": "jsdoc-ts-nocheck",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "// @ts-nocheck\n/** @type {number} */\nexport const value = 'unchecked';\n",
+        "entry.ts": "import {value} from './api.js'; export const result: number = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-ts-nocheck-esnext-reject",
+      "form": "jsdoc-ts-nocheck",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "// @ts-nocheck\n/** @type {number} */\nexport const value = 'unchecked';\n",
+        "entry.ts": "import {value} from './api.js'; export const result: string = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-unknown-type-commonjs-accept",
+      "form": "jsdoc-unknown-type",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "// π 😀\n/** @type {number} */\nexport const value = 42;\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-unknown-type-commonjs-reject",
+      "form": "jsdoc-unknown-type",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "api.js": "// π 😀\n/** @type {MissingType} */\nexport const value = 42;\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-unknown-type-esnext-accept",
+      "form": "jsdoc-unknown-type",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "// π 😀\n/** @type {number} */\nexport const value = 42;\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "jsdoc-unknown-type-esnext-reject",
+      "form": "jsdoc-unknown-type",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "api.js": "// π 😀\n/** @type {MissingType} */\nexport const value = 42;\n",
+        "entry.ts": "import {value} from './api.js'; export const result = value;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-main-js-commonjs-accept",
+      "form": "package-main-js",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-main-js-commonjs-reject",
+      "form": "package-main-js",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-main-js-esnext-accept",
+      "form": "package-main-js",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-main-js-esnext-reject",
+      "form": "package-main-js",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-commonjs-js-commonjs-accept",
+      "form": "package-commonjs-js",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"commonjs\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\nexports.double = double;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-commonjs-js-commonjs-reject",
+      "form": "package-commonjs-js",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"commonjs\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\nexports.double = double;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-types-sibling-commonjs-accept",
+      "form": "package-types-sibling",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-types-sibling-commonjs-reject",
+      "form": "package-types-sibling",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-types-sibling-esnext-accept",
+      "form": "package-types-sibling",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-types-sibling-esnext-reject",
+      "form": "package-types-sibling",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-attypes-precedence-commonjs-accept",
+      "form": "package-attypes-precedence",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/@types/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-attypes-precedence-commonjs-reject",
+      "form": "package-attypes-precedence",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/@types/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-attypes-precedence-esnext-accept",
+      "form": "package-attypes-precedence",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/@types/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-attypes-precedence-esnext-reject",
+      "form": "package-attypes-precedence",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/@types/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-depth-zero-commonjs-accept",
+      "form": "package-depth-zero",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "node_modules/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 0,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-depth-zero-commonjs-reject",
+      "form": "package-depth-zero",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 0,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-depth-zero-esnext-accept",
+      "form": "package-depth-zero",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "node_modules/pkg/index.d.ts": "export declare function double(value: number): number;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 0,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-depth-zero-esnext-reject",
+      "form": "package-depth-zero",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 0,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "paths-exact-js-commonjs-accept",
+      "form": "paths-exact-js",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.js"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-exact-js-commonjs-reject",
+      "form": "paths-exact-js",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.js"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-exact-js-esnext-accept",
+      "form": "paths-exact-js",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.js"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-exact-js-esnext-reject",
+      "form": "paths-exact-js",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.js"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-ordered-fallback-commonjs-accept",
+      "form": "paths-ordered-fallback",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math/math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "math/*": [
+            "missing/*",
+            "vendor/*"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math/math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-ordered-fallback-commonjs-reject",
+      "form": "paths-ordered-fallback",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math/math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "math/*": [
+            "missing/*",
+            "vendor/*"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math/math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-ordered-fallback-esnext-accept",
+      "form": "paths-ordered-fallback",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math/math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "math/*": [
+            "missing/*",
+            "vendor/*"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math/math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-ordered-fallback-esnext-reject",
+      "form": "paths-ordered-fallback",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math/math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "math/*": [
+            "missing/*",
+            "vendor/*"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math/math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-longest-prefix-commonjs-accept",
+      "form": "paths-longest-prefix",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "wrong/math/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "entry.ts": "import { double } from \"math/math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "*": [
+            "wrong/*"
+          ],
+          "math/*": [
+            "vendor/*"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math/math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-longest-prefix-commonjs-reject",
+      "form": "paths-longest-prefix",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "wrong/math/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "entry.ts": "import { double } from \"math/math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "*": [
+            "wrong/*"
+          ],
+          "math/*": [
+            "vendor/*"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math/math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-longest-prefix-esnext-accept",
+      "form": "paths-longest-prefix",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "wrong/math/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "entry.ts": "import { double } from \"math/math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "*": [
+            "wrong/*"
+          ],
+          "math/*": [
+            "vendor/*"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math/math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-longest-prefix-esnext-reject",
+      "form": "paths-longest-prefix",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "wrong/math/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "entry.ts": "import { double } from \"math/math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "*": [
+            "wrong/*"
+          ],
+          "math/*": [
+            "vendor/*"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math/math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-typescript-sibling-commonjs-accept",
+      "form": "paths-typescript-sibling",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "vendor/math.ts": "export function double(value: number): number { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-typescript-sibling-commonjs-reject",
+      "form": "paths-typescript-sibling",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "vendor/math.ts": "export function double(value: number): number { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-typescript-sibling-esnext-accept",
+      "form": "paths-typescript-sibling",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "vendor/math.ts": "export function double(value: number): number { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-typescript-sibling-esnext-reject",
+      "form": "paths-typescript-sibling",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "vendor/math.ts": "export function double(value: number): number { return value * 2; }\n",
+        "entry.ts": "import { double } from \"math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "baseurl-package-precedence-commonjs-accept",
+      "form": "baseurl-package-precedence",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "pkg.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": "."
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "pkg": "out/pkg.js"
+      }
+    },
+    {
+      "id": "baseurl-package-precedence-commonjs-reject",
+      "form": "baseurl-package-precedence",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "pkg.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": "."
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "pkg": "out/pkg.js"
+      }
+    },
+    {
+      "id": "baseurl-package-precedence-esnext-accept",
+      "form": "baseurl-package-precedence",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "pkg.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": "."
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "pkg": "out/pkg.js"
+      }
+    },
+    {
+      "id": "baseurl-package-precedence-esnext-reject",
+      "form": "baseurl-package-precedence",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\"}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "pkg.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": "."
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "pkg": "out/pkg.js"
+      }
+    },
+    {
+      "id": "rootdirs-js-commonjs-accept",
+      "form": "rootdirs-js",
+      "accepts": true,
+      "entry": "src/view/entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "generated/view/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "src/view/entry.ts": "import { double } from \"./math.js\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "rootDirs": [
+          "src",
+          "generated"
+        ]
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "out/src/view/entry.js|./math.js": "out/generated/view/math.js"
+      }
+    },
+    {
+      "id": "rootdirs-js-commonjs-reject",
+      "form": "rootdirs-js",
+      "accepts": false,
+      "entry": "src/view/entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "generated/view/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "src/view/entry.ts": "import { double } from \"./math.js\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "rootDirs": [
+          "src",
+          "generated"
+        ]
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "out/src/view/entry.js|./math.js": "out/generated/view/math.js"
+      }
+    },
+    {
+      "id": "rootdirs-js-esnext-accept",
+      "form": "rootdirs-js",
+      "accepts": true,
+      "entry": "src/view/entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "generated/view/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "src/view/entry.ts": "import { double } from \"./math.js\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "rootDirs": [
+          "src",
+          "generated"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "out/src/view/entry.js|./math.js": "out/generated/view/math.js"
+      }
+    },
+    {
+      "id": "rootdirs-js-esnext-reject",
+      "form": "rootdirs-js",
+      "accepts": false,
+      "entry": "src/view/entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "generated/view/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "src/view/entry.ts": "import { double } from \"./math.js\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "rootDirs": [
+          "src",
+          "generated"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "out/src/view/entry.js|./math.js": "out/generated/view/math.js"
+      }
+    },
+    {
+      "id": "typesversions-js-commonjs-accept",
+      "form": "typesversions-js",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\",\"typesVersions\":{\">=5.9\":{\"*\":[\"absent/*\",\"typed/*\"]}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/typed/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg/math.js\";\nexport const result = double(21);\n",
+        "node_modules/pkg/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "typesversions-js-commonjs-reject",
+      "form": "typesversions-js",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\",\"typesVersions\":{\">=5.9\":{\"*\":[\"absent/*\",\"typed/*\"]}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/typed/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg/math.js\";\nexport const result = double(\"bad\");\n",
+        "node_modules/pkg/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "typesversions-js-esnext-accept",
+      "form": "typesversions-js",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\",\"typesVersions\":{\">=5.9\":{\"*\":[\"absent/*\",\"typed/*\"]}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/typed/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg/math.js\";\nexport const result = double(21);\n",
+        "node_modules/pkg/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "typesversions-js-esnext-reject",
+      "form": "typesversions-js",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"main\":\"index.js\",\"typesVersions\":{\">=5.9\":{\"*\":[\"absent/*\",\"typed/*\"]}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/typed/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg/math.js\";\nexport const result = double(\"bad\");\n",
+        "node_modules/pkg/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "exports-conditions-js-esnext-accept",
+      "form": "exports-conditions-js",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"exports\":{\".\":{\"development\":\"./dev.js\",\"default\":\"./index.js\"}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/dev.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "Node16",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "customConditions": [
+          "development"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "exports-conditions-js-esnext-reject",
+      "form": "exports-conditions-js",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"exports\":{\".\":{\"development\":\"./dev.js\",\"default\":\"./index.js\"}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/dev.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "Node16",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "customConditions": [
+          "development"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "exports-typesversions-precedence-esnext-accept",
+      "form": "exports-typesversions-precedence",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"exports\":{\"./math\":\"./public.js\"},\"typesVersions\":{\"*\":{\"*\":[\"wrong/*\"]}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/public.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "node_modules/pkg/wrong/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "entry.ts": "import { double } from \"pkg/math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "exports-typesversions-precedence-esnext-reject",
+      "form": "exports-typesversions-precedence",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"exports\":{\"./math\":\"./public.js\"},\"typesVersions\":{\"*\":{\"*\":[\"wrong/*\"]}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/public.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "node_modules/pkg/wrong/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "entry.ts": "import { double } from \"pkg/math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "exports-blocked-js-esnext-accept",
+      "form": "exports-blocked-js",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"exports\":{\".\":\"./index.js\",\"./hidden\":null}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "node_modules/pkg/hidden.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "exports-blocked-js-esnext-reject",
+      "form": "exports-blocked-js",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"exports\":{\".\":\"./index.js\",\"./hidden\":null}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "node_modules/pkg/hidden.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import { double } from \"pkg/hidden\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "mapped-mjs-esnext-accept",
+      "form": "mapped-mjs",
+      "accepts": true,
+      "entry": "entry.mts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.mjs": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.mts": "import { double } from \"math\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "Node16",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.mjs"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math": "out/vendor/math.mjs"
+      }
+    },
+    {
+      "id": "mapped-mjs-esnext-reject",
+      "form": "mapped-mjs",
+      "accepts": false,
+      "entry": "entry.mts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.mjs": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.mts": "import { double } from \"math\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "Node16",
+        "moduleResolution": "Node16",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.mjs"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math": "out/vendor/math.mjs"
+      }
+    },
+    {
+      "id": "package-cjs-extension-commonjs-accept",
+      "form": "package-cjs-extension",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"main\":\"index.cjs\"}\n",
+        "node_modules/pkg/index.cjs": "/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\nexports.double = double;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "package-cjs-extension-commonjs-reject",
+      "form": "package-cjs-extension",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "node_modules/pkg/package.json": "{\"main\":\"index.cjs\"}\n",
+        "node_modules/pkg/index.cjs": "/**\n * @param {number} value\n * @returns {number}\n */\nfunction double(value) { return value * 2; }\nexports.double = double;\n",
+        "entry.ts": "import { double } from \"pkg\";\nexport const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf"
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "typesroots-scoped-commonjs-accept",
+      "form": "typesroots-scoped",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "types/@scope/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import {double} from './api.js'; const witness: typeof globalSeed = 0; export const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "@scope/seed"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "typesroots-scoped-commonjs-reject",
+      "form": "typesroots-scoped",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "types/@scope/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import {double} from './api.js'; const witness: typeof globalSeed = 0; export const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "@scope/seed"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "typesroots-scoped-esnext-accept",
+      "form": "typesroots-scoped",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "types/@scope/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import {double} from './api.js'; const witness: typeof globalSeed = 0; export const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "@scope/seed"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "typesroots-scoped-esnext-reject",
+      "form": "typesroots-scoped",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "types/@scope/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "api.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "entry.ts": "import {double} from './api.js'; const witness: typeof globalSeed = 0; export const result = double(\"bad\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "@scope/seed"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "missing-explicit-type-library-commonjs-accept",
+      "form": "missing-explicit-type-library",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "types/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "entry.ts": "export const result = 42;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "seed"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "missing-explicit-type-library-commonjs-reject",
+      "form": "missing-explicit-type-library",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "types/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "entry.ts": "export const result = 42;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "missing"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "missing-explicit-type-library-esnext-accept",
+      "form": "missing-explicit-type-library",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "types/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "entry.ts": "export const result = 42;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "seed"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "missing-explicit-type-library-esnext-reject",
+      "form": "missing-explicit-type-library",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "types/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "entry.ts": "export const result = 42;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "missing"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "missing-implicit-type-library-commonjs-accept",
+      "form": "missing-implicit-type-library",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "types/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "entry.ts": "export const result = 42;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "missing-implicit-type-library-commonjs-reject",
+      "form": "missing-implicit-type-library",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "types/seed/package.json": "{\"name\":\"seed\"}\n",
+        "entry.ts": "export const result = 42;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "missing-implicit-type-library-esnext-accept",
+      "form": "missing-implicit-type-library",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "types/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "entry.ts": "export const result = 42;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "missing-implicit-type-library-esnext-reject",
+      "form": "missing-implicit-type-library",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "types/seed/package.json": "{\"name\":\"seed\"}\n",
+        "entry.ts": "export const result = 42;\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "typeRoots": [
+          "./types"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {}
+    },
+    {
+      "id": "resolver-composition-esnext-accept",
+      "form": "resolver-composition",
+      "accepts": true,
+      "entry": "src/view/entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"exports\":{\"./math\":{\"development\":\"./dev.js\",\"default\":\"./index.js\"}},\"typesVersions\":{\"*\":{\"*\":[\"wrong/*\"]}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/dev.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "generated/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "generated/view/helper.js": "/** @returns {number} */\nexport function extra() { return 0; }\n",
+        "types/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "src/view/entry.ts": "import {double as local} from 'local/math'; import {double as packaged} from 'pkg/math'; import {extra} from './helper.js'; const witness: typeof globalSeed = 0; export const result = local(10) + packaged(11) + extra();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "seed"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "local/*": [
+            "absent/*",
+            "generated/*"
+          ]
+        },
+        "rootDirs": [
+          "src",
+          "generated"
+        ],
+        "typeRoots": [
+          "./types"
+        ],
+        "customConditions": [
+          "development"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "local/math": "out/generated/math.js",
+        "out/src/view/entry.js|./helper.js": "out/generated/view/helper.js"
+      }
+    },
+    {
+      "id": "resolver-composition-esnext-reject",
+      "form": "resolver-composition",
+      "accepts": false,
+      "entry": "src/view/entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "node_modules/pkg/package.json": "{\"type\":\"module\",\"exports\":{\"./math\":{\"development\":\"./dev.js\",\"default\":\"./index.js\"}},\"typesVersions\":{\"*\":{\"*\":[\"wrong/*\"]}}}\n",
+        "node_modules/pkg/index.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "node_modules/pkg/dev.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "generated/math.js": "/**\n * @param {number} value\n * @returns {number}\n */\nexport function double(value) { return value * 2; }\n",
+        "generated/view/helper.js": "/** @returns {number} */\nexport function extra() { return 0; }\n",
+        "types/seed/index.d.ts": "declare const globalSeed: number;\n",
+        "src/view/entry.ts": "import {double as local} from 'local/math'; import {double as packaged} from 'pkg/math'; import {extra} from './helper.js'; const witness: typeof globalSeed = 0; export const result = local(\"bad\") + packaged(11) + extra();\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [
+          "seed"
+        ],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "baseUrl": ".",
+        "paths": {
+          "local/*": [
+            "absent/*",
+            "generated/*"
+          ]
+        },
+        "rootDirs": [
+          "src",
+          "generated"
+        ],
+        "typeRoots": [
+          "./types"
+        ],
+        "customConditions": [
+          "development"
+        ]
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "local/math": "out/generated/math.js",
+        "out/src/view/entry.js|./helper.js": "out/generated/view/helper.js"
+      }
+    },
+    {
+      "id": "paths-explicit-js-sibling-commonjs-accept",
+      "form": "paths-explicit-js-sibling",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "vendor/math.ts": "export function double(value: number): number { return value * 2; }\n",
+        "entry.ts": "import {double} from 'math'; export const result = double(\"native\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.js"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-explicit-js-sibling-commonjs-reject",
+      "form": "paths-explicit-js-sibling",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"commonjs\"}\n",
+        "vendor/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "vendor/math.ts": "export function double(value: number): number { return value * 2; }\n",
+        "entry.ts": "import {double} from 'math'; export const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.js"
+          ]
+        }
+      },
+      "runtimeModule": "CommonJS",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-explicit-js-sibling-esnext-accept",
+      "form": "paths-explicit-js-sibling",
+      "accepts": true,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "vendor/math.ts": "export function double(value: number): number { return value * 2; }\n",
+        "entry.ts": "import {double} from 'math'; export const result = double(\"native\");\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.js"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    },
+    {
+      "id": "paths-explicit-js-sibling-esnext-reject",
+      "form": "paths-explicit-js-sibling",
+      "accepts": false,
+      "entry": "entry.ts",
+      "files": {
+        "package.json": "{\"type\":\"module\"}\n",
+        "vendor/math.js": "/**\n * @param {string} value\n * @returns {number}\n */\nexport function double(value) { return 42; }\n",
+        "vendor/math.ts": "export function double(value: number): number { return value * 2; }\n",
+        "entry.ts": "import {double} from 'math'; export const result = double(21);\n"
+      },
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Node10",
+        "allowJs": true,
+        "checkJs": true,
+        "maxNodeModuleJsDepth": 1,
+        "declaration": true,
+        "noEmitOnError": true,
+        "outDir": "out",
+        "rootDir": ".",
+        "types": [],
+        "lib": [
+          "ES2022"
+        ],
+        "newLine": "lf",
+        "paths": {
+          "math": [
+            "./vendor/math.js"
+          ]
+        }
+      },
+      "runtimeModule": "ESNext",
+      "runtimeMappings": {
+        "math": "out/vendor/math.js"
+      }
+    }
+  ],
+  "ownerControls": [
+    "canonical-js-source-confinement",
+    "ordered-fallback-is-not-authority-fallback",
+    "typescript-sibling-precedence",
+    "manifest-change-missing-restoration-invalidation",
+    "jsdoc-shared-work-and-runtime-bounds"
+  ]
+}

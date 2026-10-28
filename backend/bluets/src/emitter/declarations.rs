@@ -72,7 +72,13 @@ pub(super) fn emit_declaration(
                         .and_then(|context| context.private_alias(&alias.name))
                         .map(str::to_string)
                         .unwrap_or_else(|| {
-                            declaration_alias_to_ts(&alias.value, &module.source, options)
+                            let text =
+                                declaration_alias_to_ts(&alias.value, &module.source, options);
+                            if crate::parser::is_javascript(&module.id) {
+                                canonical_import_type(&text)
+                            } else {
+                                text
+                            }
                         }),
                 );
                 output.push_str(";\n");
@@ -125,7 +131,7 @@ pub(super) fn emit_declaration(
                     && (computed_key_dependencies.contains(&variable.name)
                         || (!explicit_export_name(module, &variable.name)
                             && inferred.is_some_and(|context| context.retained(&variable.name))));
-                if variable.exported && module.id.ends_with(".js") {
+                if variable.exported && crate::parser::is_javascript(&module.id) {
                     output.push_str("export ");
                 } else if variable.exported {
                     output.push_str("export declare ");
@@ -139,11 +145,13 @@ pub(super) fn emit_declaration(
                     if let Some((text, initializer)) =
                         inferred.and_then(|context| context.variable(variable))
                     {
-                        output.push_str(if *initializer && !module.id.ends_with(".js") {
-                            " = "
-                        } else {
-                            ": "
-                        });
+                        output.push_str(
+                            if *initializer && !crate::parser::is_javascript(&module.id) {
+                                " = "
+                            } else {
+                                ": "
+                            },
+                        );
                         output.push_str(text);
                         output.push_str(";\n");
                         continue;
@@ -197,7 +205,7 @@ pub(super) fn emit_declaration(
                     && inferred.is_some_and(|context| context.retained(&function.name));
                 if function.default_export {
                     output.push_str("export default function ");
-                } else if function.exported && module.id.ends_with(".js") {
+                } else if function.exported && crate::parser::is_javascript(&module.id) {
                     output.push_str("export function ");
                 } else if function.exported {
                     output.push_str("export declare function ");
@@ -231,7 +239,7 @@ pub(super) fn emit_declaration(
                                     .as_ref()
                                     .map(type_to_ts)
                                     .unwrap_or_else(|| {
-                                        if module.id.ends_with(".js") {
+                                        if crate::parser::is_javascript(&module.id) {
                                             "any".to_string()
                                         } else {
                                             "unknown".to_string()
@@ -520,4 +528,22 @@ fn declaration_type_to_ts(value: &Type) -> String {
 fn declaration_alias_to_ts(value: &Type, source: &str, options: &CompilerOptions) -> String {
     callable_objects::render_alias(value, source, options)
         .unwrap_or_else(|| declaration_type_to_ts(value))
+}
+
+pub(super) fn canonical_import_type(text: &str) -> String {
+    let Ok(tokens) = crate::syntax::lex("<type>", text) else {
+        return text.into();
+    };
+    let mut result = text.to_string();
+    for window in tokens.windows(3).rev() {
+        if window[0].is("import") && window[1].is("(") {
+            if let Some(specifier) = crate::syntax::string_contents(&window[2]) {
+                result.replace_range(
+                    window[2].start..window[2].end,
+                    &serde_json::to_string(&specifier).expect("specifier JSON"),
+                );
+            }
+        }
+    }
+    result
 }

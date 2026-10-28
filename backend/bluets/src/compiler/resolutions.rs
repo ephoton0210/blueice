@@ -9,6 +9,20 @@ use crate::package_resolution::ImportMode;
 use crate::parser::{ImportAttributes, ImportDeclaration, TypeExportDeclaration};
 
 impl Project {
+    /// Already-authorized erased import queries, without filesystem access.
+    pub fn resolved_import_queries<'a>(
+        &'a self,
+        from: &'a str,
+    ) -> impl Iterator<Item = (&'a str, &'a str)> + 'a {
+        self.modules
+            .get(from)
+            .into_iter()
+            .flat_map(|module| &module.import_types)
+            .filter_map(move |reference| {
+                self.resolved_module(from, &reference.specifier)
+                    .map(|target| (reference.specifier.as_str(), target))
+            })
+    }
     /// Iterates already-authorized reference edges as (source, kind, name, target).
     /// This is immutable graph metadata: it performs no I/O or new resolution.
     pub fn resolved_source_references(&self) -> impl Iterator<Item = (&str, &str, &str, &str)> {

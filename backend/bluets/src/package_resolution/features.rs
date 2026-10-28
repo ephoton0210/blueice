@@ -109,7 +109,8 @@ impl<F: PackageFs> PackageResolver<F> {
 
     fn legacy_candidate(&self, path: &Path, exact: bool) -> Result<Option<PathBuf>, ResolveError> {
         if exact {
-            Ok(exact_candidates(path)
+            Ok(self
+                .candidates(path, true)
                 .into_iter()
                 .find(|path| self.probe_file(path)))
         } else {
