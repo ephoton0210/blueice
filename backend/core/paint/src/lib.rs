@@ -401,15 +401,40 @@ fn paint_fragment(
                 let italic = style.is_italic();
                 // The nearest block ancestor's opacity is already in `inherited`.
                 let color = apply_opacity(style.color, inherited.opacity);
-                out.push(PaintCommand::Text {
-                    x,
-                    y,
-                    text: text.clone(),
-                    color,
-                    font_size_px: style.font_size_px,
-                    bold,
-                    italic,
-                });
+                // The rasterizer draws a string at its natural advances, so a
+                // run with letter-spacing is emitted one character at a time at
+                // the positions layout measured.
+                let spacing = style
+                    .other
+                    .get("letter-spacing")
+                    .and_then(|v| length_px(v, style.font_size_px))
+                    .filter(|s| *s != 0.0);
+                let mut emit = |x: f64, text: String| {
+                    out.push(PaintCommand::Text {
+                        x,
+                        y,
+                        text,
+                        color,
+                        font_size_px: style.font_size_px,
+                        bold,
+                        italic,
+                    });
+                };
+                match spacing {
+                    Some(spacing) => {
+                        let mut cursor = x;
+                        for c in text.chars() {
+                            emit(cursor, c.to_string());
+                            cursor += blueice_font::measure_text_width(
+                                &c.to_string(),
+                                style.font_size_px,
+                                bold,
+                                italic,
+                            ) + spacing;
+                        }
+                    }
+                    None => emit(x, text.clone()),
+                }
                 paint_decorations(fragment, x, y, style, inherited, color, out);
             }
         }
@@ -1266,5 +1291,30 @@ mod tests {
             .collect();
         assert_eq!(borders.len(), 4);
         assert_eq!(borders[0].height, 10.0, "0.5em of 20px");
+    }
+
+    #[test]
+    fn letter_spacing_places_each_character_where_layout_measured_it() {
+        let frame = paint_html("<p>abc</p>", "p { letter-spacing: 5px; }", 400.0);
+        let xs: Vec<f64> = frame
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { x, .. } => Some(*x),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(xs.len(), 3, "one command per character");
+        let a = blueice_font::measure_text_width("a", 16.0, false, false);
+        let b = blueice_font::measure_text_width("b", 16.0, false, false);
+        assert!((xs[1] - xs[0] - (a + 5.0)).abs() < 0.01);
+        assert!((xs[2] - xs[1] - (b + 5.0)).abs() < 0.01);
+        let plain = paint_html("<p>abc</p>", "", 400.0);
+        let texts = plain
+            .commands
+            .iter()
+            .filter(|c| matches!(c, PaintCommand::Text { .. }))
+            .count();
+        assert_eq!(texts, 1, "no spacing, one run");
     }
 }

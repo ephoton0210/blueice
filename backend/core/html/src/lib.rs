@@ -11,6 +11,7 @@
 //! "MVP HTML scope" for exactly which elements/attributes are supported
 //! and which spec algorithms are kept vs. cut.
 
+mod entities;
 mod tokenizer;
 mod tree_builder;
 

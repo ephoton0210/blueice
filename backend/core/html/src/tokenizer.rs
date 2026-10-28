@@ -81,15 +81,6 @@ enum State {
     SelfClosingStartTag,
 }
 
-const NAMED_REFERENCES: &[(&str, &str)] = &[
-    ("amp;", "&"),
-    ("lt;", "<"),
-    ("gt;", ">"),
-    ("quot;", "\""),
-    ("apos;", "'"),
-    ("nbsp;", "\u{A0}"),
-];
-
 fn is_html_space(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\x0C' | '\r')
 }
@@ -238,7 +229,7 @@ impl Tokenizer {
                         }
                         Some('&') => {
                             self.advance();
-                            let s = self.consume_character_reference();
+                            let s = self.consume_character_reference(false);
                             self.text_buffer.push_str(&s);
                         }
                         Some(c) => {
@@ -492,7 +483,7 @@ impl Tokenizer {
                     }
                     Some('&') => {
                         self.advance();
-                        let s = self.consume_character_reference();
+                        let s = self.consume_character_reference(true);
                         self.attr_value.push_str(&s);
                     }
                     Some(c) => {
@@ -518,7 +509,7 @@ impl Tokenizer {
                     }
                     Some('&') => {
                         self.advance();
-                        let s = self.consume_character_reference();
+                        let s = self.consume_character_reference(true);
                         self.attr_value.push_str(&s);
                     }
                     Some(c) => {
@@ -544,7 +535,7 @@ impl Tokenizer {
                     }
                     Some('&') => {
                         self.advance();
-                        let s = self.consume_character_reference();
+                        let s = self.consume_character_reference(true);
                         self.attr_value.push_str(&s);
                     }
                     Some('>') => {
@@ -680,7 +671,7 @@ impl Tokenizer {
     /// a literal `&` on no match, per the spec's "ambiguous ampersand"
     /// behavior -- no separate lookahead/backtrack needed since an
     /// unmatched reference is just treated as plain text either way.
-    fn consume_character_reference(&mut self) -> String {
+    fn consume_character_reference(&mut self, in_attribute: bool) -> String {
         if self.peek() == Some('#') {
             // Looked ahead first, without consuming anything yet: per
             // spec, "absence of digits in numeric character reference"
@@ -724,11 +715,33 @@ impl Tokenizer {
             return resolve_numeric_character_reference(code).to_string();
         }
 
-        for (name, value) in NAMED_REFERENCES {
-            if self.matches_ahead(name) {
-                self.pos += name.chars().count();
-                return value.to_string();
+        // The longest name that matches here, with or without its semicolon.
+        let longest = crate::entities::NAMED_REFERENCES
+            .iter()
+            .map(|(name, _)| name.len())
+            .max()
+            .unwrap_or(0);
+        let available = self.input.len().saturating_sub(self.pos).min(longest);
+        let ahead: String = self.input[self.pos..self.pos + available].iter().collect();
+        for length in (1..=ahead.chars().count()).rev() {
+            let candidate: String = ahead.chars().take(length).collect();
+            let Ok(index) = crate::entities::NAMED_REFERENCES
+                .binary_search_by(|(name, _)| (*name).cmp(candidate.as_str()))
+            else {
+                continue;
+            };
+            let value = crate::entities::NAMED_REFERENCES[index].1;
+            let terminated = candidate.ends_with(';');
+            // In an attribute, a legacy name with no semicolon followed by `=`
+            // or a letter/digit stays literal (`?a=1&copy=2`).
+            if !terminated && in_attribute {
+                let next = self.input.get(self.pos + length).copied();
+                if next.is_some_and(|c| c == '=' || c.is_ascii_alphanumeric()) {
+                    continue;
+                }
             }
+            self.pos += length;
+            return value.to_string();
         }
 
         "&".to_string()
@@ -873,7 +886,7 @@ impl Tokenizer {
                 }
                 Some('&') if rcdata => {
                     self.advance();
-                    let s = self.consume_character_reference();
+                    let s = self.consume_character_reference(false);
                     self.text_buffer.push_str(&s);
                 }
                 Some(c) => {
@@ -1585,5 +1598,32 @@ mod tests {
                 Token::Eof
             ]
         );
+    }
+
+    #[test]
+    fn the_full_named_reference_table_is_decoded() {
+        let tokens = tokenize_all("&copy; &hellip; &rarr; &eacute; &frac12; &NotEqualTilde; &lt");
+        assert_eq!(
+            tokens,
+            vec![
+                text("\u{a9} \u{2026} \u{2192} \u{e9} \u{bd} \u{2242}\u{338} <"),
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_names_without_a_semicolon_decode_in_text_but_not_before_alphanumerics_in_attributes()
+    {
+        assert_eq!(
+            tokenize_all("a&copy b &notit; c"),
+            vec![text("a\u{a9} b \u{ac}it; c"), Token::Eof],
+            "&not is a legacy name, so `&notit;` is the symbol then `it;`"
+        );
+        let tokens = tokenize_all(r#"<a href="?a=1&copy=2&amp;b=3&copy;">x</a>"#);
+        let Token::StartTag { attrs, .. } = &tokens[0] else {
+            panic!("a start tag first");
+        };
+        assert_eq!(attrs[0].1, "?a=1&copy=2&b=3\u{a9}");
     }
 }

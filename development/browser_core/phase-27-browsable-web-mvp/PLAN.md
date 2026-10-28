@@ -340,6 +340,40 @@ Progress (2026-10-28):
 - Layout still has only block and inline boxes, so Cloudflare is styled but not
   laid out; step 2 (computed values) and step 3 (flex, positioning) are next.
 
+Progress, second slice (2026-10-28), all test-first with the workspace green:
+
+- **Step 2 (computed values) is done.** The CSS crate now parses 148 named
+  colours, `rgb()/hsl()/hwb()/oklab()/oklch()/color()/color-mix()/light-dark()`,
+  `calc()/min()/max()/clamp()`, `rem`/`vw`/`vh`/`vmin`/`vmax` and absolute units;
+  custom properties inherit with cycle and depth guards and `var()` substitutes
+  (shorthands expand afterwards); `inherit`/`initial`/`unset` work everywhere; more
+  text properties inherit; tokenizer escapes (`.md\:flex`) and exponents work; the
+  selector language gained `+`/`~`, every attribute operator, `:not/:is/:where`,
+  `:nth-*` and the structural/form/link states; rules are found through
+  id/class/type buckets; a nested rule no longer corrupts a sheet; `flex`, `gap`,
+  `inset`, `overflow`, `background`, per-side `border`, `text-decoration` and
+  logical shorthands expand. The HTML tokenizer decodes all 2,231 named references.
+- **Step 3 (layout) is mostly done.** Block layout (auto margins, min/max, margin
+  collapsing, relative/absolute/fixed positioning with containing blocks,
+  shrink-to-fit), inline layout (line boxes on a shared baseline, atomic inlines,
+  `white-space`, `text-align`, `vertical-align`, CJK breaking), flexbox (the
+  spec's algorithm), fragment records for z-index/clipping/visibility, layout
+  results memoised (a 650 KB Tailwind page: 82 s to 0.55 s in release, 5 s in
+  debug). Paint handles inherited opacity, `visibility`, `overflow` clipping,
+  z-order, text decoration and letter-spacing. The UA sheet follows the HTML
+  rendering section.
+- Cloudflare now shows its orange hero, centred white heading, button and the
+  following section; Google's home page shows its links, sign-in button, inputs and
+  centred footer. Chromium side-by-side is still to do.
+
+Still open, in priority order: `display: grid` and table layout (Cloudflare and
+many sites), floats, backgrounds and borders of plain `inline` boxes (only block
+and atomic boxes paint them), `border-radius`/`box-shadow`/gradients/transforms,
+list markers, `position: sticky`/`fixed` scrolling in the frontends, `text-overflow`,
+`@import` and `@container`, images and inline SVG (a replaced element currently
+reserves its size and paints nothing), and the generated content of
+`::before`/`::after`.
+
 Acceptance for this gap: the two pages above render with their text readable in
 the intended regions, the search field and navigation visible and clickable, and
 a Chromium side-by-side recorded (Phase 15 differential harness) with the known
