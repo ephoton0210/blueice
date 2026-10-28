@@ -314,6 +314,32 @@ Order of work (each step test-first, with a fixture rendered to pixels):
 4. **Replaced content**: `<img>` fetch/decode/paint and inline `<svg>` raster
    (Phase 21 owns the general pipeline; this phase needs a minimum).
 
+Progress (2026-10-28):
+
+- Step 1 is done. After both gatekeeper stages clear, core fetches each
+  `<link rel=stylesheet>` with `blueice_net::fetch_subresource_hop` (a single GET
+  hop that never classifies `text/css` as a download, with a streamed byte limit),
+  at most 16 sheets of 2 MiB each and 6 MiB together, 3 redirects, `text/css`
+  only, `CheckUrl` plus extension block rules before every hop; a failed sheet is
+  left out. The clearance carries them to the page, which merges each at its
+  link's position among the `<style>` tags (and `media` is honoured). `@import`
+  and sheets referenced from CSS are not fetched yet. Stylesheet text is not
+  given to the content stage of the gatekeeper (that stage reviews HTML).
+- Cloudflare's four sheets (655 KB, Tailwind v4: `@layer`, 883 `@supports`, 128
+  `@property`, `@container`) used to vanish in the parser because every at-rule
+  except `@media` was skipped. `@layer` blocks now join the sheet in source order
+  (no layer precedence: an unlayered rule should beat a layered one) and
+  `@supports` is true only for properties and values the engine implements, so a
+  page gets its fallback. Verified in the native window: headings and spacing now
+  follow the site's reset instead of UA defaults.
+- Known parser limits found on the way, all in the next steps: a rule body ends at
+  its first `}` (no CSS nesting), there is no function token (`var()`, `calc()`,
+  `oklch()`, `color-mix()` are unparsed), only `px`/`em`/`%` lengths exist, colour
+  is hex/rgb/a short name list, and the cascade tests every rule against every
+  element (a 650 KB sheet needs a rule index before it is fast).
+- Layout still has only block and inline boxes, so Cloudflare is styled but not
+  laid out; step 2 (computed values) and step 3 (flex, positioning) are next.
+
 Acceptance for this gap: the two pages above render with their text readable in
 the intended regions, the search field and navigation visible and clickable, and
 a Chromium side-by-side recorded (Phase 15 differential harness) with the known
