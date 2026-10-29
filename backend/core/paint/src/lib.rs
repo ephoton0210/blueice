@@ -32,6 +32,7 @@ use blueice_css::{ComputedStyle, Value};
 use blueice_dom::NodeId;
 use blueice_layout::{Fragment, FragmentKind};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // Re-exported: `PaintCommand`'s own public fields are typed with
 // `Color`, so a crate depending only on `blueice-paint` (as
@@ -41,6 +42,7 @@ use std::collections::HashMap;
 // of Done, forcing every downstream consumer to also add `blueice-css`
 // as a direct dependency just to spell this crate's own return types.
 pub use blueice_css::Color;
+pub use blueice_image::RasterImage;
 
 type StyleMap = HashMap<NodeId, ComputedStyle>;
 
@@ -107,6 +109,13 @@ pub enum PaintCommand {
         rect: Rect,
         radii: Radii,
         gradient: blueice_css::Gradient,
+    },
+    /// A decoded image drawn into `rect` (scaled to fit it) at `alpha`
+    /// (0-255) opacity.
+    Image {
+        rect: Rect,
+        image: Arc<RasterImage>,
+        alpha: u8,
     },
     /// A run of text with no internal structure -- one command per
     /// `blueice_layout` text fragment, at that fragment's own position.
@@ -223,6 +232,13 @@ pub fn dump_frame(frame: &Frame) -> String {
                 fmt_num(*spread),
                 fmt_color(*color)
             )),
+            PaintCommand::Image { rect, image, alpha } => out.push_str(&format!(
+                "image {} {}x{} alpha {}\n",
+                fmt_rect(*rect),
+                image.width,
+                image.height,
+                alpha
+            )),
             PaintCommand::Gradient { rect, gradient, .. } => out.push_str(&format!(
                 "gradient {} {} stops\n",
                 fmt_rect(*rect),
@@ -330,6 +346,217 @@ fn border_side_rect(
 /// `blueice-css`'s cascade docs); this arm only exists so the match
 /// stays exhaustive against `Color` without paint depending on that
 /// resolution having already happened.
+fn alpha_of(opacity: f32) -> u8 {
+    (opacity.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+/// A replaced element's image in its content box, per `object-fit`
+/// (`fill` by default) and `object-position` (centred).
+fn paint_content_image(
+    style: &ComputedStyle,
+    content: Rect,
+    image: &Arc<RasterImage>,
+    opacity: f32,
+    out: &mut Vec<PaintCommand>,
+) {
+    if content.width <= 0.0 || content.height <= 0.0 {
+        return;
+    }
+    let (iw, ih) = (f64::from(image.width), f64::from(image.height));
+    let fit = match style.other.get("object-fit") {
+        Some(Value::Keyword(k)) => k.as_str(),
+        _ => "fill",
+    };
+    let (w, h) = match fit {
+        "contain" | "scale-down" => {
+            let s = (content.width / iw).min(content.height / ih);
+            let s = if fit == "scale-down" { s.min(1.0) } else { s };
+            (iw * s, ih * s)
+        }
+        "cover" => {
+            let s = (content.width / iw).max(content.height / ih);
+            (iw * s, ih * s)
+        }
+        "none" => (iw, ih),
+        _ => (content.width, content.height),
+    };
+    let rect = Rect {
+        x: content.x + (content.width - w) / 2.0,
+        y: content.y + (content.height - h) / 2.0,
+        width: w,
+        height: h,
+    };
+    let clip = w > content.width + 0.01 || h > content.height + 0.01;
+    if clip {
+        out.push(PaintCommand::PushClip { rect: content });
+    }
+    out.push(PaintCommand::Image {
+        rect,
+        image: image.clone(),
+        alpha: alpha_of(opacity),
+    });
+    if clip {
+        out.push(PaintCommand::PopClip);
+    }
+}
+
+/// A `background-image` tiled, sized and positioned inside the box `rect`.
+fn paint_background_image(
+    style: &ComputedStyle,
+    rect: Rect,
+    image: &Arc<RasterImage>,
+    opacity: f32,
+    out: &mut Vec<PaintCommand>,
+) {
+    if rect.width <= 0.0 || rect.height <= 0.0 {
+        return;
+    }
+    let (iw, ih) = (f64::from(image.width), f64::from(image.height));
+    let parts = |value: Option<&Value>| -> Vec<Value> {
+        match value {
+            Some(Value::List(list)) => list.clone(),
+            Some(single) => vec![single.clone()],
+            None => Vec::new(),
+        }
+    };
+    // Size.
+    let size = parts(style.other.get("background-size"));
+    let axis = |v: Option<&Value>, whole: f64| -> Option<f64> {
+        match v {
+            Some(Value::Percentage(p)) => Some(whole * p / 100.0),
+            Some(v @ (Value::Length(_) | Value::Calc(_))) => length_px(v, style.font_size_px),
+            _ => None,
+        }
+    };
+    let (w, h) = match size.first() {
+        Some(Value::Keyword(k)) if k == "cover" || k == "contain" => {
+            let s = if k == "cover" {
+                (rect.width / iw).max(rect.height / ih)
+            } else {
+                (rect.width / iw).min(rect.height / ih)
+            };
+            (iw * s, ih * s)
+        }
+        first => match (axis(first, rect.width), axis(size.get(1), rect.height)) {
+            (Some(w), Some(h)) => (w, h),
+            (Some(w), None) => (w, w * ih / iw),
+            (None, Some(h)) => (h * iw / ih, h),
+            (None, None) => (iw, ih),
+        },
+    };
+    if w < 0.5 || h < 0.5 {
+        return;
+    }
+    // Position of the first tile.
+    let position = parts(style.other.get("background-position"));
+    let place = |v: Option<&Value>, free: f64, default: f64| -> f64 {
+        match v {
+            Some(Value::Keyword(k)) => match k.as_str() {
+                "left" | "top" => 0.0,
+                "right" | "bottom" => free,
+                "center" => free / 2.0,
+                _ => default * free,
+            },
+            Some(Value::Percentage(p)) => free * p / 100.0,
+            Some(v @ (Value::Length(_) | Value::Calc(_))) => {
+                length_px(v, style.font_size_px).unwrap_or(0.0)
+            }
+            _ => default * free,
+        }
+    };
+    // `top`/`bottom` written first swap the axes: `top left`.
+    let vertical_first = matches!(position.first(), Some(Value::Keyword(k)) if k == "top" || k == "bottom");
+    let (px, py) = if vertical_first && position.len() == 2 {
+        (&position[1], &position[0])
+    } else if position.len() == 1 && vertical_first {
+        // A lone `top` still centres horizontally.
+        let center = Value::Keyword("center".to_string());
+        return paint_tiles(style, rect, image, opacity, (w, h), (place(Some(&center), rect.width - w, 0.5), place(position.first(), rect.height - h, 0.0)), out);
+    } else if position.len() == 1 && matches!(position[0], Value::Keyword(ref k) if k == "center") {
+        (&position[0], &position[0])
+    } else if position.len() == 1 {
+        let center = Value::Keyword("center".to_string());
+        return paint_tiles(style, rect, image, opacity, (w, h), (place(position.first(), rect.width - w, 0.0), place(Some(&center), rect.height - h, 0.5)), out);
+    } else {
+        (
+            position.first().unwrap_or(&Value::Percentage(0.0)),
+            position.get(1).unwrap_or(&Value::Percentage(0.0)),
+        )
+    };
+    let origin = (
+        place(Some(px), rect.width - w, 0.0),
+        place(Some(py), rect.height - h, 0.0),
+    );
+    paint_tiles(style, rect, image, opacity, (w, h), origin, out);
+}
+
+fn paint_tiles(
+    style: &ComputedStyle,
+    rect: Rect,
+    image: &Arc<RasterImage>,
+    opacity: f32,
+    (w, h): (f64, f64),
+    (ox, oy): (f64, f64),
+    out: &mut Vec<PaintCommand>,
+) {
+    let repeat = match style.other.get("background-repeat") {
+        Some(Value::Keyword(k)) => (k.clone(), k.clone()),
+        Some(Value::List(list)) => {
+            let word = |v: Option<&Value>| match v {
+                Some(Value::Keyword(k)) => k.clone(),
+                _ => "repeat".to_string(),
+            };
+            (word(list.first()), word(list.get(1)))
+        }
+        _ => ("repeat".to_string(), "repeat".to_string()),
+    };
+    let (rx, ry) = match repeat.0.as_str() {
+        "repeat-x" => (true, false),
+        "repeat-y" => (false, true),
+        "no-repeat" => (false, false),
+        _ => (
+            repeat.0 == "repeat" || repeat.0 == "space" || repeat.0 == "round",
+            repeat.1 == "repeat" || repeat.1 == "space" || repeat.1 == "round",
+        ),
+    };
+    let tiles = |origin: f64, length: f64, step: f64, repeats: bool| -> Vec<f64> {
+        if !repeats {
+            return vec![origin];
+        }
+        // The first tile at or before the box's start.
+        let mut start = origin - ((origin / step).ceil()) * step;
+        if start > 0.0 {
+            start -= step;
+        }
+        let mut positions = Vec::new();
+        while start < length && positions.len() < 64 {
+            if start + step > 0.0 {
+                positions.push(start);
+            }
+            start += step;
+        }
+        positions
+    };
+    let xs = tiles(ox, rect.width, w, rx);
+    let ys = tiles(oy, rect.height, h, ry);
+    out.push(PaintCommand::PushClip { rect });
+    for y in &ys {
+        for x in &xs {
+            out.push(PaintCommand::Image {
+                rect: Rect {
+                    x: rect.x + x,
+                    y: rect.y + y,
+                    width: w,
+                    height: h,
+                },
+                image: image.clone(),
+                alpha: alpha_of(opacity),
+            });
+        }
+    }
+    out.push(PaintCommand::PopClip);
+}
+
 /// The four corner radii of `rect` in pixels, scaled down together when
 /// adjacent corners would overlap (CSS Backgrounds 3, 5.5).
 fn corner_radii(style: &ComputedStyle, rect: Rect) -> Radii {
@@ -462,6 +689,7 @@ fn paint_fragment(
     offset_x: f64,
     offset_y: f64,
     styles: &StyleMap,
+    images: &ImageMap,
     inherited: Inherited,
     out: &mut Vec<PaintCommand>,
 ) {
@@ -546,6 +774,9 @@ fn paint_fragment(
                         });
                     }
                 }
+                if let Some(image) = fragment.node.and_then(|n| images.background.get(&n)) {
+                    paint_background_image(style, rect, image, opacity, out);
+                }
                 let sides: Vec<Option<(Rect, f64)>> = BORDER_SIDES
                     .iter()
                     .map(|side| border_side_rect(side, rect, &style.other, style.font_size_px))
@@ -583,6 +814,23 @@ fn paint_fragment(
                             });
                         }
                     }
+                }
+                if let Some(image) = fragment.node.and_then(|n| images.content.get(&n)) {
+                    let pad = |side: &str| {
+                        style
+                            .other
+                            .get(&format!("padding-{side}"))
+                            .and_then(|v| length_px(v, style.font_size_px))
+                            .unwrap_or(0.0)
+                    };
+                    let border = |i: usize| sides[i].map_or(0.0, |(_, w)| w);
+                    let inner = Rect {
+                        x: rect.x + pad("left") + border(3),
+                        y: rect.y + pad("top") + border(0),
+                        width: rect.width - pad("left") - pad("right") - border(1) - border(3),
+                        height: rect.height - pad("top") - pad("bottom") - border(0) - border(2),
+                    };
+                    paint_content_image(style, inner, image, opacity, out);
                 }
             }
         }
@@ -667,7 +915,7 @@ fn paint_fragment(
     };
     if form.is_none() {
         for child in paint_order(&fragment.children) {
-            paint_fragment(child, x, y, styles, below, out);
+            paint_fragment(child, x, y, styles, images, below, out);
         }
     }
     if let (Some(form), Some(rect), Some(style)) = (form, native_clip, own_style) {
@@ -855,8 +1103,33 @@ fn paint_native_form(
 /// `blueice_layout::layout`), looking up each fragment's colors/fonts
 /// from `styles` (the same computed-style map layout was built from).
 pub fn paint(fragment: &Fragment, styles: &HashMap<NodeId, ComputedStyle>) -> Frame {
+    paint_with_images(fragment, styles, &ImageMap::default())
+}
+
+/// The decoded images a page has, by the node that shows them: replaced
+/// elements (`<img>`, an inline `<svg>`) and CSS `background-image` urls.
+#[derive(Debug, Clone, Default)]
+pub struct ImageMap {
+    pub content: HashMap<NodeId, Arc<RasterImage>>,
+    pub background: HashMap<NodeId, Arc<RasterImage>>,
+}
+
+/// [`paint`] with the page's decoded images.
+pub fn paint_with_images(
+    fragment: &Fragment,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    images: &ImageMap,
+) -> Frame {
     let mut commands = Vec::new();
-    paint_fragment(fragment, 0.0, 0.0, styles, Inherited::root(), &mut commands);
+    paint_fragment(
+        fragment,
+        0.0,
+        0.0,
+        styles,
+        images,
+        Inherited::root(),
+        &mut commands,
+    );
     Frame {
         width: fragment.width,
         height: fragment.height,
@@ -1608,5 +1881,124 @@ mod tests {
             .commands
             .iter()
             .any(|c| matches!(c, PaintCommand::Shadow { .. })));
+    }
+
+    fn solid(w: u32, h: u32) -> Arc<RasterImage> {
+        Arc::new(RasterImage::new(w, h, vec![255; (w * h * 4) as usize]))
+    }
+
+    fn element_named(doc: &blueice_dom::Document, from: NodeId, tag: &str) -> Option<NodeId> {
+        if matches!(doc.data(from), blueice_dom::NodeData::Element { tag_name, .. } if tag_name == tag) {
+            return Some(from);
+        }
+        doc.children(from).find_map(|c| element_named(doc, c, tag))
+    }
+
+    /// Paints `html` with `image` as the content image (`<img>`) or the
+    /// background image (`<div>`), returning only the image commands' rects.
+    fn image_rects(html: &str, css: &str, image: Arc<RasterImage>, background: bool) -> Vec<Rect> {
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let author = blueice_css::parse(&format!("html,body,div,p {{ margin: 0; }} {css}")).rules;
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        let fragment = blueice_layout::layout(
+            &doc,
+            doc.root(),
+            &styles,
+            Constraints {
+                available_width: 400.0,
+                viewport_height: 720.0,
+            },
+        );
+        let mut images = ImageMap::default();
+        if background {
+            let node = element_named(&doc, doc.root(), "div").unwrap();
+            images.background.insert(node, image);
+        } else {
+            let node = element_named(&doc, doc.root(), "img").unwrap();
+            images.content.insert(node, image);
+        }
+        paint_with_images(&fragment, &styles, &images)
+            .commands
+            .into_iter()
+            .filter_map(|c| match c {
+                PaintCommand::Image { rect, .. } => Some(rect),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_img_paints_its_image_inside_padding_and_border() {
+        let r = image_rects(
+            "<img width=40 height=20>",
+            "img { padding: 3px; border: 2px solid red; }",
+            solid(4, 2),
+            false,
+        );
+        assert_eq!(r.len(), 1);
+        assert_eq!((r[0].x, r[0].y, r[0].width, r[0].height), (5.0, 5.0, 40.0, 20.0));
+    }
+
+    #[test]
+    fn object_fit_contain_letterboxes_and_cover_clips() {
+        let contain = image_rects(
+            "<img width=100 height=100>",
+            "img { object-fit: contain; }",
+            solid(40, 20),
+            false,
+        );
+        assert_eq!((contain[0].width, contain[0].height, contain[0].y), (100.0, 50.0, 25.0));
+        let cover = image_rects(
+            "<img width=100 height=100>",
+            "img { object-fit: cover; }",
+            solid(40, 20),
+            false,
+        );
+        assert_eq!((cover[0].width, cover[0].height), (200.0, 100.0));
+    }
+
+    #[test]
+    fn a_background_image_repeats_by_default_and_not_with_no_repeat() {
+        let tiled = image_rects(
+            "<div></div>",
+            "div { width: 50px; height: 20px; background-image: url(x.png); }",
+            solid(20, 20),
+            true,
+        );
+        assert_eq!(tiled.len(), 3, "three tiles cover 50px");
+        let once = image_rects(
+            "<div></div>",
+            "div { width: 50px; height: 20px; background: url(x.png) no-repeat; }",
+            solid(20, 20),
+            true,
+        );
+        assert_eq!(once.len(), 1);
+        assert_eq!((once[0].x, once[0].y), (0.0, 0.0));
+    }
+
+    #[test]
+    fn background_size_and_position_place_the_tile() {
+        let r = image_rects(
+            "<div></div>",
+            "div { width: 100px; height: 60px; background: url(x.png) no-repeat center / 40px 20px; }",
+            solid(10, 10),
+            true,
+        );
+        assert_eq!((r[0].x, r[0].y, r[0].width, r[0].height), (30.0, 20.0, 40.0, 20.0));
+        let cover = image_rects(
+            "<div></div>",
+            "div { width: 100px; height: 60px; background: url(x.png) no-repeat; background-size: cover; }",
+            solid(10, 10),
+            true,
+        );
+        assert_eq!((cover[0].width, cover[0].height), (100.0, 100.0));
+        let right = image_rects(
+            "<div></div>",
+            "div { width: 100px; height: 60px; background: url(x.png) no-repeat right bottom; }",
+            solid(10, 10),
+            true,
+        );
+        assert_eq!((right[0].x, right[0].y), (90.0, 50.0));
     }
 }

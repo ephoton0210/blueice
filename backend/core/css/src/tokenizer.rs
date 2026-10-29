@@ -31,6 +31,9 @@ pub enum Token {
     /// accepts either.
     Hash(String),
     QuotedString(String),
+    /// `url(unquoted)`: the whole call as one token, per CSS Syntax. (A quoted
+    /// `url("x")` stays an `Ident` function call around a string.)
+    Url(String),
     Number(f64),
     Percentage(f64),
     Dimension(f64, String),
@@ -300,6 +303,29 @@ impl Tokenizer {
     fn consume_ident_like(&mut self) -> Token {
         let mut s = String::new();
         self.consume_name(&mut s);
+        if s.eq_ignore_ascii_case("url") && self.peek() == Some('(') {
+            let mut look = 1;
+            while self.peek_at(look).is_some_and(char::is_whitespace) {
+                look += 1;
+            }
+            if !matches!(self.peek_at(look), Some('"') | Some('\'')) {
+                self.advance(); // '('
+                let mut url = String::new();
+                while let Some(c) = self.peek() {
+                    self.advance();
+                    match c {
+                        ')' => break,
+                        '\\' => {
+                            if let Some(next) = self.advance() {
+                                url.push(next);
+                            }
+                        }
+                        c => url.push(c),
+                    }
+                }
+                return Token::Url(url.trim().to_string());
+            }
+        }
         Token::Ident(s)
     }
 

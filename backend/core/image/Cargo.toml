@@ -9,4 +9,9 @@ png = "0.17"
 jpeg-decoder = "0.3"
 gif = "0.13"
 image-webp = "0.2"
-resvg = { version = "0.45", default-features = false }
+resvg = { version = "0.45", default-features = false, optional = true }
+
+[features]
+default = ["svg"]
+# SVG rendering (resvg). Crates that only draw decoded pixels leave it off.
+svg = ["dep:resvg"]

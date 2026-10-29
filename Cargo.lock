@@ -535,6 +535,7 @@ dependencies = [
  "blueice-dom",
  "blueice-font",
  "blueice-html",
+ "blueice-image",
  "blueice-layout",
  "blueice-testing",
 ]
@@ -546,6 +547,7 @@ dependencies = [
  "blueice-css",
  "blueice-font",
  "blueice-html",
+ "blueice-image",
  "blueice-layout",
  "blueice-paint",
  "fontdue",

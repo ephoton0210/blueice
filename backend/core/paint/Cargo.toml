@@ -9,6 +9,7 @@ blueice-layout = { path = "../layout" }
 blueice-css = { path = "../css" }
 blueice-dom = { path = "../dom" }
 blueice-font = { path = "../font" }
+blueice-image = { path = "../image", default-features = false }
 
 [dev-dependencies]
 blueice-html = { path = "../html" }

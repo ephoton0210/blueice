@@ -6,6 +6,21 @@
 
 use crate::tokenizer::Token;
 
+/// The address inside a `url(...)` value (`url(x)`, `url("x")`), if `tokens`
+/// are exactly that.
+pub fn url_of(tokens: &[Token]) -> Option<String> {
+    let meaningful: Vec<&Token> = tokens.iter().filter(|t| **t != Token::Whitespace).collect();
+    match meaningful.as_slice() {
+        [Token::Url(u)] => Some(u.clone()),
+        [Token::Ident(name), Token::LeftParen, Token::QuotedString(u), Token::RightParen]
+            if name.eq_ignore_ascii_case("url") =>
+        {
+            Some(u.clone())
+        }
+        _ => None,
+    }
+}
+
 /// The generated text, or `None` when the value generates nothing it can
 /// show (`counter()`, `url()` and unknown functions among them -- a value
 /// made only of those makes no box).
@@ -84,6 +99,14 @@ mod tests {
             Some("T\u{201c}".to_string())
         );
         assert_eq!(text("attr(missing)"), Some(String::new()));
+    }
+
+    #[test]
+    fn url_values_are_read_quoted_or_not() {
+        assert_eq!(url_of(&tokenize("url(a/b.png?x=1)")), Some("a/b.png?x=1".into()));
+        assert_eq!(url_of(&tokenize("url( 'x y.png' )")), Some("x y.png".into()));
+        assert_eq!(url_of(&tokenize("url(\"https://h/i.svg\")")), Some("https://h/i.svg".into()));
+        assert_eq!(url_of(&tokenize("linear-gradient(red, blue)")), None);
     }
 
     #[test]

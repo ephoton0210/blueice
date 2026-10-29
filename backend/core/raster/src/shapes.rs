@@ -266,6 +266,49 @@ impl Canvas<'_> {
         });
     }
 
+    /// `image` scaled into `rect` at `alpha` opacity, smoothly resampled.
+    pub fn image(&mut self, rect: Rect, image: &blueice_image::RasterImage, alpha: u8, clip: Clip) {
+        if !rect_ok(rect) || image.width == 0 || image.height == 0 {
+            return;
+        }
+        let Some(source) = sk::PixmapRef::from_bytes(image.premultiplied(), image.width, image.height)
+        else {
+            return;
+        };
+        let (sx, sy) = (
+            rect.width as f32 / image.width as f32,
+            rect.height as f32 / image.height as f32,
+        );
+        let quality = if sx < 1.0 || sy < 1.0 {
+            sk::FilterQuality::Bilinear
+        } else {
+            sk::FilterQuality::Bicubic
+        };
+        let pattern = sk::Pattern::new(
+            source,
+            sk::SpreadMode::Pad,
+            quality,
+            f32::from(alpha) / 255.0,
+            sk::Transform::from_row(sx, 0.0, 0.0, sy, rect.x as f32, rect.y as f32),
+        );
+        let paint = sk::Paint {
+            shader: pattern,
+            anti_alias: false,
+            ..sk::Paint::default()
+        };
+        let Some(dest) = sk::Rect::from_xywh(
+            rect.x as f32,
+            rect.y as f32,
+            rect.width as f32,
+            rect.height as f32,
+        ) else {
+            return;
+        };
+        self.with(clip, |pm, mask| {
+            pm.fill_rect(dest, &paint, sk::Transform::identity(), mask)
+        });
+    }
+
     pub fn gradient(&mut self, rect: Rect, radii: &Radii, gradient: &Gradient, clip: Clip) {
         if !rect_ok(rect) {
             return;

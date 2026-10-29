@@ -8,6 +8,7 @@ license.workspace = true
 blueice-paint = { path = "../paint" }
 blueice-font = { path = "../font" }
 blueice-css = { path = "../css" }
+blueice-image = { path = "../image", default-features = false }
 fontdue = "0.9"
 png = "0.17"
 tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd"] }

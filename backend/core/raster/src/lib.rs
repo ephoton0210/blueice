@@ -286,6 +286,9 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
             } => pixmap
                 .canvas()
                 .gradient(*rect, radii, gradient, clip.into()),
+            PaintCommand::Image { rect, image, alpha } => {
+                pixmap.canvas().image(*rect, image, *alpha, clip.into())
+            }
             PaintCommand::Text {
                 x,
                 y,
@@ -395,6 +398,24 @@ pub fn rasterize_viewport(
                 blur: blur * scale,
                 spread: spread * scale,
                 color,
+            },
+            PaintCommand::Image {
+                rect: r,
+                image,
+                alpha,
+            } => PaintCommand::Image {
+                rect: rect(r),
+                image,
+                alpha,
+            },
+            PaintCommand::Image {
+                rect: r,
+                image,
+                alpha,
+            } => PaintCommand::Image {
+                rect: rect(r),
+                image,
+                alpha,
             },
             PaintCommand::Gradient {
                 rect: r,

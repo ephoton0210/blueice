@@ -327,10 +327,11 @@ fn expand_flex_flow(tokens: &[Token]) -> Vec<(String, Value)> {
 fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
     let mut out = vec![("background-image".to_string(), keyword("none"))];
     if let Some(image) = components(tokens).into_iter().find(|c| {
-        matches!(c.first(), Some(Token::Ident(name))
-            if matches!(c.get(1), Some(Token::LeftParen))
-                && (name.to_ascii_lowercase().ends_with("gradient")
-                    || name.eq_ignore_ascii_case("url")))
+        matches!(c.first(), Some(Token::Url(_)))
+            || matches!(c.first(), Some(Token::Ident(name))
+                if matches!(c.get(1), Some(Token::LeftParen))
+                    && (name.to_ascii_lowercase().ends_with("gradient")
+                        || name.eq_ignore_ascii_case("url")))
     }) {
         out[0].1 = Value::Unparsed(image.to_vec());
     }
@@ -342,6 +343,99 @@ fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
         })
         .unwrap_or(Value::Color(crate::value::Color::Rgba(0, 0, 0, 0)));
     out.push(("background-color".to_string(), color));
+
+    // Repeat, position and size: whatever is left once colours and the image
+    // are set aside, with the size after a `/`.
+    let mut repeat: Vec<Value> = Vec::new();
+    let mut position: Vec<Value> = Vec::new();
+    let mut size: Vec<Value> = Vec::new();
+    let mut after_slash = false;
+    let mut depth = 0usize;
+    let mut i = 0;
+    while i < tokens.len() {
+        match &tokens[i] {
+            Token::LeftParen => depth += 1,
+            Token::RightParen => depth = depth.saturating_sub(1),
+            Token::Delim('/') if depth == 0 => after_slash = true,
+            Token::Ident(name) if matches!(tokens.get(i + 1), Some(Token::LeftParen)) => {
+                // A function (the image, a colour): skip to its close.
+                let mut d = 0usize;
+                let mut j = i + 1;
+                while j < tokens.len() {
+                    match tokens[j] {
+                        Token::LeftParen => d += 1,
+                        Token::RightParen => {
+                            d -= 1;
+                            if d == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                let _ = name;
+                i = j;
+            }
+            token if depth == 0 => {
+                if let Some(value) = parse_value(std::slice::from_ref(token)) {
+                    match &value {
+                        Value::Keyword(k)
+                            if matches!(
+                                k.as_str(),
+                                "repeat" | "no-repeat" | "repeat-x" | "repeat-y" | "space" | "round"
+                            ) =>
+                        {
+                            repeat.push(value)
+                        }
+                        Value::Keyword(k) if after_slash && matches!(k.as_str(), "cover" | "contain" | "auto") => {
+                            size.push(value)
+                        }
+                        Value::Keyword(k)
+                            if matches!(k.as_str(), "left" | "right" | "top" | "bottom" | "center") =>
+                        {
+                            position.push(value)
+                        }
+                        Value::Length(_) | Value::Percentage(_) | Value::Calc(_) => {
+                            if after_slash {
+                                size.push(value)
+                            } else {
+                                position.push(value)
+                            }
+                        }
+                        Value::Number(n) if *n == 0.0 => {
+                            let zero = Value::Length(Length::Zero);
+                            if after_slash {
+                                size.push(zero)
+                            } else {
+                                position.push(zero)
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    let pack = |mut values: Vec<Value>| match values.len() {
+        0 => None,
+        1 => Some(values.remove(0)),
+        _ => Some(Value::List(values)),
+    };
+    out.push((
+        "background-repeat".to_string(),
+        pack(repeat).unwrap_or_else(|| keyword("repeat")),
+    ));
+    out.push((
+        "background-position".to_string(),
+        pack(position).unwrap_or(Value::Percentage(0.0)),
+    ));
+    out.push((
+        "background-size".to_string(),
+        pack(size).unwrap_or_else(|| keyword("auto")),
+    ));
     out
 }
 

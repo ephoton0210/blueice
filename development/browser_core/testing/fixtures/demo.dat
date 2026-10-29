@@ -110,7 +110,9 @@ text 262.6,81.3 "a" #000000 16.0 normal normal
 text 277.5,81.3 "link" #0000ee 16.0 normal normal
 rect 277.5,98.0 28.3x1.0 #0000ee
 text 305.8,81.3 "." #000000 16.0 normal normal
+text 32.2,116.5 "•" #000000 16.0 normal normal
 text 48.0,116.5 "one" #000000 16.0 normal normal
+text 32.2,135.7 "•" #000000 16.0 normal normal
 text 48.0,135.7 "two" #000000 16.0 normal normal
 rect 8.0,170.9 304.0x84.5 #eeeeee
 border 8.0,170.9 304.0x1.0 #333333

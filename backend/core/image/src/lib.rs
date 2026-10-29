@@ -16,11 +16,51 @@ pub const MAX_PIXELS: u64 = 32 * 1024 * 1024;
 
 /// A decoded image: `rgba` is straight (non-premultiplied) 8-bit RGBA,
 /// `width * height * 4` bytes.
-#[derive(Clone, PartialEq)]
 pub struct RasterImage {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
+    premultiplied: std::sync::OnceLock<Vec<u8>>,
+}
+
+impl RasterImage {
+    pub fn new(width: u32, height: u32, rgba: Vec<u8>) -> Self {
+        RasterImage {
+            width,
+            height,
+            rgba,
+            premultiplied: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// The pixels with colour multiplied by alpha, computed once: what
+    /// compositing wants.
+    pub fn premultiplied(&self) -> &[u8] {
+        self.premultiplied.get_or_init(|| {
+            let mut out = self.rgba.clone();
+            for p in out.chunks_exact_mut(4) {
+                let a = u32::from(p[3]);
+                if a != 255 {
+                    for c in &mut p[..3] {
+                        *c = ((u32::from(*c) * a + 127) / 255) as u8;
+                    }
+                }
+            }
+            out
+        })
+    }
+}
+
+impl Clone for RasterImage {
+    fn clone(&self) -> Self {
+        RasterImage::new(self.width, self.height, self.rgba.clone())
+    }
+}
+
+impl PartialEq for RasterImage {
+    fn eq(&self, other: &Self) -> bool {
+        self.width == other.width && self.height == other.height && self.rgba == other.rgba
+    }
 }
 
 impl std::fmt::Debug for RasterImage {
@@ -39,11 +79,7 @@ fn within_limits(width: u32, height: u32) -> bool {
 
 fn finish(width: u32, height: u32, rgba: Vec<u8>) -> Option<RasterImage> {
     (within_limits(width, height) && rgba.len() == width as usize * height as usize * 4)
-        .then_some(RasterImage {
-            width,
-            height,
-            rgba,
-        })
+        .then(|| RasterImage::new(width, height, rgba))
 }
 
 /// Which format `bytes` are, by their leading bytes (never by file name or a
@@ -85,7 +121,7 @@ pub fn decode(bytes: &[u8]) -> Option<RasterImage> {
         Format::Jpeg => decode_jpeg(bytes),
         Format::Gif => decode_gif(bytes),
         Format::WebP => decode_webp(bytes),
-        Format::Svg => render_svg(std::str::from_utf8(bytes).ok()?, None),
+        Format::Svg => svg::render_svg(std::str::from_utf8(bytes).ok()?, None),
     }
 }
 
@@ -94,7 +130,7 @@ pub fn decode(bytes: &[u8]) -> Option<RasterImage> {
 pub fn intrinsic_size(bytes: &[u8]) -> Option<(u32, u32)> {
     match sniff(bytes)? {
         Format::Svg => {
-            let (w, h) = svg_size(std::str::from_utf8(bytes).ok()?)?;
+            let (w, h) = svg::svg_size(std::str::from_utf8(bytes).ok()?)?;
             Some((w.ceil() as u32, h.ceil() as u32))
         }
         _ => decode(bytes).map(|i| (i.width, i.height)),
@@ -200,47 +236,68 @@ fn decode_webp(bytes: &[u8]) -> Option<RasterImage> {
     finish(w, h, rgba)
 }
 
-fn svg_tree(source: &str) -> Option<resvg::usvg::Tree> {
-    resvg::usvg::Tree::from_str(source, &resvg::usvg::Options::default()).ok()
-}
+#[cfg(feature = "svg")]
+pub use svg::{render_svg, svg_size};
 
-/// The natural size of an SVG document (its `width`/`height`, or its
-/// `viewBox`).
-pub fn svg_size(source: &str) -> Option<(f64, f64)> {
-    let tree = svg_tree(source)?;
-    let size = tree.size();
-    Some((f64::from(size.width()), f64::from(size.height())))
-}
-
-/// Renders an SVG document at `size` pixels (its own size when `None`),
-/// scaling the drawing to fill it.
-pub fn render_svg(source: &str, size: Option<(u32, u32)>) -> Option<RasterImage> {
-    let tree = svg_tree(source)?;
-    let natural = tree.size();
-    let (w, h) = size.unwrap_or((
-        natural.width().ceil().max(1.0) as u32,
-        natural.height().ceil().max(1.0) as u32,
-    ));
-    if !within_limits(w, h) {
-        return None;
+/// Without the `svg` feature an SVG is a format this build recognises but
+/// cannot draw.
+#[cfg(not(feature = "svg"))]
+mod svg {
+    use super::RasterImage;
+    pub fn svg_size(_: &str) -> Option<(f64, f64)> {
+        None
     }
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(w, h)?;
-    let transform = resvg::tiny_skia::Transform::from_scale(
-        w as f32 / natural.width(),
-        h as f32 / natural.height(),
-    );
-    resvg::render(&tree, transform, &mut pixmap.as_mut());
-    // tiny-skia holds premultiplied pixels; images are straight alpha.
-    let mut rgba = pixmap.take();
-    for p in rgba.chunks_exact_mut(4) {
-        let a = u32::from(p[3]);
-        if a != 0 && a != 255 {
-            for c in &mut p[..3] {
-                *c = ((u32::from(*c) * 255 + a / 2) / a).min(255) as u8;
+    pub fn render_svg(_: &str, _: Option<(u32, u32)>) -> Option<RasterImage> {
+        None
+    }
+}
+
+#[cfg(feature = "svg")]
+mod svg {
+    use super::{finish, within_limits, RasterImage};
+
+    fn svg_tree(source: &str) -> Option<resvg::usvg::Tree> {
+        resvg::usvg::Tree::from_str(source, &resvg::usvg::Options::default()).ok()
+    }
+
+    /// The natural size of an SVG document (its `width`/`height`, or its
+    /// `viewBox`).
+    pub fn svg_size(source: &str) -> Option<(f64, f64)> {
+        let tree = svg_tree(source)?;
+        let size = tree.size();
+        Some((f64::from(size.width()), f64::from(size.height())))
+    }
+
+    /// Renders an SVG document at `size` pixels (its own size when `None`),
+    /// scaling the drawing to fill it.
+    pub fn render_svg(source: &str, size: Option<(u32, u32)>) -> Option<RasterImage> {
+        let tree = svg_tree(source)?;
+        let natural = tree.size();
+        let (w, h) = size.unwrap_or((
+            natural.width().ceil().max(1.0) as u32,
+            natural.height().ceil().max(1.0) as u32,
+        ));
+        if !within_limits(w, h) {
+            return None;
+        }
+        let mut pixmap = resvg::tiny_skia::Pixmap::new(w, h)?;
+        let transform = resvg::tiny_skia::Transform::from_scale(
+            w as f32 / natural.width(),
+            h as f32 / natural.height(),
+        );
+        resvg::render(&tree, transform, &mut pixmap.as_mut());
+        // tiny-skia holds premultiplied pixels; images are straight alpha.
+        let mut rgba = pixmap.take();
+        for p in rgba.chunks_exact_mut(4) {
+            let a = u32::from(p[3]);
+            if a != 0 && a != 255 {
+                for c in &mut p[..3] {
+                    *c = ((u32::from(*c) * 255 + a / 2) / a).min(255) as u8;
+                }
             }
         }
+        finish(w, h, rgba)
     }
-    finish(w, h, rgba)
 }
 
 #[cfg(test)]

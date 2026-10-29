@@ -40,7 +40,7 @@ pub use cascade::{
     cascade, cascade_with_viewport, is_pseudo_node, pseudo_kind, pseudo_node_id, pseudo_owner,
     pseudo_text_node_id, ua_stylesheet, ComputedStyle, Origin,
 };
-pub use content::generated_text;
+pub use content::{generated_text, url_of};
 pub use gradient::{
     parse_gradient, parse_shadows, ColorStop, Gradient, GradientKind, LinearDirection, Shadow,
     StopPosition,

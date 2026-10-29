@@ -192,3 +192,51 @@ fn shapes_respect_clips() {
     assert_eq!(at(&p, 25, 50), [255, 0, 0, 255]);
     assert_eq!(at(&p, 75, 50), WHITE);
 }
+
+fn red_blue() -> std::sync::Arc<blueice_image::RasterImage> {
+    // 2x1: red, blue.
+    std::sync::Arc::new(blueice_image::RasterImage::new(
+        2,
+        1,
+        vec![255, 0, 0, 255, 0, 0, 255, 255],
+    ))
+}
+
+#[test]
+fn an_image_is_scaled_into_its_rect() {
+    let p = rasterize(&frame(
+        40.0,
+        20.0,
+        vec![PaintCommand::Image {
+            rect: rect(0.0, 0.0, 40.0, 20.0),
+            image: red_blue(),
+            alpha: 255,
+        }],
+    ));
+    let left = at(&p, 4, 10);
+    let right = at(&p, 36, 10);
+    assert!(left[0] > 200 && left[2] < 60, "red on the left: {left:?}");
+    assert!(right[2] > 200 && right[0] < 60, "blue on the right: {right:?}");
+}
+
+#[test]
+fn image_alpha_blends_and_clips_apply() {
+    let p = rasterize(&frame(
+        40.0,
+        20.0,
+        vec![
+            PaintCommand::PushClip {
+                rect: rect(0.0, 0.0, 20.0, 20.0),
+            },
+            PaintCommand::Image {
+                rect: rect(0.0, 0.0, 40.0, 20.0),
+                image: red_blue(),
+                alpha: 128,
+            },
+            PaintCommand::PopClip,
+        ],
+    ));
+    let faded = at(&p, 4, 10);
+    assert!(faded[0] > 240 && (100..160).contains(&faded[1]), "half over white: {faded:?}");
+    assert_eq!(at(&p, 30, 10), WHITE, "outside the clip");
+}

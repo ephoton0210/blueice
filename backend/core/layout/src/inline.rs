@@ -274,33 +274,49 @@ pub(crate) fn replaced_size(
             .filter(|v| v.is_finite() && *v >= 0.0)
     };
     let (attr_w, attr_h) = (attr("width"), attr("height"));
-    // An explicit CSS `auto` overrides the attribute (a presentational hint).
-    let width = style
-        .px("width", cb_width)
-        .or(attr_w.filter(|_| !style.is_auto("width")));
-    let height = style
-        .px("height", f64::NAN)
-        .or(attr_h.filter(|_| !style.is_auto("height")));
-    // A single known dimension plus a view box or equal attributes keeps the
-    // aspect ratio; otherwise the default fills the other.
-    let ratio = match (attr_w, attr_h) {
-        (Some(w), Some(h)) if h > 0.0 => Some(w / h),
+    // What the engine learned from the image itself, when it has loaded.
+    let intrinsic = match style.raw("-blueice-intrinsic-size") {
+        Some(blueice_css::Value::List(parts)) => match parts.as_slice() {
+            [blueice_css::Value::Number(w), blueice_css::Value::Number(h)] if *w > 0.0 && *h > 0.0 => {
+                Some((*w, *h))
+            }
+            _ => None,
+        },
         _ => None,
     };
-    let (width, height) = match (width, height) {
-        (Some(w), Some(h)) => (w, h),
-        (Some(w), None) => (w, ratio.map_or(default.1, |r| w / r.max(f64::MIN_POSITIVE))),
-        (None, Some(h)) => (ratio.map_or(default.0, |r| h * r), h),
-        (None, None) => default,
+    let natural = intrinsic.unwrap_or(default);
+    // An explicit CSS `auto` overrides the attribute (a presentational hint).
+    let css_width = style.px("width", cb_width);
+    let css_height = style.px("height", f64::NAN);
+    let width = css_width.or(attr_w.filter(|_| !style.is_auto("width")));
+    let height = css_height.or(attr_h.filter(|_| !style.is_auto("height")));
+    // A single known dimension keeps the aspect ratio of the attributes, or of
+    // the image itself.
+    let ratio = match (attr_w, attr_h) {
+        (Some(w), Some(h)) if h > 0.0 && w > 0.0 => Some(w / h),
+        _ => intrinsic.map(|(w, h)| w / h),
     };
-    let (min_w, max_w) = (
-        style.px("min-width", cb_width),
-        style.px("max-width", cb_width),
-    );
-    let width = max_w
+    let (width, height) = match (width, height) {
+        (Some(w), Some(h)) => (w, Some(h)),
+        (Some(w), None) => (w, ratio.map(|r| w / r)),
+        (None, Some(h)) => (ratio.map_or(natural.0, |r| h * r), Some(h)),
+        (None, None) => (natural.0, Some(natural.1)),
+    };
+    let clamped = style
+        .px("max-width", cb_width)
         .map_or(width, |m| width.min(m))
-        .max(min_w.unwrap_or(0.0));
-    Some((width, height))
+        .max(style.px("min-width", cb_width).unwrap_or(0.0));
+    let height = match height {
+        // A width squeezed by `max-width` takes the height with it unless the
+        // height was set outright.
+        Some(h) if clamped != width && css_height.is_none() && ratio.is_some() => {
+            let _ = h;
+            clamped / ratio.unwrap_or(1.0)
+        }
+        Some(h) => h,
+        None => natural.1,
+    };
+    Some((clamped, height))
 }
 
 fn vertical_align(style: &Style<'_>, line_height: f64) -> Align {
@@ -1699,5 +1715,47 @@ mod tests {
             800.0,
         );
         assert_eq!(f.children[0].height, 40.0);
+    }
+
+    fn img_size(html: &str, css: &str, width: f64) -> (f64, f64) {
+        let f = body(html, &format!("img {{ -blueice-intrinsic-size: 200 100; }} {css}"), width);
+        let atom = f.children[0].children[0]
+            .children
+            .iter()
+            .find(|c| c.node.is_some())
+            .unwrap();
+        (atom.width, atom.height)
+    }
+
+    #[test]
+    fn an_image_takes_its_own_size_when_nothing_else_says() {
+        assert_eq!(img_size("<p><img></p>", "", 800.0), (200.0, 100.0));
+    }
+
+    #[test]
+    fn one_given_dimension_scales_the_other_by_the_images_ratio() {
+        assert_eq!(img_size("<p><img width=100></p>", "", 800.0), (100.0, 50.0));
+        assert_eq!(img_size("<p><img height=20></p>", "", 800.0), (40.0, 20.0));
+        assert_eq!(
+            img_size("<p><img></p>", "img { width: 50px; height: auto; }", 800.0),
+            (50.0, 25.0)
+        );
+    }
+
+    #[test]
+    fn both_given_dimensions_win() {
+        assert_eq!(img_size("<p><img width=30 height=30></p>", "", 800.0), (30.0, 30.0));
+    }
+
+    #[test]
+    fn max_width_shrinks_an_image_in_proportion() {
+        assert_eq!(
+            img_size("<p><img></p>", "img { max-width: 100px; height: auto; }", 800.0),
+            (100.0, 50.0)
+        );
+        assert_eq!(
+            img_size("<p><img></p>", "img { max-width: 100%; }", 150.0),
+            (150.0, 75.0)
+        );
     }
 }
