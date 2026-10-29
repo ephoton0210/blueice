@@ -33,12 +33,18 @@ pub(super) fn lower(
                 return None;
             }
             let function = named_function(&tokens, index + 1)?;
-            let body = resumed_body(&emitted.javascript, &tokens, &function)?;
-            Some((index, function, body))
+            Some((index, function))
         });
-        let Some((start, function, body)) = candidate else {
+        let Some((start, function)) = candidate else {
             return Ok(emitted);
         };
+        let body = resumed_body(
+            &emitted.javascript,
+            &tokens,
+            &function,
+            module,
+            &options.limits.parser,
+        )?;
         let helper = unused_name(&emitted.javascript, "async", &mut sequence);
         let count = parameter_length(&tokens[function.parameters + 1..function.parameters_end]);
         let parameters = (0..count)
@@ -107,53 +113,97 @@ pub(super) fn function_at_parameters(tokens: &[Token], parameters: usize) -> Opt
     })
 }
 
-fn resumed_body(source: &str, tokens: &[Token], function: &Function) -> Option<String> {
+fn resumed_body(
+    source: &str,
+    tokens: &[Token],
+    function: &Function,
+    module: &Module,
+    limits: &crate::parser::ParserLimits,
+) -> Result<String, Diagnostic> {
+    resumed_text(
+        &source[tokens[function.body].end..tokens[function.body_end].start],
+        module,
+        limits,
+        limits.max_type_depth.min(128),
+    )
+}
+fn resumed_text(
+    source: &str,
+    module: &Module,
+    limits: &crate::parser::ParserLimits,
+    depth: usize,
+) -> Result<String, Diagnostic> {
+    if depth == 0 {
+        return Err(Diagnostic::error(
+            DiagnosticCode::ResourceLimit,
+            SourceSpan::new(&module.id, 0, 0),
+            "await lowering exceeds the depth limit",
+        ));
+    }
+    let tokens = crate::syntax::lex_with_limits(
+        &module.id,
+        source,
+        limits.max_source_bytes,
+        limits.max_tokens,
+    )
+    .map_err(|mut d| d.remove(0))?;
     let mut edits = Vec::new();
-    let begin = tokens[function.body].end;
-    let mut index = function.body + 1;
-    while index < function.body_end {
-        if tokens[index].is("function") {
-            // Nested functions own their awaits/arguments. Innermost named
-            // async declarations have already been considered by the driver.
-            let parameters =
-                (index + 1..function.body_end).find(|&position| tokens[position].is("("))?;
-            let nested = function_at_parameters(tokens, parameters)?;
-            index = nested.body_end + 1;
+    let mut at = 0;
+    while at < tokens.len() {
+        if tokens[at].is("function") {
+            if let Some(open) = (at + 1..tokens.len()).find(|&p| tokens[p].is("(")) {
+                if let Some(function) = function_at_parameters(&tokens, open) {
+                    at = function.body_end + 1;
+                    continue;
+                }
+            }
+        }
+        if tokens[at].kind == TokenKind::Template {
+            let replacement = super::suspension_text::template(
+                source,
+                &tokens[at],
+                module,
+                depth - 1,
+                |text, depth| resumed_text(text, module, limits, depth),
+            )?;
+            edits.push(TextEdit {
+                start: tokens[at].start,
+                end: tokens[at].end,
+                replacement,
+            });
+            at += 1;
             continue;
         }
-        if tokens[index].is("async") && !tokens.get(index + 1)?.is("function") {
-            return None;
-        }
-        if tokens[index].is("await") {
-            if index > 0 && matches!(tokens[index - 1].text.as_str(), "." | "?.")
-                || tokens.get(index + 1).is_some_and(|token| token.is(":"))
-            {
-                index += 1;
-                continue;
-            }
-            if index > 0 && tokens[index - 1].is("for") {
-                return None;
-            }
-            let end = exponentiation::operand_end(tokens, index + 1)?;
-            if end > function.body_end {
-                return None;
-            }
-            let operand = &source[tokens[index + 1].start..tokens[end - 1].end];
-            // Nested awaits retain their current target boundary.
-            if tokens[index + 1..end].iter().any(|token| token.is("await")) {
-                return None;
-            }
+        if tokens[at].is("await")
+            && !at
+                .checked_sub(1)
+                .is_some_and(|p| matches!(tokens[p].text.as_str(), "." | "?."))
+            && !tokens.get(at + 1).is_some_and(|t| t.is(":"))
+        {
+            let end = exponentiation::operand_end(&tokens, at + 1).ok_or_else(|| {
+                Diagnostic::error(
+                    DiagnosticCode::UnsupportedSyntax,
+                    SourceSpan::new(&module.id, 0, 0),
+                    "await operand was not retained",
+                )
+            })?;
+            let operand = resumed_text(
+                &source[tokens[at + 1].start..tokens[end - 1].end],
+                module,
+                limits,
+                depth - 1,
+            )?;
             edits.push(TextEdit {
-                start: tokens[index].start - begin,
-                end: tokens[end - 1].end - begin,
-                replacement: format!("(yield {operand})"),
+                start: tokens[at].start,
+                end: tokens[end - 1].end,
+                replacement: format!("(yield ({operand}))"),
             });
-            index = end;
+            at = end;
         } else {
-            index += 1;
+            at += 1;
         }
     }
-    Some(apply_edits(&source[begin..tokens[function.body_end].start], edits).javascript)
+    Ok(apply_edits(source, edits).javascript)
 }
 
 pub(super) fn parameter_length(tokens: &[Token]) -> usize {

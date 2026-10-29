@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-29).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 15,344 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 15,926 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 14,734/14,741 (99.9525%); 3 open, 4 refused observations |
-| Separate controls | 539 native-reference + 64 BlueTS owner = 603; excluded from direct agreement |
-| Case labels | 15,337 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 117 suites / 277 ignored Rust functions; not a case denominator |
-| Suite labels | 112 scoped closed, 1 open, 4 refused |
+| Direct agreement | 15,311/15,317 (99.9608%); 3 open, 3 refused observations |
+| Separate controls | 539 native-reference + 70 BlueTS owner = 609; excluded from direct agreement |
+| Case labels | 15,920 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 118 suites / 279 ignored Rust functions; not a case denominator |
+| Suite labels | 114 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 218 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 15,344 recorded case expectations pass; expected differences/refusals are not
+All 15,926 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:281dd01815d2d999b2883ebc6d3e12894d493d0f`.
-Input graph SHA-256: `219bad6f15e3c3fe7a5dbd4bf5de10a629ff7e4c688d9168d4568bca91f47bf9`.
+Compiler/oracle source: `backend-tree:6d14e9b542062ea9e102076aa8c0c0a6853783ee`.
+Input graph SHA-256: `714ebe921d05723397dd6d8b6af6fc3bc28f01cb221096f9118ffd2b60a7e2ff`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -15311,3 +15311,180 @@ parity remains OFF. The TODO now has **seven unchecked packages; next is G-E1**.
 No fresh Windows, workspace milestone, hosted-CI or coverage result is claimed;
 accepted historical Windows evidence keeps its original source scope and the
 deferred platform work remains G-M3.
+
+## Phase L — G-E1 implementation
+
+### Native-first downlevel matrix — 2026-10-29
+
+Start from clean `ea8c528c7a2716fec3fb1a771e6021477497397f`. Freeze 38 forms /
+576 configurations using only pinned TypeScript 5.9.3 and Acorn 8.15.0, before
+production edits. Cover ES5/ES2015/ES2016/ES2017/ES2018/ES2022 and CommonJS/ESNext,
+both class-field modes for class forms, and named iteration controls. Strict
+checking, explicit ES2022 libraries, no skipped declarations, exact declarations
+and actual Node completion/stdout/stderr are required. The native probe shows
+that ES5 super-accessor accesses report TS2340; those four configurations remain
+native-rejected controls rather than invented positive requirements. No native
+runtime defects or consumer failures occur in the frozen accepted set.
+
+The native freeze (`/private/tmp/bluets-ge1-native-freeze.log`) records **500
+accepted / 76 rejected observations**, **524 declaration files**, **1,000 actual
+consumer observations** and **500 actual executions**. Sources include the
+original opaque switch generator, switch/fallthrough and exception regions,
+binary/logical/conditional/computed suspension, abrupt completion through finally,
+delegation, called/imported/indexed heritage, computed super calls and writes,
+constructor spreads, nested/defaulted/parameter bindings with iterator closing,
+async arrows/object/class/super methods, template suspension, nested awaits and
+helper-name collisions. New helpers must retain original implementation and
+bounded work; no fallback type or budget increase can stand in for the behavior.
+
+Input SHA-256: `ba68f065b87f6941c321f6908993a148f53c5bf77db48297e441a40fa54a90bf`.
+Native reference SHA-256: `6871e946a46c05643fd98ee52ed121e92486c6e849afaecd63be2be3244b1a19`.
+Keep `BLUEICE_WRITE_GE1` unset after this freeze. All 15,344 prior case identities
+and old native fixture bytes must remain; only the explicitly repaired
+opaque-generator refusal may change classification after real execution agrees.
+Six owner controls are independent from native agreement. The public CLI replay
+and boundary controls are run before production; G-E1 remains unchecked until
+the frozen scope and every common implementation/measurement gate pass together.
+
+### Public failure, implementation and complete focused replay
+
+The pre-production public replay (`/private/tmp/bluets-ge1-before.log`) passes
+eight tests, fails three and leaves two ignored in 78.45 seconds. It reports
+218 matrix mismatches. The failures expose missing yield-expression checking,
+nested pattern parsing, computed-key type precision and async annotation/lowering,
+not merely target refusal strings. The named opaque generator is refused at ES5.
+
+Original modules now retain switch/fallthrough and separate break/continue
+destinations, suspend conditions and compound expressions without moving reads,
+and preserve callee/reference/operand order. The internal emitted-code parser keeps braced for/switch
+statements separate from following returns; the earlier opaque expression path
+swallowed those tails and lost generator completion values. Nested pattern
+structure carries real projected types and source spans through scopes/checking
+and exact declaration output. ES5 projection reads once, runs defaults in order
+and closes iterators; constructor spreads use bound construction rather than
+ordinary invocation. All new helper bytes join the existing versioned helper
+fingerprint. No fallback type, filesystem/runtime grant or budget is added.
+
+Async arrows capture lexical this/arguments while methods retain their home-object
+super receiver. Named async continuation rewriting now reaches nested awaits and
+template substitutions, including async-generator completion/exception templates.
+The parser also handles adjacent generic-return/arrow tokens such as `>=>`, so
+annotations are structurally erased. Native CLI ordering uses final counterpart
+positions/codes, matching the two diagnostics on an ES5 readonly super write.
+Large responsibilities remain in separate pattern, callable, template, parameter,
+expression and switch modules.
+
+The first ordinary replay passes **11/11, two ignored**, in 87.31 seconds.
+Actual completion probes catch the swallowed return and the remaining low-target
+async syntax; these are fixed rather than treating a successful compilation as
+acceptance. Private build state moves to epoch **23**, and owned native metadata
+uses marker format **2** with the compiler state version, so earlier lowering
+artifacts cannot silently count as current. Public controls demonstrate rebuilding
+an epoch-22 disk cache, then safe warm reuse.
+
+The complete focused replay (`/private/tmp/bluets-ge1-focused-native.log`) passes
+**13/13 tests, zero ignored/filtered**, in **135.69 seconds**. This reproduces all
+576 native observations and compares all 500 accepted actual outputs: 524 exact
+declarations, 1,000 independent consumers, retained imports, selected-edition
+syntax and 500 actual Node completions/stdout/stderr. All six owner controls pass.
+The original opaque program separately passes its real native/BlueTS iterator
+completion and ES5 BlueJS parsing; all 600 earlier accepted target outputs also
+pass the real BlueJS edition gates (`/private/tmp/bluets-ge1-edition-regression.log`,
+**3/3**, including its ignored function). Its existing case ID is retained and
+only its former refusal classification is repaired. G-M2 live state-interchange
+regressions and the full common gates follow before G-E1 can be checked.
+
+The subsequent G-M2 live regression passes **17/17, zero ignored/filtered** in
+**86.01 seconds** (`/private/tmp/bluets-ge1-gm2-regression.log`), including real
+native consumption of the format-2/epoch-23 producer metadata. Warnings-denied
+two-crate all-target Clippy passes in 27.92 seconds; all 15 Node tooling tests
+also pass. All changed production files remain below 1,200 lines (maximum 1,186),
+and all 11 new source files retain their MPL headers. Frozen inputs/reference
+hashes are unchanged.
+
+The complete ordinary preflight identifies five obsolete frontend assertions
+which still require refusal of the newly supported nested bindings and compound
+yield. Independent pinned-native probes confirm all original programs are valid
+under their corresponding checking mode
+(`/private/tmp/bluets-ge1-legacy-native-probe.log`). Those assertions become
+positive checks; genuine rest/computed-parameter and invalid-generator boundaries
+remain. Two new wrong-return controls independently report TS2322 in native and
+BlueTS, demonstrating that nested projection retains number types rather than
+accepting through a fallback. No native fixture is rewritten. The running
+preflight also has the expected ten stale inventory/source-binding failures;
+all remaining targets finish before the corrected frontend replay and immutable
+measurement.
+
+The preflight completes **178 targets** in **1,750.52 seconds**: 1,397 passed,
+19 failed, 279 ignored and zero filtered. Six failures are obsolete nested/yield
+refusal assertions (five frontend checks and one variable-pattern control);
+pinned native probes establish their valid original programs before replacing
+those assertions. Ten are the not-yet-published inventory/source bindings.
+The remaining three comparisons identify one actual regression in the unchanged
+`narrow-switch-discriminant-wrong` fixture: parsing an entire source switch as
+opaque bypasses the established discriminant flow checks and misses TS2345.
+Whole-control parsing is now restricted to the internal emitted-code parser;
+the source checker retains its original narrowing path. No expected native
+diagnostic, source case or refusal allowance is edited to hide that regression.
+
+The rebuilt correction replay (`/private/tmp/bluets-ge1-corrected-regressions.log`)
+passes **147/147 tests, zero failed/ignored/filtered**, in **479.20 seconds**:
+123 frontend tests, all four diagnostics tests, all 13 G-E1 tests, all four
+narrowing tests and all three variable-pattern tests. This includes all six
+ignored functions in those suites. Full diagnostics/native reproduction passes
+in 317.94 seconds, G-E1 again completes its live native/output matrix, and the
+original narrowing fixture reports its pinned rejection with execution and
+declaration regressions intact. Final format/Clippy and immutable source-bound
+cohort measurement follow; G-E1 is still unchecked.
+
+Final workspace Rustfmt 1.95.0 and warnings-denied two-crate all-target Clippy
+pass (`/private/tmp/bluets-ge1-fmt-pre-freeze.log` and
+`/private/tmp/bluets-ge1-clippy-final.log`; Clippy 25.00 seconds). Source, tests,
+fixtures and tools are frozen at
+`backend-tree:6d14e9b542062ea9e102076aa8c0c0a6853783ee`, input graph SHA-256
+`714ebe921d05723397dd6d8b6af6fc3bc28f01cb221096f9118ffd2b60a7e2ff`.
+The regenerated catalog selects **118 complete suites / 279 ignored functions**.
+The complete immutable cohort is executing in `/private/tmp/bluets-ge1-measurement`
+with its runner log at `/private/tmp/bluets-ge1-measurement-runner.log`. Neither
+the source tree nor oracle tools may change during this measurement. G-E1 stays
+unchecked until successful publication, final ordinary tests and all audits.
+
+The immutable complete cohort succeeds in **3,036.89 seconds** including runner
+setup and source revalidation (`/private/tmp/bluets-ge1-measurement-runner.log`):
+**118/118 suites, 673 tests, all 279 ignored functions executed, zero
+failed/ignored/filtered**. The published measurement SHA-256 is
+`89f7298c083ee62780d62a2f2a6373b5d3c89e12470a1633a94d1caa1658c936`.
+Its source remains the backend tree and input graph above; all 118 individual
+log hashes and all 78 oracle-tool hashes are independently verified. The frozen
+G-E1 inputs/reference and all old native fixture bytes remain unchanged.
+
+Regeneration publishes **15,926 checked case assertions**, including
+**15,311/15,317 direct agreements, three open and three refused observations**;
+539 native-reference and 70 owner controls remain separate. All 15,344 old case
+IDs and their source/selector/unit identities are retained. Only the original
+`opaque-generator-es5` refusal changes to an agreement after real execution;
+all other old classifications stay unchanged. Exactly **582 new G-E1 cases**
+are added: 576 frozen native observations and six owner controls. The broader
+G-E1 row remains open and full parity remains OFF.
+
+Post-publication inventory tests pass **22/22**; Python tooling passes **13/13**
+and Node tooling **15/15** (`/private/tmp/bluets-ge1-{inventory,python,node}-final.log`).
+Both crates' final unfiltered ordinary suite passes **178 targets / 1,416 tests,
+zero failed/filtered**, in **1,644.67 seconds**
+(`/private/tmp/bluets-ge1-ordinary-final.log`). Its 279 ignored functions were
+all executed in the complete cohort above; the combined ordinary/oracle gates
+cover 1,695 distinct test functions. Final workspace Rustfmt 1.95.0 passes again.
+Source/case binding, inventory accounting, all four current-status documents,
+measurement/log/tool hashes, frozen native bytes and whitespace audits pass.
+All 37 changed production files remain below 1,200 lines (maximum 1,186), and
+all 11 new source files have MPL headers. No implementation or oracle-tool input
+changes occur after the immutable measurement source freeze.
+
+G-E1 is checked only after these gates pass. The TODO has **six unchecked
+packages; next is G-E2**. The completed finite profile includes the original
+opaque ES5 generator and all 38 frozen forms, with precise refusal for remaining
+unmeasured compositions such as async-super writes. The broader G-E1 row stays
+open and full parity remains OFF. No fresh Windows, whole-workspace milestone,
+hosted-CI or coverage result is claimed; the accepted historical Windows evidence
+keeps its recorded source scope. Implementation and the complete matching
+measurement are committed together.

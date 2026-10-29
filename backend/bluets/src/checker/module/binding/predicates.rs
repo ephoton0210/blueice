@@ -5,7 +5,7 @@
 //! Predicate declaration validity, separately from runtime result checking.
 
 use super::*;
-use crate::parser::{BindingPattern, TypePredicate};
+use crate::parser::TypePredicate;
 
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn check_predicate_position(
@@ -80,15 +80,13 @@ impl ModuleChecker<'_> {
                 annotation
             })
         } else {
-            let destructured = parameters.iter().any(|parameter| match &parameter.pattern {
-                Some(BindingPattern::Object(bindings)) => bindings
-                    .iter()
-                    .any(|binding| binding.name == predicate.parameter),
-                Some(BindingPattern::Array(bindings)) => bindings
-                    .iter()
-                    .flatten()
-                    .any(|binding| binding.name == predicate.parameter),
-                None => false,
+            let destructured = parameters.iter().any(|parameter| {
+                parameter.pattern.as_ref().is_some_and(|pattern| {
+                    pattern
+                        .names()
+                        .iter()
+                        .any(|(name, _)| *name == predicate.parameter)
+                })
             });
             self.predicate_parameter_error(
                 predicate,

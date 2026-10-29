@@ -704,7 +704,7 @@ pub struct VariableDeclaration {
     pub span: SourceSpan,
 }
 
-/// A flat variable binding pattern and its optional final rest binding.
+/// A variable binding pattern and its optional final rest binding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariableBindingPattern {
     pub pattern: BindingPattern,
@@ -713,7 +713,7 @@ pub struct VariableBindingPattern {
 
 /// A destructuring pattern in the supported subset: shorthand, renamed and
 /// defaulted object properties, and named, defaulted or skipped array
-/// elements. Nested patterns, rest elements and computed keys are outside it.
+/// elements. Nested patterns retain their own binding and default boundaries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BindingPattern {
     Object(Vec<ObjectBinding>),
@@ -726,6 +726,8 @@ pub struct ObjectBinding {
     pub key: String,
     /// The local name it is bound to.
     pub name: String,
+    /// A nested target in place of a leaf name.
+    pub nested: Option<Box<VariableBindingPattern>>,
     pub default: Option<Vec<Token>>,
     pub span: SourceSpan,
 }
@@ -733,6 +735,7 @@ pub struct ObjectBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElementBinding {
     pub name: String,
+    pub nested: Option<Box<VariableBindingPattern>>,
     pub default: Option<Vec<Token>>,
     pub span: SourceSpan,
 }

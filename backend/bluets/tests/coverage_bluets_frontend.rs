@@ -4234,14 +4234,10 @@ fn syntax_errors_carry_a_precise_expectation() {
     }
     // Bare `type` is a contextual value here, not a malformed alias declaration.
     assert_rejected("type = number;", "BTS3001", "cannot find name `type`");
-    // A flat destructured parameter is valid; a nested one is unsupported syntax.
+    // Flat and nested destructured parameters are both retained structurally.
     assert_accepted("declare type A = number; const answer: A = 42;");
     assert_accepted("function f({ a }: { a: number }): number { return a; }");
-    assert_rejected(
-        "function f({ a: { b } }: { a: { b: number } }): number { return b; }",
-        "BTS1001",
-        "this destructuring pattern is not supported yet",
-    );
+    assert_accepted("function f({ a: { b } }: { a: { b: number } }): number { return b; }");
 }
 
 #[test]
@@ -5757,9 +5753,10 @@ fn an_assignment_to_a_typed_variable_or_element_is_read_against_its_type() {
 
 #[test]
 fn function_annotations_that_survive_erasure_are_refused_before_output() {
-    // This nested pattern is not structurally erased. Publishing its remaining
-    // annotation would produce invalid JavaScript.
-    let source = "export const h = <T>({ x: { y } }) => y;";
+    // Nested targets are now erased. A rest parameter pattern outside the
+    // retained parameter grammar must still not publish surviving annotations.
+    assert_accepted("export const h = <T>({ x: { y } }) => y;");
+    let source = "export const h = <T>({ x, ...rest }: { x: number; y: number }) => x;";
     let result = compile(
         ENTRY,
         &MapLoader::from([ModuleSource::new(ENTRY, source)]),
@@ -5899,17 +5896,23 @@ fn typed_arrow_functions_are_parsed_erased_and_checked() {
         );
     }
 
-    // Shapes the structured parser does not take stay refused rather than
-    // reaching the output with their annotations.
-    // A nested pattern is outside the supported subset and stays refused.
+    // Nested bindings retain their real projected parameter types.
     let nested = "export const h = ({ x: { y } }: { x: { y: number } }) => y;";
-    let refused = compile_source(nested);
-    assert!(refused.output.is_none(), "{nested}");
+    let accepted = compile_source(nested);
     assert!(
-        refused
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        accepted.diagnostics.is_empty(),
+        "{nested}: {:?}",
+        accepted.diagnostics
+    );
+    assert!(accepted.output.is_some());
+    let rejected =
+        compile_source("export const h = ({ x: { y } }: { x: { y: number } }): string => y;");
+    assert!(rejected.output.is_none());
+    assert!(
+        rejected.diagnostics.iter().any(|diagnostic| diagnostic
+            .typescript
+            .as_ref()
+            .is_some_and(|ts| ts.code == 2322)),
         "{nested}"
     );
 }
@@ -6604,15 +6607,23 @@ fn destructured_parameters_are_parsed_erased_typed_and_checked() {
         );
     }
 
-    // Rest, computed and nested patterns are outside the supported subset.
+    // Rest and computed parameter patterns keep their existing boundary.
     for source in [
         "export const h = ({ a, ...rest }: { a: number; b: number }) => a;",
         "export const h = ({ [\"a\"]: a }: { a: number }) => a;",
-        "export const h = ([a, [b]]: [number, [number]]) => a;",
     ] {
         let refused = compile_source(source);
         assert!(refused.output.is_none(), "{source}");
     }
+    let nested = compile_source("export const h = ([a, [b]]: [number, [number]]) => a;");
+    assert!(nested.diagnostics.is_empty(), "{:?}", nested.diagnostics);
+    assert!(nested.output.is_some());
+    let rejected = compile_source("export const h = ([a, [b]]: [number, [number]]): string => b;");
+    assert!(rejected.output.is_none());
+    assert!(rejected
+        .diagnostics
+        .iter()
+        .any(|d| d.typescript.as_ref().is_some_and(|ts| ts.code == 2322)));
 }
 
 #[test]
@@ -6952,11 +6963,6 @@ fn generator_functions_are_checked_erased_and_emitted_as_written() {
             "only valid inside a generator function",
         ),
         (
-            "export function* g(): Generator<number> { const a = 1 + (yield 1); return; }",
-            DiagnosticCode::UnsupportedSyntax,
-            "inside a larger expression",
-        ),
-        (
             "export async function* g(): Generator<number> { yield 1; }",
             DiagnosticCode::UnsupportedSyntax,
             "async generator",
@@ -6973,6 +6979,15 @@ fn generator_functions_are_checked_erased_and_emitted_as_written() {
         );
         assert!(rejected.output.is_none(), "{source}");
     }
+    let suspended = compile_source(
+        "export function* g(): Generator<number> { const a = 1 + (yield 1); return; }",
+    );
+    assert!(
+        suspended.diagnostics.is_empty(),
+        "{:?}",
+        suspended.diagnostics
+    );
+    assert!(suspended.output.is_some());
 }
 
 #[test]

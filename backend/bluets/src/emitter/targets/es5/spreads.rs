@@ -27,6 +27,7 @@ pub(super) fn lower(
         };
         let append = unused_name(&emitted.javascript, "spread_array", &mut sequence);
         let invoke = unused_name(&emitted.javascript, "spread_call", &mut sequence);
+        let construct = unused_name(&emitted.javascript, "spread_construct", &mut sequence);
         let iterator = unused_name(&emitted.javascript, "spread_iterator", &mut sequence);
         let step = unused_name(&emitted.javascript, "spread_step", &mut sequence);
         let mut array = "[]".to_string();
@@ -57,7 +58,7 @@ pub(super) fn lower(
                     "spread callee was not retained",
                 )
             })?;
-            if tokens[start].is("new") || tokens[start].is("super") {
+            if tokens[start].is("super") {
                 return Err(unsupported(
                     module,
                     &SourceSpan::new(&module.id, 0, 0),
@@ -71,7 +72,10 @@ pub(super) fn lower(
             } else {
                 None
             };
-            let replacement = if let Some(receiver_end) = receiver_end.filter(|end| *end > start) {
+            let replacement = if tokens[start].is("new") {
+                let callee = &emitted.javascript[tokens[start].end..tokens[open].start];
+                format!("{construct}(({callee}), {array})")
+            } else if let Some(receiver_end) = receiver_end.filter(|end| *end > start) {
                 let temporary = unused_name(&emitted.javascript, "spread_receiver", &mut sequence);
                 let receiver = &emitted.javascript[tokens[start].start..tokens[receiver_end].start];
                 let member = &emitted.javascript[tokens[receiver_end].start..tokens[open].start];
@@ -93,6 +97,7 @@ pub(super) fn lower(
         let helper = include_str!("../spread_helpers.v1.js")
             .replace("__blueice_target_spread_array", &append)
             .replace("__blueice_target_spread_call", &invoke)
+            .replace("__blueice_target_spread_construct", &construct)
             .replace("__blueice_target_iterator", &iterator)
             .replace("__blueice_target_step_result", &step);
         let iterator_helper = include_str!("../iteration_helpers.v1.js")

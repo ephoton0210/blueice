@@ -132,22 +132,6 @@ impl ModuleChecker<'_> {
             );
             return;
         };
-        // `yield` extends as far right as the expression does, so it must start
-        // an expression: the beginning of the tokens, a statement, or the right
-        // side of an assignment, a `return` or a declaration.
-        let starts_expression = position == 0
-            || matches!(
-                tokens[position - 1].text.as_str(),
-                ";" | "{" | "}" | ")" | "=" | "return" | "else"
-            );
-        if !starts_expression {
-            self.type_error(
-                &at,
-                "a `yield` inside a larger expression is not supported yet".to_string(),
-                DiagnosticCode::UnsupportedSyntax,
-            );
-            return;
-        }
         let delegate = tokens.get(position + 1).is_some_and(|token| token.is("*"));
         let start = position + 1 + usize::from(delegate);
         // The operand ends at the statement's `;` or the closing `}` of its block.
@@ -156,7 +140,11 @@ impl ModuleChecker<'_> {
         for (index, token) in tokens.iter().enumerate().skip(start) {
             match token.text.as_str() {
                 "(" | "[" | "{" => depth += 1,
-                ")" | "]" => depth = depth.saturating_sub(1),
+                ")" | "]" if depth == 0 => {
+                    end = index;
+                    break;
+                }
+                ")" | "]" => depth -= 1,
                 "}" => {
                     if depth == 0 {
                         end = index;
@@ -164,7 +152,7 @@ impl ModuleChecker<'_> {
                     }
                     depth -= 1;
                 }
-                ";" if depth == 0 => {
+                ";" | "," if depth == 0 => {
                     end = index;
                     break;
                 }

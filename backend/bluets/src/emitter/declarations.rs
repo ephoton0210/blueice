@@ -230,7 +230,11 @@ pub(super) fn emit_declaration(
                     if parameter.rest {
                         output.push_str("...");
                     }
-                    output.push_str(&parameter.name);
+                    if let Some(pattern) = &parameter.pattern {
+                        output.push_str(&super::binding_patterns::declaration(pattern));
+                    } else {
+                        output.push_str(&parameter.name);
+                    }
                     if parameter.optional {
                         output.push('?');
                     }

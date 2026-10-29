@@ -109,7 +109,6 @@ fn variable_pattern_boundaries_remain_precise() {
     for source in [
         "export const {value} = {value:42};",
         "declare const {value}: {value:number};",
-        "const {left:{value}} = {left:{value:42}};",
         "const {...rest,value} = {value:42};",
         "const {...rest = {}} = {value:42};",
         "const {value} = {value:42}; export {value};",
@@ -131,4 +130,18 @@ fn variable_pattern_boundaries_remain_precise() {
             result.diagnostics
         );
     }
+    let accepted = compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const {left:{value}} = {left:{value:42}};",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:?}",
+        accepted.diagnostics
+    );
+    assert!(accepted.output.is_some());
 }

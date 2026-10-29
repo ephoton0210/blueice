@@ -296,6 +296,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "gd1_declarations" => "gd1_declarations/reference.json",
         "gd2_declaration_maps" => "gd2_declaration_maps/reference.json",
         "gm2_build_interop" => "gm2_build_interop/reference.json",
+        "ge1_downlevel" => "ge1_downlevel/reference.json",
         "gm1_resolver_compositions" => "gm1_resolver_compositions/reference.json",
         "gt3_operators" => "gt3_operators/reference.json",
         "gt1_declaration_order" => "gt1_declaration_order/reference.json",

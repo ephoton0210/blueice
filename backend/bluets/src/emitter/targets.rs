@@ -7,6 +7,7 @@
 use super::*;
 use crate::syntax::{Token, TokenKind};
 
+mod async_forms;
 mod async_functions;
 mod async_generators;
 mod async_iteration;
@@ -15,6 +16,7 @@ mod exponentiation;
 mod object_rest;
 mod object_spread;
 mod optional;
+mod suspension_text;
 
 pub const TARGET_HELPER_V1_VERSION: &str = "blue-ts-target-helper-v1";
 pub(crate) const TARGET_HELPER_V1_SOURCE: &str = include_str!("targets/helpers.v1.js");
@@ -31,6 +33,7 @@ pub(crate) const TARGET_HELPER_V1_SOURCES: &[&str] = &[
     include_str!("targets/spread_helpers.v1.js"),
     include_str!("targets/class_helpers.v1.js"),
     include_str!("targets/generator_helpers.v1.js"),
+    include_str!("targets/binding_helpers.v1.js"),
 ];
 
 /// Lower binding logical assignments without moving their right operand
@@ -44,6 +47,7 @@ pub(super) fn lower(
     emitted = optional::lower(emitted, module, options)?;
     emitted = object_spread::lower(emitted, module, options)?;
     emitted = object_rest::lower(emitted, module, options)?;
+    emitted = async_forms::lower(emitted, module, options)?;
     emitted = async_iteration::lower(emitted, module, options)?;
     emitted = async_generators::lower(emitted, module, options)?;
     emitted = async_functions::lower(emitted, module, options)?;

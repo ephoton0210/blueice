@@ -31,6 +31,7 @@ mod commonjs;
 mod computed_fields;
 mod declaration_maps;
 pub(crate) use declaration_maps::VERSION as DECLARATION_MAP_VERSION;
+mod binding_patterns;
 mod declarations;
 mod decorators;
 mod enums;

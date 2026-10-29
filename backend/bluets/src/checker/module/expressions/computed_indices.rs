@@ -21,6 +21,19 @@ impl ModuleChecker<'_> {
             &mut HashSet::new(),
             &mut budget,
         );
+        if let Type::Literal(literal) = &key {
+            let name = serde_json::from_str::<String>(literal)
+                .unwrap_or_else(|_| literal.trim_matches('\'').to_string());
+            if let PropertyType::Found { value, .. } = property_type(
+                &expanded,
+                &name,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) {
+                return Some(value);
+            }
+        }
         if let Type::IndexedRecord { object, indices } = &expanded {
             let name = crate::symbol_keys::name(
                 &self.module.id,

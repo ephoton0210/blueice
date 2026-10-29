@@ -201,18 +201,8 @@ impl ModuleChecker<'_> {
         for parameter in parameters {
             if let Some(pattern) = &parameter.pattern {
                 // A destructured class parameter binds its names untyped.
-                let names: Vec<&String> = match pattern {
-                    BindingPattern::Object(bindings) => {
-                        bindings.iter().map(|binding| &binding.name).collect()
-                    }
-                    BindingPattern::Array(elements) => elements
-                        .iter()
-                        .flatten()
-                        .map(|element| &element.name)
-                        .collect(),
-                };
-                for name in names {
-                    scope.insert(name.clone(), Type::Unknown);
+                for (name, _) in pattern.names() {
+                    scope.insert(name.to_string(), Type::Unknown);
                 }
                 continue;
             }

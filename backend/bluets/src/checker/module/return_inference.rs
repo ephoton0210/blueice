@@ -168,16 +168,12 @@ impl ModuleChecker<'_> {
                     parameter
                         .pattern
                         .as_ref()
-                        .map(|pattern| match pattern {
-                            BindingPattern::Object(bindings) => bindings
-                                .iter()
-                                .map(|binding| binding.name.clone())
-                                .collect::<Vec<_>>(),
-                            BindingPattern::Array(bindings) => bindings
-                                .iter()
-                                .flatten()
-                                .map(|binding| binding.name.clone())
-                                .collect::<Vec<_>>(),
+                        .map(|pattern| {
+                            pattern
+                                .names()
+                                .into_iter()
+                                .map(|(name, _)| name.to_string())
+                                .collect::<Vec<_>>()
                         })
                         .unwrap_or_else(|| vec![parameter.name.clone()])
                 })
@@ -714,7 +710,12 @@ impl ModuleChecker<'_> {
                         PropertyType::Found { value, .. } => value,
                         _ => Type::Unknown,
                     };
-                    (binding.name.clone(), value, binding.default.as_ref())
+                    (
+                        binding.name.clone(),
+                        value,
+                        binding.default.as_ref(),
+                        binding.nested.as_deref(),
+                    )
                 })
                 .collect::<Vec<_>>(),
             BindingPattern::Array(bindings) => bindings
@@ -733,11 +734,12 @@ impl ModuleChecker<'_> {
                             &mut budget,
                         ),
                         binding.default.as_ref(),
+                        binding.nested.as_deref(),
                     ))
                 })
                 .collect(),
         };
-        for (name, value, default) in bindings {
+        for (name, value, default, nested) in bindings {
             let value = if let Some(default) = default {
                 match value {
                     Type::Union(parts) => joined(
@@ -752,7 +754,11 @@ impl ModuleChecker<'_> {
             } else {
                 value
             };
-            scope.insert(name, value);
+            if let Some(nested) = nested {
+                self.infer_return_pattern(&nested.pattern, &value, scope);
+            } else {
+                scope.insert(name, value);
+            }
         }
     }
 

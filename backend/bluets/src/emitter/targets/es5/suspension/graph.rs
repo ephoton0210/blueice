@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 
 mod control;
 mod expressions;
+mod switch;
 
 pub(super) struct Graph {
     pub(super) entry: usize,
@@ -76,9 +77,15 @@ struct Builder<'a> {
     locals: BTreeSet<String>,
     functions: String,
     depth: usize,
-    loops: Vec<(usize, usize, usize)>,
+    loops: Vec<JumpTargets>,
     regions: usize,
     tokens: Vec<Token>,
+}
+
+#[derive(Clone, Copy)]
+struct JumpTargets {
+    broken: (usize, usize),
+    continued: Option<(usize, usize)>,
 }
 
 impl Builder<'_> {
@@ -133,9 +140,6 @@ impl Builder<'_> {
                 }
             }
             FunctionBodyItem::If(statement) => {
-                if self.suspends(&statement.test) {
-                    return None;
-                }
                 let consequent = self.sequence(&statement.consequent, next)?;
                 let alternate = match &statement.alternate {
                     Some(FunctionElseBranch::Braced(items)) => self.sequence(items, next)?,
@@ -144,10 +148,11 @@ impl Builder<'_> {
                     }
                     None => next,
                 };
-                let test = self.text(&statement.test)?;
-                Some(self.block(format!(
-                    "{context}.label = ({test}) ? {consequent} : {alternate}; continue;"
-                )))
+                let test = self.temporary();
+                let branch = self.block(format!(
+                    "{context}.label = {test} ? {consequent} : {alternate}; continue;"
+                ));
+                self.expression(&statement.test, Some(&test), "", branch)
             }
             FunctionBodyItem::Try(statement) => {
                 self.regions += 1;
@@ -233,6 +238,11 @@ impl Builder<'_> {
             return Some(self.block(code));
         }
         let first = tokens.first()?;
+        if first.is("await")
+            && exponentiation::operand_end(tokens, 1).is_some_and(|end| end < tokens.len())
+        {
+            return self.compound_expression(tokens, binding, completion, next);
+        }
         if !matches!(first.text.as_str(), "yield" | "await") {
             return self.compound_expression(tokens, binding, completion, next);
         }

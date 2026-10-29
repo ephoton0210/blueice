@@ -114,7 +114,12 @@ impl Parser {
     ) -> VariableDeclaration {
         let (name, pattern) = if self.peek("{") || self.peek("[") {
             let open = self.index;
-            match patterns::parse_variable_pattern(&self.tokens, open, &self.id) {
+            match patterns::parse_variable_pattern(
+                &self.tokens,
+                open,
+                &self.id,
+                self.max_type_depth,
+            ) {
                 Some((pattern, close)) => {
                     let name =
                         self.source[self.tokens[open].start..self.tokens[close].end].to_string();
@@ -396,7 +401,12 @@ impl Parser {
             let mut pattern = None;
             let parameter_name = if !rest && (self.peek("{") || self.peek("[")) {
                 let open = self.index;
-                match patterns::parse_binding_pattern(&self.tokens, open, &self.id) {
+                match patterns::parse_binding_pattern(
+                    &self.tokens,
+                    open,
+                    &self.id,
+                    self.max_type_depth,
+                ) {
                     Some((parsed, close)) => {
                         let text = self.source[self.tokens[open].start..self.tokens[close].end]
                             .to_string();

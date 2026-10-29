@@ -330,6 +330,49 @@ impl ScopeModel<'_> {
         self.statements(&tokens, scope);
     }
 
+    fn parameter_pattern(&mut self, pattern: &BindingPattern, scope: ScopeId) {
+        match pattern {
+            BindingPattern::Object(bindings) => {
+                for binding in bindings {
+                    if let Some(nested) = &binding.nested {
+                        self.parameter_pattern(&nested.pattern, scope);
+                    } else {
+                        self.value(
+                            scope,
+                            &binding.name,
+                            binding.span.end,
+                            false,
+                            false,
+                            Type::Unknown,
+                        );
+                    }
+                    if let Some(default) = &binding.default {
+                        self.expression(default, scope);
+                    }
+                }
+            }
+            BindingPattern::Array(bindings) => {
+                for binding in bindings.iter().flatten() {
+                    if let Some(nested) = &binding.nested {
+                        self.parameter_pattern(&nested.pattern, scope);
+                    } else {
+                        self.value(
+                            scope,
+                            &binding.name,
+                            binding.span.end,
+                            false,
+                            false,
+                            Type::Unknown,
+                        );
+                    }
+                    if let Some(default) = &binding.default {
+                        self.expression(default, scope);
+                    }
+                }
+            }
+        }
+    }
+
     pub(super) fn parameters(&mut self, parameters: &[Parameter], scope: ScopeId) {
         for parameter in parameters {
             if parameter.pattern.is_none() && parameter.name != "this" {
@@ -340,45 +383,17 @@ impl ScopeModel<'_> {
             if let Some(annotation) = &parameter.annotation {
                 self.type_scopes(annotation, &parameter.span, scope);
             }
-            match &parameter.pattern {
-                Some(BindingPattern::Object(bindings)) => {
-                    for binding in bindings {
-                        self.value(
-                            scope,
-                            &binding.name,
-                            binding.span.end,
-                            false,
-                            false,
-                            Type::Unknown,
-                        );
-                        if let Some(default) = &binding.default {
-                            self.expression(default, scope);
-                        }
-                    }
-                }
-                Some(BindingPattern::Array(bindings)) => {
-                    for binding in bindings.iter().flatten() {
-                        self.value(
-                            scope,
-                            &binding.name,
-                            binding.span.end,
-                            false,
-                            false,
-                            Type::Unknown,
-                        );
-                        if let Some(default) = &binding.default {
-                            self.expression(default, scope);
-                        }
-                    }
-                }
-                None => self.value(
+            if let Some(pattern) = &parameter.pattern {
+                self.parameter_pattern(pattern, scope);
+            } else {
+                self.value(
                     scope,
                     &parameter.name,
                     parameter.span.end,
                     false,
                     false,
                     value,
-                ),
+                );
             }
             if parameter.pattern.is_none() {
                 self.scopes[scope]

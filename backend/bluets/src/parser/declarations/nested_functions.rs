@@ -672,9 +672,12 @@ impl Parser {
                 return false;
             }
             if at_parameter_start && depth == 0 && (token.is("{") || token.is("[")) {
-                let Some((_, pattern_close)) =
-                    patterns::parse_binding_pattern(&self.tokens, index, &self.id)
-                else {
+                let Some((_, pattern_close)) = patterns::parse_binding_pattern(
+                    &self.tokens,
+                    index,
+                    &self.id,
+                    self.max_type_depth,
+                ) else {
                     return false;
                 };
                 index = pattern_close + 1;

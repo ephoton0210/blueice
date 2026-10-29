@@ -36,6 +36,13 @@ impl Builder<'_> {
                 }
                 exponentiation::matching_close(&tokens, close + 1)?
             }
+            "switch" if tokens.get(start + 1)?.is("(") => {
+                let close = exponentiation::matching_close(&tokens, start + 1)?;
+                if !tokens.get(close + 1)?.is("{") {
+                    return None;
+                }
+                exponentiation::matching_close(&tokens, close + 1)?
+            }
             "break" | "continue" if tokens.get(start + 1)?.is(";") => start + 1,
             "if" if tokens.get(start + 1)?.is("(") => {
                 let close = exponentiation::matching_close(&tokens, start + 1)?;
@@ -68,16 +75,17 @@ impl Builder<'_> {
             }
             "{" => self.sequence(&items[index + 1..end - 1], next),
             "break" | "continue" => {
-                let &(broken, continued, depth) = self.loops.last()?;
-                let target = if tokens[start].is("break") {
-                    broken
+                let targets = self.loops.last()?;
+                let (target, depth) = if tokens[start].is("break") {
+                    targets.broken
                 } else {
-                    continued
+                    targets.continued?
                 };
                 Some(self.block(format!(
                     "return {{kind:\"jump\", label:{target}, depth:{depth}}};"
                 )))
             }
+            "switch" => self.switch(&tokens, start, next),
             "if" => {
                 let close = exponentiation::matching_close(&tokens, start + 1)?;
                 let temporary = self.temporary();
@@ -182,7 +190,10 @@ impl Builder<'_> {
         } else {
             head
         };
-        self.loops.push((next, continued, self.regions));
+        self.loops.push(JumpTargets {
+            broken: (next, self.regions),
+            continued: Some((continued, self.regions)),
+        });
         let body = self.sequence(body, continued)?;
         self.loops.pop();
         let temporary = self.temporary();

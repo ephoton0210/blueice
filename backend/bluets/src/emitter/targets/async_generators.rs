@@ -53,10 +53,13 @@ pub(super) fn lower(
             tokens[function.body].end..tokens[function.body_end].start,
             &marker,
             options.limits.parser.max_type_depth.min(128),
+            (module, &options.limits.parser),
         ) else {
-            // Unmeasured delegation, nested template suspensions and method
-            // scopes retain their existing target boundary.
-            return Ok(emitted);
+            return Err(Diagnostic::error(
+                DiagnosticCode::UnsupportedSyntax,
+                SourceSpan::new(&module.id, 0, 0),
+                "async generator suspension scope was not retained",
+            ));
         };
         let count = async_functions::parameter_length(
             &tokens[function.parameters + 1..function.parameters_end],
@@ -106,6 +109,7 @@ fn rewrite(
     characters: std::ops::Range<usize>,
     marker: &str,
     depth: usize,
+    context: (&Module, &crate::parser::ParserLimits),
 ) -> Option<String> {
     if depth == 0 {
         return None;
@@ -119,8 +123,46 @@ fn rewrite(
     let mut index = start;
     while index < end {
         let token = &tokens[index];
-        if token.kind == TokenKind::Template && token.text.contains("${") {
-            return None;
+        if token.kind == TokenKind::Template {
+            let replacement = super::suspension_text::template(
+                source,
+                token,
+                context.0,
+                depth - 1,
+                |text, depth| {
+                    let tokens = crate::syntax::lex_with_limits(
+                        &context.0.id,
+                        text,
+                        context.1.max_source_bytes,
+                        context.1.max_tokens,
+                    )
+                    .map_err(|mut d| d.remove(0))?;
+                    rewrite(
+                        text,
+                        &tokens,
+                        0..tokens.len() - 1,
+                        0..text.len(),
+                        marker,
+                        depth,
+                        context,
+                    )
+                    .ok_or_else(|| {
+                        Diagnostic::error(
+                            DiagnosticCode::UnsupportedSyntax,
+                            SourceSpan::new(&context.0.id, 0, 0),
+                            "template generator suspension was not retained",
+                        )
+                    })
+                },
+            )
+            .ok()?;
+            edits.push(TextEdit {
+                start: token.start - begin,
+                end: token.end - begin,
+                replacement,
+            });
+            index += 1;
+            continue;
         }
         if token.is("class") || token.is("async") && !tokens.get(index + 1)?.is("function") {
             return None;
@@ -183,6 +225,7 @@ fn rewrite(
                     following.start..last,
                     marker,
                     depth - 1,
+                    context,
                 )?,
                 last,
             )

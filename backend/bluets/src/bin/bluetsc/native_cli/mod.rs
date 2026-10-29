@@ -214,6 +214,15 @@ fn run_with_mode(
     } = compile_project(&invocation, &loader, !no_emit && !no_emit_on_error);
     summary.has_errors |= !missing.is_empty();
     diagnostics.extend(missing);
+    // Counterpart locations can be narrower than the internal BTS span.
+    // Native presentation orders the final counterpart span and diagnostic code.
+    diagnostics.sort_by_key(|diagnostic| {
+        let (span, code) = diagnostic
+            .typescript
+            .as_ref()
+            .map_or((&diagnostic.span, u32::MAX), |ts| (&ts.span, ts.code));
+        (span.module.clone(), span.start, span.end, code)
+    });
     if let Some(inputs) = resolution_inputs {
         inputs.extend(files.iter().cloned());
         inputs.extend(loader.relative.observed_paths());

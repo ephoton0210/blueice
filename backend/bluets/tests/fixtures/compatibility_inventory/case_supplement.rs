@@ -33,6 +33,23 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "ge1_downlevel" => {
+            let path = "backend/bluets/tests/fixtures/ge1_downlevel/reference.json";
+            let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;
+            let rows = root["ownerControls"]
+                .as_array()
+                .ok_or("missing G-E1 owner controls")?;
+            if rows.len() != 6 {
+                return Err("incomplete G-E1 owner controls".into());
+            }
+            rows.iter().enumerate().map(|(index,row)|{
+                let label=row.as_str().ok_or("invalid G-E1 owner control")?;
+                let mut case=Case::new(path,&format!("/ownerControls/{index}"),label,"owner-downlevel-control");
+                case.comparison=Comparison::BoundaryControl;
+                case.reason=Some("Canonical source/import/output authority, atomic failed publication, bounded parser/lowering work, helper collision/cache provenance, retained runtime policy and stable repeated iterator/finally output are separate owner controls, not native agreements.".into());
+                Ok(case)
+            }).collect::<Result<Vec<_>>>()?
+        }
         "gm2_build_interop" => {
             let path = "backend/bluets/tests/fixtures/gm2_build_interop/reference.json";
             let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;
@@ -420,14 +437,26 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
                 "opaque-generator-es5",
                 "program",
             );
-            case.comparison = Comparison::Refused;
-            case.reason = Some("Pinned TypeScript accepts and executes the ES5 suspension graph; BlueTS deliberately refuses unsupported lowering.".into());
+            if facts
+                .ignored_tests
+                .iter()
+                .any(|name| name == "refused_suspension_has_a_pinned_native_positive_control")
+            {
+                case.comparison = Comparison::Refused;
+                case.reason = Some("Pinned TypeScript accepts and executes the ES5 suspension graph; BlueTS deliberately refuses unsupported lowering.".into());
+            } else if !facts
+                .ignored_tests
+                .iter()
+                .any(|name| name == "lowered_suspension_matches_pinned_native_execution")
+            {
+                return Err("opaque-generator native execution evidence is missing".into());
+            }
             vec![case]
         }
         _ => Vec::new(),
     };
     for case in &mut cases {
-        if case.comparison == Comparison::Compared {
+        if case.comparison == Comparison::Compared && stem != "emitted_target_editions" {
             case.unit = "supplemental-program/configuration-probe".into();
         }
     }

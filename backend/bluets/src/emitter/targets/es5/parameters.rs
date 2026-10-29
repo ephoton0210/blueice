@@ -6,6 +6,8 @@
 
 use super::*;
 use crate::parser::Parameter;
+mod raw;
+pub(super) use raw::lower;
 
 pub(super) fn prologue(
     module: &Module,

@@ -13,36 +13,37 @@ use std::{collections::BTreeSet, fs, path::Path, process::Command};
 
 const OPAQUE_GENERATOR: &str = "export function* sequence(): Generator<number, void, unknown> { switch (1) { case 1: break; }; yield 42; }";
 
-#[test]
-fn unsupported_suspension_refuses_es5_output() {
+fn opaque_javascript() -> String {
     let result = compile(
         "memory:///main.ts",
         &MapLoader::from([ModuleSource::new("memory:///main.ts", OPAQUE_GENERATOR)]),
         CompilerOptions {
             target: EcmaTarget::Es5,
             libraries: Some(vec![EcmaTarget::Es2020]),
+            module_kind: ModuleKind::CommonJs,
             ..CompilerOptions::default()
         },
     );
-    assert!(result.has_errors());
-    assert!(result.output.is_none());
-    assert!(
-        result.diagnostics.iter().any(|diagnostic| diagnostic
-            .message
-            .contains("suspension control-flow shape cannot be lowered to ES5")),
-        "{:?}",
-        result.diagnostics
-    );
+    assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    result.output.unwrap().artifacts["memory:///main.ts"]
+        .javascript
+        .clone()
+}
+#[test]
+fn opaque_suspension_graph_emits_valid_es5_output() {
+    parse_module_with_edition(&opaque_javascript(), SyntaxEdition::Es5).unwrap();
 }
 
 #[test]
 #[ignore = "requires pinned TypeScript 5.9.3 and Node"]
-fn refused_suspension_has_a_pinned_native_positive_control() {
+fn lowered_suspension_matches_pinned_native_execution() {
     let root = fs::canonicalize(std::env::temp_dir())
         .unwrap()
         .join(format!("bluets-opaque-generator-{}", std::process::id()));
     fs::create_dir(&root).unwrap();
     fs::write(root.join("main.ts"), OPAQUE_GENERATOR).unwrap();
+    fs::create_dir_all(root.join("out")).unwrap();
+    fs::write(root.join("out/blue.js"), opaque_javascript()).unwrap();
     let script = r#"
 const path = require('path');
 const ts = require(process.argv[2] + '/tests/fixtures/oracle_support/load_typescript.cjs')(process.env.BLUEICE_BLUETSC_ORACLE || 'tsc');
@@ -51,8 +52,12 @@ const root = process.argv[1];
 const program = ts.createProgram([path.join(root,'main.ts')], {target:ts.ScriptTarget.ES5, module:ts.ModuleKind.CommonJS, lib:['lib.es2020.d.ts'], strict:true, skipLibCheck:true, noEmitOnError:true, outDir:path.join(root,'out')});
 const diagnostics = ts.getPreEmitDiagnostics(program);
 if (diagnostics.length || program.emit().emitSkipped) throw new Error(ts.formatDiagnostics(diagnostics,{getCanonicalFileName:x=>x,getCurrentDirectory:()=>root,getNewLine:()=> '\n'}));
-const actual = require(path.join(root,'out/main.js')).sequence().next();
-if (JSON.stringify(actual) !== '{"value":42,"done":false}') throw new Error(JSON.stringify(actual));
+const native=require(path.join(root,'out/main.js')).sequence();
+const blue=require(path.join(root,'out/blue.js')).sequence();
+const expected=[native.next(),native.next()];
+const actual=[blue.next(),blue.next()];
+if(JSON.stringify(expected)!=='[{"value":42,"done":false},{"done":true}]')throw Error(JSON.stringify(expected));
+if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error(JSON.stringify(actual));
 "#;
     let output = Command::new("node")
         .args(["-e", script])

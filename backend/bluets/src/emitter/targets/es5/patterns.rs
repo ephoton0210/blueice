@@ -2,10 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Reuse flat binding records after erasure and object-rest lowering.
-
+//! Recursive projection retains single reads, defaults and iterator closing.
 use super::*;
-use crate::parser::{parse_variable_pattern, BindingPattern};
+use crate::parser::{parse_variable_pattern, BindingPattern, VariableBindingPattern};
 
 pub(super) fn lower(
     mut emitted: EmittedJavaScript,
@@ -21,9 +20,9 @@ pub(super) fn lower(
             options.limits.parser.max_source_bytes,
             remaining,
         )
-        .map_err(|mut diagnostics| diagnostics.remove(0))?;
+        .map_err(|mut d| d.remove(0))?;
         remaining = remaining.saturating_sub(tokens.len());
-        let pattern = tokens.iter().enumerate().find_map(|(index, token)| {
+        let candidate = tokens.iter().enumerate().find_map(|(index, token)| {
             if !matches!(tokens.get(index + 1)?.text.as_str(), "{" | "[") {
                 return None;
             }
@@ -32,16 +31,18 @@ pub(super) fn lower(
             {
                 return None;
             }
-            let (pattern, close) = parse_variable_pattern(&tokens, index + 1, &module.id)?;
-            if !tokens.get(close + 1)?.is("=")
-                || (options.downlevel_iteration
-                    && matches!(pattern.pattern, BindingPattern::Array(_)))
-            {
-                return None;
-            }
-            Some((index + 1, close, pattern))
+            let (pattern, close) = parse_variable_pattern(
+                &tokens,
+                index + 1,
+                &module.id,
+                options.limits.parser.max_type_depth,
+            )?;
+            tokens
+                .get(close + 1)?
+                .is("=")
+                .then_some((index + 1, close, pattern))
         });
-        let Some((open, close, pattern)) = pattern else {
+        let Some((open, close, pattern)) = candidate else {
             return Ok(emitted);
         };
         let end = assignment_end(&tokens, close + 2);
@@ -49,80 +50,195 @@ pub(super) fn lower(
             return Err(unsupported(
                 module,
                 &SourceSpan::new(&module.id, 0, 0),
-                "binding pattern initializer was not retained",
+                "binding initializer was not retained",
             ));
         }
-        let source = &emitted.javascript[tokens[close + 2].start..tokens[end - 1].end];
-        let temporary = unused_name(&emitted.javascript, "pattern_source", &mut sequence);
-        let mut replacement = format!("{temporary} = {source}");
-        let mut helper = None;
+        let source = &emitted.javascript;
+        let mut projector = Projector {
+            source,
+            sequence: &mut sequence,
+            iterate: options.downlevel_iteration,
+            require: unused_name(source, "require_object", &mut 0),
+            read: unused_name(source, "binding_read", &mut 0),
+            iterator: unused_name(source, "binding_iterator", &mut 0),
+            step: unused_name(source, "binding_step", &mut 0),
+            rest: unused_name(source, "binding_rest", &mut 0),
+            objects: false,
+            arrays: false,
+            rests: false,
+            parts: Vec::new(),
+        };
+        let value = &source[tokens[close + 2].start..tokens[end - 1].end];
+        projector
+            .project(&pattern, value, options.limits.parser.max_type_depth)
+            .ok_or_else(|| {
+                Diagnostic::error(
+                    DiagnosticCode::ResourceLimit,
+                    SourceSpan::new(&module.id, 0, 0),
+                    "nested binding lowering exceeds the depth limit",
+                )
+            })?;
+        let replacement = projector.parts.join(", ");
+        let mut helper = String::new();
+        if projector.objects {
+            helper.push_str(
+                &include_str!("../es5_helpers.v1.js")
+                    .replace("__blueice_target_require_object", &projector.require),
+            );
+        }
+        if projector.arrays {
+            helper.push_str(
+                &include_str!("../binding_helpers.v1.js")
+                    .replace("__blueice_target_binding_read", &projector.read)
+                    .replace("__blueice_target_binding_iterator", &projector.iterator)
+                    .replace("__blueice_target_binding_step", &projector.step),
+            );
+            helper.push_str(
+                &include_str!("../iteration_helpers.v1.js")
+                    .replace("__blueice_target_iterator", &projector.iterator)
+                    .replace("__blueice_target_step_result", &projector.step),
+            );
+        }
+        if projector.rests {
+            helper.push_str(
+                &object_spread::HELPER
+                    .replace("__blueice_target_object_properties", &projector.rest),
+            );
+        }
+        let insertion = directive_end(&tokens);
+        emitted = mapped_edits(
+            emitted,
+            vec![
+                TextEdit {
+                    start: tokens[open].start,
+                    end: tokens[end - 1].end,
+                    replacement,
+                },
+                TextEdit {
+                    start: insertion,
+                    end: insertion,
+                    replacement: format!("\n{helper}\n"),
+                },
+            ],
+        );
+    }
+}
+
+struct Projector<'a> {
+    source: &'a str,
+    sequence: &'a mut usize,
+    iterate: bool,
+    require: String,
+    read: String,
+    iterator: String,
+    step: String,
+    rest: String,
+    objects: bool,
+    arrays: bool,
+    rests: bool,
+    parts: Vec<String>,
+}
+impl Projector<'_> {
+    fn temporary(&mut self, kind: &str) -> String {
+        unused_name(self.source, kind, self.sequence)
+    }
+    fn project(
+        &mut self,
+        pattern: &VariableBindingPattern,
+        value: &str,
+        depth: usize,
+    ) -> Option<()> {
+        let depth = depth.checked_sub(1)?;
+        let source = self.temporary("pattern_source");
         match &pattern.pattern {
             BindingPattern::Object(bindings) => {
-                let require = unused_name(&emitted.javascript, "require_object", &mut sequence);
-                replacement = format!("{temporary} = {require}({source})");
-                helper = Some(
-                    include_str!("../es5_helpers.v1.js")
-                        .replace("__blueice_target_require_object", &require),
-                );
+                self.objects = true;
+                self.parts
+                    .push(format!("{source}={}({value})", self.require));
                 for binding in bindings {
-                    add_binding(
-                        &mut replacement,
+                    let key = serde_json::to_string(&binding.key).ok()?;
+                    let read = format!("{source}[{key}]");
+                    self.binding(
                         &binding.name,
-                        &format!("{temporary}.{}", binding.key),
+                        binding.nested.as_deref(),
                         binding.default.as_deref(),
-                        &emitted.javascript,
-                        &mut sequence,
-                    );
+                        &read,
+                        depth,
+                    )?;
                 }
-                if pattern.rest.is_some() {
-                    return Err(unsupported(
-                        module,
-                        &SourceSpan::new(&module.id, 0, 0),
-                        "object rest was not lowered before ES5 binding projection",
+                if let Some(rest) = &pattern.rest {
+                    self.rests = true;
+                    let excluded =
+                        serde_json::to_string(&bindings.iter().map(|b| &b.key).collect::<Vec<_>>())
+                            .ok()?;
+                    self.parts.push(format!(
+                        "{}={}({{}},{source},true,{excluded})",
+                        rest.name, self.rest
                     ));
                 }
             }
             BindingPattern::Array(bindings) => {
+                let value = if self.iterate {
+                    self.arrays = true;
+                    let count = if pattern.rest.is_some() {
+                        "null".to_string()
+                    } else {
+                        bindings.len().to_string()
+                    };
+                    format!("{}({value},{count})", self.read)
+                } else {
+                    value.to_string()
+                };
+                self.parts.push(format!("{source}={value}"));
                 for (index, binding) in bindings.iter().enumerate() {
                     if let Some(binding) = binding {
-                        add_binding(
-                            &mut replacement,
+                        self.binding(
                             &binding.name,
-                            &format!("{temporary}[{index}]"),
+                            binding.nested.as_deref(),
                             binding.default.as_deref(),
-                            &emitted.javascript,
-                            &mut sequence,
-                        );
+                            &format!("{source}[{index}]"),
+                            depth,
+                        )?;
                     }
                 }
                 if let Some(rest) = &pattern.rest {
-                    replacement.push_str(&format!(
-                        ", {} = {temporary}.slice({})",
-                        rest.name,
-                        bindings.len()
-                    ));
+                    self.parts
+                        .push(format!("{}={source}.slice({})", rest.name, bindings.len()));
                 }
             }
         }
-        let mut edits = vec![TextEdit {
-            start: tokens[open].start,
-            end: tokens[end - 1].end,
-            replacement,
-        }];
-        if let Some(helper) = helper {
-            let insertion = directive_end(&tokens);
-            edits.push(TextEdit {
-                start: insertion,
-                end: insertion,
-                replacement: format!("\n{helper}\n"),
-            });
+        Some(())
+    }
+    fn binding(
+        &mut self,
+        name: &str,
+        nested: Option<&VariableBindingPattern>,
+        default: Option<&[Token]>,
+        read: &str,
+        depth: usize,
+    ) -> Option<()> {
+        let value = if let Some((first, last)) =
+            default.and_then(|tokens| Some((tokens.first()?, tokens.last()?)))
+        {
+            let value = self.temporary("pattern_value");
+            self.parts.push(format!("{value}={read}"));
+            format!(
+                "{value}===void 0?({}):{value}",
+                &self.source[first.start..last.end]
+            )
+        } else {
+            read.to_string()
+        };
+        if let Some(nested) = nested {
+            self.project(nested, &format!("({value})"), depth)
+        } else {
+            self.parts.push(format!("{name}={value}"));
+            Some(())
         }
-        emitted = mapped_edits(emitted, edits);
     }
 }
-
 fn in_declaration(tokens: &[Token], before: usize) -> bool {
-    let mut depth = 0usize;
+    let mut depth = 0;
     for token in tokens[..before].iter().rev() {
         match token.text.as_str() {
             ")" | "]" | "}" => depth += 1,
@@ -133,24 +249,4 @@ fn in_declaration(tokens: &[Token], before: usize) -> bool {
         }
     }
     false
-}
-
-fn add_binding(
-    output: &mut String,
-    name: &str,
-    read: &str,
-    default: Option<&[Token]>,
-    source: &str,
-    sequence: &mut usize,
-) {
-    if let Some((first, last)) = default.and_then(|tokens| Some((tokens.first()?, tokens.last()?)))
-    {
-        let value = unused_name(source, "pattern_value", sequence);
-        output.push_str(&format!(
-            ", {value} = {read}, {name} = {value} === void 0 ? ({}) : {value}",
-            &source[first.start..last.end]
-        ));
-    } else {
-        output.push_str(&format!(", {name} = {read}"));
-    }
 }

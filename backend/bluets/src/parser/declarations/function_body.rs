@@ -25,6 +25,44 @@ impl Parser {
                 self.index,
                 self.index.saturating_add(2).min(self.tokens.len()),
             );
+            // The source checker owns its established token-level narrowing
+            // path. Only continuation parsing needs whole emitted controls.
+            if self.emitted_runtime
+                && parentheses == 0
+                && brackets == 0
+                && matches!(self.current().text.as_str(), "for" | "switch")
+            {
+                let start = self.index;
+                if self
+                    .tokens
+                    .get(start + 1)
+                    .is_some_and(|token| token.is("("))
+                {
+                    let limit = self.tokens.len() - 1;
+                    if let Some(close) =
+                        matching_closing_delimiter(&self.tokens, start + 1, limit, "(", ")")
+                    {
+                        if self
+                            .tokens
+                            .get(close + 1)
+                            .is_some_and(|token| token.is("{"))
+                        {
+                            if let Some(end) =
+                                matching_closing_delimiter(&self.tokens, close + 1, limit, "{", "}")
+                            {
+                                self.collect_statement_type_edits(start, end + 1);
+                                body.push(FunctionBodyItem::Opaque(SourceSpan::new(
+                                    &self.id,
+                                    self.tokens[start].start,
+                                    self.tokens[end].end,
+                                )));
+                                self.index = end + 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
             if parentheses == 0
                 && brackets == 0
                 && is_direct_braced_if_statement(&self.tokens, self.index)

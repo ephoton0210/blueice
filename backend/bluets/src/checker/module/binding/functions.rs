@@ -274,7 +274,11 @@ impl<'a> ModuleChecker<'a> {
                     };
                     let bound =
                         self.defaulted_binding_type(bound, &binding.default, &binding.span, scope);
-                    scope.insert(binding.name.clone(), bound);
+                    if let Some(nested) = &binding.nested {
+                        self.bind_nested_pattern(nested, &bound, &binding.span, scope);
+                    } else {
+                        scope.insert(binding.name.clone(), bound);
+                    }
                 }
             }
             BindingPattern::Array(elements) => {
@@ -309,7 +313,11 @@ impl<'a> ModuleChecker<'a> {
                     };
                     let bound =
                         self.defaulted_binding_type(bound, &element.default, &element.span, scope);
-                    scope.insert(element.name.clone(), bound);
+                    if let Some(nested) = &element.nested {
+                        self.bind_nested_pattern(nested, &bound, &element.span, scope);
+                    } else {
+                        scope.insert(element.name.clone(), bound);
+                    }
                 }
             }
         }

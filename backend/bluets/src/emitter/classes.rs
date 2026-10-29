@@ -174,21 +174,10 @@ fn parameters_to_ts(parameters: &[Parameter]) -> String {
             format!(
                 "{}{}{}: {}",
                 if parameter.rest { "..." } else { "" },
-                match &parameter.pattern {
-                    Some(crate::parser::BindingPattern::Object(fields)) => format!(
-                        "{{ {} }}",
-                        fields
-                            .iter()
-                            .map(|field| if field.key == field.name {
-                                field.name.clone()
-                            } else {
-                                format!("{}: {}", field.key, field.name)
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                    _ => parameter.name.clone(),
-                },
+                parameter.pattern.as_ref().map_or_else(
+                    || parameter.name.clone(),
+                    super::binding_patterns::declaration
+                ),
                 if parameter.optional || parameter.default.is_some() {
                     "?"
                 } else {

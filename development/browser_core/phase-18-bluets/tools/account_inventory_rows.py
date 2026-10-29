@@ -23,7 +23,7 @@ GAPS = {
     "G-T5": "more_types_checker_matrix", "G-T6": "compatibility_checker_matrix",
     "G-T7": "gt7_library_manifest", "G-T8": "inferred_return_checker_matrix",
     "G-T9": "gt9_classes", "G-T10": "gt10_import_types",
-    "G-E1": "targets_checker_matrix", "G-E2": "module_systems",
+    "G-E1": "ge1_downlevel", "G-E2": "module_systems",
     "G-E3": "decorator_targets", "G-E4": "output_options",
     "G-E5": "source_map_tokens_oracle", "G-D1": "gd1_declarations",
     "G-D2": "gd2_declaration_maps", "G-M1": "gm1_resolver_compositions",

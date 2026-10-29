@@ -180,6 +180,7 @@ pub(in crate::emitter) fn lower(
     if options.target != crate::EcmaTarget::Es5 {
         return Ok(emitted);
     }
+    emitted = parameters::lower(emitted, module, options)?;
     emitted = templates::lower(emitted, module, options)?;
     emitted = patterns::lower(emitted, module, options)?;
     emitted = objects::lower(emitted, module, options)?;

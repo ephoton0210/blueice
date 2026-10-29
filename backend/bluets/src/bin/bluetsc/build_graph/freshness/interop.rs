@@ -273,7 +273,8 @@ pub(super) fn import(
     }
     let owned = info.get("blueice").is_some_and(|marker| {
         marker["producer"] == STATE_PRODUCER
-            && marker["formatVersion"] == 1
+            && marker["formatVersion"] == 2
+            && marker["compilerStateVersion"] == STATE_VERSION
             && marker["inputFingerprint"] == fingerprint
     });
     if !owned && !libraries.contains("lib.es2022.d.ts") {
@@ -361,7 +362,7 @@ pub(super) fn publish(
         entries.push(json!({"version":model::hash(&bytes),"signature":signature}));
     }
     let mut info = json!({"fileNames":names,"fileInfos":entries,"root":roots,"options":model::options(project,inputs),
-        "version":"5.9.3","blueice":{"producer":STATE_PRODUCER,"formatVersion":1,"inputFingerprint":fingerprint}});
+        "version":"5.9.3","blueice":{"producer":STATE_PRODUCER,"formatVersion":2,"compilerStateVersion":STATE_VERSION,"inputFingerprint":fingerprint}});
     if status.failed {
         info["errors"] = Value::Bool(true);
     }

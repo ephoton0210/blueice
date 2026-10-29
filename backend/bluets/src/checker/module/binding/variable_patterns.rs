@@ -55,6 +55,35 @@ impl ModuleChecker<'_> {
                 }
             }
         }
+        self.bind_pattern_rest(pattern, &value, &variable.span, &mut bound);
+        pattern
+            .names()
+            .into_iter()
+            .filter_map(|(name, _)| {
+                bound
+                    .get(name)
+                    .cloned()
+                    .map(|value| (name.to_string(), value))
+            })
+            .collect()
+    }
+    pub(super) fn bind_nested_pattern(
+        &mut self,
+        pattern: &crate::parser::VariableBindingPattern,
+        value: &Type,
+        span: &SourceSpan,
+        scope: &mut BTreeMap<String, Type>,
+    ) {
+        self.bind_pattern(&pattern.pattern, value, span, scope);
+        self.bind_pattern_rest(pattern, value, span, scope);
+    }
+    fn bind_pattern_rest(
+        &mut self,
+        pattern: &crate::parser::VariableBindingPattern,
+        value: &Type,
+        _span: &SourceSpan,
+        bound: &mut BTreeMap<String, Type>,
+    ) {
         if let Some(rest) = &pattern.rest {
             let mut resolved = value.clone();
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
@@ -108,15 +137,5 @@ impl ModuleChecker<'_> {
             };
             bound.insert(rest.name.clone(), rest_type);
         }
-        pattern
-            .names()
-            .into_iter()
-            .filter_map(|(name, _)| {
-                bound
-                    .get(name)
-                    .cloned()
-                    .map(|value| (name.to_string(), value))
-            })
-            .collect()
     }
 }

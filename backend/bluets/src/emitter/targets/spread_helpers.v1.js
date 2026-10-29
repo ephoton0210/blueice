@@ -23,3 +23,8 @@ function __blueice_target_spread_array(target, source, spread, iterate) {
 function __blueice_target_spread_call(callee, receiver, values) {
     return Function.prototype.apply.call(callee, receiver, values);
 }
+
+function __blueice_target_spread_construct(callee, values) {
+    var bound = Function.prototype.bind.apply(callee, [null].concat(values));
+    return new bound();
+}

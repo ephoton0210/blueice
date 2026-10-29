@@ -40,7 +40,31 @@ pub(super) fn merge_private_names(tokens: Vec<Token>) -> Vec<Token> {
 
 pub(super) fn split_generic_closers(tokens: Vec<Token>) -> Vec<Token> {
     let mut split = Vec::with_capacity(tokens.len());
-    for token in tokens {
+    let mut tokens = tokens.into_iter().peekable();
+    while let Some(token) = tokens.next() {
+        if token.kind == TokenKind::Punct
+            && matches!(token.text.as_str(), ">=" | ">>=" | ">>>=")
+            && tokens
+                .peek()
+                .is_some_and(|next| next.is(">") && next.start == token.end)
+        {
+            let arrow_end = tokens.next().expect("peeked arrow tail").end;
+            for start in token.start..token.end - 1 {
+                split.push(Token {
+                    kind: TokenKind::Punct,
+                    text: ">".into(),
+                    start,
+                    end: start + 1,
+                });
+            }
+            split.push(Token {
+                kind: TokenKind::Punct,
+                text: "=>".into(),
+                start: token.end - 1,
+                end: arrow_end,
+            });
+            continue;
+        }
         if token.kind == TokenKind::Punct
             && token.text.len() > 1
             && token.text.bytes().all(|byte| byte == b'>')
