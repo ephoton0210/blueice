@@ -33,7 +33,7 @@ pub(crate) const DEFAULT_SHEET_LIMITS: SheetLimits = SheetLimits {
 };
 
 /// The document's base URL: `document_url`, moved by the first `<base href>`.
-fn base_url(doc: &blueice_dom::Document, document_url: &str) -> Option<Url> {
+pub(crate) fn base_url(doc: &blueice_dom::Document, document_url: &str) -> Option<Url> {
     fn first_base(doc: &blueice_dom::Document, node: blueice_dom::NodeId) -> Option<String> {
         if let blueice_dom::NodeData::Element {
             tag_name,

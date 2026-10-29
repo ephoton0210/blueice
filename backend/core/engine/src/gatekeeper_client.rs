@@ -57,12 +57,22 @@ pub(crate) struct GatekeeperClearance {
     /// cleared, each connection reviewed first. Optional content: a sheet
     /// that could not be loaded is simply absent.
     linked_styles: crate::stylesheet::LinkedStyles,
+    /// The page's images, fetched and decoded the same way. Optional too.
+    linked_images: crate::images::LinkedImages,
 }
 
 impl GatekeeperClearance {
     /// Hands the reviewed stylesheets to the page being applied.
+    #[cfg(test)]
     pub(crate) fn into_linked_styles(self) -> crate::stylesheet::LinkedStyles {
         self.linked_styles
+    }
+
+    /// Hands over everything fetched for the page: stylesheets and images.
+    pub(crate) fn into_subresources(
+        self,
+    ) -> (crate::stylesheet::LinkedStyles, crate::images::LinkedImages) {
+        (self.linked_styles, self.linked_images)
     }
 }
 
@@ -296,28 +306,37 @@ pub(crate) fn check_and_fetch_request(
         // Stylesheets are subresources of a page that is already cleared:
         // each connection, redirect hops included, passes the same URL
         // review and extension block rules as a navigation hop would.
+        let review = |url: &str| {
+            !extension_navigation_rules_block_url(&navigation_rules, url)
+                && matches!(
+                    check_stage(
+                        gatekeeper_socket,
+                        &GatekeeperRequest::CheckUrl {
+                            url: url.to_string(),
+                        },
+                    ),
+                    StageOutcome::Cleared
+                )
+        };
         let linked_styles = crate::linked_styles::fetch_linked_styles(
             &fetched.body,
             &fetched.final_url,
-            &|url: &str| {
-                !extension_navigation_rules_block_url(&navigation_rules, url)
-                    && matches!(
-                        check_stage(
-                            gatekeeper_socket,
-                            &GatekeeperRequest::CheckUrl {
-                                url: url.to_string(),
-                            },
-                        ),
-                        StageOutcome::Cleared
-                    )
-            },
+            &review,
             crate::linked_styles::DEFAULT_SHEET_LIMITS,
+        );
+        let linked_images = crate::images::fetch_linked_images(
+            &fetched.body,
+            &linked_styles,
+            &fetched.final_url,
+            &review,
+            crate::images::DEFAULT_IMAGE_LIMITS,
         );
         return NavOutcome::Cleared {
             clearance: GatekeeperClearance {
                 tab_id,
                 url: fetched.final_url.clone(),
                 linked_styles,
+                linked_images,
             },
             final_url: fetched.final_url,
             html: fetched.body,

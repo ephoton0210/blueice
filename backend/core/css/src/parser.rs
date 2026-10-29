@@ -383,16 +383,27 @@ fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
                         Value::Keyword(k)
                             if matches!(
                                 k.as_str(),
-                                "repeat" | "no-repeat" | "repeat-x" | "repeat-y" | "space" | "round"
+                                "repeat"
+                                    | "no-repeat"
+                                    | "repeat-x"
+                                    | "repeat-y"
+                                    | "space"
+                                    | "round"
                             ) =>
                         {
                             repeat.push(value)
                         }
-                        Value::Keyword(k) if after_slash && matches!(k.as_str(), "cover" | "contain" | "auto") => {
+                        Value::Keyword(k)
+                            if after_slash
+                                && matches!(k.as_str(), "cover" | "contain" | "auto") =>
+                        {
                             size.push(value)
                         }
                         Value::Keyword(k)
-                            if matches!(k.as_str(), "left" | "right" | "top" | "bottom" | "center") =>
+                            if matches!(
+                                k.as_str(),
+                                "left" | "right" | "top" | "bottom" | "center"
+                            ) =>
                         {
                             position.push(value)
                         }

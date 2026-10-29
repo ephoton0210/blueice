@@ -277,7 +277,9 @@ pub(crate) fn replaced_size(
     // What the engine learned from the image itself, when it has loaded.
     let intrinsic = match style.raw("-blueice-intrinsic-size") {
         Some(blueice_css::Value::List(parts)) => match parts.as_slice() {
-            [blueice_css::Value::Number(w), blueice_css::Value::Number(h)] if *w > 0.0 && *h > 0.0 => {
+            [blueice_css::Value::Number(w), blueice_css::Value::Number(h)]
+                if *w > 0.0 && *h > 0.0 =>
+            {
                 Some((*w, *h))
             }
             _ => None,
@@ -1718,7 +1720,11 @@ mod tests {
     }
 
     fn img_size(html: &str, css: &str, width: f64) -> (f64, f64) {
-        let f = body(html, &format!("img {{ -blueice-intrinsic-size: 200 100; }} {css}"), width);
+        let f = body(
+            html,
+            &format!("img {{ -blueice-intrinsic-size: 200 100; }} {css}"),
+            width,
+        );
         let atom = f.children[0].children[0]
             .children
             .iter()
@@ -1744,13 +1750,20 @@ mod tests {
 
     #[test]
     fn both_given_dimensions_win() {
-        assert_eq!(img_size("<p><img width=30 height=30></p>", "", 800.0), (30.0, 30.0));
+        assert_eq!(
+            img_size("<p><img width=30 height=30></p>", "", 800.0),
+            (30.0, 30.0)
+        );
     }
 
     #[test]
     fn max_width_shrinks_an_image_in_proportion() {
         assert_eq!(
-            img_size("<p><img></p>", "img { max-width: 100px; height: auto; }", 800.0),
+            img_size(
+                "<p><img></p>",
+                "img { max-width: 100px; height: auto; }",
+                800.0
+            ),
             (100.0, 50.0)
         );
         assert_eq!(

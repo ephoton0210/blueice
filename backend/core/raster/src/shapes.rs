@@ -271,7 +271,8 @@ impl Canvas<'_> {
         if !rect_ok(rect) || image.width == 0 || image.height == 0 {
             return;
         }
-        let Some(source) = sk::PixmapRef::from_bytes(image.premultiplied(), image.width, image.height)
+        let Some(source) =
+            sk::PixmapRef::from_bytes(image.premultiplied(), image.width, image.height)
         else {
             return;
         };

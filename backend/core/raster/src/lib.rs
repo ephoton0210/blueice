@@ -408,15 +408,6 @@ pub fn rasterize_viewport(
                 image,
                 alpha,
             },
-            PaintCommand::Image {
-                rect: r,
-                image,
-                alpha,
-            } => PaintCommand::Image {
-                rect: rect(r),
-                image,
-                alpha,
-            },
             PaintCommand::Gradient {
                 rect: r,
                 radii,

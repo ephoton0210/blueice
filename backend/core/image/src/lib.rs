@@ -20,6 +20,9 @@ pub struct RasterImage {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
+    /// The size the picture has in layout: its pixel size, except an SVG
+    /// that was drawn at a multiple of its own size for sharpness.
+    natural: (f64, f64),
     premultiplied: std::sync::OnceLock<Vec<u8>>,
 }
 
@@ -29,8 +32,20 @@ impl RasterImage {
             width,
             height,
             rgba,
+            natural: (f64::from(width), f64::from(height)),
             premultiplied: std::sync::OnceLock::new(),
         }
+    }
+
+    /// The same pixels, laid out as `natural` CSS pixels.
+    pub fn with_natural(mut self, natural: (f64, f64)) -> Self {
+        self.natural = natural;
+        self
+    }
+
+    /// The size layout gives the picture when nothing else says.
+    pub fn natural(&self) -> (f64, f64) {
+        self.natural
     }
 
     /// The pixels with colour multiplied by alpha, computed once: what
@@ -53,7 +68,7 @@ impl RasterImage {
 
 impl Clone for RasterImage {
     fn clone(&self) -> Self {
-        RasterImage::new(self.width, self.height, self.rgba.clone())
+        RasterImage::new(self.width, self.height, self.rgba.clone()).with_natural(self.natural)
     }
 }
 
@@ -310,11 +325,18 @@ mod tests {
 
     fn px(image: &RasterImage, x: u32, y: u32) -> [u8; 4] {
         let i = ((y * image.width + x) * 4) as usize;
-        [image.rgba[i], image.rgba[i + 1], image.rgba[i + 2], image.rgba[i + 3]]
+        [
+            image.rgba[i],
+            image.rgba[i + 1],
+            image.rgba[i + 2],
+            image.rgba[i + 3],
+        ]
     }
 
     fn near(a: [u8; 4], b: [u8; 4], tolerance: i32) -> bool {
-        a.iter().zip(b).all(|(x, y)| (i32::from(*x) - i32::from(y)).abs() <= tolerance)
+        a.iter()
+            .zip(b)
+            .all(|(x, y)| (i32::from(*x) - i32::from(y)).abs() <= tolerance)
     }
 
     #[test]
@@ -341,7 +363,11 @@ mod tests {
     fn jpeg_decodes_within_compression_error() {
         let image = decode(JPG).unwrap();
         assert_eq!((image.width, image.height), (8, 4));
-        assert!(near(px(&image, 1, 1), [255, 0, 0, 255], 40), "{:?}", px(&image, 1, 1));
+        assert!(
+            near(px(&image, 1, 1), [255, 0, 0, 255], 40),
+            "{:?}",
+            px(&image, 1, 1)
+        );
         assert!(near(px(&image, 6, 2), [0, 0, 255, 255], 40));
     }
 
@@ -384,14 +410,19 @@ mod tests {
             <rect width='2' height='2' fill='#ff0000' fill-opacity='0.5'/></svg>";
         let image = decode(half.as_bytes()).unwrap();
         let p = px(&image, 0, 0);
-        assert!(p[0] > 240 && p[1] == 0 && (120..136).contains(&p[3]), "{p:?}");
+        assert!(
+            p[0] > 240 && p[1] == 0 && (120..136).contains(&p[3]),
+            "{p:?}"
+        );
     }
 
     #[test]
     fn oversized_and_invalid_svg_are_refused() {
         assert!(render_svg(SVG, Some((MAX_SIDE + 1, 10))).is_none());
         assert!(render_svg("<svg", None).is_none());
-        assert!(decode(b"<svg xmlns='http://www.w3.org/2000/svg' width='0' height='0'/>").is_none());
+        assert!(
+            decode(b"<svg xmlns='http://www.w3.org/2000/svg' width='0' height='0'/>").is_none()
+        );
     }
 
     #[test]

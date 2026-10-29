@@ -358,6 +358,7 @@ dependencies = [
  "blueice-font",
  "blueice-html",
  "blueice-i18n",
+ "blueice-image",
  "blueice-ipc",
  "blueice-launcher",
  "blueice-layout",

@@ -29,7 +29,7 @@ use blueice_dom::{Document, NodeData, NodeId};
 use blueice_ipc::gatekeeper::GatekeeperSettingsChange;
 use blueice_ipc::{AiSnapshot, NodeAction};
 use blueice_layout::{layout, Constraints, Fragment};
-use blueice_paint::{paint, Color, Frame, PaintCommand, Rect};
+use blueice_paint::{Color, Frame, PaintCommand, Rect};
 use blueice_raster::{rasterize, Pixmap};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -63,6 +63,12 @@ pub struct Page {
     /// `href` as written; `pending_linked_styles` is what the next load adopts.
     linked_styles: crate::stylesheet::LinkedStyles,
     pending_linked_styles: crate::stylesheet::LinkedStyles,
+    /// The same for the pictures a page shows, and what has been drawn from
+    /// them: the per-node map paint reads and the inline-SVG renders so far.
+    linked_images: crate::images::LinkedImages,
+    pending_linked_images: crate::images::LinkedImages,
+    images: blueice_paint::ImageMap,
+    svg_renders: HashMap<u64, Option<std::sync::Arc<crate::images::LoadedImage>>>,
     /// Monotonically changes whenever this navigable context receives a
     /// replacement document. Page-script realms use it to distinguish a
     /// same-origin navigation from the document that preceded it.
@@ -152,6 +158,10 @@ impl Page {
             network_trace: None,
             linked_styles: Default::default(),
             pending_linked_styles: Default::default(),
+            linked_images: Default::default(),
+            pending_linked_images: Default::default(),
+            images: Default::default(),
+            svg_renders: HashMap::new(),
             document_generation: 0,
             script_nodes: HashMap::new(),
             script_node_handles: HashMap::new(),
@@ -202,6 +212,7 @@ impl Page {
         self.object_url_environment = None;
         self.object_url_origin = None;
         self.linked_styles = std::mem::take(&mut self.pending_linked_styles);
+        self.linked_images = std::mem::take(&mut self.pending_linked_images);
         // `parse_continuing_from` (not `parse`) so this replacement
         // document's NodeIds never collide with -- or get numerically
         // confused with -- the document it's replacing. A client that
@@ -294,6 +305,7 @@ impl Page {
             self.viewport_width,
             self.viewport_height,
         );
+        self.rebuild_images();
     }
 
     /// Test-only direct navigation for exercising the fetch-to-document path.
@@ -461,7 +473,7 @@ impl Page {
         html: &str,
         translations: Option<&[String]>,
     ) {
-        self.pending_linked_styles = clearance.into_linked_styles();
+        (self.pending_linked_styles, self.pending_linked_images) = clearance.into_subresources();
         self.load_html_translating(html, translations);
         self.url = Some(url.to_string());
     }
@@ -1316,7 +1328,8 @@ impl Page {
     }
 
     pub fn render(&self) -> Frame {
-        let mut frame = paint(&self.fragment, &self.styles);
+        let mut frame =
+            blueice_paint::paint_with_images(&self.fragment, &self.styles, &self.images);
         self.paint_native_editor(&mut frame);
         self.paint_document_selection(&mut frame);
         self.paint_native_focus(&mut frame);
@@ -1362,6 +1375,7 @@ mod dom_write;
 mod file_input;
 mod find;
 mod form_submission;
+mod images;
 pub(crate) mod native_drag;
 mod native_drag_image;
 mod native_editing;

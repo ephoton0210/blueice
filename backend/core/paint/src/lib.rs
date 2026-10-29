@@ -362,7 +362,7 @@ fn paint_content_image(
     if content.width <= 0.0 || content.height <= 0.0 {
         return;
     }
-    let (iw, ih) = (f64::from(image.width), f64::from(image.height));
+    let (iw, ih) = image.natural();
     let fit = match style.other.get("object-fit") {
         Some(Value::Keyword(k)) => k.as_str(),
         _ => "fill",
@@ -411,7 +411,7 @@ fn paint_background_image(
     if rect.width <= 0.0 || rect.height <= 0.0 {
         return;
     }
-    let (iw, ih) = (f64::from(image.width), f64::from(image.height));
+    let (iw, ih) = image.natural();
     let parts = |value: Option<&Value>| -> Vec<Value> {
         match value {
             Some(Value::List(list)) => list.clone(),
@@ -465,18 +465,41 @@ fn paint_background_image(
         }
     };
     // `top`/`bottom` written first swap the axes: `top left`.
-    let vertical_first = matches!(position.first(), Some(Value::Keyword(k)) if k == "top" || k == "bottom");
+    let vertical_first =
+        matches!(position.first(), Some(Value::Keyword(k)) if k == "top" || k == "bottom");
     let (px, py) = if vertical_first && position.len() == 2 {
         (&position[1], &position[0])
     } else if position.len() == 1 && vertical_first {
         // A lone `top` still centres horizontally.
         let center = Value::Keyword("center".to_string());
-        return paint_tiles(style, rect, image, opacity, (w, h), (place(Some(&center), rect.width - w, 0.5), place(position.first(), rect.height - h, 0.0)), out);
+        return paint_tiles(
+            style,
+            rect,
+            image,
+            opacity,
+            (w, h),
+            (
+                place(Some(&center), rect.width - w, 0.5),
+                place(position.first(), rect.height - h, 0.0),
+            ),
+            out,
+        );
     } else if position.len() == 1 && matches!(position[0], Value::Keyword(ref k) if k == "center") {
         (&position[0], &position[0])
     } else if position.len() == 1 {
         let center = Value::Keyword("center".to_string());
-        return paint_tiles(style, rect, image, opacity, (w, h), (place(position.first(), rect.width - w, 0.0), place(Some(&center), rect.height - h, 0.5)), out);
+        return paint_tiles(
+            style,
+            rect,
+            image,
+            opacity,
+            (w, h),
+            (
+                place(position.first(), rect.width - w, 0.0),
+                place(Some(&center), rect.height - h, 0.5),
+            ),
+            out,
+        );
     } else {
         (
             position.first().unwrap_or(&Value::Percentage(0.0)),
@@ -1888,7 +1911,8 @@ mod tests {
     }
 
     fn element_named(doc: &blueice_dom::Document, from: NodeId, tag: &str) -> Option<NodeId> {
-        if matches!(doc.data(from), blueice_dom::NodeData::Element { tag_name, .. } if tag_name == tag) {
+        if matches!(doc.data(from), blueice_dom::NodeData::Element { tag_name, .. } if tag_name == tag)
+        {
             return Some(from);
         }
         doc.children(from).find_map(|c| element_named(doc, c, tag))
@@ -1937,7 +1961,10 @@ mod tests {
             false,
         );
         assert_eq!(r.len(), 1);
-        assert_eq!((r[0].x, r[0].y, r[0].width, r[0].height), (5.0, 5.0, 40.0, 20.0));
+        assert_eq!(
+            (r[0].x, r[0].y, r[0].width, r[0].height),
+            (5.0, 5.0, 40.0, 20.0)
+        );
     }
 
     #[test]
@@ -1948,7 +1975,10 @@ mod tests {
             solid(40, 20),
             false,
         );
-        assert_eq!((contain[0].width, contain[0].height, contain[0].y), (100.0, 50.0, 25.0));
+        assert_eq!(
+            (contain[0].width, contain[0].height, contain[0].y),
+            (100.0, 50.0, 25.0)
+        );
         let cover = image_rects(
             "<img width=100 height=100>",
             "img { object-fit: cover; }",
@@ -1985,7 +2015,10 @@ mod tests {
             solid(10, 10),
             true,
         );
-        assert_eq!((r[0].x, r[0].y, r[0].width, r[0].height), (30.0, 20.0, 40.0, 20.0));
+        assert_eq!(
+            (r[0].x, r[0].y, r[0].width, r[0].height),
+            (30.0, 20.0, 40.0, 20.0)
+        );
         let cover = image_rects(
             "<div></div>",
             "div { width: 100px; height: 60px; background: url(x.png) no-repeat; background-size: cover; }",

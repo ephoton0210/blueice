@@ -30,7 +30,11 @@ fn self_closing_svg_children_are_siblings_not_nested() {
     let g = element(&doc, svg, "g").unwrap();
     assert_eq!(tags(&doc, g), ["rect"]);
     let body = element(&doc, doc.root(), "body").unwrap();
-    assert_eq!(tags(&doc, body), ["svg", "p"], "the paragraph follows the svg");
+    assert_eq!(
+        tags(&doc, body),
+        ["svg", "p"],
+        "the paragraph follows the svg"
+    );
 }
 
 #[test]

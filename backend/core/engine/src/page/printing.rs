@@ -6,6 +6,7 @@
 //! never executes scripts, fetches resources, or paints editor/find overlays.
 use super::*;
 use crate::stylesheet;
+use blueice_css::Value;
 use blueice_ipc::printing::{PrintProfile, MAX_PRINT_PAGES, MAX_PRINT_PIXELS, PRINT_RASTER_SCALE};
 use blueice_layout::FragmentKind;
 
@@ -13,6 +14,9 @@ pub struct FrozenPrintDocument {
     doc: Document,
     ua: Vec<Rule>,
     linked_styles: crate::stylesheet::LinkedStyles,
+    /// Pictures as the page shows them, with their natural sizes.
+    images: blueice_paint::ImageMap,
+    natural_sizes: HashMap<NodeId, Value>,
 }
 pub struct PrintedDocument {
     pub frame: Frame,
@@ -25,6 +29,20 @@ impl Page {
             doc: self.doc.clone(),
             ua: self.ua.clone(),
             linked_styles: self.linked_styles.clone(),
+            images: self.images.clone(),
+            natural_sizes: self
+                .images
+                .content
+                .keys()
+                .filter_map(|node| {
+                    let size = self
+                        .styles
+                        .get(node)?
+                        .other
+                        .get("-blueice-intrinsic-size")?;
+                    Some((*node, size.clone()))
+                })
+                .collect(),
         }
     }
 }
@@ -54,6 +72,14 @@ impl FrozenPrintDocument {
                 style.other.remove("background-color");
             }
         }
+        // Pictures print as they show; their natural sizes feed layout again.
+        for (node, size) in &self.natural_sizes {
+            if let Some(style) = styles.get_mut(node) {
+                style
+                    .other
+                    .insert("-blueice-intrinsic-size".to_string(), size.clone());
+            }
+        }
         let fragment = blueice_layout::layout(
             &self.doc,
             self.doc.root(),
@@ -63,7 +89,7 @@ impl FrozenPrintDocument {
                 viewport_height: height,
             },
         );
-        let frame = paint(&fragment, &styles);
+        let frame = blueice_paint::paint_with_images(&fragment, &styles, &self.images);
         if !frame.height.is_finite() || frame.height > height * MAX_PRINT_PAGES as f64 {
             return Err("Document exceeds the 32-page print limit".into());
         }

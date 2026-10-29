@@ -216,7 +216,10 @@ fn an_image_is_scaled_into_its_rect() {
     let left = at(&p, 4, 10);
     let right = at(&p, 36, 10);
     assert!(left[0] > 200 && left[2] < 60, "red on the left: {left:?}");
-    assert!(right[2] > 200 && right[0] < 60, "blue on the right: {right:?}");
+    assert!(
+        right[2] > 200 && right[0] < 60,
+        "blue on the right: {right:?}"
+    );
 }
 
 #[test]
@@ -237,6 +240,9 @@ fn image_alpha_blends_and_clips_apply() {
         ],
     ));
     let faded = at(&p, 4, 10);
-    assert!(faded[0] > 240 && (100..160).contains(&faded[1]), "half over white: {faded:?}");
+    assert!(
+        faded[0] > 240 && (100..160).contains(&faded[1]),
+        "half over white: {faded:?}"
+    );
     assert_eq!(at(&p, 30, 10), WHITE, "outside the clip");
 }
