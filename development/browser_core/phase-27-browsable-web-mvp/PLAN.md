@@ -366,13 +366,50 @@ Progress, second slice (2026-10-28), all test-first with the workspace green:
   following section; Google's home page shows its links, sign-in button, inputs and
   centred footer. Chromium side-by-side is still to do.
 
-Still open, in priority order: `display: grid` and table layout (Cloudflare and
-many sites), floats, backgrounds and borders of plain `inline` boxes (only block
-and atomic boxes paint them), `border-radius`/`box-shadow`/gradients/transforms,
-list markers, `position: sticky`/`fixed` scrolling in the frontends, `text-overflow`,
-`@import` and `@container`, images and inline SVG (a replaced element currently
-reserves its size and paints nothing), and the generated content of
-`::before`/`::after`.
+Progress, third slice (2026-10-28), test-first:
+
+- **Table layout** (`layout/src/table.rs`): row groups with header/footer order,
+  `colspan`/`rowspan`, automatic column widths between min- and max-content,
+  percentage columns, captions, `border-spacing`, `vertical-align`, anonymous rows.
+  `table-layout: fixed` is treated as automatic and `border-collapse: collapse` as
+  zero spacing.
+- **Grid layout** (`layout/src/grid.rs`): `px`/`%`/`fr`/`auto`/`minmax()`/`fit-content()`/
+  `repeat()` with `auto-fill`/`auto-fit`, named areas, lines and spans, row/column
+  auto-placement (dense too), `gap`, item alignment and auto margins. No subgrid,
+  masonry or named lines.
+- **Floats** (`layout/src/float.rs`): left/right placement beside earlier floats,
+  line boxes narrowed (or lowered) around them, `clear`, containment in
+  formatting-context roots, floats escaping a plain parent to later siblings.
+  Block formatting-context boxes do not yet move beside floats.
+- **Inline boxes** now paint their own background and border, one fragment per line.
+- **`border-radius`, `box-shadow` (outer), linear/radial gradients** as new display-list
+  commands drawn with tiny-skia; inset shadows and `transform` are not painted.
+- **`::before`/`::after`**: pseudo-element selectors and cascade, `content` strings,
+  `attr()`, quotes and hex escapes; generated boxes lay out like children. Counters
+  and `url()` content generate nothing. List markers (`disc`/`circle`/`square`,
+  decimal, alpha, roman, `start`/`reversed`/`value`).
+- **Images**: `<img>` (PNG, JPEG, GIF first frame, WebP, SVG) and CSS `url()` backgrounds
+  (size, position, repeat, `object-fit`) fetched behind the same per-hop URL review as
+  stylesheets, with byte and count limits; `data:` URLs decoded locally; inline `<svg>`
+  rendered (the HTML parser now treats SVG as foreign content: self-closing children,
+  camel-case names) with the page's colours reaching it. Decoding is the new
+  `blueice-image` crate (SVG through `resvg`, with no text support).
+- Known limits: images are fetched before the page is shown, so a page with many large
+  images appears later; `srcset` picks its first candidate and `<picture>` is ignored;
+  animated GIF/APNG show their first frame; SVG `<text>` and external references do not
+  render; CSS stylesheets that `@import` others are still not followed.
+- `cargo test -p blueice-engine --release --lib live_page_to_png -- --ignored --nocapture`
+  with `BI_URL=...` fetches a real page (no gatekeeper) and writes a PNG, for
+  eyeballing against a browser. Cloudflare and Google both show their logos, icons,
+  rounded buttons and gradients; their remaining differences from a browser are
+  listed rather than hidden: the Cloudflare page keeps large empty bands where
+  script-driven content is missing, and Google's header links stack instead of
+  forming a row.
+
+Still open, in priority order: `position: sticky`/`fixed` scrolling in the frontends,
+`text-overflow`, `@import` and `@container`, `:has()`, `@layer` precedence, `transform`,
+inset shadows, counters, asynchronous image loading after first paint, and the
+Chromium side-by-side.
 
 Acceptance for this gap: the two pages above render with their text readable in
 the intended regions, the search field and navigation visible and clickable, and
