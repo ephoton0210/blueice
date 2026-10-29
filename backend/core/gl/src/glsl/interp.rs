@@ -209,6 +209,70 @@ impl Program {
     pub fn slot(&self, name: &str) -> Option<usize> {
         self.names.get(name).copied()
     }
+
+    /// Whether any function assigns the global `name`.
+    pub fn writes(&self, name: &str) -> bool {
+        let Some(slot) = self.slot(name) else {
+            return false;
+        };
+        fn in_node(n: &N, slot: usize) -> bool {
+            match n {
+                N::Assign(_, target, value) => {
+                    root(target) == Some(slot) || in_node(target, slot) || in_node(value, slot)
+                }
+                N::Un(UnOp::PreInc | UnOp::PreDec | UnOp::PostInc | UnOp::PostDec, t) => {
+                    root(t) == Some(slot)
+                }
+                N::Un(_, a) | N::Field(a, _) => in_node(a, slot),
+                N::Bin(_, a, b) | N::Index(a, b) | N::Comma(a, b) => {
+                    in_node(a, slot) || in_node(b, slot)
+                }
+                N::Cond(a, b, c) => in_node(a, slot) || in_node(b, slot) || in_node(c, slot),
+                N::CallUser(_, args)
+                | N::CallBuiltin(_, args)
+                | N::Ctor(_, args)
+                | N::ArrCtor(_, args) => args.iter().any(|a| in_node(a, slot)),
+                _ => false,
+            }
+        }
+        fn root(n: &N) -> Option<usize> {
+            match n {
+                N::Global(g) => Some(*g),
+                N::Field(b, _) | N::Index(b, _) => root(b),
+                _ => None,
+            }
+        }
+        fn in_stmt(s: &S, slot: usize) -> bool {
+            match s {
+                S::Expr(e) => in_node(e, slot),
+                S::Decl(_, _, Some(e)) => in_node(e, slot),
+                S::If(c, t, e) => {
+                    in_node(c, slot)
+                        || in_stmt(t, slot)
+                        || e.as_ref().is_some_and(|e| in_stmt(e, slot))
+                }
+                S::For(i, c, st, b) => {
+                    i.as_ref().is_some_and(|i| in_stmt(i, slot))
+                        || c.as_ref().is_some_and(|c| in_node(c, slot))
+                        || st.as_ref().is_some_and(|c| in_node(c, slot))
+                        || in_stmt(b, slot)
+                }
+                S::While(c, b) | S::DoWhile(b, c) => in_node(c, slot) || in_stmt(b, slot),
+                S::Switch(v, cases) => {
+                    in_node(v, slot)
+                        || cases
+                            .iter()
+                            .any(|(_, b)| b.iter().any(|s| in_stmt(s, slot)))
+                }
+                S::Return(Some(e)) => in_node(e, slot),
+                S::Block(b) => b.iter().any(|s| in_stmt(s, slot)),
+                _ => false,
+            }
+        }
+        self.funcs
+            .iter()
+            .any(|f| f.body.iter().any(|s| in_stmt(s, slot)))
+    }
 }
 
 impl Compiler<'_> {
@@ -222,7 +286,10 @@ impl Compiler<'_> {
         let slot = self.locals;
         self.locals += 1;
         self.local_types.push(ty.clone());
-        self.scopes.last_mut().expect("a scope is open").insert(name.to_string(), slot);
+        self.scopes
+            .last_mut()
+            .expect("a scope is open")
+            .insert(name.to_string(), slot);
         slot
     }
 
@@ -269,16 +336,27 @@ impl Compiler<'_> {
                     let slot = self.declare(&d.name, &d.ty);
                     out.push(S::Decl(slot, d.ty.clone(), init));
                 }
-                if out.len() == 1 { out.remove(0) } else { S::Block(out) }
+                if out.len() == 1 {
+                    out.remove(0)
+                } else {
+                    S::Block(out)
+                }
             }
             Stmt::If(c, t, e) => S::If(
                 self.expr(c)?,
                 Box::new(self.scoped(t)?),
-                e.as_ref().map(|e| self.scoped(e)).transpose()?.map(Box::new),
+                e.as_ref()
+                    .map(|e| self.scoped(e))
+                    .transpose()?
+                    .map(Box::new),
             ),
             Stmt::For(init, cond, step, body) => {
                 self.scopes.push(HashMap::new());
-                let init = init.as_ref().map(|s| self.stmt(s)).transpose()?.map(Box::new);
+                let init = init
+                    .as_ref()
+                    .map(|s| self.stmt(s))
+                    .transpose()?
+                    .map(Box::new);
                 let cond = cond.as_ref().map(|e| self.expr(e)).transpose()?;
                 let step = step.as_ref().map(|e| self.expr(e)).transpose()?;
                 let body = Box::new(self.scoped(body)?);
@@ -322,9 +400,13 @@ impl Compiler<'_> {
                 Literal::UInt(u) => V::u(*u),
                 Literal::Bool(b) => V::b(*b),
             }),
-            Expr::Var(name) => self.lookup(name).ok_or_else(|| format!("'{name}' is not declared"))?,
+            Expr::Var(name) => self
+                .lookup(name)
+                .ok_or_else(|| format!("'{name}' is not declared"))?,
             Expr::Field(base, name) => N::Field(Box::new(self.expr(base)?), name.clone()),
-            Expr::Index(base, index) => N::Index(Box::new(self.expr(base)?), Box::new(self.expr(index)?)),
+            Expr::Index(base, index) => {
+                N::Index(Box::new(self.expr(base)?), Box::new(self.expr(index)?))
+            }
             Expr::Call(name, args) => {
                 let args: Result<Vec<N>, String> = args.iter().map(|a| self.expr(a)).collect();
                 let args = args?;
@@ -335,7 +417,12 @@ impl Compiler<'_> {
                         .filter(|&i| self.fn_params[i].1.len() == args.len())
                         .collect();
                     match matching.as_slice() {
-                        [] => return Err(format!("no overload of '{name}' takes {} arguments", args.len())),
+                        [] => {
+                            return Err(format!(
+                                "no overload of '{name}' takes {} arguments",
+                                args.len()
+                            ))
+                        }
                         [one] => N::CallUser(*one, args),
                         // Several overloads of the same arity: resolved by the
                         // run-time kinds of the arguments (see `pick_overload`).
@@ -357,9 +444,11 @@ impl Compiler<'_> {
             }
             Expr::Unary(op, operand) => N::Un(*op, Box::new(self.expr(operand)?)),
             Expr::Binary(op, a, b) => N::Bin(*op, Box::new(self.expr(a)?), Box::new(self.expr(b)?)),
-            Expr::Assign(op, target, value) => {
-                N::Assign(*op, Box::new(self.expr(target)?), Box::new(self.expr(value)?))
-            }
+            Expr::Assign(op, target, value) => N::Assign(
+                *op,
+                Box::new(self.expr(target)?),
+                Box::new(self.expr(value)?),
+            ),
             Expr::Ternary(c, a, b) => N::Cond(
                 Box::new(self.expr(c)?),
                 Box::new(self.expr(a)?),
@@ -396,7 +485,11 @@ pub struct Machine<'p> {
 
 impl<'p> Machine<'p> {
     pub fn new(prog: &'p Program, textures: &'p dyn Textures) -> Result<Machine<'p>, String> {
-        let globals = prog.globals.iter().map(|g| zero(&g.ty, &prog.structs)).collect();
+        let globals = prog
+            .globals
+            .iter()
+            .map(|g| zero(&g.ty, &prog.structs))
+            .collect();
         let mut m = Machine {
             prog,
             globals,
@@ -491,7 +584,11 @@ impl<'p> Machine<'p> {
                 Ok(Flow::Next)
             }
             S::If(c, t, e) => {
-                if self.eval(c)?.as_bool().ok_or("an if condition must be a bool")? {
+                if self
+                    .eval(c)?
+                    .as_bool()
+                    .ok_or("an if condition must be a bool")?
+                {
                     self.exec(t)
                 } else if let Some(e) = e {
                     self.exec(e)
@@ -506,7 +603,11 @@ impl<'p> Machine<'p> {
                 loop {
                     self.tick()?;
                     if let Some(cond) = cond {
-                        if !self.eval(cond)?.as_bool().ok_or("a loop condition must be a bool")? {
+                        if !self
+                            .eval(cond)?
+                            .as_bool()
+                            .ok_or("a loop condition must be a bool")?
+                        {
                             break;
                         }
                     }
@@ -525,7 +626,11 @@ impl<'p> Machine<'p> {
             S::While(c, body) => {
                 loop {
                     self.tick()?;
-                    if !self.eval(c)?.as_bool().ok_or("a loop condition must be a bool")? {
+                    if !self
+                        .eval(c)?
+                        .as_bool()
+                        .ok_or("a loop condition must be a bool")?
+                    {
                         break;
                     }
                     match self.exec(body)? {
@@ -546,14 +651,21 @@ impl<'p> Machine<'p> {
                         Flow::Discard => return Ok(Flow::Discard),
                         Flow::Next | Flow::Continue => {}
                     }
-                    if !self.eval(c)?.as_bool().ok_or("a loop condition must be a bool")? {
+                    if !self
+                        .eval(c)?
+                        .as_bool()
+                        .ok_or("a loop condition must be a bool")?
+                    {
                         break;
                     }
                 }
                 Ok(Flow::Next)
             }
             S::Switch(value, cases) => {
-                let v = self.eval(value)?.as_i32().ok_or("a switch needs an integer")?;
+                let v = self
+                    .eval(value)?
+                    .as_i32()
+                    .ok_or("a switch needs an integer")?;
                 let mut start = None;
                 for (i, (label, _)) in cases.iter().enumerate() {
                     if let Some(label) = label {
@@ -625,7 +737,8 @@ impl<'p> Machine<'p> {
         let f = &prog.funcs[index];
         let saved_base = self.base;
         let new_base = self.locals.len();
-        self.locals.resize(new_base + f.locals.max(args.len()), V::Void);
+        self.locals
+            .resize(new_base + f.locals.max(args.len()), V::Void);
         self.base = new_base;
         for (i, (p, a)) in f.params.iter().zip(args).enumerate() {
             self.locals[new_base + i] = coerce(a, &p.ty);
@@ -651,7 +764,7 @@ impl<'p> Machine<'p> {
         Ok(ret)
     }
 
-    pub fn eval(&mut self, n: &N) -> Result<V, String> {
+    fn eval(&mut self, n: &N) -> Result<V, String> {
         Ok(match n {
             N::Lit(v) => v.clone(),
             N::Local(i) => self.locals[self.base + i].clone(),
@@ -662,7 +775,10 @@ impl<'p> Machine<'p> {
             }
             N::Index(base, index) => {
                 let b = self.eval(base)?;
-                let i = self.eval(index)?.as_i32().ok_or("an index must be an integer")?;
+                let i = self
+                    .eval(index)?
+                    .as_i32()
+                    .ok_or("an index must be an integer")?;
                 index_value(&b, i)?
             }
             N::CallUser(i, args) => self.call_user(*i, args)?,
@@ -700,13 +816,23 @@ impl<'p> Machine<'p> {
                     let old = self.eval(operand)?;
                     let one = match &old {
                         V::Vec { k: Scalar::Int, .. } => V::i(1),
-                        V::Vec { k: Scalar::UInt, .. } => V::u(1),
+                        V::Vec {
+                            k: Scalar::UInt, ..
+                        } => V::u(1),
                         _ => V::f(1.0),
                     };
-                    let op = if matches!(op, UnOp::PreInc | UnOp::PostInc) { BinOp::Add } else { BinOp::Sub };
+                    let op = if matches!(op, UnOp::PreInc | UnOp::PostInc) {
+                        BinOp::Add
+                    } else {
+                        BinOp::Sub
+                    };
                     let new = binary(op, &old, &one)?;
                     self.assign(operand, new.clone())?;
-                    if matches!(n, N::Un(UnOp::PostInc | UnOp::PostDec, _)) { old } else { new }
+                    if matches!(n, N::Un(UnOp::PostInc | UnOp::PostDec, _)) {
+                        old
+                    } else {
+                        new
+                    }
                 }
             },
             N::Bin(op, a, b) => match op {
@@ -738,7 +864,11 @@ impl<'p> Machine<'p> {
                 new
             }
             N::Cond(c, a, b) => {
-                if self.eval(c)?.as_bool().ok_or("a condition must be a bool")? {
+                if self
+                    .eval(c)?
+                    .as_bool()
+                    .ok_or("a condition must be a bool")?
+                {
                     self.eval(a)?
                 } else {
                     self.eval(b)?
@@ -797,7 +927,10 @@ impl<'p> Machine<'p> {
                 if swz.is_some() {
                     return Err("cannot index through a swizzle".into());
                 }
-                let i = self.eval(index)?.as_i32().ok_or("an index must be an integer")?;
+                let i = self
+                    .eval(index)?
+                    .as_i32()
+                    .ok_or("an index must be an integer")?;
                 path.push(Step::Index(i));
                 Ok((root, path, None))
             }
@@ -844,7 +977,9 @@ impl<'p> Machine<'p> {
             Some(idx) => set_swizzle(at, &idx, &value),
             None => {
                 let converted = match (&*at, &value) {
-                    (V::Vec { k, n, .. }, V::Vec { n: vn, .. }) if n == vn => coerce(value, &Ty::Vec(*k, *n)),
+                    (V::Vec { k, n, .. }, V::Vec { n: vn, .. }) if n == vn => {
+                        coerce(value, &Ty::Vec(*k, *n))
+                    }
                     (V::Vec { k, n: 1, .. }, V::Vec { .. }) => coerce(value, &Ty::Scalar(*k)),
                     _ => value,
                 };
@@ -866,7 +1001,9 @@ fn lanes_of(args: &[V]) -> R<Vec<(Scalar, u32)>> {
         match a {
             V::Vec { k, n, c } => out.extend((0..*n as usize).map(|i| (*k, c[i]))),
             V::Mat { cols, rows, d } => out.extend(
-                d[..(*cols * *rows) as usize].iter().map(|x| (Scalar::Float, x.to_bits())),
+                d[..(*cols * *rows) as usize]
+                    .iter()
+                    .map(|x| (Scalar::Float, x.to_bits())),
             ),
             _ => return Err("this cannot be used to build a value".into()),
         }
@@ -879,7 +1016,11 @@ pub fn construct(ty: &Ty, args: Vec<V>, structs: &[StructDef]) -> R<V> {
         Ty::Scalar(k) => {
             let lanes = lanes_of(&args)?;
             let (from, bits) = *lanes.first().ok_or("a constructor needs an argument")?;
-            Ok(V::Vec { k: *k, n: 1, c: [convert_lane(from, bits, *k), 0, 0, 0] })
+            Ok(V::Vec {
+                k: *k,
+                n: 1,
+                c: [convert_lane(from, bits, *k), 0, 0, 0],
+            })
         }
         Ty::Vec(k, n) => {
             let lanes = lanes_of(&args)?;
@@ -894,11 +1035,20 @@ pub fn construct(ty: &Ty, args: Vec<V>, structs: &[StructDef]) -> R<V> {
             } else {
                 return Err(format!("not enough components for a {n}-vector"));
             }
-            Ok(V::Vec { k: *k, n: *n, c: out })
+            Ok(V::Vec {
+                k: *k,
+                n: *n,
+                c: out,
+            })
         }
         Ty::Mat(cols, rows) => {
             let mut d = [0.0f32; 16];
-            if let [V::Mat { cols: sc, rows: sr, d: sd }] = args.as_slice() {
+            if let [V::Mat {
+                cols: sc,
+                rows: sr,
+                d: sd,
+            }] = args.as_slice()
+            {
                 // From another matrix: copy what overlaps, the rest is identity.
                 for c in 0..*cols as usize {
                     for r in 0..*rows as usize {
@@ -926,7 +1076,11 @@ pub fn construct(ty: &Ty, args: Vec<V>, structs: &[StructDef]) -> R<V> {
                     return Err("not enough components for a matrix".into());
                 }
             }
-            Ok(V::Mat { cols: *cols, rows: *rows, d })
+            Ok(V::Mat {
+                cols: *cols,
+                rows: *rows,
+                d,
+            })
         }
         Ty::Struct(name) => {
             let (index, def) = structs
@@ -972,7 +1126,13 @@ mod tests {
 
     #[test]
     fn arithmetic_and_assignment() {
-        assert_eq!(out("void main() { gl_FragColor = vec4(1.0, 2.0, 3.0, 4.0) * 2.0 + 1.0; }", "gl_FragColor"), vec![3.0, 5.0, 7.0, 9.0]);
+        assert_eq!(
+            out(
+                "void main() { gl_FragColor = vec4(1.0, 2.0, 3.0, 4.0) * 2.0 + 1.0; }",
+                "gl_FragColor"
+            ),
+            vec![3.0, 5.0, 7.0, 9.0]
+        );
     }
 
     #[test]
@@ -1006,12 +1166,8 @@ mod tests {
 
     #[test]
     fn structs_arrays_and_nested_assignment() {
-        let src = "struct Light { vec3 color; float power[2]; };\n\
-                   float table[3] = float[3](1.0, 2.0, 3.0);\n\
-                   void main() { Light l; l.color = vec3(1.0, 0.5, 0.25); l.power[1] = 4.0; l.color.y = 9.0; table[2] += 10.0;\n\
-                     gl_FragColor = vec4(l.color.y, l.power[1], table[2], float(table.length() == 3)); }";
-        // `.length()` is not supported; the shader above must still fail loudly rather than misbehave.
-        assert!(Program::compile(src).is_ok() || true);
+        // `.length()` is not supported; a shader that uses it must fail to compile.
+        assert!(Program::compile("float t[3] = float[3](1.0, 2.0, 3.0); void main() { gl_FragColor = vec4(float(t.length())); }").is_err());
         let src = "struct Light { vec3 color; float power[2]; };\n\
                    float table[3] = float[3](1.0, 2.0, 3.0);\n\
                    void main() { Light l; l.color = vec3(1.0, 0.5, 0.25); l.power[1] = 4.0; l.color.y = 9.0; table[2] += 10.0;\n\
@@ -1041,7 +1197,10 @@ mod tests {
 
     #[test]
     fn discard_is_reported() {
-        let program = Program::compile("void main() { if (gl_FragCoord.x < 1.0) discard; gl_FragColor = vec4(1.0); }").unwrap();
+        let program = Program::compile(
+            "void main() { if (gl_FragCoord.x < 1.0) discard; gl_FragColor = vec4(1.0); }",
+        )
+        .unwrap();
         let mut m = Machine::new(&program, &NoTextures).unwrap();
         m.set_by_name("gl_FragCoord", V::vec4(0.5, 0.0, 0.0, 1.0));
         assert!(m.run_main().unwrap());
@@ -1066,13 +1225,28 @@ mod tests {
         let program = Program::compile("attribute vec3 position; uniform mat4 mvp; varying vec2 uv; void main() { uv = position.xy; gl_Position = mvp * vec4(position, 1.0); }").unwrap();
         let mut m = Machine::new(&program, &NoTextures).unwrap();
         let mut d = [0.0; 16];
-        for i in 0..4 { d[i * 5] = 2.0; }
-        assert!(m.set_by_name("mvp", V::Mat { cols: 4, rows: 4, d }));
+        for i in 0..4 {
+            d[i * 5] = 2.0;
+        }
+        assert!(m.set_by_name(
+            "mvp",
+            V::Mat {
+                cols: 4,
+                rows: 4,
+                d
+            }
+        ));
         assert!(m.set_by_name("position", V::vec(&[1.0, 2.0, 3.0])));
         assert!(!m.set_by_name("nope", V::f(0.0)));
         m.run_main().unwrap();
-        assert_eq!(m.get_by_name("gl_Position").unwrap().floats().unwrap(), vec![2.0, 4.0, 6.0, 2.0]);
-        assert_eq!(m.get_by_name("uv").unwrap().floats().unwrap(), vec![1.0, 2.0]);
+        assert_eq!(
+            m.get_by_name("gl_Position").unwrap().floats().unwrap(),
+            vec![2.0, 4.0, 6.0, 2.0]
+        );
+        assert_eq!(
+            m.get_by_name("uv").unwrap().floats().unwrap(),
+            vec![1.0, 2.0]
+        );
     }
 
     #[test]
@@ -1084,7 +1258,10 @@ mod tests {
         m.set_by_name("vUv", V::vec(&[0.25, 0.5]));
         m.set_by_name("id", V::i(7));
         m.run_main().unwrap();
-        assert_eq!(m.get_by_name("o").unwrap().floats().unwrap(), vec![0.25, 0.5, 7.0, 1.0]);
+        assert_eq!(
+            m.get_by_name("o").unwrap().floats().unwrap(),
+            vec![0.25, 0.5, 7.0, 1.0]
+        );
     }
 
     #[test]
@@ -1095,11 +1272,21 @@ mod tests {
 
     #[test]
     fn compile_errors_name_the_problem() {
-        assert!(Program::compile("void main() { x = 1.0; }").unwrap_err().contains("'x' is not declared"));
-        assert!(Program::compile("void main() { nothing(1.0); }").unwrap_err().contains("not a function"));
-        assert!(Program::compile("float f() { return 1.0; }").unwrap_err().contains("no main"));
+        assert!(Program::compile("void main() { x = 1.0; }")
+            .unwrap_err()
+            .contains("'x' is not declared"));
+        assert!(Program::compile("void main() { nothing(1.0); }")
+            .unwrap_err()
+            .contains("not a function"));
+        assert!(Program::compile("float f() { return 1.0; }")
+            .unwrap_err()
+            .contains("no main"));
         assert!(Program::compile("void main() { float x = ; }").is_err());
-        assert!(Program::compile("float f(float a) { return a; } void main() { f(1.0, 2.0); }").unwrap_err().contains("arguments"));
+        assert!(
+            Program::compile("float f(float a) { return a; } void main() { f(1.0, 2.0); }")
+                .unwrap_err()
+                .contains("arguments")
+        );
     }
 
     #[test]

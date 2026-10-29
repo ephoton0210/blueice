@@ -412,6 +412,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueice-gl"
+version = "0.1.0"
+
+[[package]]
 name = "blueice-html"
 version = "0.1.0"
 dependencies = [

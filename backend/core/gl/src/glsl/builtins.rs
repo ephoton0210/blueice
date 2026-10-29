@@ -11,7 +11,14 @@ use super::value::*;
 pub trait Textures {
     /// A filtered read. `lod` is explicit when given, else `bias` shifts the
     /// level the implementation would pick.
-    fn sample(&self, unit: u32, kind: SamplerKind, coord: [f32; 4], lod: Option<f32>, bias: f32) -> [f32; 4];
+    fn sample(
+        &self,
+        unit: u32,
+        kind: SamplerKind,
+        coord: [f32; 4],
+        lod: Option<f32>,
+        bias: f32,
+    ) -> [f32; 4];
     /// `texelFetch`.
     fn fetch(&self, unit: u32, kind: SamplerKind, coord: [i32; 3], lod: i32) -> [f32; 4];
     /// `textureSize`: width, height, depth.
@@ -51,7 +58,11 @@ fn from_floats(n: u8, c: [f32; 4]) -> V {
     for i in 0..n as usize {
         bits[i] = c[i].to_bits();
     }
-    V::Vec { k: Scalar::Float, n, c: bits }
+    V::Vec {
+        k: Scalar::Float,
+        n,
+        c: bits,
+    }
 }
 
 fn map1(v: &V, f: impl Fn(f32) -> f32) -> R<V> {
@@ -69,7 +80,10 @@ fn map2(a: &V, b: &V, f: impl Fn(f32, f32) -> f32) -> R<V> {
     let n = na.max(nb);
     let mut out = [0.0; 4];
     for i in 0..n as usize {
-        out[i] = f(ca[if na == 1 { 0 } else { i }], cb[if nb == 1 { 0 } else { i }]);
+        out[i] = f(
+            ca[if na == 1 { 0 } else { i }],
+            cb[if nb == 1 { 0 } else { i }],
+        );
     }
     Ok(from_floats(n, out))
 }
@@ -110,7 +124,10 @@ fn round_even(x: f32) -> f32 {
 /// result is an int/uint.
 fn integer_kind(args: &[V]) -> Option<Scalar> {
     match args.first() {
-        Some(V::Vec { k: k @ (Scalar::Int | Scalar::UInt), .. }) => Some(*k),
+        Some(V::Vec {
+            k: k @ (Scalar::Int | Scalar::UInt),
+            ..
+        }) => Some(*k),
         _ => None,
     }
 }
@@ -136,7 +153,11 @@ fn map_int(args: &[V], f: impl Fn(&[i64]) -> i64) -> R<V> {
             .collect();
         out[i] = f(&lane) as u32;
     }
-    Ok(V::Vec { k, n: n as u8, c: out })
+    Ok(V::Vec {
+        k,
+        n: n as u8,
+        c: out,
+    })
 }
 
 fn bool_vec(v: &V, other: &V, f: impl Fn(f32, f32) -> bool) -> R<V> {
@@ -145,7 +166,11 @@ fn bool_vec(v: &V, other: &V, f: impl Fn(f32, f32) -> bool) -> R<V> {
     for i in 0..n as usize {
         out[i] = u32::from(f(a[i], b[i]));
     }
-    Ok(V::Vec { k: Scalar::Bool, n, c: out })
+    Ok(V::Vec {
+        k: Scalar::Bool,
+        n,
+        c: out,
+    })
 }
 
 fn transpose(v: &V) -> R<V> {
@@ -158,7 +183,11 @@ fn transpose(v: &V) -> R<V> {
             out[r * *cols as usize + c] = d[c * *rows as usize + r];
         }
     }
-    Ok(V::Mat { cols: *rows, rows: *cols, d: out })
+    Ok(V::Mat {
+        cols: *rows,
+        rows: *cols,
+        d: out,
+    })
 }
 
 fn determinant(v: &V) -> R<f32> {
@@ -187,11 +216,15 @@ fn determinant(v: &V) -> R<f32> {
                         }
                     }
                 }
-                let sub = V::Mat { cols: 3, rows: 3, d: {
-                    let mut a = [0.0; 16];
-                    a[..9].copy_from_slice(&minor);
-                    a
-                } };
+                let sub = V::Mat {
+                    cols: 3,
+                    rows: 3,
+                    d: {
+                        let mut a = [0.0; 16];
+                        a[..9].copy_from_slice(&minor);
+                        a
+                    },
+                };
                 let cof = determinant(&sub)?;
                 det += if r % 2 == 0 { 1.0 } else { -1.0 } * m(0, r) * cof;
             }
@@ -219,10 +252,19 @@ fn inverse(v: &V) -> R<V> {
     }
     for col in 0..n {
         let pivot = (col..n)
-            .max_by(|&x, &y| a[x][col].abs().partial_cmp(&a[y][col].abs()).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|&x, &y| {
+                a[x][col]
+                    .abs()
+                    .partial_cmp(&a[y][col].abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .unwrap_or(col);
         if a[pivot][col].abs() < 1e-30 {
-            return Ok(V::Mat { cols: *cols, rows: *rows, d: [f32::NAN; 16] });
+            return Ok(V::Mat {
+                cols: *cols,
+                rows: *rows,
+                d: [f32::NAN; 16],
+            });
         }
         a.swap(col, pivot);
         let p = a[col][col];
@@ -246,7 +288,11 @@ fn inverse(v: &V) -> R<V> {
             out[c * n + r] = a[r][n + c] as f32;
         }
     }
-    Ok(V::Mat { cols: *cols, rows: *rows, d: out })
+    Ok(V::Mat {
+        cols: *cols,
+        rows: *rows,
+        d: out,
+    })
 }
 
 fn sampler(v: &V) -> R<(u32, SamplerKind)> {
@@ -262,7 +308,10 @@ fn coord4(v: &V) -> R<[f32; 4]> {
 
 /// Calls built-in `name`, or `None` when it is not one.
 pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
-    let a = |i: usize| args.get(i).ok_or_else(|| format!("{name}: missing argument {i}"));
+    let a = |i: usize| {
+        args.get(i)
+            .ok_or_else(|| format!("{name}: missing argument {i}"))
+    };
     let r: R<V> = (|| match name {
         "radians" => map1(a(0)?, f32::to_radians),
         "degrees" => map1(a(0)?, f32::to_degrees),
@@ -289,7 +338,15 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
         "abs" if integer_kind(args).is_some() => map_int(args, |l| l[0].abs()),
         "abs" => map1(a(0)?, f32::abs),
         "sign" if integer_kind(args).is_some() => map_int(args, |l| l[0].signum()),
-        "sign" => map1(a(0)?, |x| if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 }),
+        "sign" => map1(a(0)?, |x| {
+            if x > 0.0 {
+                1.0
+            } else if x < 0.0 {
+                -1.0
+            } else {
+                0.0
+            }
+        }),
         "floor" => map1(a(0)?, f32::floor),
         "ceil" => map1(a(0)?, f32::ceil),
         "trunc" => map1(a(0)?, f32::trunc),
@@ -301,19 +358,37 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
         "max" if integer_kind(args).is_some() => map_int(args, |l| l[0].max(l[1])),
         "min" => map2(a(0)?, a(1)?, f32::min),
         "max" => map2(a(0)?, a(1)?, f32::max),
-        "clamp" if integer_kind(args).is_some() => map_int(args, |l| l[0].clamp(l[1].min(l[2]), l[2])),
+        "clamp" if integer_kind(args).is_some() => {
+            map_int(args, |l| l[0].clamp(l[1].min(l[2]), l[2]))
+        }
         "clamp" => map3(a(0)?, a(1)?, a(2)?, |x, lo, hi| x.max(lo).min(hi)),
         "mix" => {
-            if matches!(args.get(2), Some(V::Vec { k: Scalar::Bool, .. })) {
+            if matches!(
+                args.get(2),
+                Some(V::Vec {
+                    k: Scalar::Bool,
+                    ..
+                })
+            ) {
                 // mix(x, y, bvec): select.
-                let (V::Vec { n, c: cx, k: kx }, V::Vec { c: cy, .. }, V::Vec { c: cs, n: ns, .. }) = (a(0)?, a(1)?, a(2)?) else {
+                let (V::Vec { n, c: cx, k: kx }, V::Vec { c: cy, .. }, V::Vec { c: cs, n: ns, .. }) =
+                    (a(0)?, a(1)?, a(2)?)
+                else {
                     return Err("bad mix".into());
                 };
                 let mut out = [0u32; 4];
                 for i in 0..*n as usize {
-                    out[i] = if cs[if *ns == 1 { 0 } else { i }] != 0 { cy[i] } else { cx[i] };
+                    out[i] = if cs[if *ns == 1 { 0 } else { i }] != 0 {
+                        cy[i]
+                    } else {
+                        cx[i]
+                    };
                 }
-                Ok(V::Vec { k: *kx, n: *n, c: out })
+                Ok(V::Vec {
+                    k: *kx,
+                    n: *n,
+                    c: out,
+                })
             } else {
                 map3(a(0)?, a(1)?, a(2)?, |x, y, t| x * (1.0 - t) + y * t)
             }
@@ -336,12 +411,15 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
         "dot" => Ok(V::f(dot(a(0)?, a(1)?)?)),
         "cross" => {
             let ((_, x), (_, y)) = (floats(a(0)?)?, floats(a(1)?)?);
-            Ok(from_floats(3, [
-                x[1] * y[2] - x[2] * y[1],
-                x[2] * y[0] - x[0] * y[2],
-                x[0] * y[1] - x[1] * y[0],
-                0.0,
-            ]))
+            Ok(from_floats(
+                3,
+                [
+                    x[1] * y[2] - x[2] * y[1],
+                    x[2] * y[0] - x[0] * y[2],
+                    x[0] * y[1] - x[1] * y[0],
+                    0.0,
+                ],
+            ))
         }
         "normalize" => {
             let v = a(0)?;
@@ -350,7 +428,11 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
         }
         "faceforward" => {
             let d = dot(a(2)?, a(1)?)?;
-            if d < 0.0 { Ok(a(0)?.clone()) } else { negate(a(0)?) }
+            if d < 0.0 {
+                Ok(a(0)?.clone())
+            } else {
+                negate(a(0)?)
+            }
         }
         "reflect" => {
             let d = dot(a(1)?, a(0)?)?;
@@ -392,7 +474,11 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
             for i in 0..16 {
                 d[i] = d1[i] * d2[i];
             }
-            Ok(V::Mat { cols: *cols, rows: *rows, d })
+            Ok(V::Mat {
+                cols: *cols,
+                rows: *rows,
+                d,
+            })
         }
         "outerProduct" => {
             let ((nr, c), (nc, r)) = (floats(a(0)?)?, floats(a(1)?)?);
@@ -402,7 +488,11 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                     d[col * nr as usize + row] = c[row] * r[col];
                 }
             }
-            Ok(V::Mat { cols: nc, rows: nr, d })
+            Ok(V::Mat {
+                cols: nc,
+                rows: nr,
+                d,
+            })
         }
         "transpose" => transpose(a(0)?),
         "determinant" => Ok(V::f(determinant(a(0)?)?)),
@@ -411,7 +501,8 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
         "floatBitsToInt" => map_bits(a(0)?, Scalar::Int),
         "floatBitsToUint" => map_bits(a(0)?, Scalar::UInt),
         "intBitsToFloat" | "uintBitsToFloat" => map_bits(a(0)?, Scalar::Float),
-        "texture" | "texture2D" | "textureCube" | "texture3D" | "texture2DArray" | "textureProj" | "texture2DProj" => {
+        "texture" | "texture2D" | "textureCube" | "texture3D" | "texture2DArray"
+        | "textureProj" | "texture2DProj" => {
             let (unit, kind) = sampler(a(0)?)?;
             let mut coord = coord4(a(1)?)?;
             let proj = name.contains("Proj");
@@ -423,24 +514,37 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 }
             }
             let bias = args.get(2).and_then(V::as_f32).unwrap_or(0.0);
-            Ok(from_floats(4, textures.sample(unit, kind, coord, None, bias)))
+            Ok(from_floats(
+                4,
+                textures.sample(unit, kind, coord, None, bias),
+            ))
         }
         "textureLod" | "texture2DLod" | "textureCubeLod" => {
             let (unit, kind) = sampler(a(0)?)?;
             let coord = coord4(a(1)?)?;
             let lod = a(2)?.as_f32().unwrap_or(0.0);
-            Ok(from_floats(4, textures.sample(unit, kind, coord, Some(lod), 0.0)))
+            Ok(from_floats(
+                4,
+                textures.sample(unit, kind, coord, Some(lod), 0.0),
+            ))
         }
         "texelFetch" => {
             let (unit, kind) = sampler(a(0)?)?;
             let (_, c) = floats(a(1)?)?;
             let lod = a(2)?.as_i32().unwrap_or(0);
-            Ok(from_floats(4, textures.fetch(unit, kind, [c[0] as i32, c[1] as i32, c[2] as i32], lod)))
+            Ok(from_floats(
+                4,
+                textures.fetch(unit, kind, [c[0] as i32, c[1] as i32, c[2] as i32], lod),
+            ))
         }
         "textureSize" => {
             let (unit, kind) = sampler(a(0)?)?;
             let s = textures.size(unit, kind, a(1)?.as_i32().unwrap_or(0));
-            let lanes = if matches!(kind, SamplerKind::S3D | SamplerKind::S2DArray) { 3 } else { 2 };
+            let lanes = if matches!(kind, SamplerKind::S3D | SamplerKind::S2DArray) {
+                3
+            } else {
+                2
+            };
             Ok(V::of_kind(Scalar::Int, &s.map(|x| x as u32)[..lanes]))
         }
         _ => Err(String::new()),
@@ -457,12 +561,20 @@ fn bool_of(v: &V, f: impl Fn(f32) -> bool) -> R<V> {
     for i in 0..n as usize {
         out[i] = u32::from(f(c[i]));
     }
-    Ok(V::Vec { k: Scalar::Bool, n, c: out })
+    Ok(V::Vec {
+        k: Scalar::Bool,
+        n,
+        c: out,
+    })
 }
 
 fn map_bits(v: &V, to: Scalar) -> R<V> {
     match v {
-        V::Vec { n, c, .. } => Ok(V::Vec { k: to, n: *n, c: *c }),
+        V::Vec { n, c, .. } => Ok(V::Vec {
+            k: to,
+            n: *n,
+            c: *c,
+        }),
         _ => Err("expected a number".into()),
     }
 }
@@ -470,17 +582,85 @@ fn map_bits(v: &V, to: Scalar) -> R<V> {
 pub fn is_builtin(name: &str) -> bool {
     matches!(
         name,
-        "radians" | "degrees" | "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sinh" | "cosh" | "tanh"
-            | "asinh" | "acosh" | "atanh" | "pow" | "exp" | "log" | "exp2" | "log2" | "sqrt" | "inversesqrt"
-            | "abs" | "sign" | "floor" | "ceil" | "trunc" | "round" | "roundEven" | "fract" | "mod" | "min"
-            | "max" | "clamp" | "mix" | "step" | "smoothstep" | "isnan" | "isinf" | "length" | "distance"
-            | "dot" | "cross" | "normalize" | "faceforward" | "reflect" | "refract" | "lessThan"
-            | "lessThanEqual" | "greaterThan" | "greaterThanEqual" | "equal" | "notEqual" | "any" | "all"
-            | "not" | "matrixCompMult" | "outerProduct" | "transpose" | "determinant" | "inverse" | "dFdx"
-            | "dFdy" | "fwidth" | "floatBitsToInt" | "floatBitsToUint" | "intBitsToFloat"
-            | "uintBitsToFloat" | "texture" | "texture2D" | "textureCube" | "texture3D" | "texture2DArray"
-            | "textureProj" | "texture2DProj" | "textureLod" | "texture2DLod" | "textureCubeLod"
-            | "texelFetch" | "textureSize"
+        "radians"
+            | "degrees"
+            | "sin"
+            | "cos"
+            | "tan"
+            | "asin"
+            | "acos"
+            | "atan"
+            | "sinh"
+            | "cosh"
+            | "tanh"
+            | "asinh"
+            | "acosh"
+            | "atanh"
+            | "pow"
+            | "exp"
+            | "log"
+            | "exp2"
+            | "log2"
+            | "sqrt"
+            | "inversesqrt"
+            | "abs"
+            | "sign"
+            | "floor"
+            | "ceil"
+            | "trunc"
+            | "round"
+            | "roundEven"
+            | "fract"
+            | "mod"
+            | "min"
+            | "max"
+            | "clamp"
+            | "mix"
+            | "step"
+            | "smoothstep"
+            | "isnan"
+            | "isinf"
+            | "length"
+            | "distance"
+            | "dot"
+            | "cross"
+            | "normalize"
+            | "faceforward"
+            | "reflect"
+            | "refract"
+            | "lessThan"
+            | "lessThanEqual"
+            | "greaterThan"
+            | "greaterThanEqual"
+            | "equal"
+            | "notEqual"
+            | "any"
+            | "all"
+            | "not"
+            | "matrixCompMult"
+            | "outerProduct"
+            | "transpose"
+            | "determinant"
+            | "inverse"
+            | "dFdx"
+            | "dFdy"
+            | "fwidth"
+            | "floatBitsToInt"
+            | "floatBitsToUint"
+            | "intBitsToFloat"
+            | "uintBitsToFloat"
+            | "texture"
+            | "texture2D"
+            | "textureCube"
+            | "texture3D"
+            | "texture2DArray"
+            | "textureProj"
+            | "texture2DProj"
+            | "textureLod"
+            | "texture2DLod"
+            | "textureCubeLod"
+            | "texelFetch"
+            | "textureSize"
     )
 }
 
@@ -489,7 +669,9 @@ mod tests {
     use super::*;
 
     fn run(name: &str, args: &[V]) -> V {
-        call(name, args, &NoTextures).expect("a built-in").expect("no error")
+        call(name, args, &NoTextures)
+            .expect("a built-in")
+            .expect("no error")
     }
     fn f(v: V) -> Vec<f32> {
         v.floats().unwrap()
@@ -506,41 +688,107 @@ mod tests {
         close(&f(run("sqrt", &[V::vec(&[4.0, 9.0])])), &[2.0, 3.0]);
         close(&f(run("fract", &[V::f(-0.25)])), &[0.75]);
         close(&f(run("mod", &[V::f(-1.0), V::f(3.0)])), &[2.0]);
-        close(&f(run("pow", &[V::vec(&[2.0, 3.0]), V::f(2.0)])), &[4.0, 9.0]);
-        close(&f(run("atan", &[V::f(1.0), V::f(1.0)])), &[std::f32::consts::FRAC_PI_4]);
-        close(&f(run("roundEven", &[V::vec(&[0.5, 1.5, 2.5])])), &[0.0, 2.0, 2.0]);
-        close(&f(run("sign", &[V::vec(&[-3.0, 0.0, 2.0])])), &[-1.0, 0.0, 1.0]);
+        close(
+            &f(run("pow", &[V::vec(&[2.0, 3.0]), V::f(2.0)])),
+            &[4.0, 9.0],
+        );
+        close(
+            &f(run("atan", &[V::f(1.0), V::f(1.0)])),
+            &[std::f32::consts::FRAC_PI_4],
+        );
+        close(
+            &f(run("roundEven", &[V::vec(&[0.5, 1.5, 2.5])])),
+            &[0.0, 2.0, 2.0],
+        );
+        close(
+            &f(run("sign", &[V::vec(&[-3.0, 0.0, 2.0])])),
+            &[-1.0, 0.0, 1.0],
+        );
     }
 
     #[test]
     fn interpolation_and_clamping() {
         close(&f(run("mix", &[V::f(0.0), V::f(10.0), V::f(0.25)])), &[2.5]);
-        close(&f(run("clamp", &[V::vec(&[-1.0, 0.5, 9.0]), V::f(0.0), V::f(1.0)])), &[0.0, 0.5, 1.0]);
-        close(&f(run("smoothstep", &[V::f(0.0), V::f(1.0), V::f(0.5)])), &[0.5]);
-        close(&f(run("step", &[V::f(0.5), V::vec(&[0.4, 0.5])])), &[0.0, 1.0]);
+        close(
+            &f(run(
+                "clamp",
+                &[V::vec(&[-1.0, 0.5, 9.0]), V::f(0.0), V::f(1.0)],
+            )),
+            &[0.0, 0.5, 1.0],
+        );
+        close(
+            &f(run("smoothstep", &[V::f(0.0), V::f(1.0), V::f(0.5)])),
+            &[0.5],
+        );
+        close(
+            &f(run("step", &[V::f(0.5), V::vec(&[0.4, 0.5])])),
+            &[0.0, 1.0],
+        );
         assert_eq!(run("min", &[V::i(3), V::i(-2)]), V::i(-2));
         assert_eq!(run("clamp", &[V::i(9), V::i(0), V::i(5)]), V::i(5));
         assert_eq!(run("abs", &[V::i(-4)]), V::i(4));
-        let picked = run("mix", &[V::vec(&[1.0, 2.0]), V::vec(&[3.0, 4.0]), V::of_kind(Scalar::Bool, &[1, 0])]);
+        let picked = run(
+            "mix",
+            &[
+                V::vec(&[1.0, 2.0]),
+                V::vec(&[3.0, 4.0]),
+                V::of_kind(Scalar::Bool, &[1, 0]),
+            ],
+        );
         assert_eq!(f(picked), vec![3.0, 2.0]);
     }
 
     #[test]
     fn geometry_functions() {
         close(&f(run("length", &[V::vec(&[3.0, 4.0])])), &[5.0]);
-        close(&f(run("normalize", &[V::vec(&[0.0, 3.0, 4.0])])), &[0.0, 0.6, 0.8]);
-        close(&f(run("dot", &[V::vec(&[1.0, 2.0, 3.0]), V::vec(&[4.0, 5.0, 6.0])])), &[32.0]);
-        close(&f(run("cross", &[V::vec(&[1.0, 0.0, 0.0]), V::vec(&[0.0, 1.0, 0.0])])), &[0.0, 0.0, 1.0]);
-        close(&f(run("distance", &[V::vec(&[1.0, 1.0]), V::vec(&[4.0, 5.0])])), &[5.0]);
-        close(&f(run("reflect", &[V::vec(&[1.0, -1.0]), V::vec(&[0.0, 1.0])])), &[1.0, 1.0]);
-        close(&f(run("refract", &[V::vec(&[0.0, -1.0]), V::vec(&[0.0, 1.0]), V::f(1.0)])), &[0.0, -1.0]);
+        close(
+            &f(run("normalize", &[V::vec(&[0.0, 3.0, 4.0])])),
+            &[0.0, 0.6, 0.8],
+        );
+        close(
+            &f(run(
+                "dot",
+                &[V::vec(&[1.0, 2.0, 3.0]), V::vec(&[4.0, 5.0, 6.0])],
+            )),
+            &[32.0],
+        );
+        close(
+            &f(run(
+                "cross",
+                &[V::vec(&[1.0, 0.0, 0.0]), V::vec(&[0.0, 1.0, 0.0])],
+            )),
+            &[0.0, 0.0, 1.0],
+        );
+        close(
+            &f(run("distance", &[V::vec(&[1.0, 1.0]), V::vec(&[4.0, 5.0])])),
+            &[5.0],
+        );
+        close(
+            &f(run("reflect", &[V::vec(&[1.0, -1.0]), V::vec(&[0.0, 1.0])])),
+            &[1.0, 1.0],
+        );
+        close(
+            &f(run(
+                "refract",
+                &[V::vec(&[0.0, -1.0]), V::vec(&[0.0, 1.0]), V::f(1.0)],
+            )),
+            &[0.0, -1.0],
+        );
     }
 
     #[test]
     fn matrix_functions() {
-        let m = V::Mat { cols: 2, rows: 2, d: { let mut d = [0.0; 16]; d[..4].copy_from_slice(&[4.0, 2.0, 7.0, 6.0]); d } };
-        close(&f(run("determinant", &[m.clone()])), &[10.0]);
-        let inv = run("inverse", &[m.clone()]);
+        let m = V::Mat {
+            cols: 2,
+            rows: 2,
+            d: {
+                let mut d = [0.0; 16];
+                d[..4].copy_from_slice(&[4.0, 2.0, 7.0, 6.0]);
+                d
+            },
+        };
+        close(&f(run("determinant", std::slice::from_ref(&m))), &[10.0]);
+        let inv = run("inverse", std::slice::from_ref(&m));
         let product = binary(BinOp::Mul, &m, &inv).unwrap();
         let V::Mat { d, .. } = product else { panic!() };
         close(&d[..4], &[1.0, 0.0, 0.0, 1.0]);
@@ -549,13 +797,25 @@ mod tests {
         close(&d[..4], &[4.0, 7.0, 2.0, 6.0]);
         // A 4x4 (translate) inverse and determinant.
         let mut d = [0.0; 16];
-        for i in 0..4 { d[i * 4 + i] = 2.0; }
+        for i in 0..4 {
+            d[i * 4 + i] = 2.0;
+        }
         d[12] = 5.0;
-        let m4 = V::Mat { cols: 4, rows: 4, d };
-        close(&f(run("determinant", &[m4.clone()])), &[16.0]);
-        let inv = run("inverse", &[m4.clone()]);
-        let V::Mat { d, .. } = binary(BinOp::Mul, &m4, &inv).unwrap() else { panic!() };
-        for i in 0..4 { for j in 0..4 { assert!((d[i * 4 + j] - if i == j { 1.0 } else { 0.0 }).abs() < 1e-5); } }
+        let m4 = V::Mat {
+            cols: 4,
+            rows: 4,
+            d,
+        };
+        close(&f(run("determinant", std::slice::from_ref(&m4))), &[16.0]);
+        let inv = run("inverse", std::slice::from_ref(&m4));
+        let V::Mat { d, .. } = binary(BinOp::Mul, &m4, &inv).unwrap() else {
+            panic!()
+        };
+        for i in 0..4 {
+            for j in 0..4 {
+                assert!((d[i * 4 + j] - if i == j { 1.0 } else { 0.0 }).abs() < 1e-5);
+            }
+        }
         let op = run("outerProduct", &[V::vec(&[1.0, 2.0]), V::vec(&[3.0, 4.0])]);
         let V::Mat { d, .. } = op else { panic!() };
         close(&d[..4], &[3.0, 6.0, 4.0, 8.0]);
@@ -563,23 +823,42 @@ mod tests {
 
     #[test]
     fn comparisons_and_reductions() {
-        assert_eq!(run("lessThan", &[V::vec(&[1.0, 5.0]), V::vec(&[2.0, 2.0])]), V::of_kind(Scalar::Bool, &[1, 0]));
+        assert_eq!(
+            run("lessThan", &[V::vec(&[1.0, 5.0]), V::vec(&[2.0, 2.0])]),
+            V::of_kind(Scalar::Bool, &[1, 0])
+        );
         assert_eq!(run("any", &[V::of_kind(Scalar::Bool, &[0, 1])]), V::b(true));
-        assert_eq!(run("all", &[V::of_kind(Scalar::Bool, &[0, 1])]), V::b(false));
+        assert_eq!(
+            run("all", &[V::of_kind(Scalar::Bool, &[0, 1])]),
+            V::b(false)
+        );
         assert_eq!(run("isnan", &[V::f(f32::NAN)]), V::b(true));
     }
 
     #[test]
     fn bit_reinterpretation_and_unknown_names() {
-        assert_eq!(run("floatBitsToInt", &[V::f(1.0)]).as_i32(), Some(0x3f800000));
-        assert_eq!(run("intBitsToFloat", &[V::i(0x3f800000)]).as_f32(), Some(1.0));
+        assert_eq!(
+            run("floatBitsToInt", &[V::f(1.0)]).as_i32(),
+            Some(0x3f800000)
+        );
+        assert_eq!(
+            run("intBitsToFloat", &[V::i(0x3f800000)]).as_f32(),
+            Some(1.0)
+        );
         assert!(call("noSuchThing", &[], &NoTextures).is_none());
         assert!(is_builtin("texture2D") && !is_builtin("myFunction"));
     }
 
     struct Gradient;
     impl Textures for Gradient {
-        fn sample(&self, unit: u32, _: SamplerKind, c: [f32; 4], lod: Option<f32>, bias: f32) -> [f32; 4] {
+        fn sample(
+            &self,
+            unit: u32,
+            _: SamplerKind,
+            c: [f32; 4],
+            lod: Option<f32>,
+            bias: f32,
+        ) -> [f32; 4] {
             [c[0], c[1], unit as f32 + lod.unwrap_or(0.0) + bias, 1.0]
         }
         fn fetch(&self, _: u32, _: SamplerKind, c: [i32; 3], lod: i32) -> [f32; 4] {
@@ -593,15 +872,37 @@ mod tests {
     #[test]
     fn texture_functions_go_through_the_sampler_source() {
         let s = V::Sampler(3, SamplerKind::S2D);
-        let r = call("texture2D", &[s.clone(), V::vec(&[0.25, 0.5])], &Gradient).unwrap().unwrap();
+        let r = call("texture2D", &[s.clone(), V::vec(&[0.25, 0.5])], &Gradient)
+            .unwrap()
+            .unwrap();
         assert_eq!(f(r), vec![0.25, 0.5, 3.0, 1.0]);
-        let r = call("textureLod", &[s.clone(), V::vec(&[0.0, 0.0]), V::f(2.0)], &Gradient).unwrap().unwrap();
+        let r = call(
+            "textureLod",
+            &[s.clone(), V::vec(&[0.0, 0.0]), V::f(2.0)],
+            &Gradient,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(f(r)[2], 5.0);
-        let r = call("texelFetch", &[s.clone(), V::of_kind(Scalar::Int, &[2, 1]), V::i(1)], &Gradient).unwrap().unwrap();
+        let r = call(
+            "texelFetch",
+            &[s.clone(), V::of_kind(Scalar::Int, &[2, 1]), V::i(1)],
+            &Gradient,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(f(r), vec![2.0, 1.0, 1.0, 1.0]);
-        let r = call("textureSize", &[s, V::i(1)], &Gradient).unwrap().unwrap();
+        let r = call("textureSize", &[s, V::i(1)], &Gradient)
+            .unwrap()
+            .unwrap();
         assert_eq!(r, V::of_kind(Scalar::Int, &[4, 2]));
-        let r = call("textureProj", &[V::Sampler(0, SamplerKind::S2D), V::vec(&[2.0, 4.0, 2.0])], &Gradient).unwrap().unwrap();
+        let r = call(
+            "textureProj",
+            &[V::Sampler(0, SamplerKind::S2D), V::vec(&[2.0, 4.0, 2.0])],
+            &Gradient,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(f(r)[..2], [1.0, 2.0]);
     }
 }

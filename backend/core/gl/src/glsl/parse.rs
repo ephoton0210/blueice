@@ -167,7 +167,9 @@ impl Parser {
                 }
                 // An unsized `[]` (sized by its initializer) is recorded as 0.
                 _ if self.is("]") => 0,
-                other => return self.err(format!("array size must be a constant, found {other:?}")),
+                other => {
+                    return self.err(format!("array size must be a constant, found {other:?}"))
+                }
             };
             self.expect("]")?;
             ty = Ty::Array(Box::new(ty), n);
@@ -221,10 +223,7 @@ impl Parser {
         let mut storage = Storage::None;
         let mut flat = false;
         let mut location = None;
-        loop {
-            let Some(Tok::Ident(word)) = self.peek().cloned() else {
-                break;
-            };
+        while let Some(Tok::Ident(word)) = self.peek().cloned() {
             match word.as_str() {
                 "attribute" => storage = Storage::Attribute,
                 "varying" => storage = Storage::Varying,
@@ -367,7 +366,11 @@ impl Parser {
                 String::new()
             };
             let ty = self.array_suffix(base)?;
-            params.push(Param { dir, ty, name: pname });
+            params.push(Param {
+                dir,
+                ty,
+                name: pname,
+            });
             if !self.eat(",") {
                 break;
             }
@@ -438,9 +441,17 @@ impl Parser {
                     } else {
                         Some(Box::new(self.simple_statement()?))
                     };
-                    let cond = if self.is(";") { None } else { Some(self.expression()?) };
+                    let cond = if self.is(";") {
+                        None
+                    } else {
+                        Some(self.expression()?)
+                    };
                     self.expect(";")?;
-                    let step = if self.is(")") { None } else { Some(self.expression()?) };
+                    let step = if self.is(")") {
+                        None
+                    } else {
+                        Some(self.expression()?)
+                    };
                     self.expect(")")?;
                     return Ok(Stmt::For(init, cond, step, Box::new(self.statement()?)));
                 }
@@ -491,7 +502,11 @@ impl Parser {
                 }
                 "return" => {
                     self.at += 1;
-                    let value = if self.is(";") { None } else { Some(self.expression()?) };
+                    let value = if self.is(";") {
+                        None
+                    } else {
+                        Some(self.expression()?)
+                    };
                     self.expect(";")?;
                     return Ok(Stmt::Return(value));
                 }
@@ -758,7 +773,8 @@ impl Parser {
                     _ => {}
                 }
                 // `float[3](...)`: an array constructor.
-                if builtin_type(&word).is_some() && matches!(self.peek_at(1), Some(Tok::Punct("["))) {
+                if builtin_type(&word).is_some() && matches!(self.peek_at(1), Some(Tok::Punct("[")))
+                {
                     let ty = self.type_spec()?;
                     let args = self.arguments()?;
                     return Ok(Expr::ArrayCtor(ty, args));
@@ -827,7 +843,10 @@ mod tests {
         );
         assert_eq!(u.structs[0].name, "Light");
         assert_eq!(u.structs[0].fields[1].1, Ty::Array(Box::new(Ty::FLOAT), 2));
-        assert_eq!(u.globals[0].ty, Ty::Array(Box::new(Ty::Struct("Light".into())), 3));
+        assert_eq!(
+            u.globals[0].ty,
+            Ty::Array(Box::new(Ty::Struct("Light".into())), 3)
+        );
         assert_eq!(u.globals[2].ty, Ty::Array(Box::new(Ty::FLOAT), 3));
         let f = &u.functions[0];
         assert_eq!(f.params[1].dir, ParamDir::Out);
@@ -838,26 +857,45 @@ mod tests {
     #[test]
     fn operator_precedence_and_associativity() {
         let u = unit("void main() { float x = 1.0 + 2.0 * 3.0 - 4.0; bool b = 1 < 2 && 3 > 2 || false; x = y = 2.0; }");
-        let Stmt::Decl(d) = &u.functions[0].body[0] else { panic!() };
+        let Stmt::Decl(d) = &u.functions[0].body[0] else {
+            panic!()
+        };
         // ((1 + (2 * 3)) - 4)
-        let Some(Expr::Binary(BinOp::Sub, l, _)) = &d[0].init else { panic!("{:?}", d[0].init) };
+        let Some(Expr::Binary(BinOp::Sub, l, _)) = &d[0].init else {
+            panic!("{:?}", d[0].init)
+        };
         assert!(matches!(**l, Expr::Binary(BinOp::Add, _, _)));
-        let Stmt::Decl(d) = &u.functions[0].body[1] else { panic!() };
+        let Stmt::Decl(d) = &u.functions[0].body[1] else {
+            panic!()
+        };
         assert!(matches!(d[0].init, Some(Expr::Binary(BinOp::Or, _, _))));
-        let Stmt::Expr(Expr::Assign(None, _, r)) = &u.functions[0].body[2] else { panic!() };
-        assert!(matches!(**r, Expr::Assign(None, _, _)), "assignment is right-associative");
+        let Stmt::Expr(Expr::Assign(None, _, r)) = &u.functions[0].body[2] else {
+            panic!()
+        };
+        assert!(
+            matches!(**r, Expr::Assign(None, _, _)),
+            "assignment is right-associative"
+        );
     }
 
     #[test]
     fn uniform_blocks_expose_their_members_as_uniforms() {
         let u = unit("uniform Block { vec4 color; float k[2]; } block; void main(){}");
-        assert_eq!(u.globals.iter().map(|g| g.name.as_str()).collect::<Vec<_>>(), vec!["color", "k"]);
+        assert_eq!(
+            u.globals
+                .iter()
+                .map(|g| g.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["color", "k"]
+        );
     }
 
     #[test]
     fn declarations_with_several_names_and_constructor_statements() {
         let u = unit("void main() { float a = 1.0, b[2], c; vec3(1.0).x; mat2 m = mat2(1.0); }");
-        let Stmt::Decl(d) = &u.functions[0].body[0] else { panic!() };
+        let Stmt::Decl(d) = &u.functions[0].body[0] else {
+            panic!()
+        };
         assert_eq!(d.len(), 3);
         assert_eq!(d[1].ty, Ty::Array(Box::new(Ty::FLOAT), 2));
         assert!(matches!(u.functions[0].body[1], Stmt::Expr(_)));
@@ -869,12 +907,18 @@ mod tests {
         assert!(e.starts_with("line 2"), "{e}");
         assert!(parse("void main() { float x = 1.0 }").is_err());
         assert!(parse("void main() { unknown_type x; }").is_err());
-        assert!(parse(&format!("void main() {{ float x = {}1.0{}; }}", "(".repeat(300), ")".repeat(300))).is_err());
+        assert!(parse(&format!(
+            "void main() {{ float x = {}1.0{}; }}",
+            "(".repeat(300),
+            ")".repeat(300)
+        ))
+        .is_err());
     }
 
     #[test]
     fn prototypes_and_empty_parameter_lists() {
-        let u = unit("float f(float x); float f(float x) { return x; } void main(void) { f(1.0); }");
+        let u =
+            unit("float f(float x); float f(float x) { return x; } void main(void) { f(1.0); }");
         assert_eq!(u.functions.len(), 2);
     }
 }

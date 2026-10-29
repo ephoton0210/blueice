@@ -71,8 +71,12 @@ pub fn preprocess(source: &str) -> Result<Preprocessed, String> {
                     false
                 } else {
                     match name {
-                        "ifdef" => macros.contains_key(rest.split_whitespace().next().unwrap_or("")),
-                        "ifndef" => !macros.contains_key(rest.split_whitespace().next().unwrap_or("")),
+                        "ifdef" => {
+                            macros.contains_key(rest.split_whitespace().next().unwrap_or(""))
+                        }
+                        "ifndef" => {
+                            !macros.contains_key(rest.split_whitespace().next().unwrap_or(""))
+                        }
                         _ => eval_condition(rest, &macros)? != 0,
                     }
                 };
@@ -261,11 +265,12 @@ fn expand(text: &str, macros: &HashMap<String, Macro>, depth: usize) -> Result<S
                     }
                     let (arguments, end) = split_arguments(&chars, j)?;
                     i = end;
-                    let arguments: Vec<String> = if params.is_empty() && arguments == [String::new()] {
-                        Vec::new()
-                    } else {
-                        arguments
-                    };
+                    let arguments: Vec<String> =
+                        if params.is_empty() && arguments == [String::new()] {
+                            Vec::new()
+                        } else {
+                            arguments
+                        };
                     if arguments.len() != params.len() {
                         return Err(format!(
                             "macro {word} takes {} arguments, {} given",
@@ -392,7 +397,11 @@ fn eval_condition(text: &str, macros: &HashMap<String, Macro>) -> Result<i64, St
                     }
                     i += 1;
                 }
-                replaced.push_str(if macros.contains_key(&target) { "1" } else { "0" });
+                replaced.push_str(if macros.contains_key(&target) {
+                    "1"
+                } else {
+                    "0"
+                });
             } else {
                 replaced.push_str(&word);
             }
@@ -546,7 +555,11 @@ impl ConditionParser {
             let plus = op == "+";
             self.at += 1;
             let r = self.multiplicative()?;
-            v = if plus { v.wrapping_add(r) } else { v.wrapping_sub(r) };
+            v = if plus {
+                v.wrapping_add(r)
+            } else {
+                v.wrapping_sub(r)
+            };
         }
         Ok(v)
     }
@@ -616,14 +629,23 @@ mod tests {
     #[test]
     fn comments_and_continuations_are_removed_but_lines_are_kept() {
         let out = run("a // gone\nb /* x\ny */ c\nd \\\ne");
-        assert_eq!(out.lines().collect::<Vec<_>>(), vec!["a ", "b ", "  c", "d e"]);
+        assert_eq!(
+            out.lines().collect::<Vec<_>>(),
+            vec!["a ", "b ", "  c", "d e"]
+        );
     }
 
     #[test]
     fn object_and_function_macros_expand() {
-        assert_eq!(run("#define N 3\nfloat a[N];").lines().nth(1).unwrap(), "float a[3];");
+        assert_eq!(
+            run("#define N 3\nfloat a[N];").lines().nth(1).unwrap(),
+            "float a[3];"
+        );
         let out = run("#define SQ(x) ((x)*(x))\nfloat y = SQ(1.0 + 2.0);");
-        assert_eq!(out.lines().nth(1).unwrap(), "float y = ((1.0 + 2.0)*(1.0 + 2.0));");
+        assert_eq!(
+            out.lines().nth(1).unwrap(),
+            "float y = ((1.0 + 2.0)*(1.0 + 2.0));"
+        );
         let out = run("#define ADD(a,b) a+b\nint z = ADD(ADD(1,2),3);");
         assert_eq!(out.lines().nth(1).unwrap(), "int z = 1+2+3;");
     }
@@ -632,7 +654,11 @@ mod tests {
     fn a_macro_may_not_expand_itself_and_numbers_are_not_identifiers() {
         let out = run("#define a a+1\nint x = a;\n#define e 5\nfloat f = 1e3 + 2.0e;");
         assert_eq!(out.lines().nth(1).unwrap(), "int x = a+1;");
-        assert!(out.lines().nth(3).unwrap().starts_with("float f = 1e3 + 2.0e"));
+        assert!(out
+            .lines()
+            .nth(3)
+            .unwrap()
+            .starts_with("float f = 1e3 + 2.0e"));
     }
 
     #[test]
@@ -652,7 +678,10 @@ mod tests {
 
     #[test]
     fn the_version_and_predefined_macros_are_known() {
-        let p = preprocess("#version 300 es\n#if __VERSION__ >= 300\nmodern\n#endif\n#ifdef GL_ES\nes\n#endif").unwrap();
+        let p = preprocess(
+            "#version 300 es\n#if __VERSION__ >= 300\nmodern\n#endif\n#ifdef GL_ES\nes\n#endif",
+        )
+        .unwrap();
         assert_eq!(p.version, 300);
         let kept: Vec<&str> = p.text.lines().filter(|l| !l.is_empty()).collect();
         assert_eq!(kept, vec!["modern", "es"]);
@@ -662,7 +691,10 @@ mod tests {
 
     #[test]
     fn extensions_and_pragmas_are_accepted_and_errors_fail() {
-        assert!(preprocess("#extension GL_OES_standard_derivatives : enable\n#pragma optimize(on)\n").is_ok());
+        assert!(preprocess(
+            "#extension GL_OES_standard_derivatives : enable\n#pragma optimize(on)\n"
+        )
+        .is_ok());
         assert!(preprocess("#error nope").is_err());
         assert!(preprocess("#if 1\nx").is_err());
         assert!(preprocess("#endif").is_err());
@@ -672,7 +704,10 @@ mod tests {
     #[test]
     fn token_pasting_and_condition_arithmetic_work() {
         let out = run("#define CAT(a,b) a##b\nint CAT(foo,bar) = (1 << 3) + 7 % 4;\n#if (1 << 3) + 7 % 4 == 11\nok\n#endif");
-        assert_eq!(out.lines().nth(1).unwrap(), "int foobar = (1 << 3) + 7 % 4;");
+        assert_eq!(
+            out.lines().nth(1).unwrap(),
+            "int foobar = (1 << 3) + 7 % 4;"
+        );
         assert!(out.contains("ok"));
     }
 

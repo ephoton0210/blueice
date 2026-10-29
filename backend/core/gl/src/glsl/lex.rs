@@ -20,9 +20,9 @@ pub struct Token {
 }
 
 const PUNCT: [&str; 47] = [
-    "<<=", ">>=", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>", "<=", ">=",
-    "==", "!=", "&&", "||", "^^", "(", ")", "[", "]", "{", "}", ".", ",", ";", ":", "?", "+", "-", "*",
-    "/", "%", "<", ">", "=", "!", "~", "&", "|", "^", "#", "@",
+    "<<=", ">>=", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>", "<=",
+    ">=", "==", "!=", "&&", "||", "^^", "(", ")", "[", "]", "{", "}", ".", ",", ";", ":", "?", "+",
+    "-", "*", "/", "%", "<", ">", "=", "!", "~", "&", "|", "^", "#", "@",
 ];
 
 pub fn lex(source: &str) -> Result<Vec<Token>, String> {
@@ -46,7 +46,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
                 tok: Tok::Ident(chars[s..i].iter().collect()),
                 line,
             });
-        } else if c.is_ascii_digit() || (c == '.' && chars.get(i + 1).is_some_and(|d| d.is_ascii_digit())) {
+        } else if c.is_ascii_digit()
+            || (c == '.' && chars.get(i + 1).is_some_and(|d| d.is_ascii_digit()))
+        {
             let s = i;
             let hex = c == '0' && matches!(chars.get(i + 1), Some('x' | 'X'));
             if hex {
@@ -78,13 +80,19 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
                 }
             }
             let body: String = chars[s..i].iter().collect();
-            let suffix = chars.get(i).copied().filter(|c| matches!(c, 'u' | 'U' | 'f' | 'F'));
+            let suffix = chars
+                .get(i)
+                .copied()
+                .filter(|c| matches!(c, 'u' | 'U' | 'f' | 'F'));
             if suffix.is_some() {
                 i += 1;
             }
             let is_float = !hex && (body.contains('.') || body.contains('e') || body.contains('E'));
             let tok = if is_float || matches!(suffix, Some('f' | 'F')) {
-                Tok::Float(body.parse::<f32>().map_err(|_| format!("bad number '{body}'"))?)
+                Tok::Float(
+                    body.parse::<f32>()
+                        .map_err(|_| format!("bad number '{body}'"))?,
+                )
             } else {
                 let value = if hex {
                     i64::from_str_radix(&body[2..], 16)
@@ -148,7 +156,13 @@ mod tests {
         let t = lex("a <<= b\n>> c++ ^^ d").unwrap();
         let puncts: Vec<&str> = t
             .iter()
-            .filter_map(|t| if let Tok::Punct(p) = t.tok { Some(p) } else { None })
+            .filter_map(|t| {
+                if let Tok::Punct(p) = t.tok {
+                    Some(p)
+                } else {
+                    None
+                }
+            })
             .collect();
         assert_eq!(puncts, vec!["<<=", ">>", "++", "^^"]);
         assert_eq!(t.last().unwrap().line, 2);
@@ -159,7 +173,11 @@ mod tests {
     fn a_dot_after_an_identifier_is_a_field_access() {
         assert_eq!(
             toks("v.xy"),
-            vec![Tok::Ident("v".into()), Tok::Punct("."), Tok::Ident("xy".into())]
+            vec![
+                Tok::Ident("v".into()),
+                Tok::Punct("."),
+                Tok::Ident("xy".into())
+            ]
         );
     }
 }
