@@ -26,6 +26,10 @@ pub(crate) struct Ctx<'a> {
     /// constraint: layout is a pure function of both, and flex measuring
     /// would otherwise redo nested subtrees at every level.
     pub layouts: std::cell::RefCell<HashMap<crate::block::LayoutKey, crate::block::Placed>>,
+    /// Floats a block being laid out must flow around, in the coordinates of
+    /// its border box; empty inside any box that starts a new formatting
+    /// context. A layout that sees any is not memoised.
+    pub floats: std::cell::RefCell<Vec<crate::float::FloatRect>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,19 +90,6 @@ impl Display {
             Display::InlineBlock | Display::InlineFlex | Display::InlineGrid | Display::InlineTable
         )
     }
-
-    #[allow(dead_code)] // used by float and flex layout, which follow
-    /// The block-level form of this display (what `float` and absolute
-    /// positioning compute to).
-    pub fn blockified(self) -> Display {
-        match self {
-            Display::Inline | Display::InlineBlock => Display::Block,
-            Display::InlineFlex => Display::Flex,
-            Display::InlineGrid => Display::Grid,
-            Display::InlineTable => Display::Table,
-            other => other,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,7 +108,6 @@ pub(crate) enum Side {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // used by float layout, which follows
 pub(crate) enum Clear {
     None,
     Left,
@@ -259,7 +249,6 @@ impl<'a> Style<'a> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn clear(&self) -> Clear {
         match self.keyword("clear") {
             Some("left" | "inline-start") => Clear::Left,

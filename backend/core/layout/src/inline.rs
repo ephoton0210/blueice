@@ -13,6 +13,7 @@
 //! including the container's strut; `text-align` and `text-indent` place the
 //! content on the line.
 
+use crate::float::{self, FloatRect};
 use crate::block::{layout_block_level, Constraint, Forced, PendingAbs};
 use crate::ctx::{Ctx, Display, Style};
 use crate::fragment::{Fragment, FragmentKind};
@@ -639,34 +640,83 @@ struct Line {
     items: Vec<LineItem>,
     width: f64,
     forced_end: bool,
+    /// Inset from the left edge and width left by floats.
+    left: f64,
+    avail: f64,
+    /// Where a line pushed below a float starts, from the run's top.
+    start_y: Option<f64>,
 }
 
 impl Line {
-    fn new() -> Line {
+    fn new(room: Room, start_y: Option<f64>) -> Line {
         Line {
             items: Vec::new(),
             width: 0.0,
             forced_end: false,
+            left: room.left,
+            avail: room.avail,
+            start_y,
         }
     }
 }
 
-fn break_lines(pieces: &[Piece], first_line_available: f64, available: f64) -> Vec<Line> {
-    let mut lines = Vec::new();
-    let mut line = Line::new();
-    let limit = |is_first: bool| {
-        if is_first {
-            first_line_available
-        } else {
-            available
-        }
-    };
+/// The room a line has at some height: how far floats push its left edge in,
+/// how wide it then is, and where the next float ends below that height.
+#[derive(Clone, Copy)]
+struct Room {
+    left: f64,
+    avail: f64,
+    next: Option<f64>,
+}
+
+/// Floats a run of inline content flows around; `top` is where the run starts
+/// in the same coordinates as the floats.
+pub(crate) struct FloatView<'a> {
+    pub floats: &'a [FloatRect],
+    pub top: f64,
+}
+
+fn break_lines(
+    pieces: &[Piece],
+    first_indent: f64,
+    room: &dyn Fn(f64) -> Room,
+    est_height: f64,
+) -> Vec<Line> {
+    let mut lines: Vec<Line> = Vec::new();
+    let mut y_est = 0.0f64;
+    let mut line = Line::new(room(0.0), None);
     for chunk in into_chunks(pieces) {
+        // A line with nothing on it drops below floats that leave it too
+        // narrow for the next word.
+        macro_rules! skip_floats {
+            () => {
+                if line.items.is_empty() {
+                    let indent = if lines.is_empty() { first_indent } else { 0.0 };
+                    loop {
+                        let r = room(y_est);
+                        match r.next {
+                            Some(next)
+                                if chunk.width > r.avail - indent + 0.01 && next > y_est =>
+                            {
+                                y_est = next;
+                                line = Line::new(room(y_est), Some(y_est));
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+            };
+        }
+        skip_floats!();
         let first = lines.is_empty();
+        let limit = line.avail - if first { first_indent } else { 0.0 };
         let has_content = !line.items.is_empty();
-        let fits = !has_content || line.width + chunk.lead + chunk.width <= limit(first) + 0.01;
+        let fits = !has_content || line.width + chunk.lead + chunk.width <= limit + 0.01;
         if !fits {
-            lines.push(std::mem::replace(&mut line, Line::new()));
+            y_est += est_height;
+            let next = Line::new(room(y_est), None);
+            lines.push(std::mem::replace(&mut line, next));
+            skip_floats!();
         }
         if !line.items.is_empty() && chunk.lead > 0.0 {
             line.items.push(LineItem::Space(chunk.lead));
@@ -678,7 +728,9 @@ fn break_lines(pieces: &[Piece], first_line_available: f64, available: f64) -> V
         line.width += chunk.width;
         if chunk.forced_break_after {
             line.forced_end = true;
-            lines.push(std::mem::replace(&mut line, Line::new()));
+            y_est += est_height;
+            let next = Line::new(room(y_est), None);
+            lines.push(std::mem::replace(&mut line, next));
         }
     }
     if !line.items.is_empty() {
@@ -714,6 +766,19 @@ pub(crate) fn layout_run(
     content_width: f64,
     first_in_block: bool,
 ) -> InlineResult {
+    layout_run_around(ctx, container, nodes, content_width, first_in_block, None)
+}
+
+/// [`layout_run`] with lines narrowed (and, when a word does not fit beside
+/// them, lowered) around `floats`.
+pub(crate) fn layout_run_around(
+    ctx: &Ctx<'_>,
+    container: NodeId,
+    nodes: &[NodeId],
+    content_width: f64,
+    first_in_block: bool,
+    floats: Option<&FloatView<'_>>,
+) -> InlineResult {
     let mut pieces = Vec::new();
     let mut abs = Vec::new();
     let mut state = State { last_space: true };
@@ -742,14 +807,34 @@ pub(crate) fn layout_run(
         0.0
     };
     let (strut_above, strut_below) = text_extent(&cstyle);
-    let lines = break_lines(&pieces, content_width - indent, content_width);
+    let room = |y: f64| match floats {
+        Some(view) => {
+            let top = view.top + y;
+            let (left, right) =
+                float::free_span(view.floats, top, top + strut_above + strut_below, content_width);
+            Room {
+                left,
+                avail: right - left,
+                next: float::next_edge(view.floats, top).map(|e| e - view.top),
+            }
+        }
+        None => Room {
+            left: 0.0,
+            avail: content_width,
+            next: None,
+        },
+    };
+    let lines = break_lines(&pieces, indent, &room, strut_above + strut_below);
     let line_count = lines.len();
-    let mut y = 0.0;
+    let mut y = 0.0f64;
 
     for (line_index, line) in lines.iter().enumerate() {
         let is_first = line_index == 0;
         let line_indent = if is_first { indent } else { 0.0 };
-        let available = content_width - line_indent;
+        let available = line.avail - line_indent;
+        if let Some(start) = line.start_y {
+            y = y.max(start);
+        }
 
         // ---- vertical metrics ----
         let mut max_above = strut_above;
@@ -817,7 +902,7 @@ pub(crate) fn layout_run(
                     .iter()
                     .filter(|i| matches!(i, LineItem::Space(_)))
                     .count() as f64;
-        let offset = line_indent + align_offset(&text_align, line.width, available);
+        let offset = line.left + line_indent + align_offset(&text_align, line.width, available);
         let mut x = 0.0;
         let mut children: Vec<Fragment> = Vec::new();
         let mut run_text: Option<(String, f64, f64, NodeId, f64, f64)> = None; // text, x, width, node, y, height

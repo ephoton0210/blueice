@@ -17,6 +17,7 @@
 
 use crate::ctx::{Ctx, Display, Position, Style};
 use crate::fragment::{Fragment, FragmentKind};
+use crate::float::{self, FloatRect};
 use crate::text::{default_line_height, StyleMap};
 use blueice_css::Value;
 use blueice_dom::{Document, NodeData, NodeId};
@@ -106,6 +107,9 @@ pub(crate) struct Placed {
     /// The farthest right edge of its in-flow content from its content-box
     /// origin.
     pub content_extent: f64,
+    /// Floats that stick out of this box into its parent's formatting
+    /// context, as margin boxes in this box's border-box coordinates.
+    pub floats: Vec<crate::float::FloatRect>,
 }
 
 /// Whether the box establishes a new block formatting context: its margins do
@@ -123,6 +127,7 @@ fn is_bfc_root(style: &Style<'_>, display: Display, root: bool) -> bool {
 /// What an in-flow child of a block container is.
 enum Item {
     Block(NodeId),
+    Float(NodeId),
     Inline(NodeId),
     Abs(NodeId),
 }
@@ -174,8 +179,7 @@ fn flow_items(ctx: &Ctx<'_>, node: NodeId, out: &mut Vec<Item>) {
                 } else if display == Display::Contents {
                     flow_items(ctx, child, out);
                 } else if style.float().is_some() {
-                    // Floats are laid out as blocks for now.
-                    out.push(Item::Block(child));
+                    out.push(Item::Float(child));
                 } else if display == Display::Inline && !is_replaced_tag(tag_name) {
                     if has_block_descendant(ctx, child) {
                         flow_items(ctx, child, out);
@@ -205,6 +209,8 @@ struct Flow {
     extent: f64,
     /// Nothing in flow took any height.
     empty: bool,
+    /// Floats placed in this flow, as margin boxes in its content coordinates.
+    floats: Vec<crate::float::FloatRect>,
 }
 
 #[allow(clippy::too_many_arguments, unused_assignments)]
@@ -215,6 +221,7 @@ fn layout_flow(
     content_height: Option<f64>,
     collapse_top: bool,
     collapse_bottom: bool,
+    incoming: &[FloatRect],
 ) -> Flow {
     let mut items = Vec::new();
     flow_items(ctx, node, &mut items);
@@ -227,6 +234,7 @@ fn layout_flow(
         pending_abs: Vec::new(),
         extent: 0.0,
         empty: true,
+        floats: Vec::new(),
     };
     let mut cursor_y = 0.0;
     let mut pending = Margin::default();
@@ -236,13 +244,24 @@ fn layout_flow(
     let mut inline_run: Vec<NodeId> = Vec::new();
 
     let mut no_lines_yet = true;
+    // Every float in force here: inherited ones, then this flow's own.
+    let mut all_floats: Vec<FloatRect> = incoming.to_vec();
     macro_rules! flush_inline {
         () => {
             if !inline_run.is_empty() {
-                let run =
-                    crate::inline::layout_run(ctx, node, &inline_run, content_width, no_lines_yet);
-                inline_run.clear();
                 let start = cursor_y + if top_open { 0.0 } else { pending.value() };
+                let run = crate::inline::layout_run_around(
+                    ctx,
+                    node,
+                    &inline_run,
+                    content_width,
+                    no_lines_yet,
+                    Some(&crate::inline::FloatView {
+                        floats: &all_floats,
+                        top: start,
+                    }),
+                );
+                inline_run.clear();
                 flow.pending_abs
                     .extend(shift_pending(run.pending_abs, 0.0, start));
                 if !run.lines.is_empty() {
@@ -276,6 +295,56 @@ fn layout_flow(
                     y: cursor_y + if top_open { 0.0 } else { pending.value() },
                 });
             }
+            Item::Float(child) => {
+                flush_inline!();
+                let constraint = Constraint {
+                    cb_width: content_width,
+                    cb_height: content_height,
+                    root: false,
+                };
+                let style = ctx.style(child);
+                let side = style.float().unwrap_or(crate::ctx::Side::Left);
+                let forced_width = if style.raw("width").is_none() || style.is_auto("width") {
+                    let (min, max) = crate::intrinsic::preferred_widths(ctx, child);
+                    let margins = style.side("margin-left", content_width)
+                        + style.side("margin-right", content_width);
+                    Some(max.min(min.max((content_width - margins).max(0.0))))
+                } else {
+                    None
+                };
+                let placed = layout_block_level(
+                    ctx,
+                    child,
+                    &constraint,
+                    Forced {
+                        width: forced_width,
+                        height: None,
+                    },
+                );
+                let (ml, mr) = (placed.margin_left, placed.margin_right);
+                let (mt, mb) = (placed.margin_top.value(), placed.margin_bottom.value());
+                let mut fragment = placed.fragment;
+                let (w, h) = (ml + fragment.width + mr, mt + fragment.height + mb);
+                let earliest = all_floats.iter().map(|f| f.top).fold(0.0, f64::max);
+                let top = (cursor_y + pending.value()).max(earliest);
+                let (fx, fy) = float::place(&all_floats, side, w, h, top, content_width);
+                fragment.x = fx + ml;
+                fragment.y = fy + mt;
+                let rect = FloatRect {
+                    left: fx,
+                    top: fy,
+                    right: fx + w,
+                    bottom: fy + h,
+                    side,
+                };
+                all_floats.push(rect);
+                flow.floats.push(rect);
+                flow.extent = flow.extent.max(fx + w);
+                flow.pending_abs
+                    .extend(shift_pending(placed.pending_abs, fragment.x, fragment.y));
+                apply_relative(ctx, &style, &mut fragment, &constraint);
+                flow.children.push(fragment);
+            }
             Item::Block(child) => {
                 flush_inline!();
                 let constraint = Constraint {
@@ -283,14 +352,50 @@ fn layout_flow(
                     cb_height: content_height,
                     root: false,
                 };
-                let mut placed = layout_child_block(ctx, child, &constraint);
                 let child_style = ctx.style(child);
+                let clear = child_style.clear();
+                if clear != crate::ctx::Clear::None {
+                    let target = float::clear_y(&all_floats, clear);
+                    if target > cursor_y + pending.value() {
+                        if top_open && collapse_top {
+                            flow.top_margin = flow.top_margin.join(pending);
+                        }
+                        pending = Margin::default();
+                        top_open = false;
+                        no_lines_yet = false;
+                        flow.empty = false;
+                        cursor_y = target;
+                    }
+                }
+                let child_floats = if !all_floats.is_empty()
+                    && !is_bfc_root(&child_style, child_style.display(), false)
+                {
+                    let x = child_style.side("margin-left", content_width);
+                    let y = cursor_y
+                        + if top_open {
+                            0.0
+                        } else {
+                            pending
+                                .join(Margin::of(child_style.side("margin-top", content_width)))
+                                .value()
+                        };
+                    float::translate(&all_floats, -x, -y)
+                } else {
+                    Vec::new()
+                };
+                *ctx.floats.borrow_mut() = child_floats;
+                let mut placed = layout_child_block(ctx, child, &constraint);
+                ctx.floats.borrow_mut().clear();
+                let mut child_escaped = std::mem::take(&mut placed.floats);
                 if placed.collapses_through {
                     pending = pending.join(placed.margin_top).join(placed.margin_bottom);
                     let mut fragment = placed.fragment;
                     fragment.x = placed.margin_left;
                     fragment.y = cursor_y + if top_open { 0.0 } else { pending.value() };
                     apply_relative(ctx, &child_style, &mut fragment, &constraint);
+                    child_escaped = float::translate(&child_escaped, fragment.x, fragment.y);
+                    all_floats.extend(child_escaped.iter().copied());
+                    flow.floats.append(&mut child_escaped);
                     flow.pending_abs.extend(shift_pending(
                         placed.pending_abs,
                         fragment.x,
@@ -316,6 +421,9 @@ fn layout_flow(
                 cursor_y += fragment.height;
                 pending = placed.margin_bottom;
                 apply_relative(ctx, &child_style, &mut fragment, &constraint);
+                child_escaped = float::translate(&child_escaped, fragment.x, fragment.y);
+                all_floats.extend(child_escaped.iter().copied());
+                flow.floats.append(&mut child_escaped);
                 flow.pending_abs
                     .extend(shift_pending(placed.pending_abs, fragment.x, fragment.y));
                 flow.children.push(fragment);
@@ -399,6 +507,7 @@ pub(crate) fn layout_block_level(
     c: &Constraint,
     forced: Forced,
 ) -> Placed {
+    let incoming = std::mem::take(&mut *ctx.floats.borrow_mut());
     let key = LayoutKey {
         node,
         cb_width: c.cb_width.to_bits(),
@@ -407,11 +516,15 @@ pub(crate) fn layout_block_level(
         forced_width: forced.width.map(f64::to_bits),
         forced_height: forced.height.map(f64::to_bits),
     };
-    if let Some(hit) = ctx.layouts.borrow().get(&key) {
-        return hit.clone();
+    if incoming.is_empty() {
+        if let Some(hit) = ctx.layouts.borrow().get(&key) {
+            return hit.clone();
+        }
     }
-    let placed = layout_block_level_uncached(ctx, node, c, forced);
-    ctx.layouts.borrow_mut().insert(key, placed.clone());
+    let placed = layout_block_level_uncached(ctx, node, c, forced, &incoming);
+    if incoming.is_empty() {
+        ctx.layouts.borrow_mut().insert(key, placed.clone());
+    }
     placed
 }
 
@@ -420,6 +533,7 @@ fn layout_block_level_uncached(
     node: NodeId,
     c: &Constraint,
     forced: Forced,
+    incoming: &[FloatRect],
 ) -> Placed {
     let style = ctx.style(node);
     let display = style.display();
@@ -515,6 +629,8 @@ fn layout_block_level_uncached(
         && specified_height.is_none()
         && min_height == 0.0;
 
+    let mut escaped_floats: Vec<FloatRect> = Vec::new();
+    let mut flow_floats_height = 0.0f64;
     let native = crate::native_text::control_text(ctx.doc, node);
     let mut form = crate::native_text::form_control(ctx.doc, node);
     let is_native = native.is_some() || form.is_some();
@@ -602,9 +718,22 @@ fn layout_block_level_uncached(
             child_cb_height,
             collapse_top,
             collapse_bottom,
+            &if bfc {
+                Vec::new()
+            } else {
+                float::translate(incoming, -(border.left + padding.left), -(border.top + padding.top))
+            },
         );
+        let float_bottom = flow.floats.iter().map(|f| f.bottom).fold(0.0, f64::max);
+        if bfc {
+            // A formatting-context root contains its floats.
+            flow_floats_height = float_bottom;
+        } else {
+            escaped_floats =
+                float::translate(&flow.floats, border.left + padding.left, border.top + padding.top);
+        }
         children = flow.children;
-        content_flow_height = flow.height;
+        content_flow_height = flow.height.max(flow_floats_height);
         top_pass = flow.top_margin;
         bottom_pass = flow.bottom_margin;
         pending_abs = flow.pending_abs;
@@ -772,6 +901,7 @@ fn layout_block_level_uncached(
         collapses_through,
         preferred_width,
         content_extent: extent,
+        floats: escaped_floats,
     }
 }
 
@@ -926,6 +1056,7 @@ pub(crate) fn layout_block(
         intrinsic: Default::default(),
         content_widths: Default::default(),
         layouts: Default::default(),
+        floats: Default::default(),
     };
     let c = Constraint {
         cb_width: available_width,
@@ -953,6 +1084,7 @@ pub(crate) fn layout_root(
         intrinsic: Default::default(),
         content_widths: Default::default(),
         layouts: Default::default(),
+        floats: Default::default(),
     };
     let c = Constraint {
         cb_width: viewport_width,

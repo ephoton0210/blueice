@@ -19,6 +19,7 @@
 mod block;
 mod ctx;
 mod flex;
+mod float;
 mod fragment;
 mod grid;
 mod inline;
