@@ -166,11 +166,13 @@ impl Page {
         let mut rects = HashMap::new();
         collect_rects(&self.fragment, 0.0, 0.0, &mut rects);
         let url = self.url.clone();
+        let images = self.images.content.clone();
         let viewport = (self.viewport_width, self.viewport_height);
         host.with_state(|s| {
             s.doc = doc;
             s.styles = styles;
             s.rects = rects;
+            s.images = images;
             s.viewport = viewport;
             if let Some(url) = url {
                 s.url = url;
@@ -178,7 +180,7 @@ impl Page {
             s.dirty = false;
         });
         f(&mut host);
-        let (doc, styles, dirty, navigations, requests, url, jobs) = host.with_state(|s| {
+        let (doc, styles, dirty, navigations, requests, url, jobs, canvases) = host.with_state(|s| {
             (
                 std::mem::replace(&mut s.doc, Document::new()),
                 std::mem::take(&mut s.styles),
@@ -187,6 +189,7 @@ impl Page {
                 std::mem::take(&mut s.script_requests),
                 s.url.clone(),
                 std::mem::take(&mut s.net_jobs),
+                s.take_canvas_pictures(),
             )
         });
         self.doc = doc;
@@ -203,6 +206,19 @@ impl Page {
                     }
                 }
                 NavigationRequest::Go(_) => {}
+            }
+        }
+        for (node, image) in canvases {
+            let natural = (f64::from(image.width), f64::from(image.height));
+            let first = !self.canvas_pictures.contains_key(&node);
+            self.canvas_pictures
+                .insert(node, Arc::new(crate::images::LoadedImage { image, natural }));
+            if first {
+                self.web_relayout_pending = true;
+            } else {
+                self.refresh_canvas_images();
+                self.script_change_unpublished = true;
+                self.script_change_unpublished_by_web = true;
             }
         }
         if dirty {
@@ -592,6 +608,35 @@ mod tests {
              <script>document.getElementById('a').textContent += ' two';</script></body>",
         );
         assert_eq!(texts(&page), vec!["one", "two"]);
+    }
+
+    #[test]
+    fn a_webgl_canvas_is_drawn_by_script_and_painted_into_the_page() {
+        let mut page = page(
+            "<body style='margin:0'><canvas id=c width=40 height=20></canvas><script>\
+             const gl = document.getElementById('c').getContext('webgl');\
+             const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); \
+               if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };\
+             const p = gl.createProgram();\
+             gl.attachShader(p, sh(gl.VERTEX_SHADER, 'attribute vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }'));\
+             gl.attachShader(p, sh(gl.FRAGMENT_SHADER, 'precision mediump float; uniform vec4 c; void main() { gl_FragColor = c; }'));\
+             gl.linkProgram(p); gl.useProgram(p);\
+             gl.uniform4f(gl.getUniformLocation(p, 'c'), 0, 1, 0, 1);\
+             const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);\
+             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);\
+             const l = gl.getAttribLocation(p, 'a'); gl.enableVertexAttribArray(l);\
+             gl.vertexAttribPointer(l, 2, gl.FLOAT, false, 0, 0);\
+             gl.clearColor(0, 0, 1, 1); gl.clear(gl.COLOR_BUFFER_BIT);\
+             gl.drawArrays(gl.TRIANGLES, 0, 3);\
+             </script></body>",
+        );
+        page.settle();
+        let pixmap = page.render_visible();
+        let px = |x: usize, y: usize| {
+            let i = (y * pixmap.width as usize + x) * 4;
+            [pixmap.pixels[i], pixmap.pixels[i + 1], pixmap.pixels[i + 2]]
+        };
+        assert_eq!(px(20, 10), [0, 255, 0], "the canvas shows what the script drew");
     }
 
     #[test]

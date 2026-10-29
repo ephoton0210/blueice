@@ -38,6 +38,19 @@ impl Page {
                         images.content.insert(node, loaded.image.clone());
                         sizes.push((node, loaded.natural));
                     }
+                } else if tag_name == "canvas" {
+                    let dim = |name: &str, default: f64| {
+                        attributes
+                            .iter()
+                            .find(|(k, _)| k == name)
+                            .and_then(|(_, v)| v.trim().parse::<f64>().ok())
+                            .filter(|n| *n >= 0.0)
+                            .unwrap_or(default)
+                    };
+                    sizes.push((node, (dim("width", 300.0), dim("height", 150.0))));
+                    if let Some(loaded) = self.canvas_pictures.get(&node) {
+                        images.content.insert(node, loaded.image.clone());
+                    }
                 } else if tag_name == "svg" && !in_svg {
                     inside = true;
                     if let Some(natural) = svg_natural_size(attributes) {
@@ -72,6 +85,13 @@ impl Page {
             }
         }
         self.images = images;
+    }
+
+    /// Repoints canvases at their latest pictures without a restyle.
+    pub(super) fn refresh_canvas_images(&mut self) {
+        for (node, loaded) in &self.canvas_pictures {
+            self.images.content.insert(*node, loaded.image.clone());
+        }
     }
 
     fn render_inline_svg(&mut self, node: NodeId, natural: (f64, f64)) -> Option<Arc<LoadedImage>> {

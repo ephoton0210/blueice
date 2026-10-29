@@ -241,7 +241,7 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
             Reply::Undefined
         }
         "texImage2D" => {
-            let bytes = match a.get(8) {
+            let bytes = match a.get(7) {
                 Some(Reply::Text(s)) if !s.is_empty() => Some(base64_decode(s).ok_or("bad pixel data")?),
                 _ => None,
             };

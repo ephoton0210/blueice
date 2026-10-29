@@ -74,6 +74,8 @@ pub struct Page {
     /// The realm running this document's own scripts, when the embedder has
     /// enabled them (see [`crate::enable_web_scripts`]).
     web: Option<crate::web::WebHost>,
+    /// What each WebGL canvas last drew.
+    canvas_pictures: HashMap<NodeId, std::sync::Arc<crate::images::LoadedImage>>,
     web_scripts_override: Option<bool>,
     web_navigation: Option<String>,
     web_scroll_seen: f64,
@@ -183,6 +185,7 @@ impl Page {
             linked_modules: Default::default(),
             pending_linked_modules: Default::default(),
             web: None,
+            canvas_pictures: HashMap::new(),
             web_scripts_override: None,
             web_navigation: None,
             web_scroll_seen: 0.0,
@@ -248,6 +251,7 @@ impl Page {
         self.linked_scripts = std::mem::take(&mut self.pending_linked_scripts);
         self.linked_modules = std::mem::take(&mut self.pending_linked_modules);
         self.web = None;
+        self.canvas_pictures.clear();
         self.web_scroll_seen = 0.0;
         self.web_net = None;
         // `parse_continuing_from` (not `parse`) so this replacement

@@ -92,6 +92,11 @@ pub(crate) struct DomState {
     /// Requests a script made, waiting for the host to run them.
     pub net_jobs: Vec<crate::web::net::NetJob>,
     next_request: u64,
+    /// WebGL contexts by id, and the canvases they draw into.
+    pub(crate) gl: HashMap<u32, crate::web::gl_bridge::GlContext>,
+    next_gl: u32,
+    /// Decoded pictures by node (images and canvases), lent by the page.
+    pub images: HashMap<NodeId, std::sync::Arc<blueice_image::RasterImage>>,
 }
 
 impl DomState {
@@ -109,7 +114,23 @@ impl DomState {
             script_requests: Vec::new(),
             net_jobs: Vec::new(),
             next_request: 1,
+            gl: HashMap::new(),
+            next_gl: 1,
+            images: HashMap::new(),
         }
+    }
+
+    /// Pictures of every canvas drawn to since the last call.
+    pub fn take_canvas_pictures(&mut self) -> Vec<(NodeId, std::sync::Arc<blueice_image::RasterImage>)> {
+        let mut out = Vec::new();
+        for g in self.gl.values_mut().filter(|g| g.dirty) {
+            g.dirty = false;
+            out.push((
+                g.canvas,
+                std::sync::Arc::new(blueice_image::RasterImage::new(g.ctx.width, g.ctx.height, g.ctx.picture())),
+            ));
+        }
+        out
     }
 
     fn node(&self, value: Option<&Reply>) -> Result<NodeId, String> {
@@ -153,6 +174,59 @@ impl DomState {
             }
         };
         Ok(match op {
+            // ---- WebGL ----
+            "glCreate" => {
+                if self.gl.len() >= 16 {
+                    return Err("too many WebGL contexts".into());
+                }
+                let canvas = self.node(args.first())?;
+                let num = |i: usize| match args.get(i) {
+                    Some(Reply::Number(n)) => *n,
+                    _ => 0.0,
+                };
+                let (w, h) = (num(1).clamp(1.0, 8192.0) as u32, num(2).clamp(1.0, 8192.0) as u32);
+                let mut ctx = blueice_gl::Context::new(w, h);
+                ctx.has_alpha = !matches!(args.get(3), Some(Reply::Bool(false)));
+                ctx.premultiplied_alpha = !matches!(args.get(4), Some(Reply::Bool(false)));
+                let id = self.next_gl;
+                self.next_gl += 1;
+                self.gl.insert(id, crate::web::gl_bridge::GlContext { ctx, canvas, dirty: true });
+                Reply::Number(f64::from(id))
+            }
+            "gl" => {
+                let id = match args.first() {
+                    Some(Reply::Number(n)) => *n as u32,
+                    _ => return Err("a GL call needs a context".into()),
+                };
+                let name = text(1);
+                let g = self.gl.get_mut(&id).ok_or("no such GL context")?;
+                crate::web::gl_bridge::call(g, &name, &args[2..])?
+            }
+            // The RGBA pixels of an element's picture, as `WxH:base64`.
+            "imagePixels" => {
+                let id = self.node(args.first())?;
+                match self.images.get(&id) {
+                    Some(img) if img.width * img.height <= 16_000_000 => Reply::Text(format!(
+                        "{}x{}:{}",
+                        img.width,
+                        img.height,
+                        crate::web::net::base64_encode(&img.rgba)
+                    )),
+                    _ => Reply::Null,
+                }
+            }
+            "glPng" => {
+                let id = match args.first() {
+                    Some(Reply::Number(n)) => *n as u32,
+                    _ => return Err("a GL call needs a context".into()),
+                };
+                let g = self.gl.get(&id).ok_or("no such GL context")?;
+                let image = blueice_image::RasterImage::new(g.ctx.width, g.ctx.height, g.ctx.picture());
+                match blueice_image::encode_png(&image) {
+                    Some(png) => Reply::Text(crate::web::net::base64_encode(&png)),
+                    None => Reply::Null,
+                }
+            }
             // ---- identity and shape ----
             "root" => self.doc.root().into(),
             "documentElement" => self.child_element(self.doc.root(), "html").into(),
