@@ -1174,10 +1174,22 @@ fn fetch_attrib(
                 .collect::<Vec<_>>(),
         ),
         Ty::Mat(cols, rows) => {
-            // A matrix attribute spans consecutive locations; the first column only here.
+            // A matrix attribute spans one location per column, each a vector.
             let mut d = [0.0f32; 16];
-            for r in 0..(*rows as usize).min(4) {
-                d[r] = c[r];
+            for column in 0..(*cols as usize).min(4) {
+                let col = fetch_attrib(
+                    vao,
+                    buffers,
+                    location + column,
+                    index,
+                    instance,
+                    &Ty::Vec(Scalar::Float, *rows),
+                );
+                if let Some(values) = col.floats() {
+                    for (r, v) in values.iter().enumerate().take(4) {
+                        d[column * *rows as usize + r] = *v;
+                    }
+                }
             }
             V::Mat {
                 cols: *cols,

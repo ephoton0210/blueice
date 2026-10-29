@@ -1205,10 +1205,15 @@ fn link(vs: Program, fs: Program, bound: &HashMap<String, u32>) -> Result<Linked
         .enumerate()
         .filter(|(_, g)| matches!(g.storage, Storage::Attribute | Storage::In))
         .collect();
+    // A matrix attribute takes one location per column.
+    let width = |ty: &Ty| match ty {
+        Ty::Mat(cols, _) => u32::from(*cols),
+        _ => 1,
+    };
     for (slot, global) in &vs_attribs {
         let fixed = bound.get(&global.name).copied().or(global.location);
         if let Some(loc) = fixed {
-            taken.push(loc);
+            taken.extend(loc..loc + width(&global.ty));
             attributes.push(AttribInfo {
                 name: global.name.clone(),
                 ty: global.ty.clone(),
@@ -1221,11 +1226,12 @@ fn link(vs: Program, fs: Program, bound: &HashMap<String, u32>) -> Result<Linked
         if attributes.iter().any(|a| a.vs_slot == *slot) {
             continue;
         }
+        let w = width(&global.ty);
         let mut loc = 0;
-        while taken.contains(&loc) {
+        while (loc..loc + w).any(|l| taken.contains(&l)) {
             loc += 1;
         }
-        taken.push(loc);
+        taken.extend(loc..loc + w);
         attributes.push(AttribInfo {
             name: global.name.clone(),
             ty: global.ty.clone(),
@@ -1233,7 +1239,7 @@ fn link(vs: Program, fs: Program, bound: &HashMap<String, u32>) -> Result<Linked
             vs_slot: *slot,
         });
     }
-    if attributes.iter().any(|a| a.location >= 16) {
+    if attributes.iter().any(|a| a.location + width(&a.ty) > 16) {
         return Err("too many vertex attributes".into());
     }
 

@@ -470,3 +470,49 @@ fn a_fragment_varying_the_vertex_shader_lacks_links_only_if_the_fragment_never_r
     let (ok, _) = link("precision mediump float; varying vec3 vNormal; vec3 f() { return vNormal * 2.0; } void main() { gl_FragColor = vec4(f(), 1.0); }");
     assert!(!ok);
 }
+
+#[test]
+fn a_mat4_attribute_reads_one_column_from_each_of_four_locations() {
+    // How an instanced mesh supplies its per-instance transform: four vec4 attributes
+    // in consecutive locations, one per matrix column, one matrix per instance.
+    let vs = "attribute vec2 position; attribute mat4 offset; void main() { gl_Position = offset * vec4(position, 0.0, 1.0); }";
+    let fs = "void main() { gl_FragColor = vec4(1.0); }";
+    let mut ctx = Context::new(16, 4);
+    let p = build(&mut ctx, vs, fs);
+    let quad = ctx.create_buffer();
+    ctx.bind_buffer(ARRAY_BUFFER, quad);
+    // A small square near the origin: a couple of pixels wide, most of the height.
+    ctx.buffer_data(
+        ARRAY_BUFFER,
+        floats(&[
+            -0.1, -0.5, 0.1, -0.5, 0.1, 0.5, -0.1, -0.5, 0.1, 0.5, -0.1, 0.5,
+        ]),
+    );
+    attrib(&mut ctx, p, "position", 2, 0, 0);
+    // Two instances: identity translated by x = -0.5 and x = +0.5 (column-major mat4).
+    let matrix = |tx: f32| {
+        [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, tx, 0.0, 0.0, 1.0,
+        ]
+    };
+    let data: Vec<f32> = [matrix(-0.5), matrix(0.5)].concat();
+    let instances = ctx.create_buffer();
+    ctx.bind_buffer(ARRAY_BUFFER, instances);
+    ctx.buffer_data(ARRAY_BUFFER, floats(&data));
+    let base = ctx.attrib_location(p, "offset");
+    assert!(base >= 0);
+    for column in 0..4u32 {
+        let loc = base as u32 + column;
+        ctx.enable_vertex_attrib_array(loc, true);
+        ctx.vertex_attrib_pointer(loc, 4, 0x1406, false, 64, column * 16, false);
+        ctx.vertex_attrib_divisor(loc, 1);
+    }
+    ctx.draw_arrays(0x0004, 0, 6, 2);
+    assert_eq!(ctx.get_error(), NO_ERROR);
+    // Left instance around column 4, right instance around column 12.
+    assert_eq!(pixel(&ctx, 4, 1)[3], 255, "the left instance");
+    assert_eq!(pixel(&ctx, 12, 1)[3], 255, "the right instance");
+    assert_eq!(pixel(&ctx, 8, 1)[3], 0, "nothing between them");
+    // The attribute occupies four locations, so the next attribute lands after them.
+    assert!(ctx.active_attribs(p).iter().any(|a| a.name == "offset"));
+}
