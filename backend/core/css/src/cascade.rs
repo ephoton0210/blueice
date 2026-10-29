@@ -752,6 +752,10 @@ p, blockquote, figure, dl, menu, ul, ol, pre { margin-top: 1em; margin-bottom: 1
 blockquote, figure { margin-left: 40px; margin-right: 40px; }
 dd { margin-left: 40px; }
 ul, ol, menu { padding-left: 40px; }
+ul, menu { list-style-type: disc; }
+ol { list-style-type: decimal; }
+ul ul, ol ul { list-style-type: circle; }
+ul ul ul, ol ul ul, ul ol ul, ol ol ul { list-style-type: square; }
 ul ul, ul ol, ol ul, ol ol { margin-top: 0; margin-bottom: 0; }
 hr { margin: 0.5em auto; border: 1px solid #9a9a9a; height: 0; overflow: hidden; }
 fieldset { margin: 0 2px; padding: 0.35em 0.75em 0.625em; border: 2px solid #c0c0c0; }

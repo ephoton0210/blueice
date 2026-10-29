@@ -444,6 +444,138 @@ fn layout_flow(
     flow
 }
 
+/// The marker of a `list-item`: its text, placed outside the box in the
+/// padding area of the list, level with the first line.
+fn list_marker(
+    ctx: &Ctx<'_>,
+    node: NodeId,
+    style: &Style<'_>,
+    children: &[Fragment],
+) -> Option<Fragment> {
+    let kind = style.keyword("list-style-type").unwrap_or("disc");
+    let text = match kind {
+        "none" => return None,
+        "disc" => "\u{2022}".to_string(),
+        "circle" => "\u{25e6}".to_string(),
+        "square" => "\u{25aa}".to_string(),
+        other => {
+            let ordinal = list_ordinal(ctx, node);
+            let label = match other {
+                "lower-alpha" | "lower-latin" => alpha(ordinal, b'a'),
+                "upper-alpha" | "upper-latin" => alpha(ordinal, b'A'),
+                "lower-roman" => roman(ordinal).to_lowercase(),
+                "upper-roman" => roman(ordinal),
+                "decimal-leading-zero" => format!("{ordinal:02}"),
+                _ => ordinal.to_string(),
+            };
+            format!("{label}.")
+        }
+    };
+    let font_size = style.font_size();
+    let bold = style.style.is_some_and(|s| s.is_bold());
+    let italic = style.style.is_some_and(|s| s.is_italic());
+    let width = blueice_font::measure_text_width(&text, font_size, bold, italic);
+    // Level with the first text on the first line.
+    fn first_text(children: &[Fragment], y: f64) -> Option<(f64, f64)> {
+        for child in children {
+            if matches!(child.kind, FragmentKind::Text(_)) {
+                return Some((y + child.y, child.height));
+            }
+            if matches!(child.kind, FragmentKind::Line | FragmentKind::Block) {
+                if let Some(found) = first_text(&child.children, y + child.y) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+    let (y, height) = first_text(children, 0.0).unwrap_or((0.0, default_line_height(font_size)));
+    Some(Fragment {
+        node: None,
+        style_node: Some(node),
+        kind: FragmentKind::Text(text),
+        x: -(width + font_size * 0.4),
+        y,
+        width,
+        height,
+        ..Fragment::empty_block()
+    })
+}
+
+/// The 1-based position of a list item among its list's items, counting from
+/// the list's `start` (and downward for `reversed`).
+fn list_ordinal(ctx: &Ctx<'_>, node: NodeId) -> i64 {
+    let Some(parent) = ctx.doc.parent(node) else {
+        return 1;
+    };
+    let items: Vec<NodeId> = ctx
+        .doc
+        .children(parent)
+        .filter(|&c| {
+            matches!(ctx.doc.data(c), NodeData::Element { .. })
+                && ctx.style(c).display() == Display::ListItem
+        })
+        .collect();
+    let index = items.iter().position(|&i| i == node).unwrap_or(0) as i64;
+    let reversed = ctx.attr(parent, "reversed").is_some();
+    let start = ctx
+        .attr(parent, "start")
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .unwrap_or(if reversed { items.len() as i64 } else { 1 });
+    let value = ctx
+        .attr(node, "value")
+        .and_then(|v| v.trim().parse::<i64>().ok());
+    match value {
+        Some(v) => v,
+        None if reversed => start - index,
+        None => start + index,
+    }
+}
+
+fn alpha(n: i64, base: u8) -> String {
+    if n < 1 {
+        return n.to_string();
+    }
+    let mut n = n;
+    let mut out = Vec::new();
+    while n > 0 {
+        n -= 1;
+        out.push(base + (n % 26) as u8);
+        n /= 26;
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap_or_default()
+}
+
+fn roman(n: i64) -> String {
+    if !(1..4000).contains(&n) {
+        return n.to_string();
+    }
+    let mut n = n;
+    let mut out = String::new();
+    for (value, text) in [
+        (1000, "M"),
+        (900, "CM"),
+        (500, "D"),
+        (400, "CD"),
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
+    ] {
+        while n >= value {
+            out.push_str(text);
+            n -= value;
+        }
+    }
+    out
+}
+
 /// Gives generated-content fragments `node: None` and their style's id in
 /// `style_node`, so nothing downstream looks a node up that the DOM lacks.
 pub(crate) fn detach_generated(fragment: &mut Fragment) {
@@ -766,6 +898,12 @@ fn layout_block_level_uncached(
         pending_abs = flow.pending_abs;
         extent = flow.extent;
         empty = flow.empty;
+    }
+
+    if display == Display::ListItem && !is_native && !generated {
+        if let Some(marker) = list_marker(ctx, node, &style, &children) {
+            children.insert(0, marker);
+        }
     }
 
     let font_size = style.font_size();
@@ -1781,5 +1919,79 @@ mod tests {
             "no wrapper box, and its padding is not applied"
         );
         assert_eq!(child_y(&f), vec![0.0, 10.0]);
+    }
+
+    fn marker_of(html: &str, css: &str) -> Vec<String> {
+        let f = layout_block_in(html, css);
+        fn walk(f: &Fragment, out: &mut Vec<String>) {
+            if let FragmentKind::Text(t) = &f.kind {
+                if f.node.is_none() {
+                    out.push(t.clone());
+                }
+            }
+            for c in &f.children {
+                walk(c, out);
+            }
+        }
+        let mut out = Vec::new();
+        walk(&f, &mut out);
+        out
+    }
+
+    fn layout_block_in(html: &str, css: &str) -> Fragment {
+        let doc = blueice_html::parse(html);
+        let ua = blueice_css::ua_stylesheet();
+        let author = blueice_css::parse(css).rules;
+        let styles = blueice_css::cascade(
+            &doc,
+            &[
+                (blueice_css::Origin::Ua, &ua),
+                (blueice_css::Origin::Author, &author),
+            ],
+        );
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        layout_block(&doc, body, &styles, 800.0)
+    }
+
+    #[test]
+    fn unordered_items_get_bullets_and_ordered_items_count() {
+        assert_eq!(
+            marker_of("<ul><li>a</li><li>b</li></ul>", ""),
+            vec!["\u{2022}", "\u{2022}"]
+        );
+        assert_eq!(
+            marker_of("<ol start=3><li>a</li><li>b</li></ol>", ""),
+            vec!["3.", "4."]
+        );
+        assert_eq!(
+            marker_of("<ol><li>a</li></ol>", "ol { list-style: upper-roman; }"),
+            vec!["I."]
+        );
+        assert_eq!(
+            marker_of(
+                "<ol><li>a<li>b</ol>",
+                "ol { list-style-type: lower-alpha; }"
+            ),
+            vec!["a.", "b."]
+        );
+    }
+
+    #[test]
+    fn nested_lists_change_bullet_and_none_removes_it() {
+        assert_eq!(
+            marker_of("<ul><li><ul><li>x</li></ul></li></ul>", ""),
+            vec!["\u{2022}", "\u{25e6}"]
+        );
+        assert!(marker_of("<ul><li>x</li></ul>", "ul { list-style: none; }").is_empty());
+    }
+
+    #[test]
+    fn the_marker_sits_left_of_the_item_level_with_its_first_line() {
+        let f = layout_block_in("<ul><li>x</li></ul>", "ul { margin: 0; }");
+        let ul = &f.children[0];
+        let li = &ul.children[0];
+        let marker = &li.children[0];
+        assert!(marker.x < 0.0);
+        assert_eq!(marker.y, li.children[1].children[0].y);
     }
 }

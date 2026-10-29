@@ -345,6 +345,26 @@ fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
     out
 }
 
+/// `list-style`: the marker keyword goes to `list-style-type`, `inside` or
+/// `outside` to `list-style-position`; an image is ignored.
+fn expand_list_style(tokens: &[Token]) -> Vec<(String, Value)> {
+    let mut out = vec![("list-style-type".to_string(), keyword("disc"))];
+    let mut explicit_type = false;
+    for part in components(tokens) {
+        if let Some(Value::Keyword(k)) = parse_value(part) {
+            match k.as_str() {
+                "inside" | "outside" => out.push(("list-style-position".to_string(), keyword(&k))),
+                "none" if explicit_type => {}
+                _ => {
+                    out[0].1 = keyword(&k);
+                    explicit_type = true;
+                }
+            }
+        }
+    }
+    out
+}
+
 /// `border-radius`: one to four corner radii (the part after `/`, which makes
 /// them elliptical, is read for its first value only) to the four longhands.
 fn expand_border_radius(tokens: &[Token]) -> Vec<(String, Value)> {
@@ -563,6 +583,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
         "place-self" => expand_pair("align-self", "justify-self", value_tokens),
         "background" => expand_background(value_tokens),
         "border-radius" => expand_border_radius(value_tokens),
+        "list-style" => expand_list_style(value_tokens),
         "text-decoration" => expand_text_decoration(value_tokens),
         "inset" => {
             expand_box_shorthand_property_named(["top", "right", "bottom", "left"], value_tokens)
