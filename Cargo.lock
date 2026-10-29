@@ -516,6 +516,7 @@ version = "0.1.0"
 dependencies = [
  "blueice-css",
  "blueice-dom",
+ "blueice-font",
  "blueice-html",
  "blueice-layout",
  "blueice-testing",
@@ -532,6 +533,7 @@ dependencies = [
  "blueice-paint",
  "fontdue",
  "png",
+ "tiny-skia",
 ]
 
 [[package]]

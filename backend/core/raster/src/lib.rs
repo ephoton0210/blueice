@@ -24,6 +24,8 @@
 //! `rgba()`/`hsla()` functions are in the MVP CSS value scope), so this
 //! is forward-looking correctness, not yet exercised by real content.
 
+mod shapes;
+
 use blueice_font::font_for_char;
 use blueice_paint::{Color, Frame, PaintCommand};
 
@@ -91,7 +93,26 @@ pub struct Pixmap {
     pub pixels: Vec<u8>,
 }
 
+impl From<PixelClip> for shapes::Clip {
+    fn from(c: PixelClip) -> Self {
+        shapes::Clip {
+            left: c.left,
+            top: c.top,
+            right: c.right,
+            bottom: c.bottom,
+        }
+    }
+}
+
 impl Pixmap {
+    fn canvas(&mut self) -> shapes::Canvas<'_> {
+        shapes::Canvas {
+            width: self.width,
+            height: self.height,
+            pixels: &mut self.pixels,
+        }
+    }
+
     fn blank(width: u32, height: u32) -> Self {
         let mut pixels = Vec::with_capacity(width as usize * height as usize * 4);
         for _ in 0..(width as usize * height as usize) {
@@ -232,6 +253,39 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
             PaintCommand::BorderEdge { rect, color } => {
                 pixmap.fill_rect(rect.x, rect.y, rect.width, rect.height, *color, clip)
             }
+            PaintCommand::RoundRect { rect, radii, color } => {
+                pixmap
+                    .canvas()
+                    .fill_rrect(*rect, radii, *color, clip.into())
+            }
+            PaintCommand::RoundBorder {
+                rect,
+                radii,
+                width,
+                color,
+            } => pixmap
+                .canvas()
+                .border_ring(*rect, radii, *width, *color, clip.into()),
+            PaintCommand::Shadow {
+                rect,
+                radii,
+                dx,
+                dy,
+                blur,
+                spread,
+                color,
+            } => {
+                pixmap
+                    .canvas()
+                    .shadow(*rect, radii, *dx, *dy, *blur, *spread, *color, clip.into())
+            }
+            PaintCommand::Gradient {
+                rect,
+                radii,
+                gradient,
+            } => pixmap
+                .canvas()
+                .gradient(*rect, radii, gradient, clip.into()),
             PaintCommand::Text {
                 x,
                 y,
@@ -255,6 +309,10 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
         }
     }
     pixmap
+}
+
+fn scale_radii(radii: blueice_paint::Radii, scale: f64) -> blueice_paint::Radii {
+    radii.map(|(x, y)| (x * scale, y * scale))
 }
 
 /// Rasterize a CSS viewport directly at the requested pixel density. Clipping
@@ -300,6 +358,52 @@ pub fn rasterize_viewport(
             PaintCommand::BorderEdge { rect: r, color } => PaintCommand::BorderEdge {
                 rect: rect(r),
                 color,
+            },
+            PaintCommand::RoundRect {
+                rect: r,
+                radii,
+                color,
+            } => PaintCommand::RoundRect {
+                rect: rect(r),
+                radii: scale_radii(radii, scale),
+                color,
+            },
+            PaintCommand::RoundBorder {
+                rect: r,
+                radii,
+                width,
+                color,
+            } => PaintCommand::RoundBorder {
+                rect: rect(r),
+                radii: scale_radii(radii, scale),
+                width: width * scale,
+                color,
+            },
+            PaintCommand::Shadow {
+                rect: r,
+                radii,
+                dx,
+                dy,
+                blur,
+                spread,
+                color,
+            } => PaintCommand::Shadow {
+                rect: rect(r),
+                radii: scale_radii(radii, scale),
+                dx: dx * scale,
+                dy: dy * scale,
+                blur: blur * scale,
+                spread: spread * scale,
+                color,
+            },
+            PaintCommand::Gradient {
+                rect: r,
+                radii,
+                gradient,
+            } => PaintCommand::Gradient {
+                rect: rect(r),
+                radii: scale_radii(radii, scale),
+                gradient,
             },
             PaintCommand::Text {
                 x,

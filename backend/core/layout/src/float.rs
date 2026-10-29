@@ -137,7 +137,10 @@ mod tests {
     #[test]
     fn a_float_sits_beside_earlier_ones_until_the_row_is_full() {
         let mut floats = vec![rect(Side::Left, 0.0, 0.0, 150.0, 40.0)];
-        assert_eq!(place(&floats, Side::Left, 150.0, 30.0, 0.0, 400.0), (150.0, 0.0));
+        assert_eq!(
+            place(&floats, Side::Left, 150.0, 30.0, 0.0, 400.0),
+            (150.0, 0.0)
+        );
         floats.push(rect(Side::Left, 150.0, 0.0, 300.0, 30.0));
         assert_eq!(
             place(&floats, Side::Left, 150.0, 30.0, 0.0, 400.0),
@@ -148,7 +151,10 @@ mod tests {
 
     #[test]
     fn right_floats_hug_the_right_edge() {
-        assert_eq!(place(&[], Side::Right, 100.0, 10.0, 5.0, 400.0), (300.0, 5.0));
+        assert_eq!(
+            place(&[], Side::Right, 100.0, 10.0, 5.0, 400.0),
+            (300.0, 5.0)
+        );
     }
 
     #[test]
@@ -230,7 +236,10 @@ mod tests {
         let p = &f.children[1];
         let xs: Vec<f64> = p.children.iter().map(|l| l.x).collect();
         assert_eq!(xs[0], 100.0);
-        assert!(xs.iter().any(|&x| x == 0.0), "later lines clear the float: {xs:?}");
+        assert!(
+            xs.iter().any(|&x| x == 0.0),
+            "later lines clear the float: {xs:?}"
+        );
     }
 
     #[test]

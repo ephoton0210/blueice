@@ -25,6 +25,7 @@
 mod calc;
 mod cascade;
 mod color;
+mod gradient;
 mod media;
 mod parser;
 mod selector;
@@ -35,6 +36,10 @@ mod vars;
 
 pub use calc::Calc;
 pub use cascade::{cascade, cascade_with_viewport, ua_stylesheet, ComputedStyle, Origin};
+pub use gradient::{
+    parse_gradient, parse_shadows, ColorStop, Gradient, GradientKind, LinearDirection, Shadow,
+    StopPosition,
+};
 pub use media::{matches_media, MediaEnvironment};
 pub use parser::{Declaration, Rule};
 pub use selector::{matches, ComplexSelector, Compound, SimpleSelector, Specificity};

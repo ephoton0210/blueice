@@ -16,8 +16,8 @@
 //! its size is known.
 
 use crate::ctx::{Ctx, Display, Position, Style};
-use crate::fragment::{Fragment, FragmentKind};
 use crate::float::{self, FloatRect};
+use crate::fragment::{Fragment, FragmentKind};
 use crate::text::{default_line_height, StyleMap};
 use blueice_css::Value;
 use blueice_dom::{Document, NodeData, NodeId};
@@ -721,7 +721,11 @@ fn layout_block_level_uncached(
             &if bfc {
                 Vec::new()
             } else {
-                float::translate(incoming, -(border.left + padding.left), -(border.top + padding.top))
+                float::translate(
+                    incoming,
+                    -(border.left + padding.left),
+                    -(border.top + padding.top),
+                )
             },
         );
         let float_bottom = flow.floats.iter().map(|f| f.bottom).fold(0.0, f64::max);
@@ -729,8 +733,11 @@ fn layout_block_level_uncached(
             // A formatting-context root contains its floats.
             flow_floats_height = float_bottom;
         } else {
-            escaped_floats =
-                float::translate(&flow.floats, border.left + padding.left, border.top + padding.top);
+            escaped_floats = float::translate(
+                &flow.floats,
+                border.left + padding.left,
+                border.top + padding.top,
+            );
         }
         children = flow.children;
         content_flow_height = flow.height.max(flow_floats_height);

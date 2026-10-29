@@ -325,6 +325,15 @@ fn expand_flex_flow(tokens: &[Token]) -> Vec<(String, Value)> {
 
 /// The colour of a `background` shorthand; a layer with none resets it.
 fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
+    let mut out = vec![("background-image".to_string(), keyword("none"))];
+    if let Some(image) = components(tokens).into_iter().find(|c| {
+        matches!(c.first(), Some(Token::Ident(name))
+            if matches!(c.get(1), Some(Token::LeftParen))
+                && (name.to_ascii_lowercase().ends_with("gradient")
+                    || name.eq_ignore_ascii_case("url")))
+    }) {
+        out[0].1 = Value::Unparsed(image.to_vec());
+    }
     let color = components(tokens)
         .into_iter()
         .find_map(|c| match parse_value(c) {
@@ -332,7 +341,49 @@ fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
             _ => None,
         })
         .unwrap_or(Value::Color(crate::value::Color::Rgba(0, 0, 0, 0)));
-    vec![("background-color".to_string(), color)]
+    out.push(("background-color".to_string(), color));
+    out
+}
+
+/// `border-radius`: one to four corner radii (the part after `/`, which makes
+/// them elliptical, is read for its first value only) to the four longhands.
+fn expand_border_radius(tokens: &[Token]) -> Vec<(String, Value)> {
+    let horizontal: Vec<&Token> = tokens
+        .iter()
+        .take_while(|t| **t != Token::Delim('/'))
+        .filter(|t| **t != Token::Whitespace)
+        .collect();
+    let values: Option<Vec<Value>> = horizontal
+        .iter()
+        .map(|t| parse_value(std::slice::from_ref(*t)))
+        .collect();
+    let Some(v) = values else { return vec![] };
+    let [tl, tr, br, bl] = match v.as_slice() {
+        [a] => [a, a, a, a],
+        [a, b] => [a, b, a, b],
+        [a, b, c] => [a, b, c, b],
+        [a, b, c, d] => [a, b, c, d],
+        _ => return vec![],
+    };
+    let ok = |v: &Value| {
+        matches!(
+            v,
+            Value::Length(_) | Value::Percentage(_) | Value::Number(_) | Value::Calc(_)
+        )
+    };
+    if ![tl, tr, br, bl].iter().all(|v| ok(v)) {
+        return vec![];
+    }
+    let fix = |v: &Value| match v {
+        Value::Number(n) if *n == 0.0 => Value::Length(Length::Zero),
+        other => other.clone(),
+    };
+    vec![
+        ("border-top-left-radius".to_string(), fix(tl)),
+        ("border-top-right-radius".to_string(), fix(tr)),
+        ("border-bottom-right-radius".to_string(), fix(br)),
+        ("border-bottom-left-radius".to_string(), fix(bl)),
+    ]
 }
 
 /// `text-decoration`: the line keywords go to `text-decoration-line` (a single
@@ -480,6 +531,8 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             | "grid-column"
             | "grid-row"
             | "grid-area"
+            | "box-shadow"
+            | "background-image"
     ) {
         let trimmed = trim_ws(value_tokens);
         if !matches!(trimmed, [Token::Ident(_)]) || property.ends_with("areas") {
@@ -508,6 +561,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
         "place-content" => expand_pair("align-content", "justify-content", value_tokens),
         "place-self" => expand_pair("align-self", "justify-self", value_tokens),
         "background" => expand_background(value_tokens),
+        "border-radius" => expand_border_radius(value_tokens),
         "text-decoration" => expand_text_decoration(value_tokens),
         "inset" => {
             expand_box_shorthand_property_named(["top", "right", "bottom", "left"], value_tokens)
@@ -1460,5 +1514,34 @@ mod tests {
             Some(Value::Keyword("underline".to_string())),
             "the longhand passes through"
         );
+    }
+
+    #[test]
+    fn border_radius_expands_to_the_four_corners() {
+        let d = expand_property("border-radius", &tokenize("4px 8px"));
+        let get = |name: &str| d.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone());
+        assert_eq!(get("border-top-left-radius"), Some(px(4.0)));
+        assert_eq!(get("border-top-right-radius"), Some(px(8.0)));
+        assert_eq!(get("border-bottom-right-radius"), Some(px(4.0)));
+        assert_eq!(get("border-bottom-left-radius"), Some(px(8.0)));
+        let d = expand_property("border-radius", &tokenize("50%"));
+        assert_eq!(d.len(), 4);
+        assert!(matches!(d[0].1, Value::Percentage(p) if p == 50.0));
+        assert!(expand_property("border-radius", &tokenize("red")).is_empty());
+    }
+
+    #[test]
+    fn a_background_shorthand_keeps_its_gradient_and_resets_the_image() {
+        let d = expand_property(
+            "background",
+            &tokenize("linear-gradient(red, blue) no-repeat #fff"),
+        );
+        assert!(d
+            .iter()
+            .any(|(n, v)| n == "background-image" && matches!(v, Value::Unparsed(_))));
+        let d = expand_property("background", &tokenize("#fff"));
+        assert!(d
+            .iter()
+            .any(|(n, v)| n == "background-image" && *v == Value::Keyword("none".into())));
     }
 }

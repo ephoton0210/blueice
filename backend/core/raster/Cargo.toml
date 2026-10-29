@@ -7,10 +7,11 @@ license.workspace = true
 [dependencies]
 blueice-paint = { path = "../paint" }
 blueice-font = { path = "../font" }
+blueice-css = { path = "../css" }
 fontdue = "0.9"
 png = "0.17"
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd"] }
 
 [dev-dependencies]
 blueice-html = { path = "../html" }
-blueice-css = { path = "../css" }
 blueice-layout = { path = "../layout" }

@@ -13,9 +13,9 @@
 //! including the container's strut; `text-align` and `text-indent` place the
 //! content on the line.
 
-use crate::float::{self, FloatRect};
 use crate::block::{layout_block_level, Constraint, Forced, PendingAbs};
 use crate::ctx::{Ctx, Display, Style};
+use crate::float::{self, FloatRect};
 use crate::fragment::{Fragment, FragmentKind};
 use blueice_dom::{NodeData, NodeId};
 
@@ -532,9 +532,9 @@ fn collect(
 /// Whether an inline box has anything of its own to paint.
 fn paints_own_box(style: &Style<'_>) -> bool {
     let has = |name: &str| {
-        style.raw(name).is_some_and(|v| {
-            !matches!(v, blueice_css::Value::Keyword(k) if k == "none" || k == "transparent")
-        })
+        style.raw(name).is_some_and(
+            |v| !matches!(v, blueice_css::Value::Keyword(k) if k == "none" || k == "transparent"),
+        )
     };
     has("background-color")
         || has("background-image")
@@ -735,9 +735,7 @@ fn break_lines(
                     loop {
                         let r = room(y_est);
                         match r.next {
-                            Some(next)
-                                if chunk.width > r.avail - indent + 0.01 && next > y_est =>
-                            {
+                            Some(next) if chunk.width > r.avail - indent + 0.01 && next > y_est => {
                                 y_est = next;
                                 line = Line::new(room(y_est), Some(y_est));
                             }
@@ -850,8 +848,12 @@ pub(crate) fn layout_run_around(
     let room = |y: f64| match floats {
         Some(view) => {
             let top = view.top + y;
-            let (left, right) =
-                float::free_span(view.floats, top, top + strut_above + strut_below, content_width);
+            let (left, right) = float::free_span(
+                view.floats,
+                top,
+                top + strut_above + strut_below,
+                content_width,
+            );
             Room {
                 left,
                 avail: right - left,
@@ -1583,7 +1585,10 @@ mod tests {
             "the box comes before the text it sits behind"
         );
         let bc = blueice_font::measure_text_width("bc", 16.0, false, false);
-        assert!((first.width - (bc + 10.0)).abs() < 0.01, "content plus padding");
+        assert!(
+            (first.width - (bc + 10.0)).abs() < 0.01,
+            "content plus padding"
+        );
         let a = blueice_font::measure_text_width("a ", 16.0, false, false);
         assert!((first.x - a).abs() < 0.01, "starts where the span does");
     }
@@ -1592,7 +1597,10 @@ mod tests {
     fn an_unpainted_inline_box_adds_no_fragment() {
         let f = body("<p>a <span style='padding:0 5px'>bc</span></p>", "", 800.0);
         let line = &f.children[0].children[0];
-        assert!(line.children.iter().all(|c| matches!(c.kind, FragmentKind::Text(_))));
+        assert!(line
+            .children
+            .iter()
+            .all(|c| matches!(c.kind, FragmentKind::Text(_))));
     }
 
     #[test]
@@ -1605,8 +1613,16 @@ mod tests {
         let boxes = f.children[0]
             .children
             .iter()
-            .filter(|l| matches!(l.children.first().map(|c| &c.kind), Some(FragmentKind::Block)))
+            .filter(|l| {
+                matches!(
+                    l.children.first().map(|c| &c.kind),
+                    Some(FragmentKind::Block)
+                )
+            })
             .count();
-        assert!(boxes >= 3, "each line carries its piece of the box, got {boxes}");
+        assert!(
+            boxes >= 3,
+            "each line carries its piece of the box, got {boxes}"
+        );
     }
 }

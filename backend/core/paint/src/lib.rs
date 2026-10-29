@@ -52,6 +52,10 @@ pub struct Rect {
     pub height: f64,
 }
 
+/// Corner radii as `(horizontal, vertical)` pairs: top-left, top-right,
+/// bottom-right, bottom-left.
+pub type Radii = [(f64, f64); 4];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PaintCommand {
     /// Nested document-space clipping, used by native control text.
@@ -73,6 +77,36 @@ pub enum PaintCommand {
     BorderEdge {
         rect: Rect,
         color: Color,
+    },
+    /// A box background with rounded corners (`border-radius`).
+    RoundRect {
+        rect: Rect,
+        radii: Radii,
+        color: Color,
+    },
+    /// A uniform border of `width` around a rounded box.
+    RoundBorder {
+        rect: Rect,
+        radii: Radii,
+        width: f64,
+        color: Color,
+    },
+    /// An outer `box-shadow`: the box shape moved by (`dx`, `dy`), grown by
+    /// `spread` and blurred by `blur`.
+    Shadow {
+        rect: Rect,
+        radii: Radii,
+        dx: f64,
+        dy: f64,
+        blur: f64,
+        spread: f64,
+        color: Color,
+    },
+    /// A `linear-gradient()` or `radial-gradient()` background.
+    Gradient {
+        rect: Rect,
+        radii: Radii,
+        gradient: blueice_css::Gradient,
     },
     /// A run of text with no internal structure -- one command per
     /// `blueice_layout` text fragment, at that fragment's own position.
@@ -117,6 +151,14 @@ fn fmt_rect(r: Rect) -> String {
     )
 }
 
+fn fmt_radii(radii: &Radii) -> String {
+    radii
+        .iter()
+        .map(|(x, y)| format!("{}x{}", fmt_num(*x), fmt_num(*y)))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 fn fmt_color(c: Color) -> String {
     match c {
         Color::Rgba(r, g, b, 255) => format!("#{r:02x}{g:02x}{b:02x}"),
@@ -145,6 +187,46 @@ pub fn dump_frame(frame: &Frame) -> String {
                 "border {} {}\n",
                 fmt_rect(*rect),
                 fmt_color(*color)
+            )),
+            PaintCommand::RoundRect { rect, radii, color } => out.push_str(&format!(
+                "roundrect {} {} {}\n",
+                fmt_rect(*rect),
+                fmt_radii(radii),
+                fmt_color(*color)
+            )),
+            PaintCommand::RoundBorder {
+                rect,
+                radii,
+                width,
+                color,
+            } => out.push_str(&format!(
+                "roundborder {} {} {} {}\n",
+                fmt_rect(*rect),
+                fmt_radii(radii),
+                fmt_num(*width),
+                fmt_color(*color)
+            )),
+            PaintCommand::Shadow {
+                rect,
+                dx,
+                dy,
+                blur,
+                spread,
+                color,
+                ..
+            } => out.push_str(&format!(
+                "shadow {} {},{} blur {} spread {} {}\n",
+                fmt_rect(*rect),
+                fmt_num(*dx),
+                fmt_num(*dy),
+                fmt_num(*blur),
+                fmt_num(*spread),
+                fmt_color(*color)
+            )),
+            PaintCommand::Gradient { rect, gradient, .. } => out.push_str(&format!(
+                "gradient {} {} stops\n",
+                fmt_rect(*rect),
+                gradient.stops.len()
             )),
             PaintCommand::Text {
                 x,
@@ -248,6 +330,47 @@ fn border_side_rect(
 /// `blueice-css`'s cascade docs); this arm only exists so the match
 /// stays exhaustive against `Color` without paint depending on that
 /// resolution having already happened.
+/// The four corner radii of `rect` in pixels, scaled down together when
+/// adjacent corners would overlap (CSS Backgrounds 3, 5.5).
+fn corner_radii(style: &ComputedStyle, rect: Rect) -> Radii {
+    let one = |name: &str| -> (f64, f64) {
+        match style.other.get(name) {
+            Some(Value::Percentage(p)) => (rect.width * p / 100.0, rect.height * p / 100.0),
+            Some(v) => {
+                let r = length_px(v, style.font_size_px).unwrap_or(0.0).max(0.0);
+                (r, r)
+            }
+            None => (0.0, 0.0),
+        }
+    };
+    let mut radii = [
+        one("border-top-left-radius"),
+        one("border-top-right-radius"),
+        one("border-bottom-right-radius"),
+        one("border-bottom-left-radius"),
+    ];
+    if radii.iter().all(|(x, y)| *x == 0.0 && *y == 0.0) {
+        return radii;
+    }
+    let mut factor = 1.0f64;
+    let mut limit = |sum: f64, length: f64| {
+        if sum > length && sum > 0.0 {
+            factor = factor.min(length / sum);
+        }
+    };
+    limit(radii[0].0 + radii[1].0, rect.width);
+    limit(radii[3].0 + radii[2].0, rect.width);
+    limit(radii[0].1 + radii[3].1, rect.height);
+    limit(radii[1].1 + radii[2].1, rect.height);
+    if factor < 1.0 {
+        for r in &mut radii {
+            r.0 *= factor;
+            r.1 *= factor;
+        }
+    }
+    radii
+}
+
 fn apply_opacity(color: Color, opacity: f32) -> Color {
     match color {
         Color::Rgba(r, g, b, a) => Color::Rgba(r, g, b, ((a as f32) * opacity).round() as u8),
@@ -367,29 +490,95 @@ fn paint_fragment(
                     width: fragment.width,
                     height: fragment.height,
                 };
+                let radii = corner_radii(style, rect);
+                let rounded = radii.iter().any(|(x, y)| *x > 0.0 || *y > 0.0);
+                if let Some(Value::Unparsed(tokens)) = style.other.get("box-shadow") {
+                    for shadow in blueice_css::parse_shadows(tokens, style.font_size_px) {
+                        if shadow.inset {
+                            continue;
+                        }
+                        let color = shadow.color.unwrap_or(Color::CurrentColor);
+                        let color = if color == Color::CurrentColor {
+                            style.color
+                        } else {
+                            color
+                        };
+                        out.push(PaintCommand::Shadow {
+                            rect,
+                            radii,
+                            dx: shadow.dx,
+                            dy: shadow.dy,
+                            blur: shadow.blur,
+                            spread: shadow.spread,
+                            color: apply_opacity(color, opacity),
+                        });
+                    }
+                }
                 if let Some(bg) = style
                     .other
                     .get("background-color")
                     .and_then(|v| as_color(v, style.color))
                 {
-                    out.push(PaintCommand::Rect {
-                        rect,
-                        color: apply_opacity(bg, opacity),
+                    let color = apply_opacity(bg, opacity);
+                    out.push(if rounded {
+                        PaintCommand::RoundRect { rect, radii, color }
+                    } else {
+                        PaintCommand::Rect { rect, color }
                     });
                 }
-                for side in BORDER_SIDES {
-                    if let Some((edge_rect, _)) =
-                        border_side_rect(side, rect, &style.other, style.font_size_px)
-                    {
-                        let color = style
+                if let Some(Value::Unparsed(tokens)) = style.other.get("background-image") {
+                    if let Some(mut gradient) = blueice_css::parse_gradient(tokens) {
+                        for stop in &mut gradient.stops {
+                            let color = if stop.color == Color::CurrentColor {
+                                style.color
+                            } else {
+                                stop.color
+                            };
+                            stop.color = apply_opacity(color, opacity);
+                        }
+                        out.push(PaintCommand::Gradient {
+                            rect,
+                            radii,
+                            gradient,
+                        });
+                    }
+                }
+                let sides: Vec<Option<(Rect, f64)>> = BORDER_SIDES
+                    .iter()
+                    .map(|side| border_side_rect(side, rect, &style.other, style.font_size_px))
+                    .collect();
+                let colors: Vec<Color> = BORDER_SIDES
+                    .iter()
+                    .map(|side| {
+                        style
                             .other
                             .get(&format!("border-{side}-color"))
                             .and_then(|v| as_color(v, style.color))
-                            .unwrap_or(style.color);
-                        out.push(PaintCommand::BorderEdge {
-                            rect: edge_rect,
-                            color: apply_opacity(color, opacity),
-                        });
+                            .unwrap_or(style.color)
+                    })
+                    .collect();
+                let uniform = rounded
+                    && sides.iter().all(Option::is_some)
+                    && sides
+                        .iter()
+                        .flatten()
+                        .all(|(_, w)| *w == sides[0].map_or(0.0, |s| s.1))
+                    && colors.iter().all(|c| *c == colors[0]);
+                if uniform {
+                    out.push(PaintCommand::RoundBorder {
+                        rect,
+                        radii,
+                        width: sides[0].map_or(0.0, |s| s.1),
+                        color: apply_opacity(colors[0], opacity),
+                    });
+                } else {
+                    for (side, color) in sides.iter().zip(&colors) {
+                        if let Some((edge_rect, _)) = side {
+                            out.push(PaintCommand::BorderEdge {
+                                rect: *edge_rect,
+                                color: apply_opacity(*color, opacity),
+                            });
+                        }
                     }
                 }
             }
@@ -1316,5 +1505,105 @@ mod tests {
             .filter(|c| matches!(c, PaintCommand::Text { .. }))
             .count();
         assert_eq!(texts, 1, "no spacing, one run");
+    }
+
+    #[test]
+    fn border_radius_turns_the_background_into_a_rounded_rect() {
+        let f = paint_html(
+            "<div></div>",
+            "div { width: 100px; height: 40px; background-color: red; border-radius: 8px 4px; }",
+            320.0,
+        );
+        let radii = f.commands.iter().find_map(|c| match c {
+            PaintCommand::RoundRect { radii, .. } => Some(*radii),
+            _ => None,
+        });
+        assert_eq!(
+            radii,
+            Some([(8.0, 8.0), (4.0, 4.0), (8.0, 8.0), (4.0, 4.0)])
+        );
+        assert!(!f
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::Rect { .. })));
+    }
+
+    #[test]
+    fn a_percentage_radius_is_relative_to_each_axis_and_overlap_scales_down() {
+        let f = paint_html(
+            "<div></div>",
+            "div { width: 100px; height: 40px; background-color: red; border-radius: 50%; }",
+            320.0,
+        );
+        let radii = f.commands.iter().find_map(|c| match c {
+            PaintCommand::RoundRect { radii, .. } => Some(*radii),
+            _ => None,
+        });
+        assert_eq!(radii.unwrap()[0], (50.0, 20.0));
+        let f = paint_html(
+            "<div></div>",
+            "div { width: 100px; height: 40px; background-color: red; border-radius: 100px; }",
+            320.0,
+        );
+        let radii = f.commands.iter().find_map(|c| match c {
+            PaintCommand::RoundRect { radii, .. } => Some(*radii),
+            _ => None,
+        });
+        assert_eq!(
+            radii.unwrap()[0],
+            (20.0, 20.0),
+            "scaled so adjacent radii fit"
+        );
+    }
+
+    #[test]
+    fn a_uniform_border_on_a_rounded_box_is_one_ring() {
+        let f = paint_html(
+            "<div></div>",
+            "div { width: 50px; height: 50px; border: 3px solid blue; border-radius: 6px; }",
+            320.0,
+        );
+        assert!(f
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::RoundBorder { width, .. } if *width == 3.0)));
+        assert!(!f
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::BorderEdge { .. })));
+    }
+
+    #[test]
+    fn box_shadow_and_gradient_come_before_and_after_the_plain_background() {
+        let f = paint_html(
+            "<div></div>",
+            "div { width: 50px; height: 50px; background-color: #ff0000; \
+               background-image: linear-gradient(red, blue); box-shadow: 1px 2px 3px 4px #000; }",
+            320.0,
+        );
+        let kinds: Vec<&str> = f
+            .commands
+            .iter()
+            .map(|c| match c {
+                PaintCommand::Shadow { .. } => "shadow",
+                PaintCommand::Rect { .. } => "rect",
+                PaintCommand::Gradient { .. } => "gradient",
+                _ => "other",
+            })
+            .collect();
+        assert_eq!(kinds, vec!["shadow", "rect", "gradient"]);
+    }
+
+    #[test]
+    fn inset_shadows_are_not_painted_as_outer_ones() {
+        let f = paint_html(
+            "<div></div>",
+            "div { width: 50px; height: 50px; box-shadow: inset 1px 1px 2px #000; }",
+            320.0,
+        );
+        assert!(!f
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::Shadow { .. })));
     }
 }
