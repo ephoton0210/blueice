@@ -154,6 +154,28 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
         }
         "compileShader" => {
             ctx.compile_shader(u(0));
+            // Developer aid: BI_DUMP_GLSL=<dir> keeps every shader a page compiles.
+            if let Ok(dir) = std::env::var("BI_DUMP_GLSL") {
+                let kind = if ctx.shader_source_of(u(0)).contains("gl_Position") {
+                    "vert"
+                } else {
+                    "frag"
+                };
+                let verdict = if ctx.shader_compiled(u(0)) {
+                    "ok".to_string()
+                } else {
+                    ctx.shader_log(u(0))
+                };
+                let name = format!(
+                    "{dir}/shader-{}-{}.{kind}",
+                    u(0),
+                    if verdict == "ok" { "ok" } else { "FAIL" }
+                );
+                let _ = std::fs::write(
+                    &name,
+                    format!("// {verdict}\n{}", ctx.shader_source_of(u(0))),
+                );
+            }
             Reply::Undefined
         }
         "shaderCompiled" => Reply::Bool(ctx.shader_compiled(u(0))),

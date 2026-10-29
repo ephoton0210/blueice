@@ -210,6 +210,61 @@ impl Program {
         self.names.get(name).copied()
     }
 
+    /// Whether any function reads the global `name` (a static use: it counts
+    /// even where the code could never run).
+    pub fn reads(&self, name: &str) -> bool {
+        let Some(slot) = self.slot(name) else {
+            return false;
+        };
+        fn node(n: &N, slot: usize) -> bool {
+            match n {
+                N::Global(g) => *g == slot,
+                N::Lit(_) | N::Local(_) => false,
+                N::Field(a, _) | N::Un(_, a) => node(a, slot),
+                N::Index(a, b) | N::Bin(_, a, b) | N::Comma(a, b) => node(a, slot) || node(b, slot),
+                N::Assign(op, target, value) => {
+                    // A plain `x = ...` does not read `x`; `x += ...` and `x.y = ...` (via index) do.
+                    let reads_target = op.is_some() || !matches!(**target, N::Global(_));
+                    (reads_target && node(target, slot)) || node(value, slot)
+                }
+                N::Cond(a, b, c) => node(a, slot) || node(b, slot) || node(c, slot),
+                N::CallUser(_, args)
+                | N::CallBuiltin(_, args)
+                | N::Ctor(_, args)
+                | N::ArrCtor(_, args) => args.iter().any(|a| node(a, slot)),
+            }
+        }
+        fn stmt(s: &S, slot: usize) -> bool {
+            let opt_n = |n: &Option<N>| n.as_ref().is_some_and(|n| node(n, slot));
+            match s {
+                S::Expr(e) => node(e, slot),
+                S::Decl(_, _, init) => opt_n(init),
+                S::If(c, t, e) => {
+                    node(c, slot) || stmt(t, slot) || e.as_ref().is_some_and(|e| stmt(e, slot))
+                }
+                S::For(i, c, st, b) => {
+                    i.as_ref().is_some_and(|i| stmt(i, slot))
+                        || opt_n(c)
+                        || opt_n(st)
+                        || stmt(b, slot)
+                }
+                S::While(c, b) | S::DoWhile(b, c) => node(c, slot) || stmt(b, slot),
+                S::Switch(v, cases) => {
+                    node(v, slot)
+                        || cases
+                            .iter()
+                            .any(|(label, body)| opt_n(label) || body.iter().any(|s| stmt(s, slot)))
+                }
+                S::Return(v) => opt_n(v),
+                S::Block(b) => b.iter().any(|s| stmt(s, slot)),
+                S::Break | S::Continue | S::Discard | S::Nop => false,
+            }
+        }
+        self.funcs
+            .iter()
+            .any(|f| f.body.iter().any(|s| stmt(s, slot)))
+    }
+
     /// Whether any function assigns the global `name`.
     pub fn writes(&self, name: &str) -> bool {
         let Some(slot) = self.slot(name) else {

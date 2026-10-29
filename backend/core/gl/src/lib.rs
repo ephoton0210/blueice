@@ -1246,6 +1246,10 @@ fn link(vs: Program, fs: Program, bound: &HashMap<String, u32>) -> Result<Linked
         let Some((vs_slot, _)) = vs.globals.iter().enumerate().find(|(_, vg)| {
             vg.name == fg.name && matches!(vg.storage, Storage::Varying | Storage::Out)
         }) else {
+            // A declaration the fragment shader never reads needs no match.
+            if !fs.reads(&fg.name) {
+                continue;
+            }
             return Err(format!(
                 "varying '{}' is not written by the vertex shader",
                 fg.name

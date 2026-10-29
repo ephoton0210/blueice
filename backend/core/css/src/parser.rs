@@ -659,6 +659,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             | "box-shadow"
             | "background-image"
             | "content"
+            | "animation"
     ) {
         let trimmed = trim_ws(value_tokens);
         if !matches!(trimmed, [Token::Ident(_)]) || property.ends_with("areas") {
@@ -969,11 +970,17 @@ fn parse_rules_in(
 }
 
 pub fn parse(input: &str) -> Vec<Rule> {
-    parse_rules(&tokenize(input))
+    let tokens = tokenize(input);
+    let mut rules = parse_rules(&tokens);
+    crate::animation::append_finished_animations(&tokens, &mut rules);
+    rules
 }
 
 pub fn parse_with_environment(input: &str, environment: &crate::MediaEnvironment) -> Vec<Rule> {
-    parse_rules_in(&tokenize(input), Some(environment), 0)
+    let tokens = tokenize(input);
+    let mut rules = parse_rules_in(&tokens, Some(environment), 0);
+    crate::animation::append_finished_animations(&tokens, &mut rules);
+    rules
 }
 
 #[cfg(test)]

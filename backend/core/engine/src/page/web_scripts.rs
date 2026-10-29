@@ -766,9 +766,31 @@ mod tests {
              </script></body>",
             Some(format!("{origin}/start")),
         );
-        wait_for(&mut p, |p| p.web_console().iter().any(|l| l.contains("RESULT")));
+        wait_for(&mut p, |p| {
+            p.web_console().iter().any(|l| l.contains("RESULT"))
+        });
         let log = p.web_console().join("\n");
         assert!(log.contains(&format!("RESULT {}", body.len())), "{log}");
+    }
+
+    #[test]
+    fn a_canvas_that_a_style_fades_in_with_a_finished_animation_is_shown() {
+        let mut page = page(
+            "<style>canvas { opacity: 0; animation: 1s ease-out .2s both canvas-fade-in }\
+             @keyframes canvas-fade-in { from { opacity: 0 } to { opacity: 1 } }</style>\
+             <body style='margin:0'><canvas id=c width=40 height=20></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             g.fillStyle = '#00ff00'; g.fillRect(0, 0, 40, 20);\
+             </script></body>",
+        );
+        page.settle();
+        let pixmap = page.render_visible();
+        let i = (10 * pixmap.width as usize + 20) * 4;
+        assert_eq!(
+            [pixmap.pixels[i], pixmap.pixels[i + 1], pixmap.pixels[i + 2]],
+            [0, 255, 0],
+            "the faded-in canvas is visible"
+        );
     }
 
     #[test]

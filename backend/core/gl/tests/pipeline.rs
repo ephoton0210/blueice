@@ -427,7 +427,7 @@ fn a_draw_that_runs_out_of_time_stops_and_a_context_that_keeps_doing_so_goes_qui
         ctx.draw_arrays(0x0004, 0, 3, 1);
     }
     assert!(
-        start.elapsed() < std::time::Duration::from_secs(5),
+        start.elapsed() < std::time::Duration::from_secs(1),
         "{:?}",
         start.elapsed()
     );
@@ -435,4 +435,38 @@ fn a_draw_that_runs_out_of_time_stops_and_a_context_that_keeps_doing_so_goes_qui
     // Not every pixel was shaded.
     let shaded = ctx.picture().chunks(4).filter(|p| p[3] != 0).count();
     assert!(shaded < 256 * 256);
+}
+
+#[test]
+fn a_fragment_varying_the_vertex_shader_lacks_links_only_if_the_fragment_never_reads_it() {
+    let vs = "void main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }";
+    let mut ctx = Context::new(2, 2);
+    let mut link = |fs: &str| {
+        let (v, f) = (
+            ctx.create_shader(VERTEX_SHADER),
+            ctx.create_shader(FRAGMENT_SHADER),
+        );
+        ctx.shader_source(v, vs);
+        ctx.shader_source(f, fs);
+        ctx.compile_shader(v);
+        ctx.compile_shader(f);
+        assert!(ctx.shader_compiled(f), "{}", ctx.shader_log(f));
+        let p = ctx.create_program();
+        ctx.attach_shader(p, v);
+        ctx.attach_shader(p, f);
+        ctx.link_program(p);
+        (ctx.program_linked(p), ctx.program_log(p))
+    };
+    // Declared and never read (a driver links this).
+    let (ok, log) = link(
+        "precision mediump float; varying vec3 vNormal; void main() { gl_FragColor = vec4(1.0); }",
+    );
+    assert!(ok, "{log}");
+    // Read: the vertex shader has to provide it.
+    let (ok, log) = link("precision mediump float; varying vec3 vNormal; void main() { gl_FragColor = vec4(vNormal, 1.0); }");
+    assert!(!ok);
+    assert!(log.contains("vNormal"), "{log}");
+    // Read only inside a helper function, still a read.
+    let (ok, _) = link("precision mediump float; varying vec3 vNormal; vec3 f() { return vNormal * 2.0; } void main() { gl_FragColor = vec4(f(), 1.0); }");
+    assert!(!ok);
 }

@@ -22,6 +22,7 @@
 //!   order) with a `blueice_dom::Document` into a per-element
 //!   [`ComputedStyle`] map, ready for `blueice-layout` once it exists.
 
+mod animation;
 mod calc;
 mod cascade;
 mod color;

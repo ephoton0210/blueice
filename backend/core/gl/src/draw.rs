@@ -354,7 +354,6 @@ fn blend(s: &State, src: [f32; 4], dst: [f32; 4]) -> [f32; 4] {
 /// A horizontal band of the target.
 struct Band<'a> {
     y0: usize,
-    rows: usize,
     w: usize,
     color: BandColor<'a>,
     depth: Option<&'a mut [f32]>,
@@ -446,6 +445,10 @@ impl FragmentStage<'_> {
 
     /// Shades one fragment and writes it; false if it was rejected.
     fn run(&mut self, band: &mut Band<'_>, f: &Fragment<'_>) {
+        // A shader this slow must not hold a draw past its budget by a whole row.
+        if self.out_of_time() {
+            return;
+        }
         let st = self.state;
         let local = (f.y - band.y0) * band.w + f.x;
         // Early depth test when the shader cannot change the outcome.
@@ -582,6 +585,8 @@ impl Context {
             bindings: &self.tex_bindings,
         };
 
+        let profile = std::env::var("BI_GL_PROFILE").is_ok();
+        let t0 = std::time::Instant::now();
         // ---- vertex stage ----
         let vao = self.vaos.get(&self.vao).cloned().unwrap_or_default();
         let total = indices.len() * instances as usize;
@@ -664,6 +669,7 @@ impl Context {
         }
         let vertices: Vec<Vertex> = vertices.into_iter().flatten().collect();
 
+        let t_vertex = t0.elapsed();
         // ---- assembly, clipping, viewport transform ----
         let mut smooth = Vec::new();
         for v in &linked.varyings {
@@ -840,6 +846,8 @@ impl Context {
             }
         }
 
+        let t_assembly = t0.elapsed();
+        let n_prims = prims.len();
         // ---- fragment stage ----
         let mut target = self.take_target();
         let (tw, th) = (target.w as usize, target.h as usize);
@@ -876,7 +884,28 @@ impl Context {
             r
         };
         let threads = worker_count(tw * th, 20_000).min(th.max(1));
-        let band_rows = th.div_ceil(threads);
+        // Many thin bands taken from a shared queue, so work that is all in the middle
+        // of the picture (a globe) still keeps every thread busy.
+        let band_rows = th.div_ceil(threads * 8).clamp(1, 32);
+        // Each primitive goes to just the bands its rows touch, in submission order.
+        let mut bins: Vec<Vec<u32>> = vec![Vec::new(); th.div_ceil(band_rows)];
+        for (index, prim) in prims.iter().enumerate() {
+            let (lo, hi) = match prim {
+                Prim::Tri(t) => (
+                    t.y.iter().cloned().fold(f64::INFINITY, f64::min),
+                    t.y.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                ),
+                Prim::Point(p) => (p.y - p.size / 2.0, p.y + p.size / 2.0),
+                Prim::Line(l) => (l.a.1.min(l.b.1), l.a.1.max(l.b.1) + 1.0),
+            };
+            let first = (lo.floor().max(0.0) as usize) / band_rows;
+            let last =
+                ((hi.ceil().max(0.0) as usize).saturating_sub(1) / band_rows).min(bins.len() - 1);
+            for bin in bins.iter_mut().take(last + 1).skip(first) {
+                bin.push(index as u32);
+            }
+        }
+        let bins = &bins;
         let prims = &prims;
         let deadline = std::time::Instant::now() + self.draw_budget;
         let timed_out = &std::sync::atomic::AtomicBool::new(false);
@@ -902,11 +931,12 @@ impl Context {
                 };
                 (colors, depths)
             };
+            let queue =
+                std::sync::Mutex::new(color_chunks.into_iter().zip(depth_chunks).enumerate());
+            let queue = &queue;
             std::thread::scope(|scope| {
-                for (n, (color, depth)) in color_chunks.into_iter().zip(depth_chunks).enumerate() {
+                for _ in 0..threads {
                     let (state, access) = (&s, &access);
-                    let y0 = n * band_rows;
-                    let rows = band_rows.min(th - y0);
                     scope.spawn(move || {
                         let Ok(mut machine) = Machine::new(&linked.fs, access) else {
                             return;
@@ -935,42 +965,53 @@ impl Context {
                             deadline,
                             expired: false,
                         };
-                        let mut band = Band {
-                            y0,
-                            rows,
-                            w: tw,
-                            color,
-                            depth,
-                        };
-                        let band_clip = (
-                            clip_x0,
-                            clip_y0.max(y0 as i64),
-                            clip_x1,
-                            clip_y1.min((y0 + rows) as i64),
-                        );
                         let mut lanes_buf: Vec<u32> = Vec::new();
-                        for prim in prims.iter() {
-                            match prim {
-                                Prim::Tri(t) => raster_triangle(
-                                    t,
-                                    band_clip,
-                                    &mut stage,
-                                    &mut band,
-                                    smooth,
-                                    &mut lanes_buf,
-                                ),
-                                Prim::Point(p) => raster_point(p, band_clip, &mut stage, &mut band),
-                                Prim::Line(l) => raster_line(
-                                    l,
-                                    band_clip,
-                                    &mut stage,
-                                    &mut band,
-                                    smooth,
-                                    &mut lanes_buf,
-                                ),
+                        loop {
+                            let next = queue.lock().ok().and_then(|mut q| q.next());
+                            let Some((n, (color, depth))) = next else {
+                                break;
+                            };
+                            if stage.out_of_time() {
+                                break;
+                            }
+                            let y0 = n * band_rows;
+                            let rows = band_rows.min(th - y0);
+                            let mut band = Band {
+                                y0,
+                                w: tw,
+                                color,
+                                depth,
+                            };
+                            let band_clip = (
+                                clip_x0,
+                                clip_y0.max(y0 as i64),
+                                clip_x1,
+                                clip_y1.min((y0 + rows) as i64),
+                            );
+                            for &index in &bins[n] {
+                                match &prims[index as usize] {
+                                    Prim::Tri(t) => raster_triangle(
+                                        t,
+                                        band_clip,
+                                        &mut stage,
+                                        &mut band,
+                                        smooth,
+                                        &mut lanes_buf,
+                                    ),
+                                    Prim::Point(p) => {
+                                        raster_point(p, band_clip, &mut stage, &mut band)
+                                    }
+                                    Prim::Line(l) => raster_line(
+                                        l,
+                                        band_clip,
+                                        &mut stage,
+                                        &mut band,
+                                        smooth,
+                                        &mut lanes_buf,
+                                    ),
+                                }
                             }
                         }
-                        let _ = band.rows;
                         if stage.expired {
                             timed_out.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
@@ -979,6 +1020,14 @@ impl Context {
             });
         }
         self.return_target(target);
+        if profile {
+            eprintln!(
+                "GLPROFILE vertices={} prims={n_prims} vertex={t_vertex:?} assembly={:?} fragment={:?}",
+                total,
+                t_assembly - t_vertex,
+                t0.elapsed() - t_assembly
+            );
+        }
         if timed_out.load(std::sync::atomic::Ordering::Relaxed) {
             self.slow_draws += 1;
         }
