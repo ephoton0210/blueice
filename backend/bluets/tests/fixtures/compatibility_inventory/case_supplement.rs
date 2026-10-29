@@ -33,6 +33,23 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gm2_build_interop" => {
+            let path = "backend/bluets/tests/fixtures/gm2_build_interop/reference.json";
+            let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;
+            let rows = root["ownerControls"]
+                .as_array()
+                .ok_or("missing G-M2 owner controls")?;
+            if rows.len() != 6 {
+                return Err("incomplete G-M2 owner controls".into());
+            }
+            rows.iter().enumerate().map(|(index,row)|{
+                let label=row.as_str().ok_or("invalid G-M2 owner control")?;
+                let mut case=Case::new(path,&format!("/ownerControls/{index}"),label,"owner-build-state-watch-control");
+                case.comparison=Comparison::BoundaryControl;
+                case.reason=Some("Canonical continuation authority, bounded state/hash/path validation, error/pending-check invalidation, bare-source root/output atomicity, owner-current watch resolution and bounded watch lifecycle are owner controls, not native agreements.".into());
+                Ok(case)
+            }).collect::<Result<Vec<_>>>()?
+        }
         "gd2_declaration_maps" => {
             let path = "backend/bluets/tests/fixtures/gd2_declaration_maps/reference.json";
             let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;

@@ -165,7 +165,8 @@ impl Graph {
                     .is_some_and(|module| {
                         matches!(module.to_ascii_lowercase().as_str(), "node16" | "nodenext")
                     }),
-            ),
+            )
+            .with_options(project.options.clone(), project.emit_root.clone()),
         );
         let directory = path.parent().expect("canonical config has parent");
         let mut edges = Vec::new();
@@ -322,7 +323,26 @@ fn reference_object_offset(source: &str, index: usize) -> Option<usize> {
 
 fn resolve_source_import(file: &Path, specifier: &str) -> Option<PathBuf> {
     let base = clean_path(&file.parent()?.join(specifier));
-    let mut candidates = vec![base.clone()];
+    let mut candidates = Vec::new();
+    match base.extension().and_then(|value| value.to_str()) {
+        Some("js") => {
+            for extension in ["ts", "tsx", "d.ts"] {
+                candidates.push(base.with_extension(extension));
+            }
+        }
+        Some("mjs") => {
+            for extension in ["mts", "d.mts"] {
+                candidates.push(base.with_extension(extension));
+            }
+        }
+        Some("cjs") => {
+            for extension in ["cts", "d.cts"] {
+                candidates.push(base.with_extension(extension));
+            }
+        }
+        _ => {}
+    }
+    candidates.push(base.clone());
     if base.extension().is_none() {
         for extension in ["ts", "tsx", "mts", "cts", "js", "jsx"] {
             candidates.push(base.with_extension(extension));
@@ -340,12 +360,14 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     let mut verbose = false;
     let mut stop_build_on_errors = false;
     let mut watch = false;
+    let mut diagnostics_json = false;
     let mut arguments = arguments.into_iter().skip(1).peekable();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--verbose" => verbose = true,
             "--watch" | "-w" => watch = true,
             "--stopBuildOnErrors" => stop_build_on_errors = true,
+            "--diagnostics-json" => diagnostics_json = true,
             "--pretty" => {
                 pretty = arguments.peek().is_none_or(|next| next != "false");
                 if arguments
@@ -383,12 +405,30 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
         }
     };
     if watch {
-        return watch::run(&project, pretty, verbose, stop_build_on_errors);
+        return watch::run(
+            &project,
+            pretty,
+            verbose,
+            stop_build_on_errors,
+            diagnostics_json,
+        );
     }
-    build_once(&project, pretty, verbose, stop_build_on_errors)
+    build_once(
+        &project,
+        pretty,
+        verbose,
+        stop_build_on_errors,
+        diagnostics_json,
+    )
 }
 
-fn build_once(project: &Path, pretty: bool, verbose: bool, stop_build_on_errors: bool) -> ExitCode {
+fn build_once(
+    project: &Path,
+    pretty: bool,
+    verbose: bool,
+    stop_build_on_errors: bool,
+    diagnostics_json: bool,
+) -> ExitCode {
     let root = project
         .parent()
         .expect("canonical project has parent")
@@ -398,6 +438,10 @@ fn build_once(project: &Path, pretty: bool, verbose: bool, stop_build_on_errors:
         match error {
             GraphFailure::Boundary(message) => eprintln!("bluetsc: {message}"),
             GraphFailure::Diagnostic(diagnostic) => {
+                if diagnostics_json {
+                    eprintln!("{}", diagnostic.to_json());
+                    return ExitCode::FAILURE;
+                }
                 print!(
                     "{}",
                     native_cli::presentation::format(&[diagnostic], &graph.sources, pretty)
@@ -412,5 +456,11 @@ fn build_once(project: &Path, pretty: bool, verbose: bool, stop_build_on_errors:
             println!("    * {}", graph.display_path(project));
         }
     }
-    freshness::run(&graph, pretty, verbose, stop_build_on_errors)
+    freshness::run(
+        &graph,
+        pretty,
+        verbose,
+        stop_build_on_errors,
+        diagnostics_json,
+    )
 }

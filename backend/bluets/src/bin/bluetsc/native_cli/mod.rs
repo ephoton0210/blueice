@@ -69,17 +69,45 @@ fn run_with_mode(
             eprintln!("bluetsc: a command is required\n\n{}", usage());
             return ExitCode::FAILURE;
         }
-        Err(error) => return failure(&error, pretty, diagnostics_json, args::diagnostic(&error)),
+        Err(error) => {
+            let diagnostics = args::diagnostics(&error);
+            if diagnostics.is_empty() {
+                return failure(&error, pretty, diagnostics_json, None);
+            }
+            if diagnostics_json {
+                for diagnostic in diagnostics {
+                    eprintln!("{}", diagnostic.to_json());
+                }
+            } else {
+                print!(
+                    "{}",
+                    presentation::format(&diagnostics, &BTreeMap::new(), pretty)
+                );
+            }
+            return ExitCode::FAILURE;
+        }
     };
+    let show_config = args
+        .flags
+        .remove("showConfig")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    args.flags.remove("diagnostics-json");
+    let source_mode = !args.source_files.is_empty();
     let mut config_diagnostic = None;
     let mut config_sources = BTreeMap::new();
     let project_path = args.project.clone();
-    let mut invocation = match resolve_config_with_sources(
-        args.project,
-        &mut config_diagnostic,
-        &mut config_sources,
-        allow_references,
-    ) {
+    let resolved = if source_mode {
+        tsconfig::resolve_source_files(args.source_files, args.flags.clone())
+    } else {
+        resolve_config_with_sources(
+            args.project,
+            &mut config_diagnostic,
+            &mut config_sources,
+            allow_references,
+        )
+    };
+    let mut invocation = match resolved {
         Ok(invocation) => invocation,
         Err(error) => {
             let pretty = args
@@ -104,12 +132,6 @@ fn run_with_mode(
             return failure(&error, pretty, diagnostics_json, config_diagnostic);
         }
     };
-    let show_config = args
-        .flags
-        .remove("showConfig")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    args.flags.remove("diagnostics-json");
     if let Err(error) = tsconfig::apply_output_flags(&mut invocation, args.flags) {
         return fail(&error, pretty);
     }
@@ -152,6 +174,19 @@ fn run_with_mode(
         );
         return ExitCode::SUCCESS;
     }
+    let mut missing = Vec::new();
+    if source_mode {
+        invocation.entries.retain(|file| {
+            if file.is_file(){return true;}
+            let name=tsconfig::relative_text(&invocation.root,file);
+            let mut diagnostic=Diagnostic::error(blueice_bluets::DiagnosticCode::ModuleNotFound,SourceSpan::new("",0,0),"missing source file")
+                .with_typescript(6053,vec![name]);
+            if let Some(counterpart)=&mut diagnostic.typescript {
+                counterpart.message.push_str("\n  The file is in the program because:\n    Root file specified for compilation");
+            }
+            missing.push(diagnostic);false
+        });
+    }
     if let Err(error) = tsconfig::prepare(&mut invocation) {
         let source = project_path
             .file_name()
@@ -171,12 +206,14 @@ fn run_with_mode(
     let CompiledProject {
         mut summary,
         files,
-        diagnostics,
+        mut diagnostics,
         sources,
         emit_blocked,
         mut statistics,
         explanations,
     } = compile_project(&invocation, &loader, !no_emit && !no_emit_on_error);
+    summary.has_errors |= !missing.is_empty();
+    diagnostics.extend(missing);
     if let Some(inputs) = resolution_inputs {
         inputs.extend(files.iter().cloned());
         inputs.extend(loader.relative.observed_paths());
@@ -188,6 +225,16 @@ fn run_with_mode(
     }
     for diagnostic in &diagnostics {
         if diagnostics_json {
+            let mut diagnostic = diagnostic.clone();
+            if allow_references && !diagnostic.span.module.is_empty() {
+                if let Ok(path) = loader.source_path(&diagnostic.span.module) {
+                    let name = path.to_string_lossy().replace('\\', "/");
+                    diagnostic.span.module = name.clone();
+                    if let Some(counterpart) = &mut diagnostic.typescript {
+                        counterpart.span.module = name;
+                    }
+                }
+            }
             eprintln!("{}", diagnostic.to_json());
         }
     }

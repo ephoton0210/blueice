@@ -10,6 +10,7 @@ use serde_json::{Map, Value};
 pub(super) struct Args {
     pub(super) project: PathBuf,
     pub(super) flags: Map<String, Value>,
+    pub(super) source_files: Vec<PathBuf>,
 }
 impl Args {
     pub(super) fn parse(args: Vec<String>) -> Result<Self, String> {
@@ -17,6 +18,7 @@ impl Args {
         let mut project = None;
         let mut sources = Vec::new();
         let mut flags = Map::new();
+        let mut source_flags = Vec::new();
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--project" | "-p" => {
@@ -78,6 +80,36 @@ impl Args {
                         .ok_or_else(|| format!("{arg} requires a value"))?;
                     flags.insert(arg[2..].to_string(), Value::String(value));
                 }
+                "--target" | "--module" | "--moduleResolution" | "--rootDir" | "--lib"
+                | "--strict" => {
+                    source_flags.push(arg.clone());
+                    if arg == "--strict" {
+                        let value = match args.peek().map(String::as_str) {
+                            Some("false") => {
+                                args.next();
+                                false
+                            }
+                            Some("true") => {
+                                args.next();
+                                true
+                            }
+                            _ => true,
+                        };
+                        flags.insert("strict".into(), Value::Bool(value));
+                    } else {
+                        let value = args
+                            .next()
+                            .ok_or_else(|| format!("{arg} requires a value"))?;
+                        let value = if arg == "--lib" {
+                            Value::Array(
+                                value.split(',').map(|v| Value::String(v.into())).collect(),
+                            )
+                        } else {
+                            Value::String(value)
+                        };
+                        flags.insert(arg[2..].to_string(), value);
+                    }
+                }
                 _ if arg.starts_with('-') => {
                     return Err(format!("unknown compiler option `{arg}`"))
                 }
@@ -87,17 +119,26 @@ impl Args {
         if project.is_some() && !sources.is_empty() {
             return Err("--project cannot be mixed with source files".to_string());
         }
-        if !sources.is_empty() {
-            return Err(
-                "source-file invocations require the check/build command or --project".to_string(),
-            );
+        if sources.is_empty() {
+            // Project overrides keep their existing measured surface. These
+            // flags are newly admitted for native bare-source invocations.
+            if let Some(flag) = source_flags.first() {
+                return Err(format!("unknown compiler option `{flag}`"));
+            }
         }
         let project = match project {
             Some(path) if path.is_dir() => path.join("tsconfig.json"),
             Some(path) => path,
+            None if !sources.is_empty() => env::current_dir()
+                .map_err(|e| e.to_string())?
+                .join("tsconfig.json"),
             None => find_config()?,
         };
-        Ok(Self { project, flags })
+        Ok(Self {
+            project,
+            flags,
+            source_files: sources.into_iter().map(PathBuf::from).collect(),
+        })
     }
 }
 fn find_config() -> Result<PathBuf, String> {
@@ -120,7 +161,7 @@ pub(super) fn diagnostic(message: &str) -> Option<Diagnostic> {
             return None;
         }
         (5023, vec![format!("--{name}")])
-    } else if message.ends_with("requires a path") {
+    } else if message.ends_with("requires a path") || message.ends_with("requires a value") {
         (
             6044,
             vec![message
@@ -142,6 +183,22 @@ pub(super) fn diagnostic(message: &str) -> Option<Diagnostic> {
         )
         .with_typescript(code, arguments),
     )
+}
+
+pub(super) fn diagnostics(message: &str) -> Vec<Diagnostic> {
+    let mut result = diagnostic(message).into_iter().collect::<Vec<_>>();
+    if message == "--target requires a value" {
+        let values="'es5', 'es6', 'es2015', 'es2016', 'es2017', 'es2018', 'es2019', 'es2020', 'es2021', 'es2022', 'es2023', 'es2024', 'esnext'";
+        result.push(
+            Diagnostic::error(
+                blueice_bluets::DiagnosticCode::ParseError,
+                SourceSpan::new("", 0, 0),
+                message,
+            )
+            .with_typescript(6046, vec!["--target".into(), values.into()]),
+        );
+    }
+    result
 }
 
 pub(super) fn without_machine_flags(arguments: Vec<String>) -> Vec<String> {

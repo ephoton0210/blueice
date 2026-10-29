@@ -1,0 +1,557 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "cli-default",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {
+        "main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {
+        "main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "id": "cli-default-noemit",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-two-files",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "extra.ts",
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {
+        "extra.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.extra = void 0;\nexports.extra = 7;\n",
+        "main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {
+        "extra.js": {
+          "exit": 0,
+          "stdout": "7",
+          "stderr": ""
+        },
+        "main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "id": "cli-noemit-valid",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-noemit-error",
+      "exit": 2,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "main.ts",
+          "start": 217,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-emit-error-true",
+      "exit": 1,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "main.ts",
+          "start": 217,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-emit-error-false",
+      "exit": 2,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "main.ts",
+          "start": 217,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {
+        "main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {
+        "main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "id": "cli-project-mixed",
+      "exit": 1,
+      "diagnostics": [
+        {
+          "code": 5042,
+          "message": "Option 'project' cannot be mixed with source files on a command line.",
+          "module": null,
+          "start": null,
+          "length": null,
+          "related": []
+        }
+      ],
+      "selectedInputs": [],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-missing-file",
+      "exit": 2,
+      "diagnostics": [
+        {
+          "code": 6053,
+          "message": "File 'missing.ts' not found.\n  The file is in the program because:\n    Root file specified for compilation",
+          "module": null,
+          "start": null,
+          "length": null,
+          "related": []
+        }
+      ],
+      "selectedInputs": [],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-missing-target",
+      "exit": 1,
+      "diagnostics": [
+        {
+          "code": 6044,
+          "message": "Compiler option 'target' expects an argument.",
+          "module": null,
+          "start": null,
+          "length": null,
+          "related": []
+        },
+        {
+          "code": 6046,
+          "message": "Argument for '--target' option must be: 'es5', 'es6', 'es2015', 'es2016', 'es2017', 'es2018', 'es2019', 'es2020', 'es2021', 'es2022', 'es2023', 'es2024', 'esnext'.",
+          "module": null,
+          "start": null,
+          "length": null,
+          "related": []
+        }
+      ],
+      "selectedInputs": [],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-unknown-option",
+      "exit": 1,
+      "diagnostics": [
+        {
+          "code": 5023,
+          "message": "Unknown compiler option '--unrecognizedGm2'.",
+          "module": null,
+          "start": null,
+          "length": null,
+          "related": []
+        }
+      ],
+      "selectedInputs": [],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-show-config",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [],
+      "shown": {
+        "compilerOptions": {
+          "target": "es2022",
+          "module": "commonjs",
+          "strict": true,
+          "useDefineForClassFields": true,
+          "noImplicitAny": true,
+          "noImplicitThis": true,
+          "strictNullChecks": true,
+          "strictFunctionTypes": true,
+          "strictBindCallApply": true,
+          "strictPropertyInitialization": true,
+          "strictBuiltinIteratorReturn": true,
+          "alwaysStrict": true,
+          "useUnknownInCatchVariables": true
+        },
+        "files": [
+          "./main.ts"
+        ]
+      },
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-commonjs-emit",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {
+        "out/main.d.ts": "export declare const result: number;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "id": "cli-commonjs-only",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {
+        "out/main.d.ts": "export declare const result: number;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-commonjs-noemit",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-commonjs-wrong",
+      "exit": 2,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "main.ts",
+          "start": 217,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {
+        "out/main.d.ts": "export declare const result: string;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "id": "cli-esnext-emit",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {
+        "out/main.d.ts": "export declare const result: number;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "id": "cli-esnext-only",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {
+        "out/main.d.ts": "export declare const result: number;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-esnext-noemit",
+      "exit": 0,
+      "diagnostics": [],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {},
+      "imports": {},
+      "consumers": {
+        "accept": null,
+        "reject": null
+      },
+      "executions": {}
+    },
+    {
+      "id": "cli-esnext-wrong",
+      "exit": 2,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "module": "main.ts",
+          "start": 217,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "selectedInputs": [
+        "main.ts"
+      ],
+      "shown": null,
+      "outputs": {
+        "out/main.d.ts": "export declare const result: string;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      }
+    }
+  ],
+  "ownerControls": [
+    "continuation-keeps-canonical-reference-authority",
+    "native-state-hash-path-and-resource-validation",
+    "interchange-never-caches-pending-or-failed-checks",
+    "bare-source-owner-output-and-atomicity",
+    "watch-preserves-owner-current-resolution-policy",
+    "watch-lifecycle-and-bounded-work"
+  ]
+}

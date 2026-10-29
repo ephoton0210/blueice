@@ -5,7 +5,62 @@
 //! Physical display names come only from modules admitted by the file owner.
 use super::*;
 
-pub(super) fn qualify(diagnostics: &mut [Diagnostic], project: &Project, loader: &FileLoader) {
+pub(super) fn qualify(diagnostics: &mut Vec<Diagnostic>, project: &Project, loader: &FileLoader) {
+    let mut expanded = Vec::new();
+    let mut unavailable = Vec::new();
+    for diagnostic in diagnostics.drain(..) {
+        let missing = diagnostic.code == blueice_bluets::DiagnosticCode::ModuleNotFound
+            && diagnostic.span.module.starts_with("@reference-")
+            && !project.modules.contains_key(&diagnostic.span.module);
+        if missing {
+            if let Some((_, paths)) = diagnostic
+                .message
+                .split_once("missing referenced build output\0")
+            {
+                let mut paths = paths.split('\0');
+                if let (Some(output), Some(source)) = (paths.next(), paths.next()) {
+                    let mut found = false;
+                    for module in project.modules.values() {
+                        for declaration in &module.declarations {
+                            let blueice_bluets::Declaration::Import(import) = declaration else {
+                                continue;
+                            };
+                            if project.resolved_module(&module.id, &import.specifier)
+                                != Some(diagnostic.span.module.as_str())
+                            {
+                                continue;
+                            }
+                            let item = Diagnostic::error(
+                                diagnostic.code,
+                                import.specifier_span.clone(),
+                                diagnostic.message.clone(),
+                            )
+                            .with_typescript(6305, vec![output.into(), source.into()])
+                            .with_source_position(&module.source);
+                            expanded.push(item);
+                            unavailable.push(import.span.clone());
+                            found = true;
+                        }
+                    }
+                    if found {
+                        continue;
+                    }
+                }
+            }
+        }
+        expanded.push(diagnostic);
+    }
+    // A declaration that was never loaded does not establish a runtime/type
+    // grant. Keep its primary missing-output error at the import, rather than
+    // adding an unrelated refusal for a successfully admitted type-only module.
+    expanded.retain(|diagnostic| {
+        !(diagnostic.code == blueice_bluets::DiagnosticCode::InvalidDeclarationFile
+            && unavailable.contains(&diagnostic.span)
+            && diagnostic
+                .message
+                .contains("declaration modules are type-only"))
+    });
+    *diagnostics = expanded;
     for diagnostic in diagnostics {
         let Some(counterpart) = &mut diagnostic.typescript else {
             continue;

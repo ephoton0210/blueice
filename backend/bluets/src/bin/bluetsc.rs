@@ -58,10 +58,14 @@ fn main() -> ExitCode {
     {
         return build_graph::run(arguments);
     }
-    if arguments
-        .first()
-        .is_none_or(|arg| arg.starts_with('-') && !matches!(arg.as_str(), "--help" | "-h"))
-    {
+    if arguments.first().is_none_or(|arg| {
+        !matches!(
+            arg.as_str(),
+            "check" | "build" | "fetch-declarations" | "--help" | "-h"
+        ) && (arg.starts_with('-')
+            || Path::new(arg).extension().is_some()
+            || Path::new(arg).is_file())
+    }) {
         return native_cli::run(arguments);
     }
     let args = match parse_args(arguments.into_iter()) {

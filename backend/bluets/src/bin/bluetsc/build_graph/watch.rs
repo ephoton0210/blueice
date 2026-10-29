@@ -21,11 +21,18 @@ pub(super) fn run(
     pretty: bool,
     verbose: bool,
     stop_build_on_errors: bool,
+    diagnostics_json: bool,
 ) -> ExitCode {
     let root = project.parent().expect("canonical project has parent");
     let stop = stop_channel();
     let mut cycle = 0usize;
-    let result = super::build_once(project, pretty, verbose, stop_build_on_errors);
+    let result = super::build_once(
+        project,
+        pretty,
+        verbose,
+        stop_build_on_errors,
+        diagnostics_json,
+    );
     let mut baseline = match snapshot(root) {
         Ok(snapshot) => snapshot,
         Err(message) => {
@@ -72,7 +79,13 @@ pub(super) fn run(
         }
         println!("File change detected; starting build");
         cycle += 1;
-        let result = super::build_once(project, pretty, verbose, stop_build_on_errors);
+        let result = super::build_once(
+            project,
+            pretty,
+            verbose,
+            stop_build_on_errors,
+            diagnostics_json,
+        );
         baseline = match snapshot(root) {
             Ok(snapshot) => snapshot,
             Err(message) => {

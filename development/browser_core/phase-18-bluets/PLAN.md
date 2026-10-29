@@ -9,24 +9,24 @@
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-28).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-29).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 15,042 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 15,344 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 14,438/14,445 (99.9515%); 3 open, 4 refused observations |
-| Separate controls | 539 native-reference + 58 BlueTS owner = 597; excluded from direct agreement |
-| Case labels | 15,035 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 116 suites / 275 ignored Rust functions; not a case denominator |
-| Suite labels | 111 scoped closed, 1 open, 4 refused |
+| Direct agreement | 14,734/14,741 (99.9525%); 3 open, 4 refused observations |
+| Separate controls | 539 native-reference + 64 BlueTS owner = 603; excluded from direct agreement |
+| Case labels | 15,337 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 117 suites / 277 ignored Rust functions; not a case denominator |
+| Suite labels | 112 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 15,042 recorded case expectations pass; expected differences/refusals are not
+All 15,344 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:aa78e53136e7b27cc8e8f1826266b888f577b5ed`.
-Input graph SHA-256: `31eca41227834e33af29d809479929895d478851d891dd383ece10a3de2c57d4`.
+Compiler/oracle source: `backend-tree:281dd01815d2d999b2883ebc6d3e12894d493d0f`.
+Input graph SHA-256: `219bad6f15e3c3fe7a5dbd4bf5de10a629ff7e4c688d9168d4568bca91f47bf9`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -15107,3 +15107,207 @@ unmeasured feature rows and the direct runtime profile retain their recorded
 open scope; full parity stays OFF. Implementation, frozen native authority,
 matching complete measurement and updated plans form one G-D2 commit, followed
 by the authorized automatic push.
+
+## Phase L — G-M2 implementation
+
+### Native-first build/state/CLI/watch matrix — 2026-10-29
+
+Start from clean `8e979d851974e4325953621a5a731a26228cf92a`. Restore pinned
+TypeScript 5.9.3 and Acorn 8.15.0 in `/private/tmp/bluets-gm2-oracles.p1cN1A`
+with install scripts disabled; no workspace dependency changes. The native-only
+recorder precedes production and freezes **296 observations**: 96 build rows
+(24 graphs × cold/retry/recover/warm), 160 state rows (32 workflows × five
+cross-use steps), 20 bare-source CLI cases and 20 actual watch cycles. Runtime
+modules cross CommonJS/ESNext under strict ES2022 and explicit ES2022 libraries;
+bare CLI controls additionally retain native defaults and parse errors.
+
+The native probe distinguishes default continuation from stop-on-error, including
+independent branches, missing upstream declarations, retry exit status and
+declaration-signature propagation. Native state seeds retain original versions,
+signatures, root/options and native library hashes. Only filesystem compiler-lib
+identities normalize to `@typescript/lib/`; no source, declaration, diagnostic or
+hash is rewritten. Pinned `readBuilderProgram` verifies actual owned file-version
+and declaration-signature maps. Native consumers must read BlueTS-produced state
+and perform both no-op and changed builds, followed by BlueTS consumption of the
+native-updated state; filenames alone prove nothing.
+
+Watch fixtures run real native polling watchers with explicit declaration roots.
+Add/delete updates the selected declaration list and imports together; burst
+writes end with different bytes. A declaration input remains owner-supplied at
+the relative location used by the emitted declaration instead of being assumed
+to copy during emit. Each of the 20 cycles passes a separate clean native build,
+artifact consumers and actual Node execution. Unlisted declaration additions
+under native wildcard watchers are not claimed by this finite matrix. The
+existing BlueTS polling implementation already passes this frozen scope.
+
+Input SHA-256: `a5d22c8a0fa872949fd85d90ee8e08f056382a04d674be76023a8a61939bc920`.
+Initial aggregate capture SHA-256 (retained as `reference.capture-v1.json`):
+`260c0b0a2c2bb3b0b16651d1d9b9ea6adf7df51629861ef20eb84e1113253e2a`.
+Pinned library-hash table SHA-256:
+`eacc1ad2ee84c994b740d50115d5fe8ed5862cb0c4e8d7bbc6f8d9e7ba14d124`.
+The native freeze (`/private/tmp/bluets-gm2-native-freeze.log`) contains **506
+declaration files**, **556 consumer observations** and **408 successful actual
+executions**. All six owner controls are separate from native agreement. Leave
+`BLUEICE_WRITE_GM2` unset after this freeze, preserve all 15,042 old case
+identities/classifications and old native fixture bytes, and keep full parity OFF.
+
+The public pre-production replay (`/private/tmp/bluets-gm2-before.log`) compiles
+and reports **5 passed / 4 failed / 2 ignored** in 19.62 seconds. The frozen
+manifest, three path controls and actual watch/clean replay pass. Build commands
+reject machine diagnostics and still stop at the first default error; native
+state seeds do not produce the required reuse; both flagged and actual file-first
+CLI forms fail. These failures establish the public boundaries before production.
+G-M2 stays unchecked until implementation, owner checks, complete source-bound
+measurement and all common gates pass together. No fresh VM/hosted-CI gate is
+added to this leaf; accepted historical Windows evidence keeps its source scope.
+
+### Implementation and complete focused replay
+
+The first implementation passes eight ordinary tests and leaves 170 build
+differences (`/private/tmp/bluets-gm2-first-implementation.log`). A `.js` reference
+was incorrectly treated as an unlisted JavaScript input once its output existed;
+coverage validation now performs native TypeScript extension substitution first.
+Failed/pending private state cannot create a cache hit, while emitted declarations
+can still let independent/default-dependent projects continue. The private disk
+epoch becomes 22. Execution, state verification/layout and publication are split
+into small modules; watch retains its working bounded polling implementation.
+
+Independent full native status probes expose a recorder omission: TS6382/TS6383
+(`not-built` propagation), TS6354 (unchanged dependency declarations) and TS6359
+(timestamp refresh) were not classified. The original aggregate and build capture
+remain byte-for-byte as `reference.capture-v1.json` and `build.capture-v1.json`.
+The native-only build recorder is corrected and rerun on the same 96 frozen
+inputs; an assertion now rejects any unclassified build/current/skip/timestamp
+status instead of silently dropping it. Raw native evidence is in
+`/private/tmp/bluets-gm2-native-retry-raw.log` and
+`/private/tmp/bluets-gm2-build-capture-correction.log`. No source, diagnostic,
+declaration, consumer or execution expectation changes. Complete corrected
+aggregate SHA-256:
+`70fa6ef84b2a14f314ecfa74e1901b7bcaa825026ffc7978b54a7082d760a643`.
+
+Signature-current projects now refresh timestamps without recompiling; default
+continuation and stop-on-error retain their native exits, including errored emit
+versus successful output/timestamp work. Missing referenced declarations report
+TS6305 at the original import span, without an unrelated refusal for a declaration
+that was never loaded; a successfully admitted declaration-only module retains
+its runtime-import refusal. The second replay leaves eight missing-output
+diagnostic differences, then import-site provenance fixes those. All six owner
+controls and the ordinary matrix pass **15/15** before live native replay.
+
+Bare-source commands now use a canonical current-directory owner without reading
+a nearby tsconfig/overlay. Native defaults, selected files, flags, diagnostics,
+source-only emission and showConfig pass both flags-first and actual file-first
+commands, while existing project-override refusals retain their measured scope.
+Native interchange verifies exact options, roots, pinned library hashes, source
+versions and declaration signatures before reuse. Metadata cannot select extra
+sources/output paths, pending/error/unverifiable states rebuild, and publication
+remains atomic and owner-confined. Production never invokes TypeScript or Node.
+
+The complete focused replay (`/private/tmp/bluets-gm2-focused-native.log`) passes
+**17/17 tests, zero ignored/filtered**, in **89.28 seconds**. It includes both
+ignored functions: full native reproduction and all 296 actual observations,
+independent consumers/executions/syntax checks, real native consumption of BlueTS
+state and subsequent BlueTS consumption of native-updated state. Every consumed
+owned version/signature map is checked against the previous producer. The six
+owner controls cover canonical references, state/hash/path/resource validation,
+failed/pending checks, bare-source boundaries, current package watch resolution
+and bounded watch lifetime. Full ordinary preflight and immutable cohort follow;
+G-M2 remains unchecked until they and the common audits pass.
+
+Workspace Rustfmt 1.95.0, warnings-denied two-crate all-target Clippy and all
+15 Node tooling tests pass. All changed production files stay below 1,200 lines
+(maximum 1,004 after the routing correction). The complete ordinary preflight
+finds one old CLI routing
+regression: `compile main.ts` was interpreted as a pair of native source names,
+losing the existing unknown-command error/usage. Routing is tightened to flags,
+pathnames with an extension or an actual existing file, preserving both native
+file-first commands and legacy command errors. The ten inventory failures at
+this point remain the expected pre-publication source/measurement mismatch;
+the remaining ordinary targets continue before the correction replay.
+
+The complete ordinary preflight finishes all **177 targets** in **1,690.19
+seconds**: 1,394 passed, 11 failed, 277 ignored and zero filtered. The failures
+are confined to those ten stale inventory checks and the one CLI routing check;
+all other ordinary regressions pass. The routing correction is replayed through
+the existing 18-test public CLI suite and the full G-M2 suite before freezing the
+implementation for its complete source-bound measurement.
+
+The corrected public replay (`/private/tmp/bluets-gm2-corrected-focused.log`)
+passes **18/18 legacy CLI tests and 17/17 G-M2 tests**, with zero ignored or
+filtered; the full G-M2 portion takes **101.71 seconds**. The two-crate
+all-target warnings-denied Clippy replay also passes
+(`/private/tmp/bluets-gm2-clippy-final.log`). The implementation and all oracle
+inputs/tools are then frozen at
+`backend-tree:281dd01815d2d999b2883ebc6d3e12894d493d0f`, input graph SHA-256
+`219bad6f15e3c3fe7a5dbd4bf5de10a629ff7e4c688d9168d4568bca91f47bf9`.
+The regenerated catalog selects **117 complete suites / 277 ignored functions**.
+The immutable full cohort is running in `/private/tmp/bluets-gm2-measurement`;
+this is not yet a completed measurement or permission to tick G-M2.
+
+### Complete immutable measurement
+
+The immutable runner subsequently passes **117/117 suites, 660/660 tests**, with
+**all 277 selected ignored functions executed**, zero failed/ignored/filtered,
+in **3,058.91 seconds**. The darwin-arm64 run starts at
+`2026-10-29T03:03:00.567Z` and finishes at `2026-10-29T03:53:54.593Z`.
+`COMPATIBILITY_MEASUREMENT.json` is byte-identical to that completed run;
+SHA-256: `5ab5f9c3be2a7d16724075fd733494dbd663191f5ee25c6b15344b9f268a5ce4`.
+Source tree and graph remain the frozen values above. The retained raw run is
+`/private/tmp/bluets-gm2-measurement` and runner log is
+`/private/tmp/bluets-gm2-measurement-runner.log`.
+
+Independent audit verifies all **117 log hashes and 76 oracle-tool hashes**,
+preserves all **15,042 previous suite-qualified identities and classifications**
+and all old native fixture bytes, and adds only **302 G-M2 assertions**: 296
+native observations plus six owner controls. The regenerated inventory records
+**15,344 checked assertions**, **14,734/14,741 direct agreements**, three open,
+four refused, 539 native-reference controls and 64 owner controls. The existing
+differences/refusals remain explicit; broader G-M2 and full parity stay open/OFF.
+
+After publishing the matching measurement, all **22 inventory tests**, **13
+Python tooling tests** and **15 Node tooling tests** pass. The final unfiltered
+ordinary two-crate run is now executing; G-M2 remains unchecked until that run
+and the final consistency/format checks finish.
+
+### Acceptance — 2026-10-29
+
+The final unfiltered ordinary two-crate run passes **177/177 targets and
+1,405/1,405 tests**, zero failed/filtered, in **1,478.95 seconds**
+(`/private/tmp/bluets-gm2-ordinary-final.log`). Its 277 ignored functions have
+all passed separately in the complete immutable cohort, so the complete gate
+covers **1,682 ordinary plus selected ignored tests**. The ten earlier inventory
+failures and the legacy CLI routing failure are all resolved. Final workspace
+Rustfmt 1.95.0 also passes (`/private/tmp/bluets-gm2-fmt-final.log`), as do
+warnings-denied all-target Clippy, all 22 inventory checks, 13 Python tooling
+tests and 15 Node tooling tests. Final staged source/case checks, all four status
+documents, log/tool hashes, fixture preservation, source headers, module sizes
+and whitespace audits pass. No implementation, fixture or oracle-tool bytes
+changed after the frozen source tree.
+
+The recorded commands use `CARGO_INCREMENTAL=0`, dev/test debug info disabled,
+`FORCE_COLOR=0`, pinned `BLUEICE_BLUETSC_ORACLE` / `BLUEICE_ACORN_ORACLE` from the
+temporary installation above, and
+`BLUEJS_REGEXP_WORKER=target/debug/bluejs-regexp-worker` as an absolute path.
+Cargo commands run sequentially on the shared target with Rust 1.98.0 and Node
+26.7.0; the compiler versions are also retained by the measurement.
+
+```sh
+cargo test --offline -p blueice-bluets --test coverage_bluets_cli --test gm2_build_interop -- --include-ignored
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs --output-dir /private/tmp/bluets-gm2-measurement --staged-source
+cargo test --offline -p blueice-bluets -p blueice-bluets-bluejs --no-fail-fast
+cargo clippy --offline -p blueice-bluets -p blueice-bluets-bluejs --all-targets -- -D warnings
+env RUSTFMT=/Users/ephoton/.rustup/toolchains/1.95.0-aarch64-apple-darwin/bin/rustfmt cargo fmt --all -- --check
+target/debug/examples/compatibility_inventory --check-cases-staged
+target/debug/examples/compatibility_inventory --check-staged
+python3 development/browser_core/phase-18-bluets/tools/account_inventory_rows.py --check
+python3 development/browser_core/phase-18-bluets/tools/check_compatibility_status.py --check
+```
+
+G-M2 is now checked only for its frozen finite scope, with implementation and
+matching measurement submitted together. Broader continuation/configuration
+combinations, other native state versions/options, unlisted watch inputs and the
+remaining native CLI/library catalog stay in the open G-M2 inventory row. Full
+parity remains OFF. The TODO now has **seven unchecked packages; next is G-E1**.
+No fresh Windows, workspace milestone, hosted-CI or coverage result is claimed;
+accepted historical Windows evidence keeps its original source scope and the
+deferred platform work remains G-M3.

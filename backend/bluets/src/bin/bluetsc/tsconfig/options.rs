@@ -78,7 +78,9 @@ pub(super) fn validate(
         .ok_or_else(|| "compilerOptions must be an object".to_string())?;
     let mut result = Map::new();
     for (name, value) in object {
-        if name == "composite" && !reader.allows_build_options() {
+        if matches!(name.as_str(), "composite" | "tsBuildInfoFile")
+            && !reader.allows_build_options()
+        {
             return Err("unknown or unsupported compiler option `composite`".into());
         }
         if !BOOLEAN.contains(&name.as_str())
@@ -107,6 +109,7 @@ pub(super) fn validate(
                     | "typeRoots"
                     | "maxNodeModuleJsDepth"
                     | "customConditions"
+                    | "tsBuildInfoFile"
             )
         {
             return Err(format!("unknown or unsupported compiler option `{name}`"));
@@ -208,7 +211,7 @@ pub(super) fn validate(
                 "jsxFactory" | "jsxFragmentFactory" | "jsxImportSource" => {
                     Value::String(string.to_string())
                 }
-                "outDir" | "rootDir" | "declarationDir" => {
+                "outDir" | "rootDir" | "declarationDir" | "tsBuildInfoFile" => {
                     let path = clean_path(&directory.join(string));
                     reader.authorize_future(&path, name, false)?;
                     Value::String(path.to_string_lossy().into_owned())

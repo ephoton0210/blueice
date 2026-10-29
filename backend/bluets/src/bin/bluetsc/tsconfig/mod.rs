@@ -16,8 +16,10 @@ mod options;
 mod output_layout;
 mod output_options;
 mod resolution_options;
+mod source_files;
 mod type_inclusion;
 pub(super) use output_options::apply_output_flags;
+pub(super) use source_files::resolve as resolve_source_files;
 
 #[derive(Debug)]
 pub(super) struct ProjectConfig {

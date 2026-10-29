@@ -27,7 +27,7 @@ GAPS = {
     "G-E3": "decorator_targets", "G-E4": "output_options",
     "G-E5": "source_map_tokens_oracle", "G-D1": "gd1_declarations",
     "G-D2": "gd2_declaration_maps", "G-M1": "gm1_resolver_compositions",
-    "G-M2": "project_build_invalidation", "G-M3": "typescript_oracle",
+    "G-M2": "gm2_build_interop", "G-M3": "typescript_oracle",
     "G-C1": "diagnostic_source_families", "G-C2": "strictness_flags",
     "G-C3": "jsx_typing_extras",
 }

@@ -1,0 +1,922 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "imported-commonjs-cold",
+      "step": "cold",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "imported-commonjs-edit",
+      "step": "edit",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "imported-commonjs-add",
+      "step": "add",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "extra.d.ts",
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../extra';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../extra';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "imported-commonjs-burst",
+      "step": "burst",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "extra.d.ts",
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../extra';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../extra';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "imported-commonjs-delete",
+      "step": "delete",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "imported-esnext-cold",
+      "step": "cold",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    },
+    {
+      "id": "imported-esnext-edit",
+      "step": "edit",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    },
+    {
+      "id": "imported-esnext-add",
+      "step": "add",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "extra.d.ts",
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../extra';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../extra';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    },
+    {
+      "id": "imported-esnext-burst",
+      "step": "burst",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "extra.d.ts",
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../extra';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../extra';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    },
+    {
+      "id": "imported-esnext-delete",
+      "step": "delete",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "src/main.ts",
+        "types.d.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from '../types';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    },
+    {
+      "id": "package-commonjs-cold",
+      "step": "cold",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "package-commonjs-edit",
+      "step": "edit",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "package-commonjs-add",
+      "step": "add",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/extra.d.ts",
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg/extra';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg/extra';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "package-commonjs-burst",
+      "step": "burst",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/extra.d.ts",
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg/extra';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg/extra';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "package-commonjs-delete",
+      "step": "delete",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "\"use strict\";\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = 42;\n"
+      }
+    },
+    {
+      "id": "package-esnext-cold",
+      "step": "cold",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    },
+    {
+      "id": "package-esnext-edit",
+      "step": "edit",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    },
+    {
+      "id": "package-esnext-add",
+      "step": "add",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/extra.d.ts",
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg/extra';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg/extra';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    },
+    {
+      "id": "package-esnext-burst",
+      "step": "burst",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/extra.d.ts",
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg/extra';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg/extra';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    },
+    {
+      "id": "package-esnext-delete",
+      "step": "delete",
+      "exit": 0,
+      "events": [
+        {
+          "kind": "build",
+          "project": "tsconfig.json"
+        }
+      ],
+      "diagnostics": [],
+      "selectedInputs": [
+        "node_modules/pkg/types.d.ts",
+        "src/main.ts"
+      ],
+      "outputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      },
+      "imports": {},
+      "consumers": {
+        "accept": [],
+        "reject": [
+          {
+            "code": 2322,
+            "message": "Type 'number' is not assignable to type 'boolean'.",
+            "module": "consumer.ts",
+            "start": 43,
+            "length": 2,
+            "related": []
+          }
+        ]
+      },
+      "executions": {
+        "out/main.js": {
+          "exit": 0,
+          "stdout": "42",
+          "stderr": ""
+        }
+      },
+      "cleanOutputs": {
+        "out/main.d.ts": "import type { Value } from 'pkg';\nexport declare const result: Value;\n",
+        "out/main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport const result = 42;\n"
+      }
+    }
+  ],
+  "ownerControls": [
+    "continuation-keeps-canonical-reference-authority",
+    "native-state-hash-path-and-resource-validation",
+    "interchange-never-caches-pending-or-failed-checks",
+    "bare-source-owner-output-and-atomicity",
+    "watch-preserves-owner-current-resolution-policy",
+    "watch-lifecycle-and-bounded-work"
+  ]
+}

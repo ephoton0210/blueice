@@ -374,10 +374,25 @@ impl FileLoader {
                     .map(|index| (runtime, index))
             })
         {
-            let output =
-                self.references.values().nth(index).ok_or_else(|| {
+            let (source, output) =
+                self.references.iter().nth(index).ok_or_else(|| {
                     format!("module `{module_id}` is not a referenced declaration")
                 })?;
+            let path = &output.declaration;
+            let canonical = fs::canonicalize(path).map_err(|error| {
+                if error.kind() == io::ErrorKind::NotFound {
+                    format!(
+                        "missing referenced build output\0{}\0{}",
+                        path.display(),
+                        source.display()
+                    )
+                } else {
+                    format!("cannot read referenced declaration: {error}")
+                }
+            })?;
+            if canonical != *path || !canonical.is_file() {
+                return Err("referenced declaration is not an authorized regular file".into());
+            }
             if runtime {
                 let sidecar = output.runtime.as_ref().ok_or_else(|| {
                     format!("module `{module_id}` has no authorized runtime output")
@@ -387,12 +402,6 @@ impl FileLoader {
                 if canonical != *sidecar || !canonical.is_file() {
                     return Err("referenced runtime is not an authorized regular file".into());
                 }
-            }
-            let path = &output.declaration;
-            let canonical = fs::canonicalize(path)
-                .map_err(|error| format!("cannot read referenced declaration: {error}"))?;
-            if canonical != *path || !canonical.is_file() {
-                return Err("referenced declaration is not an authorized regular file".into());
             }
             return Ok(canonical);
         }

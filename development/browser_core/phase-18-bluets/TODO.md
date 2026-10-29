@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-28).**
+**Current BlueTS / BlueTSC compatibility status (2026-10-29).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 15,042 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 15,344 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 14,438/14,445 (99.9515%); 3 open, 4 refused observations |
-| Separate controls | 539 native-reference + 58 BlueTS owner = 597; excluded from direct agreement |
-| Case labels | 15,035 scoped closed (including controls), 3 open, 4 refused |
-| Suite inventory | 116 suites / 275 ignored Rust functions; not a case denominator |
-| Suite labels | 111 scoped closed, 1 open, 4 refused |
+| Direct agreement | 14,734/14,741 (99.9525%); 3 open, 4 refused observations |
+| Separate controls | 539 native-reference + 64 BlueTS owner = 603; excluded from direct agreement |
+| Case labels | 15,337 scoped closed (including controls), 3 open, 4 refused |
+| Suite inventory | 117 suites / 277 ignored Rust functions; not a case denominator |
+| Suite labels | 112 scoped closed, 1 open, 4 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 214 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 15,042 recorded case expectations pass; expected differences/refusals are not
+All 15,344 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,19 +33,19 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:aa78e53136e7b27cc8e8f1826266b888f577b5ed`.
-Input graph SHA-256: `31eca41227834e33af29d809479929895d478851d891dd383ece10a3de2c57d4`.
+Compiler/oracle source: `backend-tree:281dd01815d2d999b2883ebc6d3e12894d493d0f`.
+Input graph SHA-256: `219bad6f15e3c3fe7a5dbd4bf5de10a629ff7e4c688d9168d4568bca91f47bf9`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
 
-**Current work (2026-10-28):** A–J and K.1–K.14 are the completed baseline,
+**Current work (2026-10-29):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, G-T1
-(both stages), G-T2–G-T10, G-M1 and G-D1–G-D2 are complete for their scopes below;
-8 packages remain unchecked. Next: G-M2.**
+(both stages), G-T2–G-T10, G-M1–G-M2 and G-D1–G-D2 are complete for their scopes below;
+7 packages remain unchecked. Next: G-E1.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -624,7 +624,7 @@ Existing measured behavior is reused; it is not implemented again.
     evidence are in [PLAN](PLAN.md#phase-l--g-d2-implementation). The broader
     G-D2 row stays open; full parity remains OFF.
 
-- [ ] **G-M2 — Native build continuation, state interchange and watch integration.**
+- [x] **G-M2 — Native build continuation, state interchange and watch integration.**
   - **Scope:** default `--build` error continuation (distinct from
     `--stopBuildOnErrors`), pinned native `.tsbuildinfo` interchange, direct source-file
     CLI invocations, and imported/package watch edit/add/delete/burst sequences.
@@ -634,6 +634,44 @@ Existing measured behavior is reused; it is not implemented again.
     and bare-source options follow the frozen CLI matrix. Keep owner-current
     manifest/nearer-package/repointed-symlink invalidation and owner-escape refusal
     as explicit policy differences, not weakened success criteria.
+  - **Frozen minimum (2026-10-29):** `gm2_build_interop/cases.json` and the native
+    reference name **296 observations** before production changes: 96 cold,
+    retry, recovery and warm build observations across chain/parallel/branch,
+    CommonJS/ESNext, `noEmitOnError` and `stopBuildOnErrors`; 160 observations
+    across four state forms, both modules, runtime/declaration-only output and
+    default/custom state paths; 20 bare-source CLI controls; and 20 actual
+    imported/package watch cycles. Watch uses named polling options and explicit
+    declaration input selection, updated together on add/delete. Unlisted-input
+    watch combinations are outside this finite matrix.
+  - **Acceptance:** exact ordered build/current/signature-current/timestamp/
+    blocked/skip events, exit codes,
+    complete primary/related diagnostics and UTF-16 positions agree. Compare
+    selected inputs, artifact inventories, **506 byte-exact declarations**, retained
+    imports, **556 independent consumer observations** and **408 actual executions**.
+    State cross-use requires real pinned `readBuilderProgram` parsing of BlueTS
+    version/signature maps, native no-op and edit consumption, and BlueTS reuse
+    of native-produced states; a renamed foreign file is not acceptance. Every
+    watch cycle also equals its fresh build. Do not normalize declarations or
+    erase error/pending state to turn a failure into a cache hit.
+  - **Owner/gates:** six controls cover canonical continuation authority, bounded
+    state/hash/path validation, failed/pending-check invalidation, bare-source
+    root/output atomicity, owner-current watch resolution and bounded watch
+    lifecycle. Preserve all **15,042 previous case identities/classifications**
+    and old native fixture bytes. Complete focused and broad regressions,
+    immutable full-cohort measurement, unfiltered ordinary two-crate tests,
+    format, warnings-denied Clippy and all source/case/tool/status audits before
+    checking the item or committing implementation with matching measurements.
+  - **Completion (2026-10-29):** all 296 native observations, 506 byte-exact
+    declarations, 556 consumer observations, 408 actual executions and six owner
+    controls pass. Real native no-op/edit consumption and BlueTS reuse prove
+    bidirectional state interchange; every watch cycle equals its fresh build.
+    The immutable cohort passes **117 suites / 660 tests / all 277 ignored
+    functions**; the final unfiltered ordinary gate passes **177 targets / 1,405
+    tests**. All 15,042 previous case identities/classifications and old native
+    fixture bytes remain unchanged. Format, warnings-denied Clippy and all
+    source/case/tool/status audits pass. Backend tree `281dd018` and complete
+    evidence are in [PLAN](PLAN.md#phase-l--g-m2-implementation). The broader
+    G-M2 row stays open; full parity remains OFF.
 
 ### P3 — remaining emit, mapping and JSX/decorator combinations
 
