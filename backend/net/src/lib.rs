@@ -327,7 +327,10 @@ pub struct ScriptRequest {
 /// What came back for one hop of a [`ScriptRequest`].
 pub enum ScriptHop {
     /// A redirect target, resolved; nothing was requested from it.
-    Redirect { location: String, status: u16 },
+    Redirect {
+        location: String,
+        status: u16,
+    },
     Response {
         status: u16,
         status_text: String,
@@ -344,10 +347,26 @@ fn forbidden_request_header(name: &str) -> bool {
         || name.starts_with("proxy-")
         || matches!(
             name.as_str(),
-            "accept-charset" | "accept-encoding" | "access-control-request-headers"
-                | "access-control-request-method" | "connection" | "content-length" | "cookie"
-                | "cookie2" | "date" | "dnt" | "expect" | "host" | "keep-alive" | "origin"
-                | "referer" | "set-cookie" | "te" | "trailer" | "transfer-encoding" | "upgrade"
+            "accept-charset"
+                | "accept-encoding"
+                | "access-control-request-headers"
+                | "access-control-request-method"
+                | "connection"
+                | "content-length"
+                | "cookie"
+                | "cookie2"
+                | "date"
+                | "dnt"
+                | "expect"
+                | "host"
+                | "keep-alive"
+                | "origin"
+                | "referer"
+                | "set-cookie"
+                | "te"
+                | "trailer"
+                | "transfer-encoding"
+                | "upgrade"
                 | "via"
         )
 }
@@ -366,7 +385,9 @@ pub fn fetch_script_request_hop(
         method.as_str(),
         "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS"
     ) {
-        return Err(FetchError::Request(format!("method {method} is not allowed")));
+        return Err(FetchError::Request(format!(
+            "method {method} is not allowed"
+        )));
     }
     let agent = navigation_transport::agent(ResponseCancellation::default());
     let mut builder = ureq::http::Request::builder()
@@ -406,7 +427,9 @@ pub fn fetch_script_request_hop(
                 .flatten()
         })
         .collect();
-    let limit = u64::try_from(max_bytes).unwrap_or(u64::MAX).saturating_add(1);
+    let limit = u64::try_from(max_bytes)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
     match response.body_mut().with_config().limit(limit).read_to_vec() {
         Ok(body) if body.len() > max_bytes => Ok(ScriptHop::TooLarge),
         Ok(body) => Ok(ScriptHop::Response {
@@ -713,7 +736,8 @@ mod tests {
             let (mut stream, _) = listener.accept().unwrap();
             let mut buf = [0u8; 4096];
             let n = stream.read(&mut buf).unwrap_or(0);
-            tx.send(String::from_utf8_lossy(&buf[..n]).to_string()).unwrap();
+            tx.send(String::from_utf8_lossy(&buf[..n]).to_string())
+                .unwrap();
             stream
                 .write_all(b"HTTP/1.1 201 Created\r\nX-Reply: yes\r\nSet-Cookie: s=1\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
                 .unwrap();
@@ -736,26 +760,53 @@ mod tests {
         let sent = rx.recv().unwrap().to_ascii_lowercase();
         assert!(sent.starts_with("post /api"));
         assert!(sent.contains("x-custom: 1") && sent.contains("application/json"));
-        assert!(!sent.contains("secret=1"), "a script cannot set Cookie: {sent}");
+        assert!(
+            !sent.contains("secret=1"),
+            "a script cannot set Cookie: {sent}"
+        );
         assert!(sent.ends_with("{\"a\":1}"));
-        let ScriptHop::Response { status, status_text, headers, body } = hop else {
+        let ScriptHop::Response {
+            status,
+            status_text,
+            headers,
+            body,
+        } = hop
+        else {
             panic!("expected a response")
         };
-        assert_eq!((status, status_text.as_str(), body.as_slice()), (201, "Created", &b"ok"[..]));
+        assert_eq!(
+            (status, status_text.as_str(), body.as_slice()),
+            (201, "Created", &b"ok"[..])
+        );
         assert!(headers.iter().any(|(k, v)| k == "x-reply" && v == "yes"));
-        assert!(!headers.iter().any(|(k, _)| k == "set-cookie"), "cookies are not exposed");
+        assert!(
+            !headers.iter().any(|(k, _)| k == "set-cookie"),
+            "cookies are not exposed"
+        );
     }
 
     #[test]
     fn script_requests_refuse_unknown_methods_and_oversized_bodies() {
         let bad = fetch_script_request_hop(
-            &ScriptRequest { method: "TRACE".into(), url: "http://127.0.0.1:1/".into(), headers: vec![], trusted_headers: vec![], body: vec![] },
+            &ScriptRequest {
+                method: "TRACE".into(),
+                url: "http://127.0.0.1:1/".into(),
+                headers: vec![],
+                trusted_headers: vec![],
+                body: vec![],
+            },
             10,
         );
         assert!(matches!(bad, Err(FetchError::Request(_))));
         let url = serve_once("HTTP/1.1 200 OK\r\nContent-Length: 20\r\nConnection: close\r\n\r\n01234567890123456789");
         let hop = fetch_script_request_hop(
-            &ScriptRequest { method: "GET".into(), url, headers: vec![], trusted_headers: vec![], body: vec![] },
+            &ScriptRequest {
+                method: "GET".into(),
+                url,
+                headers: vec![],
+                trusted_headers: vec![],
+                body: vec![],
+            },
             5,
         )
         .unwrap();

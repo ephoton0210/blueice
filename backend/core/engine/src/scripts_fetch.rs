@@ -172,7 +172,11 @@ pub(crate) fn dynamic_import_literals(source: &str) -> Vec<String> {
     let mut rest = source;
     while let Some(at) = rest.find("import(") {
         let after = rest[at + 7..].trim_start();
-        if let Some(quote) = after.chars().next().filter(|c| matches!(c, '"' | '\'' | '`')) {
+        if let Some(quote) = after
+            .chars()
+            .next()
+            .filter(|c| matches!(c, '"' | '\'' | '`'))
+        {
             if let Some(end) = after[1..].find(quote) {
                 let spec = &after[1..1 + end];
                 if !spec.is_empty() && !spec.contains("${") && !spec.contains('\n') {
@@ -196,7 +200,12 @@ fn module_seeds(doc: &blueice_dom::Document, base: &Url) -> Vec<Url> {
             attributes,
         } = doc.data(node)
         {
-            let attr = |name: &str| attributes.iter().find(|(k, _)| k == name).map(|(_, v)| v.trim());
+            let attr = |name: &str| {
+                attributes
+                    .iter()
+                    .find(|(k, _)| k == name)
+                    .map(|(_, v)| v.trim())
+            };
             let mut add = |value: &str| {
                 if let Ok(url) = base.join(value) {
                     if matches!(url.scheme(), "http" | "https") && !out.contains(&url) {
@@ -204,12 +213,19 @@ fn module_seeds(doc: &blueice_dom::Document, base: &Url) -> Vec<Url> {
                     }
                 }
             };
-            if tag_name == "script" && attr("type").is_some_and(|t| t.eq_ignore_ascii_case("module")) {
+            if tag_name == "script"
+                && attr("type").is_some_and(|t| t.eq_ignore_ascii_case("module"))
+            {
                 if let Some(src) = attr("src").filter(|s| !s.is_empty()) {
                     add(src);
                 }
             }
-            if tag_name == "link" && attr("rel").is_some_and(|r| r.split_whitespace().any(|t| t.eq_ignore_ascii_case("modulepreload"))) {
+            if tag_name == "link"
+                && attr("rel").is_some_and(|r| {
+                    r.split_whitespace()
+                        .any(|t| t.eq_ignore_ascii_case("modulepreload"))
+                })
+            {
                 if let Some(href) = attr("href").filter(|s| !s.is_empty()) {
                     add(href);
                 }
@@ -297,7 +313,7 @@ pub(crate) fn fetch_linked_modules(
     let mut modules = LinkedModules::new();
     let mut seen: std::collections::HashSet<Url> = std::collections::HashSet::new();
     let mut total = 0usize;
-    let mut scan = |origin: &Url, text: &str, frontier: &mut Vec<Url>, module_graph: bool| {
+    let scan = |origin: &Url, text: &str, frontier: &mut Vec<Url>, module_graph: bool| {
         let mut specs: Vec<String> = dynamic_import_literals(text);
         if module_graph {
             if let Ok(module) = blueice_bluejs::parse_module(text) {
@@ -305,7 +321,11 @@ pub(crate) fn fetch_linked_modules(
             }
         }
         for spec in specs {
-            if spec.starts_with("./") || spec.starts_with("../") || spec.starts_with('/') || spec.contains("://") {
+            if spec.starts_with("./")
+                || spec.starts_with("../")
+                || spec.starts_with('/')
+                || spec.contains("://")
+            {
                 if let Ok(url) = origin.join(&spec) {
                     if matches!(url.scheme(), "http" | "https") {
                         frontier.push(url);
@@ -370,7 +390,12 @@ mod tests {
     #[test]
     fn a_refused_review_fetches_nothing() {
         let html = "<script src='http://127.0.0.1:1/x.js'></script>";
-        let scripts = fetch_linked_scripts(html, "http://127.0.0.1:1/", &|_| false, DEFAULT_SCRIPT_LIMITS);
+        let scripts = fetch_linked_scripts(
+            html,
+            "http://127.0.0.1:1/",
+            &|_| false,
+            DEFAULT_SCRIPT_LIMITS,
+        );
         assert!(scripts.is_empty());
     }
 
@@ -384,7 +409,10 @@ mod tests {
         assert_eq!(resolve_key("/_astro/a.js", "./b.js"), "/_astro/b.js");
         assert_eq!(resolve_key("/_astro/a.js", "../c.js"), "/c.js");
         assert_eq!(resolve_key("/_astro/a.js", "/d.js"), "/d.js");
-        assert_eq!(resolve_key("https://cdn.example/x/y.js", "./z.js"), "https://cdn.example/x/z.js");
+        assert_eq!(
+            resolve_key("https://cdn.example/x/y.js", "./z.js"),
+            "https://cdn.example/x/z.js"
+        );
     }
 
     #[test]
@@ -400,7 +428,10 @@ mod tests {
              <link rel='modulepreload' href='/p.js'><astro-island component-url='/c.js' renderer-url='/r.js'></astro-island><p data-url='/no.js'></p>",
         );
         let base = Url::parse("https://h.example/").unwrap();
-        let urls: Vec<String> = module_seeds(&doc, &base).iter().map(|u| u.path().to_string()).collect();
+        let urls: Vec<String> = module_seeds(&doc, &base)
+            .iter()
+            .map(|u| u.path().to_string())
+            .collect();
         assert_eq!(urls, vec!["/a.js", "/p.js", "/c.js", "/r.js"]);
     }
 }

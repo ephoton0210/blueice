@@ -60,9 +60,15 @@ impl From<NodeId> for Reply {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NavigationRequest {
     /// `location.assign` / `replace` / `href =`: load this URL.
-    Load { url: String, replace: bool },
+    Load {
+        url: String,
+        replace: bool,
+    },
     /// `history.pushState` / `replaceState`: the document stays, its URL moves.
-    PushState { url: String, replace: bool },
+    PushState {
+        url: String,
+        replace: bool,
+    },
     Reload,
     /// `history.back` / `forward` / `go`.
     Go(i32),
@@ -206,7 +212,9 @@ impl DomState {
             // ---- creation ----
             "createElement" => {
                 let tag = text(0).to_ascii_lowercase();
-                if tag.is_empty() || tag.contains(|c: char| c.is_whitespace() || c == '<' || c == '>') {
+                if tag.is_empty()
+                    || tag.contains(|c: char| c.is_whitespace() || c == '<' || c == '>')
+                {
                     return Err("InvalidCharacterError: invalid tag name".to_string());
                 }
                 self.create(NodeData::Element {
@@ -265,7 +273,10 @@ impl DomState {
                 let id = self.node(args.first())?;
                 match self.doc.data(id) {
                     NodeData::Text { data } => data.as_str().into(),
-                    NodeData::Element { attributes, tag_name } if tag_name == "#comment" => attributes
+                    NodeData::Element {
+                        attributes,
+                        tag_name,
+                    } if tag_name == "#comment" => attributes
                         .iter()
                         .find(|(k, _)| k == "data")
                         .map_or("", |(_, v)| v.as_str())
@@ -277,9 +288,10 @@ impl DomState {
                 let id = self.node(args.first())?;
                 match self.doc.data_mut(id) {
                     NodeData::Text { data } => *data = text(1),
-                    NodeData::Element { attributes, tag_name } if tag_name == "#comment" => {
-                        set_attribute(attributes, "data", &text(1))
-                    }
+                    NodeData::Element {
+                        attributes,
+                        tag_name,
+                    } if tag_name == "#comment" => set_attribute(attributes, "data", &text(1)),
                     _ => return Err("not a character data node".to_string()),
                 }
                 self.dirty = true;
@@ -546,9 +558,9 @@ impl DomState {
     }
 
     fn child_element(&self, parent: NodeId, tag: &str) -> Option<NodeId> {
-        self.doc.children(parent).find(|&c| {
-            matches!(self.doc.data(c), NodeData::Element { tag_name, .. } if tag_name == tag)
-        })
+        self.doc.children(parent).find(
+            |&c| matches!(self.doc.data(c), NodeData::Element { tag_name, .. } if tag_name == tag),
+        )
     }
 
     /// Every element below `root`, in document order.
@@ -666,9 +678,10 @@ impl DomState {
             "select" | "optgroup" | "colgroup" => 1,
             _ => 0,
         } {
-            holder = match parsed.children(holder).find(|&c| {
-                matches!(parsed.data(c), NodeData::Element { .. })
-            }) {
+            holder = match parsed
+                .children(holder)
+                .find(|&c| matches!(parsed.data(c), NodeData::Element { .. }))
+            {
                 Some(next) => next,
                 None => break,
             };
@@ -697,20 +710,27 @@ impl DomState {
     fn serialize(&self, id: NodeId, out: &mut String) {
         match self.doc.data(id) {
             NodeData::Text { data } => {
-                let raw = self
-                    .doc
-                    .parent(id)
-                    .is_some_and(|p| matches!(self.doc.data(p), NodeData::Element { tag_name, .. }
-                        if matches!(tag_name.as_str(), "script" | "style")));
+                let raw = self.doc.parent(id).is_some_and(|p| {
+                    matches!(self.doc.data(p), NodeData::Element { tag_name, .. }
+                        if matches!(tag_name.as_str(), "script" | "style"))
+                });
                 if raw {
                     out.push_str(data);
                 } else {
                     escape_text(data, out);
                 }
             }
-            NodeData::Element { tag_name, attributes } if tag_name == "#comment" => {
+            NodeData::Element {
+                tag_name,
+                attributes,
+            } if tag_name == "#comment" => {
                 out.push_str("<!--");
-                out.push_str(attributes.iter().find(|(k, _)| k == "data").map_or("", |(_, v)| v));
+                out.push_str(
+                    attributes
+                        .iter()
+                        .find(|(k, _)| k == "data")
+                        .map_or("", |(_, v)| v),
+                );
                 out.push_str("-->");
             }
             NodeData::Element { tag_name, .. } if tag_name == "#fragment" => {
@@ -718,7 +738,10 @@ impl DomState {
                     self.serialize(child, out);
                 }
             }
-            NodeData::Element { tag_name, attributes } => {
+            NodeData::Element {
+                tag_name,
+                attributes,
+            } => {
                 out.push('<');
                 out.push_str(tag_name);
                 for (k, v) in attributes {
@@ -772,13 +795,18 @@ impl DomState {
         }
         let expired = assignment.split(';').skip(1).any(|a| {
             let a = a.trim().to_ascii_lowercase();
-            a.starts_with("max-age=0") || a.starts_with("max-age=-") || a.starts_with("expires=thu, 01 jan 1970")
+            a.starts_with("max-age=0")
+                || a.starts_with("max-age=-")
+                || a.starts_with("expires=thu, 01 jan 1970")
         });
         let mut jar: Vec<(String, String)> = self
             .cookies
             .split("; ")
             .filter(|p| !p.is_empty())
-            .filter_map(|p| p.split_once('=').map(|(k, v)| (k.to_string(), v.to_string())))
+            .filter_map(|p| {
+                p.split_once('=')
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+            })
             .filter(|(k, _)| k != name)
             .collect();
         if !expired {
@@ -946,7 +974,11 @@ mod tests {
     use super::*;
 
     fn state(html: &str) -> DomState {
-        DomState::new(blueice_html::parse(html), "https://example.com/a/b?x=1#h", (1280.0, 720.0))
+        DomState::new(
+            blueice_html::parse(html),
+            "https://example.com/a/b?x=1#h",
+            (1280.0, 720.0),
+        )
     }
 
     fn n(id: impl Into<Reply>) -> Reply {
@@ -983,14 +1015,22 @@ mod tests {
         let mut s = state("<ul><li>a</li></ul>");
         let ul = id_of(s.call("query", &[n(s.doc.root()), text("ul")]).unwrap());
         let li = id_of(s.call("createElement", &[text("LI")]).unwrap());
-        assert_eq!(s.call("tag", &[n(li)]).unwrap(), text("li"), "tag names are lowercased");
+        assert_eq!(
+            s.call("tag", &[n(li)]).unwrap(),
+            text("li"),
+            "tag names are lowercased"
+        );
         s.dirty = false;
         s.call("append", &[n(ul), n(li), Reply::Null]).unwrap();
         assert!(s.dirty);
         assert_eq!(s.doc.children(ul).count(), 2);
         let first = s.doc.first_child(ul).unwrap();
         s.call("insertBefore", &[n(ul), n(li), n(first)]).unwrap();
-        assert_eq!(s.doc.first_child(ul), Some(li), "moved before the first child");
+        assert_eq!(
+            s.doc.first_child(ul),
+            Some(li),
+            "moved before the first child"
+        );
         assert_eq!(s.doc.children(ul).count(), 2);
         s.call("remove", &[n(li)]).unwrap();
         assert_eq!(s.doc.children(ul).count(), 1);
@@ -1017,9 +1057,11 @@ mod tests {
         let fragment = id_of(s.call("createFragment", &[]).unwrap());
         for tag in ["a", "b"] {
             let el = id_of(s.call("createElement", &[text(tag)]).unwrap());
-            s.call("append", &[n(fragment), n(el), Reply::Null]).unwrap();
+            s.call("append", &[n(fragment), n(el), Reply::Null])
+                .unwrap();
         }
-        s.call("append", &[n(div), n(fragment), Reply::Null]).unwrap();
+        s.call("append", &[n(div), n(fragment), Reply::Null])
+            .unwrap();
         assert_eq!(s.doc.children(div).count(), 2);
         assert_eq!(s.doc.children(fragment).count(), 0);
     }
@@ -1028,9 +1070,16 @@ mod tests {
     fn attributes_read_write_and_list() {
         let mut s = state("<a id=x href=/q>t</a>");
         let a = id_of(s.call("byId", &[text("x")]).unwrap());
-        assert_eq!(s.call("getAttr", &[n(a), text("href")]).unwrap(), text("/q"));
-        assert_eq!(s.call("getAttr", &[n(a), text("nope")]).unwrap(), Reply::Null);
-        s.call("setAttr", &[n(a), text("class"), text("k \"q\"")]).unwrap();
+        assert_eq!(
+            s.call("getAttr", &[n(a), text("href")]).unwrap(),
+            text("/q")
+        );
+        assert_eq!(
+            s.call("getAttr", &[n(a), text("nope")]).unwrap(),
+            Reply::Null
+        );
+        s.call("setAttr", &[n(a), text("class"), text("k \"q\"")])
+            .unwrap();
         s.call("removeAttr", &[n(a), text("href")]).unwrap();
         assert_eq!(
             s.call("attrs", &[n(a)]).unwrap(),
@@ -1051,15 +1100,28 @@ mod tests {
 
     #[test]
     fn selectors_find_in_document_order_and_match_single_nodes() {
-        let mut s = state("<div class=a><p class=b id=1></p><p class=b id=2></p></div><p class=b id=3></p>");
+        let mut s = state(
+            "<div class=a><p class=b id=1></p><p class=b id=2></p></div><p class=b id=3></p>",
+        );
         let root = s.doc.root();
-        let found = s.call("queryAll", &[n(root), text("div p.b, p#3")]).unwrap();
+        let found = s
+            .call("queryAll", &[n(root), text("div p.b, p#3")])
+            .unwrap();
         let Reply::Text(json) = found else { panic!() };
         assert_eq!(json.matches(',').count(), 2, "three matches: {json}");
         let first = id_of(s.call("query", &[n(root), text("p.b")]).unwrap());
-        assert_eq!(s.call("getAttr", &[n(first), text("id")]).unwrap(), text("1"));
-        assert_eq!(s.call("matches", &[n(first), text("div > p")]).unwrap(), Reply::Bool(true));
-        assert_eq!(s.call("matches", &[n(first), text("section p")]).unwrap(), Reply::Bool(false));
+        assert_eq!(
+            s.call("getAttr", &[n(first), text("id")]).unwrap(),
+            text("1")
+        );
+        assert_eq!(
+            s.call("matches", &[n(first), text("div > p")]).unwrap(),
+            Reply::Bool(true)
+        );
+        assert_eq!(
+            s.call("matches", &[n(first), text("section p")]).unwrap(),
+            Reply::Bool(false)
+        );
         let err = s.call("query", &[n(root), text("p[")]).unwrap_err();
         assert!(err.starts_with("SyntaxError"));
     }
@@ -1068,7 +1130,14 @@ mod tests {
     fn inner_html_round_trips_and_replaces_children() {
         let mut s = state("<div id=d><i>old</i></div>");
         let d = id_of(s.call("byId", &[text("d")]).unwrap());
-        s.call("setInnerHTML", &[n(d), text("<b class=\"x\">1</b> & <br><img src=\"a&quot;b\">")]).unwrap();
+        s.call(
+            "setInnerHTML",
+            &[
+                n(d),
+                text("<b class=\"x\">1</b> & <br><img src=\"a&quot;b\">"),
+            ],
+        )
+        .unwrap();
         assert_eq!(
             s.call("innerHTML", &[n(d)]).unwrap(),
             text("<b class=\"x\">1</b> &amp; <br><img src=\"a&quot;b\">")
@@ -1084,7 +1153,11 @@ mod tests {
         let mut s = state("<table id=t><tbody></tbody></table>");
         let t = id_of(s.call("byId", &[text("t")]).unwrap());
         let tbody = id_of(s.call("query", &[n(t), text("tbody")]).unwrap());
-        s.call("setInnerHTML", &[n(tbody), text("<tr><td>1</td></tr><tr><td>2</td></tr>")]).unwrap();
+        s.call(
+            "setInnerHTML",
+            &[n(tbody), text("<tr><td>1</td></tr><tr><td>2</td></tr>")],
+        )
+        .unwrap();
         assert_eq!(s.doc.children(tbody).count(), 2);
     }
 
@@ -1092,7 +1165,11 @@ mod tests {
     fn script_and_style_text_serializes_raw() {
         let mut s = state("<div id=d></div>");
         let d = id_of(s.call("byId", &[text("d")]).unwrap());
-        s.call("setInnerHTML", &[n(d), text("<script>if (a<b && c) {}</script>")]).unwrap();
+        s.call(
+            "setInnerHTML",
+            &[n(d), text("<script>if (a<b && c) {}</script>")],
+        )
+        .unwrap();
         assert_eq!(
             s.call("innerHTML", &[n(d)]).unwrap(),
             text("<script>if (a<b && c) {}</script>")
@@ -1108,7 +1185,10 @@ mod tests {
         assert_eq!(s.doc.children(shallow).count(), 0);
         assert_eq!(s.doc.children(deep).count(), 1);
         assert_ne!(deep, d);
-        assert_eq!(s.call("getAttr", &[n(deep), text("class")]).unwrap(), text("k"));
+        assert_eq!(
+            s.call("getAttr", &[n(deep), text("class")]).unwrap(),
+            text("k")
+        );
         assert_eq!(s.call("parent", &[n(deep)]).unwrap(), Reply::Null);
     }
 
@@ -1120,7 +1200,11 @@ mod tests {
         s.call("append", &[n(d), n(c), Reply::Null]).unwrap();
         assert_eq!(s.call("kind", &[n(c)]).unwrap(), Reply::Number(8.0));
         assert_eq!(s.call("data", &[n(c)]).unwrap(), text("note"));
-        assert_eq!(s.call("textContent", &[n(d)]).unwrap(), text("a"), "comments add no text");
+        assert_eq!(
+            s.call("textContent", &[n(d)]).unwrap(),
+            text("a"),
+            "comments add no text"
+        );
         assert_eq!(s.call("innerHTML", &[n(d)]).unwrap(), text("a<!--note-->"));
     }
 
@@ -1128,26 +1212,47 @@ mod tests {
     fn a_whole_document_parses_into_a_detached_fragment() {
         let mut s = state("");
         let fragment = id_of(
-            s.call("parseDocument", &[text("<!doctype html><title>T</title><body><p id=x>hi</p></body>")])
-                .unwrap(),
+            s.call(
+                "parseDocument",
+                &[text(
+                    "<!doctype html><title>T</title><body><p id=x>hi</p></body>",
+                )],
+            )
+            .unwrap(),
         );
         let html = id_of(s.call("query", &[n(fragment), text("html")]).unwrap());
         assert_eq!(s.call("tag", &[n(html)]).unwrap(), text("html"));
         let p = id_of(s.call("query", &[n(fragment), text("body p")]).unwrap());
         assert_eq!(s.call("connected", &[n(p)]).unwrap(), Reply::Bool(false));
-        assert_eq!(s.call("byId", &[text("x")]).unwrap(), Reply::Null, "not in the live document");
+        assert_eq!(
+            s.call("byId", &[text("x")]).unwrap(),
+            Reply::Null,
+            "not in the live document"
+        );
     }
 
     #[test]
     fn urls_parse_with_a_base_and_reject_nonsense() {
         let mut s = state("");
-        let Reply::Text(json) = s.call("parseUrl", &[text("../q?x=1#f"), text("https://h.example:8080/a/b/c")]).unwrap() else {
+        let Reply::Text(json) = s
+            .call(
+                "parseUrl",
+                &[text("../q?x=1#f"), text("https://h.example:8080/a/b/c")],
+            )
+            .unwrap()
+        else {
             panic!()
         };
-        assert!(json.contains("\"href\":\"https://h.example:8080/a/q?x=1#f\""), "{json}");
+        assert!(
+            json.contains("\"href\":\"https://h.example:8080/a/q?x=1#f\""),
+            "{json}"
+        );
         assert!(json.contains("\"host\":\"h.example:8080\""));
         assert!(json.contains("\"origin\":\"https://h.example:8080\""));
-        assert_eq!(s.call("parseUrl", &[text("nope"), text("")]).unwrap(), Reply::Null);
+        assert_eq!(
+            s.call("parseUrl", &[text("nope"), text("")]).unwrap(),
+            Reply::Null
+        );
     }
 
     #[test]
@@ -1164,15 +1269,29 @@ mod tests {
     #[test]
     fn navigation_requests_are_recorded_for_the_host() {
         let mut s = state("");
-        s.call("pushState", &[text("https://example.com/next"), Reply::Bool(false)]).unwrap();
-        s.call("navigate", &[text("https://example.com/other"), Reply::Bool(true)]).unwrap();
+        s.call(
+            "pushState",
+            &[text("https://example.com/next"), Reply::Bool(false)],
+        )
+        .unwrap();
+        s.call(
+            "navigate",
+            &[text("https://example.com/other"), Reply::Bool(true)],
+        )
+        .unwrap();
         s.call("go", &[Reply::Number(-1.0)]).unwrap();
         assert_eq!(s.url, "https://example.com/next");
         assert_eq!(
             s.navigations,
             vec![
-                NavigationRequest::PushState { url: "https://example.com/next".into(), replace: false },
-                NavigationRequest::Load { url: "https://example.com/other".into(), replace: true },
+                NavigationRequest::PushState {
+                    url: "https://example.com/next".into(),
+                    replace: false
+                },
+                NavigationRequest::Load {
+                    url: "https://example.com/other".into(),
+                    replace: true
+                },
                 NavigationRequest::Go(-1),
             ]
         );
@@ -1181,8 +1300,14 @@ mod tests {
     #[test]
     fn media_queries_follow_the_viewport() {
         let mut s = state("");
-        assert_eq!(s.call("media", &[text("(min-width: 1000px)")]).unwrap(), Reply::Bool(true));
-        assert_eq!(s.call("media", &[text("(max-width: 600px)")]).unwrap(), Reply::Bool(false));
+        assert_eq!(
+            s.call("media", &[text("(min-width: 1000px)")]).unwrap(),
+            Reply::Bool(true)
+        );
+        assert_eq!(
+            s.call("media", &[text("(max-width: 600px)")]).unwrap(),
+            Reply::Bool(false)
+        );
     }
 
     #[test]

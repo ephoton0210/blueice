@@ -78,6 +78,11 @@ pub struct Page {
     web_navigation: Option<String>,
     web_scroll_seen: f64,
     web_net: Option<web_scripts::WebNet>,
+    /// A script changed the DOM but its restyle and layout were put off to
+    /// keep a busy page from relaying out many times a second.
+    web_relayout_pending: bool,
+    web_last_relayout: Option<std::time::Instant>,
+    web_force_relayout: bool,
     web_review: Option<web_scripts::NetworkReview>,
     script_change_unpublished_by_web: bool,
     images: blueice_paint::ImageMap,
@@ -182,6 +187,9 @@ impl Page {
             web_navigation: None,
             web_scroll_seen: 0.0,
             web_net: None,
+            web_relayout_pending: false,
+            web_last_relayout: None,
+            web_force_relayout: false,
             web_review: None,
             script_change_unpublished_by_web: false,
             images: Default::default(),

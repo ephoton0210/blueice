@@ -23,9 +23,9 @@ use blueice_bluejs::{
     compile, compile_module, parse, parse_module, Bytecode, HostFunctionError, HostValue, Vm,
     VmConfig,
 };
-use std::collections::HashMap;
 use dom_bridge::{DomState, Reply};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -78,9 +78,15 @@ fn host_to_reply(value: &HostValue) -> Reply {
 impl WebHost {
     /// A realm for the document in `state`, with the platform installed.
     pub fn new(state: DomState) -> Result<Self, String> {
-        let mut config = VmConfig::default();
-        config.instruction_budget = INSTRUCTION_BUDGET;
-        config.heap.max_heap_bytes = MAX_HEAP_BYTES;
+        let defaults = VmConfig::default();
+        let config = VmConfig {
+            instruction_budget: INSTRUCTION_BUDGET,
+            heap: blueice_bluejs::HeapConfig {
+                max_heap_bytes: MAX_HEAP_BYTES,
+                ..defaults.heap
+            },
+            ..defaults
+        };
         let mut vm = Vm::new(config).map_err(|e| format!("{e:?}"))?;
         let started = Instant::now();
         let state = Rc::new(RefCell::new(state));
@@ -154,7 +160,8 @@ impl WebHost {
                 Some((key.clone(), compile_module(&module).ok()?))
             })
             .collect();
-        self.vm.set_module_loader_context(referrer, compiled.clone());
+        self.vm
+            .set_module_loader_context(referrer, compiled.clone());
         self.vm.set_dynamic_module_sources(sources);
         self.modules = compiled;
     }
@@ -218,6 +225,11 @@ impl WebHost {
     /// When the next timer is due, on the realm's clock.
     pub fn next_timer_due(&self) -> Option<u64> {
         self.vm.next_host_timer_due()
+    }
+
+    /// Adds a diagnostic line to the realm's console record.
+    pub fn note_line(&mut self, line: &str) {
+        self.note(line);
     }
 
     pub fn console(&self) -> &[String] {
@@ -328,12 +340,15 @@ mod tests {
     fn once_listeners_and_default_prevention() {
         let mut h = host("<a id=a href='#'>x</a>");
         assert_eq!(
-            log(&mut h, "let n = 0; const a = document.getElementById('a');
+            log(
+                &mut h,
+                "let n = 0; const a = document.getElementById('a');
              a.addEventListener('x', () => n++, { once: true });
              const e = new Event('x', { cancelable: true });
              a.addEventListener('x', (ev) => ev.preventDefault());
              const r1 = a.dispatchEvent(e); a.dispatchEvent(new Event('x'));
-             console.log(n, r1, e.defaultPrevented)"),
+             console.log(n, r1, e.defaultPrevented)"
+            ),
             "[log] 1 false true"
         );
     }
@@ -346,7 +361,10 @@ mod tests {
         assert!(h.tick() >= 1);
         h.with_state(|s| {
             let p = s.call("byId", &[Reply::Text("p".into())]).unwrap();
-            assert_eq!(s.call("textContent", &[p]).unwrap(), Reply::Text("done".into()));
+            assert_eq!(
+                s.call("textContent", &[p]).unwrap(),
+                Reply::Text("done".into())
+            );
         });
         assert!(h.console().iter().any(|l| l.contains("frame")));
     }
@@ -366,10 +384,20 @@ mod tests {
             log(&mut h, "console.log(location.pathname, location.search, location.hash, location.origin, new URL('../x', location.href).href, new URLSearchParams('a=1&b=2').get('b'))"),
             "[log] /dir/page ?q=1 #top https://example.com https://example.com/x 2"
         );
-        h.run("push", "history.pushState({ n: 1 }, '', '/dir/next'); ").unwrap();
-        assert_eq!(log(&mut h, "console.log(location.pathname, JSON.stringify(history.state), history.length)"), "[log] /dir/next {\"n\":1} 2");
+        h.run("push", "history.pushState({ n: 1 }, '', '/dir/next'); ")
+            .unwrap();
+        assert_eq!(
+            log(
+                &mut h,
+                "console.log(location.pathname, JSON.stringify(history.state), history.length)"
+            ),
+            "[log] /dir/next {\"n\":1} 2"
+        );
         h.with_state(|s| {
-            assert!(matches!(s.navigations.first(), Some(dom_bridge::NavigationRequest::PushState { .. })));
+            assert!(matches!(
+                s.navigations.first(),
+                Some(dom_bridge::NavigationRequest::PushState { .. })
+            ));
         });
     }
 
@@ -387,8 +415,15 @@ mod tests {
         let mut h = host("");
         h.run("setup", "history.pushState({ p: 1 }, '', '/one'); window.addEventListener('popstate', (e) => console.log('pop', JSON.stringify(e.state))); history.back();").unwrap();
         h.tick();
-        assert!(h.console().iter().any(|l| l == "[log] pop null"), "{:?}", h.console());
-        assert_eq!(log(&mut h, "console.log(location.pathname)"), "[log] /dir/page");
+        assert!(
+            h.console().iter().any(|l| l == "[log] pop null"),
+            "{:?}",
+            h.console()
+        );
+        assert_eq!(
+            log(&mut h, "console.log(location.pathname)"),
+            "[log] /dir/page"
+        );
     }
 
     #[test]
@@ -401,7 +436,13 @@ mod tests {
              d.appendChild(document.createElement('i')); d.setAttribute('title', 't');",
         )
         .unwrap();
-        assert!(h.console().iter().any(|l| l == "[log] childList:1 attributes:title"), "{:?}", h.console());
+        assert!(
+            h.console()
+                .iter()
+                .any(|l| l == "[log] childList:1 attributes:title"),
+            "{:?}",
+            h.console()
+        );
     }
 
     #[test]
@@ -487,7 +528,11 @@ mod tests {
         h.tick();
         h.with_state(|s| {
             let d = s.call("byId", &[Reply::Text("d".into())]).unwrap();
-            assert_eq!(s.call("getAttr", &[d, Reply::Text("class".into())]).unwrap(), Reply::Text("shown".into()));
+            assert_eq!(
+                s.call("getAttr", &[d, Reply::Text("class".into())])
+                    .unwrap(),
+                Reply::Text("shown".into())
+            );
         });
     }
 }

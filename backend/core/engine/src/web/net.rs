@@ -50,7 +50,12 @@ fn safelisted_header(name: &str, value: &str) -> bool {
     match name.to_ascii_lowercase().as_str() {
         "accept" | "accept-language" | "content-language" => true,
         "content-type" => {
-            let essence = value.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+            let essence = value
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
             matches!(
                 essence.as_str(),
                 "application/x-www-form-urlencoded" | "multipart/form-data" | "text/plain"
@@ -89,13 +94,20 @@ pub(crate) fn perform(job: &NetJob, review: &dyn Fn(&str) -> bool) -> NetOutcome
         if !review(&job.url) {
             return fail("the request was blocked");
         }
-        let names: Vec<String> = job.headers.iter().map(|(k, _)| k.to_ascii_lowercase()).collect();
+        let names: Vec<String> = job
+            .headers
+            .iter()
+            .map(|(k, _)| k.to_ascii_lowercase())
+            .collect();
         let mut trusted = vec![
             ("Origin".to_string(), job.origin.clone()),
             ("Access-Control-Request-Method".to_string(), method.clone()),
         ];
         if !names.is_empty() {
-            trusted.push(("Access-Control-Request-Headers".to_string(), names.join(",")));
+            trusted.push((
+                "Access-Control-Request-Headers".to_string(),
+                names.join(","),
+            ));
         }
         let preflight = fetch_script_request_hop(
             &ScriptRequest {
@@ -107,7 +119,10 @@ pub(crate) fn perform(job: &NetJob, review: &dyn Fn(&str) -> bool) -> NetOutcome
             },
             64 * 1024,
         );
-        let Ok(ScriptHop::Response { status, headers, .. }) = preflight else {
+        let Ok(ScriptHop::Response {
+            status, headers, ..
+        }) = preflight
+        else {
             return fail("CORS preflight request failed");
         };
         let allowed_methods = header(&headers, "access-control-allow-methods").unwrap_or("");
@@ -119,10 +134,16 @@ pub(crate) fn perform(job: &NetJob, review: &dyn Fn(&str) -> bool) -> NetOutcome
                 .split(',')
                 .any(|m| m.trim().eq_ignore_ascii_case(&method) || m.trim() == "*");
         let headers_ok = names.iter().all(|n| {
-            allowed_headers.split(',').any(|a| a.trim() == n || a.trim() == "*")
+            allowed_headers
+                .split(',')
+                .any(|a| a.trim() == n || a.trim() == "*")
                 || safelisted_header(n, "text/plain")
         });
-        if !(200..300).contains(&status) || !allows_origin(&headers, &job.origin) || !method_ok || !headers_ok {
+        if !(200..300).contains(&status)
+            || !allows_origin(&headers, &job.origin)
+            || !method_ok
+            || !headers_ok
+        {
             return fail("blocked by the CORS preflight response");
         }
     }
@@ -153,18 +174,31 @@ pub(crate) fn perform(job: &NetJob, review: &dyn Fn(&str) -> bool) -> NetOutcome
                 if origin_of(&location).is_none() {
                     return fail("redirected to a URL that cannot be fetched");
                 }
-                if matches!(status, 301 | 302 | 303) && method != "GET" && method != "HEAD" {
+                if matches!(status, 301..=303) && method != "GET" && method != "HEAD" {
                     method = "GET".into();
                     body.clear();
                 }
                 url = location;
             }
-            Ok(ScriptHop::Response { status, status_text, headers, body }) => {
+            Ok(ScriptHop::Response {
+                status,
+                status_text,
+                headers,
+                body,
+            }) => {
                 let final_cross = origin_of(&url).is_none_or(|o| o != job.origin);
                 if final_cross && !allows_origin(&headers, &job.origin) {
-                    return fail("blocked by CORS policy: no Access-Control-Allow-Origin allows this origin");
+                    return fail(
+                        "blocked by CORS policy: no Access-Control-Allow-Origin allows this origin",
+                    );
                 }
-                return NetOutcome::Done { status, status_text, headers, body, url };
+                return NetOutcome::Done {
+                    status,
+                    status_text,
+                    headers,
+                    body,
+                    url,
+                };
             }
             Ok(ScriptHop::TooLarge) => return fail("the response is too large"),
             Err(error) => return fail(&error.to_string()),
@@ -177,12 +211,24 @@ pub(crate) fn base64_encode(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
         out.push(ALPHABET[(n >> 18) as usize & 63] as char);
         out.push(ALPHABET[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 { ALPHABET[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if chunk.len() > 2 { ALPHABET[n as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            ALPHABET[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            ALPHABET[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -224,7 +270,9 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             for reply in replies {
-                let Ok((mut stream, _)) = listener.accept() else { break };
+                let Ok((mut stream, _)) = listener.accept() else {
+                    break;
+                };
                 let mut buf = [0u8; 4096];
                 let n = stream.read(&mut buf).unwrap_or(0);
                 let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
@@ -255,27 +303,59 @@ mod tests {
     #[test]
     fn a_same_origin_request_needs_no_cors() {
         let (origin, _rx) = serve(vec![ok("", "hello")]);
-        let outcome = perform(&job(&format!("{origin}/a"), &origin, "GET", vec![]), &|_| true);
-        let NetOutcome::Done { status, body, .. } = outcome else { panic!() };
+        let outcome = perform(
+            &job(&format!("{origin}/a"), &origin, "GET", vec![]),
+            &|_| true,
+        );
+        let NetOutcome::Done { status, body, .. } = outcome else {
+            panic!()
+        };
         assert_eq!((status, body.as_slice()), (200, &b"hello"[..]));
     }
 
     #[test]
     fn a_cross_origin_response_without_opt_in_is_blocked_and_with_it_allowed() {
         let (origin, _) = serve(vec![ok("", "secret")]);
-        let outcome = perform(&job(&format!("{origin}/a"), "https://page.example", "GET", vec![]), &|_| true);
+        let outcome = perform(
+            &job(
+                &format!("{origin}/a"),
+                "https://page.example",
+                "GET",
+                vec![],
+            ),
+            &|_| true,
+        );
         assert!(matches!(outcome, NetOutcome::Failed(m) if m.contains("CORS")));
-        let (origin, _) = serve(vec![ok("Access-Control-Allow-Origin: https://page.example\r\n", "fine")]);
-        let outcome = perform(&job(&format!("{origin}/a"), "https://page.example", "GET", vec![]), &|_| true);
+        let (origin, _) = serve(vec![ok(
+            "Access-Control-Allow-Origin: https://page.example\r\n",
+            "fine",
+        )]);
+        let outcome = perform(
+            &job(
+                &format!("{origin}/a"),
+                "https://page.example",
+                "GET",
+                vec![],
+            ),
+            &|_| true,
+        );
         assert!(matches!(outcome, NetOutcome::Done { .. }));
     }
 
     #[test]
     fn a_non_simple_cross_origin_request_is_preflighted() {
         let preflight = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST\r\nAccess-Control-Allow-Headers: content-type\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string();
-        let (origin, rx) = serve(vec![preflight, ok("Access-Control-Allow-Origin: *\r\n", "{}")]);
+        let (origin, rx) = serve(vec![
+            preflight,
+            ok("Access-Control-Allow-Origin: *\r\n", "{}"),
+        ]);
         let outcome = perform(
-            &job(&format!("{origin}/api"), "https://page.example", "POST", vec![("Content-Type".into(), "application/json".into())]),
+            &job(
+                &format!("{origin}/api"),
+                "https://page.example",
+                "POST",
+                vec![("Content-Type".into(), "application/json".into())],
+            ),
             &|_| true,
         );
         assert!(matches!(outcome, NetOutcome::Done { status: 200, .. }));
@@ -291,7 +371,12 @@ mod tests {
     fn a_refused_preflight_stops_before_the_request() {
         let (origin, _) = serve(vec![ok("", "no cors headers")]);
         let outcome = perform(
-            &job(&format!("{origin}/api"), "https://page.example", "PUT", vec![]),
+            &job(
+                &format!("{origin}/api"),
+                "https://page.example",
+                "PUT",
+                vec![],
+            ),
             &|_| true,
         );
         assert!(matches!(outcome, NetOutcome::Failed(m) if m.contains("preflight")));
@@ -304,22 +389,31 @@ mod tests {
             "HTTP/1.1 302 Found\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
             "http://127.0.0.1:1/after"
         )]);
-        let outcome = perform(&job(&format!("{origin}/start"), &origin, "GET", vec![]), &|url| {
-            seen.lock().unwrap().push(url.to_string());
-            !url.contains("/after")
-        });
+        let outcome = perform(
+            &job(&format!("{origin}/start"), &origin, "GET", vec![]),
+            &|url| {
+                seen.lock().unwrap().push(url.to_string());
+                !url.contains("/after")
+            },
+        );
         assert!(matches!(outcome, NetOutcome::Failed(m) if m.contains("blocked")));
         let seen = seen.into_inner().unwrap();
         assert_eq!(seen.len(), 2);
         assert!(seen[1].ends_with("/after"));
         // And a refused first hop never connects.
-        let outcome = perform(&job("http://127.0.0.1:1/x", "http://127.0.0.1:1", "GET", vec![]), &|_| false);
+        let outcome = perform(
+            &job("http://127.0.0.1:1/x", "http://127.0.0.1:1", "GET", vec![]),
+            &|_| false,
+        );
         assert!(matches!(outcome, NetOutcome::Failed(_)));
     }
 
     #[test]
     fn non_http_schemes_are_refused() {
-        let outcome = perform(&job("file:///etc/passwd", "https://p.example", "GET", vec![]), &|_| true);
+        let outcome = perform(
+            &job("file:///etc/passwd", "https://p.example", "GET", vec![]),
+            &|_| true,
+        );
         assert!(matches!(outcome, NetOutcome::Failed(_)));
     }
 

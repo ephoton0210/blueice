@@ -20,6 +20,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// How long a document's scripts may spend starting up before the rest are
+/// left unrun, so one heavy page cannot hold the session for long.
+const STARTUP_BUDGET: Duration = Duration::from_secs(6);
+
+/// The least time between two relayouts a script's changes cause.
+const WEB_RELAYOUT_INTERVAL: Duration = Duration::from_millis(250);
+
 /// Decides whether a script's own request for one absolute URL may be made.
 pub(crate) type NetworkReview = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
@@ -64,7 +71,8 @@ fn collect_scripts(doc: &Document) -> Vec<PageScript> {
                 let kind = attr("type").unwrap_or("").to_ascii_lowercase();
                 // Classic scripts and modules; data blocks are not run.
                 let module = kind == "module";
-                if (module || CLASSIC_TYPES.contains(&kind.as_str())) && attr("nomodule").is_none() {
+                if (module || CLASSIC_TYPES.contains(&kind.as_str())) && attr("nomodule").is_none()
+                {
                     let mut inline = String::new();
                     for child in doc.children(node) {
                         if let NodeData::Text { data } = doc.data(child) {
@@ -75,7 +83,9 @@ fn collect_scripts(doc: &Document) -> Vec<PageScript> {
                     out.push(PageScript {
                         node,
                         module,
-                        deferred: src.is_some() && attr("defer").is_some() && attr("async").is_none(),
+                        deferred: src.is_some()
+                            && attr("defer").is_some()
+                            && attr("async").is_none(),
                         src,
                         inline,
                     });
@@ -122,9 +132,21 @@ impl Page {
     }
 
     /// What a script's own network requests are checked against. Without one,
-    /// every request is refused.
+    /// every request is refused. (A session sets it from the gatekeeper
+    /// clearance; tests and tools set it directly.)
+    #[cfg(test)]
     pub(crate) fn set_network_review(&mut self, review: NetworkReview) {
         self.web_review = Some(review);
+    }
+
+    /// Waits (briefly) for put-off script relayouts to happen.
+    #[cfg(test)]
+    pub(crate) fn settle(&mut self) {
+        let until = std::time::Instant::now() + Duration::from_secs(2);
+        while self.web_relayout_pending && std::time::Instant::now() < until {
+            self.tick_web();
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
 
     pub(crate) fn take_web_navigation(&mut self) -> Option<String> {
@@ -184,11 +206,35 @@ impl Page {
             }
         }
         if dirty {
-            self.restyle_and_relayout();
-            self.script_change_unpublished = true;
-            self.script_change_unpublished_by_web = true;
+            self.web_relayout_pending = true;
         }
-        (requests, dirty)
+        let relayed = self.relayout_for_scripts(false);
+        (requests, relayed)
+    }
+
+    /// Restyles and lays the page out if a script changed it and either enough
+    /// time has passed since the last time or `force` (or a load in progress)
+    /// asks. Returns whether it did.
+    fn relayout_for_scripts(&mut self, force: bool) -> bool {
+        if !self.web_relayout_pending {
+            return false;
+        }
+        let waited = self
+            .web_last_relayout
+            .is_none_or(|at| at.elapsed() >= WEB_RELAYOUT_INTERVAL);
+        if !(force || self.web_force_relayout || waited) {
+            return false;
+        }
+        let started = std::time::Instant::now();
+        self.restyle_and_relayout();
+        if std::env::var("BI_DIAG").is_ok() {
+            eprintln!("DIAG restyle+relayout {:?}", started.elapsed());
+        }
+        self.web_relayout_pending = false;
+        self.web_last_relayout = Some(std::time::Instant::now());
+        self.script_change_unpublished = true;
+        self.script_change_unpublished_by_web = true;
+        true
     }
 
     /// One turn, then the scripts it inserted: each fetched under the same
@@ -310,6 +356,8 @@ impl Page {
     /// classic script, then `DOMContentLoaded` and `load`.
     pub(super) fn start_web_scripts(&mut self) {
         self.web = None;
+        self.web_relayout_pending = false;
+        self.web_last_relayout = None;
         if !self.web_scripts_on() {
             return;
         }
@@ -321,6 +369,7 @@ impl Page {
             self.url.as_deref().unwrap_or("about:blank"),
             (self.viewport_width, self.viewport_height),
         );
+        let created = std::time::Instant::now();
         let host = match WebHost::new(state) {
             Ok(host) => host,
             Err(error) => {
@@ -330,10 +379,15 @@ impl Page {
                 return;
             }
         };
+        if std::env::var("BI_DIAG").is_ok() {
+            eprintln!("DIAG realm created in {:?}", created.elapsed());
+        }
         self.web = Some(host);
+        self.web_force_relayout = true;
         let linked = self.linked_scripts.clone();
         let modules = self.linked_modules.clone();
         let document = self.url.as_deref().and_then(|u| url::Url::parse(u).ok());
+        let startup = std::time::Instant::now();
         self.web_turn(|host| {
             let document = document.clone();
             let document_dir = document
@@ -343,6 +397,7 @@ impl Page {
                     path.rsplit_once('/').map_or("", |(dir, _)| dir).to_string()
                 })
                 .unwrap_or_default();
+            let compiled = std::time::Instant::now();
             host.set_module_sources(
                 &document
                     .as_ref()
@@ -350,12 +405,19 @@ impl Page {
                     .unwrap_or_default(),
                 modules.clone(),
             );
+            if std::env::var("BI_DIAG").is_ok() {
+                eprintln!("DIAG {} modules compiled in {:?}", modules.len(), compiled.elapsed());
+            }
             // Parser-blocking and async classic scripts in order, then the
             // deferred ones, then modules (which are deferred by nature).
             let all = std::mem::take(&mut scripts);
             let (module_scripts, classic): (Vec<_>, Vec<_>) = all.into_iter().partition(|s| s.module);
             let (deferred, immediate): (Vec<_>, Vec<_>) = classic.into_iter().partition(|s| s.deferred);
             for script in immediate.into_iter().chain(deferred) {
+                if startup.elapsed() > STARTUP_BUDGET {
+                    host.note_line("page scripts stopped: the startup time budget is spent");
+                    break;
+                }
                 let (name, source) = match &script.src {
                     Some(src) => match linked.get(src) {
                         Some(text) => (src.clone(), text.clone()),
@@ -365,7 +427,11 @@ impl Page {
                 };
                 let id = script.node.as_u64();
                 let _ = host.run("blueice:current", &format!("__blueice.setCurrentScript({id});"));
+                let ran = std::time::Instant::now();
                 let _ = host.run(&name, &source);
+                if std::env::var("BI_DIAG").is_ok() && ran.elapsed().as_millis() > 100 {
+                    eprintln!("DIAG classic {} took {:?}", &name[..name.len().min(70)], ran.elapsed());
+                }
             }
             for (n, script) in module_scripts.into_iter().enumerate() {
                 let key_source = match &script.src {
@@ -378,10 +444,18 @@ impl Page {
                         script.inline.clone(),
                     )),
                 };
+                if startup.elapsed() > STARTUP_BUDGET {
+                    host.note_line("page scripts stopped: the startup time budget is spent");
+                    break;
+                }
                 if let Some((key, text)) = key_source {
                     let id = script.node.as_u64();
                     let _ = host.run("blueice:current", &format!("__blueice.setCurrentScript({id});"));
+                    let ran = std::time::Instant::now();
                     let _ = host.run_module(&key, &text, &modules);
+                    if std::env::var("BI_DIAG").is_ok() && ran.elapsed().as_millis() > 100 {
+                        eprintln!("DIAG module {} took {:?}", &key[..key.len().min(70)], ran.elapsed());
+                    }
                 }
             }
             let _ = host.run(
@@ -393,6 +467,7 @@ impl Page {
                 "__blueice.setReadyState('complete'); for (const i of document.querySelectorAll('img')) i.dispatchEvent(new Event('load')); __blueice.fire('load'); __blueice.fire('pageshow');",
             );
         });
+        self.web_force_relayout = false;
     }
 
     /// Runs the timers that are due. True when the document changed.
@@ -407,6 +482,7 @@ impl Page {
             });
         }
         self.deliver_net_results();
+        self.relayout_for_scripts(false);
         let due = self
             .web
             .as_ref()
@@ -430,6 +506,16 @@ impl Page {
             .as_ref()
             .is_some_and(|net| net.inflight > 0)
             .then_some(Duration::from_millis(10));
+        let relayout = self.web_relayout_pending.then(|| {
+            WEB_RELAYOUT_INTERVAL.saturating_sub(
+                self.web_last_relayout
+                    .map_or(Duration::ZERO, |at| at.elapsed()),
+            )
+        });
+        let waiting = match (waiting, relayout) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         let timer = host
             .next_timer_due()
             .map(|due| Duration::from_millis(due.saturating_sub(host.now_ms())));
@@ -526,13 +612,13 @@ mod tests {
                new IntersectionObserver((es) => es.forEach(e => e.target.classList.add('shown'))).observe(document.querySelector('.hero'));</script></body>",
         );
         let alpha = |p: &Page| {
-            p.render()
-                .commands
-                .iter()
-                .find_map(|c| match c {
-                    PaintCommand::Text { color: blueice_paint::Color::Rgba(_, _, _, a), .. } => Some(*a),
-                    _ => None,
-                })
+            p.render().commands.iter().find_map(|c| match c {
+                PaintCommand::Text {
+                    color: blueice_paint::Color::Rgba(_, _, _, a),
+                    ..
+                } => Some(*a),
+                _ => None,
+            })
         };
         // The heading is in the viewport, so the observer's first report (after
         // the scripts' layout) reveals it.
@@ -549,12 +635,16 @@ mod tests {
              window.addEventListener('load', () => { log.push('load:' + document.readyState); document.getElementById('p').textContent = log.join(','); });\
              log.push('script:' + document.readyState);</script></body>",
         );
-        assert_eq!(texts(&page), vec!["script:loading,dcl:interactive,load:complete"]);
+        assert_eq!(
+            texts(&page),
+            vec!["script:loading,dcl:interactive,load:complete"]
+        );
     }
 
     #[test]
     fn a_script_without_its_text_does_not_run_and_the_page_loads_anyway() {
-        let page = page("<body><p>kept</p><script src='https://example.com/missing.js'></script></body>");
+        let page =
+            page("<body><p>kept</p><script src='https://example.com/missing.js'></script></body>");
         assert_eq!(texts(&page), vec!["kept"]);
     }
 
@@ -562,8 +652,14 @@ mod tests {
     fn external_scripts_run_from_the_fetched_set_and_defer_runs_last() {
         let mut p = Page::new(400.0, 300.0);
         p.set_web_scripts(true);
-        p.pending_linked_scripts.insert("a.js".into(), "window.order = (window.order || '') + 'a';".into());
-        p.pending_linked_scripts.insert("d.js".into(), "window.order = (window.order || '') + 'd';".into());
+        p.pending_linked_scripts.insert(
+            "a.js".into(),
+            "window.order = (window.order || '') + 'a';".into(),
+        );
+        p.pending_linked_scripts.insert(
+            "d.js".into(),
+            "window.order = (window.order || '') + 'd';".into(),
+        );
         p.load_html_str(
             "<body><p id=o></p><script defer src='d.js'></script><script src='a.js'></script>\
              <script>window.order = (window.order || '') + 'i'; </script>\
@@ -574,15 +670,22 @@ mod tests {
         assert_eq!(texts(&p), vec!["ai"]);
         // ...and the deferred external script ran last.
         p.web_turn(|host| {
-            let _ = host.run("t", "document.getElementById('o').textContent = window.order;");
+            let _ = host.run(
+                "t",
+                "document.getElementById('o').textContent = window.order;",
+            );
         });
+        p.settle();
         assert_eq!(texts(&p), vec!["aid"]);
     }
 
     #[test]
     fn a_navigation_a_script_asks_for_is_handed_to_the_session() {
         let mut page = page("<body><script>location.assign('/next');</script></body>");
-        assert_eq!(page.take_web_navigation().as_deref(), Some("https://example.com/next"));
+        assert_eq!(
+            page.take_web_navigation().as_deref(),
+            Some("https://example.com/next")
+        );
         assert_eq!(page.take_web_navigation(), None);
     }
 
@@ -612,8 +715,12 @@ mod tests {
     fn module_scripts_import_the_fetched_graph() {
         let mut p = Page::new(400.0, 300.0);
         p.set_web_scripts(true);
-        p.pending_linked_modules.insert("/lib/util.js".into(), "import { base } from './base.js'; export const greet = (n) => base + n;".into());
-        p.pending_linked_modules.insert("/lib/base.js".into(), "export const base = 'hi ';".into());
+        p.pending_linked_modules.insert(
+            "/lib/util.js".into(),
+            "import { base } from './base.js'; export const greet = (n) => base + n;".into(),
+        );
+        p.pending_linked_modules
+            .insert("/lib/base.js".into(), "export const base = 'hi ';".into());
         p.load_html_str(
             "<body><p id=p>x</p><script type=module>import { greet } from '/lib/util.js'; document.getElementById('p').textContent = greet('mod') + ':' + document.readyState;</script></body>",
             Some("https://example.com/dir/page".into()),
@@ -625,7 +732,10 @@ mod tests {
     fn modules_run_after_classic_scripts_and_external_modules_resolve_by_key() {
         let mut p = Page::new(400.0, 300.0);
         p.set_web_scripts(true);
-        p.pending_linked_modules.insert("/_a/m.js".into(), "window.order = (window.order || '') + 'm';".into());
+        p.pending_linked_modules.insert(
+            "/_a/m.js".into(),
+            "window.order = (window.order || '') + 'm';".into(),
+        );
         p.load_html_str(
             "<body><p id=p></p><script type=module src='/_a/m.js'></script><script>window.order = (window.order || '') + 'c';</script>\
              <script type=module>document.getElementById('p').textContent = window.order;</script></body>",
@@ -638,7 +748,8 @@ mod tests {
     fn dynamic_import_from_a_classic_script_loads_a_fetched_module() {
         let mut p = Page::new(400.0, 300.0);
         p.set_web_scripts(true);
-        p.pending_linked_modules.insert("/x/chunk.js".into(), "export default 'chunk';".into());
+        p.pending_linked_modules
+            .insert("/x/chunk.js".into(), "export default 'chunk';".into());
         p.load_html_str(
             "<body><p id=p>x</p><script>import('/x/chunk.js').then((m) => { document.getElementById('p').textContent = m.default; });</script></body>",
             Some("https://example.com/".into()),
@@ -669,7 +780,10 @@ mod tests {
         );
         let alpha = |p: &Page| {
             p.render().commands.iter().find_map(|c| match c {
-                PaintCommand::Text { color: blueice_paint::Color::Rgba(_, _, _, a), .. } => Some(*a),
+                PaintCommand::Text {
+                    color: blueice_paint::Color::Rgba(_, _, _, a),
+                    ..
+                } => Some(*a),
                 _ => None,
             })
         };
@@ -678,13 +792,17 @@ mod tests {
         assert_eq!(alpha(&page), Some(0), "off screen: still hidden");
         page.scroll_by(1400.0);
         page.tick_web();
+        page.settle();
         assert_eq!(alpha(&page), Some(255), "scrolled into view: revealed");
         let mut seen = String::new();
         page.web_eval("console.log(window.scrolled + ' ' + window.seen.join(','))");
         for line in page.web_console() {
             seen = line;
         }
-        assert_eq!(seen, "[log] 1259.2 false,true", "the scroll offset is clamped to the page");
+        assert_eq!(
+            seen, "[log] 1259.2 false,true",
+            "the scroll offset is clamped to the page"
+        );
     }
 
     /// Serves `routes` (path -> content type, body) on a local port.
@@ -729,7 +847,11 @@ mod tests {
 
     #[test]
     fn fetch_json_and_render_a_list_through_inner_html() {
-        let origin = serve(vec![("/items.json", "application/json", "[{\"n\":\"alpha\"},{\"n\":\"beta\"}]")]);
+        let origin = serve(vec![(
+            "/items.json",
+            "application/json",
+            "[{\"n\":\"alpha\"},{\"n\":\"beta\"}]",
+        )]);
         let mut p = Page::new(400.0, 300.0);
         p.set_web_scripts(true);
         p.set_network_review(Arc::new(|_| true));
@@ -741,7 +863,11 @@ mod tests {
             Some(format!("{origin}/")),
         );
         wait_for(&mut p, |p| texts(p).contains(&"beta".to_string()));
-        assert!(texts(&p).contains(&"alpha".to_string()) && texts(&p).contains(&"beta".to_string()), "{:?}", texts(&p));
+        assert!(
+            texts(&p).contains(&"alpha".to_string()) && texts(&p).contains(&"beta".to_string()),
+            "{:?}",
+            texts(&p)
+        );
     }
 
     #[test]
@@ -759,7 +885,11 @@ mod tests {
             Some(format!("{origin}/")),
         );
         wait_for(&mut p, |p| texts(p).iter().any(|t| t.contains("payload")));
-        assert!(texts(&p).join(" ").contains("200 POST:payload text/plain"), "{:?}", texts(&p));
+        assert!(
+            texts(&p).join(" ").contains("200 POST:payload text/plain"),
+            "{:?}",
+            texts(&p)
+        );
     }
 
     #[test]

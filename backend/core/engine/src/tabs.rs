@@ -1239,7 +1239,10 @@ impl TabManager {
     /// Every currently-open tab's ID, in creation order.
     /// How long until any tab's page scripts next have work.
     pub(crate) fn next_web_wake(&self) -> Option<std::time::Duration> {
-        self.tabs.values().filter_map(|tab| tab.page.web_wake_in()).min()
+        self.tabs
+            .values()
+            .filter_map(|tab| tab.page.web_wake_in())
+            .min()
     }
 
     pub fn ids(&self) -> impl Iterator<Item = TabId> + '_ {

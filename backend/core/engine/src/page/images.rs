@@ -251,7 +251,11 @@ mod tests {
                     }
                     if let Some(at) = text.find(&needle) {
                         let from = at.saturating_sub(60);
-                        eprintln!("REFERENCED in {key}: ...{}...", &text[from..(at + needle.len() + 20).min(text.len())].replace('\n', " "));
+                        eprintln!(
+                            "REFERENCED in {key}: ...{}...",
+                            &text[from..(at + needle.len() + 20).min(text.len())]
+                                .replace('\n', " ")
+                        );
                     }
                 }
             }
@@ -286,9 +290,13 @@ mod tests {
         eprintln!("styled, scripted and laid out in {:?}", laid_out.elapsed());
         if scripts {
             // Let the page's timers run for a while, as the session tick would.
-            let until = std::time::Instant::now() + std::time::Duration::from_secs(
-                std::env::var("BI_WAIT").ok().and_then(|w| w.parse().ok()).unwrap_or(3),
-            );
+            let until = std::time::Instant::now()
+                + std::time::Duration::from_secs(
+                    std::env::var("BI_WAIT")
+                        .ok()
+                        .and_then(|w| w.parse().ok())
+                        .unwrap_or(3),
+                );
             let mut turns = 0;
             while std::time::Instant::now() < until {
                 if page.tick_web() {
@@ -325,14 +333,27 @@ mod tests {
         if std::env::var("BI_DIAG").is_ok() {
             let mut hidden = 0;
             for (id, style) in &page.styles {
-                let zero = matches!(style.other.get("opacity"), Some(Value::Number(n)) if *n == 0.0);
+                let zero =
+                    matches!(style.other.get("opacity"), Some(Value::Number(n)) if *n == 0.0);
                 let vis = matches!(style.other.get("visibility"), Some(Value::Keyword(k)) if k == "hidden");
                 if (zero || vis) && !blueice_css::is_pseudo_node(*id) {
                     hidden += 1;
                     if hidden <= 25 {
-                        if let NodeData::Element { tag_name, attributes } = page.doc.data(*id) {
-                            let class = attributes.iter().find(|(k, _)| k == "class").map(|(_, v)| v.as_str()).unwrap_or("");
-                            eprintln!("hidden({}) <{tag_name} class=\"{}\">", if zero { "opacity" } else { "visibility" }, &class[..class.len().min(80)]);
+                        if let NodeData::Element {
+                            tag_name,
+                            attributes,
+                        } = page.doc.data(*id)
+                        {
+                            let class = attributes
+                                .iter()
+                                .find(|(k, _)| k == "class")
+                                .map(|(_, v)| v.as_str())
+                                .unwrap_or("");
+                            eprintln!(
+                                "hidden({}) <{tag_name} class=\"{}\">",
+                                if zero { "opacity" } else { "visibility" },
+                                &class[..class.len().min(80)]
+                            );
                         }
                     }
                 }

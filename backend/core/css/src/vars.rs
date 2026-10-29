@@ -110,7 +110,11 @@ pub(crate) fn resolve(
     }
     let mut result = inherited.clone();
     let mut resolved: HashMap<String, Option<Vec<Token>>> = HashMap::new();
-    for name in own.keys() {
+    // In name order: which chains are too deep to trust must not depend on the
+    // map's iteration order.
+    let mut names: Vec<&String> = own.keys().collect();
+    names.sort();
+    for name in names {
         resolve_one(name, &own, inherited, &mut resolved, &mut HashSet::new());
     }
     for (name, value) in resolved {
