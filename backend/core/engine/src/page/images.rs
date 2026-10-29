@@ -227,11 +227,51 @@ mod tests {
             started.elapsed()
         );
         let mut page = Page::new(width, 900.0);
+        let scripts = std::env::var("BI_SCRIPTS").is_ok();
+        if scripts {
+            page.set_web_scripts(true);
+            page.set_network_review(std::sync::Arc::new(|_| true));
+            page.pending_linked_scripts = crate::scripts_fetch::fetch_linked_scripts(
+                &fetched.body,
+                &fetched.final_url,
+                &|_| true,
+                crate::scripts_fetch::DEFAULT_SCRIPT_LIMITS,
+            );
+            page.pending_linked_modules = crate::scripts_fetch::fetch_linked_modules(
+                &fetched.body,
+                &page.pending_linked_scripts,
+                &fetched.final_url,
+                &|_| true,
+                crate::scripts_fetch::DEFAULT_MODULE_LIMITS,
+            );
+            eprintln!(
+                "fetched {} scripts and {} modules",
+                page.pending_linked_scripts.len(),
+                page.pending_linked_modules.len()
+            );
+        }
         page.pending_linked_styles = styles;
         page.pending_linked_images = linked_images;
         let laid_out = std::time::Instant::now();
         page.load_html_str(&fetched.body, Some(fetched.final_url.clone()));
-        eprintln!("styled and laid out in {:?}", laid_out.elapsed());
+        eprintln!("styled, scripted and laid out in {:?}", laid_out.elapsed());
+        if scripts {
+            // Let the page's timers run for a while, as the session tick would.
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(
+                std::env::var("BI_WAIT").ok().and_then(|w| w.parse().ok()).unwrap_or(3),
+            );
+            let mut turns = 0;
+            while std::time::Instant::now() < until {
+                if page.tick_web() {
+                    turns += 1;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            eprintln!("{turns} timer turns changed the document");
+            for line in page.web_console().iter().take(40) {
+                eprintln!("console: {}", &line[..line.len().min(300)]);
+            }
+        }
         if std::env::var("BI_DIAG").is_ok() {
             let mut hidden = 0;
             for (id, style) in &page.styles {

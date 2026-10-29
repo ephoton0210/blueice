@@ -92,6 +92,9 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--downloads-socket" => downloads_socket = Some(PathBuf::from(value()?)),
             "--history-snapshots" => history_snapshots = true,
+            // Run each page's own scripts (ordinary web JavaScript) in its
+            // BlueJS realm. Off unless the embedder asks for it.
+            "--web-scripts" => blueice_engine::enable_web_scripts(true),
             "--extension-socket" => extension_socket = Some(PathBuf::from(value()?)),
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             "--extension-host" => extension_host = Some(PathBuf::from(value()?)),

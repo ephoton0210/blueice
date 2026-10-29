@@ -77,6 +77,7 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                     .saturating_duration_since(Instant::now())
                     .min(POLL_INTERVAL)
             })
+            .min(tabs.next_web_wake().unwrap_or(POLL_INTERVAL))
             .max(Duration::from_millis(1));
         // As during setup, a peer disconnect may make setsockopt fail;
         // the following read owns clean-disconnect handling.
@@ -2210,6 +2211,33 @@ pub(super) fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 requests.script,
                 extension_events,
             )?;
+        }
+
+        // Page scripts' timers, then any navigation they asked for.
+        let script_tabs: Vec<_> = tabs.ids().collect();
+        for tab in script_tabs {
+            let Some(page) = tabs.get_mut(tab) else {
+                continue;
+            };
+            page.tick_web();
+            if let Some(url) = page.take_web_navigation() {
+                begin_gated_navigation(
+                    tabs,
+                    stream,
+                    frame_dir,
+                    generation,
+                    Some(tab.as_u64()),
+                    None,
+                    tab,
+                    url,
+                    PendingKind::Navigate,
+                    &mut pending_nav_seq,
+                    &mut downloads_refresher,
+                    &completion_tx,
+                    gatekeeper_socket,
+                    extension_events,
+                )?;
+            }
         }
 
         // Keep any open `about:downloads` tab current, off this thread.

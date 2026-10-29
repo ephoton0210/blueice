@@ -81,6 +81,8 @@ pub(crate) struct DomState {
     pub url: String,
     pub navigations: Vec<NavigationRequest>,
     pub cookies: String,
+    /// External scripts a script inserted: `(script element, absolute URL)`.
+    pub script_requests: Vec<(NodeId, String)>,
 }
 
 impl DomState {
@@ -95,6 +97,7 @@ impl DomState {
             url: url.to_string(),
             navigations: Vec::new(),
             cookies: String::new(),
+            script_requests: Vec::new(),
         }
     }
 
@@ -498,6 +501,11 @@ impl DomState {
                 self.navigations.push(NavigationRequest::Go(delta));
                 Reply::Undefined
             }
+            "loadScript" => {
+                let id = self.node(args.first())?;
+                self.script_requests.push((id, text(1)));
+                Reply::Undefined
+            }
             "url" => self.url.as_str().into(),
             "cookie" => self.cookies.as_str().into(),
             "setCookie" => {
@@ -857,7 +865,7 @@ fn parse_url(input: &str, base: &str) -> Reply {
         return Reply::Null;
     };
     let mut out = String::from("{");
-    let mut field = |name: &str, value: &str, first: bool, out: &mut String| {
+    let field = |name: &str, value: &str, first: bool, out: &mut String| {
         if !first {
             out.push(',');
         }

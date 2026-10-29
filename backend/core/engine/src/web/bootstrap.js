@@ -509,6 +509,32 @@
     });
   };
 
+  // Scripts inserted through the DOM run (inline now, external when the host
+  // has fetched them); parser-inserted and innerHTML scripts never come here.
+  const SCRIPT_TYPES = ['', 'text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript'];
+  const runInsertedScripts = (root) => {
+    walkElements(root, (el) => {
+      if (el.localName !== 'script' || el._ran) return;
+      const type = (el.getAttribute('type') || '').trim().toLowerCase();
+      if (!SCRIPT_TYPES.includes(type)) return;
+      Object.defineProperty(el, '_ran', { value: true });
+      const src = el.getAttribute('src');
+      if (src) {
+        bi('loadScript', el._id, resolveUrl(src));
+        return;
+      }
+      const previous = document._currentScript;
+      document._currentScript = el;
+      try {
+        (0, eval)(el.textContent);
+      } catch (e) {
+        reportError(e);
+      } finally {
+        document._currentScript = previous || null;
+      }
+    });
+  };
+
   class Node extends EventTarget {
     constructor() {
       super();
@@ -603,8 +629,10 @@
         queueRecord(new MutationRecord({ type: 'childList', target: previousParent, removedNodes: [child] }));
       }
       queueRecord(new MutationRecord({ type: 'childList', target: this, addedNodes: added, previousSibling: previousSibling, nextSibling: reference || null }));
-      if (this.isConnected) for (const n of added) connectedCallbacks(n, true);
-      else if (wasConnected && !fragmentKids) connectedCallbacks(child, false);
+      if (this.isConnected) {
+        for (const n of added) connectedCallbacks(n, true);
+        for (const n of added) if (n.nodeType === 1) runInsertedScripts(n);
+      } else if (wasConnected && !fragmentKids) connectedCallbacks(child, false);
       return child;
     }
     removeChild(child) {
@@ -2891,6 +2919,22 @@
         document._readyState = state;
         const e = new Event('readystatechange');
         document.dispatchEvent(e);
+      },
+      scriptLoaded(id, source, ok) {
+        const el = wrap(id);
+        if (!el) return;
+        if (ok) {
+          const previous = document._currentScript;
+          document._currentScript = el;
+          try {
+            (0, eval)(source);
+          } catch (e) {
+            reportError(e);
+          } finally {
+            document._currentScript = previous || null;
+          }
+        }
+        el.dispatchEvent(new Event(ok ? 'load' : 'error'));
       },
       setCurrentScript(id) {
         document._currentScript = id === null || id === undefined ? null : wrap(id);

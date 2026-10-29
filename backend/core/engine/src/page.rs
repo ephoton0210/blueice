@@ -67,6 +67,17 @@ pub struct Page {
     /// them: the per-node map paint reads and the inline-SVG renders so far.
     linked_images: crate::images::LinkedImages,
     pending_linked_images: crate::images::LinkedImages,
+    linked_scripts: crate::scripts_fetch::LinkedScripts,
+    pending_linked_scripts: crate::scripts_fetch::LinkedScripts,
+    linked_modules: crate::scripts_fetch::LinkedModules,
+    pending_linked_modules: crate::scripts_fetch::LinkedModules,
+    /// The realm running this document's own scripts, when the embedder has
+    /// enabled them (see [`crate::enable_web_scripts`]).
+    web: Option<crate::web::WebHost>,
+    web_scripts_override: Option<bool>,
+    web_navigation: Option<String>,
+    web_review: Option<web_scripts::NetworkReview>,
+    script_change_unpublished_by_web: bool,
     images: blueice_paint::ImageMap,
     svg_renders: HashMap<u64, Option<std::sync::Arc<crate::images::LoadedImage>>>,
     /// Monotonically changes whenever this navigable context receives a
@@ -160,6 +171,15 @@ impl Page {
             pending_linked_styles: Default::default(),
             linked_images: Default::default(),
             pending_linked_images: Default::default(),
+            linked_scripts: Default::default(),
+            pending_linked_scripts: Default::default(),
+            linked_modules: Default::default(),
+            pending_linked_modules: Default::default(),
+            web: None,
+            web_scripts_override: None,
+            web_navigation: None,
+            web_review: None,
+            script_change_unpublished_by_web: false,
             images: Default::default(),
             svg_renders: HashMap::new(),
             document_generation: 0,
@@ -213,6 +233,9 @@ impl Page {
         self.object_url_origin = None;
         self.linked_styles = std::mem::take(&mut self.pending_linked_styles);
         self.linked_images = std::mem::take(&mut self.pending_linked_images);
+        self.linked_scripts = std::mem::take(&mut self.pending_linked_scripts);
+        self.linked_modules = std::mem::take(&mut self.pending_linked_modules);
+        self.web = None;
         // `parse_continuing_from` (not `parse`) so this replacement
         // document's NodeIds never collide with -- or get numerically
         // confused with -- the document it's replacing. A client that
@@ -328,6 +351,7 @@ impl Page {
             content_type: fetched.content_type,
         });
         self.url = Some(fetched.final_url);
+        self.start_web_scripts();
         Ok(())
     }
 
@@ -426,6 +450,7 @@ impl Page {
         };
         self.load_html(&html);
         self.url = Some(url.to_string());
+        self.start_web_scripts();
         true
     }
 
@@ -446,6 +471,7 @@ impl Page {
     pub fn load_html_str(&mut self, html: &str, url: Option<String>) {
         self.load_html(html);
         self.url = url;
+        self.start_web_scripts();
     }
 
     /// The gated navigation completion path, per `phase-7-local-ai/PLAN.md`'s
@@ -473,9 +499,15 @@ impl Page {
         html: &str,
         translations: Option<&[String]>,
     ) {
-        (self.pending_linked_styles, self.pending_linked_images) = clearance.into_subresources();
+        let fetched = clearance.into_subresources();
+        self.pending_linked_styles = fetched.styles;
+        self.pending_linked_images = fetched.images;
+        self.pending_linked_scripts = fetched.scripts;
+        self.pending_linked_modules = fetched.modules;
+        self.web_review = fetched.review;
         self.load_html_translating(html, translations);
         self.url = Some(url.to_string());
+        self.start_web_scripts();
     }
 
     /// Loads `html` with `translations` applied, like [`Self::load_html_str`]
@@ -489,6 +521,7 @@ impl Page {
     ) {
         self.load_html_translating(html, Some(translations));
         self.url = url;
+        self.start_web_scripts();
     }
 
     /// Whether the current document has any substituted text to toggle.
@@ -1376,6 +1409,8 @@ mod file_input;
 mod find;
 mod form_submission;
 mod images;
+mod web_scripts;
+pub(crate) use web_scripts::NetworkReview;
 pub(crate) mod native_drag;
 mod native_drag_image;
 mod native_editing;

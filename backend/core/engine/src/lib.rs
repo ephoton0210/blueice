@@ -22,12 +22,26 @@ mod images;
 mod linked_styles;
 mod navigation_request;
 mod object_urls;
+mod scripts_fetch;
 mod page;
 mod page_text;
 pub mod script;
 pub mod session;
 mod stylesheet;
 mod web;
+
+static WEB_SCRIPTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Turns page-script execution on for every page in this process. Off by
+/// default: running a site's own JavaScript is a reviewed decision of the
+/// embedder (`blueice-core --web-scripts`), not something a page can ask for.
+pub fn enable_web_scripts(enabled: bool) {
+    WEB_SCRIPTS.store(enabled, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub(crate) fn web_scripts_enabled() -> bool {
+    WEB_SCRIPTS.load(std::sync::atomic::Ordering::SeqCst)
+}
 mod tabs;
 mod translation;
 

@@ -18,7 +18,11 @@
 
 pub(crate) mod dom_bridge;
 
-use blueice_bluejs::{compile, parse, HostFunctionError, HostValue, Vm, VmConfig};
+use blueice_bluejs::{
+    compile, compile_module, parse, parse_module, Bytecode, HostFunctionError, HostValue, Vm,
+    VmConfig,
+};
+use std::collections::HashMap;
 use dom_bridge::{DomState, Reply};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -39,6 +43,13 @@ pub(crate) struct WebHost {
     started: Instant,
     console: Vec<String>,
 }
+
+// SAFETY: a `WebHost` owns its whole realm. Every `Rc` in it -- the VM's own
+// bookkeeping and the DOM state shared with the VM's host function -- is reachable
+// only through the `WebHost` (the host function is stored inside the VM, and
+// nothing else holds a clone), so moving the host to another thread moves all
+// of those references together; it is never used from two threads at once.
+unsafe impl Send for WebHost {}
 
 fn reply_to_host(reply: Reply) -> HostValue {
     match reply {
@@ -76,6 +87,7 @@ impl WebHost {
         })
         .map_err(|e| e.to_string())?;
         vm.install_host_console().map_err(|e| e.to_string())?;
+        let _ = vm.install_host_error_reporting();
         let bridge_state = Rc::clone(&state);
         vm.install_host_function("__bi", 1, move |args: &[HostValue]| {
             let Some(HostValue::String(op)) = args.first() else {
@@ -117,6 +129,47 @@ impl WebHost {
         self.collect_console();
         result.map(|_| ()).map_err(|e| {
             let message = format!("{name}: {e}");
+            self.note(&message);
+            message
+        })
+    }
+
+    /// Makes `sources` (module key -> text) available to `import()`, with
+    /// relative specifiers of classic scripts resolved against `referrer`.
+    pub fn set_module_sources(&mut self, referrer: &str, sources: HashMap<String, String>) {
+        self.vm.set_module_loader_context(referrer, HashMap::new());
+        self.vm.set_dynamic_module_sources(sources);
+    }
+
+    /// Runs `source` as the module `key`, linking its static imports from
+    /// `sources`. A module that cannot be parsed or linked ends only itself.
+    pub fn run_module(
+        &mut self,
+        key: &str,
+        source: &str,
+        sources: &HashMap<String, String>,
+    ) -> Result<(), String> {
+        let mut compiled: HashMap<String, Bytecode> = HashMap::new();
+        let mut stack = vec![(key.to_string(), source.to_string())];
+        while let Some((name, text)) = stack.pop() {
+            if compiled.contains_key(&name) {
+                continue;
+            }
+            let module = parse_module(&text).map_err(|e| format!("{name}: {e:?}"))?;
+            for request in &module.requests {
+                let target = crate::scripts_fetch::resolve_key(&name, &request.specifier);
+                if let Some(dependency) = sources.get(&target) {
+                    stack.push((target, dependency.clone()));
+                }
+            }
+            let code = compile_module(&module).map_err(|e| format!("{name}: {e:?}"))?;
+            compiled.insert(name, code);
+        }
+        let result = self.vm.execute_module_graph(key, &compiled);
+        let _ = self.vm.run_host_microtask_checkpoint();
+        self.collect_console();
+        result.map(|_| ()).map_err(|e| {
+            let message = format!("{key}: {e}");
             self.note(&message);
             message
         })

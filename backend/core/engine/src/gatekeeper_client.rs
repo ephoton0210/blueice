@@ -43,6 +43,15 @@ use std::path::Path;
 #[cfg(unix)]
 use std::time::Duration;
 
+/// What was fetched for a cleared page, handed to the page when it is applied.
+pub(crate) struct PageSubresources {
+    pub styles: crate::stylesheet::LinkedStyles,
+    pub images: crate::images::LinkedImages,
+    pub scripts: crate::scripts_fetch::LinkedScripts,
+    pub modules: crate::scripts_fetch::LinkedModules,
+    pub review: Option<crate::page::NetworkReview>,
+}
+
 /// Proof that both gatekeeper stages cleared for `url` on `tab_id`.
 /// Unconstructable outside this module (see module docs) -- the exact
 /// field shape is otherwise not load-bearing; the type's *existence* as
@@ -59,6 +68,14 @@ pub(crate) struct GatekeeperClearance {
     linked_styles: crate::stylesheet::LinkedStyles,
     /// The page's images, fetched and decoded the same way. Optional too.
     linked_images: crate::images::LinkedImages,
+    /// The page's external scripts, fetched the same way.
+    linked_scripts: crate::scripts_fetch::LinkedScripts,
+    /// The page's module graph (module scripts, preloads, islands and what
+    /// they import), fetched the same way.
+    linked_modules: crate::scripts_fetch::LinkedModules,
+    /// What the page's own scripts' requests are reviewed with: the same URL
+    /// stage and extension block rules every navigation hop passes.
+    network_review: Option<crate::page::NetworkReview>,
 }
 
 impl GatekeeperClearance {
@@ -68,11 +85,15 @@ impl GatekeeperClearance {
         self.linked_styles
     }
 
-    /// Hands over everything fetched for the page: stylesheets and images.
-    pub(crate) fn into_subresources(
-        self,
-    ) -> (crate::stylesheet::LinkedStyles, crate::images::LinkedImages) {
-        (self.linked_styles, self.linked_images)
+    /// Hands over everything fetched for the page.
+    pub(crate) fn into_subresources(self) -> PageSubresources {
+        PageSubresources {
+            styles: self.linked_styles,
+            images: self.linked_images,
+            scripts: self.linked_scripts,
+            modules: self.linked_modules,
+            review: self.network_review,
+        }
     }
 }
 
@@ -325,6 +346,27 @@ pub(crate) fn check_and_fetch_request(
             &review,
             crate::linked_styles::DEFAULT_SHEET_LIMITS,
         );
+        let linked_scripts = if crate::web_scripts_enabled() {
+            crate::scripts_fetch::fetch_linked_scripts(
+                &fetched.body,
+                &fetched.final_url,
+                &review,
+                crate::scripts_fetch::DEFAULT_SCRIPT_LIMITS,
+            )
+        } else {
+            Default::default()
+        };
+        let linked_modules = if crate::web_scripts_enabled() {
+            crate::scripts_fetch::fetch_linked_modules(
+                &fetched.body,
+                &linked_scripts,
+                &fetched.final_url,
+                &review,
+                crate::scripts_fetch::DEFAULT_MODULE_LIMITS,
+            )
+        } else {
+            Default::default()
+        };
         let linked_images = crate::images::fetch_linked_images(
             &fetched.body,
             &linked_styles,
@@ -338,6 +380,24 @@ pub(crate) fn check_and_fetch_request(
                 url: fetched.final_url.clone(),
                 linked_styles,
                 linked_images,
+                linked_scripts,
+                linked_modules,
+                network_review: crate::web_scripts_enabled().then(|| {
+                    let socket = gatekeeper_socket.to_path_buf();
+                    let rules = navigation_rules.clone();
+                    std::sync::Arc::new(move |url: &str| {
+                        !extension_navigation_rules_block_url(&rules, url)
+                            && matches!(
+                                check_stage(
+                                    &socket,
+                                    &GatekeeperRequest::CheckUrl {
+                                        url: url.to_string(),
+                                    },
+                                ),
+                                StageOutcome::Cleared
+                            )
+                    }) as crate::page::NetworkReview
+                }),
             },
             final_url: fetched.final_url,
             html: fetched.body,
