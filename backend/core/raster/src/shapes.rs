@@ -20,7 +20,7 @@ pub(crate) struct Clip {
     pub bottom: i64,
 }
 
-const KAPPA: f32 = 0.552_284_75;
+const KAPPA: f32 = 0.552_284_8;
 
 fn rect_ok(r: Rect) -> bool {
     [r.x, r.y, r.width, r.height].iter().all(|v| v.is_finite()) && r.width > 0.0 && r.height > 0.0
@@ -243,9 +243,11 @@ impl Canvas<'_> {
         }
         // The shadow is never visible beneath the box itself.
         if let Some(path) = rrect_path(local(rect), radii) {
-            let mut clear = sk::Paint::default();
-            clear.blend_mode = sk::BlendMode::Clear;
-            clear.anti_alias = true;
+            let clear = sk::Paint {
+                blend_mode: sk::BlendMode::Clear,
+                anti_alias: true,
+                ..sk::Paint::default()
+            };
             scratch.fill_path(
                 &path,
                 &clear,

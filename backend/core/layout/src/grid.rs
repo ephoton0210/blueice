@@ -325,7 +325,7 @@ fn parse_pair(value: Option<&Value>) -> (Line, Line) {
 
 /// Named areas: `name -> (row_start, col_start, row_end, col_end)`, zero-based
 /// track indices with exclusive ends.
-fn parse_areas(value: Option<&Value>) -> Vec<(String, (usize, usize, usize, usize))> {
+fn parse_areas(value: Option<&Value>) -> Vec<Area> {
     let Some(Value::Unparsed(tokens)) = value else {
         return Vec::new();
     };
@@ -336,7 +336,7 @@ fn parse_areas(value: Option<&Value>) -> Vec<(String, (usize, usize, usize, usiz
             _ => None,
         })
         .collect();
-    let mut areas: Vec<(String, (usize, usize, usize, usize))> = Vec::new();
+    let mut areas: Vec<Area> = Vec::new();
     for (r, row) in rows.iter().enumerate() {
         for (c, name) in row.iter().enumerate() {
             if name.chars().all(|ch| ch == '.') {
@@ -355,6 +355,9 @@ fn parse_areas(value: Option<&Value>) -> Vec<(String, (usize, usize, usize, usiz
     }
     areas
 }
+
+/// `name -> (row_start, col_start, row_end, col_end)` of a named area.
+type Area = (String, (usize, usize, usize, usize));
 
 struct Placement {
     row: Option<usize>,
@@ -415,7 +418,7 @@ fn placement_of(
     node: NodeId,
     cols: usize,
     rows: usize,
-    areas: &[(String, (usize, usize, usize, usize))],
+    areas: &[Area],
 ) -> Placement {
     let style = ctx.style(node);
     let (mut rs, mut re) = parse_pair(style.raw("grid-row"));

@@ -80,6 +80,7 @@ impl GatekeeperClearance {
 /// to `run_session`'s poll loop over an `mpsc` channel, never applied
 /// to real `Page`/`TabManager` state on this (background) thread
 /// itself.
+#[allow(clippy::large_enum_variant)] // one value per navigation; boxing buys nothing
 pub(crate) enum NavOutcome {
     DownloadStarted {
         transfer_id: u64,

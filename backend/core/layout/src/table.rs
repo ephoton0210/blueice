@@ -190,13 +190,11 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
             }
             let colspan = span_attr(ctx, node, "colspan");
             let rowspan = span_attr(ctx, node, "rowspan").min(rows.len() - r);
-            for rr in r..r + rowspan {
-                if occupied[rr].len() < col + colspan {
-                    occupied[rr].resize(col + colspan, false);
+            for row_cells in &mut occupied[r..r + rowspan] {
+                if row_cells.len() < col + colspan {
+                    row_cells.resize(col + colspan, false);
                 }
-                for cc in col..col + colspan {
-                    occupied[rr][cc] = true;
-                }
+                row_cells[col..col + colspan].fill(true);
             }
             let style = ctx.style(node);
             let (mut min, mut max) = crate::intrinsic::content_widths(ctx, node);

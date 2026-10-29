@@ -165,6 +165,9 @@ pub(crate) fn css_urls(css: &str) -> Vec<String> {
     out
 }
 
+/// Records one reference found while walking a page.
+type AddReference<'a> = dyn FnMut(&str, &Url, &mut Vec<(String, String)>) + 'a;
+
 /// What the page asks for: `(as written, resolved)` pairs.
 pub(crate) fn image_references(
     doc: &blueice_dom::Document,
@@ -193,7 +196,7 @@ pub(crate) fn image_references(
         doc: &blueice_dom::Document,
         node: NodeId,
         base: &Url,
-        add: &mut dyn FnMut(&str, &Url, &mut Vec<(String, String)>),
+        add: &mut AddReference<'_>,
         found: &mut Vec<(String, String)>,
     ) {
         if let NodeData::Element {

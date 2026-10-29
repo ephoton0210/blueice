@@ -187,4 +187,60 @@ mod tests {
         page.resize(500.0, 300.0);
         assert_eq!(image_commands(&page).len(), 1);
     }
+
+    /// Developer tool, not a test: fetches `BI_URL` for real (stylesheets and
+    /// images included, with no gatekeeper) and writes what BlueIce paints to
+    /// `BI_OUT` (default `/tmp/live.png`) at `BI_WIDTH` (default 1280):
+    /// `BI_URL=https://example.com cargo test -p blueice-engine --release --lib
+    /// live_page_to_png -- --ignored --nocapture`
+    #[test]
+    #[ignore = "needs the network; run by hand"]
+    fn live_page_to_png() {
+        let Ok(url) = std::env::var("BI_URL") else {
+            return;
+        };
+        let out = std::env::var("BI_OUT").unwrap_or_else(|_| "/tmp/live.png".to_string());
+        let width: f64 = std::env::var("BI_WIDTH")
+            .ok()
+            .and_then(|w| w.parse().ok())
+            .unwrap_or(1280.0);
+        let started = std::time::Instant::now();
+        let fetched = blueice_net::fetch(&url).expect("page fetch");
+        let review = |_: &str| true;
+        let styles = crate::linked_styles::fetch_linked_styles(
+            &fetched.body,
+            &fetched.final_url,
+            &review,
+            crate::linked_styles::DEFAULT_SHEET_LIMITS,
+        );
+        let linked_images = crate::images::fetch_linked_images(
+            &fetched.body,
+            &styles,
+            &fetched.final_url,
+            &review,
+            crate::images::DEFAULT_IMAGE_LIMITS,
+        );
+        eprintln!(
+            "fetched {} sheets and {} images in {:?}",
+            styles.len(),
+            linked_images.len(),
+            started.elapsed()
+        );
+        let mut page = Page::new(width, 900.0);
+        page.pending_linked_styles = styles;
+        page.pending_linked_images = linked_images;
+        let laid_out = std::time::Instant::now();
+        page.load_html_str(&fetched.body, Some(fetched.final_url.clone()));
+        eprintln!("styled and laid out in {:?}", laid_out.elapsed());
+        let pixmap = blueice_raster::rasterize(&page.render());
+        eprintln!(
+            "{}x{}, {} images painted",
+            pixmap.width,
+            pixmap.height,
+            image_commands(&page).len()
+        );
+        pixmap
+            .save_png(std::path::Path::new(&out))
+            .expect("writable PNG path");
+    }
 }

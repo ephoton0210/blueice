@@ -236,10 +236,7 @@ mod tests {
         let p = &f.children[1];
         let xs: Vec<f64> = p.children.iter().map(|l| l.x).collect();
         assert_eq!(xs[0], 100.0);
-        assert!(
-            xs.iter().any(|&x| x == 0.0),
-            "later lines clear the float: {xs:?}"
-        );
+        assert!(xs.contains(&0.0), "later lines clear the float: {xs:?}");
     }
 
     #[test]
