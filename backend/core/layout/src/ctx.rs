@@ -30,6 +30,54 @@ pub(crate) struct Ctx<'a> {
     /// its border box; empty inside any box that starts a new formatting
     /// context. A layout that sees any is not memoised.
     pub floats: std::cell::RefCell<Vec<crate::float::FloatRect>>,
+    /// Generated `::before` / `::after` boxes and their text: ids no DOM node
+    /// has, mapped to the data a node of that kind would carry.
+    pub pseudo: HashMap<NodeId, NodeData>,
+}
+
+/// The generated boxes of every element in `styles` that has a `content`.
+pub(crate) fn generated_nodes(doc: &Document, styles: &StyleMap) -> HashMap<NodeId, NodeData> {
+    let mut out = HashMap::new();
+    for (&id, style) in styles {
+        if !blueice_css::is_pseudo_node(id) {
+            continue;
+        }
+        let owner = blueice_css::pseudo_owner(id);
+        if !doc.contains(owner) {
+            continue;
+        }
+        let Some(Value::Unparsed(tokens)) = style.other.get("content") else {
+            continue;
+        };
+        let attr = |name: &str| match doc.data(owner) {
+            NodeData::Element { attributes, .. } => attributes
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v.clone()),
+            _ => None,
+        };
+        let Some(text) = blueice_css::generated_text(tokens, &attr) else {
+            continue;
+        };
+        let name = match blueice_css::pseudo_kind(id) {
+            blueice_css::PseudoElement::Before => "::before",
+            blueice_css::PseudoElement::After => "::after",
+        };
+        out.insert(
+            id,
+            NodeData::Element {
+                tag_name: name.to_string(),
+                attributes: Vec::new(),
+            },
+        );
+        if !text.is_empty() {
+            out.insert(
+                blueice_css::pseudo_text_node_id(id),
+                NodeData::Text { data: text },
+            );
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,13 +199,50 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn is_element(&self, node: NodeId) -> bool {
-        matches!(self.doc.data(node), NodeData::Element { .. })
+    /// A node's data, generated pseudo-element nodes included.
+    pub fn node(&self, node: NodeId) -> &NodeData {
+        if blueice_css::is_pseudo_node(node) {
+            if let Some(data) = self.pseudo.get(&node) {
+                return data;
+            }
+        }
+        self.doc.data(node)
+    }
+
+    /// The children layout sees: a `::before` box first and an `::after` box
+    /// last when the element generates them, and a generated box's text.
+    pub fn children(&self, node: NodeId) -> Vec<NodeId> {
+        if blueice_css::is_pseudo_node(node) {
+            let text = blueice_css::pseudo_text_node_id(node);
+            return if self.pseudo.contains_key(&text) {
+                vec![text]
+            } else {
+                Vec::new()
+            };
+        }
+        let mut out = Vec::new();
+        let generated = |which| {
+            let id = blueice_css::pseudo_node_id(node, which);
+            self.pseudo.contains_key(&id).then_some(id)
+        };
+        out.extend(generated(blueice_css::PseudoElement::Before));
+        out.extend(self.doc.children(node));
+        out.extend(generated(blueice_css::PseudoElement::After));
+        out
+    }
+
+    /// The parent of a node; a generated text's parent is its box.
+    pub fn parent(&self, node: NodeId) -> Option<NodeId> {
+        if blueice_css::is_pseudo_node(node) {
+            let raw = node.as_u64();
+            // Text ids carry the text bit; their box is the same id without it.
+            return Some(NodeId::from_u64(raw & !(1 << 61))).filter(|p| *p != node);
+        }
+        self.doc.parent(node)
     }
 
     pub fn attr(&self, node: NodeId, name: &str) -> Option<&str> {
-        match self.doc.data(node) {
+        match self.node(node) {
             NodeData::Element { attributes, .. } => attributes
                 .iter()
                 .find(|(k, _)| k.eq_ignore_ascii_case(name))
@@ -167,7 +252,7 @@ impl<'a> Ctx<'a> {
     }
 
     pub fn tag(&self, node: NodeId) -> Option<&str> {
-        match self.doc.data(node) {
+        match self.node(node) {
             NodeData::Element { tag_name, .. } => Some(tag_name.as_str()),
             _ => None,
         }

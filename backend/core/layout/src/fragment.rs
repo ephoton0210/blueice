@@ -101,6 +101,9 @@ pub struct Fragment {
     pub hidden: bool,
     /// For a line box: where its baseline sits, from the top of the line.
     pub baseline: Option<f64>,
+    /// Generated content (`::before` / `::after`) has no DOM node: its
+    /// fragments carry `node: None` and the id its style is stored under.
+    pub style_node: Option<NodeId>,
 }
 
 impl Fragment {
@@ -119,6 +122,7 @@ impl Fragment {
             fixed: false,
             hidden: false,
             baseline: None,
+            style_node: None,
         }
     }
 }

@@ -25,6 +25,7 @@
 mod calc;
 mod cascade;
 mod color;
+mod content;
 mod gradient;
 mod media;
 mod parser;
@@ -35,14 +36,21 @@ mod value;
 mod vars;
 
 pub use calc::Calc;
-pub use cascade::{cascade, cascade_with_viewport, ua_stylesheet, ComputedStyle, Origin};
+pub use cascade::{
+    cascade, cascade_with_viewport, is_pseudo_node, pseudo_kind, pseudo_node_id, pseudo_owner,
+    pseudo_text_node_id, ua_stylesheet, ComputedStyle, Origin,
+};
+pub use content::generated_text;
 pub use gradient::{
     parse_gradient, parse_shadows, ColorStop, Gradient, GradientKind, LinearDirection, Shadow,
     StopPosition,
 };
 pub use media::{matches_media, MediaEnvironment};
 pub use parser::{Declaration, Rule};
-pub use selector::{matches, ComplexSelector, Compound, SimpleSelector, Specificity};
+pub use selector::{
+    matches, matches_pseudo_element, ComplexSelector, Compound, PseudoElement, SimpleSelector,
+    Specificity,
+};
 pub use tokenizer::Token;
 pub use value::{Color, Length, LengthContext, Value};
 

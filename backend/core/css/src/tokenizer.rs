@@ -208,8 +208,31 @@ impl Tokenizer {
             }
             if c == '\\' {
                 self.advance();
-                if let Some(escaped) = self.advance() {
-                    s.push(escaped);
+                match self.peek() {
+                    // A backslash-newline continues the string.
+                    Some('\n') => {
+                        self.advance();
+                    }
+                    Some(h) if h.is_ascii_hexdigit() => {
+                        let mut hex = String::new();
+                        while hex.len() < 6 && self.peek().is_some_and(|c| c.is_ascii_hexdigit()) {
+                            hex.push(self.advance().unwrap());
+                        }
+                        if self.peek().is_some_and(char::is_whitespace) {
+                            self.advance();
+                        }
+                        let code = u32::from_str_radix(&hex, 16).unwrap_or(0xFFFD);
+                        s.push(
+                            char::from_u32(code)
+                                .filter(|c| *c != '\0')
+                                .unwrap_or('\u{FFFD}'),
+                        );
+                    }
+                    Some(escaped) => {
+                        self.advance();
+                        s.push(escaped);
+                    }
+                    None => {}
                 }
                 continue;
             }

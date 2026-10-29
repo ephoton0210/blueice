@@ -263,7 +263,7 @@ pub(crate) fn replaced_size(
         "svg" | "canvas" | "iframe" | "video" | "embed" | "object" => (300.0, 150.0),
         _ => return None,
     };
-    let NodeData::Element { attributes, .. } = ctx.doc.data(node) else {
+    let NodeData::Element { attributes, .. } = ctx.node(node) else {
         return None;
     };
     let attr = |name: &str| {
@@ -451,9 +451,9 @@ fn collect(
     abs: &mut Vec<PendingAbs>,
     state: &mut State,
 ) {
-    match ctx.doc.data(node) {
+    match ctx.node(node) {
         NodeData::Text { data } => {
-            if let Some(parent) = ctx.doc.parent(node) {
+            if let Some(parent) = ctx.parent(node) {
                 push_text(ctx, data, parent, pieces, state);
             }
         }
@@ -478,7 +478,7 @@ fn collect(
                 return;
             }
             if display == Display::Contents {
-                for child in ctx.doc.children(node) {
+                for child in ctx.children(node) {
                     collect(ctx, child, cb_width, pieces, abs, state);
                 }
                 return;
@@ -512,7 +512,7 @@ fn collect(
             } else if before != 0.0 {
                 pieces.push(Piece::Gap(before));
             }
-            for child in ctx.doc.children(node) {
+            for child in ctx.children(node) {
                 collect(ctx, child, cb_width, pieces, abs, state);
             }
             if paints {
@@ -1624,5 +1624,80 @@ mod tests {
             boxes >= 3,
             "each line carries its piece of the box, got {boxes}"
         );
+    }
+
+    fn generated_text_of(line: &Fragment) -> Vec<String> {
+        line.children
+            .iter()
+            .filter_map(|c| match &c.kind {
+                FragmentKind::Text(t) => Some(t.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn before_and_after_content_becomes_text_in_the_line() {
+        let f = body(
+            "<p>mid</p>",
+            "p::before { content: \"[\"; } p::after { content: \"]\"; }",
+            800.0,
+        );
+        let line = &f.children[0].children[0];
+        let joined: String = generated_text_of(line).concat();
+        assert_eq!(joined, "[mid]");
+        let first = &line.children[0];
+        assert_eq!(first.node, None, "no DOM node stands behind generated text");
+        assert!(first.style_node.is_some());
+    }
+
+    #[test]
+    fn attr_content_reads_the_owners_attribute() {
+        let f = body(
+            "<a href=\"http://x\">link</a>",
+            "a::after { content: \" (\" attr(href) \")\"; }",
+            800.0,
+        );
+        assert_eq!(
+            generated_text_of(&f.children[0]),
+            vec!["link".to_string(), "(http://x)".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_empty_block_pseudo_element_is_a_box_with_its_own_size() {
+        let f = body(
+            "<div>text</div>",
+            "div::after { content: \"\"; display: block; width: 30px; height: 7px; background: red; }",
+            800.0,
+        );
+        let div = &f.children[0];
+        let boxed = div.children.last().unwrap();
+        assert_eq!((boxed.width, boxed.height), (30.0, 7.0));
+        assert!(boxed.node.is_none() && boxed.style_node.is_some());
+        assert_eq!(boxed.y, div.children[0].height, "after the text line");
+    }
+
+    #[test]
+    fn content_none_and_missing_content_generate_nothing() {
+        let f = body(
+            "<p>x</p>",
+            "p::before { content: none; } p::after { color: red; }",
+            800.0,
+        );
+        assert_eq!(
+            generated_text_of(&f.children[0].children[0]),
+            vec!["x".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_clearfix_pseudo_element_contains_floats_in_its_parent() {
+        let f = body(
+            "<div class=c><div style='float:left;width:10px;height:40px'></div></div>",
+            ".c::after { content: \"\"; display: table; clear: both; }",
+            800.0,
+        );
+        assert_eq!(f.children[0].height, 40.0);
     }
 }

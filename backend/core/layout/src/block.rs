@@ -143,7 +143,7 @@ pub(crate) fn is_replaced_tag(tag: &str) -> bool {
 /// inline boxes alone: such an element splits its line, which this engine
 /// renders by letting the element's children stand in for it.
 fn has_block_descendant(ctx: &Ctx<'_>, node: NodeId) -> bool {
-    ctx.doc.children(node).any(|child| {
+    ctx.children(node).into_iter().any(|child| {
         let Some(tag) = ctx.tag(child) else {
             return false;
         };
@@ -164,8 +164,8 @@ fn has_block_descendant(ctx: &Ctx<'_>, node: NodeId) -> bool {
 /// The children of `node` as layout sees them: `display: none` removed,
 /// `display: contents` replaced by its own children.
 fn flow_items(ctx: &Ctx<'_>, node: NodeId, out: &mut Vec<Item>) {
-    for child in ctx.doc.children(node) {
-        match ctx.doc.data(child) {
+    for child in ctx.children(node) {
+        match ctx.node(child) {
             NodeData::Text { .. } => out.push(Item::Inline(child)),
             NodeData::Document => {}
             NodeData::Element { tag_name, .. } => {
@@ -444,6 +444,17 @@ fn layout_flow(
     flow
 }
 
+/// Gives generated-content fragments `node: None` and their style's id in
+/// `style_node`, so nothing downstream looks a node up that the DOM lacks.
+pub(crate) fn detach_generated(fragment: &mut Fragment) {
+    if fragment.node.is_some_and(blueice_css::is_pseudo_node) {
+        fragment.style_node = fragment.node.take();
+    }
+    for child in &mut fragment.children {
+        detach_generated(child);
+    }
+}
+
 fn shift_pending(pending: Vec<PendingAbs>, dx: f64, dy: f64) -> Vec<PendingAbs> {
     pending
         .into_iter()
@@ -631,8 +642,17 @@ fn layout_block_level_uncached(
 
     let mut escaped_floats: Vec<FloatRect> = Vec::new();
     let mut flow_floats_height = 0.0f64;
-    let native = crate::native_text::control_text(ctx.doc, node);
-    let mut form = crate::native_text::form_control(ctx.doc, node);
+    let generated = blueice_css::is_pseudo_node(node);
+    let native = if generated {
+        None
+    } else {
+        crate::native_text::control_text(ctx.doc, node)
+    };
+    let mut form = if generated {
+        None
+    } else {
+        crate::native_text::form_control(ctx.doc, node)
+    };
     let is_native = native.is_some() || form.is_some();
 
     let (
@@ -1064,13 +1084,16 @@ pub(crate) fn layout_block(
         content_widths: Default::default(),
         layouts: Default::default(),
         floats: Default::default(),
+        pseudo: crate::ctx::generated_nodes(doc, styles),
     };
     let c = Constraint {
         cb_width: available_width,
         cb_height: None,
         root: false,
     };
-    layout_block_level(&ctx, node, &c, Forced::default()).fragment
+    let mut fragment = layout_block_level(&ctx, node, &c, Forced::default()).fragment;
+    detach_generated(&mut fragment);
+    fragment
 }
 
 /// Lays out the root element against the viewport.
@@ -1092,13 +1115,16 @@ pub(crate) fn layout_root(
         content_widths: Default::default(),
         layouts: Default::default(),
         floats: Default::default(),
+        pseudo: crate::ctx::generated_nodes(doc, styles),
     };
     let c = Constraint {
         cb_width: viewport_width,
         cb_height: Some(viewport_height),
         root: true,
     };
-    layout_block_level(&ctx, node, &c, Forced::default()).fragment
+    let mut fragment = layout_block_level(&ctx, node, &c, Forced::default()).fragment;
+    detach_generated(&mut fragment);
+    fragment
 }
 
 /// Apply the list's scroll position and clip option hit/AX bounds to its content.

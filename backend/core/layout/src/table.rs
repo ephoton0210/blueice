@@ -78,8 +78,8 @@ fn collect(ctx: &Ctx<'_>, table: NodeId) -> (Vec<Row>, Vec<Group>, Vec<NodeId>) 
 
     fn row_of(ctx: &Ctx<'_>, node: NodeId) -> Row {
         let mut cells = Vec::new();
-        for child in ctx.doc.children(node) {
-            if matches!(ctx.doc.data(child), NodeData::Element { .. }) {
+        for child in ctx.children(node) {
+            if matches!(ctx.node(child), NodeData::Element { .. }) {
                 let d = ctx.style(child).display();
                 if d != Display::None && d != Display::TableColumn {
                     cells.push(child);
@@ -101,8 +101,8 @@ fn collect(ctx: &Ctx<'_>, table: NodeId) -> (Vec<Row>, Vec<Group>, Vec<NodeId>) 
             });
         }
     };
-    for child in ctx.doc.children(table) {
-        if !matches!(ctx.doc.data(child), NodeData::Element { .. }) {
+    for child in ctx.children(table) {
+        if !matches!(ctx.node(child), NodeData::Element { .. }) {
             continue;
         }
         let style = ctx.style(child);
@@ -117,10 +117,10 @@ fn collect(ctx: &Ctx<'_>, table: NodeId) -> (Vec<Row>, Vec<Group>, Vec<NodeId>) 
             d if is_row_group(d) => {
                 flush_loose(&mut loose, &mut loose_rows);
                 let rows: Vec<Row> = ctx
-                    .doc
                     .children(child)
+                    .into_iter()
                     .filter(|&r| {
-                        matches!(ctx.doc.data(r), NodeData::Element { .. })
+                        matches!(ctx.node(r), NodeData::Element { .. })
                             && ctx.style(r).display() == Display::TableRow
                     })
                     .map(|r| row_of(ctx, r))

@@ -533,6 +533,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             | "grid-area"
             | "box-shadow"
             | "background-image"
+            | "content"
     ) {
         let trimmed = trim_ws(value_tokens);
         if !matches!(trimmed, [Token::Ident(_)]) || property.ends_with("areas") {
@@ -930,7 +931,7 @@ mod tests {
 
     #[test]
     fn rule_with_invalid_selector_is_dropped() {
-        let rules = parse("a::before { color: red; } p { color: blue; }");
+        let rules = parse("a::first-line { color: red; } p { color: blue; }");
         assert_eq!(rules.len(), 1);
         assert_eq!(
             rules[0].selectors[0].compounds[0].simple_selectors,

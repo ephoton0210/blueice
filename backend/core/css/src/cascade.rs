@@ -29,7 +29,9 @@
 //! is a layout concern, not a cascade one.
 
 use crate::parser::{parse, Declaration, Rule};
-use crate::selector::{matches, specificity, SelectorKey, Specificity};
+use crate::selector::{
+    matches, matches_pseudo_element, specificity, PseudoElement, SelectorKey, Specificity,
+};
 use crate::value::{Color, LengthContext, Value};
 use blueice_dom::{Document, NodeData, NodeId};
 use std::collections::HashMap;
@@ -339,9 +341,35 @@ fn cascade_subtree(
     let is_element = matches!(doc.data(node), NodeData::Element { .. });
     let mut child_root_font_size = root_font_size;
     let own_style = if is_element {
-        let style = compute_style_for(doc, node, index, environment, parent_style, root_font_size);
+        let style = compute_style_for(
+            doc,
+            node,
+            index,
+            environment,
+            parent_style,
+            root_font_size,
+            None,
+        )
+        .expect("an element always has a style");
         if doc.parent(node) == Some(doc.root()) {
             child_root_font_size = style.font_size_px;
+        }
+        // `::before` / `::after` get a style of their own, under ids no DOM
+        // node has, when a rule gives them `content`.
+        for which in [PseudoElement::Before, PseudoElement::After] {
+            if let Some(pseudo) = compute_style_for(
+                doc,
+                node,
+                index,
+                environment,
+                Some(&style),
+                root_font_size,
+                Some(which),
+            ) {
+                if matches!(pseudo.other.get("content"), Some(Value::Unparsed(_))) {
+                    styles.insert(pseudo_node_id(node, which), pseudo);
+                }
+            }
         }
         styles.insert(node, style.clone());
         Some(style)
@@ -399,7 +427,8 @@ fn compute_style_for(
     environment: &Environment,
     parent_style: Option<&ComputedStyle>,
     root_font_size: f64,
-) -> ComputedStyle {
+    pseudo: Option<PseudoElement>,
+) -> Option<ComputedStyle> {
     let mut matched: Vec<Matched> = Vec::new();
     for rule_id in index.candidates(doc, node) {
         let indexed = &index.rules[rule_id as usize];
@@ -407,7 +436,12 @@ fn compute_style_for(
             .rule
             .selectors
             .iter()
-            .filter(|s| matches(doc, node, s))
+            .filter(|s| match pseudo {
+                None => matches(doc, node, s),
+                Some(which) => {
+                    s.pseudo_element() == Some(which) && matches_pseudo_element(doc, node, s)
+                }
+            })
             .map(specificity)
             .max();
         let Some(spec) = best_specificity else {
@@ -429,7 +463,14 @@ fn compute_style_for(
     // still beaten by an `!important` declaration from any origin --
     // achieved here by giving it a specificity no real selector can
     // reach, rather than a new sort-key tier.
-    let inline_declarations = inline_style_declarations(doc, node);
+    if pseudo.is_some() && matched.is_empty() {
+        return None;
+    }
+    let inline_declarations = if pseudo.is_some() {
+        Vec::new()
+    } else {
+        inline_style_declarations(doc, node)
+    };
     for decl in &inline_declarations {
         matched.push(Matched {
             origin: Origin::Author,
@@ -605,7 +646,40 @@ fn compute_style_for(
         }
     }
 
-    style
+    Some(style)
+}
+
+/// The id under which a node's generated `::before` / `::after` box is
+/// styled: no DOM node ever has one (the top bits are set).
+pub fn pseudo_node_id(node: NodeId, which: PseudoElement) -> NodeId {
+    NodeId::from_u64(PSEUDO_BIT | (node.as_u64() << 1) | u64::from(which == PseudoElement::After))
+}
+
+/// The id of the text a pseudo-element's `content` generates.
+pub fn pseudo_text_node_id(pseudo: NodeId) -> NodeId {
+    NodeId::from_u64(pseudo.as_u64() | PSEUDO_TEXT_BIT)
+}
+
+const PSEUDO_BIT: u64 = 1 << 62;
+const PSEUDO_TEXT_BIT: u64 = 1 << 61;
+
+/// Whether `id` names a generated pseudo-element box or its text.
+pub fn is_pseudo_node(id: NodeId) -> bool {
+    id.as_u64() & PSEUDO_BIT != 0
+}
+
+/// The element that generated pseudo-element `id` (or its text).
+pub fn pseudo_owner(id: NodeId) -> NodeId {
+    NodeId::from_u64((id.as_u64() & !(PSEUDO_BIT | PSEUDO_TEXT_BIT)) >> 1)
+}
+
+/// The pseudo-element side of `id`.
+pub fn pseudo_kind(id: NodeId) -> PseudoElement {
+    if id.as_u64() & 1 == 1 {
+        PseudoElement::After
+    } else {
+        PseudoElement::Before
+    }
 }
 
 /// A built-in default stylesheet giving the Phase 2 HTML element list

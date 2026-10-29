@@ -224,8 +224,8 @@ pub(crate) fn collect_items(
             items.push(Source::Text(std::mem::take(text)));
         }
     };
-    for child in ctx.doc.children(node) {
-        match ctx.doc.data(child) {
+    for child in ctx.children(node) {
+        match ctx.node(child) {
             NodeData::Text { data } => {
                 if data.chars().any(|c| !c.is_whitespace()) || !text.is_empty() {
                     text.push(child);

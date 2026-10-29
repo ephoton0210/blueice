@@ -467,7 +467,10 @@ fn paint_fragment(
 ) {
     let x = offset_x + fragment.x;
     let y = offset_y + fragment.y;
-    let own_style = fragment.node.and_then(|n| styles.get(&n));
+    let own_style = fragment
+        .style_node
+        .or(fragment.node)
+        .and_then(|n| styles.get(&n));
     let below = match own_style {
         Some(style)
             if matches!(
