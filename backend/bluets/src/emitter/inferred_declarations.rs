@@ -31,6 +31,7 @@ pub(super) struct Context<'a> {
     interface_fields: BTreeMap<usize, Vec<crate::parser::TypeField>>,
     checking: crate::CheckingOptions,
     max_expansions: usize,
+    output_options: CompilerOptions,
 }
 
 impl<'a> Context<'a> {
@@ -42,6 +43,7 @@ impl<'a> Context<'a> {
     ) -> Result<Self, Diagnostic> {
         let module = &checked.module;
         let mut context = Self {
+            output_options: options.clone(),
             module,
             project,
             used_imports: BTreeSet::new(),
@@ -224,6 +226,15 @@ impl<'a> Context<'a> {
                         if let Some(field) = &member.field {
                             if let Some(value) = &field.annotation {
                                 context.references(value);
+                            }
+                            if let Some(value) = field
+                                .declared_type()
+                                .or_else(|| checked.inferred_fields.get(&field.span.start).cloned())
+                            {
+                                if record_annotation(&value) {
+                                    let rendered = context.render(&value, 4, &field.span)?;
+                                    context.annotations.insert(field.span.start, rendered);
+                                }
                             }
                         }
                         if let Some(accessor) = &member.accessor {

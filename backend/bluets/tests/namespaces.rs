@@ -457,7 +457,7 @@ fn a_dotted_namespace_nests_one_function_per_name() {
     let output = emit("namespace A.B.C { export const k: number = 7; }");
     assert_eq!(
         output,
-        "var A; (function (A) { var B; (function (B) { var C; (function (C) { C.k= 7; })(C = B.C || (B.C = {})); })(B = A.B || (A.B = {})); })(A || (A = {}));"
+        "var A; (function (A) { var B; (function (B) { var C; (function (C) { C.k= 7; })(C = B.C || (B.C = {})); })(B = A.B || (A.B = {})); })(A || (A = {}));\n"
     );
 }
 

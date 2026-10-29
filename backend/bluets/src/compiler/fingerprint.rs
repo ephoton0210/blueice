@@ -62,8 +62,8 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         "object-const-enums"
     });
     add(options.module_kind.as_str());
-    add("bluets-output-options/1");
-    add("bluets-declaration-options/2");
+    add("bluets-output-options/2");
+    add("bluets-declaration-options/3");
     if options.declaration {
         add(crate::emitter::LITERAL_ORDER_VERSION);
     }

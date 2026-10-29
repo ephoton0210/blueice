@@ -189,6 +189,41 @@ pub(super) fn render_with_indent(
     )
 }
 
+pub(super) fn render_class_fields(
+    fields: &[crate::parser::TypeField],
+    origins: &BTreeMap<usize, SourceSpan>,
+    module: &Module,
+    options: &CompilerOptions,
+    indent: usize,
+) -> String {
+    let mut output = String::new();
+    for (start, text) in ordered_members(fields, &[], &[]) {
+        let origin = origins.get(&start).filter(|span| span.module == module.id);
+        if let Some(origin) = origin {
+            if !output_options::declaration_comments(
+                &module.source,
+                origin.start,
+                &" ".repeat(indent + 4),
+                &mut output,
+                options,
+            ) {
+                continue;
+            }
+        }
+        output.push_str(&" ".repeat(indent + 4));
+        output.push_str(&text);
+        output.push_str(";\n");
+        if let Some(origin) = origin {
+            output_options::trailing_comments(&module.source, origin.end, &mut output, options);
+        }
+    }
+    if output.is_empty() {
+        "{}".into()
+    } else {
+        format!("{{\n{output}{}}}", " ".repeat(indent))
+    }
+}
+
 fn property_name(name: &str) -> String {
     if let Some(name) = crate::symbol_keys::display(name) {
         return name;

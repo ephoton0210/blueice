@@ -603,6 +603,19 @@ pub(super) fn emit_namespace_declaration(
     }
     let body = render_namespace_body(module, current, symbols, inferred, options)?;
     let mut output = format!("{prefix}namespace {name} {{");
+    if let Some(first) = current.body.first() {
+        let prefix = &module.source[current.span.start..first.span().start];
+        if let Ok(tokens) = crate::syntax::lex(&module.id, prefix) {
+            if let Some(open) = tokens.iter().find(|token| token.is("{")) {
+                super::output_options::trailing_comments(
+                    &module.source,
+                    current.span.start + open.end,
+                    &mut output,
+                    options,
+                );
+            }
+        }
+    }
     if body.is_empty() {
         output.push_str(" }\n");
     } else {

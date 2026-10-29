@@ -185,7 +185,7 @@ fn helper_collision_and_cache_provenance() {
     );
     let path = root.join("tsconfig.bluetsc.tsbuildinfo");
     let mut state: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    assert_eq!(state["version"], 25);
+    assert_eq!(state["version"], 26);
     state["version"] = serde_json::json!(24);
     fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
     let rebuilt = build();
@@ -193,7 +193,7 @@ fn helper_collision_and_cache_provenance() {
     assert!(String::from_utf8_lossy(&rebuilt.stdout).contains("Building project"));
     assert_eq!(
         serde_json::from_slice::<Value>(&fs::read(&path).unwrap()).unwrap()["version"],
-        25
+        26
     );
     let warm = build();
     assert!(warm.status.success());

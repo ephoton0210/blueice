@@ -450,6 +450,8 @@ fn emit_javascript(
             .any(|signature| edit.start >= signature.start && edit.end <= signature.end)
     });
     edits.extend(signatures);
+    output_options::erase_type_comments(module, &mut edits);
+    output_options::erase_opening_comments(module, &mut edits);
     // CommonJS name rewriting goes first so that the lowerings below, which copy
     // or move source text (a static initializer, a decorator expression), take
     // the rewritten text with them.

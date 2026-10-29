@@ -18,7 +18,7 @@ pub(crate) mod templates;
 pub(crate) mod type_text;
 
 /// Diagnostic compatibility data is part of compiler/cache identity.
-pub const DIAGNOSTICS_VERSION: &str = "typescript-5.9.3-diagnostics-v10";
+pub const DIAGNOSTICS_VERSION: &str = "typescript-5.9.3-diagnostics-v11";
 
 /// A TypeScript diagnostic counterpart, separate from the stable BTS alias.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -18,7 +18,7 @@ mod runner;
 pub(super) use runner::run;
 
 // G-M2 adds failure state and native interchange provenance.
-const STATE_VERSION: u8 = 25;
+const STATE_VERSION: u8 = 26;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 

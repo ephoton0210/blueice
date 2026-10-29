@@ -328,6 +328,7 @@ pub(super) fn emit_class_declaration(
         })
         .collect();
     for (index, member) in class.members.iter().enumerate() {
+        let output_start = output.len();
         if options.strip_internal
             && super::output_options::leading_jsdoc(source, member.span.start)
                 .iter()
@@ -455,7 +456,11 @@ pub(super) fn emit_class_declaration(
                 output.push_str(&declaration_literal(literal, &field.span)?);
             } else {
                 output.push_str(": ");
-                output.push_str(&type_to_ts(&value));
+                output.push_str(
+                    context
+                        .and_then(|context| context.annotation(field.span.start))
+                        .unwrap_or(&type_to_ts(&value)),
+                );
             }
             output.push_str(";\n");
         } else if let Some(accessor) = &member.accessor {
@@ -594,6 +599,9 @@ pub(super) fn emit_class_declaration(
                 );
                 output.push_str(";\n");
             }
+        }
+        if output.len() != output_start {
+            super::output_options::trailing_comments(source, member.span.end, output, options);
         }
     }
     output.push_str("}\n");

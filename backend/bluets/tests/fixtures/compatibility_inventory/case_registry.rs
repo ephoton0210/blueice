@@ -351,6 +351,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "ge1_downlevel" => "ge1_downlevel/reference.json",
         "ge2_module_helpers" => "ge2_module_helpers/reference.json",
         "ge3_decorator_compositions" => "ge3_decorator_compositions/reference.json",
+        "ge4_declaration_options" => "ge4_declaration_options/reference.json",
         "gm1_resolver_compositions" => "gm1_resolver_compositions/reference.json",
         "gt3_operators" => "gt3_operators/reference.json",
         "gt1_declaration_order" => "gt1_declaration_order/reference.json",

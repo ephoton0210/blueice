@@ -5,6 +5,8 @@
 //! Declaration rendering retains checked identities and source diagnostics.
 use super::*;
 
+type RenderedFields = (Vec<crate::parser::TypeField>, BTreeMap<usize, SourceSpan>);
+
 impl Context<'_> {
     fn render_operator(
         &mut self,
@@ -79,7 +81,18 @@ impl Context<'_> {
         indent: usize,
         span: &SourceSpan,
     ) -> Result<Vec<crate::parser::TypeField>, Diagnostic> {
+        self.render_fields_with_origins(fields, indent, span)
+            .map(|(fields, _)| fields)
+    }
+
+    fn render_fields_with_origins(
+        &mut self,
+        fields: &[crate::parser::TypeField],
+        indent: usize,
+        span: &SourceSpan,
+    ) -> Result<RenderedFields, Diagnostic> {
         let mut rendered = Vec::with_capacity(fields.len());
+        let mut origins = BTreeMap::new();
         let inferred = fields.iter().all(|field| field.span.module == "<inferred>");
         let computed_class = self
             .module
@@ -109,6 +122,7 @@ impl Context<'_> {
             });
         }
         for (index, field) in ordered.into_iter().enumerate() {
+            let origin = field.span.clone();
             let mut field = field.clone();
             if let Some(owner) = self.project.modules.get(&field.span.module) {
                 let source_key = owner
@@ -158,6 +172,7 @@ impl Context<'_> {
                 field.span.start = index;
                 field.span.end = index;
             }
+            origins.insert(field.span.start, origin);
             match &mut field.value {
                 Type::Function { parameters, result }
                 | Type::GenericFunction {
@@ -176,7 +191,7 @@ impl Context<'_> {
             }
             rendered.push(field);
         }
-        Ok(rendered)
+        Ok((rendered, origins))
     }
 
     pub(super) fn render(
@@ -321,8 +336,27 @@ impl Context<'_> {
                 }
             }
             Type::Record(fields) => {
-                let fields = self.render_fields(fields, indent, span)?;
-                callable_objects::render_with_indent(&fields, &[], &[], indent)
+                let class_fields = fields.iter().any(|field| {
+                    self.module.class_expressions.values().any(|expression| {
+                        expression
+                            .class
+                            .members
+                            .iter()
+                            .any(|member| member.span == field.span)
+                    })
+                });
+                let (fields, origins) = self.render_fields_with_origins(fields, indent, span)?;
+                if class_fields {
+                    callable_objects::render_class_fields(
+                        &fields,
+                        &origins,
+                        self.module,
+                        &self.output_options,
+                        indent,
+                    )
+                } else {
+                    callable_objects::render_with_indent(&fields, &[], &[], indent)
+                }
             }
             Type::Array(element) => {
                 let text = self.render(element, indent, span)?;

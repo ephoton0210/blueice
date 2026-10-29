@@ -53,6 +53,7 @@ fn module_wrappers_keep_source_maps_and_distinct_artifact_identities() {
         let output = compilation.output.unwrap();
         assert!(identities.insert(output.fingerprint.clone()));
         let artifact = &output.artifacts[id];
+        assert!(artifact.javascript.ends_with('\n'));
         assert_eq!(artifact.fingerprint, output.fingerprint);
         let map = artifact.source_map.as_ref().unwrap();
         assert_eq!(map.sources, [id]);

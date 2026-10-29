@@ -12,7 +12,12 @@ pub(super) fn emit_declaration(
     inferred: Option<&inferred_declarations::Context<'_>>,
     options: &CompilerOptions,
 ) -> Result<String, Diagnostic> {
-    let mut output = String::new();
+    let header = output_options::declaration_header(module);
+    let mut output = if options.remove_comments {
+        output_options::detached_header(module)
+    } else {
+        String::new()
+    };
     let enum_evaluations = crate::enum_eval::evaluate_enums(module);
     let mut enum_position = 0usize;
     let mut private_alias = false;
@@ -31,6 +36,14 @@ pub(super) fn emit_declaration(
             continue;
         }
         let start = output.len();
+        if output.is_empty()
+            && module
+                .declarations
+                .first()
+                .is_some_and(|first| first.span() == declaration.span())
+        {
+            output.push_str(&header);
+        }
         if !options.remove_comments {
             for comment in &comments {
                 output.push_str(comment);
@@ -160,6 +173,12 @@ pub(super) fn emit_declaration(
                         );
                         output.push_str(text);
                         output.push_str(";\n");
+                        output_options::trailing_comments(
+                            &module.source,
+                            declaration.span().end,
+                            &mut output,
+                            options,
+                        );
                         continue;
                     }
                 }
@@ -411,6 +430,13 @@ pub(super) fn emit_declaration(
         }
         if output.len() == body_start {
             output.truncate(start);
+        } else {
+            output_options::trailing_comments(
+                &module.source,
+                declaration.span().end,
+                &mut output,
+                options,
+            );
         }
     }
     if private_alias

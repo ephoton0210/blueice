@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-29).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 19,542 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 21,084 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 18,821/18,827 (99.9681%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 82 BlueTS owner = 715; excluded from direct agreement |
-| Case labels | 19,536 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 120 suites / 283 ignored Rust functions; not a case denominator |
-| Suite labels | 116 scoped closed, 1 open, 3 refused |
+| Direct agreement | 20,357/20,363 (99.9705%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 88 BlueTS owner = 721; excluded from direct agreement |
+| Case labels | 21,078 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 121 suites / 285 ignored Rust functions; not a case denominator |
+| Suite labels | 117 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 223 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 19,542 recorded case expectations pass; expected differences/refusals are not
+All 21,084 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:e2ab8be7e73f7bff1206bd943296f05532290d4e`.
-Input graph SHA-256: `e03920ddbe1fd9e73fd040c3586c40128755ace59c39846398822ae682909e30`.
+Compiler/oracle source: `backend-tree:00fe51530f8ddd9da245c4274059e2f6f34d54f0`.
+Input graph SHA-256: `6549cded424ad9f66e764b9e352c50186b8be6ba37b8690bf82be9e7dba7e1bd`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -15921,3 +15921,156 @@ matching source-bound measurement are submitted together. **Four packages remain
 unchecked; next is G-E4.** G-M3 remains deferred, the broader G-E3 feature row
 stays open, and full parity remains OFF. The historical Windows VM 82/82 evidence
 keeps its original source/platform scope; no new Windows or hosted-CI claim is made.
+
+## Phase L — G-E4 implementation
+
+### Frozen native authority before production changes
+
+The starting revision is `be22fb2db1e1faf804d1b91739305a70d54b0fdc`.
+Native TypeScript 5.9.3 and Acorn 8.15.0 established and independently
+replayed the finite authority before production compiler changes.
+`ge4_declaration_options/cases.json` SHA-256 is
+`53823ae7ebcbc6d263b04fcb2d4d30877518a049382ab445b316ddc0f1bf6cf5`;
+`reference.json` SHA-256 is
+`bf9adfa16106b9b423fa0df9de55c607aaf49c5c0e88a4facc9f678b71eab8b1`.
+
+The 12 source families cover annotated/inferred nested object members, inferred
+class fields, annotated auto-accessors, anonymous classes, nested namespaces,
+const tuples, nested unions, generic overload returns, contextual methods,
+imported aliases and function/namespace merges. Both modules cross all 64
+stripInternal/isolatedDeclarations/newline/BOM/comments/field-mode products:
+**1,536 configurations / 1,152 accepts / 384 rejects**, strict ES2022 target/lib,
+Node10 resolution and no skipped declarations. An astral JSDoc and an internal
+root declaration occur in every source family; the accessor class uses physical
+CRLF independently of the selected output line ending. Previously measured G-D1
+sources are copied into this new option-product list without modifying old
+fixtures.
+
+All accepted programs retain **1,216 exact declarations and 1,216 JavaScript
+artifacts**, **3,456 independent native consumer observations** (positive,
+negative and internal-root visibility) and **1,152 actual Node executions**.
+The reader-only consumer policy is explicit: noEmit with isolatedDeclarations,
+declaration, emitDeclarationOnly and stripInternal disabled, while retaining the
+strict/library/module policy. No TS5069 or other native diagnostics are filtered.
+
+Declarations retain every raw BOM/newline/comment byte. JavaScript formatting
+observations compare BOM, interior BOM, terminal newline, newline kinds outside
+literal token ranges and exact source-comment token type/payload streams.
+The exact BlueTS class-helper version marker has separate provenance validation;
+arbitrary generated comments fail. Three tool regression tests prove option
+changes cannot silently pass, literal newlines/comment-like strings are not
+misclassified, and source/helper markers remain distinct. This does not claim
+raw JavaScript layout equality or duplicate declaration-map coverage owned by
+G-D2/G-E5.
+
+Six owner boundaries cover canonical source/output authority, atomic failure,
+charged nested work, option/source/cache identity, type-only runtime denial and
+strict helper/map/default-denied policy. The original native-only provisional
+preflight passes all 1,536 configurations; independent final replay and the
+failing public CLI boundary run before production changes. G-E4 stays unchecked
+until implementation, matching full immutable measurement and every common gate
+pass together. All 19,542 prior observations and old fixture bytes must remain
+intact; the broader feature row remains open and full parity OFF.
+
+The initial public-boundary run completed all 1,536 configurations and failed
+with **1,312 differences** (10 ordinary functions passed, one failed and two
+native functions were initially ignored). The six owner controls passed before
+production changes. The first complete implementation preflight then passed
+**13/13 functions with zero failed/ignored/filtered**, including the independent
+native replay and all exact declaration/consumer/output-profile/Node checks
+(`/private/tmp/bluets-ge4-full-preflight-v1.log`, 251.38 seconds). This development
+run precedes the final source-provenance review and does not substitute for the
+matching immutable cohort.
+
+The implementation distinguishes standalone leading JSDoc from same-line
+trailing comments, retains pinned file headers according to declaration
+ownership and comment-removal policy, preserves original class-member spans
+separately from printer-order markers, and formats inferred class records with
+their declaration indentation. Isolated declarations now recognize annotated
+nested methods, report class-expression TS9022 at the class keyword, retain all
+shorthand-property diagnostics, and diagnose instantiated record members that
+cannot reuse a generic signature binder. Diagnostic identity is v11, isolated
+inference v3, output/declaration fingerprints v2/v3 and private build-state epoch
+26; generated helper identities and runtime/capability grants do not change.
+
+The reviewed implementation preflight also passes **13/13** with all native
+functions selected (`/private/tmp/bluets-ge4-full-preflight-v2.log`, 283.30
+seconds). The existing `declaration_options` and `output_options` oracle suites
+pass **9/9**, including their native replay/runtime/declaration/map checks.
+The six owner controls additionally distinguish detached versus adjacent pinned
+headers from identical bytes inside a string literal; pinned TypeScript probes
+establish both retained-header counts. Original source spans remain distinct
+from computed-class printer ordering, including inherited members from another
+module. All **12,043** earlier non-inventory fixture files remain byte-identical.
+
+The final candidate backend tree is
+`00fe51530f8ddd9da245c4274059e2f6f34d54f0`, input graph SHA-256
+`6549cded424ad9f66e764b9e352c50186b8be6ba37b8690bf82be9e7dba7e1bd`.
+Source adapters enumerate **121 suites / 285 selected ignored functions / 21,084
+observations**, with no missing provider. Warnings-denied Clippy passes both
+crates and all targets. These are preflight observations; the immutable complete
+cohort and final unfiltered ordinary run remain required before publication.
+
+The broad preflight exposed historical assertions that still expected private
+build-state epoch 25. All five affected harness/support files now assert epoch
+26, while the stale-cache regression explicitly checks every old epoch 4–25
+must rebuild. The corresponding focused run passes **41 ordinary functions /
+5 targets**, with 11 native functions deferred to the required full cohort
+(`/private/tmp/bluets-ge4-state-epoch-regressions-v1.log`). Both-crate all-target
+warnings-denied Clippy passes again at the updated frozen source. These changes
+update assertions and strengthen cache-invalidation coverage; they do not alter
+any earlier native fixture or remove an old observation.
+
+The broad preflight also caught a real source-map regression: implementing the
+terminal newline as a general mapped edit reprojected AMD/UMD wrapper text onto
+the first user-source segment. The final newline now appends without a source
+location and preserves all existing provenance. The original wrapper assertion
+remains, with an added terminal-newline assertion. `module_systems`,
+`source_map_publication` and `source_map_tokens_oracle` pass **32/32** with every
+native function selected, including all eleven K.11 token rows and external/
+inline publication products (`/private/tmp/bluets-ge4-map-regressions-v1.log`).
+The dotted-namespace raw-output assertion separately gains the intended final
+LF, verified against pinned native output; its existing exact text assertion is
+retained rather than trimmed or normalized.
+
+The namespace suite passes **44/44** after the terminal-newline assertion update.
+Warnings-denied all-target Clippy passes again at the final corrected candidate.
+
+The complete ordinary development preflight finishes all **181 targets**, with
+**1,434 passed / 17 failed / 285 ignored / zero filtered**. The failures comprise
+10 stale inventory/source bindings, four old epoch-25 assertions, two source-map
+assertions sharing the corrected terminal-newline reprojection, and one updated
+namespace newline assertion. The epoch-focused 41-function run, map/module
+32-function run, namespace 44-function run, and public lookup **4/4** each pass
+after correction. The full immutable cohort and a new unfiltered ordinary run
+are required; this failing development run is not a passing acceptance gate.
+
+The final immutable cohort is **121/121 suites / 713 executed Rust functions /
+all 285 selected ignored oracle functions**, with **zero failed, ignored or
+filtered functions**. It binds backend tree
+`00fe51530f8ddd9da245c4274059e2f6f34d54f0`, graph
+`6549cded424ad9f66e764b9e352c50186b8be6ba37b8690bf82be9e7dba7e1bd`,
+and measurement SHA-256
+`6cf17e0861e47e95aef8ccc244f8f3b1f7de4c5edda6212c45937ced91302465`.
+The G-E4 suite passes **13/13** at that source; its complete log SHA-256 is
+`dcae3de7974d6a890008065efca25536982cc0ceadd403b5f1d0c765a60e5298`.
+The sum of suite execution times is 4,036.516 seconds. All 86 oracle tool hashes
+match, and both the initial/final source checks pass.
+
+The matching catalog now has **N = 21,084** observations, including 1,536 new
+native comparisons and six separate owner controls. All **19,542** prior
+suite-qualified observations preserve their nine identity/status/scope fields,
+and all **12,043** earlier non-inventory fixture files remain byte-identical.
+Direct agreement is **20,357/20,363**, with the same three open and three refused
+observations; 633 native-reference and 88 owner controls remain separate.
+The updated source/case/suite/status records and **13 Python / 24 Node tool
+tests** pass. The final unfiltered ordinary two-crate gate passes **181 targets / 1,451
+functions / zero failed or filtered**, in 2,472.408 seconds. Its 285 ignored
+oracle functions all execute successfully in the immutable cohort above.
+Workspace formatting, frozen-source both-crate all-target warnings-denied Clippy,
+staged source/case binding, all 86 tool hashes, old observation/fixture preservation
+and current-status audits pass. All 27 changed Rust source/test files remain below
+1,500 lines (largest: emitter.rs, 1,203 lines); new source files retain MPL-2.0
+headers. G-E4 is complete for the frozen minimum and its implementation and matching
+measurement are submitted together. G-E5 is next; the broader row remains open,
+full parity stays OFF and G-M3 remains deferred.

@@ -13,6 +13,53 @@ pub(super) fn simple(tokens: &[Token]) -> bool {
 pub(super) fn failure(module: &Module, tokens: &[Token]) -> Option<(u32, SourceSpan)> {
     at(module, tokens, false, 0)
 }
+
+pub(super) fn failures(module: &Module, tokens: &[Token]) -> Vec<(u32, SourceSpan)> {
+    collect(module, tokens, false, 0)
+}
+
+fn collect(
+    module: &Module,
+    tokens: &[Token],
+    constant: bool,
+    depth: usize,
+) -> Vec<(u32, SourceSpan)> {
+    if depth <= 128
+        && tokens.first().is_some_and(|token| token.is("{"))
+        && tokens.last().is_some_and(|token| token.is("}"))
+    {
+        let mut errors = Vec::new();
+        for member in parts(&tokens[1..tokens.len() - 1]) {
+            if member.is_empty() {
+                continue;
+            }
+            if member[0].is("...") {
+                errors.push((9015, span(module, member)));
+            } else if member.len() == 1 {
+                errors.push((9016, span(module, member)));
+            }
+        }
+        // These members prevent syntactic object inference as a whole. The
+        // declaration serializer still reports each offending member.
+        if !errors.is_empty() {
+            return errors;
+        }
+        for member in parts(&tokens[1..tokens.len() - 1]) {
+            if let Some(colon) = top(member, ":") {
+                if !member
+                    .iter()
+                    .any(|token| module.nested_functions.contains_key(&token.start))
+                {
+                    errors.extend(collect(module, &member[colon + 1..], constant, depth + 1));
+                }
+            }
+        }
+        if !errors.is_empty() {
+            return errors;
+        }
+    }
+    at(module, tokens, constant, depth).into_iter().collect()
+}
 fn at(
     module: &Module,
     tokens: &[Token],
@@ -57,6 +104,9 @@ fn at(
         return None;
     }
     let first = tokens.first()?;
+    if first.is("class") {
+        return Some((9022, first.span(&module.id)));
+    }
     if first.is("[") && tokens.last().is_some_and(|t| t.is("]")) {
         if !constant {
             return Some((9017, span(module, tokens)));
@@ -78,6 +128,24 @@ fn at(
             }
             if member.len() == 1 {
                 return Some((9016, span(module, member)));
+            }
+            if let Some(function) = member.iter().find_map(|token| {
+                module
+                    .nested_functions
+                    .get(&token.start)
+                    .filter(|function| {
+                        function.span.start >= member[0].start
+                            && function.span.end <= member.last().unwrap().end
+                    })
+            }) {
+                if function.return_type.is_some()
+                    && function.parameters.iter().all(|parameter| {
+                        parameter.annotation.is_some()
+                            || parameter.default.as_deref().is_some_and(simple)
+                    })
+                {
+                    continue;
+                }
             }
             if let Some(colon) = top(member, ":") {
                 if let Some(error) = at(module, &member[colon + 1..], constant, depth + 1) {

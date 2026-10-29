@@ -10,7 +10,8 @@ use crate::syntax::{Token, TokenKind};
 use std::collections::BTreeSet;
 mod literals;
 mod members;
-pub(super) const VERSION: &str = "isolated-declarations-v2";
+mod signatures;
+pub(super) const VERSION: &str = "isolated-declarations-v3";
 
 pub(super) fn validate_options(options: &super::CompilerOptions) -> Vec<Diagnostic> {
     if options.declaration {
@@ -41,6 +42,7 @@ pub(super) fn check(project: &CheckedProject) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for checked in project.modules.values() {
         if !super::is_declaration_module(&checked.module.id) {
+            signatures::check(checked, &mut diagnostics);
             declarations(
                 &checked.module,
                 &checked.module.declarations,
@@ -140,17 +142,19 @@ fn variable_initializer(
                 } => returns(module, returned, target, out),
             }
         }
-    } else if let Some((code, location)) = literals::failure(module, tokens) {
-        let location = if code == 9013 {
-            target.location.clone()
-        } else {
-            location
-        };
-        out.push(issue(
-            target,
-            location,
-            if code == 9013 { 9010 } else { code },
-        ));
+    } else {
+        for (code, location) in literals::failures(module, tokens) {
+            let location = if code == 9013 {
+                target.location.clone()
+            } else {
+                location
+            };
+            out.push(issue(
+                target.clone(),
+                location,
+                if code == 9013 { 9010 } else { code },
+            ));
+        }
     }
 }
 
