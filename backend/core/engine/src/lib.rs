@@ -27,6 +27,7 @@ mod page_text;
 pub mod script;
 pub mod session;
 mod stylesheet;
+mod web;
 mod tabs;
 mod translation;
 

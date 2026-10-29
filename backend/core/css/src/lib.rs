@@ -52,6 +52,12 @@ pub use selector::{
     Specificity,
 };
 pub use tokenizer::Token;
+
+/// Parses a selector list (`a.b > c, d`); selectors the engine does not support
+/// are dropped, like in a stylesheet.
+pub fn parse_selectors(text: &str) -> Vec<ComplexSelector> {
+    selector::parse_selector_list(&tokenizer::tokenize(text))
+}
 pub use value::{Color, Length, LengthContext, Value};
 
 /// A parsed CSS stylesheet: its rules, in source order. Not yet matched

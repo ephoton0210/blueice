@@ -232,6 +232,23 @@ mod tests {
         let laid_out = std::time::Instant::now();
         page.load_html_str(&fetched.body, Some(fetched.final_url.clone()));
         eprintln!("styled and laid out in {:?}", laid_out.elapsed());
+        if std::env::var("BI_DIAG").is_ok() {
+            let mut hidden = 0;
+            for (id, style) in &page.styles {
+                let zero = matches!(style.other.get("opacity"), Some(Value::Number(n)) if *n == 0.0);
+                let vis = matches!(style.other.get("visibility"), Some(Value::Keyword(k)) if k == "hidden");
+                if (zero || vis) && !blueice_css::is_pseudo_node(*id) {
+                    hidden += 1;
+                    if hidden <= 25 {
+                        if let NodeData::Element { tag_name, attributes } = page.doc.data(*id) {
+                            let class = attributes.iter().find(|(k, _)| k == "class").map(|(_, v)| v.as_str()).unwrap_or("");
+                            eprintln!("hidden({}) <{tag_name} class=\"{}\">", if zero { "opacity" } else { "visibility" }, &class[..class.len().min(80)]);
+                        }
+                    }
+                }
+            }
+            eprintln!("{hidden} elements hidden by opacity:0 or visibility:hidden");
+        }
         let pixmap = blueice_raster::rasterize(&page.render());
         eprintln!(
             "{}x{}, {} images painted",
