@@ -60,7 +60,7 @@ fn parse_align(word: &str) -> Align {
     }
 }
 
-enum Source {
+pub(crate) enum Source {
     Element(NodeId),
     /// Consecutive text children, wrapped in an anonymous item.
     Text(Vec<NodeId>),
@@ -212,7 +212,7 @@ impl Ctxs<'_, '_> {
     }
 }
 
-fn collect_items(
+pub(crate) fn collect_items(
     ctx: &Ctx<'_>,
     node: NodeId,
     items: &mut Vec<Source>,

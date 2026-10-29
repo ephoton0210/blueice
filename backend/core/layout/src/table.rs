@@ -162,7 +162,11 @@ fn spacing(ctx: &Ctx<'_>, table: NodeId) -> (f64, f64) {
     if style.keyword("border-collapse") == Some("collapse") {
         return (0.0, 0.0);
     }
-    let one = |v: &Value| v.to_px(&style.length_context(f64::NAN)).unwrap_or(0.0).max(0.0);
+    let one = |v: &Value| {
+        v.to_px(&style.length_context(f64::NAN))
+            .unwrap_or(0.0)
+            .max(0.0)
+    };
     match style.raw("border-spacing") {
         Some(Value::List(parts)) if parts.len() == 2 => (one(&parts[0]), one(&parts[1])),
         Some(v) => (one(v), one(v)),
@@ -230,7 +234,11 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
         pending_abs: Vec::new(),
     };
     if columns == 0 {
-        result.width = input.specified.or(input.forced).unwrap_or(0.0).min(input.available);
+        result.width = input
+            .specified
+            .or(input.forced)
+            .unwrap_or(0.0)
+            .min(input.available);
         return result;
     }
 
@@ -282,10 +290,7 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
     let mut col_width: Vec<f64> = if distributable >= max_sum {
         let extra = distributable - max_sum;
         if max_sum > 0.0 && (input.specified.is_some() || input.forced.is_some()) {
-            col_max
-                .iter()
-                .map(|m| m + extra * m / max_sum)
-                .collect()
+            col_max.iter().map(|m| m + extra * m / max_sum).collect()
         } else if input.specified.is_some() || input.forced.is_some() {
             col_max.iter().map(|m| m + extra / columns as f64).collect()
         } else {
@@ -301,7 +306,10 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
     };
     // Percentage columns claim their share of the table when there is room.
     let pct_total: f64 = col_pct.iter().sum();
-    if pct_total > 0.0 && pct_total <= 100.0 && (input.specified.is_some() || input.forced.is_some() || distributable >= max_sum) {
+    if pct_total > 0.0
+        && pct_total <= 100.0
+        && (input.specified.is_some() || input.forced.is_some() || distributable >= max_sum)
+    {
         let wanted: Vec<f64> = (0..columns)
             .map(|i| {
                 if col_pct[i] > 0.0 {
@@ -349,7 +357,9 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
         cursor += w + space_x;
     }
     let span_width = |cell: &Cell| -> f64 {
-        col_width[cell.col..cell.col + cell.colspan].iter().sum::<f64>()
+        col_width[cell.col..cell.col + cell.colspan]
+            .iter()
+            .sum::<f64>()
             + space_x * (cell.colspan - 1) as f64
     };
 
@@ -374,11 +384,13 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
         fragment.x = 0.0;
         fragment.y = top;
         top += fragment.height;
-        result.pending_abs.extend(placed.pending_abs.into_iter().map(|p| PendingAbs {
-            node: p.node,
-            x: p.x,
-            y: p.y + fragment.y,
-        }));
+        result
+            .pending_abs
+            .extend(placed.pending_abs.into_iter().map(|p| PendingAbs {
+                node: p.node,
+                x: p.x,
+                y: p.y + fragment.y,
+            }));
         result.children.push(fragment);
     }
 
@@ -428,8 +440,8 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
     }
     for (i, cell) in cells.iter().enumerate().filter(|(_, c)| c.rowspan > 1) {
         let range = cell.row..cell.row + cell.rowspan;
-        let have: f64 = row_height[range.clone()].iter().sum::<f64>()
-            + space_y * (cell.rowspan - 1) as f64;
+        let have: f64 =
+            row_height[range.clone()].iter().sum::<f64>() + space_y * (cell.rowspan - 1) as f64;
         if laid[i].1 > have {
             row_height[cell.row + cell.rowspan - 1] += laid[i].1 - have;
         }
@@ -488,11 +500,13 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
         fragment.y = 0.0;
         let origin_x = space_x + fragment.x;
         let origin_y = row_y[cell.row];
-        result.pending_abs.extend(placed.pending_abs.into_iter().map(|p| PendingAbs {
-            node: p.node,
-            x: p.x + origin_x,
-            y: p.y + origin_y,
-        }));
+        result
+            .pending_abs
+            .extend(placed.pending_abs.into_iter().map(|p| PendingAbs {
+                node: p.node,
+                x: p.x + origin_x,
+                y: p.y + origin_y,
+            }));
         row_fragments[cell.row].children.push(fragment);
     }
     // Group fragments wrap their rows.
@@ -572,7 +586,8 @@ mod tests {
         out
     }
 
-    const TWO_BY_TWO: &str = "<table><tr><td><i style='width:50px'></i></td><td><i style='width:80px'></i></td></tr>\
+    const TWO_BY_TWO: &str =
+        "<table><tr><td><i style='width:50px'></i></td><td><i style='width:80px'></i></td></tr>\
         <tr><td><i style='width:70px'></i></td><td><i style='width:10px'></i></td></tr></table>";
 
     #[test]
@@ -612,7 +627,11 @@ mod tests {
     #[test]
     fn a_narrow_container_squeezes_columns_toward_their_minimum() {
         let f = table(TWO_BY_TWO, "", 100.0);
-        assert_eq!(f.width.round(), 150.0, "block content cannot shrink below its width");
+        assert_eq!(
+            f.width.round(),
+            150.0,
+            "block content cannot shrink below its width"
+        );
     }
 
     #[test]
@@ -633,7 +652,10 @@ mod tests {
         let c = cells(&f);
         assert_eq!(c[0].3, 70.0, "the spanning cell covers both rows");
         assert_eq!(c[1].0, 10.0);
-        assert_eq!(c[2].0, 10.0, "the second row's cell skips the occupied column");
+        assert_eq!(
+            c[2].0, 10.0,
+            "the second row's cell skips the occupied column"
+        );
         assert_eq!(c[2].1, c[1].3, "second row starts under the first");
     }
 
@@ -655,7 +677,10 @@ mod tests {
             <thead><tr><td><i style='width:10px;height:10px'></i></td></tr></thead></table>";
         let f = table(html, "", 800.0);
         let c = cells(&f);
-        assert_eq!(c.iter().map(|c| c.1).collect::<Vec<_>>(), vec![0.0, 10.0, 40.0]);
+        assert_eq!(
+            c.iter().map(|c| c.1).collect::<Vec<_>>(),
+            vec![0.0, 10.0, 40.0]
+        );
     }
 
     #[test]
@@ -684,7 +709,8 @@ mod tests {
 
     #[test]
     fn percentage_columns_take_their_share() {
-        let html = "<table style='width:400px'><tr><td style='width:25%'><i style='width:10px'></i></td>\
+        let html =
+            "<table style='width:400px'><tr><td style='width:25%'><i style='width:10px'></i></td>\
             <td><i style='width:10px'></i></td></tr></table>";
         let f = table(html, "", 800.0);
         assert_eq!(cells(&f)[0].2, 100.0);

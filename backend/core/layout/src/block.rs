@@ -572,17 +572,21 @@ fn layout_block_level_uncached(
         pending_abs = table.pending_abs;
         extent = table.width;
         empty = false;
-    } else if matches!(display, Display::Flex | Display::InlineFlex) {
-        let flex = crate::flex::layout_flex(
-            ctx,
-            node,
-            &crate::flex::FlexInput {
-                content_width,
-                definite_height: child_cb_height,
-                min_height,
-                max_height,
-            },
-        );
+    } else if matches!(
+        display,
+        Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid
+    ) {
+        let input = crate::flex::FlexInput {
+            content_width,
+            definite_height: child_cb_height,
+            min_height,
+            max_height,
+        };
+        let flex = if matches!(display, Display::Grid | Display::InlineGrid) {
+            crate::grid::layout_grid(ctx, node, &input)
+        } else {
+            crate::flex::layout_flex(ctx, node, &input)
+        };
         children = flex.children;
         content_flow_height = flex.height;
         top_pass = Margin::default();

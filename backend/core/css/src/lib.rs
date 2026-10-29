@@ -38,6 +38,7 @@ pub use cascade::{cascade, cascade_with_viewport, ua_stylesheet, ComputedStyle, 
 pub use media::{matches_media, MediaEnvironment};
 pub use parser::{Declaration, Rule};
 pub use selector::{matches, ComplexSelector, Compound, SimpleSelector, Specificity};
+pub use tokenizer::Token;
 pub use value::{Color, Length, LengthContext, Value};
 
 /// A parsed CSS stylesheet: its rules, in source order. Not yet matched
