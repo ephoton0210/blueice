@@ -5,6 +5,9 @@
 //! GLSL ES (1.00 and 3.00) front end and interpreter.
 
 pub mod ast;
+pub mod builtins;
+pub mod interp;
 pub mod lex;
 pub mod parse;
 pub mod pre;
+pub mod value;
