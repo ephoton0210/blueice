@@ -14,10 +14,22 @@ pub(in crate::emitter) fn lower(
     project: &Project,
     options: &CompilerOptions,
 ) -> Result<EmittedJavaScript, Diagnostic> {
-    if options.experimental_decorators
-        || super::preserves_proposals(options)
-        || (options.target >= crate::EcmaTarget::Es2022 && options.defines_class_fields())
-        || !super::has_standard_lowering(module)
+    let legacy_accessors = options.experimental_decorators
+        && options.target != crate::EcmaTarget::EsNext
+        && module.classes().any(|class| {
+            class
+                .members
+                .iter()
+                .any(|member| member.field.as_ref().is_some_and(|field| field.accessor))
+        });
+    let generated_es5 = options.target == crate::EcmaTarget::Es5
+        && class_lowering::has_wrapped_class_expressions(module);
+    if !legacy_accessors
+        && !generated_es5
+        && (options.experimental_decorators
+            || super::preserves_proposals(options)
+            || (options.target >= crate::EcmaTarget::Es2022 && options.defines_class_fields())
+            || !super::has_standard_lowering(module))
     {
         return Ok(emitted);
     }

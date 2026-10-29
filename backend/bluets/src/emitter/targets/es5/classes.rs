@@ -164,7 +164,7 @@ pub(super) fn lower(
                         "({})",
                         &emitted.javascript[tokens[property].end..tokens[property_end - 1].start]
                     )
-                } else if tokens[property].kind == TokenKind::String {
+                } else if matches!(tokens[property].kind, TokenKind::String | TokenKind::Number) {
                     tokens[property].text.clone()
                 } else {
                     serde_json::to_string(&tokens[property].text).unwrap()
@@ -199,7 +199,11 @@ pub(super) fn lower(
             "(function ({}) {{\n{constructor}{inheritance}{members}return {name};\n}})({argument})",
             if extends { base.as_str() } else { "" }
         );
-        let replacement = if class_is_expression(&tokens, start) {
+        let default_export =
+            start >= 2 && tokens[start - 1].is("default") && tokens[start - 2].is("export");
+        let replacement = if default_export {
+            format!("var {name} = {expression}; export default {name};")
+        } else if class_is_expression(&tokens, start) {
             format!("({expression})")
         } else {
             format!("var {name} = {expression};")
@@ -233,7 +237,7 @@ pub(super) fn lower(
                     replacement: format!("\n{helper}\n"),
                 },
                 TextEdit {
-                    start: tokens[start].start,
+                    start: tokens[if default_export { start - 2 } else { start }].start,
                     end: tokens[close].end,
                     replacement,
                 },

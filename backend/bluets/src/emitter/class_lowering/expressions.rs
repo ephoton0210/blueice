@@ -7,7 +7,7 @@
 use super::*;
 use crate::parser::ClassExpression;
 
-mod names;
+pub(in crate::emitter) mod names;
 mod suspension;
 
 pub(super) fn needs_wrapper(class: &ClassDeclaration) -> bool {
@@ -86,10 +86,40 @@ pub(super) fn lower(
         .map(|private| format!("var {}; ", private.variables().join(", ")))
         .unwrap_or_default();
     let name = if expression.name.is_none() {
+        let mut context = names::contextual_name(module, expression, &tokens);
+        if context == "\"\"" {
+            // Pinned TypeScript exposes its temporary constructor name when a
+            // return-position anonymous class needs static-state lowering.
+            let mut index = if emit.es5 { 1 } else { 0 };
+            let generated = loop {
+                let candidate = if emit.es5 {
+                    format!("class_{index}")
+                } else if index < 26 {
+                    format!("_{}", (b'a' + index as u8) as char)
+                } else {
+                    format!("_{index}")
+                };
+                if !tokens.iter().any(|token| token.text == candidate) {
+                    break candidate;
+                }
+                index += 1;
+            };
+            context = serde_json::to_string(&generated).unwrap();
+        }
         format!(
             "Object.defineProperty({}, \"name\", {{value: {}, configurable: true}});",
-            class.name,
-            names::contextual_name(module, expression, &tokens)
+            class.name, context
+        )
+    } else {
+        String::new()
+    };
+    let declaration = if expression.statement {
+        format!(
+            "let {} = ",
+            expression
+                .name
+                .as_ref()
+                .expect("a class declaration is named")
         )
     } else {
         String::new()
@@ -98,12 +128,13 @@ pub(super) fn lower(
         start: class.span.start,
         end: class.span.end,
         replacement: format!(
-            "(({}) => {{{variables}{}{before}const {} = {body};{name}{after}return {};}})({})",
+            "{declaration}(({}) => {{{variables}{}{before}const {} = {body};{name}{after}return {};}})({}){}",
             suspension.parameters.join(", "),
             helper_definitions(&helpers),
             class.name,
             class.name,
-            suspension.arguments.join(", ")
+            suspension.arguments.join(", "),
+            if expression.statement { ";" } else { "" },
         ),
     });
     Ok(())

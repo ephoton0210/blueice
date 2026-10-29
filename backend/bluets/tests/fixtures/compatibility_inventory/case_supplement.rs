@@ -33,6 +33,23 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "ge3_decorator_compositions" => {
+            let path = "backend/bluets/tests/fixtures/ge3_decorator_compositions/reference.json";
+            let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;
+            let rows = root["ownerControls"]
+                .as_array()
+                .ok_or("missing G-E3 owner controls")?;
+            if rows.len() != 6 {
+                return Err("incomplete G-E3 owner controls".into());
+            }
+            rows.iter().enumerate().map(|(index, row)| {
+                let label = row.as_str().ok_or("invalid G-E3 owner control")?;
+                let mut case = Case::new(path, &format!("/ownerControls/{index}"), label, "owner-decorator-metadata-control");
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("Canonical source/import/metadata authority, atomic publication, bounded work, helper/source/version/cache identity, graph invalidation and retained runtime/map/default-denied debugger policy are separate owner controls, not native agreements.".into());
+                Ok(case)
+            }).collect::<Result<Vec<_>>>()?
+        }
         "ge2_module_helpers" => {
             let path = "backend/bluets/tests/fixtures/ge2_module_helpers/reference.json";
             let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;

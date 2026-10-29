@@ -9,7 +9,7 @@ use crate::parser::{
     FunctionBodyItem, FunctionElseBranch, NestedFunctionBody, Parameter, VariableDeclaration,
 };
 
-pub(super) fn contextual_name(
+pub(in crate::emitter) fn contextual_name(
     module: &Module,
     expression: &ClassExpression,
     tokens: &[Token],

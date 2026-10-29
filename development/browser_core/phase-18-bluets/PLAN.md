@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-29).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 18,536 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 19,542 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 17,897/17,903 (99.9665%); 3 open, 3 refused observations |
-| Separate controls | 557 native-reference + 76 BlueTS owner = 633; excluded from direct agreement |
-| Case labels | 18,530 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 119 suites / 281 ignored Rust functions; not a case denominator |
-| Suite labels | 115 scoped closed, 1 open, 3 refused |
+| Direct agreement | 18,821/18,827 (99.9681%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 82 BlueTS owner = 715; excluded from direct agreement |
+| Case labels | 19,536 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 120 suites / 283 ignored Rust functions; not a case denominator |
+| Suite labels | 116 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 223 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 18,536 recorded case expectations pass; expected differences/refusals are not
+All 19,542 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:1a2d732515ae5d85b26328857c793d585f09d4bd`.
-Input graph SHA-256: `05b90f954c60e86b55cfe80a28bb5b6819e08b34ca74512f28c2c46b594ba3b8`.
+Compiler/oracle source: `backend-tree:e2ab8be7e73f7bff1206bd943296f05532290d4e`.
+Input graph SHA-256: `e03920ddbe1fd9e73fd040c3586c40128755ace59c39846398822ae682909e30`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -15687,3 +15687,237 @@ together. **Five packages remain unchecked; next is G-E3.** G-M3 remains
 deferred, the broad feature row stays open, and full parity remains OFF. The
 historical Windows VM 82/82 evidence keeps its original source scope; this is
 not a new platform claim.
+
+## Phase L — G-E3 implementation
+
+### Frozen native boundary before production changes
+
+The starting revision is `90437ff364dd1f8aaf9e4a1ca373732996e426fa`.
+Production code is unchanged while the pinned TypeScript 5.9.3/Acorn 8.15.0
+preflight establishes the finite list. The final source authority is
+`ge3_decorator_compositions/cases.json`, SHA-256
+`6d507399b4ab25ba3d6ada14c798758918d93f798a36c211015fe871b5accf4d`;
+its native `reference.json` SHA-256 is
+`f4a46b3a8f61c45d401cd85c8f63e857c32d28b4ba241970367a83340b686648`.
+The complete native recording succeeds (`/private/tmp/bluets-ge3-native-authority.log`).
+An independent unmodified replay and the failing public BlueTSC boundary test
+follow before implementation.
+
+There are **1,000 configurations / 803 native accepts / 197 rejects**:
+20 decorator forms × standard/legacy × ES5/ES2015/ES2022/ESNext × CommonJS/ESNext
+× assign/define (640); 16 imported/aliased metadata families (256), isolated/
+metadata-flag controls (64), and 40 independent native private-home-object
+counterparts. The original 960 identities remain present. Six owner controls
+remain separate from TypeScript agreement.
+
+The preflight distinguishes genuine native transformation defects from preserved
+syntax. Forty lowered private-super outputs put `super` inside an ordinary
+descriptor function and fail with SyntaxError. Thirty-six legacy decorated
+static-initialization outputs use an undefined receiver and throw TypeError.
+Their real native JavaScript/errors stay in the reference. Each private case
+pairs with an independently compiled native program using the equivalent
+receiver-aware Reflect operation on the original class home object. The legacy
+cases pair with the exact same source/module/field configuration's successful
+native ES2022 execution. A harness checks every relationship; the 76 originals
+remain reference-only observations, not claimed native runtime agreements.
+BlueTS must produce valid selected-edition syntax and the paired successful
+execution; keeping an old refusal does not complete this work.
+
+An initial unparenthesized `return @replace class ...` probe also exposes a
+native preserved-output newline/ASI defect. Before freezing, the per-evaluation
+form is explicitly parenthesized. That probe is documented here rather than
+reported as a compiler fix. Literal-method/accessor positive programs and the
+legacy double-decorated-accessor rejection are retained as distinct forms.
+
+All accepted configurations compare **1,158 byte-exact declarations and 1,606
+independent native declaration-consumer observations**. All 757 non-preserved
+BlueTS outputs must execute, including the 76 safe-authority comparisons above.
+The 46 preserved-proposal outputs compare complete decorated-class ASTs;
+an explicitly labeled TypeScript emitted-JavaScript-only ES2022 adapter has
+38 successful executions and eight native private-super SyntaxErrors. Preserved
+proposal syntax is not reported as directly executable Node output.
+
+The six owner boundaries cover canonical source/import/metadata authority,
+atomic failure, bounded work, helper/source/version/cache identity, graph
+invalidation and retained runtime/map/default-denied debugger policy. All
+18,536 earlier suite-qualified observations, classifications and old native
+fixture bytes must remain intact. G-E3 stays unchecked until implementation,
+matching full immutable measurement and all ordinary/format/Clippy/accounting
+checks pass together. The broader feature row remains open and full parity OFF.
+
+The complete pre-implementation public CLI replay finishes with **812 recorded
+differences** across the immutable list: five tests pass, the graph/diagnostic/
+exact-declaration test fails, and two live-oracle tests are ignored in this
+negative run (185.74 seconds; `/private/tmp/bluets-ge3-before-production.log`).
+The native manifest and every safe-authority relationship test pass. A focused
+literal-name probe independently reproduces the explicit refusal plus incorrect
+hexadecimal/escaped property identities before production changes.
+
+The first implementation replay reduces the public-boundary differences from
+812 to 128 without changing either frozen JSON authority. Remaining families
+are computed class-expression heritage, nested local class home scopes, and
+legacy-private placement/target diagnostic precedence. Subsequent focused
+probes pass every 32-row computed-heritage and nested-home-object profile,
+all anonymous-class profiles, and the isolated-metadata controls.
+
+Pinned observable output includes ES5/ES2015 anonymous replacement constructor
+names and the standard decorator static-super logical-assignment setter
+writeback counts. These comparisons keep actual pinned behavior. Original
+native crash references remain separately classified and use their explicit
+safe execution authorities. Auto-accessors additionally compare actual
+prototype/static descriptors and the absence of a same-named own data field;
+a numerically equal ordinary-field implementation is insufficient.
+
+The member plan/name logic is split into decorators/members.rs and legacy
+metadata resolution into legacy_decorators/metadata.rs. The latter reads only
+the already authorized Project graph and receives existing CommonJS binding
+rewrites; it performs no new lookup or I/O. Source/helper ABI versions move to
+v2, diagnostic identity to v10 and private build-state epoch to 25, so prior
+lowering artifacts rebuild. Full native/declaration/consumer/execution replay
+and the six owner controls follow; G-E3 remains unchecked.
+
+### Complete-output regression correction
+
+The complete graph/diagnostic/exact-declaration pass succeeds for all 1,000
+configurations, and all six owner controls pass. The first output harness run
+exposes an incorrectly attached proposal-adapter branch; fixing that branch
+leaves 25 actual output differences, retained in
+`/private/tmp/bluets-ge3-complete-output-v2.log`. No frozen input or native
+reference is changed.
+
+The correction names moved private callables internally so the existing ES2015
+async pass sees them, while independently restoring the observable private
+method name. CommonJS keeps a local const binding for anonymous class
+NamedEvaluation before publishing its export. Preserved auto-accessor classes
+use collision-free local native helper aliases to the versioned BlueTS helper
+implementations; their complete class AST is still compared without helper-name
+normalization or removed nodes. Pinned standard-decorator static-super lowering
+ignores false Reflect.set results, just as its logical assignment writes back
+unconditionally; those actual pinned observables remain in the reference.
+Private/legacy home-object writes retain strict failure. The separate frozen
+native crash observations and safe execution authorities are unchanged.
+
+Development probes pass all 32 strict-write configurations, 42 private
+async/generator originals/counterparts, 32 anonymous class configurations and
+32 literal auto-accessor configurations (including their complete preserved
+class ASTs and proposal adapters). These filtered probes are debugging evidence,
+not the source-bound acceptance measurement. Two-crate all-target Clippy with
+warnings denied passes. Full focused and ordinary replay follows; G-E3 is still
+unchecked.
+
+### Frozen-source acceptance in progress
+
+The corrected complete focused run passes **14/14 tests**, including both live
+oracles, with no failures, ignored or filtered functions, in **279.79 seconds**
+(`/private/tmp/bluets-ge3-complete-focused-v3.log`). All 1,000 graph/diagnostic/
+exact-declaration configurations, declaration consumers, actual executions,
+complete preserved class ASTs, proposal adapters and six owner controls pass.
+The affected existing boundaries pass **19 targets / 140 ordinary functions**;
+six ignored functions in those preflight invocations are not credited as executed
+until the complete cohort. All **12,041** pre-G-E3 fixture files retain their
+original Git blob bytes; both frozen G-E3 JSON hashes remain unchanged.
+
+The source is fixed at backend tree `9af13d1d16ca1cc2f80eabca1a8abc6fc88b26d6`,
+input graph `aae1ef2ee6cb3a2085e5c26a7e7424b624fb646f04d91dc4949d8127c9fd1760`.
+The full **120-suite / 283-selected-ignored-function** run is executing under
+`/private/tmp/bluets-ge3-measurement-v1`, bound to all 83 oracle-tool hashes.
+No compiler/test/tool input changes during this measurement. G-E3 remains
+unchecked until the full measured cohort, complete ordinary two-crate gate and
+all source/case/tool/status/format/Clippy audits finish.
+
+The first immutable cohort stops at G-T4 after **56 successful suites**. Its
+readonly owner control exposes a real regression: a numeric computed write to
+a mutable optional-call result asserted as `never` is incorrectly treated as a
+missing named property. All G-E1/G-E2/G-E3 tests and the G-D1/G-D2/G-M1/G-M2
+replays pass in that run, but the failed cohort is **not published or credited
+as complete** (`/private/tmp/bluets-ge3-measurement-v1`). Its acceptance supervisor
+stops before case/status publication or ordinary-gate execution.
+
+The correction retains owner readonly/opaque checks before applying the native
+indexed-`never` value rule. Independent TypeScript 5.9.3 probes accept bracket
+writes of `never`, reject other values with TS2322, and retain TS2339 for dotted
+property access. Five matching public-boundary controls are added to the existing
+computed-key owner test. The indexed-never rule leaves dotted access distinct and preserves the
+canonical numeric key behavior required by the decorator matrix. The original G-T4 readonly/mutable control
+passes after the fix; full ordinary preflight and a replacement frozen cohort
+must follow. Neither frozen G-E3 JSON authority changes, and G-E3 stays unchecked.
+
+The complete ordinary preflight executes all **180 targets** with no filtering:
+**1,429 passed / 11 failed / 283 ignored**. Ten failures are the expected stale
+source/measurement inventory assertions; the only other failure is a former
+unsupported-syntax expectation for `function make() { class Local {} }`.
+That unchanged program moves into the accepted-source table. The corrected
+entire frontend suite passes **123/123** in 2.90 seconds; no other implementation
+regressions occur in the full preflight. This is not the final ordinary green
+gate: after the replacement measurement is published, both crates must rerun
+unfiltered and every inventory assertion must pass too.
+
+The corrected G-T4 complete replay passes **6/6**, including both ignored native
+oracles, exact declarations, consumers/execution and the owner readonly/mutable
+pairs (13.12 seconds; `/private/tmp/bluets-ge3-gt4-corrected-full.log`). The
+ordinary G-E3 replay also passes its entire 1,000-configuration graph/diagnostic/
+exact-declaration matrix and all owner controls, including the five new indexed-
+never controls. The frozen input/reference JSON files remain byte-identical.
+
+The replacement immutable source is backend tree
+`e2ab8be7e73f7bff1206bd943296f05532290d4e`, graph
+`e03920ddbe1fd9e73fd040c3586c40128755ace59c39846398822ae682909e30`.
+Workspace rustfmt and both crates' all-target warnings-denied Clippy pass
+before freezing (Clippy 28.92 seconds). The complete 120-suite / all-283-selected-
+ignored-function cohort restarts in `/private/tmp/bluets-ge3-measurement-v2`;
+the failed first cohort remains unpublished. Compiler/test/tool sources stay
+fixed through this replacement run and its final ordinary/evidence gates.
+
+### Successful replacement measurement
+
+The complete replacement cohort succeeds in **3,789.187 seconds**:
+**120 suites / 700 executed Rust functions / all 283 selected ignored functions**,
+with zero failed, ignored or filtered functions. Its source is the corrected
+`e2ab8be7e73f7bff1206bd943296f05532290d4e` backend tree and `e03920dd…` graph
+above; its complete measurement SHA-256 is
+`0b545bc4f625f6f6e3e92aed9da3c5bac24ab126f0d35a54fd977024b4867b08`.
+The runner rechecks the immutable source/index and all 83 oracle-tool hashes
+before recording success. The failed first cohort is not reused.
+
+The matching published case catalog contains **19,542 observations / 18,821
+agreements in 18,827 direct comparisons / three open / three refused / 633 native
+references / 82 owner controls**. The audit preserves all nine identity/
+classification fields of all **18,536** old suite-qualified observations and
+all **12,041** original fixture files' Git blob bytes. Exactly 1,006 observations
+are added: 1,000 frozen configurations (including 76 separately classified native
+runtime-defect references) and six owner controls. Both original G-E3 JSON hashes
+remain unchanged. The broader feature row remains open and full parity OFF.
+
+Post-publication Python and Node tool tests pass. The final unfiltered ordinary
+two-crate gate runs next (`/private/tmp/bluets-ge3-ordinary-final.log`); G-E3 stays
+unchecked and uncommitted until it and final source/case/status/format/Clippy
+audits all pass.
+
+### Final ordinary gate and completed scope
+
+The final unfiltered `cargo test -p blueice-bluets -p blueice-bluets-bluejs
+--no-fail-fast` gate passes **180 targets / 1,440 tests**, with zero failures and
+zero filtered functions, in **2,250.730 seconds**
+(`/private/tmp/bluets-ge3-ordinary-final.log`). All 283 ordinarily ignored
+functions have actually passed in the complete replacement cohort above.
+The formerly failing inventory target passes **22/22** and the updated frontend
+suite passes **123/123** in this final complete run.
+
+Final workspace rustfmt, both crates' all-target warnings-denied Clippy, staged
+suite/input-graph and case/measurement checks, all 83 oracle-tool hash checks,
+whitespace checks and four-document status/accounting checks pass. The independent
+full audit preserves all 18,536 earlier observations' nine identity/classification
+fields and all 12,041 original fixture files. The 36 changed production modules
+remain below 1,300 lines (largest emitter.rs: 1,201, reviewed for the added graph
+parameter propagation). New modules retain MPL-2.0 headers. No compiler/test/tool
+source changes follow the successful replacement measurement.
+
+G-E3 is checked for its frozen literal/private-super/class-expression/metadata
+scope, with all 1,158 exact declarations, 1,606 consumers, 757 direct executions,
+46 preserved class ASTs and six owner boundaries passing. The 76 original native
+crashes stay reference-only with explicit safe execution peers; proposal-only
+adapters retain their 38 successes and eight native errors. Implementation and
+matching source-bound measurement are submitted together. **Four packages remain
+unchecked; next is G-E4.** G-M3 remains deferred, the broader G-E3 feature row
+stays open, and full parity remains OFF. The historical Windows VM 82/82 evidence
+keeps its original source/platform scope; no new Windows or hosted-CI claim is made.

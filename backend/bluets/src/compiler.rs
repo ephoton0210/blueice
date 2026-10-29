@@ -770,6 +770,7 @@ fn compile_with_cache(
             es_module_interop: options.es_module_interop,
             jsx: options.jsx,
             experimental_decorators: options.experimental_decorators,
+            emit_decorator_metadata: options.emit_decorator_metadata,
             jsx_factory: options.jsx_factory.clone(),
             jsx_fragment_factory: options.jsx_fragment_factory.clone(),
         },

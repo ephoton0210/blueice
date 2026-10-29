@@ -51,21 +51,8 @@ pub(super) fn queries<'a>(
         options.jsx_factory.as_deref(),
         options.jsx_fragment_factory.as_deref(),
     );
-    // Imported decorator metadata remains a separately measured ABI boundary.
-    // Do not erase an annotation's potential runtime class under that profile.
     if options.emit_decorator_metadata {
-        runtime_names.extend(
-            module
-                .declarations
-                .iter()
-                .filter_map(|declaration| {
-                    let Declaration::Import(import) = declaration else {
-                        return None;
-                    };
-                    Some(import.bindings.iter().map(|binding| binding.local.clone()))
-                })
-                .flatten(),
-        );
+        runtime_names.extend(super::legacy_decorators::metadata_imports(module, project));
     }
     let mut result = module.clone();
     for declaration in &mut result.declarations {

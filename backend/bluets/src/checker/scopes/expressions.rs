@@ -66,6 +66,24 @@ impl ScopeModel<'_> {
                 .max(index + 1);
         }
         if let Some(expression) = self.module.class_expression(token.start) {
+            if expression.statement {
+                let name = expression
+                    .name
+                    .as_ref()
+                    .expect("a class declaration is named");
+                self.value(
+                    scope,
+                    name,
+                    expression.class.span.end,
+                    false,
+                    false,
+                    Type::Unknown,
+                );
+                self.binding_kind(scope, name, BindingKind::Class);
+                self.scopes[scope].types.insert(name.clone());
+                self.declaration_names
+                    .insert(expression.class.name_span.start);
+            }
             self.class(&expression.class, scope, true);
             return tokens
                 .partition_point(|token| token.start < expression.class.span.end)

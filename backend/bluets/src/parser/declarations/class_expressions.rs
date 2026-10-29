@@ -12,13 +12,50 @@ impl Parser {
         index: usize,
         end: usize,
     ) -> Option<usize> {
+        self.parse_class_expression_at(index, end, false)
+    }
+
+    pub(in crate::parser::implementation) fn parse_body_class_declaration(
+        &mut self,
+    ) -> Option<VariableDeclaration> {
+        let begin = self.index;
+        if !self.peek("class") || self.tokens.get(begin + 1)?.kind != TokenKind::Identifier {
+            return None;
+        }
+        let name = self.tokens[begin + 1].text.clone();
+        let start = self.tokens[begin].start;
+        let next = self.parse_class_expression_at(begin, self.tokens.len() - 1, true)?;
+        let expression = self.class_expressions.get_mut(&start)?;
+        expression.statement = true;
+        let span = expression.class.span.clone();
+        let initializer = self.tokens[begin..next].to_vec();
+        self.index = next;
+        Some(VariableDeclaration {
+            name,
+            pattern: None,
+            kind: VariableKind::Let,
+            annotation: None,
+            initializer,
+            exported: false,
+            declared: false,
+            span,
+        })
+    }
+
+    fn parse_class_expression_at(
+        &mut self,
+        index: usize,
+        end: usize,
+        statement: bool,
+    ) -> Option<usize> {
         if !matches!(self.tokens[index].text.as_str(), "class" | "@")
-            || !index.checked_sub(1).is_some_and(|before| {
-                matches!(
-                    self.tokens[before].text.as_str(),
-                    "=" | "return" | "throw" | "(" | "[" | "," | ":" | "?" | "=>"
-                )
-            })
+            || !statement
+                && !index.checked_sub(1).is_some_and(|before| {
+                    matches!(
+                        self.tokens[before].text.as_str(),
+                        "=" | "return" | "throw" | "(" | "[" | "," | ":" | "?" | "=>"
+                    )
+                })
         {
             return None;
         }
@@ -74,8 +111,14 @@ impl Parser {
         self.pending_decorators = saved_decorators;
         if self.declarations.len() > declarations {
             if let Declaration::Class(class) = self.declarations.pop().unwrap() {
-                self.class_expressions
-                    .insert(start, ClassExpression { name, class });
+                self.class_expressions.insert(
+                    start,
+                    ClassExpression {
+                        name,
+                        class,
+                        statement,
+                    },
+                );
             }
         }
         Some(next_index.min(end))

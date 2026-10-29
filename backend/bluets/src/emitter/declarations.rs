@@ -394,7 +394,16 @@ pub(super) fn emit_declaration(
                 emit_export_bindings(module, &export.bindings, true, &mut output);
                 output.push_str(" }");
                 if let Some(specifier) = &export.specifier {
-                    output.push_str(&format!(" from \"{specifier}\""));
+                    output.push_str(" from ");
+                    if let Some(raw) = export
+                        .specifier_span
+                        .as_ref()
+                        .and_then(|span| module.source.get(span.start..span.end))
+                    {
+                        output.push_str(raw);
+                    } else {
+                        output.push_str(&serde_json::to_string(specifier).expect("module string"));
+                    }
                 }
                 output.push_str(";\n");
             }

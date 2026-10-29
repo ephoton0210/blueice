@@ -16,7 +16,7 @@
 //! `design:returntype`.
 //!
 //! The three helpers are the specified behavior of `Reflect.decorate` and its
-//! fallback, written here and versioned (`bluets-legacy-decorator-helper-v1`).
+//! fallback, written here and versioned (`bluets-legacy-decorator-helper-v2`).
 //! Metadata types are serialized the way TypeScript does for the types BlueTS
 //! can resolve (primitives, arrays, functions, local classes, aliases, enums);
 //! a type naming something it cannot resolve (an imported class) is refused
@@ -29,8 +29,63 @@ use crate::parser::{
     ClassDeclaration, ClassMemberKind, ClassMemberShell, Declaration, Decorator, Parameter, Type,
 };
 
+mod auto_accessors;
+mod metadata;
+
+pub(crate) fn metadata_imports(
+    module: &Module,
+    project: &crate::Project,
+) -> std::collections::BTreeSet<String> {
+    metadata::runtime_imports(module, project)
+}
+
+pub(super) fn prepare_super(
+    module: &Module,
+    options: &CompilerOptions,
+    edits: &mut Vec<TextEdit>,
+) -> Result<(), Diagnostic> {
+    if !options.experimental_decorators {
+        return Ok(());
+    }
+    let mut used = crate::lex(&module.id, &module.source)
+        .unwrap_or_default()
+        .iter()
+        .map(|token| token.text.trim_start_matches('#').to_string())
+        .collect();
+    for (declaration, _) in super::runtime_declarations(&module.declarations) {
+        let Declaration::Class(class) = declaration else {
+            continue;
+        };
+        if !needs_work(class) {
+            continue;
+        }
+        for shell in &class.members {
+            let tokens = if shell.kind == ClassMemberKind::StaticBlock {
+                &class.body[shell.token_start..shell.token_end]
+            } else if let Some(field) = shell.field.as_ref().filter(|field| field.is_static) {
+                let Some(tokens) = &field.initializer else {
+                    continue;
+                };
+                tokens.as_slice()
+            } else {
+                continue;
+            };
+            super::decorators::super_members::lower_references(
+                module,
+                tokens,
+                &format!("Object.getPrototypeOf({})", class.name),
+                &class.name,
+                false,
+                &mut used,
+                edits,
+            )?;
+        }
+    }
+    Ok(())
+}
+
 /// The version of the emitted legacy-decorator helper text.
-pub const LEGACY_DECORATOR_HELPER_V1_VERSION: &str = "bluets-legacy-decorator-helper-v1";
+pub const LEGACY_DECORATOR_HELPER_V1_VERSION: &str = "bluets-legacy-decorator-helper-v2";
 
 const DECORATE_HELPER: &str = "var __bluetsDecorate = function (decorators, target, key, desc) { var argc = arguments.length, result = argc < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, decorator; if (typeof Reflect === \"object\" && typeof Reflect.decorate === \"function\") result = Reflect.decorate(decorators, target, key, desc); else for (var i = decorators.length - 1; i >= 0; i--) if (decorator = decorators[i]) result = (argc < 3 ? decorator(result) : argc > 3 ? decorator(target, key, result) : decorator(target, key)) || result; return argc > 3 && result && Object.defineProperty(target, key, result), result; };";
 const PARAM_HELPER: &str = "var __bluetsParam = function (index, decorator) { return function (target, key) { decorator(target, key, index); }; };";
@@ -74,9 +129,12 @@ fn needs_work(class: &ClassDeclaration) -> bool {
 
 pub(super) fn lower_legacy_decorators(
     module: &Module,
+    project: &crate::Project,
     options: &CompilerOptions,
+    references: &std::collections::BTreeMap<String, super::namespaces::Replacement>,
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
+    auto_accessors::lower(module, options, edits)?;
     let mut first_start: Option<usize> = None;
     let mut need_param = false;
     let mut need_metadata = false;
@@ -89,6 +147,8 @@ pub(super) fn lower_legacy_decorators(
         }
         let mut lowerer = Lowerer {
             module,
+            project,
+            references,
             options,
             edits,
             need_param: false,
@@ -121,6 +181,8 @@ pub(super) fn lower_legacy_decorators(
 
 struct Lowerer<'a, 'e> {
     module: &'a Module,
+    project: &'a crate::Project,
+    references: &'a std::collections::BTreeMap<String, super::namespaces::Replacement>,
     options: &'a CompilerOptions,
     edits: &'e mut Vec<TextEdit>,
     need_param: bool,
@@ -217,15 +279,11 @@ impl Lowerer<'_, '_> {
                         Some(field) if !field.accessor => {
                             (field.name.clone(), field.is_static, ElementKind::Field)
                         }
-                        Some(field) => {
-                            if !shell.decorators.is_empty() {
-                                return Err(unsupported(
-                                    &field.span,
-                                    "auto-accessors are not combined with experimentalDecorators",
-                                ));
-                            }
-                            continue;
-                        }
+                        Some(field) => (
+                            field.name.clone(),
+                            field.is_static,
+                            ElementKind::AutoAccessor,
+                        ),
                         None => continue,
                     },
                     _ => {
@@ -423,7 +481,7 @@ impl Lowerer<'_, '_> {
             )
         };
         match kind {
-            ElementKind::Field => {
+            ElementKind::Field | ElementKind::AutoAccessor => {
                 let field = shell.field.as_ref().expect("a field member");
                 let annotation = field.declared_type().ok_or_else(|| {
                     unsupported(&field.span, "decorator metadata needs this field's type")
@@ -508,132 +566,6 @@ impl Lowerer<'_, '_> {
             })
             .collect()
     }
-
-    /// TypeScript's `serializeTypeNode` for the types BlueTS resolves.
-    fn serialize(
-        &self,
-        class: &ClassDeclaration,
-        value: &Type,
-        span: &SourceSpan,
-    ) -> Result<String, Diagnostic> {
-        self.serialize_at(class, value, span, 0)
-    }
-
-    fn serialize_at(
-        &self,
-        class: &ClassDeclaration,
-        value: &Type,
-        span: &SourceSpan,
-        depth: usize,
-    ) -> Result<String, Diagnostic> {
-        if depth > 8 {
-            return Ok("Object".to_string());
-        }
-        Ok(match value {
-            Type::Predicate(predicate) => {
-                self.serialize_at(class, &predicate.runtime_type(), span, depth + 1)?
-            }
-            Type::Number => "Number".to_string(),
-            Type::String => "String".to_string(),
-            Type::Boolean => "Boolean".to_string(),
-            Type::Literal(text) => {
-                if text.starts_with(['"', '\'', '`']) {
-                    "String".to_string()
-                } else if matches!(text.as_str(), "true" | "false") {
-                    "Boolean".to_string()
-                } else {
-                    "Number".to_string()
-                }
-            }
-            Type::Void | Type::Undefined | Type::Null | Type::Never => "void 0".to_string(),
-            Type::Any
-            | Type::Unknown
-            | Type::StrictUnknown
-            | Type::BigInt
-            | Type::Symbol
-            | Type::UniqueSymbol(_)
-            | Type::ConstAssertion
-            | Type::Readonly(_)
-            | Type::IndexedRecord { .. }
-            | Type::Record(_)
-            | Type::CallableRecord { .. }
-            | Type::Intersection(_)
-            | Type::Conditional(_)
-            | Type::Infer(_)
-            | Type::Mapped(_)
-            | Type::TemplateLiteral(_)
-            | Type::KeyOf(_)
-            | Type::IndexedAccess { .. } => "Object".to_string(),
-            Type::Array(_) | Type::Tuple(_) => "Array".to_string(),
-            Type::Function { .. } | Type::GenericFunction { .. } => "Function".to_string(),
-            Type::Union(parts) => {
-                // `null` and `undefined` do not count; one remaining kind decides.
-                let mut kinds: Vec<String> = Vec::new();
-                for part in parts {
-                    if matches!(part, Type::Null | Type::Undefined) {
-                        continue;
-                    }
-                    let serialized = self.serialize_at(class, part, span, depth + 1)?;
-                    if serialized == "Object" {
-                        return Ok("Object".to_string());
-                    }
-                    if !kinds.contains(&serialized) {
-                        kinds.push(serialized);
-                    }
-                }
-                match kinds.as_slice() {
-                    [only] => only.clone(),
-                    [] => "void 0".to_string(),
-                    _ => "Object".to_string(),
-                }
-            }
-            Type::Named { name, .. } => match name.as_str() {
-                "object" => "Object".to_string(),
-                "symbol" => "Symbol".to_string(),
-                "bigint" => "BigInt".to_string(),
-                "Array" | "ReadonlyArray" => "Array".to_string(),
-                "Promise" => "Promise".to_string(),
-                "Function" => "Function".to_string(),
-                _ => self.serialize_named(class, name, span, depth)?,
-            },
-        })
-    }
-
-    fn serialize_named(
-        &self,
-        class: &ClassDeclaration,
-        name: &str,
-        span: &SourceSpan,
-        depth: usize,
-    ) -> Result<String, Diagnostic> {
-        let _ = class;
-        for declaration in &self.module.declarations {
-            match declaration {
-                Declaration::Class(other) if other.name == name => return Ok(name.to_string()),
-                Declaration::Interface(other) if other.name == name => {
-                    return Ok("Object".to_string())
-                }
-                Declaration::TypeAlias(alias) if alias.name == name => {
-                    return self.serialize_at(class, &alias.value, span, depth + 1);
-                }
-                Declaration::Enum(item) if item.name == name => {
-                    let numeric = item.members.iter().all(|member| {
-                        member.initializer.as_ref().is_none_or(|tokens| {
-                            tokens
-                                .iter()
-                                .all(|token| token.kind != crate::TokenKind::String)
-                        })
-                    });
-                    return Ok(if numeric { "Number" } else { "String" }.to_string());
-                }
-                _ => {}
-            }
-        }
-        Err(unsupported(
-            span,
-            format!("decorator metadata cannot serialize `{name}`: only types declared in this module are supported"),
-        ))
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -642,4 +574,5 @@ enum ElementKind {
     Getter,
     Setter,
     Field,
+    AutoAccessor,
 }

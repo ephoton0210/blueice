@@ -21,6 +21,13 @@ impl Parser {
             && depth > 0
             && self.emitted_body_end.is_none_or(|end| self.index < end)
         {
+            if parentheses == 0 && brackets == 0 && self.peek("class") {
+                if let Some(variable) = self.parse_body_class_declaration() {
+                    locals.push(variable.clone());
+                    body.push(FunctionBodyItem::Variable(variable));
+                    continue;
+                }
+            }
             self.diagnose_unsupported_opaque_syntax(
                 self.index,
                 self.index.saturating_add(2).min(self.tokens.len()),

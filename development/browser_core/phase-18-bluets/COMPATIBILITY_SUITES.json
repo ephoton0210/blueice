@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:1a2d732515ae5d85b26328857c793d585f09d4bd",
-  "source_graph_sha256": "05b90f954c60e86b55cfe80a28bb5b6819e08b34ca74512f28c2c46b594ba3b8",
+  "source_revision": "backend-tree:e2ab8be7e73f7bff1206bd943296f05532290d4e",
+  "source_graph_sha256": "e03920ddbe1fd9e73fd040c3586c40128755ace59c39846398822ae682909e30",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -467,7 +467,7 @@
       "inputs": {
         "backend/bluets/tests/fixtures/gc1_explain/cases.json": "e9a7d7d5fb6950923ad342936e53f96180603678",
         "backend/bluets/tests/fixtures/gc1_explain/reference.json": "2ab37bcc4b292cf88f738a2298f9bb9e57e6c364",
-        "backend/bluets/tests/gc1_explain_files.rs": "120db1b6a66d5ac36903988ac74eaabe5a106a1f"
+        "backend/bluets/tests/gc1_explain_files.rs": "4a170113e4c20382eb6a194d50d688202fd57c59"
       }
     },
     {
@@ -522,7 +522,7 @@
         "backend/bluets/tests/fixtures/ge1_downlevel/cases.json": "5a29ace3f9813e15b20a02d0cbeeda1c0456bdd3",
         "backend/bluets/tests/fixtures/ge1_downlevel/reference.json": "79d6f71729b0be9390a53f2cb738e21183182f2d",
         "backend/bluets/tests/ge1_downlevel.rs": "c348176298730f705459dbfbda49c85435c8ea3e",
-        "backend/bluets/tests/oracle_support/ge1_boundaries.rs": "5db68328a6a3dc5598aeaefbda7287b1a5ce6b3e",
+        "backend/bluets/tests/oracle_support/ge1_boundaries.rs": "8a25973f5e713b8302d600957c6917c765a0c4a0",
         "backend/bluets/tests/oracle_support/ge1_support.rs": "69b9f8562bc21691b996a1908e9fd78492d9b92f",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
       }
@@ -539,6 +539,21 @@
         "backend/bluets/tests/ge2_module_helpers.rs": "6f68ee79262be0d07436db0cb7ac8a2611e40bec",
         "backend/bluets/tests/oracle_support/ge2_boundaries.rs": "69d5fe3e0d55665b5f673cf08e91ad9dc54cb4d8",
         "backend/bluets/tests/oracle_support/ge2_support.rs": "37ba3edb72b37058a5e9de56a4050c3c717f7629",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge3_decorator_compositions.rs",
+      "ignored_tests": [
+        "exact_declarations_consumers_preserved_syntax_and_actual_execution_match",
+        "frozen_native_decorator_and_metadata_matrix_is_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge3_decorator_compositions/cases.json": "11109fad80903e62b7080043199bf4e48ff2838d",
+        "backend/bluets/tests/fixtures/ge3_decorator_compositions/reference.json": "8d6f355e858f5a243d547a72af467eeed87f152f",
+        "backend/bluets/tests/ge3_decorator_compositions.rs": "d270f99913ba567161f3200958f93665e4e794fd",
+        "backend/bluets/tests/oracle_support/ge3_boundaries.rs": "687719704e32d739ac18fa96ca82398d0a3a388b",
+        "backend/bluets/tests/oracle_support/ge3_support.rs": "a41b35d86796aacfd53826311920a1434cf15833",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
       }
     },
@@ -1083,7 +1098,7 @@
       "inputs": {
         "backend/bluets/tests/fixtures/project_build_corrupt_state/build-corrupt-state-matrix.tsv": "567f683ac73b02d489cbd54d346f9abf2e2fc2e7",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
-        "backend/bluets/tests/project_build_corrupt_state.rs": "ebd16955a6dbfe9e1a5701085d8f05e9715ba74e"
+        "backend/bluets/tests/project_build_corrupt_state.rs": "5352f202953b63e5ed3cb2c2273047475675d2b2"
       }
     },
     {
@@ -1152,7 +1167,7 @@
       "inputs": {
         "backend/bluets/tests/fixtures/project_build_watch/build-watch-matrix.tsv": "f1f9ec7d1e56dc500e042a2d634575ac640237c2",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
-        "backend/bluets/tests/project_build_watch.rs": "e5fd64a6e4a95e96ab211ca7371735b8b4e5bd5b"
+        "backend/bluets/tests/project_build_watch.rs": "b6bc9f7d1ffe66c75207200198f2b8e5f933f1cb"
       }
     },
     {
@@ -1199,7 +1214,7 @@
       "inputs": {
         "backend/bluets/tests/fixtures/project_referenced_declarations/rebuild-matrix.tsv": "9442d5ff88f4ff38c33542acc990a9bc6439811f",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
-        "backend/bluets/tests/project_referenced_declarations.rs": "8ee64c26e417bf2e418542f51adefebe497a2667"
+        "backend/bluets/tests/project_referenced_declarations.rs": "27149f7823d98ec799005711d368df18a53f75c8"
       }
     },
     {

@@ -95,6 +95,7 @@ impl<'a> ModuleChecker<'a> {
             es_module_interop: policy.es_module_interop,
             jsx_mode: policy.jsx,
             experimental_decorators: policy.experimental_decorators,
+            emit_decorator_metadata: policy.emit_decorator_metadata,
             jsx_factory: policy.jsx_factory.clone(),
             jsx_fragment_factory: policy.jsx_fragment_factory.clone(),
             jsx_pragmas: crate::jsx::Pragmas::of(&module.source),

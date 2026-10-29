@@ -72,6 +72,8 @@ fn parameter_reference(parameter: &TypeParameter) -> Type {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassExpression {
+    /// A local class declaration uses the same closed class structure and a local TDZ binding.
+    pub statement: bool,
     /// A name bound only within the class body; anonymous expressions have none.
     pub name: Option<String>,
     /// The class structure uses a unique internal name for its static identity.

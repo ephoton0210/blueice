@@ -22,12 +22,10 @@ pub(super) fn class_key_end(tokens: &[Token], start: usize, end: usize) -> Optio
 
 fn literal_key(token: &Token) -> Option<String> {
     match token.kind {
-        TokenKind::String => crate::syntax::string_contents(token),
-        TokenKind::Number => token
-            .text
-            .parse::<f64>()
-            .ok()
-            .map(|value| value.to_string()),
+        TokenKind::String => crate::enum_eval::decode_plain_string(&token.text),
+        TokenKind::Number => {
+            crate::enum_eval::parse_number(&token.text).map(crate::enum_eval::js_number_text)
+        }
         _ => None,
     }
 }

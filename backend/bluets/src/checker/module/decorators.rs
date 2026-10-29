@@ -14,6 +14,7 @@
 
 use super::*;
 use crate::parser::{ClassDeclaration, ClassMemberKind, Decorator};
+mod metadata;
 mod replacements;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -54,7 +55,11 @@ enum Callee {
 
 impl<'a> ModuleChecker<'a> {
     pub(super) fn check_class_decorators(&mut self, class: &ClassDeclaration) {
-        if self.experimental_decorators && self.module.class_expression(class.span.start).is_some()
+        if self.experimental_decorators
+            && self
+                .module
+                .class_expression(class.span.start)
+                .is_some_and(|expression| !expression.statement)
         {
             for decorator in class
                 .decorators
@@ -69,6 +74,7 @@ impl<'a> ModuleChecker<'a> {
             }
             return;
         }
+        self.check_metadata_import_annotations(class);
         let scope = self.values.clone();
         // Parameter decorators are legacy only; elsewhere they are not valid.
         for shell in &class.members {
@@ -117,18 +123,29 @@ impl<'a> ModuleChecker<'a> {
                 continue;
             }
             let first = &shell.decorators[0].span;
-            if shell
-                .key
-                .first()
-                .is_some_and(|key| matches!(key.kind, TokenKind::String | TokenKind::Number))
+            if self.experimental_decorators
+                && shell
+                    .key
+                    .first()
+                    .is_some_and(|key| key.text.starts_with('#'))
             {
-                self.type_error(
-                    first,
-                    "decorators on computed or literal member names are not supported yet".into(),
-                    DiagnosticCode::UnsupportedSyntax,
-                );
+                for decorator in &shell.decorators {
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::InvalidDeclarationFile,
+                            SourceSpan::new(
+                                &decorator.span.module,
+                                decorator.span.start,
+                                decorator.span.start + 1,
+                            ),
+                            "Decorators are not valid here.",
+                        )
+                        .with_typescript(1206, Vec::new()),
+                    );
+                }
                 continue;
             }
+
             let target = match shell.kind {
                 ClassMemberKind::Constructor
                 | ClassMemberKind::StaticBlock

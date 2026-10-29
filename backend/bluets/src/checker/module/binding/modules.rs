@@ -300,6 +300,11 @@ impl<'a> ModuleChecker<'a> {
                 self.jsx_factory.as_deref(),
                 self.jsx_fragment_factory.as_deref(),
             ));
+            if self.experimental_decorators && self.emit_decorator_metadata {
+                let names =
+                    crate::emitter::legacy_decorators::metadata_imports(self.module, self.project);
+                self.runtime_imports.as_mut().unwrap().extend(names);
+            }
         }
         let Some(resolved) = self.project.resolved_import(&self.module.id, import) else {
             // The loader already reports the unresolved import at its source.

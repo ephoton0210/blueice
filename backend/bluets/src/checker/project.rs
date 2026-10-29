@@ -16,8 +16,14 @@ pub(super) fn declaration_module_diagnostics(
     for (module_id, module) in &project.modules {
         let erased_aliases = module.declarations.iter().any(|declaration|
             matches!(declaration, Declaration::Import(import) if import.equals_require))
-            .then(|| runtime_import_uses(project,module,max_type_expansions,policy.jsx,
-                policy.jsx_factory.as_deref(),policy.jsx_fragment_factory.as_deref()));
+            .then(|| {
+                let mut uses = runtime_import_uses(project, module, max_type_expansions, policy.jsx,
+                    policy.jsx_factory.as_deref(), policy.jsx_fragment_factory.as_deref());
+                if policy.experimental_decorators && policy.emit_decorator_metadata {
+                    uses.extend(crate::emitter::legacy_decorators::metadata_imports(module, project));
+                }
+                uses
+            });
         for declaration in &module.declarations {
             if let Declaration::ValueExport(export) = declaration {
                 if !is_declaration_module(module_id)

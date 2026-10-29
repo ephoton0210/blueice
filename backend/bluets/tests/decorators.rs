@@ -133,13 +133,14 @@ fn previously_unlowered_forms_build_through_the_public_compiler() {
 }
 
 #[test]
-fn residual_decorator_forms_keep_precise_refusals() {
-    for (source, expected) in [
-        (format!("{DECL}class C {{ @d \"literal\"(): void {{}} }}\n"), "not supported"),
-        (format!("{DECL}class B {{ m(): void {{}} }}\nclass C extends B {{ @d #m(): void {{ super.m(); }} }}\n"), "super in a decorated private callable"),
+fn literal_and_private_super_decorators_lower_through_the_public_compiler() {
+    for source in [
+        format!("{DECL}class C {{ @d \"literal\"(): void {{}} }}\n"),
+        format!("{DECL}class B {{ m(): void {{}} }}\nclass C extends B {{ @d #m(): void {{ super.m(); }} }}\n"),
     ] {
-        let messages = build(&source, es2022()).unwrap_err().join("\n");
-        assert!(messages.contains(expected), "{source}: {messages}");
+        let javascript = build(&source, es2022()).unwrap();
+        assert!(!javascript.contains("@d"), "{javascript}");
+        assert!(javascript.contains("__bluetsEsDecorate"), "{javascript}");
     }
 }
 
@@ -191,7 +192,7 @@ fn a_dotted_decorator_is_bound_to_its_receiver() {
 fn the_helper_version_is_part_of_the_fingerprint_and_the_manifest_names_it() {
     assert_eq!(
         blueice_bluets::DECORATOR_HELPER_V1_VERSION,
-        "bluets-decorator-helper-v1"
+        "bluets-decorator-helper-v2"
     );
     let root = std::env::temp_dir().join(format!("bluetsc-dec-manifest-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
@@ -213,7 +214,7 @@ fn the_helper_version_is_part_of_the_fingerprint_and_the_manifest_names_it() {
         serde_json::from_slice(&std::fs::read(out.join("bluetsc.manifest.json")).unwrap()).unwrap();
     assert_eq!(
         manifest["decoratorHelperVersion"],
-        "bluets-decorator-helper-v1"
+        "bluets-decorator-helper-v2"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

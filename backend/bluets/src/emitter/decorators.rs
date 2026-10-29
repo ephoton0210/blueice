@@ -22,15 +22,17 @@
 //!
 //! Computed keys, namespace and class-expression scopes, private descriptors and
 //! static super receivers are lowered before the existing target transforms.
-//! ESNext define semantics preserve proposals. Literal member names, decorators
-//! on constructors/static blocks/overload signatures, super in decorated private
-//! callables and static-initializer super writes retain precise refusals.
+//! ESNext define semantics preserve proposals. Literal/private callable keys and
+//! receiver-aware super references retain their own evaluation scope. Decorators
+//! on constructors/static blocks/overload signatures retain precise refusals.
 
 use std::collections::BTreeSet;
 
+mod members;
+use members::{Kind, Names, Plan};
 mod private_members;
 mod scopes;
-mod super_members;
+pub(super) mod super_members;
 pub(super) mod targets;
 pub(super) use scopes::namespace_owner;
 
@@ -42,7 +44,7 @@ use crate::syntax::lex;
 use crate::{Token, TokenKind};
 
 /// The version of the emitted decorator helper text; part of the build fingerprint.
-pub const DECORATOR_HELPER_V1_VERSION: &str = "bluets-decorator-helper-v1";
+pub const DECORATOR_HELPER_V1_VERSION: &str = "bluets-decorator-helper-v2";
 
 const RUN_INITIALIZERS: &str = "__bluetsRunInitializers";
 const ES_DECORATE: &str = "__bluetsEsDecorate";
@@ -59,85 +61,6 @@ pub(super) fn is_helper_insertion(edit: &TextEdit) -> bool {
     edit.start == edit.end
         && edit.replacement.starts_with(RUN_INITIALIZERS_HELPER)
         && edit.replacement.contains(ES_DECORATE_HELPER)
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    Method,
-    Getter,
-    Setter,
-    Field,
-    Accessor,
-}
-
-impl Kind {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Method => "method",
-            Self::Getter => "getter",
-            Self::Setter => "setter",
-            Self::Field => "field",
-            Self::Accessor => "accessor",
-        }
-    }
-
-    fn is_field(self) -> bool {
-        matches!(self, Self::Field)
-    }
-}
-
-/// One member of the class, as the lowering sees it.
-struct Plan<'a> {
-    shell: &'a ClassMemberShell,
-    kind: Kind,
-    is_static: bool,
-    private: bool,
-    /// `x` or `#p`.
-    name: String,
-    /// The helper variable's stem: `_static_get_x`, `_private_p`.
-    var: String,
-    /// Captured property key, evaluated once at class definition.
-    runtime_key: Option<String>,
-}
-
-impl Plan<'_> {
-    fn decorated(&self) -> bool {
-        !self.shell.decorators.is_empty()
-    }
-
-    fn decorators_var(&self) -> String {
-        format!("{}_decorators", self.var)
-    }
-
-    fn initializers_var(&self) -> String {
-        format!("{}_initializers", self.var)
-    }
-
-    fn extra_initializers_var(&self) -> String {
-        format!("{}_extraInitializers", self.var)
-    }
-
-    /// The private name of an auto-accessor's backing field.
-    fn storage(&self) -> String {
-        format!("#{}_accessor_storage", self.name.trim_start_matches('#'))
-    }
-}
-
-struct Names {
-    used: BTreeSet<String>,
-}
-
-impl Names {
-    fn unique(&mut self, wanted: &str) -> String {
-        let mut candidate = wanted.to_string();
-        let mut count = 0;
-        while self.used.contains(&candidate) {
-            count += 1;
-            candidate = format!("{wanted}_{count}");
-        }
-        self.used.insert(candidate.clone());
-        candidate
-    }
 }
 
 fn unsupported(span: &SourceSpan, message: impl Into<String>) -> Diagnostic {
@@ -164,6 +87,9 @@ pub(super) fn class_keyword_start(class: &ClassDeclaration, source: &str) -> usi
 /// Whether the emitter lowers this class's decorators or auto-accessors (so the
 /// other passes leave its `export` and its name to this one).
 pub(super) fn lowers_class(class: &ClassDeclaration, options: &CompilerOptions) -> bool {
+    if options.experimental_decorators {
+        return super::legacy_decorators::lowers_class(class);
+    }
     needs_lowering(class) && !preserves_proposals(options)
 }
 
@@ -203,7 +129,12 @@ pub(super) fn lower_decorators(
         used: tokens
             .iter()
             .filter(|token| matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword))
-            .map(|token| token.text.clone())
+            .flat_map(|token| {
+                [
+                    token.text.clone(),
+                    token.text.trim_start_matches('#').to_string(),
+                ]
+            })
             .collect(),
     };
     let mut first_class_start: Option<usize> = None;
@@ -219,8 +150,10 @@ pub(super) fn lower_decorators(
             options,
             names: &mut names,
             edits,
+            run_initializers: RUN_INITIALIZERS.into(),
+            es_decorate: ES_DECORATE.into(),
         }
-        .class(class, false)?;
+        .class(class, false, None)?;
         let helper_start = scopes::helper_start(module, class);
         first_class_start = Some(first_class_start.map_or(helper_start, |at| at.min(helper_start)));
     }
@@ -228,6 +161,14 @@ pub(super) fn lower_decorators(
         if !needs_lowering(&expression.class) {
             continue;
         }
+        let label = expression.name.as_ref().map_or_else(
+            || {
+                super::class_lowering::expressions::names::contextual_name(
+                    module, expression, &tokens,
+                )
+            },
+            |name| quoted(name),
+        );
         let mut class = expression.class.clone();
         class.name = expression
             .name
@@ -238,8 +179,10 @@ pub(super) fn lower_decorators(
             options,
             names: &mut names,
             edits,
+            run_initializers: RUN_INITIALIZERS.into(),
+            es_decorate: ES_DECORATE.into(),
         }
-        .class(&class, true)?;
+        .class(&class, !expression.statement, Some(&label))?;
         let at = scopes::helper_start(module, &class);
         first_class_start = Some(first_class_start.map_or(at, |first| first.min(at)));
     }
@@ -258,10 +201,15 @@ struct Lowerer<'a, 'e> {
     options: &'a CompilerOptions,
     names: &'a mut Names,
     edits: &'e mut Vec<TextEdit>,
+    run_initializers: String,
+    es_decorate: String,
 }
 
 fn quoted(text: &str) -> String {
-    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+    serde_json::to_string(text)
+        .expect("property text is a string")
+        .replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029")
 }
 
 impl Lowerer<'_, '_> {
@@ -351,129 +299,6 @@ impl Lowerer<'_, '_> {
         Ok(relocated(start, end))
     }
 
-    fn plans<'c>(&mut self, class: &'c ClassDeclaration) -> Result<Vec<Plan<'c>>, Diagnostic> {
-        let mut plans = Vec::new();
-        for shell in &class.members {
-            if shell
-                .key
-                .first()
-                .is_some_and(|key| matches!(key.kind, TokenKind::String | TokenKind::Number))
-            {
-                return Err(unsupported(
-                    &shell.span,
-                    "computed or literal member names in decorator lowering are not supported yet",
-                ));
-            }
-            let (kind, is_static, name) = match shell.kind {
-                ClassMemberKind::Method => {
-                    let Some(method) = &shell.method else {
-                        if shell.decorators.is_empty() {
-                            continue;
-                        }
-                        return Err(unsupported(
-                            &shell.span,
-                            "this decorated method shape is not lowered",
-                        ));
-                    };
-                    if method.body.is_none() {
-                        if let Some(decorator) = shell.decorators.first() {
-                            return Err(unsupported(
-                                &decorator.span,
-                                "a decorator can only decorate a method implementation, not an overload",
-                            ));
-                        }
-                        continue;
-                    }
-                    (Kind::Method, method.is_static, method.name.clone())
-                }
-                ClassMemberKind::Accessor => {
-                    let Some(accessor) = &shell.accessor else {
-                        continue;
-                    };
-                    (
-                        if accessor.getter {
-                            Kind::Getter
-                        } else {
-                            Kind::Setter
-                        },
-                        accessor.is_static,
-                        accessor.name.clone(),
-                    )
-                }
-                ClassMemberKind::Field => {
-                    let Some(field) = &shell.field else {
-                        continue;
-                    };
-                    (
-                        if field.accessor {
-                            Kind::Accessor
-                        } else {
-                            Kind::Field
-                        },
-                        field.is_static,
-                        field.name.clone(),
-                    )
-                }
-                ClassMemberKind::Constructor
-                | ClassMemberKind::StaticBlock
-                | ClassMemberKind::IndexSignature => {
-                    if let Some(decorator) = shell.decorators.first() {
-                        return Err(unsupported(
-                            &decorator.span,
-                            "decorators are not valid here",
-                        ));
-                    }
-                    continue;
-                }
-                ClassMemberKind::Opaque => {
-                    if let Some(decorator) = shell.decorators.first() {
-                        return Err(unsupported(
-                            &decorator.span,
-                            "this decorated member shape (computed or literal name, or a form the class parser does not structure) is not lowered",
-                        ));
-                    }
-                    continue;
-                }
-            };
-            let private = name.starts_with('#');
-            let mut stem = String::from("_");
-            if is_static {
-                stem.push_str("static_");
-            }
-            match kind {
-                Kind::Getter => stem.push_str("get_"),
-                Kind::Setter => stem.push_str("set_"),
-                _ => {}
-            }
-            if private {
-                stem.push_str("private_");
-            }
-            let computed = shell.key.first().is_some_and(|key| key.is("["));
-            stem.push_str(if computed {
-                "member"
-            } else {
-                name.trim_start_matches('#')
-            });
-            // Only decorated members get helper variables; keep their stems unique.
-            let var = if shell.decorators.is_empty() {
-                stem
-            } else {
-                self.names.unique(&stem)
-            };
-            let runtime_key = computed.then(|| self.names.unique("_computedKey"));
-            plans.push(Plan {
-                runtime_key,
-                shell,
-                kind,
-                is_static,
-                private,
-                name,
-                var,
-            });
-        }
-        Ok(plans)
-    }
-
     /// The `{ has, get, set }` access object of a decorated member.
     fn access(plan: &Plan) -> String {
         if let Some(key) = &plan.runtime_key {
@@ -494,11 +319,15 @@ impl Lowerer<'_, '_> {
         };
         let get = if plan.private {
             format!("obj => obj.{key}")
+        } else if plan.literal() {
+            format!("obj => obj[{}]", quoted(&plan.name))
         } else {
             format!("obj => obj.{}", plan.name)
         };
         let set = if plan.private {
             format!("(obj, value) => {{ obj.{key} = value; }}")
+        } else if plan.literal() {
+            format!("(obj, value) => {{ obj[{}] = value; }}", quoted(&plan.name))
         } else {
             format!("(obj, value) => {{ obj.{} = value; }}", plan.name)
         };
@@ -509,8 +338,41 @@ impl Lowerer<'_, '_> {
         }
     }
 
-    fn class(&mut self, class: &ClassDeclaration, expression: bool) -> Result<(), Diagnostic> {
+    fn class(
+        &mut self,
+        class: &ClassDeclaration,
+        expression: bool,
+        label: Option<&str>,
+    ) -> Result<(), Diagnostic> {
         let plans = self.plans(class)?;
+        // ESNext assign mode keeps auto-accessor proposal syntax. Preserve the
+        // native class AST's helper bindings through local, collision-free
+        // aliases to the same versioned BlueTS helper implementations.
+        let aliases = if self.options.target == EcmaTarget::EsNext
+            && plans
+                .iter()
+                .any(|plan| plan.kind == Kind::Accessor && !plan.private)
+        {
+            self.run_initializers = self.names.unique("__runInitializers");
+            self.es_decorate = self.names.unique("__esDecorate");
+            format!(
+                "const {} = {RUN_INITIALIZERS}, {} = {ES_DECORATE}; ",
+                self.run_initializers, self.es_decorate
+            )
+        } else {
+            String::new()
+        };
+        let run_initializers = self.run_initializers.clone();
+        let es_decorate = self.es_decorate.clone();
+        let class_home = plans
+            .iter()
+            .any(|plan| {
+                plan.private_callable()
+                    && class.body[plan.shell.token_start..plan.shell.token_end]
+                        .iter()
+                        .any(|token| token.is("super"))
+            })
+            .then(|| self.names.unique("_classHome"));
         let name_anchor = if expression {
             String::new()
         } else {
@@ -554,11 +416,14 @@ impl Lowerer<'_, '_> {
             .then(|| self.names.unique("_instanceExtraInitializers"));
 
         if let Some(base) = &class_super {
-            self.rewrite_static_super(class, base, &class_this)?;
+            self.rewrite_static_super(class, base, &class_this, class_decorated)?;
         }
 
         // ---- the header --------------------------------------------------
-        let mut lets = String::new();
+        let mut lets = aliases;
+        if let Some(home) = &class_home {
+            lets.push_str(&format!("let {home}; "));
+        }
         if class_decorated {
             let decorators = class
                 .decorators
@@ -609,6 +474,9 @@ impl Lowerer<'_, '_> {
 
         // ---- the leading static block -------------------------------------
         let mut leading = String::new();
+        if let Some(home) = &class_home {
+            leading.push_str(&format!("{home} = this; "));
+        }
         leading.push_str(&format!(
             "const {metadata} = typeof Symbol === \"function\" && Symbol.metadata ? Object.create({}) : void 0; ",
             match &class_super {
@@ -642,7 +510,7 @@ impl Lowerer<'_, '_> {
                 if plan.kind == Kind::Accessor {
                     leading.push_str(&plan.private_accessor_descriptor());
                 } else {
-                    leading.push_str(&self.private_callable(class, plan)?);
+                    leading.push_str(&self.private_callable(class, plan, class_home.as_deref())?);
                 }
             }
         }
@@ -707,7 +575,7 @@ impl Lowerer<'_, '_> {
                     .start,
             );
             format!(
-                "{anchor}{ES_DECORATE}({target}, {descriptor}, {}, {context}, {initializers}, {extra}); {}",
+                "{anchor}{es_decorate}({target}, {descriptor}, {}, {context}, {initializers}, {extra}); {}",
                 plan.decorators_var(),
                 super::relocations::unmapped()
             )
@@ -730,7 +598,7 @@ impl Lowerer<'_, '_> {
             let anchor =
                 super::relocations::source_anchor(class_keyword_start(class, &self.module.source));
             leading.push_str(&format!(
-                "{anchor}{ES_DECORATE}(null, {class_descriptor} = {{ value: {class_this} }}, {class_decorators}, {{ kind: \"class\", name: {class_this}.name, metadata: {metadata} }}, null, {class_extra}); {}{} = {class_this} = {class_descriptor}.value; ",
+                "{anchor}{es_decorate}(null, {class_descriptor} = {{ value: {class_this} }}, {class_decorators}, {{ kind: \"class\", name: {class_this}.name, metadata: {metadata} }}, null, {class_extra}); {}{} = {class_this} = {class_descriptor}.value; ",
                 super::relocations::unmapped(),
                 class.name
             ));
@@ -748,10 +616,10 @@ impl Lowerer<'_, '_> {
         let mut pending_static: Vec<String> = Vec::new();
         let mut pending_instance: Vec<String> = Vec::new();
         if let Some(name) = &static_extra {
-            pending_static.push(format!("{RUN_INITIALIZERS}({this_arg_static}, {name})"));
+            pending_static.push(format!("{run_initializers}({this_arg_static}, {name})"));
         }
         if let Some(name) = &instance_extra {
-            pending_instance.push(format!("{RUN_INITIALIZERS}(this, {name})"));
+            pending_instance.push(format!("{run_initializers}(this, {name})"));
         }
         let mut has_static_initializers = false;
         let mut constructor: Option<&ClassMemberShell> = None;
@@ -841,7 +709,7 @@ impl Lowerer<'_, '_> {
         let mut trailing: Vec<String> = pending_static;
         if class_decorated {
             trailing.push(format!(
-                "{}{RUN_INITIALIZERS}({class_this}, {class_extra})",
+                "{}{run_initializers}({class_this}, {class_extra})",
                 super::relocations::source_anchor(class.name_span.start)
             ));
         }
@@ -862,7 +730,7 @@ impl Lowerer<'_, '_> {
         let blocks = if class_decorated {
             format!(
                 r#"static {{ Object.defineProperty(this, "name", {{ value: {}, configurable: true }}); {class_this} = this; }} static {{ {leading}{leading_extra}}} "#,
-                quoted(&class.name)
+                label.map_or_else(|| quoted(&class.name), str::to_string)
             )
         } else {
             format!("static {{ {leading}{leading_extra}}} ")
@@ -938,6 +806,7 @@ impl Lowerer<'_, '_> {
         pending: &mut Vec<String>,
     ) -> Result<(), Diagnostic> {
         let field = plan.shell.field.as_ref().expect("a field plan has a field");
+        let run_initializers = self.run_initializers.clone();
         let this_arg = if plan.is_static {
             this_arg_static
         } else {
@@ -956,7 +825,7 @@ impl Lowerer<'_, '_> {
             }
             if plan.decorated() {
                 prefix.push_str(&format!(
-                    "{RUN_INITIALIZERS}({this_arg}, {}, ",
+                    "{run_initializers}({this_arg}, {}, ",
                     plan.initializers_var()
                 ));
                 suffix.push(')');
@@ -969,7 +838,7 @@ impl Lowerer<'_, '_> {
         pending.clear();
         if plan.decorated() {
             pending.push(format!(
-                "{RUN_INITIALIZERS}({this_arg}, {})",
+                "{run_initializers}({this_arg}, {})",
                 plan.extra_initializers_var()
             ));
         }
@@ -990,7 +859,11 @@ impl Lowerer<'_, '_> {
             && (self.options.target != EcmaTarget::EsNext || plan.private)
         {
             let storage = plan.storage();
-            let name = &plan.name;
+            let name = if plan.literal() {
+                quoted(&plan.name)
+            } else {
+                plan.name.clone()
+            };
             let modifier = if plan.is_static { "static " } else { "" };
             let accessors = if plan.private_descriptor() {
                 let descriptor = plan.descriptor_var();

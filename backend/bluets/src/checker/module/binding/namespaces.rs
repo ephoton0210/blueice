@@ -187,6 +187,7 @@ impl ModuleChecker<'_> {
             es_module_interop: self.es_module_interop,
             jsx: self.jsx_mode,
             experimental_decorators: self.experimental_decorators,
+            emit_decorator_metadata: self.emit_decorator_metadata,
             jsx_factory: self.jsx_factory.clone(),
             jsx_fragment_factory: self.jsx_fragment_factory.clone(),
         }

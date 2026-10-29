@@ -33,19 +33,58 @@ impl Lowerer<'_, '_> {
         &mut self,
         class: &ClassDeclaration,
         plan: &Plan,
+        home: Option<&str>,
     ) -> Result<String, Diagnostic> {
         let tokens = &class.body[plan.shell.token_start..plan.shell.token_end];
-        if tokens.iter().any(|token| token.is("super")) {
-            return Err(unsupported(
-                &plan.shell.span,
-                "super in a decorated private callable needs lexical heritage lowering",
-            ));
-        }
         let key_end = plan.shell.key.last().expect("a callable has a key").end;
         let parameters = tokens
             .iter()
             .find(|token| token.start >= key_end && token.is("("))
             .expect("a structured callable has parameters");
+        if let Some(home) = home {
+            let parameter_index = tokens
+                .iter()
+                .position(|token| token.start == parameters.start)
+                .unwrap();
+            let parameter_end =
+                super_members::close(tokens, parameter_index).expect("retained parameter list");
+            let return_end = plan
+                .shell
+                .method
+                .as_ref()
+                .and_then(|method| method.return_type_span.as_ref())
+                .or_else(|| {
+                    plan.shell
+                        .accessor
+                        .as_ref()
+                        .and_then(|accessor| accessor.return_type_span.as_ref())
+                })
+                .map_or(tokens[parameter_end].end, |span| span.end);
+            let body = tokens
+                .iter()
+                .position(|token| token.start >= return_end && token.is("{"))
+                .expect("private callable body");
+            if tokens[parameter_index..body]
+                .iter()
+                .any(|token| token.is("super"))
+            {
+                return Err(unsupported(&plan.shell.span, "super in a private callable parameter initializer needs its retained home scope"));
+            }
+            let base = if plan.is_static {
+                format!("Object.getPrototypeOf({home})")
+            } else {
+                format!("Object.getPrototypeOf({home}.prototype)")
+            };
+            super_members::lower_references(
+                self.module,
+                &tokens[body + 1..tokens.len() - 1],
+                &base,
+                "this",
+                false,
+                &mut self.names.used,
+                self.edits,
+            )?;
+        }
         let function = relocated(parameters.start, plan.shell.span.end);
         let descriptor = plan.descriptor_var();
         let prefix = if plan.is_static { "static " } else { "" };
@@ -88,8 +127,14 @@ impl Lowerer<'_, '_> {
         } else {
             ""
         };
-        Ok(format!(
-            "{descriptor} = {{ {key}: {async_prefix}function{generator}{function} }}; "
-        ))
+        let label = match plan.kind {
+            Kind::Getter => format!("get {}", plan.name),
+            Kind::Setter => format!("set {}", plan.name),
+            _ => plan.name.clone(),
+        };
+        // The target passes retain named callables. The public private name is
+        // assigned below independently of this collision-free internal binding.
+        let callable = self.names.unique("_privateCallable");
+        Ok(format!("{descriptor} = {{ {key}: Object.defineProperty({async_prefix}function{generator} {callable}{function}, \"name\", {{ value: {}, configurable: true }}) }}; ", quoted(&label)))
     }
 }

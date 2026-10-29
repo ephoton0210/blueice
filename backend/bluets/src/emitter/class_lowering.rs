@@ -33,12 +33,20 @@ use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{ClassDeclaration, ClassField, ClassMemberShell, Declaration};
 use crate::Token;
 
-mod expressions;
+pub(super) mod expressions;
 mod heritage;
+
+pub(super) fn has_wrapped_class_expressions(module: &Module) -> bool {
+    module
+        .class_expressions
+        .values()
+        .any(|expression| expressions::needs_wrapper(&expression.class))
+}
 
 /// The emitted form of a class's fields for one target and option set.
 #[derive(Clone, Copy)]
 struct FieldEmit {
+    es5: bool,
     es2022: bool,
     define: bool,
     preserve_accessors: bool,
@@ -77,6 +85,7 @@ fn lower_classes(
     standard_output: bool,
 ) -> Result<(), Diagnostic> {
     let emit = FieldEmit {
+        es5: options.target == EcmaTarget::Es5,
         es2022: options.target >= EcmaTarget::Es2022,
         define: options.defines_class_fields(),
         preserve_accessors: options.target == EcmaTarget::EsNext,
@@ -102,6 +111,18 @@ fn lower_classes(
     // Lower children before a field initializer or private method moves them.
     classes.sort_by_key(|(class, _)| std::cmp::Reverse(class.span.start));
     for (class, nested) in classes {
+        if !standard_output
+            && options.experimental_decorators
+            && options.target != EcmaTarget::EsNext
+            && class
+                .members
+                .iter()
+                .any(|member| member.field.as_ref().is_some_and(|field| field.accessor))
+        {
+            // Legacy auto-accessors first become backing stores and descriptors;
+            // the owned-output pass then lowers those actual generated members.
+            continue;
+        }
         // Standard decorators first build an ES2022 class. Its generated fields
         // are lowered in a separate owned-output pass, after decorator initialization.
         if !standard_output
@@ -408,7 +429,7 @@ fn descriptor(value: Option<String>) -> String {
 /// class rather than rewriting the token, which keeps a nested method's own
 /// `this` intact. A `super` reference has no such function form.
 fn bind_static_this(class_name: &str, tokens: &[Token], value: &str) -> Result<String, ()> {
-    if tokens.iter().any(|token| token.is("super")) {
+    if mentions(value, "super") {
         return Err(());
     }
     if tokens.iter().any(|token| token.is("this")) {
@@ -429,16 +450,54 @@ fn is_private_name(field: &ClassField) -> bool {
 }
 
 fn mentions(text: &str, word: &str) -> bool {
-    text.match_indices(word).any(|(index, _)| {
-        let before = text[..index].chars().next_back();
-        let after = text[index + word.len()..].chars().next();
-        let identifier = |character: Option<char>| {
-            character.is_some_and(|character| {
-                character.is_alphanumeric() || matches!(character, '_' | '$')
-            })
-        };
-        !identifier(before) && !identifier(after)
-    })
+    let Ok(tokens) = crate::lex("<class-initializer>", text) else {
+        return true;
+    };
+    let mut index = 0;
+    while index < tokens.len() {
+        if word == "super" && tokens[index].is("class") {
+            let mut cursor = index + 1;
+            while cursor < tokens.len() && !tokens[cursor].is("{") {
+                if tokens[cursor].is("super") {
+                    return true;
+                }
+                if tokens[cursor].is("(") || tokens[cursor].is("[") {
+                    let Some(end) = super::decorators::super_members::close(&tokens, cursor) else {
+                        return true;
+                    };
+                    if tokens[cursor..=end].iter().any(|token| token.is("super")) {
+                        return true;
+                    }
+                    cursor = end + 1;
+                } else {
+                    cursor += 1;
+                }
+            }
+            if let Some(end) = super::decorators::super_members::close(&tokens, cursor) {
+                // A nested class retains its own home. Computed keys still need
+                // the outer lexical context, so keep their conservative boundary.
+                let body = &tokens[cursor..=end];
+                if body.iter().any(|token| token.is("["))
+                    && body.iter().any(|token| token.is("super"))
+                {
+                    return true;
+                }
+                index = end + 1;
+                continue;
+            }
+        }
+        let token = &tokens[index];
+        if (token.is(word)
+            && !index
+                .checked_sub(1)
+                .is_some_and(|before| tokens[before].is(".") || tokens[before].is("?.")))
+            || token.kind == crate::TokenKind::Template && token.text.contains(word)
+        {
+            return true;
+        }
+        index += 1;
+    }
+    false
 }
 
 fn implementation(class: &ClassDeclaration) -> Option<&crate::parser::ClassConstructor> {

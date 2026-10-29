@@ -309,7 +309,12 @@ pub(super) fn lower_commonjs(
                 es_syntax = true;
                 chain.push(variable.name.clone());
                 if variable.kind == crate::parser::VariableKind::Const
-                    && super::reexports::class_parameter_shadows(module, &variable.name)
+                    && (super::reexports::class_parameter_shadows(module, &variable.name)
+                        || variable.initializer.iter().any(|token| {
+                            module
+                                .class_expression(token.start)
+                                .is_some_and(|expression| expression.name.is_none())
+                        }))
                 {
                     strip_export(&tokens, token_at(variable.span.start), edits);
                     edits.push(TextEdit {

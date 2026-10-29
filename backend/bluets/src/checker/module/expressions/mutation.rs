@@ -70,6 +70,30 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
+    fn computed_mutation_key(
+        &self,
+        key: &[Token],
+        scope: &BTreeMap<String, Type>,
+    ) -> Option<String> {
+        if let [literal] = key {
+            if literal.kind == TokenKind::String {
+                return crate::enum_eval::decode_plain_string(&literal.text);
+            }
+            if literal.kind == TokenKind::Number {
+                return crate::enum_eval::parse_number(&literal.text)
+                    .map(crate::enum_eval::js_number_text);
+            }
+        }
+        let Type::Literal(text) = self.infer_expression(key, scope) else {
+            return None;
+        };
+        if text.starts_with(['\'', '"', '`']) {
+            crate::enum_eval::decode_plain_string(&text)
+        } else {
+            crate::enum_eval::parse_number(&text).map(crate::enum_eval::js_number_text)
+        }
+    }
+
     pub(in crate::checker::module) fn check_member_assignment(
         &mut self,
         tokens: &[Token],
@@ -87,14 +111,38 @@ impl<'a> ModuleChecker<'a> {
         let Some(mutation) = direct else {
             return;
         };
+        let inferred_property = mutation
+            .computed
+            .filter(|_| mutation.property.is_none())
+            .and_then(|key| self.computed_mutation_key(key, scope));
+        let property = mutation.property.or(inferred_property.as_deref());
         let owner = self.infer_expression(mutation.receiver, scope);
-        if self.reject_computed_readonly_mutation(mutation.receiver, mutation.property, scope, span)
+        if self.reject_computed_readonly_mutation(mutation.receiver, property, scope, span)
             || self.reject_opaque_readonly_receiver(mutation.receiver, scope, span)
         {
             return;
         }
+        // Bracket access on `never` has an indexed value type of `never`;
+        // dotted access still reports a missing property. Check retained owner
+        // readonly provenance above before applying this indexed-write rule.
+        if matches!(owner, Type::Never) && mutation.computed.is_some() {
+            if mutation.operator.is("=") {
+                let actual = self.infer_in_context(mutation.value, scope, &Type::Never);
+                if !self.is_assignable_bounded(&actual, &Type::Never, span) {
+                    self.type_error(
+                        span,
+                        format!(
+                            "assignment has type `{}`, which is not assignable to an indexed property of type `never`",
+                            type_label(&actual)
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+            }
+            return;
+        }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        let Some(property) = mutation.property else {
+        let Some(property) = property else {
             match contains_readonly_member(&owner, &self.types, &mut HashSet::new(), &mut budget) {
                 Ok(true) => self.type_error(
                     span,
@@ -324,6 +372,13 @@ impl<'a> ModuleChecker<'a> {
                 let Some((receiver, property)) = member_access_target(target) else {
                     continue;
                 };
+                let inferred_property = (property.is_none()
+                    && target.last().is_some_and(|token| token.is("]")))
+                .then(|| {
+                    self.computed_mutation_key(&target[receiver.len() + 1..target.len() - 1], scope)
+                })
+                .flatten();
+                let property = property.or(inferred_property.as_deref());
                 if self.reject_opaque_readonly_receiver(receiver, scope, span) {
                     return;
                 }
@@ -425,6 +480,7 @@ pub(super) struct MemberMutation<'a> {
     pub(super) property: Option<&'a str>,
     pub(super) operator: &'a Token,
     pub(super) value: &'a [Token],
+    computed: Option<&'a [Token]>,
 }
 
 const MEMBER_ASSIGNMENT_OPERATORS: &[&str] = &[
@@ -463,6 +519,15 @@ pub(in crate::checker::module) fn member_access_target(
                     [literal] if literal.kind == TokenKind::String => {
                         unescaped_property_name(&literal.text)
                     }
+                    [literal]
+                        if literal.kind == TokenKind::Number
+                            && crate::enum_eval::parse_number(&literal.text)
+                                .map(crate::enum_eval::js_number_text)
+                                .as_deref()
+                                == Some(literal.text.as_str()) =>
+                    {
+                        Some(literal.text.as_str())
+                    }
                     _ => None,
                 };
                 return Some((&tokens[..index], property));
@@ -493,6 +558,10 @@ pub(super) fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
         property,
         operator,
         value,
+        computed: target
+            .last()
+            .is_some_and(|token| token.is("]"))
+            .then(|| &target[receiver.len() + 1..target.len() - 1]),
     })
 }
 

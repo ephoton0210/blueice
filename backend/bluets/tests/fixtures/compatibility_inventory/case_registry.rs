@@ -34,6 +34,34 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
             "/observations"
         };
         let mut cases = case_sources::json_cases(&path, text, pointer, "program/configuration")?;
+        if stem == "ge3_decorator_compositions" {
+            let input: Value =
+                serde_json::from_str(snapshot.source(
+                    "backend/bluets/tests/fixtures/ge3_decorator_compositions/cases.json",
+                )?)?;
+            let defects = input["cases"]
+                .as_array()
+                .ok_or("missing G-E3 configurations")?
+                .iter()
+                .filter(|row| row["nativeRuntimeDefect"] == true)
+                .collect::<Vec<_>>();
+            if defects.len() != 76 {
+                return Err("incomplete G-E3 native defect references".into());
+            }
+            for row in defects {
+                let id = row["id"].as_str().ok_or("invalid G-E3 defect identity")?;
+                let reason = row["nativeRuntimeDefectReason"]
+                    .as_str()
+                    .ok_or("missing G-E3 defect reason")?;
+                case_sources::classify(
+                    &mut cases,
+                    &[id.to_string()],
+                    "",
+                    Comparison::ReferenceOnly,
+                    reason,
+                )?;
+            }
+        }
         if stem == "ge2_module_helpers" {
             let defects = root["cases"]
                 .as_array()
@@ -322,6 +350,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "gm2_build_interop" => "gm2_build_interop/reference.json",
         "ge1_downlevel" => "ge1_downlevel/reference.json",
         "ge2_module_helpers" => "ge2_module_helpers/reference.json",
+        "ge3_decorator_compositions" => "ge3_decorator_compositions/reference.json",
         "gm1_resolver_compositions" => "gm1_resolver_compositions/reference.json",
         "gt3_operators" => "gt3_operators/reference.json",
         "gt1_declaration_order" => "gt1_declaration_order/reference.json",

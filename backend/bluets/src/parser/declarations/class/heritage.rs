@@ -29,10 +29,6 @@ impl Parser {
         class_name: &str,
         class_start: usize,
     ) -> Option<Token> {
-        if class_name.starts_with("#class@") {
-            self.unsupported(self.current().span(&self.id),"a computed class-expression heritage requires a supported lexical constructor context");
-            return None;
-        }
         let begin = self.index;
         let mut end = begin;
         let mut stack = Vec::new();
@@ -61,10 +57,15 @@ impl Parser {
         }
         let from = self.tokens[begin].start;
         let to = self.tokens[end - 1].end;
-        let mut name = format!("{class_name}_base");
+        let stem = if class_name.starts_with("#class@") {
+            format!("_btsClassBase{class_start}")
+        } else {
+            format!("{class_name}_base")
+        };
+        let mut name = stem.clone();
         let mut suffix = 1;
         while self.tokens.iter().any(|token| token.is(&name)) {
-            name = format!("{class_name}_base_{suffix}");
+            name = format!("{stem}_{suffix}");
             suffix += 1;
         }
         let initializer = self.tokens[begin..end].to_vec();

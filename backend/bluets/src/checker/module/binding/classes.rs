@@ -224,6 +224,7 @@ impl ModuleChecker<'_> {
             for key in class
                 .members
                 .iter()
+                .filter(|member| !self.experimental_decorators || member.decorators.is_empty())
                 .filter_map(|member| member.key.first())
                 .filter(|key| key.kind == TokenKind::Identifier && key.text.starts_with('#'))
             {

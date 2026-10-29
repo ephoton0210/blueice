@@ -4109,10 +4109,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "`abstract` declarations are not in the initial BlueTS matrix",
         ),
         (
-            "function make() { class Local {} }",
-            "`class` is not in the initial BlueTS matrix",
-        ),
-        (
             "if (true) { enum State { Ready } }",
             "an `enum` declared inside a body is not supported yet",
         ),
@@ -4414,6 +4410,7 @@ fn supported_programs_are_accepted() {
         "function f() { const x: number = 1; let y: string = 'a'; var z = 3; return x; }",
         "function f() { if (true) { return 1; } return 2; }",
         "function f() { return; }",
+        "function make() { class Local {} }",
         "export function f(): number { return 1; }",
         "const a = 1; export { a };",
         "export type X = number; export interface Y {}",

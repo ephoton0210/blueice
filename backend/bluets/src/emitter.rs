@@ -42,7 +42,7 @@ mod inference_literals;
 mod inferred_declarations;
 mod inferred_returns;
 mod jsx;
-mod legacy_decorators;
+pub(crate) mod legacy_decorators;
 mod literal_order;
 mod module_wrappers;
 mod namespaces;
@@ -464,11 +464,18 @@ fn emit_javascript(
     } else {
         BTreeMap::new()
     };
+    legacy_decorators::prepare_super(module, options, &mut edits)?;
     class_lowering::lower_class_members(module, options, &mut edits)?;
     enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
     namespaces::lower_namespaces(module, project, options, &mut edits)?;
     if options.experimental_decorators {
-        legacy_decorators::lower_legacy_decorators(module, options, &mut edits)?;
+        legacy_decorators::lower_legacy_decorators(
+            module,
+            project,
+            options,
+            &references,
+            &mut edits,
+        )?;
     } else {
         decorators::lower_decorators(module, options, &mut edits)?;
     }

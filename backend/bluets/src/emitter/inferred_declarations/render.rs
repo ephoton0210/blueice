@@ -81,9 +81,79 @@ impl Context<'_> {
     ) -> Result<Vec<crate::parser::TypeField>, Diagnostic> {
         let mut rendered = Vec::with_capacity(fields.len());
         let inferred = fields.iter().all(|field| field.span.module == "<inferred>");
-        for (index, field) in fields.iter().enumerate() {
+        let computed_class = self
+            .module
+            .class_expressions
+            .values()
+            .filter(|expression| {
+                expression.class.extends_span.as_ref().is_some_and(|span| {
+                    self.module
+                        .source
+                        .get(span.start..span.end)
+                        .is_some_and(|source| source.contains('(') || source.contains('['))
+                }) && fields.iter().any(|field| {
+                    expression
+                        .class
+                        .members
+                        .iter()
+                        .any(|member| field.span == member.span)
+                })
+            })
+            .max_by_key(|expression| expression.class.span.start);
+        let mut ordered = fields.iter().collect::<Vec<_>>();
+        if let Some(expression) = computed_class {
+            ordered.sort_by_key(|field| {
+                let own = expression.class.span.start <= field.span.start
+                    && field.span.end <= expression.class.span.end;
+                (usize::from(!own), field.span.start)
+            });
+        }
+        for (index, field) in ordered.into_iter().enumerate() {
             let mut field = field.clone();
-            if inferred {
+            if let Some(owner) = self.project.modules.get(&field.span.module) {
+                let source_key = owner
+                    .classes()
+                    .chain(
+                        owner
+                            .class_expressions
+                            .values()
+                            .map(|expression| &expression.class),
+                    )
+                    .flat_map(|class| &class.members)
+                    .find_map(|member| {
+                        let named = member
+                            .method
+                            .as_ref()
+                            .map(|value| (&value.name, &value.name_span))
+                            .or_else(|| {
+                                member
+                                    .accessor
+                                    .as_ref()
+                                    .map(|value| (&value.name, &value.name_span))
+                            })
+                            .or_else(|| {
+                                member
+                                    .field
+                                    .as_ref()
+                                    .map(|value| (&value.name, &value.name_span))
+                            });
+                        let (name, span) = named?;
+                        if name == &field.name && (field.span == member.span || field.span == *span)
+                        {
+                            member
+                                .key
+                                .first()
+                                .filter(|key| key.kind == crate::TokenKind::String)
+                                .map(|key| key.text.clone())
+                        } else {
+                            None
+                        }
+                    });
+                if let Some(key) = source_key {
+                    field.name = key;
+                }
+            }
+            if inferred || computed_class.is_some() {
                 // Printer-only order markers; checked symbols keep their spans.
                 field.span.start = index;
                 field.span.end = index;

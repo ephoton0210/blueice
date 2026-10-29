@@ -215,7 +215,7 @@ fn the_options_are_in_the_fingerprint_and_the_manifest_and_validated() {
     assert_eq!(manifest["emitDecoratorMetadata"], true);
     assert_eq!(
         manifest["legacyDecoratorHelperVersion"],
-        "bluets-legacy-decorator-helper-v1"
+        "bluets-legacy-decorator-helper-v2"
     );
     let alone = run(&["check", "main.ts", "--emit-decorator-metadata"]);
     assert!(!alone.status.success());
@@ -324,14 +324,17 @@ fn decorated_namespace_exports_receive_the_replacement_class() {
 
 #[test]
 fn unlowered_legacy_forms_are_refused_with_a_reason() {
+    let accessor = build(
+        &format!("{DECL}class A {{ @d accessor a: number = 1; }}\n"),
+        legacy(),
+    )
+    .unwrap();
+    assert!(accessor.contains("get a()"), "{accessor}");
+    assert!(accessor.contains("set a(value)"), "{accessor}");
     for (source, expected) in [
         (
-            format!("{DECL}class A {{ @d accessor a: number = 1; }}\n"),
-            "auto-accessors",
-        ),
-        (
             format!("{DECL}class A {{ @d #p: number = 1; }}\n"),
-            "private names",
+            "Decorators are not valid here",
         ),
         (
             format!(

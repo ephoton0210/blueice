@@ -135,6 +135,9 @@ impl ModuleChecker<'_> {
                     initializer,
                 );
                 let mut scope = self.values.clone();
+                if let Some(base) = self.super_scope_type(class, field.is_static) {
+                    scope.insert("super".to_string(), base);
+                }
                 scope.insert(
                     "this".to_string(),
                     if field.is_static {
