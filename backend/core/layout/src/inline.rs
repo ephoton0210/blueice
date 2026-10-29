@@ -37,6 +37,15 @@ enum Piece {
     },
     /// Horizontal padding, border or margin of an inline box: unbreakable.
     Gap(f64),
+    /// The same for an inline box that paints something of its own (a
+    /// background, border, radius or shadow): `outside` of `width` is margin,
+    /// the rest is the box's own border and padding.
+    Edge {
+        node: NodeId,
+        open: bool,
+        width: f64,
+        outside: f64,
+    },
     Atomic(Box<Atomic>),
     Break,
 }
@@ -492,17 +501,48 @@ fn collect(
             };
             let before = side("margin-left") + border.left + padding.left;
             let after = side("margin-right") + border.right + padding.right;
-            if before != 0.0 {
+            let paints = paints_own_box(&style);
+            if paints {
+                pieces.push(Piece::Edge {
+                    node,
+                    open: true,
+                    width: before,
+                    outside: side("margin-left"),
+                });
+            } else if before != 0.0 {
                 pieces.push(Piece::Gap(before));
             }
             for child in ctx.doc.children(node) {
                 collect(ctx, child, cb_width, pieces, abs, state);
             }
-            if after != 0.0 {
+            if paints {
+                pieces.push(Piece::Edge {
+                    node,
+                    open: false,
+                    width: after,
+                    outside: side("margin-right"),
+                });
+            } else if after != 0.0 {
                 pieces.push(Piece::Gap(after));
             }
         }
     }
+}
+
+/// Whether an inline box has anything of its own to paint.
+fn paints_own_box(style: &Style<'_>) -> bool {
+    let has = |name: &str| {
+        style.raw(name).is_some_and(|v| {
+            !matches!(v, blueice_css::Value::Keyword(k) if k == "none" || k == "transparent")
+        })
+    };
+    has("background-color")
+        || has("background-image")
+        || has("box-shadow")
+        || ["top", "right", "bottom", "left"].iter().any(|side| {
+            has(&format!("border-{side}-style"))
+                && style.border(0.0).horizontal() + style.border(0.0).vertical() > 0.0
+        })
 }
 
 /// `line-height` in pixels for text in `style`: a number scales the font
@@ -587,7 +627,7 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
                 }
                 need_new = false;
             }
-            Piece::Gap(width) => {
+            Piece::Gap(width) | Piece::Edge { width, .. } => {
                 if let Some(chunk) = current.as_mut().filter(|_| !need_new) {
                     chunk.items.push(i);
                     chunk.width += width;
@@ -827,6 +867,9 @@ pub(crate) fn layout_run_around(
     let lines = break_lines(&pieces, indent, &room, strut_above + strut_below);
     let line_count = lines.len();
     let mut y = 0.0f64;
+    // Inline boxes still open across lines, with where each starts on the line.
+    let mut open: Vec<(NodeId, f64, usize)> = Vec::new();
+    let mut opened = 0usize;
 
     for (line_index, line) in lines.iter().enumerate() {
         let is_first = line_index == 0;
@@ -905,6 +948,10 @@ pub(crate) fn layout_run_around(
         let offset = line.left + line_indent + align_offset(&text_align, line.width, available);
         let mut x = 0.0;
         let mut children: Vec<Fragment> = Vec::new();
+        let mut decorations: Vec<(usize, NodeId, f64, f64)> = Vec::new();
+        for entry in open.iter_mut() {
+            entry.1 = 0.0;
+        }
         let mut run_text: Option<(String, f64, f64, NodeId, f64, f64)> = None; // text, x, width, node, y, height
         let flush = |run: &mut Option<(String, f64, f64, NodeId, f64, f64)>,
                      children: &mut Vec<Fragment>| {
@@ -972,6 +1019,22 @@ pub(crate) fn layout_run_around(
                         flush(&mut run_text, &mut children);
                         x += width;
                     }
+                    Piece::Edge {
+                        node,
+                        open: opens,
+                        width,
+                        outside,
+                    } => {
+                        flush(&mut run_text, &mut children);
+                        if *opens {
+                            open.push((*node, x + outside, opened));
+                            opened += 1;
+                        } else if let Some(at) = open.iter().rposition(|(n, _, _)| n == node) {
+                            let (n, start, order) = open.remove(at);
+                            decorations.push((order, n, start, x + width - outside));
+                        }
+                        x += width;
+                    }
                     Piece::Atomic(a) => {
                         flush(&mut run_text, &mut children);
                         let mut fragment = a.fragment.clone();
@@ -996,6 +1059,34 @@ pub(crate) fn layout_run_around(
             }
         }
         flush(&mut run_text, &mut children);
+        for (n, start, order) in &open {
+            decorations.push((*order, *n, *start, x));
+        }
+        decorations.sort_by_key(|d| d.0);
+        let boxes: Vec<Fragment> = decorations
+            .into_iter()
+            .map(|(_, node, x0, x1)| {
+                let style = ctx.style(node);
+                let padding = style.padding(content_width);
+                let border = style.border(content_width);
+                let (ascent, descent) = blueice_font::ascent_descent(
+                    style.font_size(),
+                    style.style.is_some_and(|s| s.is_bold()),
+                    style.style.is_some_and(|s| s.is_italic()),
+                );
+                Fragment {
+                    node: Some(node),
+                    kind: FragmentKind::Block,
+                    x: x0,
+                    y: baseline - ascent - padding.top - border.top,
+                    width: (x1 - x0).max(0.0),
+                    height: ascent + descent + padding.vertical() + border.vertical(),
+                    hidden: !style.is_visible(),
+                    ..Fragment::empty_block()
+                }
+            })
+            .collect();
+        children.splice(0..0, boxes);
 
         result.extent = result.extent.max(offset + used_width.max(x));
         result.lines.push(Fragment {
@@ -1476,5 +1567,46 @@ mod tests {
         let line = &f.children[0].children[0];
         assert_eq!(line.children.len(), 3);
         assert!(!line.children[0].hidden && line.children[1].hidden && !line.children[2].hidden);
+    }
+
+    #[test]
+    fn a_painted_inline_box_becomes_a_fragment_behind_its_text() {
+        let f = body(
+            "<p>a <span style='background:red;padding:2px 5px'>bc</span> d</p>",
+            "",
+            800.0,
+        );
+        let line = &f.children[0].children[0];
+        let first = &line.children[0];
+        assert!(
+            matches!(first.kind, FragmentKind::Block) && first.node.is_some(),
+            "the box comes before the text it sits behind"
+        );
+        let bc = blueice_font::measure_text_width("bc", 16.0, false, false);
+        assert!((first.width - (bc + 10.0)).abs() < 0.01, "content plus padding");
+        let a = blueice_font::measure_text_width("a ", 16.0, false, false);
+        assert!((first.x - a).abs() < 0.01, "starts where the span does");
+    }
+
+    #[test]
+    fn an_unpainted_inline_box_adds_no_fragment() {
+        let f = body("<p>a <span style='padding:0 5px'>bc</span></p>", "", 800.0);
+        let line = &f.children[0].children[0];
+        assert!(line.children.iter().all(|c| matches!(c.kind, FragmentKind::Text(_))));
+    }
+
+    #[test]
+    fn a_painted_inline_box_split_across_lines_has_a_box_per_line() {
+        let f = body(
+            "<p><span style='background:red'>one two three four five six seven</span></p>",
+            "p { width: 80px; }",
+            800.0,
+        );
+        let boxes = f.children[0]
+            .children
+            .iter()
+            .filter(|l| matches!(l.children.first().map(|c| &c.kind), Some(FragmentKind::Block)))
+            .count();
+        assert!(boxes >= 3, "each line carries its piece of the box, got {boxes}");
     }
 }
