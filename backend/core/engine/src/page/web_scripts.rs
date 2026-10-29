@@ -813,9 +813,34 @@ mod tests {
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { break };
+                // The head, then as much body as Content-Length promises.
+                stream
+                    .set_read_timeout(Some(Duration::from_millis(300)))
+                    .unwrap();
+                let mut received = Vec::new();
                 let mut buf = [0u8; 4096];
-                let n = stream.read(&mut buf).unwrap_or(0);
-                let request = String::from_utf8_lossy(&buf[..n]).to_string();
+                loop {
+                    let Ok(n) = stream.read(&mut buf) else { break };
+                    if n == 0 {
+                        break;
+                    }
+                    received.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&received).to_string();
+                    if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                        let wanted: usize = head
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        if body.len() >= wanted {
+                            break;
+                        }
+                    }
+                }
+                let request = String::from_utf8_lossy(&received).to_string();
                 let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
                 let method = request.split_whitespace().next().unwrap_or("").to_string();
                 let body_in = request.split("\r\n\r\n").nth(1).unwrap_or("").to_string();

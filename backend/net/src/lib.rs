@@ -734,9 +734,22 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
+            // The head and the body may arrive in separate segments.
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_millis(300)))
+                .unwrap();
+            let mut received = Vec::new();
             let mut buf = [0u8; 4096];
-            let n = stream.read(&mut buf).unwrap_or(0);
-            tx.send(String::from_utf8_lossy(&buf[..n]).to_string())
+            while let Ok(n) = stream.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                received.extend_from_slice(&buf[..n]);
+                if received.ends_with(b"{\"a\":1}") {
+                    break;
+                }
+            }
+            tx.send(String::from_utf8_lossy(&received).to_string())
                 .unwrap();
             stream
                 .write_all(b"HTTP/1.1 201 Created\r\nX-Reply: yes\r\nSet-Cookie: s=1\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
