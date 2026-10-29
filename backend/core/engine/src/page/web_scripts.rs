@@ -23,6 +23,13 @@ use std::time::Duration;
 /// Decides whether a script's own request for one absolute URL may be made.
 pub(crate) type NetworkReview = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
+/// A page's in-flight requests: each runs on its own thread and reports here.
+pub(crate) struct WebNet {
+    tx: std::sync::mpsc::Sender<(u64, crate::web::net::NetOutcome)>,
+    rx: std::sync::mpsc::Receiver<(u64, crate::web::net::NetOutcome)>,
+    inflight: usize,
+}
+
 /// A script element of the document.
 struct PageScript {
     node: NodeId,
@@ -128,9 +135,9 @@ impl Page {
     /// handed over, then takes them back; a changed DOM is restyled and laid
     /// out and marked for publication. Returns the external scripts the turn
     /// asked to load.
-    fn web_turn_once(&mut self, f: &mut dyn FnMut(&mut WebHost)) -> Vec<(NodeId, String)> {
+    fn web_turn_once(&mut self, f: &mut dyn FnMut(&mut WebHost)) -> (Vec<(NodeId, String)>, bool) {
         let Some(mut host) = self.web.take() else {
-            return Vec::new();
+            return (Vec::new(), false);
         };
         let doc = std::mem::replace(&mut self.doc, Document::new());
         let styles = std::mem::take(&mut self.styles);
@@ -149,7 +156,7 @@ impl Page {
             s.dirty = false;
         });
         f(&mut host);
-        let (doc, styles, dirty, navigations, requests, url) = host.with_state(|s| {
+        let (doc, styles, dirty, navigations, requests, url, jobs) = host.with_state(|s| {
             (
                 std::mem::replace(&mut s.doc, Document::new()),
                 std::mem::take(&mut s.styles),
@@ -157,11 +164,13 @@ impl Page {
                 std::mem::take(&mut s.navigations),
                 std::mem::take(&mut s.script_requests),
                 s.url.clone(),
+                std::mem::take(&mut s.net_jobs),
             )
         });
         self.doc = doc;
         self.styles = styles;
         self.web = Some(host);
+        self.start_net_jobs(jobs);
         for navigation in navigations {
             match navigation {
                 NavigationRequest::PushState { .. } => self.url = Some(url.clone()),
@@ -179,17 +188,17 @@ impl Page {
             self.script_change_unpublished = true;
             self.script_change_unpublished_by_web = true;
         }
-        requests
+        (requests, dirty)
     }
 
     /// One turn, then the scripts it inserted: each fetched under the same
     /// review as any request and run (or failed) as its own turn. A bounded
     /// number of rounds, so scripts that insert scripts cannot run forever.
     fn web_turn(&mut self, mut f: impl FnMut(&mut WebHost)) {
-        let mut pending = self.web_turn_once(&mut f);
+        let (mut pending, mut changed) = self.web_turn_once(&mut f);
         for _ in 0..16 {
             if pending.is_empty() {
-                return;
+                break;
             }
             let mut next = Vec::new();
             for (node, src) in std::mem::take(&mut pending) {
@@ -207,11 +216,93 @@ impl Page {
                     js_string(&source.unwrap_or_default()),
                     ok
                 );
-                next.extend(self.web_turn_once(&mut |host: &mut WebHost| {
+                let (more, dirty) = self.web_turn_once(&mut |host: &mut WebHost| {
                     let _ = host.run("blueice:script-load", &call);
-                }));
+                });
+                changed |= dirty;
+                next.extend(more);
             }
             pending = next;
+        }
+        // A change of the document moves things, which observers of visibility
+        // report on once layout has caught up; their callbacks may change it
+        // again, a few rounds at most.
+        for _ in 0..3 {
+            if !changed {
+                break;
+            }
+            let (_, dirty) = self.web_turn_once(&mut |host: &mut WebHost| {
+                let _ = host.run("blueice:layout", "__blueice.afterLayout();");
+            });
+            changed = dirty;
+        }
+    }
+
+    /// Hands requests a script made to worker threads. Each is reviewed hop by
+    /// hop on its thread; without a review nothing leaves the page.
+    fn start_net_jobs(&mut self, jobs: Vec<crate::web::net::NetJob>) {
+        if jobs.is_empty() {
+            return;
+        }
+        let net = self.web_net.get_or_insert_with(|| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            WebNet {
+                tx,
+                rx,
+                inflight: 0,
+            }
+        });
+        for job in jobs {
+            net.inflight += 1;
+            let tx = net.tx.clone();
+            let review = self.web_review.clone();
+            std::thread::spawn(move || {
+                let outcome = match review {
+                    Some(review) => crate::web::net::perform(&job, &*review),
+                    None => crate::web::net::NetOutcome::Failed(
+                        "network access is not enabled for this page".to_string(),
+                    ),
+                };
+                let _ = tx.send((job.id, outcome));
+            });
+        }
+    }
+
+    /// Delivers finished requests to the page's scripts.
+    fn deliver_net_results(&mut self) {
+        let Some(net) = self.web_net.as_mut() else {
+            return;
+        };
+        let mut done = Vec::new();
+        while let Ok(result) = net.rx.try_recv() {
+            net.inflight = net.inflight.saturating_sub(1);
+            done.push(result);
+        }
+        for (id, outcome) in done {
+            let call = match outcome {
+                crate::web::net::NetOutcome::Done {
+                    status,
+                    status_text,
+                    headers,
+                    body,
+                    url,
+                } => {
+                    let pairs: Vec<(String, String)> = headers;
+                    format!(
+                        "__blueice.netDone({id}, {status}, {}, {}, \"{}\", {});",
+                        js_string(&status_text),
+                        js_string(&serde_json::to_string(&pairs).unwrap_or_else(|_| "[]".into())),
+                        crate::web::net::base64_encode(&body),
+                        js_string(&url),
+                    )
+                }
+                crate::web::net::NetOutcome::Failed(message) => {
+                    format!("__blueice.netFail({id}, {});", js_string(&message))
+                }
+            };
+            self.web_turn(move |host| {
+                let _ = host.run("blueice:net", &call);
+            });
         }
     }
 
@@ -230,8 +321,14 @@ impl Page {
             self.url.as_deref().unwrap_or("about:blank"),
             (self.viewport_width, self.viewport_height),
         );
-        let Ok(host) = WebHost::new(state) else {
-            return;
+        let host = match WebHost::new(state) {
+            Ok(host) => host,
+            Err(error) => {
+                if std::env::var("BI_DIAG").is_ok() {
+                    eprintln!("page scripts could not start: {error}");
+                }
+                return;
+            }
         };
         self.web = Some(host);
         let linked = self.linked_scripts.clone();
@@ -300,6 +397,16 @@ impl Page {
 
     /// Runs the timers that are due. True when the document changed.
     pub(crate) fn tick_web(&mut self) -> bool {
+        // Scrolling reaches the page's scripts as a scroll event and a fresh
+        // look at what is visible.
+        if self.web.is_some() && (self.scroll_y - self.web_scroll_seen).abs() > 0.5 {
+            self.web_scroll_seen = self.scroll_y;
+            let y = self.scroll_y;
+            self.web_turn(|host| {
+                let _ = host.run("blueice:scroll", &format!("__blueice.scrolled({y});"));
+            });
+        }
+        self.deliver_net_results();
         let due = self
             .web
             .as_ref()
@@ -317,8 +424,28 @@ impl Page {
     /// How long until this document's scripts next have work, if ever.
     pub(crate) fn web_wake_in(&self) -> Option<Duration> {
         let host = self.web.as_ref()?;
-        let due = host.next_timer_due()?;
-        Some(Duration::from_millis(due.saturating_sub(host.now_ms())))
+        // While requests are out, look for their answers often.
+        let waiting = self
+            .web_net
+            .as_ref()
+            .is_some_and(|net| net.inflight > 0)
+            .then_some(Duration::from_millis(10));
+        let timer = host
+            .next_timer_due()
+            .map(|due| Duration::from_millis(due.saturating_sub(host.now_ms())));
+        match (waiting, timer) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+
+    /// Runs `source` in the page's realm as a diagnostic probe.
+    #[allow(dead_code)]
+    pub(crate) fn web_eval(&mut self, source: &str) {
+        let source = source.to_string();
+        self.web_turn(move |host| {
+            let _ = host.run("probe", &source);
+        });
     }
 
     /// What the realm's scripts have logged (diagnostics).
@@ -407,11 +534,11 @@ mod tests {
                     _ => None,
                 })
         };
-        // Hidden after the synchronous scripts: the observer has not reported yet.
-        assert_eq!(alpha(&page), Some(0));
+        // The heading is in the viewport, so the observer's first report (after
+        // the scripts' layout) reveals it.
         let mut page = page;
         std::thread::sleep(Duration::from_millis(10));
-        assert!(page.tick_web());
+        page.tick_web();
         assert_eq!(alpha(&page), Some(255));
     }
 
@@ -529,5 +656,172 @@ mod tests {
             Some("https://example.com/".into()),
         );
         assert_eq!(texts(&p), vec!["second", "ran"]);
+    }
+
+    #[test]
+    fn content_below_the_fold_is_revealed_by_scrolling_to_it() {
+        let mut page = page(
+            "<style>.js .card { opacity: 0 } .js .card.in { opacity: 1 } .spacer { height: 1500px }</style>\
+             <body><div class=spacer></div><p class=card>Later</p>\
+             <script>document.documentElement.classList.add('js'); window.seen = [];\
+               new IntersectionObserver((es) => es.forEach(e => { window.seen.push(e.isIntersecting); if (e.isIntersecting) e.target.classList.add('in'); })).observe(document.querySelector('.card'));\
+               window.addEventListener('scroll', () => window.scrolled = window.scrollY, { passive: true });</script></body>",
+        );
+        let alpha = |p: &Page| {
+            p.render().commands.iter().find_map(|c| match c {
+                PaintCommand::Text { color: blueice_paint::Color::Rgba(_, _, _, a), .. } => Some(*a),
+                _ => None,
+            })
+        };
+        std::thread::sleep(Duration::from_millis(10));
+        page.tick_web();
+        assert_eq!(alpha(&page), Some(0), "off screen: still hidden");
+        page.scroll_by(1400.0);
+        page.tick_web();
+        assert_eq!(alpha(&page), Some(255), "scrolled into view: revealed");
+        let mut seen = String::new();
+        page.web_eval("console.log(window.scrolled + ' ' + window.seen.join(','))");
+        for line in page.web_console() {
+            seen = line;
+        }
+        assert_eq!(seen, "[log] 1259.2 false,true", "the scroll offset is clamped to the page");
+    }
+
+    /// Serves `routes` (path -> content type, body) on a local port.
+    fn serve(routes: Vec<(&'static str, &'static str, &'static str)>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]).to_string();
+                let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
+                let method = request.split_whitespace().next().unwrap_or("").to_string();
+                let body_in = request.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
+                let reply = routes
+                    .iter()
+                    .find(|(p, _, _)| *p == path)
+                    .map(|(_, kind, body)| {
+                        let body = body.replace("{method}", &method).replace("{body}", &body_in);
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
+                    })
+                    .unwrap_or_else(|| "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string());
+                let _ = stream.write_all(reply.as_bytes());
+            }
+        });
+        origin
+    }
+
+    /// Ticks until `done` or three seconds pass.
+    fn wait_for(page: &mut Page, done: impl Fn(&Page) -> bool) {
+        let until = std::time::Instant::now() + Duration::from_secs(3);
+        while std::time::Instant::now() < until && !done(page) {
+            page.tick_web();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn fetch_json_and_render_a_list_through_inner_html() {
+        let origin = serve(vec![("/items.json", "application/json", "[{\"n\":\"alpha\"},{\"n\":\"beta\"}]")]);
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.set_network_review(Arc::new(|_| true));
+        p.load_html_str(
+            "<body><ul id=l></ul><script>\
+               fetch('/items.json').then(r => { if (!r.ok) throw new Error('bad'); return r.json(); })\
+                 .then(items => { document.getElementById('l').innerHTML = items.map(i => '<li>' + i.n + '</li>').join(''); });\
+             </script></body>",
+            Some(format!("{origin}/")),
+        );
+        wait_for(&mut p, |p| texts(p).contains(&"beta".to_string()));
+        assert!(texts(&p).contains(&"alpha".to_string()) && texts(&p).contains(&"beta".to_string()), "{:?}", texts(&p));
+    }
+
+    #[test]
+    fn xmlhttprequest_posts_a_body_and_reads_the_response() {
+        let origin = serve(vec![("/echo", "text/plain", "{method}:{body}")]);
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.set_network_review(Arc::new(|_| true));
+        p.load_html_str(
+            "<body><p id=o>wait</p><script>\
+               const x = new XMLHttpRequest(); x.open('POST', '/echo'); x.setRequestHeader('Content-Type', 'text/plain');\
+               x.onload = () => { document.getElementById('o').textContent = x.status + ' ' + x.responseText + ' ' + x.getResponseHeader('content-type'); };\
+               x.send('payload');\
+             </script></body>",
+            Some(format!("{origin}/")),
+        );
+        wait_for(&mut p, |p| texts(p).iter().any(|t| t.contains("payload")));
+        assert!(texts(&p).join(" ").contains("200 POST:payload text/plain"), "{:?}", texts(&p));
+    }
+
+    #[test]
+    fn a_pjax_navigation_fetches_a_fragment_swaps_it_in_and_pushes_the_url() {
+        let origin = serve(vec![("/next", "text/html", "<html><head><title>Next</title></head><body><main id=m>second page</main></body></html>")]);
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.set_network_review(Arc::new(|_| true));
+        p.load_html_str(
+            "<body><a id=go href='/next'>go</a><main id=m>first page</main><script>\
+               document.addEventListener('click', (e) => {\
+                 const a = e.target.closest('a'); if (!a) return; e.preventDefault();\
+                 fetch(a.href).then(r => r.text()).then(html => {\
+                   const doc = new DOMParser().parseFromString(html, 'text/html');\
+                   document.getElementById('m').replaceWith(doc.getElementById('m'));\
+                   document.title = doc.title; history.pushState({ pjax: 1 }, '', a.getAttribute('href'));\
+                 });\
+               });\
+             </script></body>",
+            Some(format!("{origin}/start")),
+        );
+        assert_eq!(p.take_web_navigation(), None);
+        p.web_eval("__blueice.dispatch(document.getElementById('go')._id, 'click')");
+        wait_for(&mut p, |p| texts(p).iter().any(|t| t == "second"));
+        assert!(texts(&p).contains(&"second".to_string()), "{:?}", texts(&p));
+        assert_eq!(p.url(), Some(format!("{origin}/next").as_str()));
+        assert_eq!(p.take_web_navigation(), None, "no page load happened");
+    }
+
+    #[test]
+    fn a_blocked_request_rejects_and_a_page_without_review_cannot_fetch() {
+        let origin = serve(vec![("/x", "text/plain", "x")]);
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.set_network_review(Arc::new(|_| false));
+        p.load_html_str(
+            "<body><p id=o>pending</p><script>fetch('/x').then(() => document.getElementById('o').textContent = 'allowed', () => document.getElementById('o').textContent = 'blocked');</script></body>",
+            Some(format!("{origin}/")),
+        );
+        wait_for(&mut p, |p| texts(p).contains(&"blocked".to_string()));
+        assert_eq!(texts(&p), vec!["blocked"]);
+        let mut q = Page::new(400.0, 300.0);
+        q.set_web_scripts(true);
+        q.load_html_str(
+            "<body><p id=o>pending</p><script>fetch('/x').catch(() => document.getElementById('o').textContent = 'refused');</script></body>",
+            Some(format!("{origin}/")),
+        );
+        wait_for(&mut q, |p| texts(p).contains(&"refused".to_string()));
+        assert_eq!(texts(&q), vec!["refused"]);
+    }
+
+    #[test]
+    fn aborting_a_fetch_rejects_with_an_abort_error() {
+        let origin = serve(vec![("/x", "text/plain", "x")]);
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.set_network_review(Arc::new(|_| true));
+        p.load_html_str(
+            "<body><p id=o>pending</p><script>const c = new AbortController(); fetch('/x', { signal: c.signal }).catch(e => document.getElementById('o').textContent = e.name); c.abort();</script></body>",
+            Some(format!("{origin}/")),
+        );
+        wait_for(&mut p, |p| texts(p).contains(&"AbortError".to_string()));
+        assert_eq!(texts(&p), vec!["AbortError"]);
     }
 }

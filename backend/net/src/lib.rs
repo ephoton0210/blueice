@@ -313,6 +313,113 @@ pub fn fetch_subresource_hop(url: &str, max_bytes: usize) -> Result<SubresourceH
     }
 }
 
+/// A request a page's own script makes (`fetch`, `XMLHttpRequest`).
+pub struct ScriptRequest {
+    pub method: String,
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    /// Headers the caller (the browser itself, not the page) sets, such as
+    /// `Origin` and the CORS preflight headers.
+    pub trusted_headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+/// What came back for one hop of a [`ScriptRequest`].
+pub enum ScriptHop {
+    /// A redirect target, resolved; nothing was requested from it.
+    Redirect { location: String, status: u16 },
+    Response {
+        status: u16,
+        status_text: String,
+        headers: Vec<(String, String)>,
+        body: Vec<u8>,
+    },
+    TooLarge,
+}
+
+/// Request headers a page's script may not set (the browser owns them).
+fn forbidden_request_header(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name.starts_with("sec-")
+        || name.starts_with("proxy-")
+        || matches!(
+            name.as_str(),
+            "accept-charset" | "accept-encoding" | "access-control-request-headers"
+                | "access-control-request-method" | "connection" | "content-length" | "cookie"
+                | "cookie2" | "date" | "dnt" | "expect" | "host" | "keep-alive" | "origin"
+                | "referer" | "set-cookie" | "te" | "trailer" | "transfer-encoding" | "upgrade"
+                | "via"
+        )
+}
+
+/// Executes exactly one hop of a script's request: any of GET, HEAD, POST, PUT,
+/// PATCH and DELETE, with the script's headers (minus the forbidden ones) and
+/// body, no automatic redirects and at most `max_bytes` of response body.
+/// Cookies are not sent; the caller reviews every target before calling.
+pub fn fetch_script_request_hop(
+    request: &ScriptRequest,
+    max_bytes: usize,
+) -> Result<ScriptHop, FetchError> {
+    validate_url_scheme(&request.url)?;
+    let method = request.method.to_ascii_uppercase();
+    if !matches!(
+        method.as_str(),
+        "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS"
+    ) {
+        return Err(FetchError::Request(format!("method {method} is not allowed")));
+    }
+    let agent = navigation_transport::agent(ResponseCancellation::default());
+    let mut builder = ureq::http::Request::builder()
+        .method(method.as_str())
+        .uri(request.url.as_str());
+    for (name, value) in &request.headers {
+        if !forbidden_request_header(name) {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+    }
+    for (name, value) in &request.trusted_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    let built = builder
+        .body(request.body.clone())
+        .map_err(|error| FetchError::Request(error.to_string()))?;
+    let mut response = agent
+        .run(built)
+        .map_err(|error| FetchError::Request(error.to_string()))?;
+    if let Some((location, status)) = redirect_target(&request.url, &response)? {
+        return Ok(ScriptHop::Redirect { location, status });
+    }
+    let status = response.status().as_u16();
+    let status_text = response
+        .status()
+        .canonical_reason()
+        .unwrap_or("")
+        .to_string();
+    let headers: Vec<(String, String)> = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            let name = name.as_str().to_ascii_lowercase();
+            // The page never sees cookies it is not entitled to.
+            (name != "set-cookie" && name != "set-cookie2")
+                .then(|| value.to_str().ok().map(|v| (name, v.to_string())))
+                .flatten()
+        })
+        .collect();
+    let limit = u64::try_from(max_bytes).unwrap_or(u64::MAX).saturating_add(1);
+    match response.body_mut().with_config().limit(limit).read_to_vec() {
+        Ok(body) if body.len() > max_bytes => Ok(ScriptHop::TooLarge),
+        Ok(body) => Ok(ScriptHop::Response {
+            status,
+            status_text,
+            headers,
+            body,
+        }),
+        Err(ureq::Error::BodyExceedsLimit(_)) => Ok(ScriptHop::TooLarge),
+        Err(error) => Err(FetchError::Body(error.to_string())),
+    }
+}
+
 /// Fetches exactly one HTTP navigation hop, never following a `Location`
 /// response automatically. A redirect target is resolved against `url` and
 /// must itself be HTTP(S), but no request to it is made here. This preserves a
@@ -594,5 +701,64 @@ mod tests {
     fn a_subresource_hop_refuses_a_non_http_url_before_any_request() {
         assert!(fetch_subresource_hop("file:///etc/passwd", 10).is_err());
         assert!(fetch_subresource_hop("data:text/css,p{}", 10).is_err());
+    }
+
+    #[test]
+    fn a_script_request_carries_method_headers_and_body_and_hides_forbidden_headers() {
+        use std::sync::mpsc;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            tx.send(String::from_utf8_lossy(&buf[..n]).to_string()).unwrap();
+            stream
+                .write_all(b"HTTP/1.1 201 Created\r\nX-Reply: yes\r\nSet-Cookie: s=1\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .unwrap();
+        });
+        let hop = fetch_script_request_hop(
+            &ScriptRequest {
+                method: "post".into(),
+                url: format!("http://{addr}/api"),
+                headers: vec![
+                    ("X-Custom".into(), "1".into()),
+                    ("Cookie".into(), "secret=1".into()),
+                    ("Content-Type".into(), "application/json".into()),
+                ],
+                trusted_headers: vec![],
+                body: b"{\"a\":1}".to_vec(),
+            },
+            1000,
+        )
+        .unwrap();
+        let sent = rx.recv().unwrap().to_ascii_lowercase();
+        assert!(sent.starts_with("post /api"));
+        assert!(sent.contains("x-custom: 1") && sent.contains("application/json"));
+        assert!(!sent.contains("secret=1"), "a script cannot set Cookie: {sent}");
+        assert!(sent.ends_with("{\"a\":1}"));
+        let ScriptHop::Response { status, status_text, headers, body } = hop else {
+            panic!("expected a response")
+        };
+        assert_eq!((status, status_text.as_str(), body.as_slice()), (201, "Created", &b"ok"[..]));
+        assert!(headers.iter().any(|(k, v)| k == "x-reply" && v == "yes"));
+        assert!(!headers.iter().any(|(k, _)| k == "set-cookie"), "cookies are not exposed");
+    }
+
+    #[test]
+    fn script_requests_refuse_unknown_methods_and_oversized_bodies() {
+        let bad = fetch_script_request_hop(
+            &ScriptRequest { method: "TRACE".into(), url: "http://127.0.0.1:1/".into(), headers: vec![], trusted_headers: vec![], body: vec![] },
+            10,
+        );
+        assert!(matches!(bad, Err(FetchError::Request(_))));
+        let url = serve_once("HTTP/1.1 200 OK\r\nContent-Length: 20\r\nConnection: close\r\n\r\n01234567890123456789");
+        let hop = fetch_script_request_hop(
+            &ScriptRequest { method: "GET".into(), url, headers: vec![], trusted_headers: vec![], body: vec![] },
+            5,
+        )
+        .unwrap();
+        assert!(matches!(hop, ScriptHop::TooLarge));
     }
 }

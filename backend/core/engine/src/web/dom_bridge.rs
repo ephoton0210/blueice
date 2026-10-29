@@ -83,6 +83,9 @@ pub(crate) struct DomState {
     pub cookies: String,
     /// External scripts a script inserted: `(script element, absolute URL)`.
     pub script_requests: Vec<(NodeId, String)>,
+    /// Requests a script made, waiting for the host to run them.
+    pub net_jobs: Vec<crate::web::net::NetJob>,
+    next_request: u64,
 }
 
 impl DomState {
@@ -98,6 +101,8 @@ impl DomState {
             navigations: Vec::new(),
             cookies: String::new(),
             script_requests: Vec::new(),
+            net_jobs: Vec::new(),
+            next_request: 1,
         }
     }
 
@@ -505,6 +510,29 @@ impl DomState {
                 let id = self.node(args.first())?;
                 self.script_requests.push((id, text(1)));
                 Reply::Undefined
+            }
+            "netStart" => {
+                // (method, url, headers as JSON pairs, body as base64)
+                let headers: Vec<(String, String)> =
+                    serde_json::from_str::<Vec<(String, String)>>(&text(2)).unwrap_or_default();
+                let body = crate::web::net::base64_decode(&text(3)).unwrap_or_default();
+                let origin = url::Url::parse(&self.url)
+                    .map(|u| u.origin().ascii_serialization())
+                    .unwrap_or_default();
+                let id = self.next_request;
+                self.next_request += 1;
+                if self.net_jobs.len() >= 64 {
+                    return Err("too many requests are pending".to_string());
+                }
+                self.net_jobs.push(crate::web::net::NetJob {
+                    id,
+                    method: text(0),
+                    url: text(1),
+                    headers,
+                    body,
+                    origin,
+                });
+                Reply::Number(id as f64)
             }
             "url" => self.url.as_str().into(),
             "cookie" => self.cookies.as_str().into(),

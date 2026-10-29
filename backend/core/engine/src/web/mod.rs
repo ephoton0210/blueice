@@ -17,6 +17,7 @@
 //! request a script makes is recorded for the embedder, which reviews it.
 
 pub(crate) mod dom_bridge;
+pub(crate) mod net;
 
 use blueice_bluejs::{
     compile, compile_module, parse, parse_module, Bytecode, HostFunctionError, HostValue, Vm,
@@ -42,6 +43,9 @@ pub(crate) struct WebHost {
     state: Rc<RefCell<DomState>>,
     started: Instant,
     console: Vec<String>,
+    /// Every module of the page, compiled; passed whole to each module run so
+    /// that all of them share one registry and one set of instances.
+    modules: HashMap<String, Bytecode>,
 }
 
 // SAFETY: a `WebHost` owns its whole realm. Every `Rc` in it -- the VM's own
@@ -107,6 +111,7 @@ impl WebHost {
             state,
             started,
             console: Vec::new(),
+            modules: HashMap::new(),
         };
         host.run("blueice:bootstrap", BOOTSTRAP)
             .map_err(|e| format!("bootstrap failed: {e}"))?;
@@ -136,9 +141,22 @@ impl WebHost {
 
     /// Makes `sources` (module key -> text) available to `import()`, with
     /// relative specifiers of classic scripts resolved against `referrer`.
+    ///
+    /// Every module is compiled up front: a dynamic import links the module
+    /// it names against the registry the realm holds, so what that module
+    /// itself imports has to be there already. A module that does not parse or
+    /// compile is left out (importing it then fails, like an unfetched one).
     pub fn set_module_sources(&mut self, referrer: &str, sources: HashMap<String, String>) {
-        self.vm.set_module_loader_context(referrer, HashMap::new());
+        let compiled: HashMap<String, Bytecode> = sources
+            .iter()
+            .filter_map(|(key, text)| {
+                let module = parse_module(text).ok()?;
+                Some((key.clone(), compile_module(&module).ok()?))
+            })
+            .collect();
+        self.vm.set_module_loader_context(referrer, compiled.clone());
         self.vm.set_dynamic_module_sources(sources);
+        self.modules = compiled;
     }
 
     /// Runs `source` as the module `key`, linking its static imports from
@@ -149,23 +167,34 @@ impl WebHost {
         source: &str,
         sources: &HashMap<String, String>,
     ) -> Result<(), String> {
-        let mut compiled: HashMap<String, Bytecode> = HashMap::new();
+        // The entry (an inline module, say) joins the page's modules, and so
+        // does anything it imports that was not compiled with them.
+        let mut added: Vec<String> = Vec::new();
         let mut stack = vec![(key.to_string(), source.to_string())];
         while let Some((name, text)) = stack.pop() {
-            if compiled.contains_key(&name) {
+            if self.modules.contains_key(&name) && name != key {
                 continue;
             }
             let module = parse_module(&text).map_err(|e| format!("{name}: {e:?}"))?;
             for request in &module.requests {
                 let target = crate::scripts_fetch::resolve_key(&name, &request.specifier);
-                if let Some(dependency) = sources.get(&target) {
-                    stack.push((target, dependency.clone()));
+                if !self.modules.contains_key(&target) {
+                    if let Some(dependency) = sources.get(&target) {
+                        stack.push((target, dependency.clone()));
+                    }
                 }
             }
             let code = compile_module(&module).map_err(|e| format!("{name}: {e:?}"))?;
-            compiled.insert(name, code);
+            added.push(name.clone());
+            self.modules.insert(name, code);
         }
-        let result = self.vm.execute_module_graph(key, &compiled);
+        let result = self.vm.execute_module_graph(key, &self.modules);
+        if result.is_err() {
+            // One module that cannot link must not keep the next from running.
+            for name in &added {
+                self.modules.remove(name);
+            }
+        }
         let _ = self.vm.run_host_microtask_checkpoint();
         self.collect_console();
         result.map(|_| ()).map_err(|e| {

@@ -76,6 +76,8 @@ pub struct Page {
     web: Option<crate::web::WebHost>,
     web_scripts_override: Option<bool>,
     web_navigation: Option<String>,
+    web_scroll_seen: f64,
+    web_net: Option<web_scripts::WebNet>,
     web_review: Option<web_scripts::NetworkReview>,
     script_change_unpublished_by_web: bool,
     images: blueice_paint::ImageMap,
@@ -178,6 +180,8 @@ impl Page {
             web: None,
             web_scripts_override: None,
             web_navigation: None,
+            web_scroll_seen: 0.0,
+            web_net: None,
             web_review: None,
             script_change_unpublished_by_web: false,
             images: Default::default(),
@@ -236,6 +240,8 @@ impl Page {
         self.linked_scripts = std::mem::take(&mut self.pending_linked_scripts);
         self.linked_modules = std::mem::take(&mut self.pending_linked_modules);
         self.web = None;
+        self.web_scroll_seen = 0.0;
+        self.web_net = None;
         // `parse_continuing_from` (not `parse`) so this replacement
         // document's NodeIds never collide with -- or get numerically
         // confused with -- the document it's replacing. A client that

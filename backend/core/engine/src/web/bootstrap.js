@@ -1491,10 +1491,16 @@
       return true;
     }
     get naturalWidth() {
-      return 0;
+      return this._natural()[0];
     }
     get naturalHeight() {
-      return 0;
+      return this._natural()[1];
+    }
+    _natural() {
+      // The size the engine decoded the picture at, once it has one.
+      const v = bi('computed', this._id, '-blueice-intrinsic-size');
+      const parts = v ? v.split(' ').map(Number) : [];
+      return parts.length === 2 && parts[0] > 0 ? parts : [0, 0];
     }
     get currentSrc() {
       return this.src;
@@ -2294,37 +2300,69 @@
   const pending = new Map();
 
   // --------------------------------------------------------- observers, misc
+  const allIntersectionObservers = new Set();
+  // "10px", "-20%", up to four values (top right bottom left) -> pixels.
+  const parseMargins = (text, width, height) => {
+    const parts = String(text || '0px').trim().split(/\s+/);
+    const px = (v, whole) => (v.endsWith('%') ? (parseFloat(v) / 100) * whole : parseFloat(v) || 0);
+    const [t, r = t, b = t, l = r] = parts;
+    return { top: px(t, height), right: px(r, width), bottom: px(b, height), left: px(l, width) };
+  };
   class IntersectionObserver {
     constructor(callback, options) {
       this._callback = callback;
-      this._targets = new Set();
+      this._targets = new Map();
       this.root = (options && options.root) || null;
       this.rootMargin = (options && options.rootMargin) || '0px';
-      this.thresholds = [].concat((options && options.threshold) || 0);
+      const thresholds = [].concat(options && options.threshold !== undefined ? options.threshold : 0).map(Number);
+      this.thresholds = thresholds.sort((a, b) => a - b);
     }
     observe(target) {
       if (this._targets.has(target)) return;
-      this._targets.add(target);
-      // Nothing scrolls here yet, so every observed element reports itself
-      // visible, which is what lets "reveal on scroll" content appear.
-      setTimeout(() => {
-        if (!this._targets.has(target)) return;
-        const r = target.getBoundingClientRect();
-        try {
-          this._callback.call(this, [{ target, isIntersecting: true, intersectionRatio: 1, time: nowMs(), boundingClientRect: r, intersectionRect: r, rootBounds: null }], this);
-        } catch (e) {
-          reportError(e);
-        }
-      }, 0);
+      this._targets.set(target, null);
+      allIntersectionObservers.add(this);
+      // The first report comes after the current task, with fresh geometry.
+      setTimeout(() => this._check(), 0);
     }
     unobserve(target) {
       this._targets.delete(target);
     }
     disconnect() {
       this._targets.clear();
+      allIntersectionObservers.delete(this);
     }
     takeRecords() {
       return [];
+    }
+    _check() {
+      const [vw, vh] = viewportSize();
+      const m = parseMargins(this.rootMargin, vw, vh);
+      const entries = [];
+      for (const [target, previous] of this._targets) {
+        const r = target.getBoundingClientRect();
+        const left = Math.max(r.left, -m.left);
+        const top = Math.max(r.top, -m.top);
+        const right = Math.min(r.right, vw + m.right);
+        const bottom = Math.min(r.bottom, vh + m.bottom);
+        const overlapW = right - left;
+        const overlapH = bottom - top;
+        const area = r.width * r.height;
+        const isIntersecting = area > 0 ? overlapW > 0 && overlapH > 0 : overlapW >= 0 && overlapH >= 0 && r.bottom >= -m.top && r.top <= vh + m.bottom;
+        const ratio = area > 0 && isIntersecting ? Math.min(1, (overlapW * overlapH) / area) : isIntersecting ? 1 : 0;
+        let step = -1;
+        for (let k = 0; k < this.thresholds.length; k++) if (ratio >= this.thresholds[k] && (isIntersecting || this.thresholds[k] === 0 && false)) step = k;
+        if (previous && previous.isIntersecting === isIntersecting && previous.step === step) continue;
+        this._targets.set(target, { isIntersecting, step });
+        const intersection = { x: left, y: top, width: Math.max(0, overlapW), height: Math.max(0, overlapH), left, top, right, bottom };
+        entries.push({ target, isIntersecting, intersectionRatio: ratio, time: nowMs(), boundingClientRect: r, intersectionRect: intersection, rootBounds: { x: 0, y: 0, width: vw, height: vh, left: 0, top: 0, right: vw, bottom: vh } });
+      }
+      if (entries.length) {
+        try {
+          this._callback.call(this, entries, this);
+        } catch (e) {
+          reportError(e);
+        }
+      }
     }
   }
   class ResizeObserver {
@@ -2533,6 +2571,396 @@
     return out;
   };
 
+  // ------------------------------------------------------- fetch and XHR
+  const toBase64 = (bytes) => {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  };
+  const fromBase64 = (text) => {
+    const s = atob(text);
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+  };
+  const netPending = new Map();
+  const netSend = (method, url, headers, body, onDone, onFail) => {
+    const id = bi('netStart', method, url, JSON.stringify(headers), body && body.length ? toBase64(body) : '');
+    netPending.set(id, { onDone, onFail });
+    return id;
+  };
+
+  class Headers {
+    constructor(init) {
+      this._h = new Map();
+      if (!init) return;
+      if (init instanceof Headers) init.forEach((v, k) => this.append(k, v));
+      else if (typeof init[Symbol.iterator] === 'function') for (const [k, v] of init) this.append(k, v);
+      else for (const k of Object.keys(init)) this.append(k, init[k]);
+    }
+    append(k, v) {
+      k = String(k).toLowerCase();
+      this._h.set(k, this._h.has(k) ? this._h.get(k) + ', ' + String(v) : String(v));
+    }
+    set(k, v) {
+      this._h.set(String(k).toLowerCase(), String(v));
+    }
+    get(k) {
+      const v = this._h.get(String(k).toLowerCase());
+      return v === undefined ? null : v;
+    }
+    has(k) {
+      return this._h.has(String(k).toLowerCase());
+    }
+    delete(k) {
+      this._h.delete(String(k).toLowerCase());
+    }
+    forEach(fn, thisArg) {
+      for (const [k, v] of this._h) fn.call(thisArg, v, k, this);
+    }
+    keys() {
+      return this._h.keys();
+    }
+    values() {
+      return this._h.values();
+    }
+    entries() {
+      return this._h.entries();
+    }
+    [Symbol.iterator]() {
+      return this._h.entries();
+    }
+  }
+
+  class FormData {
+    constructor() {
+      this._e = [];
+    }
+    append(k, v) {
+      this._e.push([String(k), typeof v === 'object' && v !== null ? v : String(v)]);
+    }
+    set(k, v) {
+      this.delete(k);
+      this.append(k, v);
+    }
+    get(k) {
+      const e = this._e.find((p) => p[0] === String(k));
+      return e ? e[1] : null;
+    }
+    getAll(k) {
+      return this._e.filter((p) => p[0] === String(k)).map((p) => p[1]);
+    }
+    has(k) {
+      return this._e.some((p) => p[0] === String(k));
+    }
+    delete(k) {
+      this._e = this._e.filter((p) => p[0] !== String(k));
+    }
+    forEach(fn, thisArg) {
+      for (const [k, v] of this._e) fn.call(thisArg, v, k, this);
+    }
+    keys() {
+      return this._e.map((p) => p[0])[Symbol.iterator]();
+    }
+    values() {
+      return this._e.map((p) => p[1])[Symbol.iterator]();
+    }
+    entries() {
+      return this._e.map((p) => [p[0], p[1]])[Symbol.iterator]();
+    }
+    [Symbol.iterator]() {
+      return this.entries();
+    }
+  }
+
+  // A request body as bytes and the content type it implies.
+  const encodeBody = (body) => {
+    if (body === null || body === undefined) return { bytes: null, type: null };
+    if (typeof body === 'string') return { bytes: encoder.encode(body), type: 'text/plain;charset=UTF-8' };
+    if (body instanceof URLSearchParams) return { bytes: encoder.encode(body.toString()), type: 'application/x-www-form-urlencoded;charset=UTF-8' };
+    if (body instanceof FormData) {
+      const boundary = '----BlueIceFormBoundary' + Math.floor(Math.random() * 1e12);
+      let text = '';
+      for (const [k, v] of body._e) text += '--' + boundary + '\r\nContent-Disposition: form-data; name="' + k.replace(/"/g, '%22') + '"\r\n\r\n' + (typeof v === 'string' ? v : String(v)) + '\r\n';
+      text += '--' + boundary + '--\r\n';
+      return { bytes: encoder.encode(text), type: 'multipart/form-data; boundary=' + boundary };
+    }
+    if (body instanceof ArrayBuffer) return { bytes: new Uint8Array(body), type: null };
+    if (ArrayBuffer.isView(body)) return { bytes: new Uint8Array(body.buffer, body.byteOffset, body.byteLength), type: null };
+    return { bytes: encoder.encode(String(body)), type: 'text/plain;charset=UTF-8' };
+  };
+
+  class Response {
+    constructor(body, init) {
+      init = init || {};
+      this._bytes = body === null || body === undefined ? new Uint8Array(0) : encodeBody(body).bytes || new Uint8Array(0);
+      this.status = init.status === undefined ? 200 : init.status;
+      this.statusText = init.statusText === undefined ? '' : String(init.statusText);
+      this.headers = new Headers(init.headers);
+      if (typeof body === 'string' && !this.headers.has('content-type')) this.headers.set('content-type', 'text/plain;charset=UTF-8');
+      this.url = '';
+      this.redirected = false;
+      this.type = 'default';
+      this.bodyUsed = false;
+    }
+    get ok() {
+      return this.status >= 200 && this.status < 300;
+    }
+    get body() {
+      const bytes = this._bytes;
+      return new ReadableStream({ start(c) { c.enqueue(bytes); c.close(); } });
+    }
+    _take() {
+      if (this.bodyUsed) return Promise.reject(new TypeError('Body has already been consumed.'));
+      this.bodyUsed = true;
+      return Promise.resolve(this._bytes);
+    }
+    text() {
+      return this._take().then((b) => new TextDecoder().decode(b));
+    }
+    json() {
+      return this.text().then((t) => JSON.parse(t));
+    }
+    arrayBuffer() {
+      return this._take().then((b) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+    }
+    blob() {
+      return this._take().then((b) => new Blob([b], { type: this.headers.get('content-type') || '' }));
+    }
+    formData() {
+      return Promise.reject(new TypeError('formData() is not supported'));
+    }
+    clone() {
+      const r = new Response(null, { status: this.status, statusText: this.statusText, headers: this.headers });
+      r._bytes = this._bytes;
+      r.url = this.url;
+      r.type = this.type;
+      return r;
+    }
+    static error() {
+      const r = new Response(null, { status: 0 });
+      r.type = 'error';
+      return r;
+    }
+    static json(data, init) {
+      const r = new Response(JSON.stringify(data), init);
+      r.headers.set('content-type', 'application/json');
+      return r;
+    }
+  }
+  class Request {
+    constructor(input, init) {
+      init = init || {};
+      const from = input instanceof Request ? input : null;
+      this.url = resolveUrl(from ? from.url : String(input));
+      this.method = String(init.method || (from && from.method) || 'GET').toUpperCase();
+      this.headers = new Headers(init.headers || (from && from.headers));
+      this.body = init.body !== undefined ? init.body : from ? from.body : null;
+      this.signal = init.signal || (from && from.signal) || null;
+      this.credentials = init.credentials || 'same-origin';
+      this.mode = init.mode || 'cors';
+      this.cache = init.cache || 'default';
+      this.redirect = init.redirect || 'follow';
+      this.referrer = init.referrer || '';
+      this.bodyUsed = false;
+    }
+    clone() {
+      return new Request(this);
+    }
+    text() {
+      const e = encodeBody(this.body).bytes;
+      return Promise.resolve(e ? new TextDecoder().decode(e) : '');
+    }
+    json() {
+      return this.text().then((t) => JSON.parse(t));
+    }
+  }
+
+  const fetchImpl = (input, init) =>
+    new Promise((resolve, reject) => {
+      let request;
+      try {
+        request = new Request(input, init);
+      } catch (e) {
+        reject(e);
+        return;
+      }
+      const signal = request.signal;
+      const abortError = () => new DOMException('The operation was aborted.', 'AbortError');
+      if (signal && signal.aborted) {
+        reject(abortError());
+        return;
+      }
+      const { bytes, type } = encodeBody(request.body);
+      if (type && !request.headers.has('content-type')) request.headers.set('content-type', type);
+      if (request.method === 'GET' || request.method === 'HEAD') {
+        if (bytes && bytes.length) {
+          reject(new TypeError('Request with GET/HEAD method cannot have body.'));
+          return;
+        }
+      }
+      let settled = false;
+      const headers = Array.from(request.headers);
+      let id;
+      try {
+        id = netSend(request.method, request.url, headers, bytes, (r) => {
+          if (settled) return;
+          settled = true;
+          const response = new Response(null, { status: r.status, statusText: r.statusText, headers: r.headers });
+          response._bytes = r.bytes;
+          response.url = r.url;
+          response.redirected = r.url !== request.url;
+          response.type = r.url.split('/').slice(0, 3).join('/') === loc().origin ? 'basic' : 'cors';
+          resolve(response);
+        }, (message) => {
+          if (settled) return;
+          settled = true;
+          console.error('Failed to fetch ' + request.url + ': ' + message);
+          reject(new TypeError('Failed to fetch'));
+        });
+      } catch (e) {
+        reject(new TypeError('Failed to fetch'));
+        return;
+      }
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          if (settled) return;
+          settled = true;
+          netPending.delete(id);
+          reject(abortError());
+        });
+      }
+    });
+
+  class XMLHttpRequest extends EventTarget {
+    constructor() {
+      super();
+      this.readyState = 0;
+      this.status = 0;
+      this.statusText = '';
+      this.responseText = '';
+      this.responseURL = '';
+      this.responseType = '';
+      this.timeout = 0;
+      this.withCredentials = false;
+      this.upload = new EventTarget();
+      this._headers = new Headers();
+      this._responseHeaders = null;
+      this._bytes = null;
+      this.onreadystatechange = null;
+    }
+    get response() {
+      if (this.readyState !== 4) return this.responseType === '' || this.responseType === 'text' ? '' : null;
+      switch (this.responseType) {
+        case 'json':
+          try {
+            return JSON.parse(this.responseText);
+          } catch (_) {
+            return null;
+          }
+        case 'arraybuffer':
+          return this._bytes.buffer.slice(this._bytes.byteOffset, this._bytes.byteOffset + this._bytes.byteLength);
+        case 'blob':
+          return new Blob([this._bytes], { type: this.getResponseHeader('content-type') || '' });
+        default:
+          return this.responseText;
+      }
+    }
+    _fire(type, init) {
+      const e = new ProgressEvent(type, init);
+      e.target = this;
+      const handler = this['on' + type];
+      if (typeof handler === 'function') {
+        try {
+          handler.call(this, e);
+        } catch (err) {
+          reportError(err);
+        }
+      }
+      this.dispatchEvent(e);
+    }
+    _state(n) {
+      this.readyState = n;
+      this._fire('readystatechange');
+    }
+    open(method, url, async) {
+      if (async === false) throw new DOMException('Synchronous XMLHttpRequest is not supported', 'InvalidAccessError');
+      this._method = String(method).toUpperCase();
+      this._url = resolveUrl(String(url));
+      this._headers = new Headers();
+      this._aborted = false;
+      this._state(1);
+    }
+    setRequestHeader(k, v) {
+      this._headers.append(k, v);
+    }
+    overrideMimeType() {}
+    getResponseHeader(name) {
+      return this._responseHeaders ? this._responseHeaders.get(name) : null;
+    }
+    getAllResponseHeaders() {
+      if (!this._responseHeaders) return '';
+      let out = '';
+      this._responseHeaders.forEach((v, k) => (out += k + ': ' + v + '\r\n'));
+      return out;
+    }
+    send(body) {
+      if (this.readyState !== 1) throw new DOMException('The object is in an invalid state.', 'InvalidStateError');
+      const { bytes, type } = this._method === 'GET' || this._method === 'HEAD' ? { bytes: null, type: null } : encodeBody(body);
+      if (type && !this._headers.has('content-type')) this._headers.set('content-type', type);
+      this._fire('loadstart');
+      let id;
+      try {
+        id = netSend(this._method, this._url, Array.from(this._headers), bytes, (r) => {
+          if (this._aborted) return;
+          this.status = r.status;
+          this.statusText = r.statusText;
+          this.responseURL = r.url;
+          this._responseHeaders = r.headers;
+          this._bytes = r.bytes;
+          this.responseText = new TextDecoder().decode(r.bytes);
+          this._state(2);
+          this._state(3);
+          this._state(4);
+          this._fire('load', { loaded: r.bytes.length, total: r.bytes.length, lengthComputable: true });
+          this._fire('loadend');
+        }, (message) => {
+          if (this._aborted) return;
+          console.error('XMLHttpRequest failed for ' + this._url + ': ' + message);
+          this._state(4);
+          this._fire('error');
+          this._fire('loadend');
+        });
+      } catch (e) {
+        this._state(4);
+        this._fire('error');
+        this._fire('loadend');
+        return;
+      }
+      this._id = id;
+      if (this.timeout > 0) {
+        setTimeout(() => {
+          if (this.readyState === 4 || this._aborted) return;
+          this._aborted = true;
+          netPending.delete(id);
+          this._state(4);
+          this._fire('timeout');
+          this._fire('loadend');
+        }, this.timeout);
+      }
+    }
+    abort() {
+      if (this.readyState === 0 || this.readyState === 4) return;
+      this._aborted = true;
+      netPending.delete(this._id);
+      this.readyState = 4;
+      this._fire('readystatechange');
+      this._fire('abort');
+      this._fire('loadend');
+    }
+  }
+  Object.assign(XMLHttpRequest, { UNSENT: 0, OPENED: 1, HEADERS_RECEIVED: 2, LOADING: 3, DONE: 4 });
+
   // --------------------------------------------------- location and history
   const locationApi = {};
   const loc = () => parseUrl(bi('url'));
@@ -2657,7 +3085,15 @@
     maxTouchPoints: 0,
     deviceMemory: 4,
     pdfViewerEnabled: false,
-    sendBeacon: () => true,
+    sendBeacon: (url, data) => {
+      try {
+        const { bytes, type } = encodeBody(data);
+        netSend('POST', resolveUrl(String(url)), type ? [['content-type', type]] : [], bytes, () => {}, () => {});
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
     javaEnabled: () => false,
     vibrate: () => false,
     clipboard: { writeText: () => Promise.resolve(), readText: () => Promise.resolve('') },
@@ -2816,6 +3252,7 @@
     performance, crypto, localStorage: makeStorage(), sessionStorage: makeStorage(),
     CSS: { supports: () => true, escape: cssEscape },
     atob, btoa, structuredClone: (v) => structuredCloneImpl(v), reportError,
+    Headers, FormData, Response, Request, XMLHttpRequest, fetch: fetchImpl,
   };
   for (const key of Object.keys(exported)) {
     Object.defineProperty(global, key, { value: exported[key], writable: true, configurable: true, enumerable: false });
@@ -2914,6 +3351,27 @@
         const e = new Event(type, init);
         e.isTrusted = true;
         return document.dispatchEvent(e);
+      },
+      netDone(id, status, statusText, headersJson, bodyBase64, url) {
+        const entry = netPending.get(id);
+        if (!entry) return;
+        netPending.delete(id);
+        entry.onDone({ status, statusText, headers: new Headers(JSON.parse(headersJson)), bytes: fromBase64(bodyBase64), url });
+      },
+      netFail(id, message) {
+        const entry = netPending.get(id);
+        if (!entry) return;
+        netPending.delete(id);
+        entry.onFail(message);
+      },
+      scrolled(y) {
+        global.scrollY = y;
+        global.pageYOffset = y;
+        document.dispatchEvent(Object.assign(new Event('scroll', { bubbles: true }), { isTrusted: true }));
+        for (const io of Array.from(allIntersectionObservers)) io._check();
+      },
+      afterLayout() {
+        for (const io of Array.from(allIntersectionObservers)) io._check();
       },
       setReadyState(state) {
         document._readyState = state;

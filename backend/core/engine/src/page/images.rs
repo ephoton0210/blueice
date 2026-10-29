@@ -244,6 +244,35 @@ mod tests {
                 &|_| true,
                 crate::scripts_fetch::DEFAULT_MODULE_LIMITS,
             );
+            if let Ok(needle) = std::env::var("BI_FIND") {
+                for (key, text) in &page.pending_linked_modules {
+                    if key.contains(&needle) {
+                        eprintln!("HAVE {key} ({} bytes)", text.len());
+                    }
+                    if let Some(at) = text.find(&needle) {
+                        let from = at.saturating_sub(60);
+                        eprintln!("REFERENCED in {key}: ...{}...", &text[from..(at + needle.len() + 20).min(text.len())].replace('\n', " "));
+                    }
+                }
+            }
+            if std::env::var("BI_DIAG").is_ok() {
+                for (key, text) in &page.pending_linked_modules {
+                    match blueice_bluejs::parse_module(text) {
+                        Ok(m) => {
+                            if let Err(e) = blueice_bluejs::compile_module(&m) {
+                                eprintln!("COMPILE-ERR {key}: {e:?}");
+                            }
+                            for r in &m.requests {
+                                let target = crate::scripts_fetch::resolve_key(key, &r.specifier);
+                                if !page.pending_linked_modules.contains_key(&target) {
+                                    eprintln!("MISSING {target} (imported by {key})");
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("PARSE-ERR {key}: {e:?}"),
+                    }
+                }
+            }
             eprintln!(
                 "fetched {} scripts and {} modules",
                 page.pending_linked_scripts.len(),
@@ -267,8 +296,29 @@ mod tests {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
+            if std::env::var("BI_SCROLL").is_ok() {
+                // Scroll through the page as a reader would, then back to the top.
+                let height = page.fragment.height;
+                let mut y = 0.0;
+                while y < height {
+                    page.scroll_by(500.0);
+                    for _ in 0..30 {
+                        page.tick_web();
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    y += 500.0;
+                }
+                page.scroll_by(-height);
+                for _ in 0..30 {
+                    page.tick_web();
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }
             eprintln!("{turns} timer turns changed the document");
-            for line in page.web_console().iter().take(40) {
+            if let Ok(probe) = std::env::var("BI_EVAL") {
+                page.web_eval(&probe);
+            }
+            for line in page.web_console().iter().take(60) {
                 eprintln!("console: {}", &line[..line.len().min(300)]);
             }
         }
