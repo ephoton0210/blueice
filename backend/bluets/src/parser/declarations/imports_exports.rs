@@ -69,7 +69,7 @@ impl Parser {
         }
     }
 
-    pub(in crate::parser::implementation) fn parse_import(&mut self, start: usize) {
+    pub(in crate::parser::implementation) fn parse_import(&mut self, start: usize, exported: bool) {
         self.expect("import");
         let type_only = self.peek("type")
             && self
@@ -110,6 +110,7 @@ impl Parser {
             let end = self.previous().end;
             self.declarations
                 .push(Declaration::Import(ImportDeclaration {
+                    exported,
                     equals_require: true,
                     type_only,
                     specifier,
@@ -220,6 +221,7 @@ impl Parser {
         }
         self.declarations
             .push(Declaration::Import(ImportDeclaration {
+                exported: false,
                 equals_require: false,
                 type_only,
                 specifier,
@@ -405,7 +407,7 @@ impl Parser {
     pub(in crate::parser::implementation) fn parse_value_export(&mut self, start: usize) {
         let star = self.consume("*");
         let namespace = if star && self.consume("as") {
-            Some(self.require_identifier("expected a namespace export name"))
+            Some(self.require_property_name("expected a namespace export name"))
         } else {
             None
         };

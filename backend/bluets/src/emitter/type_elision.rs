@@ -81,7 +81,7 @@ pub(super) fn queries<'a>(
         let Declaration::Import(import) = declaration else {
             continue;
         };
-        if import.is_type_only() {
+        if import.is_type_only() || import.exported {
             continue;
         }
         for binding in &mut import.bindings {

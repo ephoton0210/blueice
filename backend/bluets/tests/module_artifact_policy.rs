@@ -94,7 +94,7 @@ fn owner_manifests_bind_helper_selection_and_provider_bytes() {
 }
 
 #[test]
-fn helper_selection_refuses_unimplemented_generated_abis() {
+fn helper_selection_requires_an_owner_provider_or_explicit_global_abi() {
     use blueice_bluets::{
         compile, CompilerOptions, EcmaTarget, MapLoader, ModuleKind, ModuleSource,
     };
@@ -122,17 +122,67 @@ fn helper_selection_refuses_unimplemented_generated_abis() {
                 ..ordinary.clone()
             },
         );
+        if imports {
+            assert!(
+                compilation.output.is_none(),
+                "unresolved helper was published"
+            );
+            assert!(
+                compilation.diagnostics.iter().any(|diagnostic| diagnostic
+                    .message
+                    .contains("imported helper provider cannot be resolved")),
+                "{:?}",
+                compilation.diagnostics
+            );
+        } else {
+            assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
+            let output = compilation.output.unwrap();
+            let javascript = &output.artifacts[id].javascript;
+            assert!(javascript.contains("__awaiter("));
+            assert!(javascript.contains("__generator("));
+            assert!(!javascript.contains("function __awaiter"));
+            assert!(!javascript.contains("function __generator"));
+        }
+    }
+}
+
+#[test]
+fn inherited_object_methods_do_not_hide_explicit_private_members() {
+    use blueice_bluets::{
+        compile, CompilerOptions, EcmaTarget, MapLoader, ModuleKind, ModuleSource,
+    };
+    let id = "memory:///main.ts";
+    let loader = MapLoader::from([ModuleSource::new(id,
+        "class Base { private valueOf(): number { return 42; } }\nexport class Derived extends Base { read(): unknown { return super.valueOf(); } }\n")]);
+    let options = CompilerOptions {
+        target: EcmaTarget::Es2022,
+        module_kind: ModuleKind::CommonJs,
+        declaration: true,
+        ..CompilerOptions::default()
+    };
+    let compilation = compile(id, &loader, options.clone());
+    assert!(
+        compilation.output.is_none(),
+        "private super member was published"
+    );
+    assert!(
+        compilation
+            .diagnostics
+            .iter()
+            .any(|d| d.typescript.as_ref().is_some_and(|ts| ts.code == 2341)),
+        "{:?}",
+        compilation.diagnostics
+    );
+    for visibility in ["protected", "public"] {
+        let source = format!("class Base {{ {visibility} valueOf(): number {{ return 42; }} }}\nexport class Derived extends Base {{ read(): number {{ return super.valueOf(); }} }}\n");
+        let loader = MapLoader::from([ModuleSource::new(id, source)]);
+        let compilation = compile(id, &loader, options.clone());
         assert!(
-            compilation.output.is_none(),
-            "unselected helper was published"
-        );
-        assert!(
-            compilation.diagnostics.iter().any(|diagnostic| diagnostic
-                .message
-                .contains("helper selection does not support generated ABI")),
-            "{:?}",
+            !compilation.has_errors(),
+            "{visibility}: {:?}",
             compilation.diagnostics
         );
+        assert!(compilation.output.is_some());
     }
 }
 

@@ -68,20 +68,30 @@ pub(super) fn lower(
                 ));
             }
             let helper = unused_name(&emitted.javascript, "optional_property", &mut sequence);
+            let external = crate::emitter::helper_selection::external(options);
+            let temporary = unused_name(&emitted.javascript, "optional_receiver", &mut sequence);
             edits.push(TextEdit {
                 start: insertion,
                 end: insertion,
-                replacement: format!(
-                    "\n{}\n",
-                    PROPERTY_HELPER.replace("__blueice_target_optional_property", &helper)
-                ),
+                replacement: if external {
+                    format!("\nvar {temporary};\n")
+                } else {
+                    format!(
+                        "\n{}\n",
+                        PROPERTY_HELPER.replace("__blueice_target_optional_property", &helper)
+                    )
+                },
             });
             let receiver = &emitted.javascript[tokens[start].start..tokens[operator - 1].end];
             let key = serde_json::to_string(&property.text).expect("property name is serializable");
             (
                 tokens[start].start,
                 property.end,
-                format!("{helper}({receiver}, {key})"),
+                if external {
+                    format!("({temporary}=({receiver}), {temporary}===null||{temporary}===void 0 ? void 0 : {temporary}[{key}])")
+                } else {
+                    format!("{helper}({receiver}, {key})")
+                },
             )
         } else {
             let start = coalesce_start(&tokens, operator);
@@ -94,20 +104,31 @@ pub(super) fn lower(
             }
             let temporary = unused_name(&emitted.javascript, "coalesce_value", &mut sequence);
             let helper = unused_name(&emitted.javascript, "coalesce_nullish", &mut sequence);
+            let external = crate::emitter::helper_selection::external(options);
             edits.push(TextEdit {
                 start: insertion,
                 end: insertion,
-                replacement: format!(
-                    "\nvar {temporary};\n{}\n",
-                    TARGET_HELPER_V1_SOURCE.replace("__blueice_target_is_nullish", &helper)
-                ),
+                replacement: if external {
+                    format!("\nvar {temporary};\n")
+                } else {
+                    format!(
+                        "\nvar {temporary};\n{}\n",
+                        TARGET_HELPER_V1_SOURCE.replace("__blueice_target_is_nullish", &helper)
+                    )
+                },
             });
             let left = &emitted.javascript[tokens[start].start..tokens[operator - 1].end];
             let right = &emitted.javascript[tokens[operator + 1].start..tokens[end - 1].end];
             (
                 tokens[start].start,
                 tokens[end - 1].end,
-                format!("({temporary} = {left}, {helper}({temporary}) ? ({right}) : {temporary})"),
+                if external {
+                    format!("({temporary} = {left}, {temporary}===null||{temporary}===void 0 ? ({right}) : {temporary})")
+                } else {
+                    format!(
+                        "({temporary} = {left}, {helper}({temporary}) ? ({right}) : {temporary})"
+                    )
+                },
             )
         };
         edits.push(TextEdit {

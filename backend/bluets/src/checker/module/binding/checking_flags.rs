@@ -79,12 +79,20 @@ impl ModuleChecker<'_> {
             }
         }
         let returns = return_inference::has_return(&function.body);
+        let declared_body_return = if function.generator {
+            self.generator_context
+                .as_ref()
+                .and_then(|context| context.return_type.clone())
+        } else if function.async_function {
+            function.return_type.as_ref().and_then(promise_value_type)
+        } else {
+            function.return_type.clone()
+        };
         let completes = self.inference_body_completes(&function.body, scope);
         if self.checking.no_implicit_returns
             && function.returns.iter().any(|tokens| !tokens.is_empty())
             && completes
-            && function
-                .return_type
+            && declared_body_return
                 .as_ref()
                 .is_none_or(|t| !matches!(t, Type::Void | Type::Any | Type::Undefined))
         {
@@ -97,7 +105,7 @@ impl ModuleChecker<'_> {
         if !self.checking.strict_null_checks
             && !returns
             && completes
-            && function.return_type.as_ref().is_some_and(|t| {
+            && declared_body_return.as_ref().is_some_and(|t| {
                 !matches!(t, Type::Any | Type::Unknown | Type::Void | Type::Undefined)
             })
         {

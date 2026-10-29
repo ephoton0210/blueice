@@ -489,6 +489,7 @@ pub(crate) fn is_declaration_module(module_id: &str) -> bool {
 /// the package's own specifier for the runtime to resolve.
 pub fn is_external_library_module(module_id: &str) -> bool {
     module_id.starts_with("@reference-runtime/")
+        || module_id.starts_with("@node-runtime/")
         || module_id.starts_with("@external/")
         || module_id.starts_with("@package/")
         || module_id.starts_with("@remote/")

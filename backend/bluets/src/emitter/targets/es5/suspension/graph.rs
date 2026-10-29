@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::parser::{FunctionBodyItem, FunctionDeclaration, FunctionElseBranch};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 mod control;
 mod expressions;
@@ -16,6 +16,14 @@ pub(super) struct Graph {
     pub(super) entry: usize,
     pub(super) declarations: String,
     pub(super) cases: String,
+    pub(super) native: Option<NativeBlocks>,
+}
+
+pub(super) struct NativeBlocks {
+    pub(super) blocks: Vec<String>,
+    pub(super) exits: BTreeMap<usize, usize>,
+    pub(super) finishes: BTreeSet<usize>,
+    pub(super) delegation: bool,
 }
 
 pub(super) fn compile(
@@ -24,6 +32,7 @@ pub(super) fn compile(
     context: &str,
     arguments: &str,
     marker: Option<&str>,
+    external_abi: bool,
     limits: &crate::parser::ParserLimits,
 ) -> Option<Graph> {
     let tokens = crate::syntax::lex_with_limits(
@@ -38,6 +47,10 @@ pub(super) fn compile(
         context,
         arguments,
         marker,
+        external_abi,
+        exits: BTreeMap::new(),
+        finishes: BTreeSet::new(),
+        delegation: false,
         cases: Vec::new(),
         locals: BTreeSet::new(),
         functions: String::new(),
@@ -57,7 +70,7 @@ pub(super) fn compile(
     }
     let cases = builder
         .cases
-        .into_iter()
+        .iter()
         .enumerate()
         .map(|(label, code)| format!("case {label}: {code}\n"))
         .collect();
@@ -65,6 +78,12 @@ pub(super) fn compile(
         entry,
         declarations,
         cases,
+        native: external_abi.then_some(NativeBlocks {
+            blocks: builder.cases,
+            exits: builder.exits,
+            finishes: builder.finishes,
+            delegation: builder.delegation,
+        }),
     })
 }
 
@@ -73,6 +92,10 @@ struct Builder<'a> {
     context: &'a str,
     arguments: &'a str,
     marker: Option<&'a str>,
+    external_abi: bool,
+    exits: BTreeMap<usize, usize>,
+    finishes: BTreeSet<usize>,
+    delegation: bool,
     cases: Vec<String>,
     locals: BTreeSet<String>,
     functions: String,
@@ -158,6 +181,10 @@ impl Builder<'_> {
                 self.regions += 1;
                 let leave = self.block("return {kind:\"leave\"};".into());
                 let finish = self.block("return {kind:\"finish\"};".into());
+                if self.external_abi {
+                    self.exits.insert(leave, next);
+                    self.finishes.insert(finish);
+                }
                 let finalizer = statement
                     .finalizer
                     .as_ref()
@@ -220,8 +247,10 @@ impl Builder<'_> {
                 "{temporary} = {context}.sent(); {}",
                 self.jump(finish)
             ));
-            let marker = self.marker?;
-            let suspend = self.block(format!("{context}.label = {resume}; return {{kind:\"yield\", value:{marker}(true, {temporary})}};"));
+            let suspension = self.suspension(true, &temporary)?;
+            let suspend = self.block(format!(
+                "{context}.label = {resume}; return {{kind:\"yield\", value:{suspension}}};"
+            ));
             return self.expression(tokens, Some(&temporary), "", suspend);
         }
         if !self.suspends(tokens) {
@@ -261,11 +290,13 @@ impl Builder<'_> {
         if delegate && self.marker.is_some() {
             return None;
         }
+        self.delegation |= delegate;
         let temporary = self.temporary();
-        let value = self.marker.map_or_else(
-            || temporary.clone(),
-            |marker| format!("{marker}({}, {temporary})", first.is("await")),
-        );
+        let value = if self.marker.is_some() {
+            self.suspension(first.is("await"), &temporary)?
+        } else {
+            temporary.clone()
+        };
         let suspend = self.block(format!(
             "{context}.label = {resume}; return {{kind:{}, value:({value})}};",
             if delegate {
@@ -275,6 +306,14 @@ impl Builder<'_> {
             }
         ));
         self.expression(operand, Some(&temporary), "", suspend)
+    }
+
+    fn suspension(&self, awaiting: bool, value: &str) -> Option<String> {
+        Some(if self.external_abi {
+            format!("{{awaiting:{awaiting},value:{value}}}")
+        } else {
+            format!("{}({awaiting}, {value})", self.marker?)
+        })
     }
 
     fn temporary(&mut self) -> String {

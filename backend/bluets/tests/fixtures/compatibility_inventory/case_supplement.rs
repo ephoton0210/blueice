@@ -33,6 +33,23 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "ge2_module_helpers" => {
+            let path = "backend/bluets/tests/fixtures/ge2_module_helpers/reference.json";
+            let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;
+            let rows = root["ownerControls"]
+                .as_array()
+                .ok_or("missing G-E2 owner controls")?;
+            if rows.len() != 6 {
+                return Err("incomplete G-E2 owner controls".into());
+            }
+            rows.iter().enumerate().map(|(index, row)| {
+                let label = row.as_str().ok_or("invalid G-E2 owner control")?;
+                let mut case = Case::new(path, &format!("/ownerControls/{index}"), label, "owner-module-helper-control");
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("Canonical helper/source authority, atomic failed publication, charged work, helper source/version/cache identity, Node-format invalidation and retained runtime/map policy are separate owner controls, not native agreements.".into());
+                Ok(case)
+            }).collect::<Result<Vec<_>>>()?
+        }
         "ge1_downlevel" => {
             let path = "backend/bluets/tests/fixtures/ge1_downlevel/reference.json";
             let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;

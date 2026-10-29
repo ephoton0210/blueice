@@ -683,6 +683,23 @@ impl ModuleChecker<'_> {
             return None;
         };
         let mut result = fields.clone();
+        if !is_static {
+            if let Some(Type::Record(prototype)) = self
+                .types
+                .get("Object")
+                .map(|definition| definition.value.object_type())
+            {
+                for field in prototype {
+                    if !result.iter().any(|existing| {
+                        existing.name == field.name
+                            || parse_restricted_name(&existing.name)
+                                .is_some_and(|(_, _, member)| member == field.name.as_str())
+                    }) {
+                        result.push(field.clone());
+                    }
+                }
+            }
+        }
         for field in fields {
             let Some((Visibility::Protected, _, member)) = parse_restricted_name(&field.name)
             else {

@@ -36,7 +36,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     )
     .source_fingerprint);
     add(&options.downlevel_iteration.to_string());
-    add("bluets-helper-selection/1");
+    add(crate::emitter::HELPER_SELECTION_VERSION);
     add(&options.import_helpers.to_string());
     add(&options.no_emit_helpers.to_string());
     add(options.target.as_str());

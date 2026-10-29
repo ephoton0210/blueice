@@ -5,6 +5,8 @@
 //! Untagged templates retain expression order and string-hint conversion.
 
 use super::*;
+mod tagged;
+pub(crate) const TAGGED_SOURCE: &str = tagged::SOURCE;
 
 pub(super) fn lower(
     mut emitted: EmittedJavaScript,
@@ -21,20 +23,26 @@ pub(super) fn lower(
         )
         .map_err(|mut diagnostics| diagnostics.remove(0))?;
         remaining = remaining.saturating_sub(tokens.len());
-        let Some((_, token)) = tokens.iter().enumerate().find(|(index, token)| {
-            token.kind == TokenKind::Template
-                && !index.checked_sub(1).is_some_and(|before| {
-                    let before = &tokens[before];
-                    before.kind == TokenKind::Identifier
-                        || matches!(
-                            before.kind,
-                            TokenKind::String | TokenKind::Number | TokenKind::Template
-                        )
-                        || matches!(before.text.as_str(), ")" | "]")
-                })
-        }) else {
+        let Some((index, token)) = tokens
+            .iter()
+            .enumerate()
+            .find(|(_, token)| token.kind == TokenKind::Template)
+        else {
             return Ok(emitted);
         };
+        let is_tagged = index.checked_sub(1).is_some_and(|before| {
+            let before = &tokens[before];
+            before.kind == TokenKind::Identifier
+                || matches!(
+                    before.kind,
+                    TokenKind::String | TokenKind::Number | TokenKind::Template
+                )
+                || matches!(before.text.as_str(), ")" | "]")
+        });
+        if is_tagged {
+            emitted = tagged::lower(emitted, module, options, token, &mut remaining)?;
+            continue;
+        }
         let bytes = emitted.javascript.as_bytes();
         let mut position = token.start + 1;
         let mut chunk = position;

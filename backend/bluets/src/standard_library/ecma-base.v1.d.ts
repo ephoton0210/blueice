@@ -142,6 +142,11 @@ declare const BigInt64Array: any;
 declare const BigUint64Array: any;
 declare const Atomics: any;
 
+// Static tagged-template arrays expose readonly cooked and raw strings.
+interface TemplateStringsArray extends ReadonlyArray<string> {
+    readonly raw: readonly string[];
+}
+
 interface BigInt {
     toString(radix?: number): string;
     valueOf(): bigint;

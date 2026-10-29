@@ -193,10 +193,14 @@ impl Parser {
             }
 
             if self.peek("import") {
-                if exported {
+                let equals = self
+                    .tokens
+                    .get(self.index + 2)
+                    .is_some_and(|token| token.is("="));
+                if exported && !equals {
                     self.error_here(DiagnosticCode::ParseError, "an import cannot be exported");
                 }
-                self.parse_import(start);
+                self.parse_import(start, exported && equals);
             } else if self.peek("type")
                 && self.tokens.get(self.index + 1).is_some_and(|token| {
                     token.kind == TokenKind::Identifier

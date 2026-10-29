@@ -37,6 +37,7 @@ mod decorators;
 mod enums;
 mod global_declarations;
 mod helper_selection;
+pub(crate) use helper_selection::VERSION as HELPER_SELECTION_VERSION;
 mod inference_literals;
 mod inferred_declarations;
 mod inferred_returns;
@@ -45,6 +46,7 @@ mod legacy_decorators;
 mod literal_order;
 mod module_wrappers;
 mod namespaces;
+mod node_imports;
 mod output_options;
 mod private_lowering;
 mod reexports;
@@ -397,10 +399,11 @@ fn emit_javascript(
     let mut edits = module.edits.clone();
     output_options::erase_type_comments(module, &mut edits);
     if wrapper == crate::ModuleKind::System {
-        system::validate(module)?;
+        system::validate(module, options)?;
     }
     let lexical = targets::es5::prepare(module, project, options, &mut edits)?;
     type_elision::lower(module, options.module_kind, &mut edits);
+    node_imports::lower(module, options, &mut edits);
     for declaration in &module.declarations {
         let (specifier, span) = match declaration {
             Declaration::Import(import) if !import.is_type_only() => {
@@ -490,7 +493,12 @@ fn emit_javascript(
     )?;
     let emitted = targets::lower(emitted, module, options)?;
     let emitted = targets::es5::lower(emitted, module, options, &lexical)?;
-    helper_selection::validate(&emitted, module, options)?;
+    let emitted = if wrapper == crate::ModuleKind::System {
+        targets::es5::lower_system_bindings(emitted, module, options)?
+    } else {
+        emitted
+    };
+    let emitted = helper_selection::lower(emitted, module, project, options)?;
     let emitted = if wrapper == crate::ModuleKind::System {
         system::wrap(emitted, module, options)?
     } else {

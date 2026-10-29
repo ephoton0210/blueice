@@ -44,14 +44,23 @@ pub(super) fn lower(
         let Some((start, function)) = candidate else {
             return Ok(emitted);
         };
-        let helper = unused_name(&emitted.javascript, "async_generator", &mut sequence);
-        let marker = unused_name(&emitted.javascript, "generator_suspension", &mut sequence);
+        let external = crate::emitter::helper_selection::external(options);
+        let helper = if external {
+            crate::emitter::helper_selection::reference(&emitted.javascript, "__asyncGenerator")
+        } else {
+            unused_name(&emitted.javascript, "async_generator", &mut sequence)
+        };
+        let marker = if external {
+            crate::emitter::helper_selection::reference(&emitted.javascript, "__await")
+        } else {
+            unused_name(&emitted.javascript, "generator_suspension", &mut sequence)
+        };
         let Some(body) = rewrite(
             &emitted.javascript,
             &tokens,
             function.body + 1..function.body_end,
             tokens[function.body].end..tokens[function.body_end].start,
-            &marker,
+            (&marker, external),
             options.limits.parser.max_type_depth.min(128),
             (module, &options.limits.parser),
         ) else {
@@ -80,9 +89,13 @@ pub(super) fn lower(
              if (new.target) throw new TypeError(\"Async generator is not a constructor\");\n\
              return {helper}(this, arguments, function* ({originals}) {{{body}}});\n}}"
         );
-        let source = HELPER
-            .replace("__blueice_target_async_generator", &helper)
-            .replace("__blueice_target_generator_suspension", &marker);
+        let source = if external {
+            String::new()
+        } else {
+            HELPER
+                .replace("__blueice_target_async_generator", &helper)
+                .replace("__blueice_target_generator_suspension", &marker)
+        };
         let insertion = directive_end(&tokens);
         emitted = mapped_edits(
             emitted,
@@ -107,10 +120,11 @@ fn rewrite(
     tokens: &[Token],
     indices: std::ops::Range<usize>,
     characters: std::ops::Range<usize>,
-    marker: &str,
+    marker: (&str, bool),
     depth: usize,
     context: (&Module, &crate::parser::ParserLimits),
 ) -> Option<String> {
+    let (marker, external) = marker;
     if depth == 0 {
         return None;
     }
@@ -142,7 +156,7 @@ fn rewrite(
                         &tokens,
                         0..tokens.len() - 1,
                         0..text.len(),
-                        marker,
+                        (marker, external),
                         depth,
                         context,
                     )
@@ -223,7 +237,7 @@ fn rewrite(
                     tokens,
                     index + 1..operand_end,
                     following.start..last,
-                    marker,
+                    (marker, external),
                     depth - 1,
                     context,
                 )?,
@@ -235,7 +249,15 @@ fn rewrite(
         edits.push(TextEdit {
             start: token.start - begin,
             end: last - begin,
-            replacement: format!("{prefix}(yield {marker}({awaiting}, ({operand})))"),
+            replacement: if external {
+                if awaiting {
+                    format!("{prefix}(yield new {marker}({operand}))")
+                } else {
+                    format!("(yield (yield new {marker}({operand})))")
+                }
+            } else {
+                format!("{prefix}(yield {marker}({awaiting}, ({operand})))")
+            },
         });
         index = operand_end;
     }

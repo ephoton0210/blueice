@@ -37,7 +37,7 @@ pub(super) fn commonjs(export: &ValueExportDeclaration, specifier: &str, name: &
     let mut output = format!("const {name} = {require}; ");
     if export.star {
         output.push_str(&format!(
-            "for (const key in {name}) {{ if (key !== \"default\" && !Object.prototype.hasOwnProperty.call(exports, key)) Object.defineProperty(exports, key, {{ enumerable: true, get: function() {{ return {name}[key]; }} }}); }}"
+            "for (const key in {name}) {{ if (key !== \"default\" && !Object.prototype.hasOwnProperty.call(exports, key)) (function (captured) {{ Object.defineProperty(exports, captured, {{ enumerable: true, get: function() {{ return {name}[captured]; }} }}); }})(key); }}"
         ));
     } else {
         for binding in export.bindings.iter().filter(|binding| !binding.type_only) {

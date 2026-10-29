@@ -7,9 +7,26 @@ use super::*;
 use crate::parser::{parse_variable_pattern, BindingPattern, VariableBindingPattern};
 
 pub(super) fn lower(
+    emitted: EmittedJavaScript,
+    module: &Module,
+    options: &CompilerOptions,
+) -> Result<EmittedJavaScript, Diagnostic> {
+    lower_at_scope(emitted, module, options, false)
+}
+
+pub(in crate::emitter) fn lower_system(
+    emitted: EmittedJavaScript,
+    module: &Module,
+    options: &CompilerOptions,
+) -> Result<EmittedJavaScript, Diagnostic> {
+    lower_at_scope(emitted, module, options, true)
+}
+
+fn lower_at_scope(
     mut emitted: EmittedJavaScript,
     module: &Module,
     options: &CompilerOptions,
+    top_level_only: bool,
 ) -> Result<EmittedJavaScript, Diagnostic> {
     let mut remaining = options.limits.parser.max_tokens;
     let mut sequence = 0;
@@ -22,7 +39,17 @@ pub(super) fn lower(
         )
         .map_err(|mut d| d.remove(0))?;
         remaining = remaining.saturating_sub(tokens.len());
+        let mut depth = 0usize;
         let candidate = tokens.iter().enumerate().find_map(|(index, token)| {
+            let at_top_level = depth == 0;
+            match token.text.as_str() {
+                "(" | "[" | "{" => depth += 1,
+                ")" | "]" | "}" => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+            if top_level_only && !at_top_level {
+                return None;
+            }
             if !matches!(tokens.get(index + 1)?.text.as_str(), "{" | "[") {
                 return None;
             }
@@ -54,15 +81,33 @@ pub(super) fn lower(
             ));
         }
         let source = &emitted.javascript;
+        let external = crate::emitter::helper_selection::external(options);
         let mut projector = Projector {
+            external,
             source,
             sequence: &mut sequence,
             iterate: options.downlevel_iteration,
-            require: unused_name(source, "require_object", &mut 0),
-            read: unused_name(source, "binding_read", &mut 0),
+            require: if external {
+                format!(
+                    "({})",
+                    include_str!("../es5_helpers.v1.js")
+                        .replace("function __blueice_target_require_object", "function")
+                )
+            } else {
+                unused_name(source, "require_object", &mut 0)
+            },
+            read: if external {
+                crate::emitter::helper_selection::reference(source, "__read")
+            } else {
+                unused_name(source, "binding_read", &mut 0)
+            },
             iterator: unused_name(source, "binding_iterator", &mut 0),
             step: unused_name(source, "binding_step", &mut 0),
-            rest: unused_name(source, "binding_rest", &mut 0),
+            rest: if external {
+                crate::emitter::helper_selection::reference(source, "__rest")
+            } else {
+                unused_name(source, "binding_rest", &mut 0)
+            },
             objects: false,
             arrays: false,
             rests: false,
@@ -80,13 +125,13 @@ pub(super) fn lower(
             })?;
         let replacement = projector.parts.join(", ");
         let mut helper = String::new();
-        if projector.objects {
+        if projector.objects && !external {
             helper.push_str(
                 &include_str!("../es5_helpers.v1.js")
                     .replace("__blueice_target_require_object", &projector.require),
             );
         }
-        if projector.arrays {
+        if projector.arrays && !external {
             helper.push_str(
                 &include_str!("../binding_helpers.v1.js")
                     .replace("__blueice_target_binding_read", &projector.read)
@@ -99,7 +144,7 @@ pub(super) fn lower(
                     .replace("__blueice_target_step_result", &projector.step),
             );
         }
-        if projector.rests {
+        if projector.rests && !external {
             helper.push_str(
                 &object_spread::HELPER
                     .replace("__blueice_target_object_properties", &projector.rest),
@@ -125,6 +170,7 @@ pub(super) fn lower(
 }
 
 struct Projector<'a> {
+    external: bool,
     source: &'a str,
     sequence: &'a mut usize,
     iterate: bool,
@@ -171,17 +217,22 @@ impl Projector<'_> {
                     let excluded =
                         serde_json::to_string(&bindings.iter().map(|b| &b.key).collect::<Vec<_>>())
                             .ok()?;
-                    self.parts.push(format!(
-                        "{}={}({{}},{source},true,{excluded})",
-                        rest.name, self.rest
-                    ));
+                    self.parts.push(if self.external {
+                        format!("{}={}({source},{excluded})", rest.name, self.rest)
+                    } else {
+                        format!("{}={}({{}},{source},true,{excluded})", rest.name, self.rest)
+                    });
                 }
             }
             BindingPattern::Array(bindings) => {
                 let value = if self.iterate {
                     self.arrays = true;
                     let count = if pattern.rest.is_some() {
-                        "null".to_string()
+                        if self.external {
+                            "void 0".to_string()
+                        } else {
+                            "null".to_string()
+                        }
                     } else {
                         bindings.len().to_string()
                     };

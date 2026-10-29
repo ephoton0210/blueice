@@ -17,7 +17,8 @@ pub(crate) fn check_incremental(
     rechecked: &BTreeSet<String>,
     max_type_expansions: usize,
 ) -> (CheckedProject, Vec<Diagnostic>) {
-    let mut diagnostics = project::declaration_module_diagnostics(project, policy.module_kind);
+    let mut diagnostics =
+        project::declaration_module_diagnostics(project, &policy, max_type_expansions);
     let mut exports = ProjectExports {
         values: BTreeMap::new(),
         types: project::exported_types(project),

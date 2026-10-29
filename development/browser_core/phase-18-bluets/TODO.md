@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-10-29).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 15,926 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 18,536 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 15,311/15,317 (99.9608%); 3 open, 3 refused observations |
-| Separate controls | 539 native-reference + 70 BlueTS owner = 609; excluded from direct agreement |
-| Case labels | 15,920 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 118 suites / 279 ignored Rust functions; not a case denominator |
-| Suite labels | 114 scoped closed, 1 open, 3 refused |
+| Direct agreement | 17,897/17,903 (99.9665%); 3 open, 3 refused observations |
+| Separate controls | 557 native-reference + 76 BlueTS owner = 633; excluded from direct agreement |
+| Case labels | 18,530 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 119 suites / 281 ignored Rust functions; not a case denominator |
+| Suite labels | 115 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 218 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 223 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 15,926 recorded case expectations pass; expected differences/refusals are not
+All 18,536 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:6d14e9b542062ea9e102076aa8c0c0a6853783ee`.
-Input graph SHA-256: `714ebe921d05723397dd6d8b6af6fc3bc28f01cb221096f9118ffd2b60a7e2ff`.
+Compiler/oracle source: `backend-tree:1a2d732515ae5d85b26328857c793d585f09d4bd`.
+Input graph SHA-256: `05b90f954c60e86b55cfe80a28bb5b6819e08b34ca74512f28c2c46b594ba3b8`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -44,8 +44,8 @@ Older dated measurements below retain their original scope; they are not this cu
 **Current work (2026-10-29):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, G-T1
-(both stages), G-T2–G-T10, G-M1–G-M2, G-D1–G-D2 and G-E1 are complete for their
-scopes below; 6 packages remain unchecked. Next: G-E2.**
+(both stages), G-T2–G-T10, G-M1–G-M2, G-D1–G-D2 and G-E1–G-E2 are complete for their
+scopes below; 5 packages remain unchecked. Next: G-E3.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -717,12 +717,40 @@ Existing measured behavior is reused; it is not implemented again.
     status audits pass. [Acceptance record](PLAN.md#phase-l--g-e1-implementation).
     The broader G-E1 row stays open; full parity remains OFF.
 
-- [ ] **G-E2 — Node ESM import-equals and module/helper ABI combinations.**
+- [x] **G-E2 — Node ESM import-equals and module/helper ABI combinations.**
   - **Scope:** ESM Node import-equals lowering, Node declaration inputs and the
     currently unmeasured module/target/importHelpers/noEmitHelpers combinations.
   - **Pass:** loader execution, live/cyclic bindings, helper imports/ABI, output
     suffixes, declarations and rejection diagnostics match the frozen configurations;
     helper source/version and cache identity remain bound to the artifact.
+  - **Frozen minimum (2026-10-29):** `ge2_module_helpers/cases.json` retains
+    **2,604 configurations / 24 forms**. Fourteen helper families cover nine
+    module/Node-format profiles, five target boundaries and all four
+    `importHelpers`/`noEmitHelpers` pairs (2,520 rows); 68 Node input/ESNext
+    controls and 16 missing/incomplete-provider controls complete the list.
+    Native accepts 2,545 and rejects 59. All ten unmodified tslib 2.8.1 provider
+    files retain their original notices and recorded hashes.
+  - **Acceptance:** all safe accepted outputs compare **3,095 byte-exact
+    declarations, 5,054 independent consumer observations and 3,424 actual loader
+    scenarios**, including missing globals, both UMD branches and live cycles.
+    Compare selected inputs, imported ABI, suffixes, syntax, complete primary/
+    related diagnostics and UTF-16 positions. Eighteen native System outputs
+    omit `__rest`/`__read`; retain their actual errors as references and require
+    BlueTS's precise refusal rather than copying unsafe output. Six owner
+    controls preserve canonical helper/source authority, atomic publication,
+    charged work, source/version/cache identity, Node-format invalidation and
+    existing runtime/map policy. Keep all 15,926 old case identities,
+    classifications and native fixture bytes. Finish all common gates and
+    source-bound complete measurement before checking or committing this item.
+  - **Delivered (2026-10-29):** all 2,604 frozen configurations and six owner
+    controls pass their stated boundaries, including all exact declarations,
+    consumers and actual loader scenarios above. The 18 unsafe native System
+    outputs remain references with precise BlueTS refusals. Immutable full
+    measurement: **119 suites / 686 tests / all 281 ignored functions executed**;
+    final ordinary gate: **179 targets / 1,428 passed**, zero failed/filtered.
+    Format, warnings-denied Clippy and source/case/tool/status audits pass.
+    [Acceptance record](PLAN.md#phase-l--g-e2-implementation). The broader G-E2
+    row stays open; full parity remains OFF.
 
 - [ ] **G-E3 — Literal/private-super decorators and imported metadata.**
   - **Scope:** literal decorated names, super in decorated private callables,
@@ -776,10 +804,10 @@ Existing measured behavior is reused; it is not implemented again.
 ## Measurement and policy notes
 
 - The 22 G-* areas overlap; their evidence tables are not independent case counts.
-  The present six open observations are three missing diagnostics plus three
-  deliberate rebuild-policy differences. Twelve refused observations include
-  duplicate suite observations, language/diagnostic limits and an owner-policy
-  refusal; they are not twelve unique missing language features.
+  The current three open observations retain deliberate observed-input rebuild
+  differences. Three refused observations retain two language/diagnostic subset
+  boundaries and one reference-owner escape. Cross-suite observations can share
+  source selectors; these counts are not independent missing features.
 - Preserve scoped controls and historical source bindings. A future complete
   measurement must regenerate the case/suite artifacts and update the current
   numeric block in CLAUDE.md, PLAN.md, TODO.md and COMPATIBILITY_INVENTORY.md

@@ -8,6 +8,11 @@ type Pick<T, K extends keyof T> = { [P in K]: T[P] };
 type Exclude<T, U> = T extends U ? never : T;
 type Extract<T, U> = T extends U ? T : never;
 type Omit<T, K extends string | number | symbol> = Pick<T, Exclude<keyof T, K>>;
+// Static tagged-template arrays expose readonly cooked and raw strings.
+interface TemplateStringsArray extends ReadonlyArray<string> {
+    readonly raw: readonly string[];
+}
+
 interface Array<T> {
     length: number;
     push(item: T): number;

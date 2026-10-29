@@ -69,6 +69,8 @@ pub struct ImportAttribute {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportDeclaration {
+    /// A retained `export import name = require(...)` alias.
+    pub exported: bool,
     /// `import x = require("m")`: one binding of the module's `export =` value.
     pub equals_require: bool,
     pub type_only: bool,

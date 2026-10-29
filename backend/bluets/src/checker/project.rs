@@ -8,10 +8,16 @@ use super::*;
 
 pub(super) fn declaration_module_diagnostics(
     project: &Project,
-    module_kind: crate::ModuleKind,
+    policy: &module::CheckerPolicy,
+    max_type_expansions: usize,
 ) -> Vec<Diagnostic> {
+    let module_kind = policy.module_kind;
     let mut diagnostics = Vec::new();
     for (module_id, module) in &project.modules {
+        let erased_aliases = module.declarations.iter().any(|declaration|
+            matches!(declaration, Declaration::Import(import) if import.equals_require))
+            .then(|| runtime_import_uses(project,module,max_type_expansions,policy.jsx,
+                policy.jsx_factory.as_deref(),policy.jsx_fragment_factory.as_deref()));
         for declaration in &module.declarations {
             if let Declaration::ValueExport(export) = declaration {
                 if !is_declaration_module(module_id)
@@ -49,6 +55,24 @@ pub(super) fn declaration_module_diagnostics(
                 }
             }
             if let Declaration::Import(import) = declaration {
+                // A declaration-only Node alias used exclusively by erased
+                // queries describes types without authorizing a runtime value.
+                if import.equals_require
+                    && !import.exported
+                    && erased_aliases.as_ref().is_some_and(|uses| {
+                        import
+                            .bindings
+                            .iter()
+                            .all(|binding| !uses.contains(&binding.local))
+                    })
+                    && project
+                        .resolved_import(module_id, import)
+                        .is_some_and(|target| {
+                            target.ends_with(".d.cts") || target.ends_with(".d.mts")
+                        })
+                {
+                    continue;
+                }
                 if !is_declaration_module(module_id)
                     && !import.is_type_only()
                     && project
@@ -734,6 +758,9 @@ pub(super) fn local_exported_names(
         let mut open = false;
         for declaration in &module.declarations {
             match declaration {
+                Declaration::Import(import) if import.exported => {
+                    names.extend(import.bindings.iter().map(|binding| binding.local.clone()));
+                }
                 Declaration::Variable(variable) if variable.exported => {
                     names.insert(variable.name.clone());
                 }

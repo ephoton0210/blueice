@@ -232,13 +232,17 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Import(import)
                     if import.equals_require
                         && !import.type_only
-                        && self.module_kind == ModuleKind::Esm =>
+                        && self.module_kind == ModuleKind::Esm
+                        && !matches!(
+                            self.selected_module_kind,
+                            ModuleKind::Node16 | ModuleKind::NodeNext
+                        ) =>
                 {
                     self.diagnostics.push(Diagnostic::error(
                         DiagnosticCode::UnsupportedSyntax,
                         import.span.clone(),
                         "`import x = require()` cannot be used when the module system is ECMAScript; use `--module commonjs`",
-                    ));
+                    ).with_typescript(1202, Vec::new()));
                 }
                 Declaration::ValueExport(export) if export.export_assignment => {
                     if self.module_kind == ModuleKind::Esm
@@ -410,7 +414,14 @@ impl<'a> ModuleChecker<'a> {
                     continue;
                 }
             }
-            if binding.imported == "*" {
+            if binding.imported == "*"
+                || import.equals_require
+                    && !self
+                        .exports
+                        .exported_names
+                        .get(resolved)
+                        .is_some_and(|(names, _)| names.contains("export="))
+            {
                 // `import * as ns` makes the module's types nameable as `ns.T`
                 // (a value import also keeps `ns` itself as a value below).
                 if let Some(source_types) = exported {

@@ -34,6 +34,30 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
             "/observations"
         };
         let mut cases = case_sources::json_cases(&path, text, pointer, "program/configuration")?;
+        if stem == "ge2_module_helpers" {
+            let defects = root["cases"]
+                .as_array()
+                .ok_or("missing G-E2 rows")?
+                .iter()
+                .filter(|row| row["nativeRuntimeDefect"] == true)
+                .collect::<Vec<_>>();
+            if defects.len() != 18 {
+                return Err("incomplete G-E2 native runtime defect references".into());
+            }
+            for row in defects {
+                let id = row["id"].as_str().ok_or("invalid G-E2 runtime defect")?;
+                let reason = row["nativeRuntimeDefectReason"]
+                    .as_str()
+                    .ok_or("missing G-E2 runtime defect reason")?;
+                case_sources::classify(
+                    &mut cases,
+                    &[id.to_string()],
+                    "",
+                    Comparison::ReferenceOnly,
+                    reason,
+                )?;
+            }
+        }
         if stem == "gt9_classes" {
             let defects = root["cases"]
                 .as_array()
@@ -297,6 +321,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "gd2_declaration_maps" => "gd2_declaration_maps/reference.json",
         "gm2_build_interop" => "gm2_build_interop/reference.json",
         "ge1_downlevel" => "ge1_downlevel/reference.json",
+        "ge2_module_helpers" => "ge2_module_helpers/reference.json",
         "gm1_resolver_compositions" => "gm1_resolver_compositions/reference.json",
         "gt3_operators" => "gt3_operators/reference.json",
         "gt1_declaration_order" => "gt1_declaration_order/reference.json",

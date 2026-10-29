@@ -45,10 +45,16 @@ pub(super) fn lower(
             let value = unused_name(&emitted.javascript, "iterator_value", &mut sequence);
             let iterator_helper = unused_name(&emitted.javascript, "iterator", &mut sequence);
             let result_helper = unused_name(&emitted.javascript, "iterator_result", &mut sequence);
-            helper = include_str!("../iteration_helpers.v1.js")
-                .replace("__blueice_target_iterator", &iterator_helper)
-                .replace("__blueice_target_step_result", &result_helper);
-            format!(
+            let external = crate::emitter::helper_selection::external(options);
+            if external {
+                let values =
+                    crate::emitter::helper_selection::reference(&emitted.javascript, "__values");
+                format!("{{\nvar {record} = {values}({source});\nvar {result}, {value}, {finished}=true, {abrupt}=false, {error};\ntry {{\nfor(; !({result}={record}.next()).done; {finished}=true) {{\n{value}={result}.value; {finished}=false; {binding}={value};\n{body}\n}}\n}} catch({caught}) {{ {abrupt}=true; {error}={caught}; }}\nfinally {{ if(!{finished}) {{ try {{ var {closing}={record}.return; if({closing}!==null&&{closing}!==void 0) {closing}.call({record}); }} catch({close_error}) {{ if(!{abrupt}) throw {close_error}; }} }} if({abrupt}) throw {error}; }}\n}}")
+            } else {
+                helper = include_str!("../iteration_helpers.v1.js")
+                    .replace("__blueice_target_iterator", &iterator_helper)
+                    .replace("__blueice_target_step_result", &result_helper);
+                format!(
                 "{{\nvar {record} = {iterator_helper}({source});\n\
                  var {result}, {value}, {finished} = true, {abrupt} = false, {error};\n\
                  try {{\n\
@@ -66,6 +72,7 @@ pub(super) fn lower(
                    if ({abrupt}) throw {error};\n\
                  }}\n}}"
             )
+            }
         } else {
             format!("{{ var {record} = {source}; for (var {result} = 0; {result} < {record}.length; {result}++) {{ {binding} = {record}[{result}]; {body} }} }}")
         };

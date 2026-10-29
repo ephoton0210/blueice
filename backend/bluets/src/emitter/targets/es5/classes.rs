@@ -134,7 +134,7 @@ pub(super) fn lower(
                         &base,
                         &construct,
                         &receiver,
-                        module,
+                        (module, options.downlevel_iteration),
                     )?
                 } else {
                     text.to_string()
@@ -208,10 +208,14 @@ pub(super) fn lower(
         let helper = if options.import_helpers {
             if !extends {
                 String::new()
-            } else if options.module_kind == crate::ModuleKind::CommonJs {
-                format!("var {inherit} = require('tslib').__extends;")
             } else {
-                format!("import {{__extends as {inherit}}} from 'tslib';")
+                format!(
+                    "var {inherit} = {};",
+                    super::super::super::helper_selection::reference(
+                        &emitted.javascript,
+                        "__extends"
+                    )
+                )
             }
         } else if options.no_emit_helpers {
             String::new()
@@ -242,7 +246,7 @@ pub(super) fn lower(
 /// site. Decorator lowering can introduce such a site for an original class
 /// declaration, so classify the retained emitted syntax rather than its source
 /// declaration alone.
-fn class_is_expression(tokens: &[crate::Token], start: usize) -> bool {
+pub(in crate::emitter) fn class_is_expression(tokens: &[crate::Token], start: usize) -> bool {
     start.checked_sub(1).is_some_and(|before| {
         matches!(
             tokens[before].text.as_str(),
@@ -276,8 +280,9 @@ fn derived_body(
     base: &str,
     construct: &str,
     receiver: &str,
-    module: &Module,
+    context: (&Module, bool),
 ) -> Result<String, Diagnostic> {
+    let (module, downlevel_iteration) = context;
     let (open, close) = body;
     let mut edits = Vec::new();
     let begin = tokens[open].start;
@@ -301,7 +306,13 @@ fn derived_body(
             }
             let end = exponentiation::matching_close(tokens, index + 1).unwrap();
             let arguments = &tokens[index + 2..end];
-            let values = if let [spread, arguments] = arguments {
+            let fresh_array = !downlevel_iteration
+                && arguments.first().is_some_and(|token| token.is("..."))
+                && arguments.get(1).is_some_and(|token| token.is("["))
+                && exponentiation::matching_close(tokens, index + 3) == Some(end - 1);
+            let values = if fresh_array {
+                source[tokens[index + 3].start..tokens[end - 1].end].to_string()
+            } else if let [spread, arguments] = arguments {
                 if spread.is("...") && arguments.is("arguments") {
                     "arguments".to_string()
                 } else {

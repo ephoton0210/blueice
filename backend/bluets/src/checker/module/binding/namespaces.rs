@@ -182,7 +182,7 @@ impl ModuleChecker<'_> {
             require_declared_global_calls: self.require_declared_global_calls,
             define_class_fields: self.define_class_fields,
             isolated_modules: self.isolated_modules,
-            module_kind: self.module_kind,
+            module_kind: self.selected_module_kind,
             import_attributes: self.import_attributes,
             es_module_interop: self.es_module_interop,
             jsx: self.jsx_mode,

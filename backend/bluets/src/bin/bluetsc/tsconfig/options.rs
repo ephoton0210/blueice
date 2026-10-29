@@ -135,6 +135,12 @@ pub(super) fn validate(
                 let name = library
                     .as_str()
                     .ok_or_else(|| "compiler option `lib` requires strings".to_string())?;
+                if name.eq_ignore_ascii_case("esnext.decorators") {
+                    // The pinned decorator component is already part of every
+                    // supported edition profile; retain the explicit spelling.
+                    selected.push(json!("esnext.decorators"));
+                    continue;
+                }
                 let target = EcmaTarget::parse(name)
                     .ok_or_else(|| format!("unsupported compiler option `lib` value `{name}`"))?;
                 selected.push(json!(if target == EcmaTarget::Es2015 {

@@ -25,11 +25,25 @@ pub(super) fn lower(
         let Some((open, close, parts, call)) = candidate(&tokens) else {
             return Ok(emitted);
         };
-        let append = unused_name(&emitted.javascript, "spread_array", &mut sequence);
-        let invoke = unused_name(&emitted.javascript, "spread_call", &mut sequence);
-        let construct = unused_name(&emitted.javascript, "spread_construct", &mut sequence);
+        let external = crate::emitter::helper_selection::external(options);
+        let append = if external {
+            crate::emitter::helper_selection::reference(&emitted.javascript, "__spreadArray")
+        } else {
+            unused_name(&emitted.javascript, "spread_array", &mut sequence)
+        };
+        let invoke = if external {
+            "(function(callee,receiver,values){return Function.prototype.apply.call(callee,receiver,values);})".to_string()
+        } else {
+            unused_name(&emitted.javascript, "spread_call", &mut sequence)
+        };
+        let construct = if external {
+            "(function(callee,values){var bound=Function.prototype.bind.apply(callee,[null].concat(values));return new bound();})".to_string()
+        } else {
+            unused_name(&emitted.javascript, "spread_construct", &mut sequence)
+        };
         let iterator = unused_name(&emitted.javascript, "spread_iterator", &mut sequence);
         let step = unused_name(&emitted.javascript, "spread_step", &mut sequence);
+        let direct = external && call && parts.len() == 1 && parts[0].2;
         let mut array = "[]".to_string();
         for (first, end, spread) in parts {
             let begin = first + usize::from(spread);
@@ -44,10 +58,34 @@ pub(super) fn lower(
                 let hole = !call && (begin == end || end > begin && tokens[end - 1].is(","));
                 format!("[{source}{}]", if hole { "," } else { "" })
             };
-            array = format!(
-                "{append}({array}, {source}, {spread}, {})",
-                options.downlevel_iteration
-            );
+            array = if direct {
+                if options.downlevel_iteration {
+                    format!(
+                        "{}({source})",
+                        crate::emitter::helper_selection::reference(&emitted.javascript, "__read")
+                    )
+                } else {
+                    source
+                }
+            } else if external {
+                let values = if spread && options.downlevel_iteration {
+                    format!(
+                        "{}({source})",
+                        crate::emitter::helper_selection::reference(&emitted.javascript, "__read")
+                    )
+                } else {
+                    source
+                };
+                format!(
+                    "{append}({array}, {values}, {})",
+                    spread && !options.downlevel_iteration
+                )
+            } else {
+                format!(
+                    "{append}({array}, {source}, {spread}, {})",
+                    options.downlevel_iteration
+                )
+            };
         }
         let mut edits = Vec::new();
         let (start, replacement) = if call {
@@ -94,15 +132,23 @@ pub(super) fn lower(
         } else {
             (tokens[open].start, array)
         };
-        let helper = include_str!("../spread_helpers.v1.js")
-            .replace("__blueice_target_spread_array", &append)
-            .replace("__blueice_target_spread_call", &invoke)
-            .replace("__blueice_target_spread_construct", &construct)
-            .replace("__blueice_target_iterator", &iterator)
-            .replace("__blueice_target_step_result", &step);
-        let iterator_helper = include_str!("../iteration_helpers.v1.js")
-            .replace("__blueice_target_iterator", &iterator)
-            .replace("__blueice_target_step_result", &step);
+        let helper = if external {
+            String::new()
+        } else {
+            include_str!("../spread_helpers.v1.js")
+                .replace("__blueice_target_spread_array", &append)
+                .replace("__blueice_target_spread_call", &invoke)
+                .replace("__blueice_target_spread_construct", &construct)
+                .replace("__blueice_target_iterator", &iterator)
+                .replace("__blueice_target_step_result", &step)
+        };
+        let iterator_helper = if external {
+            String::new()
+        } else {
+            include_str!("../iteration_helpers.v1.js")
+                .replace("__blueice_target_iterator", &iterator)
+                .replace("__blueice_target_step_result", &step)
+        };
         let insertion = directive_end(&tokens);
         edits.push(TextEdit {
             start: insertion,

@@ -45,7 +45,12 @@ pub(super) fn lower(
             module,
             &options.limits.parser,
         )?;
-        let helper = unused_name(&emitted.javascript, "async", &mut sequence);
+        let external = super::super::helper_selection::external(options);
+        let helper = if external {
+            super::super::helper_selection::reference(&emitted.javascript, "__awaiter")
+        } else {
+            unused_name(&emitted.javascript, "async", &mut sequence)
+        };
         let count = parameter_length(&tokens[function.parameters + 1..function.parameters_end]);
         let parameters = (0..count)
             .map(|_| unused_name(&emitted.javascript, "async_argument", &mut sequence))
@@ -61,7 +66,8 @@ pub(super) fn lower(
         let replacement = format!(
             "function {name}({parameters}) {{\n\
              if (new.target) throw new TypeError(\"Async function is not a constructor\");\n\
-             return {helper}(this, arguments, function* ({originals}) {{{body}}});\n}}"
+             return {helper}(this, arguments, {}function* ({originals}) {{{body}}});\n}}",
+            if external { "void 0, " } else { "" }
         );
         let insertion = directive_end(&tokens);
         emitted = mapped_edits(
@@ -70,10 +76,11 @@ pub(super) fn lower(
                 TextEdit {
                     start: insertion,
                     end: insertion,
-                    replacement: format!(
-                        "\n{}\n",
-                        HELPER.replace("__blueice_target_async", &helper)
-                    ),
+                    replacement: if external {
+                        String::new()
+                    } else {
+                        format!("\n{}\n", HELPER.replace("__blueice_target_async", &helper))
+                    },
                 },
                 TextEdit {
                     start: tokens[start].start,

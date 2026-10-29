@@ -109,6 +109,24 @@ function normalizeState(ts, root, workflow) {
   });
   return value;
 }
+function canonicalStateSeeds(record, libraryHashes) {
+  const result = structuredClone(record);
+  for (const seed of Object.values(result.seeds || {})) {
+    const info = seed.info;
+    assert(info && Array.isArray(info.fileNames) && Array.isArray(info.fileInfos)
+      && info.fileNames.length === info.fileInfos.length, 'malformed native state seed');
+    info.fileNames = info.fileNames.map((name, index) => {
+      const match = name.replaceAll('\\', '/').match(/(?:^@typescript\/lib\/|(?:^|\/)node_modules\/typescript\/lib\/)(lib\.[^/]+\.d\.ts)$/);
+      if (!match) return name;
+      const fileInfo = info.fileInfos[index];
+      const version = typeof fileInfo === 'string' ? fileInfo : fileInfo?.version;
+      assert(Object.prototype.hasOwnProperty.call(libraryHashes, match[1])
+        && version === libraryHashes[match[1]], 'native state library content differs from its pinned hash');
+      return '@typescript/lib/' + match[1];
+    });
+  }
+  return result;
+}
 function programState(ts, root, workflow) {
   const config = ts.readConfigFile(path.join(root, 'tsconfig.json'), ts.sys.readFile);
   assert(!config.error);
@@ -131,4 +149,4 @@ function restoreState(ts, root, workflow, value) {
     path.relative(path.dirname(file), path.join(lib, path.basename(name))).replaceAll(path.sep, '/') : name);
   observe.write(root, {[path.relative(root, file)]: JSON.stringify(value)});
 }
-module.exports = {status, host, build, cli, statePath, normalizeState, programState, restoreState};
+module.exports = {status, host, build, cli, statePath, normalizeState, canonicalStateSeeds, programState, restoreState};

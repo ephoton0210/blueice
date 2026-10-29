@@ -39,7 +39,12 @@ pub(super) fn lower(
             ));
         }
         let temporary = unused_name(&emitted.javascript, "rest_source", &mut sequence);
-        let helper = unused_name(&emitted.javascript, "rest_properties", &mut sequence);
+        let external = super::super::helper_selection::external(options);
+        let helper = if external {
+            super::super::helper_selection::reference(&emitted.javascript, "__rest")
+        } else {
+            unused_name(&emitted.javascript, "rest_properties", &mut sequence)
+        };
         let initializer = &emitted.javascript[tokens[start].start..tokens[end - 1].end];
         let inner_end = if tokens[pattern.rest - 1].is(",") {
             tokens[pattern.rest - 1].start
@@ -49,10 +54,14 @@ pub(super) fn lower(
         let ordinary = &emitted.javascript[tokens[pattern.open].end..inner_end];
         let excluded = serde_json::to_string(&pattern.keys).expect("binding keys are serializable");
         let name = &tokens[pattern.rest + 1].text;
-        let replacement = format!(
-            "{temporary} = {initializer}, {{{ordinary}}} = {temporary}, \
+        let replacement = if external {
+            format!("{temporary} = {initializer}, {{{ordinary}}} = {temporary}, {name} = {helper}({temporary}, {excluded})")
+        } else {
+            format!(
+                "{temporary} = {initializer}, {{{ordinary}}} = {temporary}, \
              {name} = {helper}({{}}, {temporary}, true, {excluded})"
-        );
+            )
+        };
         let insertion = directive_end(&tokens);
         emitted = mapped_edits(
             emitted,
@@ -60,11 +69,15 @@ pub(super) fn lower(
                 TextEdit {
                     start: insertion,
                     end: insertion,
-                    replacement: format!(
-                        "\n{}\n",
-                        object_spread::HELPER
-                            .replace("__blueice_target_object_properties", &helper)
-                    ),
+                    replacement: if external {
+                        String::new()
+                    } else {
+                        format!(
+                            "\n{}\n",
+                            object_spread::HELPER
+                                .replace("__blueice_target_object_properties", &helper)
+                        )
+                    },
                 },
                 TextEdit {
                     start: tokens[pattern.open].start,

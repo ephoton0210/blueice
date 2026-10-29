@@ -36,8 +36,8 @@ use crate::namespace_analysis::has_runtime_values;
 use crate::parser::Declaration;
 use crate::{Token, TokenKind};
 
-const IMPORT_DEFAULT_HELPER: &str = "var __importDefault = (this && this.__importDefault) || function (mod) { return (mod && mod.__esModule) ? mod : { \"default\": mod }; };";
-const IMPORT_STAR_HELPER: &str = "var __importStar = (this && this.__importStar) || function (mod) { if (mod && mod.__esModule) return mod; var result = {}; if (mod != null) for (var k in mod) if (k !== \"default\" && Object.prototype.hasOwnProperty.call(mod, k)) { Object.defineProperty(result, k, { enumerable: true, get: function () { return mod[k]; } }); } Object.defineProperty(result, \"default\", { enumerable: true, value: mod }); return result; };";
+pub(crate) const IMPORT_DEFAULT_HELPER: &str = "var __importDefault = (this && this.__importDefault) || function (mod) { return (mod && mod.__esModule) ? mod : { \"default\": mod }; };";
+pub(crate) const IMPORT_STAR_HELPER: &str = "var __importStar = (this && this.__importStar) || function (mod) { if (mod && mod.__esModule) return mod; var result = {}; if (mod != null) for (var k in mod) if (k !== \"default\" && Object.prototype.hasOwnProperty.call(mod, k)) { (function (key) { Object.defineProperty(result, key, { enumerable: true, get: function () { return mod[key]; } }); })(k); } Object.defineProperty(result, \"default\", { enumerable: true, value: mod }); return result; };";
 
 /// The identifier a required module is bound to: its file's name and a number,
 /// `m_1`, `m_2`.
@@ -117,11 +117,22 @@ pub(super) fn lower_commonjs(
                     options.jsx == Some(crate::compiler::JsxMode::Preserve),
                 );
                 let local = &import.bindings[0].local;
+                if import.exported {
+                    es_syntax = true;
+                    chain.push(local.clone());
+                }
                 push(
                     edits,
                     import.span.start,
                     import.span.end,
-                    format!("const {local} = require(\"{spec}\");"),
+                    format!(
+                        "const {local} = require(\"{spec}\");{}",
+                        if import.exported {
+                            format!(" exports.{local} = {local};")
+                        } else {
+                            String::new()
+                        }
+                    ),
                 );
             }
             Declaration::Import(import) => {
@@ -210,7 +221,17 @@ pub(super) fn lower_commonjs(
                         options.jsx == Some(crate::compiler::JsxMode::Preserve),
                     );
                     let name = require_name(&spec, &mut used_names);
-                    let text = super::reexports::commonjs(export, &spec, &name);
+                    let text = if export.star
+                        && export.namespace.is_none()
+                        && !system_wrapper
+                        && super::helper_selection::external(options)
+                    {
+                        let helper =
+                            super::helper_selection::reference(&module.source, "__exportStar");
+                        format!("{helper}(require({spec:?}),exports);")
+                    } else {
+                        super::reexports::commonjs(export, &spec, &name)
+                    };
                     if let Some(namespace) = &export.namespace {
                         chain.push(namespace.clone());
                     }

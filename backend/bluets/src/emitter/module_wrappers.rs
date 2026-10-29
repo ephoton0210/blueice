@@ -19,13 +19,7 @@ pub(super) fn wrap(
         return emitted;
     }
     let mut dependencies = vec!["require".to_string(), "exports".to_string()];
-    if options.import_helpers
-        && options.target == crate::EcmaTarget::Es5
-        && module.declarations.iter().any(|declaration| {
-            matches!(declaration,
-            Declaration::Class(class) if class.extends_name.is_some())
-        })
-    {
+    if options.import_helpers && emitted.javascript.contains("require('tslib')") {
         dependencies.push("tslib".to_string());
     }
     for declaration in &module.declarations {

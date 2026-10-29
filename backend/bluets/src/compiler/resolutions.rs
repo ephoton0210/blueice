@@ -78,7 +78,8 @@ impl Project {
                     .as_ref()
                     .and_then(ImportAttributes::resolution_mode)
             })
-            .flatten();
+            .flatten()
+            .or_else(|| import.equals_require.then_some(ImportMode::Require));
         self.resolution_target(from, &import.specifier, mode)
             .or_else(|| {
                 self.ambient_resolutions

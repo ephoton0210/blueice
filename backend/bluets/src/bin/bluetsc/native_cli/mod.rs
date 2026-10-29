@@ -530,15 +530,19 @@ fn ordered_sources(
         let edge = match declaration {
             blueice_bluets::Declaration::Import(import) => Some((
                 import.specifier.as_str(),
-                import
-                    .type_only
-                    .then(|| {
-                        import
-                            .attributes
-                            .as_ref()
-                            .and_then(blueice_bluets::ImportAttributes::resolution_mode)
-                    })
-                    .flatten(),
+                if import.equals_require {
+                    Some(ImportMode::Require)
+                } else {
+                    import
+                        .type_only
+                        .then(|| {
+                            import
+                                .attributes
+                                .as_ref()
+                                .and_then(blueice_bluets::ImportAttributes::resolution_mode)
+                        })
+                        .flatten()
+                },
             )),
             blueice_bluets::Declaration::TypeExport(export) => {
                 export.specifier.as_deref().map(|specifier| {
@@ -562,6 +566,9 @@ fn ordered_sources(
         }) {
             ordered_sources(target, project, seen, ordered);
         }
+    }
+    if let Some(provider) = project.resolved_module(module_id, "tslib") {
+        ordered_sources(provider, project, seen, ordered);
     }
     if let Some(provider) = project.jsx_runtime_namespace_provider(module_id) {
         ordered_sources(provider, project, seen, ordered);

@@ -290,7 +290,12 @@ impl<'a> ProjectBuilder<'a> {
                                 .as_ref()
                                 .and_then(crate::ImportAttributes::resolution_mode)
                         })
-                        .flatten(),
+                        .flatten()
+                        .or_else(|| {
+                            import
+                                .equals_require
+                                .then_some(crate::package_resolution::ImportMode::Require)
+                        }),
                 ),
                 crate::parser::Declaration::TypeExport(export) => {
                     let Some(specifier) = &export.specifier else {

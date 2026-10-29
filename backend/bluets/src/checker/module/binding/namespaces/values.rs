@@ -182,6 +182,14 @@ impl ModuleChecker<'_> {
         let mut names = BTreeMap::new();
         for declaration in &self.module.declarations {
             match declaration {
+                Declaration::Import(import) if import.exported && !import.is_type_only() => {
+                    names.extend(
+                        import
+                            .bindings
+                            .iter()
+                            .map(|binding| (binding.local.clone(), binding.local.clone())),
+                    );
+                }
                 Declaration::Variable(item) if item.exported => {
                     names.insert(item.name.clone(), item.name.clone());
                 }

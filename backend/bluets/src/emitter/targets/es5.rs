@@ -217,11 +217,15 @@ fn unsupported(module: &Module, span: &SourceSpan, message: &str) -> Diagnostic 
 }
 
 mod classes;
+pub(in crate::emitter) use classes::class_is_expression;
 mod iteration;
 mod loops;
 mod objects;
 mod parameters;
 mod patterns;
+pub(in crate::emitter) use patterns::lower_system as lower_system_bindings;
 mod spreads;
 mod suspension;
+pub(crate) const NATIVE_ABI_SOURCE: &str = suspension::NATIVE_ABI_SOURCE;
 mod templates;
+pub(crate) const TAGGED_SOURCE: &str = templates::TAGGED_SOURCE;

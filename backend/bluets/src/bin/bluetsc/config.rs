@@ -263,7 +263,7 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--experimental-decorators" => options.experimental_decorators = true,
             "--emit-decorator-metadata" => options.emit_decorator_metadata = true,
             "--lib" => {
-                options.libraries = Some(value()?.split(',').map(|name| parse_target(Some(name))).collect::<Result<Vec<_>, _>>()?);
+                options.libraries = Some(parse_libraries(value()?.split(','))?);
             }
             "--downlevel-iteration" => options.downlevel_iteration = true,
             "--import-helpers" => options.import_helpers = true,
@@ -607,7 +607,7 @@ pub(super) fn resolve_config_document(
     let options = CompilerOptions {
         checking: None,
         target: parse_target(config.target.as_deref())?,
-        libraries: config.lib.map(|libraries| libraries.iter().map(|name| parse_target(Some(name))).collect::<Result<Vec<_>, _>>()).transpose()?,
+        libraries: config.lib.map(|libraries| parse_libraries(libraries.iter().map(String::as_str))).transpose()?,
         downlevel_iteration: config.downlevel_iteration,
         import_helpers: config.import_helpers,
         no_emit_helpers: config.no_emit_helpers,
@@ -818,6 +818,29 @@ pub(super) fn parse_target(value: Option<&str>) -> Result<EcmaTarget, String> {
     EcmaTarget::parse(value).ok_or_else(|| {
         format!("unsupported target `{value}`; expected es5, es2015 through es2023, or esnext")
     })
+}
+
+fn parse_libraries<'a>(
+    names: impl IntoIterator<Item = &'a str>,
+) -> Result<Vec<EcmaTarget>, String> {
+    let mut editions = Vec::new();
+    let mut decorators = false;
+    for name in names {
+        if name.eq_ignore_ascii_case("esnext.decorators") {
+            decorators = true;
+        } else {
+            editions.push(parse_target(Some(name))?);
+        }
+    }
+    // This component has original declarations and source fingerprints in all
+    // existing edition profiles. A component-only library catalog is separate
+    // from those profiles and must not silently gain the base declarations.
+    if decorators && editions.is_empty() {
+        return Err(
+            "ESNext.Decorators requires an explicit supported edition library profile".into(),
+        );
+    }
+    Ok(editions)
 }
 
 pub(super) fn parse_runtime_policy(value: Option<&str>) -> Result<RuntimePolicy, String> {

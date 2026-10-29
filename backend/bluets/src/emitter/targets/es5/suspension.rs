@@ -7,6 +7,8 @@
 use super::*;
 
 mod graph;
+mod native_abi;
+pub(crate) const NATIVE_ABI_SOURCE: &str = native_abi::SOURCE;
 
 #[derive(Clone, Copy)]
 enum Kind {
@@ -71,7 +73,12 @@ pub(super) fn lower(
                 "generator declaration was not retained",
             ));
         };
-        let helper = unused_name(&emitted.javascript, "generator", &mut sequence);
+        let external_abi = crate::emitter::helper_selection::external(options);
+        let helper = if external_abi {
+            crate::emitter::helper_selection::reference(&emitted.javascript, "__generator")
+        } else {
+            unused_name(&emitted.javascript, "generator", &mut sequence)
+        };
         let context = unused_name(&emitted.javascript, "generator_context", &mut sequence);
         let arguments = unused_name(&emitted.javascript, "generator_arguments", &mut sequence);
         let marker = matches!(kind, Kind::AsyncGenerator)
@@ -82,6 +89,7 @@ pub(super) fn lower(
             &context,
             &arguments,
             marker.as_deref(),
+            external_abi,
             &options.limits.parser,
         ) else {
             return Err(unsupported(
@@ -93,12 +101,24 @@ pub(super) fn lower(
         let parameters = &emitted.javascript
             [tokens[function.parameters].end..tokens[function.parameters_end].start];
         let name = &tokens[name].text;
-        let body = format!(
+        let body = if external_abi {
+            native_abi::body(
+                &graph,
+                &context,
+                &arguments,
+                &helper,
+                matches!(kind, Kind::AsyncGenerator),
+                &emitted.javascript,
+                &mut sequence,
+            )
+        } else {
+            format!(
             "var {arguments} = arguments;\n{}\
              return {helper}(this, {}, function ({context}) {{\nwhile (true) {{ switch ({context}.label) {{\n{}\
              default: throw new Error(\"Invalid generator continuation\");\n}} }}\n}});",
             graph.declarations,graph.entry,graph.cases,
-        );
+        )
+        };
         let (replacement, driver_source) = match kind {
             Kind::Generator => (
                 format!("function {name}({parameters}) {{\n{body}\n}}"),
@@ -112,8 +132,21 @@ pub(super) fn lower(
                     .map(|_| unused_name(&emitted.javascript, "async_argument", &mut sequence))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let driver = unused_name(&emitted.javascript, "async_driver", &mut sequence);
-                let driver_source = if let Some(marker) = &marker {
+                let driver = if external_abi {
+                    crate::emitter::helper_selection::reference(
+                        &emitted.javascript,
+                        if matches!(kind, Kind::AsyncGenerator) {
+                            "__asyncGenerator"
+                        } else {
+                            "__awaiter"
+                        },
+                    )
+                } else {
+                    unused_name(&emitted.javascript, "async_driver", &mut sequence)
+                };
+                let driver_source = if external_abi {
+                    String::new()
+                } else if let Some(marker) = &marker {
                     include_str!("../async_generator_helpers.v1.js")
                         .replace("__blueice_target_async_generator", &driver)
                         .replace("__blueice_target_generator_suspension", marker)
@@ -121,18 +154,26 @@ pub(super) fn lower(
                     include_str!("../async_helpers.v1.js")
                         .replace("__blueice_target_async", &driver)
                 };
-                (format!("function {name}({external}) {{\nreturn {driver}(this, arguments, function ({parameters}) {{\n{body}\n}});\n}}"), driver_source)
+                (format!("function {name}({external}) {{\nreturn {driver}(this, arguments, {}function ({parameters}) {{\n{body}\n}});\n}}",if external_abi&&matches!(kind,Kind::Async) {"void 0, "}else{""}), driver_source)
             }
         };
         let iterator = unused_name(&emitted.javascript, "delegate_iterator", &mut sequence);
         let step = unused_name(&emitted.javascript, "delegate_step", &mut sequence);
-        let helper_source = include_str!("../generator_helpers.v1.js")
-            .replace("__blueice_target_generator", &helper)
-            .replace("__blueice_target_iterator", &iterator)
-            .replace("__blueice_target_step_result", &step);
-        let iterator_source = include_str!("../iteration_helpers.v1.js")
-            .replace("__blueice_target_iterator", &iterator)
-            .replace("__blueice_target_step_result", &step);
+        let helper_source = if external_abi {
+            String::new()
+        } else {
+            include_str!("../generator_helpers.v1.js")
+                .replace("__blueice_target_generator", &helper)
+                .replace("__blueice_target_iterator", &iterator)
+                .replace("__blueice_target_step_result", &step)
+        };
+        let iterator_source = if external_abi {
+            String::new()
+        } else {
+            include_str!("../iteration_helpers.v1.js")
+                .replace("__blueice_target_iterator", &iterator)
+                .replace("__blueice_target_step_result", &step)
+        };
         let insertion = directive_end(&tokens);
         emitted = mapped_edits(
             emitted,

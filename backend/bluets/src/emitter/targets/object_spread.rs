@@ -31,7 +31,16 @@ pub(super) fn lower(
         let Some((open, close, properties)) = assigned_literal(&tokens) else {
             return Ok(emitted);
         };
-        let helper = unused_name(&emitted.javascript, "object_properties", &mut sequence);
+        let external = super::super::helper_selection::external(options);
+        let helper = if external {
+            if options.target < crate::EcmaTarget::Es2015 {
+                super::super::helper_selection::reference(&emitted.javascript, "__assign")
+            } else {
+                "Object.assign".into()
+            }
+        } else {
+            unused_name(&emitted.javascript, "object_properties", &mut sequence)
+        };
         let anchor_offset = open
             .checked_sub(2)
             .and_then(|index| tokens.get(index))
@@ -71,9 +80,13 @@ pub(super) fn lower(
             } else {
                 format!("{previous_end_anchor}{{{source}{end_anchor}}}")
             };
-            replacement = format!(
+            replacement = if external {
+                format!("{source_anchor}{helper}{source_anchor}({replacement}{previous_end_anchor}, {argument}{end_anchor})")
+            } else {
+                format!(
                 "{source_anchor}{helper}{source_anchor}({replacement}{previous_end_anchor}, {argument}{unmapped}, {spread}{end_anchor})"
-            );
+            )
+            };
             previous_end = end_offset;
         }
         emitted = mapped_edits(
@@ -82,10 +95,14 @@ pub(super) fn lower(
                 TextEdit {
                     start: directive_end(&tokens),
                     end: directive_end(&tokens),
-                    replacement: format!(
-                        "{unmapped}\n{}\n",
-                        HELPER.replace("__blueice_target_object_properties", &helper)
-                    ),
+                    replacement: if external {
+                        String::new()
+                    } else {
+                        format!(
+                            "{unmapped}\n{}\n",
+                            HELPER.replace("__blueice_target_object_properties", &helper)
+                        )
+                    },
                 },
                 TextEdit {
                     start: tokens[open].start,

@@ -220,6 +220,17 @@ impl ModuleLoader for FileLoader {
             } else {
                 self.module_id(&found.path)
             }?;
+            let id = if (specifier.ends_with(".cjs") || specifier.ends_with(".mjs"))
+                && !blueice_bluets::is_external_library_module(&id)
+                && resolver
+                    .resolve_runtime_sibling(&found.path)
+                    .map_err(|error| error.to_string())?
+                    .is_some()
+            {
+                format!("@node-runtime/{id}")
+            } else {
+                id
+            };
             return Ok(self.inherit_javascript_depth(from_module, id));
         }
         if !self.imports.contains_key(specifier) && !self.matches_import_prefix(specifier) {
@@ -360,6 +371,18 @@ impl FileLoader {
     }
 
     pub(super) fn source_path(&self, module_id: &str) -> Result<PathBuf, String> {
+        if let Some(original) = module_id.strip_prefix("@node-runtime/") {
+            let declaration = self.source_path(original)?;
+            let resolver = self.packages.as_ref().unwrap_or(&self.relative);
+            if resolver
+                .resolve_runtime_sibling(&declaration)
+                .map_err(|error| error.to_string())?
+                .is_none()
+            {
+                return Err("Node declaration has no owner-authorized runtime sibling".into());
+            }
+            return Ok(declaration);
+        }
         if let Some((runtime, index)) = module_id
             .strip_prefix("@reference-runtime/")
             .map(|index| (true, index))

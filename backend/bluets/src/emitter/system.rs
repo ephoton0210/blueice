@@ -8,13 +8,37 @@ use super::*;
 use crate::syntax::Token;
 use std::collections::BTreeSet;
 
+mod bindings;
 mod mapping;
 mod mutations;
 
 pub(crate) const HELPER_SOURCE: &str = include_str!("system_helpers.v1.js");
 
-pub(super) fn validate(module: &Module) -> Result<(), Diagnostic> {
+pub(super) fn validate(module: &Module, options: &CompilerOptions) -> Result<(), Diagnostic> {
     for declaration in &module.declarations {
+        if let Declaration::Variable(variable) = declaration {
+            if module.is_external_module()
+                && (!options.no_emit_helpers || options.import_helpers)
+                && variable
+                    .pattern
+                    .as_ref()
+                    .is_some_and(|pattern| match &pattern.pattern {
+                        crate::parser::BindingPattern::Object(_) => {
+                            pattern.rest.is_some() && options.target >= crate::EcmaTarget::Es2018
+                        }
+                        crate::parser::BindingPattern::Array(_) => {
+                            options.downlevel_iteration
+                                && options.target >= crate::EcmaTarget::Es2015
+                        }
+                    })
+            {
+                return Err(Diagnostic::error(
+                    DiagnosticCode::UnsupportedSyntax,
+                    variable.span.clone(),
+                    "pinned TypeScript System binding helper emission is incomplete",
+                ));
+            }
+        }
         if let Declaration::ValueExport(export) = declaration {
             if export.export_assignment {
                 return Err(Diagnostic::error(
@@ -161,7 +185,12 @@ pub(super) fn wrap(
                         "System variable binding requires retained names",
                     ));
                 }
-                variables.insert(name.text.clone());
+                variables.extend(bindings::names(&tokens, index + 1).ok_or_else(|| {
+                    unsupported(
+                        module,
+                        "System variable declarations require retained names",
+                    )
+                })?);
                 if !module.declarations.iter().any(|declaration| {
                     matches!(declaration,
                     Declaration::Variable(value) if value.name == name.text)
@@ -202,13 +231,20 @@ pub(super) fn wrap(
                 });
             }
         }
-        if depth == 0 && token.is("class") {
+        if depth == 0 && token.is("class") && !targets::es5::class_is_expression(&tokens, index) {
             if let Some(name) = tokens.get(index + 1) {
                 variables.insert(name.text.clone());
                 edits.push(TextEdit {
                     start: token.start,
                     end: token.start,
                     replacement: format!("{} = ", name.text),
+                });
+                let end = bindings::class_end(&tokens, index)
+                    .ok_or_else(|| unsupported(module, "System class body was not retained"))?;
+                edits.push(TextEdit {
+                    start: tokens[end].end,
+                    end: tokens[end].end,
+                    replacement: ";".into(),
                 });
             }
         }

@@ -22,6 +22,11 @@ pub const TARGET_HELPER_V1_VERSION: &str = "blue-ts-target-helper-v1";
 pub(crate) const TARGET_HELPER_V1_SOURCE: &str = include_str!("targets/helpers.v1.js");
 pub(crate) const TARGET_HELPER_V1_SOURCES: &[&str] = &[
     TARGET_HELPER_V1_SOURCE,
+    super::node_imports::SOURCE,
+    es5::NATIVE_ABI_SOURCE,
+    es5::TAGGED_SOURCE,
+    super::commonjs::IMPORT_DEFAULT_HELPER,
+    super::commonjs::IMPORT_STAR_HELPER,
     include_str!("targets/optional_helpers.v1.js"),
     include_str!("targets/object_spread_helpers.v1.js"),
     include_str!("targets/async_helpers.v1.js"),
@@ -139,7 +144,7 @@ fn unused_name(source: &str, kind: &str, sequence: &mut usize) -> String {
     }
 }
 
-fn directive_end(tokens: &[Token]) -> usize {
+pub(super) fn directive_end(tokens: &[Token]) -> usize {
     let mut end = 0;
     let mut index = 0;
     while tokens

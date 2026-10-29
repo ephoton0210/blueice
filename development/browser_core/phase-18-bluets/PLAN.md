@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-10-29).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 15,926 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 18,536 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 15,311/15,317 (99.9608%); 3 open, 3 refused observations |
-| Separate controls | 539 native-reference + 70 BlueTS owner = 609; excluded from direct agreement |
-| Case labels | 15,920 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 118 suites / 279 ignored Rust functions; not a case denominator |
-| Suite labels | 114 scoped closed, 1 open, 3 refused |
+| Direct agreement | 17,897/17,903 (99.9665%); 3 open, 3 refused observations |
+| Separate controls | 557 native-reference + 76 BlueTS owner = 633; excluded from direct agreement |
+| Case labels | 18,530 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 119 suites / 281 ignored Rust functions; not a case denominator |
+| Suite labels | 115 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 218 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 223 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 15,926 recorded case expectations pass; expected differences/refusals are not
+All 18,536 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:6d14e9b542062ea9e102076aa8c0c0a6853783ee`.
-Input graph SHA-256: `714ebe921d05723397dd6d8b6af6fc3bc28f01cb221096f9118ffd2b60a7e2ff`.
+Compiler/oracle source: `backend-tree:1a2d732515ae5d85b26328857c793d585f09d4bd`.
+Input graph SHA-256: `05b90f954c60e86b55cfe80a28bb5b6819e08b34ca74512f28c2c46b594ba3b8`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -15488,3 +15488,202 @@ open and full parity remains OFF. No fresh Windows, whole-workspace milestone,
 hosted-CI or coverage result is claimed; the accepted historical Windows evidence
 keeps its recorded source scope. Implementation and the complete matching
 measurement are committed together.
+
+## Phase L — G-E2 implementation
+
+The unchanged implementation baseline is `c5209f2399beb8025ab8d056f5c5a813eb61ca68`.
+Before production changes, the native-only matrix freezes **2,604 configurations
+/ 24 forms** in `ge2_module_helpers/cases.json` (SHA-256
+`6e945ec5249baa238a57680a9dbfab122c44ea418d61352c2a8c4ea4773dc1ef`).
+Fourteen helper families cross CommonJS, ESNext, AMD, UMD, System and both Node16/
+NodeNext file formats, ES5/ES2015/ES2017/ES2018/ES2022, and all four helper-option
+pairs. The remaining 84 configurations retain Node import-equals, exported/type
+aliases, `.d.cts` export assignments and conditional declaration inputs, explicit
+`.mts`/`.cts`/package formats, Node16/NodeNext require-ESM differences, loader-name
+collisions and missing/incomplete helper providers. No new worklist ID is added.
+
+Pinned TypeScript 5.9.3, Acorn 8.15.0 and actual tslib 2.8.1 establish the
+authority independently of BlueTS. The ten unmodified provider files, complete
+0BSD notices and individual hashes are embedded once in the input fixture.
+The pre-implementation reference SHA-256 is
+`ab8b763f61ca71db10097aa0468abb7aee0cc73459e654ee1df7521a7f971864`
+(`/private/tmp/bluets-ge2-native-final-freeze.log`). Native accepts **2,545** and
+rejects **59**, with **3,113 declarations / 5,090 consumers / 3,442 loader
+scenarios**. The safe comparison subset has **2,527 accepted configurations,
+3,095 exact declarations, 5,054 consumers and 3,424 loader scenarios**.
+
+Eighteen native-accepted System configurations actually throw ReferenceError:
+object-rest at ES2018/ES2022 omits `__rest`, and iterator binding at ES2015 and
+above omits `__read`, under the three profiles without supplied global helpers.
+The recorded complete native outputs and independent transpile probes confirm
+the calls have no definition or import. They remain named native references;
+BlueTS must precisely refuse publication. The noEmitHelpers-only configurations
+with explicitly supplied actual tslib globals remain execution comparisons.
+The closed AMD/UMD/System fixture loaders execute in real bounded Node child
+processes; Node file formats use Node's actual import/require loaders. Actual
+post-load writes/readbacks check live cyclic bindings. Missing-global behavior
+and both UMD branches are recorded separately. These host fixtures grant no
+production compiler or runtime authority.
+
+The first focused public-boundary test fails in **3.23 seconds** because the
+ES2015 async imported-helper profile refuses `__blueice_target_async_0`
+(`/private/tmp/bluets-ge2-before-helper-boundary.log`). The complete ordinary
+G-E2 replay then fails **six tests**, with five passes and two ignored in
+**13.14 seconds** (`/private/tmp/bluets-ge2-before-full.log`): its 2,604 rows all
+encounter the unsupported explicit `ESNext.Decorators` selector before reaching
+lowering, while the direct owner tests independently reproduce the helper ABI
+refusal. This establishes the first configuration/emit boundaries to fix. The
+three new dependency/ABI-inspection tooling tests pass. Before production, a
+native-only recorder correction tracks generated createRequire aliases; only
+18 dependency inventories change, with all diagnostics, declarations, consumers,
+executions and input bytes unchanged. G-E2 remains unchecked.
+
+The implementation adds owner-resolved Node ESM import-equals through a fresh
+createRequire binding, require-mode conditional declarations and verified
+`.d.cts`/`.d.mts` runtime siblings. Unused and type-only aliases stay erased;
+exported aliases retain exact declarations. Helper selection uses the actual
+published tslib ABIs, with original continuation programs for ES5 suspension,
+fresh imports, explicit global-only omission and owner-checked provider exports.
+Versioned original helper sources and helper-selection version 2 enter artifact
+fingerprints; build-state epoch 24 invalidates previous lowering output.
+
+Focused evidence includes all 68 Node-input configurations (61 accepted and
+seven rejected), 112 CommonJS ES5/ES2015 helper configurations, and the original
+switch/narrowing regression. Accepted focused declarations and real execution
+agree. ABI inspection exposes an unnecessary constructor-spread import, fixed
+by retaining the fresh array's direct argument semantics. The first broad
+replay reports 1,323 differences: 1,291 synthetic helper-provider inputs missing
+from `--listFiles`, 18 harness refusal-message field mismatches, six System
+binding refusals and eight incomplete-provider diagnostic messages. These lead
+to source-graph traversal, diagnostic-template arguments and top-level System
+binding/hoisting fixes. Frozen native fixture hashes stay unchanged.
+
+Both crates pass warnings-denied all-target Clippy. Eighteen focused owner and
+build-epoch regressions pass with five native-only tests deferred to the full
+cohort. System binding probes match real execution and ABI when globals are
+explicitly supplied, while the known defective configurations retain their
+precise refusal. The full loader/consumer/ABI replay and common measurement
+gates are still pending; G-E2 remains unchecked and uncommitted.
+
+The first complete CLI collection passes every one of the 2,604 configurations
+(`/private/tmp/bluets-ge2-full-loader-after-node-graph.log`). The independent
+loader/ABI pass then exposes 69 differences: 32 System class-expression statement
+terminators, 15 System export-star helper/live-binding combinations and 22 Node
+ESM import-assignment dependency inventories. Class declarations now receive a
+statement terminator after conversion to assignments; class expressions retain
+their surrounding expression. System re-exports retain its original callback-
+backed forwarding instead of selecting the CommonJS `__exportStar` helper.
+
+An explicit authority erratum corrects the last group: the inspector recognized
+`node:module` createRequire aliases but missed TypeScript's `module` spelling.
+Both are Node builtins. Its regression now checks both spellings. Exactly 22
+`imports` objects are recomputed from the unchanged frozen native JavaScript;
+all 2,604 IDs, verdicts, selected inputs, diagnostics, output bytes, consumers and
+executions are deep-equal to the original reference. The input fixture hash is
+unchanged. The original reference SHA-256 is
+`ab8b763f61ca71db10097aa0468abb7aee0cc73459e654ee1df7521a7f971864`; the corrected reference SHA-256 is
+`49b1a3b4c2474fa144f20544474847e545bc72173f3baca6e816a9b7ed481f0b`.
+The compiler bridge also selects TypeScript's `module` spelling. This correction
+is not reported as a compiler agreement; the full native replay and actual
+loader matrix must pass again before completion. All pre-G-E2 native fixtures
+remain unchanged. G-E2 stays unchecked and uncommitted.
+
+The remaining System shapes pass 60 focused configurations across all five
+boundaries: 56 accepted outputs agree on declaration bytes, imported ABI and
+actual execution, and four ES5 private-name rejections remain exact controls.
+All 68 Node controls now agree on graph selection, declarations, ABI and loader
+completion; seven retain native rejections. All 18 Node tooling tests and both
+crates' all-target warnings-denied Clippy pass. The backend tree is frozen for
+complete measurement next; no implementation/fixture/tool changes are allowed
+during that run. G-E2 is still unchecked until the full cohort, ordinary gates,
+source/case/status audits and matching publication finish.
+
+An independent public-boundary review then finds a genuine visibility regression:
+adding inherited Object prototype fields can hide an explicit private `valueOf`
+on the base class. TypeScript reports TS2341 while the candidate BlueTS build
+publishes output. The new regression test first fails with `private super member
+was published` (`/private/tmp/bluets-ge2-before-super-shadow-regression.log`).
+Implicit prototype fields now defer to both ordinary and encoded private/
+protected member identities. The private case reports TS2341; independent
+native-positive protected/public controls retain their actual number result type.
+All five artifact-policy regressions pass after the fix.
+
+The first immutable cohort is explicitly stopped after 47 successful suites;
+its unfinished report is archived with `ABORTED.json` under
+`/private/tmp/bluets-ge2-measurement`, and remains unpublished. Its tree was
+`4274423e4a5fb515c99841c912997b89c2f03e6f` / graph
+`71b22cfe8ca02d6e95f8c081e8fc0691c3631f4d075ec05952e39e2cb3308007`.
+The complete cohort must restart from the corrected source tree, including fresh
+G-E2 native replay and loader comparisons. The frozen program list and native
+reference remain unchanged by this visibility fix. G-E2 stays unchecked.
+
+The corrected-source second cohort passes G-E2 completely: all 13 tests,
+including the 2,604 CLI configurations, exact declarations, full native replay,
+5,054 consumer observations and 3,424 loader scenarios. It then stops at G-M2:
+16 of 17 tests pass, while native state-seed reproduction exposes historical
+relative library paths tied to the original `bluets-gm2-oracles` installation.
+The failed cohort remains unpublished under `/private/tmp/bluets-ge2-measurement-v2`.
+
+The comparison now canonicalizes only state-seed library filenames whose paired
+file-info version equals that library's pinned content hash. Both the existing
+record and actual state are compared through this pure, non-mutating view;
+program paths, file signatures, options, diagnostics and output bytes stay exact.
+All old G-M2 fixture bytes remain unchanged. Three tooling tests first fail
+before implementation and then pass, including changed/unknown library-content
+rejections. All 21 Node tooling tests pass. The full G-M2 replay then passes
+17/17 with zero ignored/filtered tests in 86.75 seconds.
+
+Only oracle tooling changed after the corrected-source cohort. The backend tree
+remains `1a2d732515ae5d85b26328857c793d585f09d4bd`, graph
+`05b90f954c60e86b55cfe80a28bb5b6819e08b34ca74512f28c2c46b594ba3b8`.
+The complete cohort restarts with the new tool hashes in
+`/private/tmp/bluets-ge2-measurement-v3`; partial prior runs are not promoted.
+G-E2 remains unchecked until that full run and the ordinary/publication gates
+finish.
+
+The third immutable cohort succeeds on the corrected source and tools in
+3,582.43 seconds: **119 suites / 686 executed Rust functions / all 281 selected
+ignored functions**, with zero failed, ignored or filtered functions. Its source
+is backend tree `1a2d732515ae5d85b26328857c793d585f09d4bd`, graph
+`05b90f954c60e86b55cfe80a28bb5b6819e08b34ca74512f28c2c46b594ba3b8`;
+the complete measurement SHA-256 is
+`2a3a9ac2e3508e7797c947cb555f52490fe066d289d9a0520048a3b9a84055c1`.
+The runner rechecks both source and every oracle-tool hash before success.
+
+The matching published catalog has **18,536 observations / 17,897 agreements
+in 17,903 direct comparisons / three open / three refused / 557 native
+references / 76 owner controls**. All 15,926 previous suite/source-selector
+observations preserve all nine identity/classification fields, including reasons;
+all pre-G-E2 native fixture bytes stay unchanged. Exactly 2,610 observations are
+added, including 18 reference-only native System defects and six owner controls.
+The broader G-E2 inventory row remains open; full parity stays OFF.
+
+Post-publication verification passes all 22 inventory tests, 13 Python tool
+tests and 21 Node tool tests. The complete unfiltered ordinary two-crate gate is
+running next (`/private/tmp/bluets-ge2-ordinary-final.log`). G-E2 remains unchecked
+and uncommitted until it passes and the final source/case/status audits finish.
+
+### Final ordinary gate and completed scope
+
+The final unfiltered `cargo test -p blueice-bluets -p blueice-bluets-bluejs
+--no-fail-fast` gate passes **179 targets / 1,428 tests**, zero failures and zero
+filtered functions, in **2,145.31 seconds**
+(`/private/tmp/bluets-ge2-ordinary-final.log`). Its 281 ignored functions were
+all actually executed successfully in the complete immutable cohort above.
+
+Final workspace rustfmt, both crates' all-target warnings-denied Clippy, staged
+suite/input-graph and case/measurement checks, 82 oracle-tool hash checks,
+whitespace checks and four-document status/accounting checks pass. The backend
+tree remains `1a2d732515ae5d85b26328857c793d585f09d4bd`; this acceptance records
+no implementation changes after the successful source-bound measurement.
+
+G-E2 is checked for its frozen 2,604 configurations and six owner controls.
+All 3,095 safe exact declarations, 5,054 consumer observations and 3,424 loader
+scenarios pass. Eighteen native System helper defects remain reference-only
+observations with precise BlueTS refusals. All 15,926 earlier suite-qualified
+observations retain their identities/classifications and old native fixtures
+retain their bytes. Implementation and matching measurement are submitted
+together. **Five packages remain unchecked; next is G-E3.** G-M3 remains
+deferred, the broad feature row stays open, and full parity remains OFF. The
+historical Windows VM 82/82 evidence keeps its original source scope; this is
+not a new platform claim.

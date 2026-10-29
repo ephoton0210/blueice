@@ -45,7 +45,11 @@ function snapshot(base, row, inputs, compilation) {
 function publish(group, value) {
   const file = path.join(directory, group + '.reference.json');
   if (process.env.BLUEICE_WRITE_GM2 === '1') fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
-  else if (!process.argv.includes('--probe')) assert.deepEqual(value, JSON.parse(fs.readFileSync(file)));
+  else if (!process.argv.includes('--probe')) {
+    const hashes = JSON.parse(fs.readFileSync(path.join(directory, 'library_hashes.json'))).files;
+    assert.deepEqual(native.canonicalStateSeeds(value, hashes),
+      native.canonicalStateSeeds(JSON.parse(fs.readFileSync(file)), hashes));
+  }
   console.log(JSON.stringify({group, observations: value.cases.length,
     declarations: value.cases.reduce((n, row) => n + Object.keys(row.outputs).filter(file => /\.d\.(?:ts|mts|cts)$/.test(file)).length, 0),
     executions: value.cases.reduce((n, row) => n + Object.keys(row.executions).length, 0)}));

@@ -63,6 +63,7 @@ pub(super) struct ModuleChecker<'a> {
     define_class_fields: bool,
     isolated_modules: bool,
     module_kind: crate::compiler::ModuleKind,
+    selected_module_kind: crate::compiler::ModuleKind,
     import_attributes: bool,
     es_module_interop: bool,
     jsx_mode: Option<crate::compiler::JsxMode>,

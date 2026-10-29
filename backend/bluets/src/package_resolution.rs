@@ -780,6 +780,26 @@ impl<F: PackageFs> PackageResolver<F> {
         })
     }
 
+    /// Verify an existing Node runtime sibling without loading or executing it.
+    /// The canonical observation also invalidates removal or symlink changes.
+    pub fn resolve_runtime_sibling(
+        &self,
+        declaration: &Path,
+    ) -> Result<Option<PathBuf>, ResolveError> {
+        let spelling = declaration.to_string_lossy();
+        let candidate = if let Some(stem) = spelling.strip_suffix(".d.cts") {
+            PathBuf::from(format!("{stem}.cjs"))
+        } else if let Some(stem) = spelling.strip_suffix(".d.mts") {
+            PathBuf::from(format!("{stem}.mjs"))
+        } else {
+            return Ok(None);
+        };
+        if !self.probe_file(&candidate) {
+            return Ok(None);
+        }
+        self.confine("Node runtime sibling", &candidate).map(Some)
+    }
+
     /// The exact identity of this resolver's configuration and of everything it
     /// has looked at since it was created: TypeScript's resolution version, the
     /// strategy, the conditions, the roots and each recorded observation.

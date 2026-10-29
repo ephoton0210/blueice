@@ -37,6 +37,10 @@ impl Parser {
             "this".to_string()
         } else if self.consume("object") {
             "object".to_string()
+        } else if matches!(self.current().text.as_str(), "from" | "async") {
+            let name = self.current().text.clone();
+            self.bump();
+            name
         } else {
             self.require_identifier(message)
         }

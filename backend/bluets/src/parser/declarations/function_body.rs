@@ -65,6 +65,40 @@ impl Parser {
             }
             if parentheses == 0
                 && brackets == 0
+                && !self.emitted_runtime
+                && self.peek("switch")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is("("))
+            {
+                let start = self.index;
+                if let Some(close) = matching_closing_delimiter(
+                    &self.tokens,
+                    start + 1,
+                    self.tokens.len() - 1,
+                    "(",
+                    ")",
+                ) {
+                    // Keep the source checker's token-level case/narrowing
+                    // path, but do not consume the body and following return
+                    // as one parenthesized expression statement.
+                    body.push(FunctionBodyItem::Opaque(self.tokens[start].span(&self.id)));
+                    self.collect_expression_type_edits(start + 1, close + 1);
+                    body.push(FunctionBodyItem::Expression {
+                        tokens: self.tokens[start + 1..=close].to_vec(),
+                        span: SourceSpan::new(
+                            &self.id,
+                            self.tokens[start + 1].start,
+                            self.tokens[close].end,
+                        ),
+                    });
+                    self.index = close + 1;
+                    continue;
+                }
+            }
+            if parentheses == 0
+                && brackets == 0
                 && is_direct_braced_if_statement(&self.tokens, self.index)
             {
                 body.push(FunctionBodyItem::If(

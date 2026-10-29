@@ -499,6 +499,17 @@ impl<'a> ModuleChecker<'a> {
         let mut positions_known = true;
         for argument in arguments {
             if argument.first().is_some_and(|token| token.is("...")) {
+                let literal = strip_outer_parentheses(&argument[1..]);
+                if let Some(elements) = fresh_array_elements(literal) {
+                    for element in elements {
+                        if element.is_empty() {
+                            actuals.push(Type::Undefined);
+                        } else {
+                            actuals.extend(self.expanded_call_argument_types(&[element], scope)?);
+                        }
+                    }
+                    continue;
+                }
                 positions_known = false;
                 let spread = self.infer_expression(&argument[1..], scope);
                 if let Type::Array(element) = spread {
@@ -911,3 +922,41 @@ mod enum_access;
 mod mutation;
 
 use mutation::{member_access_target, unescaped_property_name};
+
+// A fresh array at a spread call site has a known contextual tuple shape.
+// Nonliteral array variables retain their existing rejection boundary.
+fn fresh_array_elements(tokens: &[Token]) -> Option<Vec<&[Token]>> {
+    if !tokens.first()?.is("[") || !tokens.last()?.is("]") {
+        return None;
+    }
+    let mut stack = vec!["]"];
+    let mut start = 1;
+    let mut parts = Vec::new();
+    for (index, token) in tokens.iter().enumerate().skip(1) {
+        match token.text.as_str() {
+            "[" => stack.push("]"),
+            "(" => stack.push(")"),
+            "{" => stack.push("}"),
+            "]" | ")" | "}" => {
+                if stack.pop() != Some(token.text.as_str()) {
+                    return None;
+                }
+                if stack.is_empty() {
+                    if index + 1 != tokens.len() {
+                        return None;
+                    }
+                    if start < index {
+                        parts.push(&tokens[start..index]);
+                    }
+                    return Some(parts);
+                }
+            }
+            "," if stack.len() == 1 => {
+                parts.push(&tokens[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}

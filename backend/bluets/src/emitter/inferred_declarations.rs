@@ -556,14 +556,15 @@ impl<'a> Context<'a> {
         let bindings: Vec<_> = import
             .bindings
             .iter()
-            .filter(|binding| self.used_imports.contains(&binding.local))
+            .filter(|binding| import.exported || self.used_imports.contains(&binding.local))
             .collect();
         if bindings.is_empty() {
             return None;
         }
         if import.equals_require {
             return Some(format!(
-                "import {}{} = require({specifier});\n",
+                "{}import {}{} = require({specifier});\n",
+                if import.exported { "export " } else { "" },
                 if import.type_only { "type " } else { "" },
                 bindings[0].local
             ));
