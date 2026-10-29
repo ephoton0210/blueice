@@ -324,12 +324,18 @@ mod tests {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
-            if let Some(to) = std::env::var("BI_SCROLL_TO").ok().and_then(|v| v.parse::<f64>().ok()) {
+            if let Some(to) = std::env::var("BI_SCROLL_TO")
+                .ok()
+                .and_then(|v| v.parse::<f64>().ok())
+            {
                 // Scroll straight to one place and let the scripts run there.
                 page.scroll_by(to);
                 let until = std::time::Instant::now()
                     + std::time::Duration::from_secs(
-                        std::env::var("BI_SCROLL_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(40),
+                        std::env::var("BI_SCROLL_SECS")
+                            .ok()
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(40),
                     );
                 while std::time::Instant::now() < until {
                     page.tick_web();

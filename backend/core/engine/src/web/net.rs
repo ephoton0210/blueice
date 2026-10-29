@@ -27,6 +27,8 @@ pub(crate) struct NetJob {
     pub body: Vec<u8>,
     /// The requesting document's origin.
     pub origin: String,
+    /// A no-cors request (an image): a cross-origin answer needs no CORS headers.
+    pub no_cors: bool,
 }
 
 pub(crate) enum NetOutcome {
@@ -187,7 +189,7 @@ pub(crate) fn perform(job: &NetJob, review: &dyn Fn(&str) -> bool) -> NetOutcome
                 body,
             }) => {
                 let final_cross = origin_of(&url).is_none_or(|o| o != job.origin);
-                if final_cross && !allows_origin(&headers, &job.origin) {
+                if final_cross && !job.no_cors && !allows_origin(&headers, &job.origin) {
                     return fail(
                         "blocked by CORS policy: no Access-Control-Allow-Origin allows this origin",
                     );
@@ -297,7 +299,26 @@ mod tests {
             headers,
             body: b"x".to_vec(),
             origin: origin.into(),
+            no_cors: false,
         }
+    }
+
+    #[test]
+    fn a_no_cors_request_may_be_read_without_cors_headers() {
+        let (origin, _rx) = serve(vec![ok("", "pixels")]);
+        let other = "https://other.example";
+        let mut j = job(&format!("{origin}/img"), other, "GET", vec![]);
+        j.body.clear();
+        j.no_cors = true;
+        match perform(&j, &|_| true) {
+            NetOutcome::Done { body, .. } => assert_eq!(body, b"pixels"),
+            NetOutcome::Failed(m) => panic!("{m}"),
+        }
+        // The same request as a CORS request is refused.
+        let (origin, _rx) = serve(vec![ok("", "pixels")]);
+        let mut j = job(&format!("{origin}/img"), other, "GET", vec![]);
+        j.body.clear();
+        assert!(matches!(perform(&j, &|_| true), NetOutcome::Failed(_)));
     }
 
     #[test]

@@ -196,7 +196,14 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
             let list: Vec<String> = ctx
                 .active_uniforms(u(0))
                 .iter()
-                .map(|x| format!("{{\"name\":{},\"type\":{},\"size\":{}}}", json(&x.name), gl_type(&x.ty), x.size))
+                .map(|x| {
+                    format!(
+                        "{{\"name\":{},\"type\":{},\"size\":{}}}",
+                        json(&x.name),
+                        gl_type(&x.ty),
+                        x.size
+                    )
+                })
                 .collect();
             Reply::Text(format!("[{}]", list.join(",")))
         }
@@ -204,7 +211,14 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
             let list: Vec<String> = ctx
                 .active_attribs(u(0))
                 .iter()
-                .map(|x| format!("{{\"name\":{},\"type\":{},\"size\":1,\"location\":{}}}", json(&x.name), gl_type(&x.ty), x.location))
+                .map(|x| {
+                    format!(
+                        "{{\"name\":{},\"type\":{},\"size\":1,\"location\":{}}}",
+                        json(&x.name),
+                        gl_type(&x.ty),
+                        x.location
+                    )
+                })
                 .collect();
             Reply::Text(format!("[{}]", list.join(",")))
         }
@@ -213,7 +227,12 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
             let kind = text(a, 1);
             if let Some(dims) = kind.strip_prefix('m') {
                 let (c, r) = dims.split_once('x').unwrap_or(("4", "4"));
-                ctx.set_uniform(num(a, 0) as i32, &json_f32s(a, 2), None, Some((c.parse().unwrap_or(4), r.parse().unwrap_or(4))));
+                ctx.set_uniform(
+                    num(a, 0) as i32,
+                    &json_f32s(a, 2),
+                    None,
+                    Some((c.parse().unwrap_or(4), r.parse().unwrap_or(4))),
+                );
             } else if kind == "i" {
                 let ints = json_i32s(a, 2);
                 ctx.set_uniform(num(a, 0) as i32, &[], Some(&ints), None);
@@ -242,7 +261,9 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
         }
         "texImage2D" => {
             let bytes = match a.get(7) {
-                Some(Reply::Text(s)) if !s.is_empty() => Some(base64_decode(s).ok_or("bad pixel data")?),
+                Some(Reply::Text(s)) if !s.is_empty() => {
+                    Some(base64_decode(s).ok_or("bad pixel data")?)
+                }
                 _ => None,
             };
             ctx.tex_image_2d(u(0), u(1), u(2), u(3), u(4), u(5), u(6), bytes.as_deref());
@@ -290,7 +311,10 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
         }
         "framebufferTexture2D" => {
             let target = u(3);
-            let face = if (blueice_gl::TEXTURE_CUBE_MAP_POSITIVE_X..blueice_gl::TEXTURE_CUBE_MAP_POSITIVE_X + 6).contains(&u(1)) {
+            let face = if (blueice_gl::TEXTURE_CUBE_MAP_POSITIVE_X
+                ..blueice_gl::TEXTURE_CUBE_MAP_POSITIVE_X + 6)
+                .contains(&u(1))
+            {
                 (u(1) - blueice_gl::TEXTURE_CUBE_MAP_POSITIVE_X) as usize
             } else {
                 0
@@ -318,15 +342,30 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
         }
         "isEnabled" => Reply::Bool(ctx.is_enabled(u(0))),
         "viewport" => {
-            ctx.state.viewport = [num(a, 0) as i32, num(a, 1) as i32, num(a, 2) as i32, num(a, 3) as i32];
+            ctx.state.viewport = [
+                num(a, 0) as i32,
+                num(a, 1) as i32,
+                num(a, 2) as i32,
+                num(a, 3) as i32,
+            ];
             Reply::Undefined
         }
         "scissor" => {
-            ctx.state.scissor = [num(a, 0) as i32, num(a, 1) as i32, num(a, 2) as i32, num(a, 3) as i32];
+            ctx.state.scissor = [
+                num(a, 0) as i32,
+                num(a, 1) as i32,
+                num(a, 2) as i32,
+                num(a, 3) as i32,
+            ];
             Reply::Undefined
         }
         "clearColor" => {
-            ctx.state.clear_color = [num(a, 0) as f32, num(a, 1) as f32, num(a, 2) as f32, num(a, 3) as f32];
+            ctx.state.clear_color = [
+                num(a, 0) as f32,
+                num(a, 1) as f32,
+                num(a, 2) as f32,
+                num(a, 3) as f32,
+            ];
             Reply::Undefined
         }
         "clearDepth" => {
@@ -399,7 +438,12 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
             Reply::Undefined
         }
         "blendColor" => {
-            ctx.state.blend_color = [num(a, 0) as f32, num(a, 1) as f32, num(a, 2) as f32, num(a, 3) as f32];
+            ctx.state.blend_color = [
+                num(a, 0) as f32,
+                num(a, 1) as f32,
+                num(a, 2) as f32,
+                num(a, 3) as f32,
+            ];
             Reply::Undefined
         }
         "cullFace" => {
@@ -424,7 +468,13 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
             let started = std::time::Instant::now();
             ctx.draw_arrays(u(0), u(1), u(2), u(3).max(1));
             if std::env::var("BI_DIAG").is_ok() {
-                eprintln!("DIAG gl drawArrays {}x{} took {:?} (slow: {})", ctx.width, ctx.height, started.elapsed(), ctx.slow_draws);
+                eprintln!(
+                    "DIAG gl drawArrays {}x{} took {:?} (slow: {})",
+                    ctx.width,
+                    ctx.height,
+                    started.elapsed(),
+                    ctx.slow_draws
+                );
             }
             g.dirty = true;
             Reply::Undefined
@@ -433,7 +483,13 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
             let started = std::time::Instant::now();
             ctx.draw_elements(u(0), u(1), u(2), u(3), u(4).max(1));
             if std::env::var("BI_DIAG").is_ok() {
-                eprintln!("DIAG gl drawElements {}x{} took {:?} (slow: {})", ctx.width, ctx.height, started.elapsed(), ctx.slow_draws);
+                eprintln!(
+                    "DIAG gl drawElements {}x{} took {:?} (slow: {})",
+                    ctx.width,
+                    ctx.height,
+                    started.elapsed(),
+                    ctx.slow_draws
+                );
             }
             g.dirty = true;
             Reply::Undefined
@@ -463,7 +519,11 @@ mod tests {
     }
 
     fn context() -> GlContext {
-        GlContext { ctx: Context::new(8, 8), canvas: blueice_dom::NodeId::from_u64(1), dirty: false }
+        GlContext {
+            ctx: Context::new(8, 8),
+            canvas: blueice_dom::NodeId::from_u64(1),
+            dirty: false,
+        }
     }
 
     fn num_of(r: Reply) -> f64 {
@@ -476,42 +536,117 @@ mod tests {
     #[test]
     fn a_program_compiles_links_and_draws_through_the_bridge() {
         let mut g = context();
-        let vs = num_of(call(&mut g, "createShader", &[n(f64::from(blueice_gl::VERTEX_SHADER))]).unwrap());
-        let fs = num_of(call(&mut g, "createShader", &[n(f64::from(blueice_gl::FRAGMENT_SHADER))]).unwrap());
-        call(&mut g, "shaderSource", &[n(vs), t("attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }")]).unwrap();
+        let vs = num_of(
+            call(
+                &mut g,
+                "createShader",
+                &[n(f64::from(blueice_gl::VERTEX_SHADER))],
+            )
+            .unwrap(),
+        );
+        let fs = num_of(
+            call(
+                &mut g,
+                "createShader",
+                &[n(f64::from(blueice_gl::FRAGMENT_SHADER))],
+            )
+            .unwrap(),
+        );
+        call(
+            &mut g,
+            "shaderSource",
+            &[
+                n(vs),
+                t("attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }"),
+            ],
+        )
+        .unwrap();
         call(&mut g, "shaderSource", &[n(fs), t("precision mediump float; uniform vec4 tint; void main() { gl_FragColor = tint; }")]).unwrap();
         for s in [vs, fs] {
             call(&mut g, "compileShader", &[n(s)]).unwrap();
-            assert_eq!(call(&mut g, "shaderCompiled", &[n(s)]).unwrap(), Reply::Bool(true));
+            assert_eq!(
+                call(&mut g, "shaderCompiled", &[n(s)]).unwrap(),
+                Reply::Bool(true)
+            );
         }
         let p = num_of(call(&mut g, "createProgram", &[]).unwrap());
         for s in [vs, fs] {
             call(&mut g, "attachShader", &[n(p), n(s)]).unwrap();
         }
         call(&mut g, "linkProgram", &[n(p)]).unwrap();
-        assert_eq!(call(&mut g, "programLinked", &[n(p)]).unwrap(), Reply::Bool(true));
+        assert_eq!(
+            call(&mut g, "programLinked", &[n(p)]).unwrap(),
+            Reply::Bool(true)
+        );
         call(&mut g, "useProgram", &[n(p)]).unwrap();
         let tint = num_of(call(&mut g, "uniformLocation", &[n(p), t("tint")]).unwrap());
         call(&mut g, "uniform", &[n(tint), t("f"), t("[0, 1, 0, 1]")]).unwrap();
         let loc = num_of(call(&mut g, "attribLocation", &[n(p), t("p")]).unwrap());
         let buffer = num_of(call(&mut g, "createBuffer", &[]).unwrap());
-        call(&mut g, "bindBuffer", &[n(f64::from(blueice_gl::ARRAY_BUFFER)), n(buffer)]).unwrap();
-        let verts: Vec<u8> = [-1.0f32, -1.0, 3.0, -1.0, -1.0, 3.0].iter().flat_map(|f| f.to_le_bytes()).collect();
-        call(&mut g, "bufferData", &[n(f64::from(blueice_gl::ARRAY_BUFFER)), t(&base64_encode(&verts)), n(35044.0)]).unwrap();
+        call(
+            &mut g,
+            "bindBuffer",
+            &[n(f64::from(blueice_gl::ARRAY_BUFFER)), n(buffer)],
+        )
+        .unwrap();
+        let verts: Vec<u8> = [-1.0f32, -1.0, 3.0, -1.0, -1.0, 3.0]
+            .iter()
+            .flat_map(|f| f.to_le_bytes())
+            .collect();
+        call(
+            &mut g,
+            "bufferData",
+            &[
+                n(f64::from(blueice_gl::ARRAY_BUFFER)),
+                t(&base64_encode(&verts)),
+                n(35044.0),
+            ],
+        )
+        .unwrap();
         call(&mut g, "enableVertexAttribArray", &[n(loc)]).unwrap();
-        call(&mut g, "vertexAttribPointer", &[n(loc), n(2.0), n(5126.0), Reply::Bool(false), n(0.0), n(0.0)]).unwrap();
+        call(
+            &mut g,
+            "vertexAttribPointer",
+            &[
+                n(loc),
+                n(2.0),
+                n(5126.0),
+                Reply::Bool(false),
+                n(0.0),
+                n(0.0),
+            ],
+        )
+        .unwrap();
         call(&mut g, "drawArrays", &[n(4.0), n(0.0), n(3.0)]).unwrap();
         assert!(g.dirty);
         assert_eq!(num_of(call(&mut g, "getError", &[]).unwrap()), 0.0);
-        let Reply::Text(px) = call(&mut g, "readPixels", &[n(0.0), n(0.0), n(1.0), n(1.0)]).unwrap() else { panic!() };
+        let Reply::Text(px) =
+            call(&mut g, "readPixels", &[n(0.0), n(0.0), n(1.0), n(1.0)]).unwrap()
+        else {
+            panic!()
+        };
         assert_eq!(base64_decode(&px).unwrap(), vec![0, 255, 0, 255]);
     }
 
     #[test]
     fn active_uniforms_and_attributes_are_described_with_gl_types() {
         let mut g = context();
-        let vs = num_of(call(&mut g, "createShader", &[n(f64::from(blueice_gl::VERTEX_SHADER))]).unwrap());
-        let fs = num_of(call(&mut g, "createShader", &[n(f64::from(blueice_gl::FRAGMENT_SHADER))]).unwrap());
+        let vs = num_of(
+            call(
+                &mut g,
+                "createShader",
+                &[n(f64::from(blueice_gl::VERTEX_SHADER))],
+            )
+            .unwrap(),
+        );
+        let fs = num_of(
+            call(
+                &mut g,
+                "createShader",
+                &[n(f64::from(blueice_gl::FRAGMENT_SHADER))],
+            )
+            .unwrap(),
+        );
         call(&mut g, "shaderSource", &[n(vs), t("attribute vec3 position; uniform mat4 m; uniform vec2 offsets[4]; void main() { gl_Position = m * vec4(position, 1.0) + vec4(offsets[0], 0.0, 0.0); }")]).unwrap();
         call(&mut g, "shaderSource", &[n(fs), t("uniform sampler2D map; void main() { gl_FragColor = texture2D(map, vec2(0.5)); }")]).unwrap();
         for s in [vs, fs] {
@@ -522,12 +657,25 @@ mod tests {
             call(&mut g, "attachShader", &[n(p), n(s)]).unwrap();
         }
         call(&mut g, "linkProgram", &[n(p)]).unwrap();
-        let Reply::Text(u) = call(&mut g, "activeUniforms", &[n(p)]).unwrap() else { panic!() };
-        assert!(u.contains("\"name\":\"m\",\"type\":35676,\"size\":1"), "{u}");
-        assert!(u.contains("\"name\":\"offsets[0]\",\"type\":35664,\"size\":4"), "{u}");
+        let Reply::Text(u) = call(&mut g, "activeUniforms", &[n(p)]).unwrap() else {
+            panic!()
+        };
+        assert!(
+            u.contains("\"name\":\"m\",\"type\":35676,\"size\":1"),
+            "{u}"
+        );
+        assert!(
+            u.contains("\"name\":\"offsets[0]\",\"type\":35664,\"size\":4"),
+            "{u}"
+        );
         assert!(u.contains("\"name\":\"map\",\"type\":35678"), "{u}");
-        let Reply::Text(attribs) = call(&mut g, "activeAttribs", &[n(p)]).unwrap() else { panic!() };
-        assert!(attribs.contains("\"name\":\"position\",\"type\":35665"), "{attribs}");
+        let Reply::Text(attribs) = call(&mut g, "activeAttribs", &[n(p)]).unwrap() else {
+            panic!()
+        };
+        assert!(
+            attribs.contains("\"name\":\"position\",\"type\":35665"),
+            "{attribs}"
+        );
     }
 
     #[test]

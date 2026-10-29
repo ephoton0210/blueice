@@ -16,6 +16,7 @@
 //! document and nothing else. Network access is not part of this module: a
 //! request a script makes is recorded for the embedder, which reviews it.
 
+pub(crate) mod canvas2d;
 pub(crate) mod dom_bridge;
 pub(crate) mod gl_bridge;
 pub(crate) mod net;

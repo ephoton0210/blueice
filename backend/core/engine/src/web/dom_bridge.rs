@@ -95,6 +95,12 @@ pub(crate) struct DomState {
     /// WebGL contexts by id, and the canvases they draw into.
     pub(crate) gl: HashMap<u32, crate::web::gl_bridge::GlContext>,
     next_gl: u32,
+    /// 2D canvas contexts by id (ids shared with `gl`).
+    pub(crate) c2d: HashMap<u32, crate::web::canvas2d::Canvas2d>,
+    /// Pictures that scripts loaded into image elements, by element.
+    pub(crate) script_images: HashMap<NodeId, std::sync::Arc<blueice_image::RasterImage>>,
+    /// Newly decoded script images by address, for the page to paint `<img>` from.
+    pub(crate) loaded_images: Vec<(String, std::sync::Arc<crate::images::LoadedImage>)>,
     /// Decoded pictures by node (images and canvases), lent by the page.
     pub images: HashMap<NodeId, std::sync::Arc<blueice_image::RasterImage>>,
 }
@@ -116,18 +122,34 @@ impl DomState {
             next_request: 1,
             gl: HashMap::new(),
             next_gl: 1,
+            c2d: HashMap::new(),
+            script_images: HashMap::new(),
+            loaded_images: Vec::new(),
             images: HashMap::new(),
         }
     }
 
     /// Pictures of every canvas drawn to since the last call.
-    pub fn take_canvas_pictures(&mut self) -> Vec<(NodeId, std::sync::Arc<blueice_image::RasterImage>)> {
+    pub fn take_canvas_pictures(
+        &mut self,
+    ) -> Vec<(NodeId, std::sync::Arc<blueice_image::RasterImage>)> {
         let mut out = Vec::new();
+        for c in self.c2d.values_mut().filter(|c| c.dirty) {
+            c.dirty = false;
+            out.push((
+                c.canvas,
+                std::sync::Arc::new(blueice_image::RasterImage::new(c.w, c.h, c.rgba.clone())),
+            ));
+        }
         for g in self.gl.values_mut().filter(|g| g.dirty) {
             g.dirty = false;
             out.push((
                 g.canvas,
-                std::sync::Arc::new(blueice_image::RasterImage::new(g.ctx.width, g.ctx.height, g.ctx.picture())),
+                std::sync::Arc::new(blueice_image::RasterImage::new(
+                    g.ctx.width,
+                    g.ctx.height,
+                    g.ctx.picture(),
+                )),
             ));
         }
         out
@@ -174,6 +196,90 @@ impl DomState {
             }
         };
         Ok(match op {
+            // An image element's picture arrived: (node, url, body as base64, or
+            // empty for a `data:` URL). Replies `WxH`, or null if it will not decode.
+            "imageSet" => {
+                let id = self.node(args.first())?;
+                let url = text(1);
+                let bytes = if text(2).is_empty() {
+                    crate::images::data_url_bytes(&url)
+                } else {
+                    crate::web::net::base64_decode(&text(2))
+                };
+                let Some(loaded) = bytes
+                    .filter(|b| b.len() <= 16 * 1024 * 1024)
+                    .and_then(|b| crate::images::decode_loaded(&b))
+                else {
+                    return Ok(Reply::Null);
+                };
+                let loaded = std::sync::Arc::new(loaded);
+                if self.script_images.len() >= 256 {
+                    self.script_images.clear();
+                }
+                self.script_images.insert(id, loaded.image.clone());
+                let size = format!("{}x{}", loaded.natural.0, loaded.natural.1);
+                self.loaded_images.push((url, loaded));
+                Reply::Text(size)
+            }
+            // ---- 2D canvas ----
+            "c2dCreate" => {
+                if self.gl.len() + self.c2d.len() >= 32 {
+                    return Err("too many canvas contexts".into());
+                }
+                let canvas = self.node(args.first())?;
+                let num = |i: usize| match args.get(i) {
+                    Some(Reply::Number(n)) => n.clamp(1.0, 8192.0) as u32,
+                    _ => 1,
+                };
+                let c = crate::web::canvas2d::Canvas2d::new(canvas, num(1), num(2))
+                    .ok_or("canvas is too large")?;
+                let id = self.next_gl;
+                self.next_gl += 1;
+                self.c2d.insert(id, c);
+                Reply::Number(f64::from(id))
+            }
+            "c2d" => {
+                let id = match args.first() {
+                    Some(Reply::Number(n)) => *n as u32,
+                    _ => return Err("a canvas call needs a context".into()),
+                };
+                let name = text(1);
+                let c = self.c2d.get_mut(&id).ok_or("no such canvas context")?;
+                c.call(&name, &args[2..])?
+            }
+            "c2dPng" => {
+                let id = match args.first() {
+                    Some(Reply::Number(n)) => *n as u32,
+                    _ => return Err("a canvas call needs a context".into()),
+                };
+                let c = self.c2d.get(&id).ok_or("no such canvas context")?;
+                let image = blueice_image::RasterImage::new(c.w, c.h, c.rgba.clone());
+                match blueice_image::encode_png(&image) {
+                    Some(png) => Reply::Text(crate::web::net::base64_encode(&png)),
+                    None => Reply::Null,
+                }
+            }
+            // A canvas's current picture as `WxH:base64` (2D or WebGL).
+            "canvasPixels" => {
+                let id = self.node(args.first())?;
+                if let Some(c) = self.c2d.values().find(|c| c.canvas == id) {
+                    Reply::Text(format!(
+                        "{}x{}:{}",
+                        c.w,
+                        c.h,
+                        crate::web::net::base64_encode(&c.rgba)
+                    ))
+                } else if let Some(g) = self.gl.values().find(|g| g.canvas == id) {
+                    Reply::Text(format!(
+                        "{}x{}:{}",
+                        g.ctx.width,
+                        g.ctx.height,
+                        crate::web::net::base64_encode(&g.ctx.picture())
+                    ))
+                } else {
+                    Reply::Null
+                }
+            }
             // ---- WebGL ----
             "glCreate" => {
                 if self.gl.len() >= 16 {
@@ -184,13 +290,23 @@ impl DomState {
                     Some(Reply::Number(n)) => *n,
                     _ => 0.0,
                 };
-                let (w, h) = (num(1).clamp(1.0, 8192.0) as u32, num(2).clamp(1.0, 8192.0) as u32);
+                let (w, h) = (
+                    num(1).clamp(1.0, 8192.0) as u32,
+                    num(2).clamp(1.0, 8192.0) as u32,
+                );
                 let mut ctx = blueice_gl::Context::new(w, h);
                 ctx.has_alpha = !matches!(args.get(3), Some(Reply::Bool(false)));
                 ctx.premultiplied_alpha = !matches!(args.get(4), Some(Reply::Bool(false)));
                 let id = self.next_gl;
                 self.next_gl += 1;
-                self.gl.insert(id, crate::web::gl_bridge::GlContext { ctx, canvas, dirty: true });
+                self.gl.insert(
+                    id,
+                    crate::web::gl_bridge::GlContext {
+                        ctx,
+                        canvas,
+                        dirty: true,
+                    },
+                );
                 Reply::Number(f64::from(id))
             }
             "gl" => {
@@ -205,7 +321,7 @@ impl DomState {
             // The RGBA pixels of an element's picture, as `WxH:base64`.
             "imagePixels" => {
                 let id = self.node(args.first())?;
-                match self.images.get(&id) {
+                match self.images.get(&id).or_else(|| self.script_images.get(&id)) {
                     Some(img) if img.width * img.height <= 16_000_000 => Reply::Text(format!(
                         "{}x{}:{}",
                         img.width,
@@ -221,7 +337,8 @@ impl DomState {
                     _ => return Err("a GL call needs a context".into()),
                 };
                 let g = self.gl.get(&id).ok_or("no such GL context")?;
-                let image = blueice_image::RasterImage::new(g.ctx.width, g.ctx.height, g.ctx.picture());
+                let image =
+                    blueice_image::RasterImage::new(g.ctx.width, g.ctx.height, g.ctx.picture());
                 match blueice_image::encode_png(&image) {
                     Some(png) => Reply::Text(crate::web::net::base64_encode(&png)),
                     None => Reply::Null,
@@ -617,6 +734,7 @@ impl DomState {
                     headers,
                     body,
                     origin,
+                    no_cors: text(4) == "image",
                 });
                 Reply::Number(id as f64)
             }

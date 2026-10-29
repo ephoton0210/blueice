@@ -180,18 +180,20 @@ impl Page {
             s.dirty = false;
         });
         f(&mut host);
-        let (doc, styles, dirty, navigations, requests, url, jobs, canvases) = host.with_state(|s| {
-            (
-                std::mem::replace(&mut s.doc, Document::new()),
-                std::mem::take(&mut s.styles),
-                std::mem::take(&mut s.dirty),
-                std::mem::take(&mut s.navigations),
-                std::mem::take(&mut s.script_requests),
-                s.url.clone(),
-                std::mem::take(&mut s.net_jobs),
-                s.take_canvas_pictures(),
-            )
-        });
+        let (doc, styles, dirty, navigations, requests, url, jobs, canvases, loaded) = host
+            .with_state(|s| {
+                (
+                    std::mem::replace(&mut s.doc, Document::new()),
+                    std::mem::take(&mut s.styles),
+                    std::mem::take(&mut s.dirty),
+                    std::mem::take(&mut s.navigations),
+                    std::mem::take(&mut s.script_requests),
+                    s.url.clone(),
+                    std::mem::take(&mut s.net_jobs),
+                    s.take_canvas_pictures(),
+                    std::mem::take(&mut s.loaded_images),
+                )
+            });
         self.doc = doc;
         self.styles = styles;
         self.web = Some(host);
@@ -208,11 +210,19 @@ impl Page {
                 NavigationRequest::Go(_) => {}
             }
         }
+        if !loaded.is_empty() {
+            for (src, image) in loaded {
+                self.linked_images.insert(src, image);
+            }
+            self.web_relayout_pending = true;
+        }
         for (node, image) in canvases {
             let natural = (f64::from(image.width), f64::from(image.height));
             let first = !self.canvas_pictures.contains_key(&node);
-            self.canvas_pictures
-                .insert(node, Arc::new(crate::images::LoadedImage { image, natural }));
+            self.canvas_pictures.insert(
+                node,
+                Arc::new(crate::images::LoadedImage { image, natural }),
+            );
             if first {
                 self.web_relayout_pending = true;
             } else {
@@ -636,7 +646,95 @@ mod tests {
             let i = (y * pixmap.width as usize + x) * 4;
             [pixmap.pixels[i], pixmap.pixels[i + 1], pixmap.pixels[i + 2]]
         };
-        assert_eq!(px(20, 10), [0, 255, 0], "the canvas shows what the script drew");
+        assert_eq!(
+            px(20, 10),
+            [0, 255, 0],
+            "the canvas shows what the script drew"
+        );
+    }
+
+    #[test]
+    fn a_2d_canvas_can_be_drawn_on_read_back_and_is_painted() {
+        let mut page = page(
+            "<body style='margin:0'><canvas id=c width=40 height=20></canvas><script>\
+             const c = document.getElementById('c'); const g = c.getContext('2d');\
+             g.fillStyle = '#ff0000'; g.fillRect(0, 0, 40, 20);\
+             g.fillStyle = 'rgb(0, 0, 255)'; g.fillRect(10, 5, 10, 10);\
+             const d = g.getImageData(12, 8, 1, 1).data;\
+             const copy = document.createElement('canvas'); copy.width = 4; copy.height = 4;\
+             copy.getContext('2d').drawImage(c, 10, 5, 2, 2, 0, 0, 4, 4);\
+             const e = copy.getContext('2d').getImageData(1, 1, 1, 1).data;\
+             console.log('RESULT ' + [d[0], d[1], d[2], d[3], e[0], e[1], e[2], e[3]].join(',') + ' ' + c.toDataURL().slice(0, 22));\
+             </script></body>",
+        );
+        page.settle();
+        let pixmap = page.render_visible();
+        let px = |x: usize, y: usize| {
+            let i = (y * pixmap.width as usize + x) * 4;
+            [pixmap.pixels[i], pixmap.pixels[i + 1], pixmap.pixels[i + 2]]
+        };
+        assert_eq!(px(2, 2), [255, 0, 0], "the red background");
+        assert_eq!(px(15, 10), [0, 0, 255], "the blue square");
+        let log = page.web_console().join("\n");
+        assert!(
+            log.contains("RESULT 0,0,255,255,0,0,255,255 data:image/png;base64,"),
+            "{log}"
+        );
+    }
+
+    #[test]
+    fn a_script_created_image_loads_fires_load_and_can_be_read_through_a_canvas() {
+        // A 2x1 PNG: red, blue.
+        let png = blueice_image::encode_png(&blueice_image::RasterImage::new(
+            2,
+            1,
+            vec![255, 0, 0, 255, 0, 0, 255, 255],
+        ))
+        .unwrap();
+        let url = format!(
+            "data:image/png;base64,{}",
+            crate::web::net::base64_encode(&png)
+        );
+        let mut page = page(&format!(
+            "<body><script>\
+             const img = new Image();\
+             img.onload = () => {{\
+               const c = document.createElement('canvas'); c.width = 2; c.height = 1;\
+               const g = c.getContext('2d'); g.drawImage(img, 0, 0);\
+               const d = g.getImageData(1, 0, 1, 1).data;\
+               console.log('RESULT ' + img.naturalWidth + 'x' + img.naturalHeight + ' ' + img.complete + ' ' + [d[0], d[1], d[2], d[3]].join(','));\
+             }};\
+             img.onerror = () => console.log('RESULT error');\
+             console.log('BEFORE ' + img.complete);\
+             img.src = '{url}';\
+             </script></body>"
+        ));
+        page.settle();
+        for _ in 0..50 {
+            page.tick_web();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let log = page.web_console().join("\n");
+        assert!(log.contains("RESULT 2x1 true 0,0,255,255"), "{log}");
+    }
+
+    #[test]
+    fn an_image_that_will_not_decode_fires_error() {
+        let mut page = page(
+            "<body><script>\
+             const img = new Image();\
+             img.onload = () => console.log('RESULT load');\
+             img.onerror = () => console.log('RESULT error ' + img.complete);\
+             img.src = 'data:image/png;base64,AAAA';\
+             </script></body>",
+        );
+        page.settle();
+        for _ in 0..50 {
+            page.tick_web();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let log = page.web_console().join("\n");
+        assert!(log.contains("RESULT error true"), "{log}");
     }
 
     #[test]

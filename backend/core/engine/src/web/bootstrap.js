@@ -1488,7 +1488,7 @@
   register(HTMLAnchorElement, 'a');
   class HTMLImageElement extends HTMLElement {
     get complete() {
-      return true;
+      return this._loading === undefined ? true : this._done === true;
     }
     get naturalWidth() {
       return this._natural()[0];
@@ -1497,6 +1497,7 @@
       return this._natural()[1];
     }
     _natural() {
+      if (this._nat) return this._nat;
       // The size the engine decoded the picture at, once it has one.
       const v = bi('computed', this._id, '-blueice-intrinsic-size');
       const parts = v ? v.split(' ').map(Number) : [];
@@ -1506,22 +1507,71 @@
       return this.src;
     }
     get width() {
-      return this.offsetWidth || parseInt(this.getAttribute('width'), 10) || 0;
+      return this.offsetWidth || parseInt(this.getAttribute('width'), 10) || (this._nat ? this._nat[0] : 0);
     }
     set width(v) {
       this.setAttribute('width', v);
     }
     get height() {
-      return this.offsetHeight || parseInt(this.getAttribute('height'), 10) || 0;
+      return this.offsetHeight || parseInt(this.getAttribute('height'), 10) || (this._nat ? this._nat[1] : 0);
     }
     set height(v) {
       this.setAttribute('height', v);
     }
     decode() {
-      return Promise.resolve();
+      if (this._loading === undefined || this._done) return this._failed ? Promise.reject(new DOMException('The image could not be decoded.', 'EncodingError')) : Promise.resolve();
+      return new Promise((resolve, reject) => (this._waiters = this._waiters || []).push([resolve, reject]));
+    }
+    // A script set `src`: fetch the picture (as an image request, which needs no
+    // CORS headers), decode it, then report `load` or `error` like a browser.
+    _startLoad() {
+      const url = this.src;
+      if (!url) return;
+      this._loading = url;
+      this._done = false;
+      this._failed = false;
+      this._nat = null;
+      const finish = (ok) => {
+        if (this._loading !== url) return;
+        this._done = true;
+        this._failed = !ok;
+        const waiters = this._waiters || [];
+        this._waiters = [];
+        for (const [resolve, reject] of waiters) {
+          if (ok) resolve(); else reject(new DOMException('The image could not be decoded.', 'EncodingError'));
+        }
+        this.dispatchEvent(new Event(ok ? 'load' : 'error'));
+      };
+      const decoded = (b64) => {
+        const wh = bi('imageSet', this._id, url, b64);
+        if (!wh) return finish(false);
+        this._nat = wh.split('x').map(Number);
+        finish(true);
+      };
+      // Delivered as a task, never before the script that set `src` has finished.
+      if (url.startsWith('data:')) {
+        setTimeout(() => decoded(''), 0);
+      } else {
+        netSend('GET', url, {}, null, (r) => {
+          if (r.status >= 200 && r.status < 300) decoded(bytesToBase64(r.bytes));
+          else finish(false);
+        }, () => finish(false), 'image');
+      }
     }
   }
-  reflect(HTMLImageElement.prototype, [['src', 'src', 'url'], ['srcset', 'srcset'], ['alt', 'alt'], ['sizes', 'sizes'], ['loading', 'loading'], ['crossOrigin', 'crossorigin']]);
+  {
+    reflect(HTMLImageElement.prototype, [['src', 'src', 'url']]);
+    const reflected = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get: reflected.get,
+      set(v) {
+        reflected.set.call(this, v);
+        this._startLoad();
+      },
+    });
+  }
+  reflect(HTMLImageElement.prototype, [['srcset', 'srcset'], ['alt', 'alt'], ['sizes', 'sizes'], ['loading', 'loading'], ['crossOrigin', 'crossorigin']]);
   register(HTMLImageElement, 'img');
   class HTMLInputElement extends HTMLElement {
     get value() {
@@ -1687,6 +1737,126 @@
   }
   reflect(HTMLIFrameElement.prototype, [['src', 'src', 'url'], ['name', 'name']]);
   register(HTMLIFrameElement, 'iframe');
+
+  // ----------------------------------------------------------- canvas 2D
+  const bytesToBase64 = (u8) => (typeof u8.toBase64 === 'function' ? u8.toBase64() : toBase64(u8));
+  const base64ToBytes = (text) => (typeof Uint8Array.fromBase64 === 'function' ? Uint8Array.fromBase64(text) : fromBase64(text));
+  class ImageData {
+    constructor(a, b, c) {
+      if (ArrayBuffer.isView(a)) {
+        this.data = a instanceof Uint8ClampedArray ? a : new Uint8ClampedArray(a.buffer, a.byteOffset, a.byteLength);
+        this.width = b;
+        this.height = c !== undefined ? c : this.data.length / 4 / b;
+      } else {
+        this.width = a;
+        this.height = b;
+        this.data = new Uint8ClampedArray(a * b * 4);
+      }
+      this.colorSpace = 'srgb';
+    }
+  }
+  const pixelsOf = (source) => {
+    // [w, h, base64] for a picture a script can draw: an image, canvas or ImageData.
+    if (source && source.data && source.width !== undefined && !source.tagName) {
+      return [source.width, source.height, bytesToBase64(new Uint8Array(source.data.buffer, source.data.byteOffset, source.data.byteLength))];
+    }
+    if (source && source._id !== undefined && source.tagName) {
+      const out = bi(source.tagName === 'CANVAS' ? 'canvasPixels' : 'imagePixels', source._id);
+      if (out) {
+        const sep = out.indexOf(':');
+        const [w, h] = out.slice(0, sep).split('x').map(Number);
+        return [w, h, out.slice(sep + 1)];
+      }
+    }
+    return null;
+  };
+  class CanvasRenderingContext2D {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this._id = bi('c2dCreate', canvas._id, canvas.width, canvas.height);
+      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', lineWidth: 1 };
+      this._stack = [];
+    }
+    _c(op, ...args) {
+      return bi('c2d', this._id, op, ...args);
+    }
+    get fillStyle() { return this._state.fillStyle; }
+    set fillStyle(v) { if (typeof v === 'string') this._state.fillStyle = v; }
+    get strokeStyle() { return this._state.strokeStyle; }
+    set strokeStyle(v) { if (typeof v === 'string') this._state.strokeStyle = v; }
+    get globalAlpha() { return this._state.globalAlpha; }
+    set globalAlpha(v) { v = Number(v); if (v >= 0 && v <= 1) this._state.globalAlpha = v; }
+    get font() { return this._state.font; }
+    set font(v) { this._state.font = String(v); }
+    get lineWidth() { return this._state.lineWidth; }
+    set lineWidth(v) { this._state.lineWidth = Number(v) || 1; }
+    save() { this._stack.push(Object.assign({}, this._state, { m: this._state.m.slice() })); }
+    restore() { if (this._stack.length) this._state = this._stack.pop(); }
+    setTransform(a, b, c, d, e, f) {
+      if (a && typeof a === 'object') { b = a.b; c = a.c; d = a.d; e = a.e; f = a.f; a = a.a; }
+      this._state.m = [a, b, c, d, e, f];
+    }
+    resetTransform() { this._state.m = [1, 0, 0, 1, 0, 0]; }
+    getTransform() { const m = this._state.m; return { a: m[0], b: m[1], c: m[2], d: m[3], e: m[4], f: m[5] }; }
+    transform(a, b, c, d, e, f) {
+      const m = this._state.m;
+      this._state.m = [m[0] * a + m[2] * b, m[1] * a + m[3] * b, m[0] * c + m[2] * d, m[1] * c + m[3] * d, m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]];
+    }
+    translate(x, y) { this.transform(1, 0, 0, 1, x, y); }
+    scale(x, y) { this.transform(x, 0, 0, y, 0, 0); }
+    rotate(a) { const c = Math.cos(a), s = Math.sin(a); this.transform(c, s, -s, c, 0, 0); }
+    fillRect(x, y, w, h) { this._c('fillRect', x, y, w, h, this._state.fillStyle, this._state.globalAlpha, JSON.stringify(this._state.m)); }
+    clearRect(x, y, w, h) { this._c('clearRect', x, y, w, h, '#000', 1, JSON.stringify(this._state.m)); }
+    strokeRect() {}
+    drawImage(source, a, b, c, d, e, f, g, h) {
+      const px = pixelsOf(source);
+      if (!px) return;
+      const [w, hh, data] = px;
+      let sx = 0, sy = 0, sw = w, sh = hh, dx, dy, dw, dh;
+      const n = arguments.length;
+      if (n >= 9) { sx = a; sy = b; sw = c; sh = d; dx = e; dy = f; dw = g; dh = h; }
+      else if (n >= 5) { dx = a; dy = b; dw = c; dh = d; }
+      else { dx = a; dy = b; dw = w; dh = hh; }
+      this._c('drawImage', w, hh, data, sx, sy, sw, sh, dx, dy, dw, dh, this._state.globalAlpha, JSON.stringify(this._state.m));
+    }
+    getImageData(x, y, w, h) {
+      const out = new ImageData(w, h);
+      const b64 = this._c('getImageData', x, y, w, h);
+      out.data.set(base64ToBytes(b64));
+      return out;
+    }
+    putImageData(image, x, y) {
+      const bytes = new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength);
+      this._c('putImageData', bytesToBase64(bytes), image.width, image.height, x, y);
+    }
+    createImageData(w, h) { return w && typeof w === 'object' ? new ImageData(w.width, w.height) : new ImageData(w, h); }
+    // Paths, text and gradients are accepted and draw nothing yet.
+    beginPath() {}
+    closePath() {}
+    moveTo() {}
+    lineTo() {}
+    bezierCurveTo() {}
+    quadraticCurveTo() {}
+    arc() {}
+    arcTo() {}
+    ellipse() {}
+    rect() {}
+    roundRect() {}
+    fill() {}
+    stroke() {}
+    clip() {}
+    fillText() {}
+    strokeText() {}
+    measureText(text) { return { width: String(text).length * 6, actualBoundingBoxLeft: 0, actualBoundingBoxRight: String(text).length * 6, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }; }
+    setLineDash() {}
+    getLineDash() { return []; }
+    createLinearGradient() { return { addColorStop() {} }; }
+    createRadialGradient() { return { addColorStop() {} }; }
+    createPattern() { return null; }
+    isPointInPath() { return false; }
+    getContextAttributes() { return { alpha: true, desynchronized: false, colorSpace: 'srgb', willReadFrequently: false }; }
+    _resize(w, h) { this._c('resize', w, h); }
+  }
   // -------------------------------------------------------------- WebGL
   const GL_CONSTANTS = {
     DEPTH_BUFFER_BIT: 256, STENCIL_BUFFER_BIT: 1024, COLOR_BUFFER_BIT: 16384,
@@ -2106,16 +2276,7 @@
     }
     _pixels(source) {
       // The RGBA bytes of an image, canvas or ImageData, as [w, h, base64].
-      if (source && source.data && source.width !== undefined) return [source.width, source.height, toBase64(glBytes(source.data))];
-      if (source && source._id !== undefined && source.tagName) {
-        const out = bi('imagePixels', source._id);
-        if (out) {
-          const sep = out.indexOf(':');
-          const [w, h] = out.slice(0, sep).split('x').map(Number);
-          return [w, h, out.slice(sep + 1)];
-        }
-      }
-      return [1, 1, toBase64(new Uint8Array([0, 0, 0, 0]))];
+      return pixelsOf(source) || [1, 1, toBase64(new Uint8Array([0, 0, 0, 0]))];
     }
     texImage2D(target, level, internal, a, b, c, d, e, f) {
       if (arguments.length >= 8) {
@@ -2258,6 +2419,17 @@
         }
         return this._gl;
       }
+      if (type === '2d') {
+        if (this._gl) return null;
+        if (!this._c2d) {
+          try {
+            this._c2d = new CanvasRenderingContext2D(this);
+          } catch (e) {
+            return null;
+          }
+        }
+        return this._c2d;
+      }
       return null;
     }
     get width() {
@@ -2267,6 +2439,7 @@
     set width(v) {
       this.setAttribute('width', String(v >>> 0));
       if (this._gl) this._gl._resize(this.width, this.height);
+      if (this._c2d) this._c2d._resize(this.width, this.height);
     }
     get height() {
       const v = parseInt(this.getAttribute('height'), 10);
@@ -2275,8 +2448,13 @@
     set height(v) {
       this.setAttribute('height', String(v >>> 0));
       if (this._gl) this._gl._resize(this.width, this.height);
+      if (this._c2d) this._c2d._resize(this.width, this.height);
     }
     toDataURL(type) {
+      if (this._c2d) {
+        const png = bi('c2dPng', this._c2d._id);
+        if (png) return 'data:image/png;base64,' + png;
+      }
       if (this._gl) {
         const png = bi('glPng', this._gl._id);
         if (png) return 'data:image/png;base64,' + png;
@@ -2292,7 +2470,7 @@
     transferControlToOffscreen() { throw new DOMException('Not supported', 'InvalidStateError'); }
   }
   register(HTMLCanvasElement, 'canvas');
-  Object.assign(global, { WebGLRenderingContext, WebGL2RenderingContext, WebGLBuffer, WebGLShader, WebGLProgram,
+  Object.assign(global, { CanvasRenderingContext2D, ImageData, WebGLRenderingContext, WebGL2RenderingContext, WebGLBuffer, WebGLShader, WebGLProgram,
     WebGLTexture, WebGLFramebuffer, WebGLRenderbuffer, WebGLVertexArrayObject, WebGLUniformLocation, WebGLActiveInfo,
     WebGLShaderPrecisionFormat });
   class HTMLMediaElement extends HTMLElement {
@@ -3200,8 +3378,8 @@
     return out;
   };
   const netPending = new Map();
-  const netSend = (method, url, headers, body, onDone, onFail) => {
-    const id = bi('netStart', method, url, JSON.stringify(headers), body && body.length ? toBase64(body) : '');
+  const netSend = (method, url, headers, body, onDone, onFail, kind) => {
+    const id = bi('netStart', method, url, JSON.stringify(headers), body && body.length ? toBase64(body) : '', kind || '');
     netPending.set(id, { onDone, onFail });
     return id;
   };
@@ -3972,7 +4150,7 @@
         const entry = netPending.get(id);
         if (!entry) return;
         netPending.delete(id);
-        entry.onDone({ status, statusText, headers: new Headers(JSON.parse(headersJson)), bytes: fromBase64(bodyBase64), url });
+        entry.onDone({ status, statusText, headers: new Headers(JSON.parse(headersJson)), bytes: bodyBase64.length > 4096 ? base64ToBytes(bodyBase64) : fromBase64(bodyBase64), url });
       },
       netFail(id, message) {
         const entry = netPending.get(id);

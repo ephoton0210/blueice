@@ -60,6 +60,15 @@ pub fn parse_selectors(text: &str) -> Vec<ComplexSelector> {
 }
 pub use value::{Color, Length, LengthContext, Value};
 
+/// Parses one CSS colour (`#rgb`, `rgb()`, a name, ...) as a script gives it to
+/// a canvas; `None` for anything that is not a colour or is `currentColor`.
+pub fn parse_css_color(text: &str) -> Option<(u8, u8, u8, u8)> {
+    match color::parse_color(&tokenizer::tokenize(text.trim())) {
+        Some(Color::Rgba(r, g, b, a)) => Some((r, g, b, a)),
+        _ => None,
+    }
+}
+
 /// A parsed CSS stylesheet: its rules, in source order. Not yet matched
 /// against any DOM -- see [`cascade`] for that.
 #[derive(Debug, Clone, PartialEq)]
@@ -84,6 +93,18 @@ pub fn parse_with_environment(input: &str, environment: &MediaEnvironment) -> St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_script_colour_string_parses_or_is_refused() {
+        assert_eq!(parse_css_color(" #ff8000 "), Some((255, 128, 0, 255)));
+        assert_eq!(
+            parse_css_color("rgba(0, 0, 255, 0.5)"),
+            Some((0, 0, 255, 128))
+        );
+        assert_eq!(parse_css_color("red"), Some((255, 0, 0, 255)));
+        assert_eq!(parse_css_color("not a colour"), None);
+        assert_eq!(parse_css_color("currentColor"), None);
+    }
 
     #[test]
     fn public_parse_api_produces_a_stylesheet() {
