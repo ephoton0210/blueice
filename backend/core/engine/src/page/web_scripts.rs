@@ -819,8 +819,7 @@ mod tests {
                     .unwrap();
                 let mut received = Vec::new();
                 let mut buf = [0u8; 4096];
-                loop {
-                    let Ok(n) = stream.read(&mut buf) else { break };
+                while let Ok(n) = stream.read(&mut buf) {
                     if n == 0 {
                         break;
                     }
