@@ -32,6 +32,9 @@ use std::rc::Rc;
 use std::time::Instant;
 
 /// Per-execution fuel for page code: a bundle's top level can run for a while.
+/// The longest single string a page script may build (a base64 file body).
+const MAX_STRING_BYTES: usize = 48 * 1024 * 1024;
+
 const INSTRUCTION_BUDGET: u64 = 400_000_000;
 /// Heap a document's script may hold.
 const MAX_HEAP_BYTES: usize = 384 * 1024 * 1024;
@@ -83,6 +86,9 @@ impl WebHost {
         let defaults = VmConfig::default();
         let config = VmConfig {
             instruction_budget: INSTRUCTION_BUDGET,
+            // Response bodies and picture data cross into the realm as base64 text, so a
+            // script's one string may be a large file; the heap budget still bounds the total.
+            max_string_bytes: MAX_STRING_BYTES,
             heap: blueice_bluejs::HeapConfig {
                 max_heap_bytes: MAX_HEAP_BYTES,
                 ..defaults.heap

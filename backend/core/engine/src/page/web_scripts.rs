@@ -738,6 +738,40 @@ mod tests {
     }
 
     #[test]
+    fn an_image_made_with_create_element_ns_is_a_real_image_element() {
+        let mut page = page(
+            "<body><script>\
+             const a = document.createElementNS('http://www.w3.org/1999/xhtml', 'img');\
+             const b = document.createElement('img');\
+             console.log('RESULT ' + (a instanceof HTMLImageElement) + ' ' + (b instanceof HTMLImageElement) + ' ' + typeof a._startLoad);\
+             </script></body>",
+        );
+        page.settle();
+        let log = page.web_console().join("\n");
+        assert!(log.contains("RESULT true true function"), "{log}");
+    }
+
+    #[test]
+    fn a_response_body_larger_than_a_megabyte_reaches_the_script_whole() {
+        // 3 MiB: base64 text of this is far past the old 1 MiB single-string limit.
+        let body: &'static str = Box::leak("x".repeat(3 * 1024 * 1024).into_boxed_str());
+        let origin = serve(vec![("/big", "application/octet-stream", body)]);
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.set_network_review(Arc::new(|_| true));
+        p.load_html_str(
+            "<body><script>\
+             fetch('/big').then((r) => r.arrayBuffer()).then((b) => console.log('RESULT ' + b.byteLength))\
+               .catch((e) => console.log('RESULT error ' + e));\
+             </script></body>",
+            Some(format!("{origin}/start")),
+        );
+        wait_for(&mut p, |p| p.web_console().iter().any(|l| l.contains("RESULT")));
+        let log = p.web_console().join("\n");
+        assert!(log.contains(&format!("RESULT {}", body.len())), "{log}");
+    }
+
+    #[test]
     fn scripts_are_off_unless_enabled() {
         let mut page = Page::new(400.0, 300.0);
         page.set_web_scripts(false);
