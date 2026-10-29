@@ -416,6 +416,64 @@ the intended regions, the search field and navigation visible and clickable, and
 a Chromium side-by-side recorded (Phase 15 differential harness) with the known
 remaining differences listed, not hidden. It does not claim site compatibility.
 
+## Page scripts: the web-compat host (2026-10-28)
+
+Ordinary web JavaScript now runs against the page's own DOM, **in-process and
+opt-in** (`blueice-core --web-scripts`, off by default). This is a deliberate
+departure from decision 3 above (typed, owner-selected profiles executed by the
+out-of-process host) and needs the owner's review before it is on by default:
+those profiles stay, unchanged, for BlueTS; this path exists because real sites
+need hundreds of web members no per-profile typing exercise will produce soon.
+
+- **Shape.** `engine/src/web/`: one native function, `__bi(op, ...)`, with
+  primitives over the page's `Document` (`dom_bridge.rs`, pure Rust, tested without
+  a VM), and the web platform written in JavaScript on top (`bootstrap.js`: Node,
+  Element and about 70 HTML element classes, events with capture/bubble, `classList`,
+  `dataset`, `style`, `querySelector`, `innerHTML`/`insertAdjacentHTML`, `DOMParser`,
+  templates, custom elements with upgrade, `MutationObserver`, a real
+  `IntersectionObserver` driven by layout rects and scroll, `ResizeObserver`,
+  `location`, `history` with `pushState`/`popstate`, `URL`/`URLSearchParams`,
+  storage, `matchMedia`, `getComputedStyle`, timers/`requestAnimationFrame`/
+  `requestIdleCallback`, `fetch`/`Headers`/`Request`/`Response`/`FormData`,
+  `XMLHttpRequest`, `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `structuredClone`...).
+  The page can shadow or break all of it without affecting the host, which validates
+  every primitive.
+- **One DOM.** The realm borrows the page's `Document`, styles and layout boxes for
+  each turn and gives them back; changes go through the ordinary restyle, layout,
+  paint and frame publication (at most one script relayout per 250 ms).
+- **Loading.** After both gatekeeper stages clear, the navigation thread fetches the
+  document's external scripts, its module graph (module scripts, `modulepreload`,
+  `*-url` island attributes, static imports, literal `import()`), stylesheets and
+  images, each hop behind the same URL review. Classic scripts run in order, then
+  `defer`, then modules; `DOMContentLoaded`/`load` fire; timers run from the session
+  tick; a script that fails ends only itself; startup is bounded to 6 s.
+- **Network.** `fetch`/XHR are typed jobs on worker threads (`blueice-net`'s
+  `fetch_script_request_hop`): every connection (request, preflight, redirect hop) is
+  reviewed first, cross-origin responses need `Access-Control-Allow-Origin` (non-simple
+  requests get a preflight), forbidden request headers are dropped, no cookies are sent
+  and `Set-Cookie` is never exposed, bodies are bounded (16 MiB). Without a review a
+  page cannot fetch at all. PJAX (fetch, `DOMParser`, swap, `pushState`) is covered by a
+  real-interface test.
+- **Measured (Cloudflare, 2026-10-28).** The page's Astro islands now hydrate (React
+  components from the fetched module graph, GSAP, the nav scripts), 124 images paint
+  (92 before), and content below the fold is revealed by scrolling, as in a browser:
+  Chromium also shows those bands empty until they are scrolled into view. A full-page
+  raster at scroll 0 therefore still has empty bands; `BI_SCROLL=1` in the live tool
+  scrolls through first.
+- **Known limits, in the order they bite.** (1) Speed: restyle + layout of the 650 KB
+  Tailwind page takes ~0.9 s and every script change pays it (there is no incremental
+  restyle), module compilation of the 110-module graph takes ~1.5 s, and starting the
+  page's scripts takes ~15 s in total on this page, which blocks the session thread
+  (bounded by the 6 s budget, which this page nearly spends). (2) No cookie jar: scripts
+  and requests carry none; `document.cookie` is per page and not persistent;
+  `localStorage` does not persist. (3) `import.meta.url`, import maps, top-level
+  `await` and module workers are unsupported; `<script type=module>` entries are
+  linked one entry at a time. (4) No shadow DOM rendering (`attachShadow` returns a
+  detached root), no `Range`/`Selection`, no canvas, no WebSocket/EventSource, no
+  service workers, no synchronous XHR. (5) Scripts' own `fetch`es are not shown in the
+  request-lifecycle record that downloads have. (6) The core's AI snapshot does not
+  list generated or script-hidden content differently from other content.
+
 ## Non-goals
 
 - Raw HTTP/DOM handles for AI clients; the MCP surface stays typed and

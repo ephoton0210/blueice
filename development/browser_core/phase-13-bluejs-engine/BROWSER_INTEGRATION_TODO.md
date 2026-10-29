@@ -230,32 +230,32 @@ Done: `window`/`self`/`top`/`parent` (M1l); `console` (M1m); `URL`,
 
 Open:
 
-- [ ] `location`, `history`, `navigator`
-- [ ] `URLSearchParams`
-- [ ] `TextEncoder` / `TextDecoder`, `atob` / `btoa`
-- [ ] `structuredClone`, `performance.now`
+- [x] `location`, `history`, `navigator` *(web-compat host, opt-in; see phase 27)*
+- [x] `URLSearchParams`
+- [x] `TextEncoder` / `TextDecoder`, `atob` / `btoa`
+- [x] `structuredClone`, `performance.now`
 - [ ] `localStorage` / `sessionStorage` (policy + persistence design first)
 - [ ] `WritableStream` / `TransformStream` / `CompressionStream` (needed by
       `fetch` bodies)
-- [ ] `crypto.getRandomValues` / `randomUUID`; injectable entropy and clock
+- [x] `crypto.getRandomValues` / `randomUUID` (not cryptographically strong; injectable entropy and clock open)
 
 ## D. DOM bindings (P1)
 
 Bound today: `document.getElementById`, `createElement`, `createTextNode`,
 `textContent`, `appendChild`, and `click` listeners.
 
-- [ ] `querySelector` / `querySelectorAll`, `getElementsBy*`
-- [ ] Attributes (`getAttribute`, `setAttribute`, `dataset`), `id`,
+- [x] `querySelector` / `querySelectorAll`, `getElementsBy*` *(web-compat host)*
+- [x] Attributes (`getAttribute`, `setAttribute`, `dataset`), `id`,
       `className`, `classList`
-- [ ] Inline `style` and `getComputedStyle`
-- [ ] Tree mutation: `insertBefore`, `removeChild`, `replaceChild`, `remove`,
+- [x] Inline `style` and `getComputedStyle`
+- [x] Tree mutation: `insertBefore`, `removeChild`, `replaceChild`, `remove`,
       `innerHTML` / `outerHTML`, `cloneNode`
-- [ ] Traversal: `parentNode`, `children`, `firstChild`, `nextSibling`, …
-- [ ] Events: `input`, `change`, `submit`, keyboard, focus, capture/bubble,
-      `stopPropagation`, `DOMContentLoaded`, `load`
+- [x] Traversal: `parentNode`, `children`, `firstChild`, `nextSibling`, …
+- [x] Events: capture/bubble, `stopPropagation`, `DOMContentLoaded`, `load`
+      (native-originated `input`/`change`/`submit`/keyboard events are still open)
 - [ ] Form state: `value`, `checked`, `FormData`
-- [ ] Layout reads: `getBoundingClientRect`, `offset*`, `scroll*`
-- [ ] `MutationObserver`, `IntersectionObserver`, `ResizeObserver`
+- [x] Layout reads: `getBoundingClientRect`, `offset*` (scroll offsets of elements are not tracked)
+- [x] `MutationObserver`, `IntersectionObserver` (layout-driven), `ResizeObserver` (initial report only)
 - [ ] Generated `lib.dom.d.ts` kept in lockstep with each installed binding
 
 ## E. Networking (P1, Phase 17; depends on A)
