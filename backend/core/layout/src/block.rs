@@ -467,7 +467,7 @@ fn layout_block_level_uncached(
         Some(w) => Some((w - pb_h).max(0.0)),
         None => style.px("width", cbw).map(to_content_w),
     };
-    let (content_width, width_determined) = match specified_width {
+    let (mut content_width, width_determined) = match specified_width {
         Some(w) => (clamp_width(w), true),
         None => {
             let available = (cbw - margin_left - margin_right - pb_h).max(0.0);
@@ -535,6 +535,42 @@ fn layout_block_level_uncached(
         bottom_pass = Margin::default();
         pending_abs = Vec::new();
         extent = 0.0;
+        empty = false;
+    } else if matches!(display, Display::Table | Display::InlineTable) {
+        let table = crate::table::layout_table(
+            ctx,
+            node,
+            &crate::table::TableInput {
+                available: content_width,
+                specified: forced
+                    .width
+                    .is_none()
+                    .then_some(specified_width)
+                    .flatten()
+                    .map(clamp_width),
+                forced: forced.width.map(|w| (w - pb_h).max(0.0)),
+                definite_height: child_cb_height,
+            },
+        );
+        content_width = table.width;
+        if forced.width.is_none() && (auto_left || auto_right) {
+            let free = (cbw - content_width - pb_h - margin_left - margin_right).max(0.0);
+            match (auto_left, auto_right) {
+                (true, true) => {
+                    margin_left = free / 2.0;
+                    margin_right = free - margin_left;
+                }
+                (true, false) => margin_left = free,
+                (false, true) => margin_right = free,
+                (false, false) => {}
+            }
+        }
+        children = table.children;
+        content_flow_height = table.height;
+        top_pass = Margin::default();
+        bottom_pass = Margin::default();
+        pending_abs = table.pending_abs;
+        extent = table.width;
         empty = false;
     } else if matches!(display, Display::Flex | Display::InlineFlex) {
         let flex = crate::flex::layout_flex(

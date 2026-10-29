@@ -166,6 +166,16 @@ impl<'a> Ctx<'a> {
         matches!(self.doc.data(node), NodeData::Element { .. })
     }
 
+    pub fn attr(&self, node: NodeId, name: &str) -> Option<&str> {
+        match self.doc.data(node) {
+            NodeData::Element { attributes, .. } => attributes
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v.as_str()),
+            _ => None,
+        }
+    }
+
     pub fn tag(&self, node: NodeId) -> Option<&str> {
         match self.doc.data(node) {
             NodeData::Element { tag_name, .. } => Some(tag_name.as_str()),

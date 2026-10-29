@@ -621,11 +621,20 @@ pub const UA_STYLESHEET_SOURCE: &str = r#"
 html, body, div, p, ul, ol, li, section, article, header, footer, nav,
 main, aside, figure, figcaption, blockquote, pre, form, fieldset, legend,
 address, hgroup, details, summary, dialog, dl, dt, dd, menu, center,
-table, thead, tbody, tfoot, tr, td, th, caption, colgroup,
 h1, h2, h3, h4, h5, h6, hr, search, optgroup {
   display: block;
 }
 li { display: list-item; }
+table { display: table; border-spacing: 2px; box-sizing: border-box; }
+caption { display: table-caption; text-align: center; }
+thead { display: table-header-group; }
+tbody { display: table-row-group; }
+tfoot { display: table-footer-group; }
+tr { display: table-row; }
+td, th { display: table-cell; padding: 1px; vertical-align: inherit; }
+col, colgroup { display: table-column; }
+thead, tbody, tfoot, tr { vertical-align: middle; }
+th { text-align: center; }
 button, input, select, textarea {
   display: inline-block;
 }
@@ -647,7 +656,7 @@ input[type="checkbox"], input[type="radio"] { width: 1.5em; height: 1.5em; paddi
 input[type="range"] { width: 12em; height: 1.5em; }
 [hidden], input[type="hidden"] { display: none; }
 area, base, basefont, datalist, head, link, meta, noembed, noframes, param,
-rp, script, style, template, title, colgroup {
+rp, script, style, template, title {
   display: none;
 }
 /* Text-level semantics. */

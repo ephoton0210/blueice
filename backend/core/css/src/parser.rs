@@ -468,6 +468,28 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             _ => vec![],
         };
     }
+    // Grid track lists, lines and areas are interpreted by layout, which
+    // needs their tokens (`repeat()`, `minmax()`, `1fr`, `span 2`).
+    if matches!(
+        property,
+        "grid-template-columns"
+            | "grid-template-rows"
+            | "grid-template-areas"
+            | "grid-auto-columns"
+            | "grid-auto-rows"
+            | "grid-column"
+            | "grid-row"
+            | "grid-area"
+    ) {
+        let trimmed = trim_ws(value_tokens);
+        if !matches!(trimmed, [Token::Ident(_)]) || property.ends_with("areas") {
+            return if trimmed.is_empty() {
+                vec![]
+            } else {
+                vec![(property.to_string(), Value::Unparsed(trimmed.to_vec()))]
+            };
+        }
+    }
     match property {
         "margin" | "padding" => expand_box_shorthand_property(property, "", value_tokens, true),
         "border-width" => expand_box_shorthand_property("border", "-width", value_tokens, true),

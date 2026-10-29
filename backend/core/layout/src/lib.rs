@@ -23,6 +23,7 @@ mod fragment;
 mod inline;
 mod intrinsic;
 mod native_text;
+mod table;
 mod text;
 
 pub use block::update_select_option_bounds;
