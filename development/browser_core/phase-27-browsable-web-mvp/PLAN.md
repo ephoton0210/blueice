@@ -463,7 +463,8 @@ need hundreds of web members no per-profile typing exercise will produce soon.
   `poster` in AVIF (not decodable here) and zero height, and the other empty boxes are
   scripted animation hosts. So the remaining blanks are missing features, in order of
   size: `<canvas>` (2D and WebGL), `<video>`/poster painting, AVIF, and `position:
-  sticky`/`transform`-driven scenes.
+  sticky`/`transform`-driven scenes. (`<canvas>` is now done; see "Canvas and software
+  WebGL" below.)
 - **Known limits, in the order they bite.** (1) Speed: restyle + layout of the 650 KB
   Tailwind page takes ~0.9 s and every script change pays it (there is no incremental
   restyle), module compilation of the 110-module graph takes ~1.5 s, and starting the
@@ -473,10 +474,79 @@ need hundreds of web members no per-profile typing exercise will produce soon.
   `localStorage` does not persist. (3) `import.meta.url`, import maps, top-level
   `await` and module workers are unsupported; `<script type=module>` entries are
   linked one entry at a time. (4) No shadow DOM rendering (`attachShadow` returns a
-  detached root), no `Range`/`Selection`, no canvas, no WebSocket/EventSource, no
+  detached root), no `Range`/`Selection`, no canvas paths/text/gradients, no WebSocket/EventSource, no
   service workers, no synchronous XHR. (5) Scripts' own `fetch`es are not shown in the
   request-lifecycle record that downloads have. (6) The core's AI snapshot does not
   list generated or script-hidden content differently from other content.
+
+## Canvas and software WebGL (2026-10-28/29)
+
+Cloudflare's last big blank band was a three.js globe (react-three-fiber, WebGL2), so the
+branch grew a software WebGL and the browser pieces three.js needs. It now renders:
+the globe's graticule and the land-point dots (North and South America in the measured
+render) paint into the page through the same image map as `<img>`.
+
+- **`backend/core/gl` (`blueice-gl`).** Pure computation, no I/O. A GLSL ES 1.00/3.00
+  front end (preprocessor, lexer, parser) and a tree-walking interpreter with
+  slot-resolved names; a `Context` holding buffers, VAOs, programs and uniforms
+  (arrays, matrices, samplers), textures (wrap, filters, mipmaps, cube maps, half-float
+  and packed uploads), framebuffers and renderbuffers. A draw call shades vertices on
+  several threads, assembles and clips primitives against the near/far planes
+  (x/y are handled by the viewport bounding box), then rasterizes perspective-correct
+  with depth, blending, culling, scissor, instancing, points and lines. Fragments are
+  shaded in thin row bands taken from a shared queue, with primitives pre-binned to
+  the bands they touch. A matrix attribute (`mat4` instance transforms) occupies one
+  location per column. A fragment varying the vertex shader lacks links only if the
+  fragment shader never reads it (three.js declares unused ones).
+- **Budget.** One draw call may shade fragments for 1.5 s (`Context::draw_budget`),
+  checked per fragment; a context whose draws keep running out stops drawing after
+  three. A page can therefore never hold the session for more than that per draw.
+- **Not built.** Screen-space derivatives (`dFdx`/`dFdy`/`fwidth` return 0), per-pixel
+  mip level selection (level 0 unless the shader gives a LOD), multisampling,
+  `blitFramebuffer`, 3D/array textures, uniform blocks as buffers, transform
+  feedback, stencil, queries and sync objects (accepted and inert).
+- **Page side.** `web/gl_bridge.rs` is one `gl` primitive (`context id`, `operation`,
+  arguments; binary data as base64, number lists as JSON); `bootstrap.js` provides
+  `WebGLRenderingContext`/`WebGL2RenderingContext` and the object classes over it.
+  `getParameter`/`getExtension` report a small, honest capability set; the renderer
+  string is `BlueIce WebGL` (Cloudflare turns 3D off for a renderer whose name
+  contains "software") and `WEBGL_debug_renderer_info` is not offered.
+- **Canvas 2D (`web/canvas2d.rs`).** A straight-alpha bitmap with `fillRect`,
+  `clearRect`, `drawImage` (scaling, cropping, affine transforms, bilinear),
+  `getImageData`/`putImageData`, `toDataURL`. Paths, text and gradients are accepted
+  and draw nothing. Both canvas kinds paint through the image map, without a restyle
+  after the first picture.
+- **Images from script.** `new Image().src = url` (and `data:` URLs) is fetched as a
+  no-cors request (`NetJob::no_cors`; every hop is still reviewed), decoded, sized,
+  and reports `load`/`error`; `decode()` works, and the picture is available to
+  `drawImage`/`texImage2D` and to `<img src=url>` painting.
+- **Things this needed that are not WebGL.** A 48 MiB single-string limit for page
+  realms (the default 1 MiB made any response body over about 768 KB fail, because
+  bodies cross as base64 text); `ResizeObserver` reporting size changes after each
+  layout and delivering its first report a frame late (react-use-measure ignores a
+  size reported before it has mounted); and **finished CSS animations**: a rule
+  whose `animation` is finite and keeps its last frame (`forwards`/`both`) gets that
+  keyframe applied as its final state, because Cloudflare hides every canvas with
+  `opacity:0; animation: ... both canvas-fade-in`. Only `@keyframes` in the same
+  sheet are found, and nothing is animated.
+- **Measured.** Per-run interpreter cost for a dumped three.js `MeshBasicMaterial`
+  shader: about 0.7 us per vertex, about 6 us per fragment (`bench_vertex`). The
+  globe's instanced dot draw (2.4 M vertex runs) takes about 0.4 s of vertex shading and
+  0.2 s of assembly, with the fragment stage in the tens of milliseconds. The page
+  itself is the slow part: reaching the first render takes minutes in the developer tool
+  (every GSAP-driven DOM change repays a ~1 s restyle and layout, which also starves
+  timers), so an interactive session shows the globe much later than a browser would.
+- **Developer tools.** `live_page_to_png` takes `BI_SCROLL_TO` (scroll there and keep
+  ticking for `BI_SCROLL_SECS`), `BI_DUMP_GLSL=<dir>` (keeps every shader the page
+  compiles), `BI_GL_PROFILE` (per-draw stage timings) and `BI_DIAG` (draw durations).
+  `blueice-gl`'s `bench_vertex` measures a dumped shader's cost
+  (`BI_VERT`/`BI_FRAG`).
+- **Next.** Incremental restyle (the real limit now), derivatives and mip LOD for
+  shaders that use them, `<video>` poster painting and AVIF, a persistent cookie jar,
+  unhandled-rejection reporting in the page realm (calling
+  `install_host_rejection_tracking` makes the realm's own bootstrap fail with "page
+  scheduling budget exhausted", so it needs a budget decision first), and stack traces on BlueJS errors (a thrown error names no function today,
+  which made the diagnosis above much slower).
 
 ## Non-goals
 

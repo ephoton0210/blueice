@@ -238,6 +238,7 @@ Open:
 - [ ] `WritableStream` / `TransformStream` / `CompressionStream` (needed by
       `fetch` bodies)
 - [x] `crypto.getRandomValues` / `randomUUID` (not cryptographically strong; injectable entropy and clock open)
+- [x] `HTMLCanvasElement` with `getContext('2d')` (rects, `drawImage`, pixels, `toDataURL`) and `'webgl'`/`'webgl2'` (software, `blueice-gl`); `ImageData`; images loaded from script with `load`/`error`. Open: 2D paths/text/gradients, `OffscreenCanvas`, `createImageBitmap`, WebGL derivatives and mip LOD *(phase 27)*
 
 ## D. DOM bindings (P1)
 
