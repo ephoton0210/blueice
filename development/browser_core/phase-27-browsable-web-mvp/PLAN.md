@@ -455,11 +455,15 @@ need hundreds of web members no per-profile typing exercise will produce soon.
   page cannot fetch at all. PJAX (fetch, `DOMParser`, swap, `pushState`) is covered by a
   real-interface test.
 - **Measured (Cloudflare, 2026-10-28).** The page's Astro islands now hydrate (React
-  components from the fetched module graph, GSAP, the nav scripts), 124 images paint
-  (92 before), and content below the fold is revealed by scrolling, as in a browser:
-  Chromium also shows those bands empty until they are scrolled into view. A full-page
-  raster at scroll 0 therefore still has empty bands; `BI_SCROLL=1` in the live tool
-  scrolls through first.
+  components from the fetched module graph, GSAP, the nav scripts) and 124 images paint
+  (92 before). The big empty bands that remain are **not** content hidden by `opacity:0`
+  (an earlier note here said scrolling would reveal them; a scrolled-through render
+  showed it does not). Probed in the page's own realm: the 500 px band under "Region:
+  Earth" is a `<canvas>` (the globe, 1278x500; WebGL content), the hero `<video>` has a
+  `poster` in AVIF (not decodable here) and zero height, and the other empty boxes are
+  scripted animation hosts. So the remaining blanks are missing features, in order of
+  size: `<canvas>` (2D and WebGL), `<video>`/poster painting, AVIF, and `position:
+  sticky`/`transform`-driven scenes.
 - **Known limits, in the order they bite.** (1) Speed: restyle + layout of the 650 KB
   Tailwind page takes ~0.9 s and every script change pays it (there is no incremental
   restyle), module compilation of the 110-module graph takes ~1.5 s, and starting the

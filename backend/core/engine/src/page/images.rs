@@ -309,12 +309,12 @@ mod tests {
                 let height = page.fragment.height;
                 let mut y = 0.0;
                 while y < height {
-                    page.scroll_by(500.0);
-                    for _ in 0..30 {
+                    page.scroll_by(850.0);
+                    for _ in 0..20 {
                         page.tick_web();
-                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        std::thread::sleep(std::time::Duration::from_millis(20));
                     }
-                    y += 500.0;
+                    y += 850.0;
                 }
                 page.scroll_by(-height);
                 for _ in 0..30 {
@@ -338,7 +338,7 @@ mod tests {
                 let vis = matches!(style.other.get("visibility"), Some(Value::Keyword(k)) if k == "hidden");
                 if (zero || vis) && !blueice_css::is_pseudo_node(*id) {
                     hidden += 1;
-                    if hidden <= 25 {
+                    if hidden <= 400 {
                         if let NodeData::Element {
                             tag_name,
                             attributes,

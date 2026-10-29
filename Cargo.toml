@@ -13,6 +13,7 @@ members = [
     "backend/core/css",
     "backend/core/layout",
     "backend/core/font",
+    "backend/core/image",
     "backend/core/paint",
     "backend/core/raster",
     "backend/core/engine",
