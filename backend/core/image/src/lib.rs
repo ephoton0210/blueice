@@ -97,6 +97,19 @@ fn finish(width: u32, height: u32, rgba: Vec<u8>) -> Option<RasterImage> {
         .then(|| RasterImage::new(width, height, rgba))
 }
 
+/// The picture as a PNG file.
+pub fn encode_png(image: &RasterImage) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut out, image.width, image.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().ok()?;
+        writer.write_image_data(&image.rgba).ok()?;
+    }
+    Some(out)
+}
+
 /// Which format `bytes` are, by their leading bytes (never by file name or a
 /// server's say-so alone).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -429,5 +442,13 @@ mod tests {
     fn intrinsic_size_of_a_raster_is_its_pixels() {
         assert_eq!(intrinsic_size(PNG), Some((8, 4)));
         assert_eq!(intrinsic_size(b"junk"), None);
+    }
+
+    #[test]
+    fn a_picture_survives_a_png_round_trip() {
+        let image = RasterImage::new(2, 1, vec![255, 0, 0, 255, 0, 0, 255, 128]);
+        let png = encode_png(&image).unwrap();
+        assert_eq!(sniff(&png), Some(Format::Png));
+        assert_eq!(decode(&png).unwrap(), image);
     }
 }

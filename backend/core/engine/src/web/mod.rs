@@ -17,6 +17,7 @@
 //! request a script makes is recorded for the embedder, which reviews it.
 
 pub(crate) mod dom_bridge;
+pub(crate) mod gl_bridge;
 pub(crate) mod net;
 
 use blueice_bluejs::{
