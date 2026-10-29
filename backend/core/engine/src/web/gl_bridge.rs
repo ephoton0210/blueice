@@ -421,12 +421,20 @@ pub(crate) fn call(g: &mut GlContext, op: &str, a: &[Reply]) -> Result<Reply, St
         "getError" => Reply::Number(f64::from(ctx.get_error())),
         // ---- drawing ----
         "drawArrays" => {
+            let started = std::time::Instant::now();
             ctx.draw_arrays(u(0), u(1), u(2), u(3).max(1));
+            if std::env::var("BI_DIAG").is_ok() {
+                eprintln!("DIAG gl drawArrays {}x{} took {:?} (slow: {})", ctx.width, ctx.height, started.elapsed(), ctx.slow_draws);
+            }
             g.dirty = true;
             Reply::Undefined
         }
         "drawElements" => {
+            let started = std::time::Instant::now();
             ctx.draw_elements(u(0), u(1), u(2), u(3), u(4).max(1));
+            if std::env::var("BI_DIAG").is_ok() {
+                eprintln!("DIAG gl drawElements {}x{} took {:?} (slow: {})", ctx.width, ctx.height, started.elapsed(), ctx.slow_draws);
+            }
             g.dirty = true;
             Reply::Undefined
         }

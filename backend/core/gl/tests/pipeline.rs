@@ -407,3 +407,24 @@ fn the_picture_is_unpremultiplied_top_down_rgba() {
     ctx.premultiplied_alpha = false;
     assert_eq!(ctx.picture()[0], 128);
 }
+
+#[test]
+fn a_draw_that_runs_out_of_time_stops_and_a_context_that_keeps_doing_so_goes_quiet() {
+    let fs = "precision highp float; void main() { float x = 0.0; for (int i = 0; i < 4000; i++) { x += sin(float(i)); } gl_FragColor = vec4(x * 0.0 + 1.0); }";
+    let mut ctx = Context::new(256, 256);
+    ctx.draw_budget = std::time::Duration::from_millis(20);
+    let p = build(&mut ctx, "attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }", fs);
+    let b = ctx.create_buffer();
+    ctx.bind_buffer(ARRAY_BUFFER, b);
+    ctx.buffer_data(ARRAY_BUFFER, floats(&[-1.0, -1.0, 3.0, -1.0, -1.0, 3.0]));
+    attrib(&mut ctx, p, "p", 2, 0, 0);
+    let start = std::time::Instant::now();
+    for _ in 0..5 {
+        ctx.draw_arrays(0x0004, 0, 3, 1);
+    }
+    assert!(start.elapsed() < std::time::Duration::from_secs(5), "{:?}", start.elapsed());
+    assert!(ctx.slow_draws >= 3);
+    // Not every pixel was shaded.
+    let shaded = ctx.picture().chunks(4).filter(|p| p[3] != 0).count();
+    assert!(shaded < 256 * 256);
+}

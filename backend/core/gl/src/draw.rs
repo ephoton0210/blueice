@@ -17,6 +17,8 @@ use super::*;
 /// Window-space triangles smaller than this (twice the area) are dropped.
 const MIN_AREA: f64 = 1e-12;
 /// Most primitives one draw call may assemble: bounds memory and time.
+/// A context whose draws keep running out of time stops drawing.
+const MAX_SLOW_DRAWS: u32 = 3;
 const MAX_PRIMITIVES: usize = 2_000_000;
 
 struct TexAccess<'a> {
@@ -429,9 +431,19 @@ struct FragmentStage<'a> {
     front_facing: usize,
     point_coord: usize,
     writes_depth: bool,
+    deadline: std::time::Instant,
+    expired: bool,
 }
 
 impl FragmentStage<'_> {
+    /// True once the draw's time budget is spent (checked per row).
+    fn out_of_time(&mut self) -> bool {
+        if !self.expired && std::time::Instant::now() >= self.deadline {
+            self.expired = true;
+        }
+        self.expired
+    }
+
     /// Shades one fragment and writes it; false if it was rejected.
     fn run(&mut self, band: &mut Band<'_>, f: &Fragment<'_>) {
         let st = self.state;
@@ -549,7 +561,7 @@ impl Context {
 
     fn draw(&mut self, mode: u32, indices: Vec<u32>, instances: u32) {
         let instances = instances.max(1);
-        if indices.is_empty() {
+        if indices.is_empty() || self.slow_draws >= MAX_SLOW_DRAWS {
             return;
         }
         let Some(program) = self
@@ -866,6 +878,8 @@ impl Context {
         let threads = worker_count(tw * th, 20_000).min(th.max(1));
         let band_rows = th.div_ceil(threads);
         let prims = &prims;
+        let deadline = std::time::Instant::now() + self.draw_budget;
+        let timed_out = &std::sync::atomic::AtomicBool::new(false);
         let smooth = &smooth;
         {
             let (color_chunks, depth_chunks): (Vec<BandColor>, Vec<Option<&mut [f32]>>) = {
@@ -918,6 +932,8 @@ impl Context {
                             front_facing: fs.slot("gl_FrontFacing").expect("built in"),
                             point_coord: fs.slot("gl_PointCoord").expect("built in"),
                             writes_depth,
+                            deadline,
+                            expired: false,
                         };
                         let mut band = Band {
                             y0,
@@ -955,11 +971,17 @@ impl Context {
                             }
                         }
                         let _ = band.rows;
+                        if stage.expired {
+                            timed_out.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
                     });
                 }
             });
         }
         self.return_target(target);
+        if timed_out.load(std::sync::atomic::Ordering::Relaxed) {
+            self.slow_draws += 1;
+        }
     }
 }
 
@@ -1185,6 +1207,9 @@ fn raster_triangle(
     let (tl0, tl1, tl2) = (top_left(1, 2), top_left(2, 0), top_left(0, 1));
     let nlanes = t.lanes[0].len();
     for y in min_y..max_y {
+        if stage.out_of_time() {
+            return;
+        }
         for x in min_x..max_x {
             let (px, py) = (x as f64 + 0.5, y as f64 + 0.5);
             let (e0, e1, e2) = (edge(1, 2, px, py), edge(2, 0, px, py), edge(0, 1, px, py));
@@ -1245,6 +1270,9 @@ fn raster_point(
         (p.y + half).ceil().min(clip.3 as f64) as i64,
     );
     for y in y0..y1 {
+        if stage.out_of_time() {
+            return;
+        }
         for x in x0..x1 {
             let (px, py) = (x as f64 + 0.5, y as f64 + 0.5);
             if (px - p.x).abs() > half || (py - p.y).abs() > half {

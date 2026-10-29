@@ -237,6 +237,10 @@ pub struct Context {
     pub error: u32,
     pub flip_y: bool,
     pub premultiply: bool,
+    /// The longest one draw call may shade fragments for.
+    pub draw_budget: std::time::Duration,
+    /// Draws so far that ran out of that time.
+    pub slow_draws: u32,
 }
 
 impl Context {
@@ -294,6 +298,8 @@ impl Context {
             error: NO_ERROR,
             flip_y: false,
             premultiply: false,
+            draw_budget: std::time::Duration::from_millis(1500),
+            slow_draws: 0,
         }
     }
 

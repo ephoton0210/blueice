@@ -1882,7 +1882,7 @@
         case 36348: return 30;
         case 3386: return new Int32Array([8192, 8192]);
         case 7936: return 'BlueIce';
-        case 7937: return 'BlueIce Software WebGL';
+        case 7937: return 'BlueIce WebGL';
         case 7938: return v2 ? 'WebGL 2.0 (BlueIce)' : 'WebGL 1.0 (BlueIce)';
         case 35724: return v2 ? 'WebGL GLSL ES 3.00 (BlueIce)' : 'WebGL GLSL ES 1.0 (BlueIce)';
         case 33902: return new Float32Array([1, 1]);
@@ -2964,23 +2964,40 @@
       }
     }
   }
+  const allResizeObservers = new Set();
   class ResizeObserver {
     constructor(callback) {
       this._callback = callback;
-      this._targets = new Set();
+      this._targets = new Map();
+      allResizeObservers.add(this);
+    }
+    // Reports the targets whose box changed since the last report (the first
+    // report is for any non-empty box, as in a browser, which compares with 0x0).
+    _check() {
+      const entries = [];
+      for (const [target, last] of this._targets) {
+        const r = target.getBoundingClientRect();
+        if (r.width === last[0] && r.height === last[1]) continue;
+        this._targets.set(target, [r.width, r.height]);
+        const box = [{ inlineSize: r.width, blockSize: r.height }];
+        entries.push({ target, contentRect: r, borderBoxSize: box, contentBoxSize: box, devicePixelContentBoxSize: box });
+      }
+      if (!entries.length) return;
+      try {
+        this._callback.call(this, entries, this);
+      } catch (e) {
+        reportError(e);
+      }
     }
     observe(target) {
-      this._targets.add(target);
+      if (this._targets.has(target)) return;
+      this._targets.set(target, [0, 0]);
+      // A browser delivers in the next rendering step, after the framework's
+      // own effects have run (react-use-measure ignores a size reported before it
+      // has mounted), so wait a frame.
       setTimeout(() => {
-        if (!this._targets.has(target)) return;
-        const r = target.getBoundingClientRect();
-        const box = [{ inlineSize: r.width, blockSize: r.height }];
-        try {
-          this._callback.call(this, [{ target, contentRect: r, borderBoxSize: box, contentBoxSize: box, devicePixelContentBoxSize: box }], this);
-        } catch (e) {
-          reportError(e);
-        }
-      }, 0);
+        if (this._targets.has(target)) this._check();
+      }, 16);
     }
     unobserve(target) {
       this._targets.delete(target);
@@ -3971,6 +3988,7 @@
       },
       afterLayout() {
         for (const io of Array.from(allIntersectionObservers)) io._check();
+        for (const ro of Array.from(allResizeObservers)) ro._check();
       },
       setReadyState(state) {
         document._readyState = state;
