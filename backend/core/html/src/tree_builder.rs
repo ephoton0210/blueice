@@ -400,6 +400,32 @@ impl TreeBuilder {
         }
     }
 
+    /// Whether the current node sits inside an `<svg>` (foreign content).
+    fn in_svg(&self) -> bool {
+        self.open_elements.iter().any(|&id| {
+            matches!(self.document.data(id), NodeData::Element { tag_name, .. } if tag_name == "svg")
+        })
+    }
+
+    /// An element of foreign (SVG) content: names and attributes regain the
+    /// camel case the tokenizer lowercased, and a self-closing tag really
+    /// closes -- elements here are never void, so without this `<path/>` would
+    /// swallow its siblings.
+    fn insert_svg_element(&mut self, name: &str, attrs: Vec<(String, String)>, self_closing: bool) {
+        let attrs = attrs
+            .into_iter()
+            .map(|(k, v)| (svg_attribute_name(&k).to_string(), v))
+            .collect();
+        let id = self.document.create_node(NodeData::Element {
+            tag_name: svg_element_name(name).to_string(),
+            attributes: attrs,
+        });
+        self.insert_node(id);
+        if !self_closing {
+            self.open_elements.push(id);
+        }
+    }
+
     fn insert_element(&mut self, name: &str, attrs: Vec<(String, String)>) -> NodeId {
         let id = self.document.create_node(NodeData::Element {
             tag_name: name.to_string(),
@@ -1315,6 +1341,14 @@ impl TreeBuilder {
                 self.insert_text(&s);
                 StepResult::Done
             }
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if name == "svg" || self.in_svg() => {
+                self.insert_svg_element(&name, attrs, self_closing);
+                StepResult::Done
+            }
             Token::StartTag { name, attrs, .. } => self.start_tag_in_body(&name, attrs),
             Token::EndTag { name } => self.end_tag_in_body(&name),
         }
@@ -2140,3 +2174,110 @@ impl TreeBuilder {
 #[cfg(test)]
 #[path = "tree_builder/tests.rs"]
 mod tests;
+
+/// SVG element names that are camel case (the tokenizer lowercases them).
+fn svg_element_name(lower: &str) -> &str {
+    match lower {
+        "altglyph" => "altGlyph",
+        "altglyphdef" => "altGlyphDef",
+        "altglyphitem" => "altGlyphItem",
+        "animatecolor" => "animateColor",
+        "animatemotion" => "animateMotion",
+        "animatetransform" => "animateTransform",
+        "clippath" => "clipPath",
+        "feblend" => "feBlend",
+        "fecolormatrix" => "feColorMatrix",
+        "fecomponenttransfer" => "feComponentTransfer",
+        "fecomposite" => "feComposite",
+        "feconvolvematrix" => "feConvolveMatrix",
+        "fediffuselighting" => "feDiffuseLighting",
+        "fedisplacementmap" => "feDisplacementMap",
+        "fedistantlight" => "feDistantLight",
+        "fedropshadow" => "feDropShadow",
+        "feflood" => "feFlood",
+        "fefunca" => "feFuncA",
+        "fefuncb" => "feFuncB",
+        "fefuncg" => "feFuncG",
+        "fefuncr" => "feFuncR",
+        "fegaussianblur" => "feGaussianBlur",
+        "feimage" => "feImage",
+        "femerge" => "feMerge",
+        "femergenode" => "feMergeNode",
+        "femorphology" => "feMorphology",
+        "feoffset" => "feOffset",
+        "fepointlight" => "fePointLight",
+        "fespecularlighting" => "feSpecularLighting",
+        "fespotlight" => "feSpotLight",
+        "fetile" => "feTile",
+        "feturbulence" => "feTurbulence",
+        "foreignobject" => "foreignObject",
+        "glyphref" => "glyphRef",
+        "lineargradient" => "linearGradient",
+        "radialgradient" => "radialGradient",
+        "textpath" => "textPath",
+        other => other,
+    }
+}
+
+/// SVG attribute names that are camel case (the tokenizer lowercases them).
+fn svg_attribute_name(lower: &str) -> &str {
+    match lower {
+        "attributename" => "attributeName",
+        "attributetype" => "attributeType",
+        "basefrequency" => "baseFrequency",
+        "baseprofile" => "baseProfile",
+        "calcmode" => "calcMode",
+        "clippathunits" => "clipPathUnits",
+        "diffuseconstant" => "diffuseConstant",
+        "edgemode" => "edgeMode",
+        "filterunits" => "filterUnits",
+        "glyphref" => "glyphRef",
+        "gradienttransform" => "gradientTransform",
+        "gradientunits" => "gradientUnits",
+        "kernelmatrix" => "kernelMatrix",
+        "kernelunitlength" => "kernelUnitLength",
+        "keypoints" => "keyPoints",
+        "keysplines" => "keySplines",
+        "keytimes" => "keyTimes",
+        "lengthadjust" => "lengthAdjust",
+        "limitingconeangle" => "limitingConeAngle",
+        "markerheight" => "markerHeight",
+        "markerunits" => "markerUnits",
+        "markerwidth" => "markerWidth",
+        "maskcontentunits" => "maskContentUnits",
+        "maskunits" => "maskUnits",
+        "numoctaves" => "numOctaves",
+        "pathlength" => "pathLength",
+        "patterncontentunits" => "patternContentUnits",
+        "patterntransform" => "patternTransform",
+        "patternunits" => "patternUnits",
+        "pointsatx" => "pointsAtX",
+        "pointsaty" => "pointsAtY",
+        "pointsatz" => "pointsAtZ",
+        "preservealpha" => "preserveAlpha",
+        "preserveaspectratio" => "preserveAspectRatio",
+        "primitiveunits" => "primitiveUnits",
+        "refx" => "refX",
+        "refy" => "refY",
+        "repeatcount" => "repeatCount",
+        "repeatdur" => "repeatDur",
+        "specularconstant" => "specularConstant",
+        "specularexponent" => "specularExponent",
+        "spreadmethod" => "spreadMethod",
+        "startoffset" => "startOffset",
+        "stddeviation" => "stdDeviation",
+        "stitchtiles" => "stitchTiles",
+        "surfacescale" => "surfaceScale",
+        "systemlanguage" => "systemLanguage",
+        "tablevalues" => "tableValues",
+        "targetx" => "targetX",
+        "targety" => "targetY",
+        "textlength" => "textLength",
+        "viewbox" => "viewBox",
+        "viewtarget" => "viewTarget",
+        "xchannelselector" => "xChannelSelector",
+        "ychannelselector" => "yChannelSelector",
+        "zoomandpan" => "zoomAndPan",
+        other => other,
+    }
+}
