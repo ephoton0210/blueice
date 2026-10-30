@@ -19,7 +19,9 @@
 )]
 
 mod draw;
-pub mod glsl;
+/// The GLSL front end and interpreter, which lives in its own crate; re-exported so
+/// `blueice_gl::glsl::…` keeps working.
+pub use blueice_glsl as glsl;
 pub mod tex;
 
 use glsl::ast::{Scalar, Storage, Ty};

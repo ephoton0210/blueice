@@ -1161,7 +1161,7 @@ pub fn construct(ty: &Ty, args: Vec<V>, structs: &[StructDef]) -> R<V> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::glsl::builtins::NoTextures;
+    use crate::builtins::NoTextures;
 
     /// Compiles `source`, runs `main`, and returns the machine.
     fn run(source: &str) -> (Program, Vec<V>) {

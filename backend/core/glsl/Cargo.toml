@@ -1,0 +1,14 @@
+[package]
+name = "blueice-glsl"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "A GLSL ES 1.00 / 3.00 front end and interpreter: preprocessor, parser and a slot-resolved tree-walking executor, with no dependencies."
+readme = "README.md"
+keywords = ["glsl", "shader", "interpreter", "webgl"]
+categories = ["graphics", "compilers"]
+
+# No dependencies, on purpose: this crate is meant to be lifted out into its own repository
+# (copy this directory, then replace the three `workspace = true` fields above with their values).
+[dependencies]
