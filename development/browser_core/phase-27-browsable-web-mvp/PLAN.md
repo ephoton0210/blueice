@@ -593,18 +593,36 @@ and fixed the three things that dominated, in the order they did:
 - **GC sizing.** A realm for page scripts gets a 16,384-object nursery and a 16 MiB first
   major threshold, not the test-sized defaults (256 objects, 256 KiB): script start-up on
   Cloudflare 9.6 s -> 7.7 s.
-- **Measured.** Script start-up 11.5-12 s -> 7.7 s; per-change restyle + relayout
-  ~800 ms -> ~80 ms; 60 WebGL draws within a 100 s window where there were none in 120 s.
-  The globe's graticule is up in that window; its land-point dots are added by the page in
-  `requestAnimationFrame` batches that each sample the earth image's pixels in JavaScript,
-  so they take minutes of interpreter time (a 300 s window showed them all). That is now
-  plain interpreter speed, not GC or restyle.
-- **Still slow, in the order it bites.** Layout is still a full relayout (~55 ms);
-  `[[Get]]`/`binding_value` clone a whole string on every read, which is expensive when
-  a script holds a megabyte of text in a variable (seen under `String.prototype`
-  methods); most of the ~536 `with_roots` call sites are not converted (convert one only
-  after checking it fails before changing anything and is safe to repeat); a
-  `class`/`id` change on a high element still restyles its whole subtree.
+- **JavaScript strings share their buffer.** With the root gathering fixed, sampling showed
+  ~99% of busy time in `memcpy` of strings: `JsString` was a `Vec<u16>`, so reading a
+  variable, a property, or a string method's receiver deep-copied the whole string (a
+  script holding a megabyte of text and calling `charCodeAt` was quadratic). It is now a
+  handle on an `Arc<Vec<u16>>`: a clone bumps a count, and a change copies only if another
+  handle still holds the buffer. A handle carries the capacity it is *charged* for in the
+  memory accounting (an original: the allocation it was built with; a clone: its length, as
+  a `Vec` clone was), so no accounting assertion changed (4,145 library tests, 7,603
+  integration tests across 368 binaries, and the Test262 inventory are all as before).
+  Microbenchmark, `charCodeAt` over a 200 KB string 20,000 times: 814 ms -> 45 ms. The
+  type is smaller by 8 bytes, which moves every size-derived byte budget in the heap and so
+  the moment a collection is triggered; `arguments_object_elision` counted collections
+  under the default byte threshold as a proxy for allocation and was rewritten to count
+  them with a threshold that is never reached (a build with the optimization disabled still
+  fails it). The script shim had its own quadratic path: base64 one character at a time,
+  which took over ten minutes for 1 MiB of buffer data; it uses the native
+  `Uint8Array#toBase64`/`fromBase64`.
+- **Measured, whole page.** Script start-up 11.5-12 s -> 7.7 s; per-change restyle +
+  relayout ~800 ms -> ~80 ms; WebGL draws in the same window 60 -> 3,021; the globe's land
+  dots, graticule, connection arc and caption card are all drawn within a 220 s window. After
+  these fixes a sample of the live run is dominated by the software GL itself
+  (`glsl::interp::Machine::eval` ~17%, `draw::fetch_attrib` ~11%, value coercion,
+  allocation), not by the JavaScript engine.
+- **Still slow, in the order it bites.** The software GL's per-fragment and per-vertex
+  interpreter cost (`fetch_attrib` re-reads a buffer and converts per vertex per attribute,
+  `Machine::eval` allocates values); layout is a full relayout (~55 ms); most of the ~536
+  `with_roots` call sites are not converted (convert one only after checking it fails
+  before changing anything and is safe to repeat); a `class`/`id` change on a high element
+  still restyles its whole subtree; CSS `transform` is not applied, so the globe's pinned
+  caption card is drawn in the page's top-left corner instead of beside its pin.
 - **Developer tools added.** `BI_PROFILE_LAYOUT` (stage timings of a restyle), `BI_CASCADE_LOOP=N`
   (only the cascade, repeated, for a sampling profiler), `BI_SCROLL_TO`/`BI_SCROLL_SECS`.
   Profile with macOS `sample <pid> 10 -file out.txt` on the test binary (not `cargo`'s pid).
