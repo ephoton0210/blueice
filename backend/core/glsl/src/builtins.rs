@@ -275,6 +275,9 @@ fn inverse(v: &V) -> R<V> {
             if r != col {
                 let f = a[r][col];
                 if f != 0.0 {
+                    // Row `r` reads row `col` while being written: two rows of one array,
+                    // so this is indexed, not iterated, and its order of operations is fixed.
+                    #[allow(clippy::needless_range_loop)]
                     for c in 0..2 * n {
                         a[r][c] -= f * a[col][c];
                     }

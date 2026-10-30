@@ -956,6 +956,8 @@ impl<'p> Machine<'p> {
     }
 
     /// Resolves an lvalue to its root variable and the path into it.
+    // To be restructured with the assignment path; the tuple is (root, path, swizzle).
+    #[allow(clippy::type_complexity)]
     fn lvalue(&mut self, n: &N) -> Result<(N, Vec<Step>, Option<Vec<usize>>), String> {
         match n {
             N::Local(_) | N::Global(_) => Ok((n.clone(), Vec::new(), None)),
