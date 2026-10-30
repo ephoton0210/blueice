@@ -947,9 +947,9 @@ impl<'p> Machine<'p> {
                 Ok(values[i].clone())
             }
             V::Vec { n, .. } => {
-                let idx = swizzle_indices(name, *n as usize)
+                let (idx, len) = swizzle_lanes(name, *n as usize)
                     .ok_or_else(|| format!("'{name}' is not a swizzle of this vector"))?;
-                swizzle(base, &idx)
+                swizzle(base, &idx[..len])
             }
             _ => Err(format!("'.{name}' does not apply here")),
         }

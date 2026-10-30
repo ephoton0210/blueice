@@ -600,6 +600,29 @@ pub fn bit_not(v: &V) -> R<V> {
 }
 
 /// Component indices of a swizzle (`xyzw`, `rgba` or `stpq` sets).
+/// The lanes a swizzle names, without allocating: the first `len` entries of the array.
+pub fn swizzle_lanes(name: &str, n: usize) -> Option<([usize; 4], usize)> {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes.len() > 4 {
+        return None;
+    }
+    let set = match bytes[0] {
+        b'x' | b'y' | b'z' | b'w' => b"xyzw",
+        b'r' | b'g' | b'b' | b'a' => b"rgba",
+        b's' | b't' | b'p' | b'q' => b"stpq",
+        _ => return None,
+    };
+    let mut out = [0usize; 4];
+    for (slot, c) in out.iter_mut().zip(bytes) {
+        let i = set.iter().position(|s| s == c)?;
+        if i >= n {
+            return None;
+        }
+        *slot = i;
+    }
+    Some((out, bytes.len()))
+}
+
 pub fn swizzle_indices(name: &str, n: usize) -> Option<Vec<usize>> {
     if name.is_empty() || name.len() > 4 {
         return None;
