@@ -660,6 +660,8 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             | "background-image"
             | "content"
             | "animation"
+            | "transform"
+            | "translate"
     ) {
         let trimmed = trim_ws(value_tokens);
         if !matches!(trimmed, [Token::Ident(_)]) || property.ends_with("areas") {
@@ -988,6 +990,22 @@ mod tests {
     use super::*;
     use crate::selector::SimpleSelector;
     use crate::value::{Color, Length};
+
+    #[test]
+    fn transform_and_translate_keep_their_tokens_for_layout() {
+        let kept = |css: &str, property: &str| {
+            parse_declarations(&tokenize(css))
+                .into_iter()
+                .any(|d| d.property == property && matches!(d.value, Value::Unparsed(_)))
+        };
+        assert!(kept(
+            "transform: translate(-50%, 10px) rotate(3deg)",
+            "transform"
+        ));
+        assert!(kept("translate: 3px 4px", "translate"));
+        let none = parse_declarations(&tokenize("transform: none"));
+        assert_eq!(none[0].value, Value::Keyword("none".to_string()));
+    }
 
     #[test]
     fn single_rule_single_declaration() {

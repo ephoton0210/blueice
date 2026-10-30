@@ -104,6 +104,9 @@ pub struct Fragment {
     /// Generated content (`::before` / `::after`) has no DOM node: its
     /// fragments carry `node: None` and the id its style is stored under.
     pub style_node: Option<NodeId>,
+    /// A `transform`/`translate` not yet applied to `x`/`y` (see `transform.rs`); `None`
+    /// once applied, so a finished tree never carries one.
+    pub translate: Option<crate::transform::Translation>,
 }
 
 impl Fragment {
@@ -123,6 +126,7 @@ impl Fragment {
             hidden: false,
             baseline: None,
             style_node: None,
+            translate: None,
         }
     }
 }

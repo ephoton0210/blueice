@@ -59,7 +59,7 @@ pub use tokenizer::Token;
 pub fn parse_selectors(text: &str) -> Vec<ComplexSelector> {
     selector::parse_selector_list(&tokenizer::tokenize(text))
 }
-pub use value::{Color, Length, LengthContext, Value};
+pub use value::{parse_value, Color, Length, LengthContext, Value};
 
 /// Parses one CSS colour (`#rgb`, `rgb()`, a name, ...) as a script gives it to
 /// a canvas; `None` for anything that is not a colour or is `currentColor`.

@@ -27,12 +27,14 @@ mod intrinsic;
 mod native_text;
 mod table;
 mod text;
+mod transform;
 
 pub use block::update_select_option_bounds;
 pub use fragment::{Constraints, Fragment, FragmentKind, NativeForm, SelectOption};
 pub use native_text::{
     input_button_label, input_range_values, select_display_size, select_options,
 };
+pub use transform::Translation;
 
 use blueice_css::ComputedStyle;
 use blueice_dom::{Document, NodeId};
@@ -56,13 +58,17 @@ pub fn layout(
         doc.children(root).find(|c| styles.contains_key(c))
     };
     match effective_root {
-        Some(node) => block::layout_root(
-            doc,
-            node,
-            styles,
-            constraints.available_width,
-            constraints.viewport_height,
-        ),
+        Some(node) => {
+            let mut fragment = block::layout_root(
+                doc,
+                node,
+                styles,
+                constraints.available_width,
+                constraints.viewport_height,
+            );
+            transform::apply(&mut fragment);
+            fragment
+        }
         None => Fragment::empty_block(),
     }
 }

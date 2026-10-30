@@ -1190,6 +1190,28 @@ mod tests {
     }
 
     #[test]
+    fn a_translated_box_is_painted_where_it_was_moved_to() {
+        let rect_of = |css: &str| {
+            let f = paint_html(
+                "<div></div>",
+                &format!("div {{ background-color: red; width: 40px; height: 20px; {css} }}"),
+                320.0,
+            );
+            f.commands
+                .into_iter()
+                .find_map(|c| match c {
+                    PaintCommand::Rect { rect, .. } => Some(rect),
+                    _ => None,
+                })
+                .expect("a Rect command")
+        };
+        let at = rect_of("");
+        let moved = rect_of("transform: translate(-50%, 10px)");
+        assert_eq!((moved.x - at.x, moved.y - at.y), (-20.0, 10.0));
+        assert_eq!((moved.width, moved.height), (at.width, at.height));
+    }
+
+    #[test]
     fn frame_size_matches_the_root_fragment() {
         let f = paint_html("<p>hi</p>", "", 320.0);
         assert_eq!(f.width, 320.0);
