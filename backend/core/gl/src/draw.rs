@@ -87,14 +87,27 @@ impl Textures for TexAccess<'_> {
     }
 }
 
-fn flatten(v: &V, out: &mut Vec<u32>) {
+/// Writes `v`'s words into `out` from `*at`, never past `end`.
+fn flatten_into(v: &V, out: &mut [u32], at: &mut usize, end: usize) {
     match v {
-        V::Vec { n, c, .. } => out.extend_from_slice(&c[..*n as usize]),
-        V::Mat { cols, rows, d } => {
-            out.extend(d[..(*cols * *rows) as usize].iter().map(|x| x.to_bits()))
+        V::Vec { n, c, .. } => {
+            for &word in &c[..*n as usize] {
+                if *at < end {
+                    out[*at] = word;
+                }
+                *at += 1;
+            }
         }
-        V::Struct(_, fields) => fields.iter().for_each(|f| flatten(f, out)),
-        V::Arr(items) => items.iter().for_each(|f| flatten(f, out)),
+        V::Mat { cols, rows, d } => {
+            for x in &d[..(*cols * *rows) as usize] {
+                if *at < end {
+                    out[*at] = x.to_bits();
+                }
+                *at += 1;
+            }
+        }
+        V::Struct(_, fields) => fields.iter().for_each(|f| flatten_into(f, out, at, end)),
+        V::Arr(items) => items.iter().for_each(|f| flatten_into(f, out, at, end)),
         _ => {}
     }
 }
@@ -175,10 +188,84 @@ struct ClipVtx {
     lanes: Vec<u32>,
 }
 
-struct Vertex {
-    pos: [f32; 4],
+/// The vertex stage's output for every vertex of a draw, in flat arrays (one allocation
+/// each, not one per vertex).
+struct VertexStore {
+    pos: Vec<[f32; 4]>,
+    point_size: Vec<f32>,
+    /// `lane_width` words per vertex: the varyings, flattened.
     lanes: Vec<u32>,
+    lane_width: usize,
+}
+
+#[derive(Clone, Copy)]
+struct VertexRef<'a> {
+    pos: [f32; 4],
+    lanes: &'a [u32],
     point_size: f32,
+}
+
+/// A run of consecutive vertices of a [`VertexStore`].
+struct VertexView<'a> {
+    store: &'a VertexStore,
+    base: usize,
+    len: usize,
+}
+
+impl VertexStore {
+    fn lanes_of(&self, id: usize) -> &[u32] {
+        &self.lanes[id * self.lane_width..(id + 1) * self.lane_width]
+    }
+
+    fn view(&self, base: usize, len: usize) -> VertexView<'_> {
+        VertexView {
+            store: self,
+            base,
+            len,
+        }
+    }
+}
+
+impl<'a> VertexView<'a> {
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn get(&self, i: usize) -> VertexRef<'a> {
+        let at = self.base + i;
+        let width = self.store.lane_width;
+        VertexRef {
+            pos: self.store.pos[at],
+            lanes: &self.store.lanes[at * width..(at + 1) * width],
+            point_size: self.store.point_size[at],
+        }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = VertexRef<'a>> + '_ {
+        (0..self.len).map(|i| self.get(i))
+    }
+}
+
+/// Fragments shaded between reads of the clock for the draw's time budget.
+const CLOCK_EVERY: u32 = 16;
+
+/// Entries in a vertex-stage thread's memory of recent vertices (a power of two).
+const VERTEX_CACHE: usize = 1024;
+
+/// Where a triangle's three vertices' varyings are: in the vertex store (the usual case,
+/// nothing copied), or copies of their own where clipping made new vertices.
+enum TriLanes {
+    Stored([usize; 3]),
+    Owned(Box<[Vec<u32>; 3]>),
+}
+
+impl TriLanes {
+    fn slices<'a>(&'a self, store: &'a VertexStore) -> [&'a [u32]; 3] {
+        match self {
+            TriLanes::Stored(ids) => ids.map(|id| store.lanes_of(id)),
+            TriLanes::Owned(own) => [&own[0], &own[1], &own[2]],
+        }
+    }
 }
 
 struct Tri {
@@ -186,7 +273,7 @@ struct Tri {
     y: [f64; 3],
     z: [f64; 3],
     inv_w: [f64; 3],
-    lanes: [Vec<u32>; 3],
+    lanes: TriLanes,
     front: bool,
     /// Twice the signed area (positive: counter-clockwise).
     area: f64,
@@ -432,6 +519,8 @@ struct FragmentStage<'a> {
     writes_depth: bool,
     deadline: std::time::Instant,
     expired: bool,
+    /// Fragments since the clock was last read.
+    since_clock: u32,
 }
 
 impl FragmentStage<'_> {
@@ -445,8 +534,16 @@ impl FragmentStage<'_> {
 
     /// Shades one fragment and writes it; false if it was rejected.
     fn run(&mut self, band: &mut Band<'_>, f: &Fragment<'_>) {
-        // A shader this slow must not hold a draw past its budget by a whole row.
-        if self.out_of_time() {
+        // A shader this slow must not hold a draw past its budget by a whole row. The clock
+        // is read every few fragments, not every one: reading it costs about as much as a
+        // trivial fragment, and a few fragments are a small fraction of a millisecond.
+        self.since_clock += 1;
+        if self.since_clock >= CLOCK_EVERY {
+            self.since_clock = 0;
+            if self.out_of_time() {
+                return;
+            }
+        } else if self.expired {
             return;
         }
         let st = self.state;
@@ -588,16 +685,37 @@ impl Context {
         let profile = std::env::var("BI_GL_PROFILE").is_ok();
         let t0 = std::time::Instant::now();
         // ---- vertex stage ----
+        let mut smooth = Vec::new();
+        for v in &linked.varyings {
+            smooth_lanes(&v.ty, v.flat, &linked.fs.structs, &mut smooth);
+        }
+        let lane_width = smooth.len().max(1);
         let vao = self.vaos.get(&self.vao).cloned().unwrap_or_default();
+        // Where each attribute's bytes are, found once instead of for every vertex.
+        let sources: Vec<AttribSource<'_>> = linked
+            .attributes
+            .iter()
+            .map(|a| AttribSource::resolve(&vao, &self.buffers, a))
+            .collect();
         let total = indices.len() * instances as usize;
         let threads = worker_count(total, 256);
         let chunk = total.div_ceil(threads);
-        let mut vertices: Vec<Option<Vertex>> = (0..total).map(|_| None).collect();
+        let mut store = VertexStore {
+            pos: vec![[0.0; 4]; total],
+            point_size: vec![1.0; total],
+            lanes: vec![0; total * lane_width],
+            lane_width,
+        };
         let failed = std::sync::atomic::AtomicBool::new(false);
         std::thread::scope(|scope| {
-            for (n, out) in vertices.chunks_mut(chunk).enumerate() {
-                let (linked, vao, buffers, access, indices, failed) =
-                    (linked, &vao, &self.buffers, &access, &indices, &failed);
+            let outputs = store
+                .pos
+                .chunks_mut(chunk)
+                .zip(store.point_size.chunks_mut(chunk))
+                .zip(store.lanes.chunks_mut(chunk * lane_width));
+            for (n, ((pos_out, size_out), lanes_out)) in outputs.enumerate() {
+                let (linked, sources, access, indices, failed) =
+                    (linked, &sources, &access, &indices, &failed);
                 scope.spawn(move || {
                     let Ok(mut m) = Machine::new(&linked.vs, access) else {
                         failed.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -612,20 +730,28 @@ impl Context {
                         linked.vs.slot("gl_VertexIndex"),
                         linked.vs.slot("gl_InstanceIndex"),
                     );
-                    for (k, slot) in out.iter_mut().enumerate() {
+                    // A vertex is a function of its index and instance alone, and an indexed
+                    // mesh names most of its vertices several times in a row: remember where
+                    // this chunk last wrote each (index, instance) and copy instead of rerunning.
+                    let mut recent = vec![(u32::MAX, u32::MAX, 0usize); VERTEX_CACHE];
+                    for k in 0..pos_out.len() {
                         let flat = n * chunk + k;
                         let (instance, i) = (flat / indices.len(), flat % indices.len());
                         let index = indices[i];
-                        for a in &linked.attributes {
-                            let value = fetch_attrib(
-                                vao,
-                                buffers,
-                                a.location as usize,
-                                index,
-                                instance as u32,
-                                &a.ty,
+                        let entry = &mut recent[index as usize & (VERTEX_CACHE - 1)];
+                        if entry.0 == index && entry.1 == instance as u32 {
+                            let from = entry.2;
+                            pos_out[k] = pos_out[from];
+                            size_out[k] = size_out[from];
+                            lanes_out.copy_within(
+                                from * lane_width..(from + 1) * lane_width,
+                                k * lane_width,
                             );
-                            m.set(a.vs_slot, value);
+                            continue;
+                        }
+                        *entry = (index, instance as u32, k);
+                        for source in sources.iter() {
+                            m.set(source.vs_slot, source.value(index, instance as u32));
                         }
                         for (s, v) in [
                             (slots.2, index as i32),
@@ -644,21 +770,23 @@ impl Context {
                             failed.store(true, std::sync::atomic::Ordering::Relaxed);
                             return;
                         }
-                        let pos = slots
+                        if let Some(p) = slots
                             .0
                             .and_then(|s| m.get(s).floats())
                             .filter(|p| p.len() == 4)
-                            .map_or([0.0; 4], |p| [p[0], p[1], p[2], p[3]]);
-                        let mut lanes = Vec::new();
-                        for v in &linked.varyings {
-                            flatten(m.get(v.vs_slot), &mut lanes);
+                        {
+                            pos_out[k] = [p[0], p[1], p[2], p[3]];
                         }
-                        let point_size = slots.1.and_then(|s| m.get(s).as_f32()).unwrap_or(1.0);
-                        *slot = Some(Vertex {
-                            pos,
-                            lanes,
-                            point_size,
-                        });
+                        let mut at = k * lane_width;
+                        for v in &linked.varyings {
+                            flatten_into(
+                                m.get(v.vs_slot),
+                                lanes_out,
+                                &mut at,
+                                (k + 1) * lane_width,
+                            );
+                        }
+                        size_out[k] = slots.1.and_then(|s| m.get(s).as_f32()).unwrap_or(1.0);
                     }
                 });
             }
@@ -667,14 +795,9 @@ impl Context {
             self.fail(INVALID_OPERATION);
             return;
         }
-        let vertices: Vec<Vertex> = vertices.into_iter().flatten().collect();
 
         let t_vertex = t0.elapsed();
         // ---- assembly, clipping, viewport transform ----
-        let mut smooth = Vec::new();
-        for v in &linked.varyings {
-            smooth_lanes(&v.ty, v.flat, &linked.fs.structs, &mut smooth);
-        }
         let s = self.state.clone();
         let vp = s.viewport;
         let (near, far) = (f64::from(s.depth_range[0]), f64::from(s.depth_range[1]));
@@ -687,22 +810,74 @@ impl Context {
                 inv_w,
             )
         };
-        let mut prims: Vec<Prim> = Vec::new();
+        if !matches!(mode, 0x0000..=0x0006) {
+            self.fail(INVALID_ENUM);
+            return;
+        }
         let per_instance = indices.len();
-        for instance in 0..instances as usize {
-            let vs = &vertices[instance * per_instance..(instance + 1) * per_instance];
+        let front_ccw = s.front_face == 0x0901;
+        let (cull, cull_mode) = (s.cull, s.cull_mode);
+        let (smooth_ref, store_ref) = (&smooth, &store);
+        // One instance's primitives, appended to `prims`.
+        let assemble = move |instance: usize, prims: &mut Vec<Prim>| {
+            let base = instance * per_instance;
+            let vs = store_ref.view(base, per_instance);
+            let smooth = smooth_ref;
+            let store = store_ref;
             let push_tri = |a: usize, b: usize, c: usize, prims: &mut Vec<Prim>| {
                 if prims.len() >= MAX_PRIMITIVES {
                     return;
                 }
-                let make = |v: &Vertex| ClipVtx {
+                let (pa, pb, pc) = (vs.get(a).pos, vs.get(b).pos, vs.get(c).pos);
+                let inside = |p: &[f32; 4]| p[3] > 0.0 && p[2].abs() <= p[3];
+                // Wholly beyond the near plane or the far plane: nothing to draw.
+                let beyond_near = pa[2] < -pa[3] && pb[2] < -pb[3] && pc[2] < -pc[3];
+                let beyond_far = pa[2] > pa[3] && pb[2] > pb[3] && pc[2] > pc[3];
+                if beyond_near || beyond_far {
+                    return;
+                }
+                let accept =
+                    |prims: &mut Vec<Prim>, w: [(f64, f64, f64, f64); 3], lanes: TriLanes| {
+                        let area = (w[1].0 - w[0].0) * (w[2].1 - w[0].1)
+                            - (w[2].0 - w[0].0) * (w[1].1 - w[0].1);
+                        if area.abs() < MIN_AREA || !area.is_finite() {
+                            return;
+                        }
+                        let front = (area > 0.0) == front_ccw;
+                        if cull {
+                            let culled = match cull_mode {
+                                0x0404 => front,
+                                0x0405 => !front,
+                                _ => true,
+                            };
+                            if culled {
+                                return;
+                            }
+                        }
+                        prims.push(Prim::Tri(Tri {
+                            x: [w[0].0, w[1].0, w[2].0],
+                            y: [w[0].1, w[1].1, w[2].1],
+                            z: [w[0].2, w[1].2, w[2].2],
+                            inv_w: [w[0].3, w[1].3, w[2].3],
+                            lanes,
+                            front,
+                            area,
+                        }));
+                    };
+                if inside(&pa) && inside(&pb) && inside(&pc) {
+                    // Nothing to clip: the triangle keeps the store's vertices as they are.
+                    let w = [pa, pb, pc].map(|p| to_window(&p.map(f64::from)));
+                    accept(prims, w, TriLanes::Stored([base + a, base + b, base + c]));
+                    return;
+                }
+                let make = |v: VertexRef<'_>| ClipVtx {
                     pos: v.pos.map(f64::from),
-                    lanes: v.lanes.clone(),
+                    lanes: v.lanes.to_vec(),
                 };
-                let provoking = vs[c].lanes.clone();
-                let mut poly = vec![make(&vs[a]), make(&vs[b]), make(&vs[c])];
+                let provoking = vs.get(c).lanes.to_vec();
+                let mut poly = vec![make(vs.get(a)), make(vs.get(b)), make(vs.get(c))];
                 for (axis, sign) in [(2usize, 1.0), (2, -1.0)] {
-                    poly = clip_plane(&poly, axis, sign, &smooth, &provoking);
+                    poly = clip_plane(&poly, axis, sign, smooth, &provoking);
                     if poly.len() < 3 {
                         return;
                     }
@@ -713,60 +888,41 @@ impl Context {
                         continue;
                     }
                     let w = tri.map(|v| to_window(&v.pos));
-                    let area = (w[1].0 - w[0].0) * (w[2].1 - w[0].1)
-                        - (w[2].0 - w[0].0) * (w[1].1 - w[0].1);
-                    if area.abs() < MIN_AREA || !area.is_finite() {
-                        continue;
-                    }
-                    let front = (area > 0.0) == (s.front_face == 0x0901);
-                    if s.cull {
-                        let culled = match s.cull_mode {
-                            0x0404 => front,
-                            0x0405 => !front,
-                            _ => true,
-                        };
-                        if culled {
-                            continue;
-                        }
-                    }
-                    prims.push(Prim::Tri(Tri {
-                        x: [w[0].0, w[1].0, w[2].0],
-                        y: [w[0].1, w[1].1, w[2].1],
-                        z: [w[0].2, w[1].2, w[2].2],
-                        inv_w: [w[0].3, w[1].3, w[2].3],
-                        lanes: [
+                    accept(
+                        prims,
+                        w,
+                        TriLanes::Owned(Box::new([
                             tri[0].lanes.clone(),
                             tri[1].lanes.clone(),
                             tri[2].lanes.clone(),
-                        ],
-                        front,
-                        area,
-                    }));
+                        ])),
+                    );
                 }
             };
+            let _ = store;
             match mode {
                 0x0004 => {
                     for t in 0..vs.len() / 3 {
-                        push_tri(t * 3, t * 3 + 1, t * 3 + 2, &mut prims);
+                        push_tri(t * 3, t * 3 + 1, t * 3 + 2, prims);
                     }
                 }
                 0x0005 => {
                     for t in 0..vs.len().saturating_sub(2) {
                         // Alternate winding so every triangle keeps its facing.
                         if t % 2 == 0 {
-                            push_tri(t, t + 1, t + 2, &mut prims);
+                            push_tri(t, t + 1, t + 2, prims);
                         } else {
-                            push_tri(t + 1, t, t + 2, &mut prims);
+                            push_tri(t + 1, t, t + 2, prims);
                         }
                     }
                 }
                 0x0006 => {
                     for t in 1..vs.len().saturating_sub(1) {
-                        push_tri(0, t, t + 1, &mut prims);
+                        push_tri(0, t, t + 1, prims);
                     }
                 }
                 0x0000 => {
-                    for v in vs {
+                    for v in vs.iter() {
                         if v.pos[3] > 0.0 && v.pos[2].abs() <= v.pos[3] {
                             let w = to_window(&v.pos.map(f64::from));
                             prims.push(Prim::Point(Point {
@@ -774,7 +930,7 @@ impl Context {
                                 y: w.1,
                                 z: w.2,
                                 size: f64::from(v.point_size.max(1.0)),
-                                lanes: v.lanes.clone(),
+                                lanes: v.lanes.to_vec(),
                             }));
                         }
                     }
@@ -788,18 +944,18 @@ impl Context {
                         _ => (0..vs.len()).map(|i| (i, (i + 1) % vs.len())).collect(),
                     };
                     for (a, b) in pairs {
-                        let (va, vb) = (&vs[a], &vs[b]);
+                        let (va, vb) = (vs.get(a), vs.get(b));
                         let mut poly = [
                             ClipVtx {
                                 pos: va.pos.map(f64::from),
-                                lanes: va.lanes.clone(),
+                                lanes: va.lanes.to_vec(),
                             },
                             ClipVtx {
                                 pos: vb.pos.map(f64::from),
-                                lanes: vb.lanes.clone(),
+                                lanes: vb.lanes.to_vec(),
                             },
                         ];
-                        let provoking = vb.lanes.clone();
+                        let provoking = vb.lanes.to_vec();
                         let mut ok = true;
                         for (axis, sign) in [(2usize, 1.0), (2, -1.0)] {
                             // A segment is clipped like a degenerate polygon.
@@ -816,7 +972,7 @@ impl Context {
                                     &poly[0],
                                     &poly[1],
                                     da / (da - db),
-                                    &smooth,
+                                    smooth,
                                     &provoking,
                                 );
                             } else if db < 0.0 {
@@ -824,7 +980,7 @@ impl Context {
                                     &poly[0],
                                     &poly[1],
                                     da / (da - db),
-                                    &smooth,
+                                    smooth,
                                     &provoking,
                                 );
                             }
@@ -839,12 +995,36 @@ impl Context {
                         }
                     }
                 }
-                _ => {
-                    self.fail(INVALID_ENUM);
-                    return;
-                }
+                _ => unreachable!("the mode was validated before assembling"),
             }
+        };
+
+        let threads = worker_count(total, 8192).min(instances as usize).max(1);
+        let per_thread = (instances as usize).div_ceil(threads);
+        let mut prims: Vec<Prim> = Vec::new();
+        let parts: Vec<Vec<Prim>> = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..threads)
+                .map(|t| {
+                    let assemble = &assemble;
+                    scope.spawn(move || {
+                        let mut part = Vec::new();
+                        let end = ((t + 1) * per_thread).min(instances as usize);
+                        for instance in t * per_thread..end {
+                            assemble(instance, &mut part);
+                        }
+                        part
+                    })
+                })
+                .collect();
+            workers
+                .into_iter()
+                .map(|w| w.join().expect("assembly does not panic"))
+                .collect()
+        });
+        for part in parts {
+            prims.extend(part);
         }
+        prims.truncate(MAX_PRIMITIVES);
 
         let t_assembly = t0.elapsed();
         let n_prims = prims.len();
@@ -907,6 +1087,7 @@ impl Context {
         }
         let bins = &bins;
         let prims = &prims;
+        let store = &store;
         let deadline = std::time::Instant::now() + self.draw_budget;
         let timed_out = &std::sync::atomic::AtomicBool::new(false);
         let smooth = &smooth;
@@ -964,6 +1145,7 @@ impl Context {
                             writes_depth,
                             deadline,
                             expired: false,
+                            since_clock: 0,
                         };
                         let mut lanes_buf: Vec<u32> = Vec::new();
                         loop {
@@ -992,6 +1174,7 @@ impl Context {
                                 match &prims[index as usize] {
                                     Prim::Tri(t) => raster_triangle(
                                         t,
+                                        store,
                                         band_clip,
                                         &mut stage,
                                         &mut band,
@@ -1053,151 +1236,205 @@ fn apply_uniforms(m: &mut Machine<'_>, linked: &Linked, _vertex: bool) {
     }
 }
 
-fn fetch_attrib(
-    vao: &Vao,
-    buffers: &HashMap<u32, Vec<u8>>,
-    location: usize,
-    index: u32,
-    instance: u32,
-    ty: &Ty,
-) -> V {
-    let Some(a) = vao.attribs.get(location) else {
-        return zero(ty, &[]);
-    };
-    let mut c: [f32; 4];
-    let mut raw = [0i64; 4];
-    let mut have_raw = false;
-    if a.enabled {
-        if let Some(data) = buffers.get(&a.buffer) {
-            let size = match a.ty {
-                0x1400 | 0x1401 => 1usize,
-                0x1402 | 0x1403 | 0x140B => 2,
-                _ => 4,
+/// One attribute location of the bound vertex array, resolved once for a draw.
+struct Column<'a> {
+    /// The buffer's bytes, if the array is enabled and has a buffer.
+    data: Option<&'a [u8]>,
+    components: usize,
+    ty: u32,
+    normalized: bool,
+    element_size: usize,
+    stride: usize,
+    offset: usize,
+    divisor: u32,
+    integer: bool,
+    constant: [f32; 4],
+}
+
+impl<'a> Column<'a> {
+    fn resolve(vao: &Vao, buffers: &'a HashMap<u32, Vec<u8>>, location: usize) -> Column<'a> {
+        let Some(a) = vao.attribs.get(location) else {
+            return Column {
+                data: None,
+                components: 0,
+                ty: FLOAT_TYPE,
+                normalized: false,
+                element_size: 4,
+                stride: 0,
+                offset: 0,
+                divisor: 0,
+                integer: false,
+                constant: [0.0, 0.0, 0.0, 1.0],
             };
-            let stride = if a.stride == 0 {
-                size * a.size as usize
-            } else {
-                a.stride as usize
-            };
-            let element = instance.checked_div(a.divisor).unwrap_or(index);
-            let base = a.offset as usize + stride * element as usize;
-            c = [0.0, 0.0, 0.0, 1.0];
-            for k in 0..a.size as usize {
-                let at = base + k * size;
-                let Some(bytes) = data.get(at..at + size) else {
-                    continue;
-                };
-                let (value, int) = match a.ty {
-                    0x1400 => {
-                        let v = bytes[0] as i8;
-                        (
-                            if a.normalized {
-                                (f32::from(v) / 127.0).max(-1.0)
-                            } else {
-                                f32::from(v)
-                            },
-                            i64::from(v),
-                        )
-                    }
-                    0x1401 => (
-                        if a.normalized {
-                            f32::from(bytes[0]) / 255.0
-                        } else {
-                            f32::from(bytes[0])
-                        },
-                        i64::from(bytes[0]),
-                    ),
-                    0x1402 => {
-                        let v = i16::from_le_bytes([bytes[0], bytes[1]]);
-                        (
-                            if a.normalized {
-                                (f32::from(v) / 32767.0).max(-1.0)
-                            } else {
-                                f32::from(v)
-                            },
-                            i64::from(v),
-                        )
-                    }
-                    0x1403 => {
-                        let v = u16::from_le_bytes([bytes[0], bytes[1]]);
-                        (
-                            if a.normalized {
-                                f32::from(v) / 65535.0
-                            } else {
-                                f32::from(v)
-                            },
-                            i64::from(v),
-                        )
-                    }
-                    0x1404 => {
-                        let v = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                        (v as f32, i64::from(v))
-                    }
-                    0x1405 => {
-                        let v = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                        (v as f32, i64::from(v))
-                    }
-                    0x140B => {
-                        let v = u16::from_le_bytes([bytes[0], bytes[1]]);
-                        (half(v), 0)
-                    }
-                    _ => {
-                        let v = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                        (v, 0)
-                    }
-                };
-                c[k] = value;
-                raw[k] = int;
-            }
-            have_raw = a.integer;
+        };
+        let element_size = match a.ty {
+            0x1400 | 0x1401 => 1usize,
+            0x1402 | 0x1403 | 0x140B => 2,
+            _ => 4,
+        };
+        let stride = if a.stride == 0 {
+            element_size * a.size as usize
         } else {
-            c = a.constant;
+            a.stride as usize
+        };
+        Column {
+            data: if a.enabled {
+                buffers.get(&a.buffer).map(Vec::as_slice)
+            } else {
+                None
+            },
+            components: a.size as usize,
+            ty: a.ty,
+            normalized: a.normalized,
+            element_size,
+            stride,
+            offset: a.offset as usize,
+            divisor: a.divisor,
+            integer: a.integer,
+            constant: a.constant,
         }
-    } else {
-        c = a.constant;
     }
-    match ty {
-        Ty::Scalar(Scalar::Float) => V::f(c[0]),
-        Ty::Scalar(Scalar::Int) => V::i(if have_raw { raw[0] as i32 } else { c[0] as i32 }),
-        Ty::Scalar(Scalar::UInt) => V::u(if have_raw { raw[0] as u32 } else { c[0] as u32 }),
-        Ty::Vec(Scalar::Float, n) => V::vec(&c[..*n as usize]),
-        Ty::Vec(k, n) => V::of_kind(
-            *k,
-            &(0..*n as usize)
-                .map(|i| {
-                    if have_raw {
+
+    /// The four components (floats, and the raw integers for an integer attribute) of
+    /// this column for a vertex.
+    fn read(&self, index: u32, instance: u32) -> ([f32; 4], [i64; 4], bool) {
+        let Some(data) = self.data else {
+            return (self.constant, [0; 4], false);
+        };
+        let element = instance.checked_div(self.divisor).unwrap_or(index);
+        let base = self.offset + self.stride * element as usize;
+        let mut c = [0.0, 0.0, 0.0, 1.0];
+        let mut raw = [0i64; 4];
+        for k in 0..self.components.min(4) {
+            let at = base + k * self.element_size;
+            let Some(bytes) = data.get(at..at + self.element_size) else {
+                continue;
+            };
+            let (value, int) = match self.ty {
+                0x1400 => {
+                    let v = bytes[0] as i8;
+                    (
+                        if self.normalized {
+                            (f32::from(v) / 127.0).max(-1.0)
+                        } else {
+                            f32::from(v)
+                        },
+                        i64::from(v),
+                    )
+                }
+                0x1401 => (
+                    if self.normalized {
+                        f32::from(bytes[0]) / 255.0
+                    } else {
+                        f32::from(bytes[0])
+                    },
+                    i64::from(bytes[0]),
+                ),
+                0x1402 => {
+                    let v = i16::from_le_bytes([bytes[0], bytes[1]]);
+                    (
+                        if self.normalized {
+                            (f32::from(v) / 32767.0).max(-1.0)
+                        } else {
+                            f32::from(v)
+                        },
+                        i64::from(v),
+                    )
+                }
+                0x1403 => {
+                    let v = u16::from_le_bytes([bytes[0], bytes[1]]);
+                    (
+                        if self.normalized {
+                            f32::from(v) / 65535.0
+                        } else {
+                            f32::from(v)
+                        },
+                        i64::from(v),
+                    )
+                }
+                0x1404 => {
+                    let v = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                    (v as f32, i64::from(v))
+                }
+                0x1405 => {
+                    let v = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                    (v as f32, i64::from(v))
+                }
+                0x140B => {
+                    let v = u16::from_le_bytes([bytes[0], bytes[1]]);
+                    (half(v), 0)
+                }
+                _ => {
+                    let v = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                    (v, 0)
+                }
+            };
+            c[k] = value;
+            raw[k] = int;
+        }
+        (c, raw, self.integer)
+    }
+}
+
+const FLOAT_TYPE: u32 = 0x1406;
+
+/// A vertex-shader input and where it comes from (a matrix takes one column per location).
+struct AttribSource<'a> {
+    vs_slot: usize,
+    ty: Ty,
+    columns: Vec<Column<'a>>,
+}
+
+impl<'a> AttribSource<'a> {
+    fn resolve(vao: &Vao, buffers: &'a HashMap<u32, Vec<u8>>, a: &AttribInfo) -> AttribSource<'a> {
+        let width = match &a.ty {
+            Ty::Mat(cols, _) => (*cols as usize).min(4),
+            _ => 1,
+        };
+        AttribSource {
+            vs_slot: a.vs_slot,
+            ty: a.ty.clone(),
+            columns: (0..width)
+                .map(|c| Column::resolve(vao, buffers, a.location as usize + c))
+                .collect(),
+        }
+    }
+
+    fn value(&self, index: u32, instance: u32) -> V {
+        let (c, raw, have_raw) = self.columns[0].read(index, instance);
+        match &self.ty {
+            Ty::Scalar(Scalar::Float) => V::f(c[0]),
+            Ty::Scalar(Scalar::Int) => V::i(if have_raw { raw[0] as i32 } else { c[0] as i32 }),
+            Ty::Scalar(Scalar::UInt) => V::u(if have_raw { raw[0] as u32 } else { c[0] as u32 }),
+            Ty::Vec(Scalar::Float, n) => V::vec(&c[..*n as usize]),
+            Ty::Vec(k, n) => {
+                let mut lanes = [0u32; 4];
+                for (i, lane) in lanes.iter_mut().enumerate().take(*n as usize) {
+                    *lane = if have_raw {
                         raw[i] as u32
                     } else {
                         c[i] as i32 as u32
-                    }
-                })
-                .collect::<Vec<_>>(),
-        ),
-        Ty::Mat(cols, rows) => {
-            // A matrix attribute spans one location per column, each a vector.
-            let mut d = [0.0f32; 16];
-            for column in 0..(*cols as usize).min(4) {
-                let col = fetch_attrib(
-                    vao,
-                    buffers,
-                    location + column,
-                    index,
-                    instance,
-                    &Ty::Vec(Scalar::Float, *rows),
-                );
-                if let Some(values) = col.floats() {
-                    for (r, v) in values.iter().enumerate().take(4) {
+                    };
+                }
+                V::of_kind(*k, &lanes[..*n as usize])
+            }
+            Ty::Mat(cols, rows) => {
+                // A matrix attribute spans one location per column, each a vector.
+                let mut d = [0.0f32; 16];
+                for (column, source) in self.columns.iter().enumerate() {
+                    let (values, _, _) = source.read(index, instance);
+                    for (r, v) in values.iter().enumerate().take((*rows as usize).min(4)) {
                         d[column * *rows as usize + r] = *v;
                     }
                 }
+                V::Mat {
+                    cols: *cols,
+                    rows: *rows,
+                    d,
+                }
             }
-            V::Mat {
-                cols: *cols,
-                rows: *rows,
-                d,
-            }
+            other => zero(other, &[]),
         }
-        other => zero(other, &[]),
     }
 }
 
@@ -1220,12 +1457,14 @@ fn half(h: u16) -> f32 {
 
 fn raster_triangle(
     t: &Tri,
+    store: &VertexStore,
     clip: (i64, i64, i64, i64),
     stage: &mut FragmentStage<'_>,
     band: &mut Band<'_>,
     smooth: &[bool],
     lanes: &mut Vec<u32>,
 ) {
+    let [l0, l1, l2] = t.lanes.slices(store);
     let min_x =
         t.x.iter()
             .cloned()
@@ -1266,7 +1505,8 @@ fn raster_triangle(
         dy < 0.0 || (dy == 0.0 && dx < 0.0)
     };
     let (tl0, tl1, tl2) = (top_left(1, 2), top_left(2, 0), top_left(0, 1));
-    let nlanes = t.lanes[0].len();
+    // The varyings' words (a vertex may carry one more, unused, when it has none).
+    let nlanes = smooth.len();
     for y in min_y..max_y {
         if stage.out_of_time() {
             return;
@@ -1292,12 +1532,12 @@ fn raster_triangle(
             lanes.clear();
             for i in 0..nlanes {
                 if smooth[i] {
-                    let v = l[0] * f64::from(f32::from_bits(t.lanes[0][i]))
-                        + l[1] * f64::from(f32::from_bits(t.lanes[1][i]))
-                        + l[2] * f64::from(f32::from_bits(t.lanes[2][i]));
+                    let v = l[0] * f64::from(f32::from_bits(l0[i]))
+                        + l[1] * f64::from(f32::from_bits(l1[i]))
+                        + l[2] * f64::from(f32::from_bits(l2[i]));
                     lanes.push((v as f32).to_bits());
                 } else {
-                    lanes.push(t.lanes[2][i]);
+                    lanes.push(l2[i]);
                 }
             }
             stage.run(
@@ -1384,7 +1624,7 @@ fn raster_line(
         let (wa, wb) = (l.a.3 * (1.0 - t), l.b.3 * t);
         let tp = wb / (wa + wb);
         lanes.clear();
-        for k in 0..l.lanes[0].len() {
+        for k in 0..smooth.len() {
             if smooth[k] {
                 let (a, b) = (
                     f64::from(f32::from_bits(l.lanes[0][k])),

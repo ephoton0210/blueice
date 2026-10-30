@@ -516,3 +516,75 @@ fn a_mat4_attribute_reads_one_column_from_each_of_four_locations() {
     // The attribute occupies four locations, so the next attribute lands after them.
     assert!(ctx.active_attribs(p).iter().any(|a| a.name == "offset"));
 }
+
+/// Triangles the camera's near plane cuts must come out the same however the draw is
+/// assembled: every vertex of a mesh is named by several triangles, and instancing repeats it.
+#[test]
+fn triangles_cut_by_the_near_plane_are_clipped_and_the_rest_are_not_disturbed() {
+    // A tall triangle that crosses z = -w (the near plane) at its top vertex, next to one that
+    // lies wholly inside, and one wholly behind the camera.
+    let vs = "attribute vec3 p; attribute vec3 c; varying vec3 vc; void main() { vc = c; gl_Position = vec4(p, 1.0); }";
+    let fs =
+        "precision mediump float; varying vec3 vc; void main() { gl_FragColor = vec4(vc, 1.0); }";
+    let mut ctx = Context::new(24, 8);
+    let p = build(&mut ctx, vs, fs);
+    let b = ctx.create_buffer();
+    ctx.bind_buffer(ARRAY_BUFFER, b);
+    #[rustfmt::skip]
+    let verts: [f32; 36] = [
+        // x, y, z, r, g, b   (w is 1, so z outside [-1, 1] is outside the clip volume)
+        -0.9, -0.9,  0.0, 1.0, 0.0, 0.0,
+        -0.5, -0.9,  0.0, 1.0, 0.0, 0.0,
+        -0.7,  0.9, -2.0, 1.0, 0.0, 0.0,   // above the near plane: this triangle is clipped
+         0.1, -0.9,  0.0, 0.0, 1.0, 0.0,
+         0.5, -0.9,  0.0, 0.0, 1.0, 0.0,
+         0.3,  0.9,  0.0, 0.0, 1.0, 0.0,   // wholly inside
+    ];
+    ctx.buffer_data(ARRAY_BUFFER, floats(&verts));
+    attrib(&mut ctx, p, "p", 3, 24, 0);
+    attrib(&mut ctx, p, "c", 3, 24, 12);
+    ctx.draw_arrays(0x0004, 0, 6, 1);
+    assert_eq!(ctx.get_error(), NO_ERROR);
+    // The clipped red triangle still covers its base; its apex is cut away by the near plane.
+    assert_eq!(
+        pixel(&ctx, 2, 7)[0],
+        255,
+        "the clipped triangle's base is drawn"
+    );
+    assert_eq!(pixel(&ctx, 2, 0)[3], 0, "its cut-off apex is not");
+    // The untouched green one is whole, at the same place with or without its neighbour.
+    // (NDC x = 0.3 is pixel 15.6: the middle of its base and the line of its apex.)
+    assert_eq!(pixel(&ctx, 15, 7), [0, 255, 0, 255]);
+    assert_eq!(pixel(&ctx, 15, 3), [0, 255, 0, 255]);
+    // A triangle wholly behind the near plane draws nothing at all.
+    ctx.state.clear_color = [0.0; 4];
+    ctx.clear(COLOR_BUFFER_BIT);
+    let behind: [f32; 18] = [
+        -1.0, -1.0, -3.0, 1.0, 1.0, 1.0, 1.0, -1.0, -3.0, 1.0, 1.0, 1.0, 0.0, 1.0, -3.0, 1.0, 1.0,
+        1.0,
+    ];
+    ctx.buffer_data(ARRAY_BUFFER, floats(&behind));
+    ctx.vertex_attrib_pointer(
+        ctx.attrib_location(p, "p") as u32,
+        3,
+        0x1406,
+        false,
+        24,
+        0,
+        false,
+    );
+    ctx.vertex_attrib_pointer(
+        ctx.attrib_location(p, "c") as u32,
+        3,
+        0x1406,
+        false,
+        24,
+        12,
+        false,
+    );
+    ctx.draw_arrays(0x0004, 0, 3, 1);
+    assert!(
+        ctx.picture().chunks(4).all(|px| px[3] == 0),
+        "nothing was drawn"
+    );
+}
