@@ -536,6 +536,8 @@ pub struct Machine<'p> {
     base: usize,
     textures: &'p dyn Textures,
     steps: u64,
+    /// Emptied argument lists of built-in calls, kept to reuse their storage.
+    arg_pool: Vec<Vec<V>>,
 }
 
 impl<'p> Machine<'p> {
@@ -552,6 +554,7 @@ impl<'p> Machine<'p> {
             base: 0,
             textures,
             steps: 0,
+            arg_pool: Vec::new(),
         };
         // Constants and global initialisers.
         for slot in 0..prog.globals.len() {
@@ -838,12 +841,21 @@ impl<'p> Machine<'p> {
             }
             N::CallUser(i, args) => self.call_user(*i, args)?,
             N::CallBuiltin(name, args) => {
-                let mut values = Vec::with_capacity(args.len());
+                let mut values = self.arg_pool.pop().unwrap_or_default();
                 for a in args {
-                    values.push(self.eval(a)?);
+                    match self.eval(a) {
+                        Ok(v) => values.push(v),
+                        Err(e) => {
+                            values.clear();
+                            self.arg_pool.push(values);
+                            return Err(e);
+                        }
+                    }
                 }
-                builtins::call(name, &values, self.textures)
-                    .ok_or_else(|| format!("'{name}' is not a built-in"))??
+                let result = builtins::call(name, &values, self.textures);
+                values.clear();
+                self.arg_pool.push(values);
+                result.ok_or_else(|| format!("'{name}' is not a built-in"))??
             }
             N::Ctor(ty, args) => {
                 let mut values = Vec::with_capacity(args.len());
