@@ -7,7 +7,7 @@
 use super::*;
 
 pub(super) struct PreparedModuleCells {
-    cells: HashMap<usize, ObjectId>,
+    cells: crate::slot_map::CellMap,
     charge: execution_payload::ExecutionPayloadCharge,
 }
 impl PreparedModuleCells {
@@ -35,7 +35,7 @@ impl Vm {
             payload_bytes: count.saturating_mul(std::mem::size_of::<(usize, ObjectId)>()),
             ..Default::default()
         })?;
-        let mut cells = HashMap::new();
+        let mut cells = crate::slot_map::CellMap::default();
         cells.try_reserve(count).map_err(|_| {
             self.host_scheduling
                 .as_ref()

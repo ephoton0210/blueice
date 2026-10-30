@@ -79,7 +79,7 @@ impl Vm {
             parameter_eval_env: None,
             completion_saves: Vec::new(),
             remaining_instructions: 0,
-            cells: HashMap::new(),
+            cells: Default::default(),
             module_registry: ModuleRegistry::default(),
             json_module_sources: Default::default(),
             text_module_sources: Default::default(),

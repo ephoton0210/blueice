@@ -543,7 +543,7 @@ impl Vm {
         self.completion_saves = Vec::new();
         self.call_stack = Vec::new();
         self.async_frame_roots = Vec::new();
-        self.cells = HashMap::new();
+        self.cells = Default::default();
         self.dynamic_eval_bindings = HashMap::new();
         self.dynamic_eval_outer_bindings = Vec::new();
         self.eval_dynamic_slots = HashMap::new();

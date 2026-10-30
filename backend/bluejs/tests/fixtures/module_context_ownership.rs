@@ -42,7 +42,7 @@ fn module_context_ownership_instantiation_refuses_before_replacing_caller_fields
     vm.stack = Vec::with_capacity(16);
     vm.stack.push(Value::Number(7.0));
     let code = compile_module("0;");
-    let mut cells = HashMap::new();
+    let mut cells = crate::slot_map::CellMap::default();
     let _peer = leave_room(&mut vm, 0);
     assert_eq!(
         vm.initialize_module_record("page/module.js", &code, &mut cells),
@@ -290,7 +290,7 @@ fn module_context_ownership_later_frame_refusal_refunds_the_prepared_name_immedi
     vm.stack.push(Value::Number(7.0));
     let code = compile_module("export let answer=42;");
     let cell = vm.with_roots(|heap| heap.alloc_object(None)).unwrap();
-    let mut cells = HashMap::from([(0, cell)]);
+    let mut cells: crate::slot_map::CellMap = [(0, cell)].into_iter().collect();
     let _peer = leave_room(&mut vm, "page/module.js".len());
     let before = vm.host_scheduling_snapshot().payload_bytes;
     assert_eq!(
@@ -299,7 +299,12 @@ fn module_context_ownership_later_frame_refusal_refunds_the_prepared_name_immedi
     );
     assert_eq!(vm.host_scheduling_snapshot().payload_bytes, before);
     assert_eq!(vm.stack, vec![Value::Number(7.0)]);
-    assert_eq!(cells, HashMap::from([(0, cell)]));
+    assert_eq!(
+        cells,
+        [(0, cell)]
+            .into_iter()
+            .collect::<crate::slot_map::CellMap>()
+    );
     assert_eq!(vm.active_module_name.as_ref().unwrap().as_ptr(), pointer);
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);
 }

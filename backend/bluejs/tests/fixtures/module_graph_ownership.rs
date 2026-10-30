@@ -111,7 +111,7 @@ fn module_graph_ownership_refuses_record_metadata_before_managed_cells() {
 
 fn record(vm: &Vm) -> LinkedModule {
     LinkedModule {
-        cells: HashMap::new(),
+        cells: Default::default(),
         cells_charge: vm.charge_module_cells(0),
         namespace: None,
         deferred_namespace: None,

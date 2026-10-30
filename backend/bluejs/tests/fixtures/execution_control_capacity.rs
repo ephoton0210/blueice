@@ -32,7 +32,9 @@ fn grow<T>(values: &mut Vec<T>) -> usize {
     (values.capacity() - old) * std::mem::size_of::<T>()
 }
 
-fn grow_map<K: Eq + std::hash::Hash, V>(values: &mut HashMap<K, V>) -> usize {
+fn grow_map<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher>(
+    values: &mut HashMap<K, V, S>,
+) -> usize {
     let old = values.capacity();
     values.reserve(old + 7);
     (values.capacity() - old) * std::mem::size_of::<(K, V)>()

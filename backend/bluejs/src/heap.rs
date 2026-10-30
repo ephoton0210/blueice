@@ -475,7 +475,7 @@ pub(crate) enum GeneratorState {
         pc: usize,
         stack: Vec<Value>,
         bindings: Vec<Option<Value>>,
-        cells: HashMap<usize, ObjectId>,
+        cells: crate::slot_map::CellMap,
         this: Value,
         args: Vec<Value>,
         completion: Value,

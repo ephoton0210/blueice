@@ -25,7 +25,7 @@ fn code(source: &str) -> Bytecode {
 }
 fn record(vm: &Vm) -> LinkedModule {
     LinkedModule {
-        cells: HashMap::new(),
+        cells: Default::default(),
         cells_charge: vm.charge_module_cells(0),
         namespace: None,
         deferred_namespace: None,

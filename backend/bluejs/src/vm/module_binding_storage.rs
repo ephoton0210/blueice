@@ -73,7 +73,7 @@ impl Aliases {
         assert!(self.data.data.len() < self.data.data.capacity());
         self.data.data.push((slot, cell));
     }
-    pub(super) fn publish(mut self, cells: &mut HashMap<usize, ObjectId>) {
+    pub(super) fn publish(mut self, cells: &mut crate::slot_map::CellMap) {
         assert_eq!(self.data.data.len(), self.expected);
         let needed = self
             .data

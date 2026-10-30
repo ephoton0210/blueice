@@ -528,7 +528,7 @@ fn binding_allows_assignment(
 /// graph.  The bytecode stays immutable; every top-level module slot gets a
 /// rooted cell while the graph is linked and evaluated.
 struct LinkedModule {
-    cells: HashMap<usize, ObjectId>,
+    cells: crate::slot_map::CellMap,
     cells_charge: execution_payload::ExecutionPayloadCharge,
     namespace: Option<ObjectId>,
     /// The module's *deferred* namespace object (import-defer proposal), kept
@@ -982,7 +982,7 @@ struct SuspendedModuleExecution {
     pending_completions: Vec<Completion>,
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
-    cells: HashMap<usize, ObjectId>,
+    cells: crate::slot_map::CellMap,
     dynamic_eval_bindings: HashMap<String, DynamicEvalBinding>,
     eval_dynamic_slots: HashMap<usize, String>,
     dynamic_eval_outer_bindings: Vec<HashMap<String, DynamicEvalBinding>>,
@@ -1082,7 +1082,7 @@ pub struct Vm {
     pending_tail_call: Option<Vec<Value>>,
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
-    cells: HashMap<usize, ObjectId>,
+    cells: crate::slot_map::CellMap,
     /// Bytecodes supplied by the host for this realm's module loader.
     /// Dynamic imports resolve only inside this explicit registry.
     module_registry: ModuleRegistry,

@@ -119,7 +119,7 @@ fn leave_room(vm: &mut Vm, room: usize) -> SharedSchedulingCharge {
 }
 fn record() -> LinkedModule {
     LinkedModule {
-        cells: HashMap::new(),
+        cells: Default::default(),
         cells_charge: Vm::default().charge_module_cells(0),
         namespace: None,
         deferred_namespace: None,

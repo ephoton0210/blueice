@@ -166,7 +166,7 @@ fn module_binding_storage_alias_publication_needs_no_more_storage() {
     let code = compile("import {x} from 'leaf';");
     let mut vm = page();
     let cell = vm.heap.alloc_object(None).unwrap();
-    let mut cells = HashMap::with_capacity(1);
+    let mut cells = crate::slot_map::CellMap::with_capacity_and_hasher(1, Default::default());
     let mut aliases = Aliases::prepare(&code, vm.host_scheduling.as_ref()).unwrap();
     aliases.push(0, cell);
     let bytes = aliases.bytes();
@@ -467,7 +467,7 @@ fn module_binding_storage_host_neutral_preparations_preserve_bindings() {
     assert!(slots.contains(0));
     let mut aliases = Aliases::prepare(&code, None).unwrap();
     aliases.push(0, cell);
-    let mut cells = HashMap::with_capacity(1);
+    let mut cells = crate::slot_map::CellMap::with_capacity_and_hasher(1, Default::default());
     aliases.publish(&mut cells);
     assert_eq!(cells[&0], cell);
     let mut exports = NamespaceExports::prepare(&["x"], None).unwrap();

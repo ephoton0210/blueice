@@ -164,7 +164,7 @@ fn small_state(
         pc: 0,
         stack,
         bindings: Vec::new(),
-        cells: HashMap::new(),
+        cells: Default::default(),
         this: Value::Undefined,
         args: Vec::new(),
         completion: Value::Undefined,

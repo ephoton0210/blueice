@@ -17,7 +17,7 @@ fn page() -> Vm {
 }
 fn record(evaluating: bool) -> LinkedModule {
     LinkedModule {
-        cells: HashMap::new(),
+        cells: Default::default(),
         cells_charge: Vm::default().charge_module_cells(0),
         namespace: None,
         deferred_namespace: None,

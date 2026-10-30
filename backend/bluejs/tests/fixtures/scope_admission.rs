@@ -219,7 +219,7 @@ fn scope_admission_module_outer_scope_retains_seeded_cells() {
     let mut vm = bounded_vm();
     let code = crate::compile_module(&crate::parse_module("export var first=1,second=2;").unwrap())
         .unwrap();
-    let mut cells = HashMap::new();
+    let mut cells = crate::slot_map::CellMap::default();
     for &slot in &code.scopes[0] {
         cells.insert(slot as usize, vm.heap.alloc_object(None).unwrap());
     }

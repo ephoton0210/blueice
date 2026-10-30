@@ -564,7 +564,7 @@ impl Vm {
                     let prepared =
                         self.prepare_linked_module_cells(code.scopes.first().map_or(0, Vec::len))?;
                     let mut record = LinkedModule {
-                        cells: HashMap::new(),
+                        cells: Default::default(),
                         cells_charge: self.charge_module_cells(0),
                         namespace: None,
                         evaluated: false,
@@ -2564,7 +2564,7 @@ impl Vm {
     pub(super) fn enter_module_record(
         &mut self,
         code: &Bytecode,
-        cells: &mut HashMap<usize, ObjectId>,
+        cells: &mut crate::slot_map::CellMap,
     ) -> Result<(), RuntimeError> {
         self.enter_module_record_storage(code, cells, None)
     }
@@ -2572,7 +2572,7 @@ impl Vm {
     fn enter_module_record_storage(
         &mut self,
         code: &Bytecode,
-        cells: &mut HashMap<usize, ObjectId>,
+        cells: &mut crate::slot_map::CellMap,
         cells_charge: Option<&mut execution_payload::ExecutionPayloadCharge>,
     ) -> Result<(), RuntimeError> {
         let mut prepared = self.prepare_frame_bindings(code, FrameBindingKind::Script)?;
@@ -2603,7 +2603,7 @@ impl Vm {
         &mut self,
         name: &str,
         code: &Bytecode,
-        cells: &mut HashMap<usize, ObjectId>,
+        cells: &mut crate::slot_map::CellMap,
     ) -> Result<(), RuntimeError> {
         let result = self.initialize_module_record_inner(name, code, cells, None);
         self.reconcile_scheduling_ownership();
@@ -2630,7 +2630,7 @@ impl Vm {
         &mut self,
         name: &str,
         code: &Bytecode,
-        cells: &mut HashMap<usize, ObjectId>,
+        cells: &mut crate::slot_map::CellMap,
         mut cells_charge: Option<&mut execution_payload::ExecutionPayloadCharge>,
     ) -> Result<(), RuntimeError> {
         // Only a module compiled as one gets here, and it has an entry.

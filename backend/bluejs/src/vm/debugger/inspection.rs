@@ -156,7 +156,7 @@ impl Vm {
     fn debugger_binding_preview(
         &self,
         bindings: &[Option<Value>],
-        cells: &HashMap<usize, ObjectId>,
+        cells: &crate::slot_map::CellMap,
         entry: VmDebuggerScopeEntry,
     ) -> Result<VmDebuggerInspection<VmDebuggerValuePreview>, RuntimeError> {
         let slot = entry.slot_ordinal as usize;

@@ -183,14 +183,19 @@ fn frame_binding_admission_module_refusal_preserves_input_cells_and_context() {
     let mut vm = bounded_vm();
     let code = crate::compile_module(&crate::parse_module("export let a=1,b=2;").unwrap()).unwrap();
     let cell = vm.heap.alloc_object(None).unwrap();
-    let mut cells = HashMap::from([(0, cell)]);
+    let mut cells: crate::slot_map::CellMap = [(0, cell)].into_iter().collect();
     vm.stack.push(Value::Number(7.0));
     let _peer = leave_room(&mut vm, 0);
     assert_eq!(
         vm.enter_module_record(&code, &mut cells),
         Err(RuntimeError::SchedulingLimit)
     );
-    assert_eq!(cells, HashMap::from([(0, cell)]));
+    assert_eq!(
+        cells,
+        [(0, cell)]
+            .into_iter()
+            .collect::<crate::slot_map::CellMap>()
+    );
     assert_eq!(vm.stack, vec![Value::Number(7.0)]);
     assert!(vm.bindings.is_empty() && vm.binding_metadata.is_empty());
     assert_eq!(vm.displaced_execution_control_bytes.get(), 0);

@@ -7,7 +7,7 @@
 use super::*;
 
 pub(super) struct PreparedFrameMaps {
-    cells: HashMap<usize, ObjectId>,
+    cells: crate::slot_map::CellMap,
     dynamic: HashMap<String, DynamicEvalBinding>,
     charge: execution_payload::ExecutionPayloadCharge,
 }
@@ -51,7 +51,7 @@ impl PreparedFrameMaps {
 
     pub(super) fn adopt_saved_maps(
         &mut self,
-        cells: HashMap<usize, ObjectId>,
+        cells: crate::slot_map::CellMap,
         dynamic: HashMap<String, DynamicEvalBinding>,
     ) {
         self.cells = cells;
@@ -60,7 +60,7 @@ impl PreparedFrameMaps {
     }
 
     // Detached parts stay leased until all tables enter active VM ownership.
-    pub(super) fn take_cells(&mut self) -> HashMap<usize, ObjectId> {
+    pub(super) fn take_cells(&mut self) -> crate::slot_map::CellMap {
         std::mem::take(&mut self.cells)
     }
 
@@ -86,7 +86,7 @@ impl Vm {
             payload_bytes: minimum,
             ..Default::default()
         })?;
-        let mut cell_table = HashMap::new();
+        let mut cell_table = crate::slot_map::CellMap::default();
         let mut dynamic_table = HashMap::new();
         if cell_table.try_reserve(cells).is_err() || dynamic_table.try_reserve(dynamic).is_err() {
             return Err(self

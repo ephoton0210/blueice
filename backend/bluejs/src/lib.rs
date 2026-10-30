@@ -69,6 +69,7 @@ mod regex_group_names;
 #[doc(hidden)]
 pub mod regex_worker;
 mod regexp;
+mod slot_map;
 mod source_encoding;
 mod string;
 mod token;

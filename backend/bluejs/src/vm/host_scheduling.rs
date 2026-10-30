@@ -78,20 +78,22 @@ impl SchedulingCapacity {
 
 /// Prepare actual hash-table capacity without changing live owners. The
 /// replacement receives existing entries by move only after joint admission.
-pub(super) struct SchedulingMapCapacity<K, V> {
-    replacement: Option<HashMap<K, V>>,
+pub(super) struct SchedulingMapCapacity<K, V, S = std::collections::hash_map::RandomState> {
+    replacement: Option<HashMap<K, V, S>>,
     additional_bytes: usize,
 }
 
-impl<K: Eq + std::hash::Hash, V> SchedulingMapCapacity<K, V> {
+impl<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher + Default>
+    SchedulingMapCapacity<K, V, S>
+{
     pub(super) fn for_additional(
-        values: &HashMap<K, V>,
+        values: &HashMap<K, V, S>,
         additional: usize,
         scope: Option<&SchedulingScope>,
     ) -> Result<Self, RuntimeError> {
         let required = values.len().saturating_add(additional);
         let replacement = if required > values.capacity() {
-            let mut table = HashMap::new();
+            let mut table = HashMap::with_hasher(S::default());
             if table.try_reserve(required).is_err() {
                 return Err(scope.map_or(RuntimeError::SchedulingLimit, SchedulingScope::fail));
             }
@@ -110,7 +112,7 @@ impl<K: Eq + std::hash::Hash, V> SchedulingMapCapacity<K, V> {
         })
     }
 
-    pub(super) fn commit(self, values: &mut HashMap<K, V>) {
+    pub(super) fn commit(self, values: &mut HashMap<K, V, S>) {
         if let Some(mut table) = self.replacement {
             table.extend(values.drain());
             *values = table;
@@ -149,7 +151,10 @@ pub struct HostSchedulingUsage {
 }
 
 impl HostSchedulingUsage {
-    pub(super) fn with_map_growth<K, V>(mut self, growth: &SchedulingMapCapacity<K, V>) -> Self {
+    pub(super) fn with_map_growth<K, V, S>(
+        mut self,
+        growth: &SchedulingMapCapacity<K, V, S>,
+    ) -> Self {
         self.payload_bytes = self.payload_bytes.saturating_add(growth.additional_bytes);
         self
     }

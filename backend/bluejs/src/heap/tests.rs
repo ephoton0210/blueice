@@ -1011,7 +1011,7 @@ fn suspended_generator_references_keep_every_saved_object_visible_to_gc() {
         pc: 0,
         stack: vec![Value::Object(stack)],
         bindings: vec![Some(Value::Object(binding))],
-        cells: HashMap::from([(0, cell)]),
+        cells: [(0, cell)].into_iter().collect(),
         this: Value::Object(this),
         args: vec![Value::Object(argument)],
         completion: Value::Object(completion),
@@ -1177,7 +1177,9 @@ fn generator_entry_storage_counts_reserved_vector_capacity() {
 
 #[test]
 fn generator_entry_storage_counts_all_suspended_container_capacity() {
-    fn grow_map<K: Eq + std::hash::Hash, V>(values: &mut HashMap<K, V>) -> usize {
+    fn grow_map<K: Eq + std::hash::Hash, V, S: std::hash::BuildHasher>(
+        values: &mut HashMap<K, V, S>,
+    ) -> usize {
         let old = values.capacity();
         values.reserve(9);
         (values.capacity() - old) * size_of::<(K, V)>()
@@ -1193,7 +1195,7 @@ fn generator_entry_storage_counts_all_suspended_container_capacity() {
             pc: 0,
             stack: Vec::new(),
             bindings: Vec::new(),
-            cells: HashMap::new(),
+            cells: Default::default(),
             this: Value::Undefined,
             args: Vec::new(),
             completion: Value::Undefined,
