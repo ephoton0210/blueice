@@ -945,8 +945,12 @@ mod tests {
         let one = V::f(0.5);
         for name in ["sin", "abs", "exp2", "sqrt", "radians", "fract", "sign"] {
             let which = Builtin::from_name(name).expect(name);
-            let by_id = call_resolved(which, name, &[one.clone()], &NoTextures);
-            assert_eq!(by_id, call(name, &[one.clone()], &NoTextures), "{name}");
+            let by_id = call_resolved(which, name, std::slice::from_ref(&one), &NoTextures);
+            assert_eq!(
+                by_id,
+                call(name, std::slice::from_ref(&one), &NoTextures),
+                "{name}"
+            );
         }
         assert_eq!(Builtin::from_name("myFunction"), None);
         assert!(call("myFunction", &[], &NoTextures).is_none());
