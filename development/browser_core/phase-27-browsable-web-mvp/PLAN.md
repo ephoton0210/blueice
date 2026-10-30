@@ -407,7 +407,7 @@ Progress, third slice (2026-10-28), test-first:
   forming a row.
 
 Still open, in priority order: `position: sticky`/`fixed` scrolling in the frontends,
-`text-overflow`, `@import` and `@container`, `:has()`, `@layer` precedence, `transform`,
+`text-overflow`, `@import` and `@container`, `:has()`, `@layer` precedence, `rotate`/`scale`/`skew` transforms,
 inset shadows, counters, asynchronous image loading after first paint, and the
 Chromium side-by-side.
 
@@ -637,13 +637,66 @@ and fixed the three things that dominated, in the order they did:
   Tests written against the old code first cover attribute decoding (normalized and
   unnormalized bytes and shorts, stride and offset, integer attributes, constants, divisors,
   half floats, matrix columns, repeated indices) and near-plane clipping.
-- **Still slow, in the order it bites.** The GLSL interpreter (a bytecode or
-  register form with unboxed vectors would be the next step, and only matters if a page draws
-  more than this one does); layout is a full relayout (~55 ms); most of the ~536 `with_roots`
-  call sites are not converted (convert one only after checking it fails before changing
-  anything and is safe to repeat); a `class`/`id` change on a high element still restyles
-  its whole subtree; CSS `transform` is not applied, so the globe's pinned caption card is
-  drawn in the page's top-left corner instead of beside its pin.
+- **GLSL interpreter, and its own crate.** The front end and interpreter moved to
+  `backend/core/glsl` (`blueice-glsl`, no dependencies, meant to become its own repository;
+  `blueice-gl` re-exports it as `blueice_gl::glsl`). `tests/corpus.rs` holds eleven shaders
+  run on 64 pseudo-random input sets each, their outputs fixed as 64-bit fingerprints taken
+  before any optimization, so an optimization may not change a result by a bit;
+  `tests/bench.rs` prints nanoseconds per run. Swizzles without a search or an allocation,
+  pooled argument lists for built-in calls and constructors, a fixed lane buffer in
+  constructors, a float fast path in `binary()` and built-ins resolved to an enum when a
+  shader is lowered took the corpus from 31,010 to 22,122 ns (-29%), but the heavy draw of
+  the live page only from ~103 to ~95 ms: it is dominated by real matrix work, so GL is
+  about 6% of a run and no longer worth more effort until a page draws far more.
+- **BlueJS calls were the next thing in the profile** (a sample of the live run, GL aside):
+  each call of a closure was O(everything visible where the closure was made).
+  `tests/closure_call_bench.rs` reproduces it (a small function called 20,000 times by a
+  caller that holds N objects), ns per call, before -> after the three changes below:
+  10 held 2,777 -> 2,194; 400 held 6,418 -> 3,736; 4,000 held 47,085 -> 20,991.
+  (1) The slot-to-cell tables use a multiplicative hash instead of SipHash
+  (`slot_map::CellMap`; keys are compiler-assigned integers). (2) A frame shares its
+  function's binding table (`Bytecode.bindings` is an `Arc<Vec<Binding>>`) instead of
+  cloning every binding and its name per call: 200 captures 8,262 -> 4,557 ns; a frame is
+  still charged what a copy of exact length would cost, so the budget does not depend on
+  spare capacity. (3) A closure captures the names its source mentions
+  (`ast::function_mentions`: every identifier in any position, nested functions and classes
+  entered, `eval` anywhere meaning everything), not every name in scope. The analysis is a
+  hint: `Compiler::resolve` notices a left-out name being looked up and the function is
+  compiled again with all of them, and a function with `with_depth > 0` (inside a `with`, or
+  in a sloppy function containing a direct eval) is never pruned, because Test262's
+  `staging/sm/Function/function-name-assignment.js` showed that such code looks names up at
+  run time through the captures. Test262 stayed at 102,921 pass / 0 fail.
+  Still per call, regardless of what the callee uses: the caller's bindings and cells are
+  pushed on the VM stack as GC roots (`call_closure_inner`), and `prepare_gc_trace` walks
+  the whole stack on every eager `with_roots`; saving the caller frame in a structure the
+  collector walks only when it collects would make a call O(1) in the caller's size, but it
+  touches the execution-control accounting and every restore path.
+- **CSS `transform: translate`.** `transform` and `translate` are kept as tokens by the
+  cascade; layout records the pending translation on the fragment when it marks the box and
+  applies every one in a single pass after the whole tree is placed
+  (`layout/src/transform.rs`; a parent assigns its children's positions after they are laid
+  out, so it cannot be applied earlier). Fragment `x`/`y` are relative to the parent, so
+  adding to them moves the subtree and paint, hit-testing and the AI bounds follow with no
+  further change. Percentages are of the box's own border box (resolved against bases 0 and
+  100, which also covers `calc(100% - 4px)`); `translate()`, `translate3d()`,
+  `translateX/Y()` and the individual `translate` property work for in-flow, absolutely
+  positioned and flex boxes. `rotate`, `scale`, `skew`, `matrix` and `perspective` are the
+  identity, and a list that mixes them still applies its translations. On the Cloudflare
+  page the two globe caption cards now sit at their pins instead of the page's top-left.
+- **A BlueJS bug found along the way, not fixed:** a named function expression written in
+  code that a *sloppy function's direct eval* runs cannot read its own name
+  (`function t(){ return eval("(function f(){ return f.name; })()"); } t()` throws
+  `ReferenceError: f`), and assigning to it stores instead of being ignored. It behaves
+  the same before and after the capture pruning and Test262 does not cover it; the cause is
+  that code's run-time by-name lookup (`with_get`/`active_binding_slot`), which does not
+  find the frame's self binding.
+- **Still slow, in the order it bites.** The caller-roots push above; layout is a full
+  relayout (~55 ms; an incremental one needs a layout cache that survives between passes
+  and the set of nodes whose style changed, which `cascade_incremental` knows but does not
+  report); most of the ~536 `with_roots` call sites are not converted (convert one only
+  after checking it fails before changing anything and is safe to repeat); a `class`/`id`
+  change on a high element still restyles its whole subtree; the GLSL interpreter (a
+  bytecode or register form with unboxed vectors would be the next step).
 - **Developer tools added.** `BI_PROFILE_LAYOUT` (stage timings of a restyle), `BI_CASCADE_LOOP=N`
   (only the cascade, repeated, for a sampling profiler), `BI_SCROLL_TO`/`BI_SCROLL_SECS`.
   Profile with macOS `sample <pid> 10 -file out.txt` on the test binary (not `cargo`'s pid).
