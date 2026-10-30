@@ -345,6 +345,42 @@ fn common_kind(a: Scalar, b: Scalar) -> Scalar {
 
 pub fn binary(op: BinOp, a: &V, b: &V) -> R<V> {
     use BinOp::*;
+    // The common case, float arithmetic on equal shapes or a scalar and a vector, with no
+    // kind conversion to do.
+    if let (
+        V::Vec {
+            k: Scalar::Float,
+            n: na,
+            c: ca,
+        },
+        V::Vec {
+            k: Scalar::Float,
+            n: nb,
+            c: cb,
+        },
+    ) = (a, b)
+    {
+        if (*na == *nb || *na == 1 || *nb == 1) && matches!(op, Add | Sub | Mul | Div) {
+            let n = (*na).max(*nb);
+            let mut out = [0u32; 4];
+            for i in 0..n as usize {
+                let x = f32::from_bits(ca[if *na == 1 { 0 } else { i }]);
+                let y = f32::from_bits(cb[if *nb == 1 { 0 } else { i }]);
+                out[i] = match op {
+                    Add => x + y,
+                    Sub => x - y,
+                    Mul => x * y,
+                    _ => x / y,
+                }
+                .to_bits();
+            }
+            return Ok(V::Vec {
+                k: Scalar::Float,
+                n,
+                c: out,
+            });
+        }
+    }
     match op {
         Eq => return Ok(V::b(equal(a, b))),
         Ne => return Ok(V::b(!equal(a, b))),
