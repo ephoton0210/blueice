@@ -1739,8 +1739,9 @@
   register(HTMLIFrameElement, 'iframe');
 
   // ----------------------------------------------------------- canvas 2D
-  const bytesToBase64 = (u8) => (typeof u8.toBase64 === 'function' ? u8.toBase64() : toBase64(u8));
-  const base64ToBytes = (text) => (typeof Uint8Array.fromBase64 === 'function' ? Uint8Array.fromBase64(text) : fromBase64(text));
+  // Resolved at call time: `toBase64`/`fromBase64` are defined further down.
+  const bytesToBase64 = (bytes) => toBase64(bytes);
+  const base64ToBytes = (text) => fromBase64(text);
   class ImageData {
     constructor(a, b, c) {
       if (ArrayBuffer.isView(a)) {
@@ -3366,17 +3367,25 @@
   };
 
   // ------------------------------------------------------- fetch and XHR
-  const toBase64 = (bytes) => {
+  // The engine's own Uint8Array base64 is native; the JavaScript versions below it walk
+  // the text one character at a time and read a long string variable once per character,
+  // which is quadratic, so they are only a fallback.
+  const toBase64Slow = (bytes) => {
     let s = '';
     for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     return btoa(s);
   };
-  const fromBase64 = (text) => {
+  const fromBase64Slow = (text) => {
     const s = atob(text);
     const out = new Uint8Array(s.length);
     for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
     return out;
   };
+  const toBase64 = (bytes) => {
+    if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes.buffer || bytes, bytes.byteOffset || 0, bytes.byteLength);
+    return typeof bytes.toBase64 === 'function' ? bytes.toBase64() : toBase64Slow(bytes);
+  };
+  const fromBase64 = (text) => (typeof Uint8Array.fromBase64 === 'function' ? Uint8Array.fromBase64(text) : fromBase64Slow(text));
   const netPending = new Map();
   const netSend = (method, url, headers, body, onDone, onFail, kind) => {
     const id = bi('netStart', method, url, JSON.stringify(headers), body && body.length ? toBase64(body) : '', kind || '');
@@ -4150,7 +4159,7 @@
         const entry = netPending.get(id);
         if (!entry) return;
         netPending.delete(id);
-        entry.onDone({ status, statusText, headers: new Headers(JSON.parse(headersJson)), bytes: bodyBase64.length > 4096 ? base64ToBytes(bodyBase64) : fromBase64(bodyBase64), url });
+        entry.onDone({ status, statusText, headers: new Headers(JSON.parse(headersJson)), bytes: fromBase64(bodyBase64), url });
       },
       netFail(id, message) {
         const entry = netPending.get(id);

@@ -7,7 +7,7 @@
 //! definitions, a heap cell per simple parameter (sloppy mapped arguments) and
 //! a handful of intrinsic lookups on every call, and that made every
 //! user-defined call an order of magnitude slower than a native one.
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm, VmConfig};
+use blueice_bluejs::{compile, parse, HeapConfig, RuntimeError, Value, Vm, VmConfig};
 
 fn run(source: &str) -> Result<Value, RuntimeError> {
     let program = parse(source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
@@ -156,10 +156,18 @@ fn a_function_that_never_reads_arguments_allocates_nothing_per_call() {
         "class C { m(a, b, c) { return a; } } var c = new C(); var n = 0; for (var i = 0; i < 20000; i++) { n += c.m(1, 2, 3); } n",
         // An inner function's own `arguments` is not this function's, and an
         // arrow that never names it does not need one either.
-        "function inner() { return arguments.length; } function f(a, b, c) { return inner(a) + (a > 5 ? (() => a)() : 0); } var n = 0; for (var i = 0; i < 20000; i++) { n += f(1, 2, 3); } n",
     ];
+    // Only the number of objects allocated may decide how many minor collections happen: a
+    // small nursery and a byte threshold that is never reached. (With the default byte
+    // threshold the count also depended on how big each object is accounted to be, so it
+    // moved whenever a type changed size without any allocation changing.)
     let config = || VmConfig {
         instruction_budget: 100_000_000,
+        heap: HeapConfig {
+            nursery_capacity: 64,
+            major_threshold_bytes: 64 * 1024 * 1024,
+            max_heap_bytes: 256 * 1024 * 1024,
+        },
         ..VmConfig::default()
     };
     for source in sources {
@@ -173,6 +181,30 @@ fn a_function_that_never_reads_arguments_allocates_nothing_per_call() {
             "{collections} minor collections for 20,000 calls of {source}"
         );
     }
+    // An inner function's own `arguments` is not this function's, and an arrow that never
+    // names it does not need one either: the outer function must cost nothing beyond what
+    // the inner one costs by itself, so compare it with the inner one called directly.
+    let minors = |source: &str| {
+        let mut vm = Vm::new(config()).unwrap();
+        let before = vm.heap().stats().minor_collections;
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+        vm.heap().stats().minor_collections - before
+    };
+    let inner_alone = minors(
+        "function inner() { return arguments.length; } var n = 0; for (var i = 0; i < 20000; i++) { n += inner(1); } n",
+    );
+    let wrapped = minors(
+        "function inner() { return arguments.length; } function f(a, b, c) { return inner(a) + (a > 5 ? (() => a)() : 0); } var n = 0; for (var i = 0; i < 20000; i++) { n += f(1, 2, 3); } n",
+    );
+    assert!(
+        inner_alone > 20,
+        "the inner function does allocate: {inner_alone}"
+    );
+    assert!(
+        wrapped <= inner_alone + 2,
+        "the outer function allocated beyond the inner one: {wrapped} vs {inner_alone}"
+    );
     // A function that does use it keeps paying for it (and keeps working).
     let mut vm = Vm::new(config()).unwrap();
     let source = "function f(a, b, c) { return arguments.length; } var n = 0; for (var i = 0; i < 2000; i++) { n += f(1, 2, 3); } n";

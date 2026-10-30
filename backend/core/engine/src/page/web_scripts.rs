@@ -799,6 +799,31 @@ mod tests {
     }
 
     #[test]
+    fn large_binary_data_crosses_into_the_native_side_without_walking_it_in_script() {
+        // 1 MiB through a WebGL buffer and a 2D canvas read-back. With the script-side
+        // base64 (one character at a time, re-reading a long string each step) this took
+        // minutes; natively it is milliseconds, so a generous bound separates them.
+        let mut page = page(
+            "<body><canvas id=c width=512 height=512></canvas><script>\
+             const gl = document.getElementById('c').getContext('webgl');\
+             const data = new Uint8Array(1 << 20); for (let i = 0; i < data.length; i++) data[i] = i & 255;\
+             const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);\
+             const t0 = performance.now();\
+             gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);\
+             const pixels = new Uint8Array(512 * 512 * 4);\
+             gl.readPixels(0, 0, 512, 512, gl.RGBA, gl.UNSIGNED_BYTE, pixels);\
+             const g2 = document.createElement('canvas'); g2.width = 512; g2.height = 512;\
+             const c2 = g2.getContext('2d'); const img = c2.getImageData(0, 0, 512, 512);\
+             c2.putImageData(img, 0, 0);\
+             console.log('RESULT ' + (performance.now() - t0 < 5000) + ' ' + g2.toDataURL().length);\
+             </script></body>",
+        );
+        page.settle();
+        let log = page.web_console().join("\n");
+        assert!(log.contains("RESULT true "), "{log}");
+    }
+
+    #[test]
     fn scripts_are_off_unless_enabled() {
         let mut page = Page::new(400.0, 300.0);
         page.set_web_scripts(false);
