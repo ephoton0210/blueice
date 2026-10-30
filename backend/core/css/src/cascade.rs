@@ -36,6 +36,9 @@ use crate::value::{Color, LengthContext, Value};
 use blueice_dom::{Document, NodeData, NodeId};
 use std::collections::HashMap;
 
+mod incremental;
+pub use incremental::cascade_incremental;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Origin {
     Ua,
@@ -253,6 +256,8 @@ struct RuleIndex<'a> {
     by_class: HashMap<&'a str, Vec<u32>>,
     by_type: HashMap<&'a str, Vec<u32>>,
     universal: Vec<u32>,
+    /// How the rules look at siblings, for restyling only what a change can reach.
+    structure: incremental::StructureUse,
 }
 
 struct IndexedRule<'a> {
@@ -269,6 +274,7 @@ impl<'a> RuleIndex<'a> {
             by_class: HashMap::new(),
             by_type: HashMap::new(),
             universal: Vec::new(),
+            structure: Default::default(),
         };
         for (origin, rules) in stylesheets {
             for (source_order, rule) in rules.iter().enumerate() {
@@ -278,6 +284,9 @@ impl<'a> RuleIndex<'a> {
                     source_order,
                     rule,
                 });
+                for selector in &rule.selectors {
+                    index.structure.scan(selector);
+                }
                 let mut keys: Vec<SelectorKey<'a>> =
                     rule.selectors.iter().map(|s| s.key()).collect();
                 keys.dedup();

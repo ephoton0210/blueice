@@ -48,6 +48,11 @@ pub struct Page {
     pub(crate) last_navigation: Option<crate::navigation_request::BrowserNavigation>,
     doc: Document,
     styles: HashMap<NodeId, ComputedStyle>,
+    /// The author rules and environment `styles` were last computed from in full.
+    author_rules: Vec<Rule>,
+    style_epoch: Option<restyle::StyleEpoch>,
+    /// How many restyles were incremental, and how many were full cascades.
+    restyle_counts: (u32, u32),
     fragment: Fragment,
     ua: Vec<Rule>,
     viewport_width: f64,
@@ -165,6 +170,9 @@ impl Page {
             object_url_environment: None,
             doc: Document::new_continuing_from(next_node_id),
             styles: HashMap::new(),
+            author_rules: Vec::new(),
+            style_epoch: None,
+            restyle_counts: (0, 0),
             fragment: Fragment::empty_block(),
             ua: ua_stylesheet(),
             viewport_width,
@@ -247,6 +255,7 @@ impl Page {
         self.object_url_environment = None;
         self.object_url_origin = None;
         self.linked_styles = std::mem::take(&mut self.pending_linked_styles);
+        self.style_epoch = None;
         self.linked_images = std::mem::take(&mut self.pending_linked_images);
         self.linked_scripts = std::mem::take(&mut self.pending_linked_scripts);
         self.linked_modules = std::mem::take(&mut self.pending_linked_modules);
@@ -309,7 +318,10 @@ impl Page {
     /// script DOM state and the rendered frame out of sync.
     fn restyle_and_relayout(&mut self) {
         self.prune_native_files();
-        self.recascade();
+        self.remember_native_form_defaults();
+        if !self.restyle_incrementally() {
+            self.recascade();
+        }
         self.relayout();
     }
 
@@ -348,9 +360,10 @@ impl Page {
         let profile = std::env::var("BI_PROFILE_LAYOUT").is_ok();
         let started = std::time::Instant::now();
         self.remember_native_form_defaults();
+        let environment = self.media_environment();
         let author = crate::stylesheet::extract_inline_stylesheets_with_linked(
             &self.doc,
-            &self.media_environment(),
+            &environment,
             &self.linked_styles,
         );
         let collected = started.elapsed();
@@ -361,11 +374,12 @@ impl Page {
             self.viewport_height,
         );
         let cascaded = started.elapsed();
+        let rule_count = author.len();
+        self.note_full_cascade(author, environment);
         self.rebuild_images();
         if profile {
             eprintln!(
-                "PROFILE rules={} stylesheets={collected:?} cascade={:?} images={:?}",
-                author.len(),
+                "PROFILE rules={rule_count} stylesheets={collected:?} cascade={:?} images={:?}",
                 cascaded - collected,
                 started.elapsed() - cascaded
             );
@@ -1450,6 +1464,7 @@ mod file_input;
 mod find;
 mod form_submission;
 mod images;
+mod restyle;
 mod web_scripts;
 pub(crate) use web_scripts::NetworkReview;
 pub(crate) mod native_drag;

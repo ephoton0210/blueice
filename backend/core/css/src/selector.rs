@@ -565,11 +565,6 @@ fn attribute<'a>(attributes: &'a [(String, String)], name: &str) -> Option<&'a s
         .map(|(_, v)| v.as_str())
 }
 
-fn element_children(doc: &Document, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
-    doc.children(parent)
-        .filter(|c| matches!(doc.data(*c), NodeData::Element { .. }))
-}
-
 fn tag_of(doc: &Document, node: NodeId) -> Option<&str> {
     match doc.data(node) {
         NodeData::Element { tag_name, .. } => Some(tag_name),
@@ -577,20 +572,62 @@ fn tag_of(doc: &Document, node: NodeId) -> Option<&str> {
     }
 }
 
+/// The nearest element sibling before (or, with `forward`, after) `node`, among
+/// those of its own type if `tag` is given.
+fn element_sibling(
+    doc: &Document,
+    node: NodeId,
+    forward: bool,
+    tag: Option<&str>,
+) -> Option<NodeId> {
+    let mut sibling = if forward {
+        doc.next_sibling(node)
+    } else {
+        doc.prev_sibling(node)
+    };
+    while let Some(s) = sibling {
+        if let Some(t) = tag_of(doc, s) {
+            if tag.is_none_or(|wanted| wanted == t) {
+                return Some(s);
+            }
+        }
+        sibling = if forward {
+            doc.next_sibling(s)
+        } else {
+            doc.prev_sibling(s)
+        };
+    }
+    None
+}
+
+/// How many element siblings come before (or after) `node`, among those of its own
+/// type if `tag` is given.
+fn count_siblings(doc: &Document, node: NodeId, forward: bool, tag: Option<&str>) -> i64 {
+    let mut count = 0;
+    let mut at = node;
+    while let Some(s) = element_sibling(doc, at, forward, tag) {
+        count += 1;
+        at = s;
+    }
+    count
+}
+
+/// Whether `node` is the first (or last) of its element siblings, of its own type if
+/// `of_type`. Stops at the first sibling that says no, instead of counting them all.
+fn is_edge(doc: &Document, node: NodeId, from_end: bool, of_type: bool) -> bool {
+    let (Some(_), Some(tag)) = (doc.parent(node), tag_of(doc, node)) else {
+        return false;
+    };
+    element_sibling(doc, node, from_end, of_type.then_some(tag)).is_none()
+}
+
 /// 1-based position of `node` among its element siblings, counted from the
 /// start or the end, optionally among siblings of the same type only.
 fn position(doc: &Document, node: NodeId, from_end: bool, of_type: bool) -> Option<i64> {
-    let parent = doc.parent(node)?;
+    doc.parent(node)?;
     let tag = tag_of(doc, node)?;
-    let siblings: Vec<NodeId> = element_children(doc, parent)
-        .filter(|s| !of_type || tag_of(doc, *s) == Some(tag))
-        .collect();
-    let index = siblings.iter().position(|s| *s == node)?;
-    Some(if from_end {
-        (siblings.len() - index) as i64
-    } else {
-        index as i64 + 1
-    })
+    // From the start that is the siblings before it; from the end, the ones after.
+    Some(1 + count_siblings(doc, node, from_end, of_type.then_some(tag)))
 }
 
 fn nth_matches(a: i64, b: i64, position: i64) -> bool {
@@ -618,17 +655,15 @@ fn pseudo_matches(doc: &Document, node: NodeId, pseudo: &PseudoClass) -> bool {
     match pseudo {
         PseudoClass::Root => doc.parent(node) == Some(doc.root()),
         PseudoClass::Empty => doc.first_child(node).is_none(),
-        PseudoClass::FirstChild => position(doc, node, false, false) == Some(1),
-        PseudoClass::LastChild => position(doc, node, true, false) == Some(1),
+        PseudoClass::FirstChild => is_edge(doc, node, false, false),
+        PseudoClass::LastChild => is_edge(doc, node, true, false),
         PseudoClass::OnlyChild => {
-            position(doc, node, false, false) == Some(1)
-                && position(doc, node, true, false) == Some(1)
+            is_edge(doc, node, false, false) && is_edge(doc, node, true, false)
         }
-        PseudoClass::FirstOfType => position(doc, node, false, true) == Some(1),
-        PseudoClass::LastOfType => position(doc, node, true, true) == Some(1),
+        PseudoClass::FirstOfType => is_edge(doc, node, false, true),
+        PseudoClass::LastOfType => is_edge(doc, node, true, true),
         PseudoClass::OnlyOfType => {
-            position(doc, node, false, true) == Some(1)
-                && position(doc, node, true, true) == Some(1)
+            is_edge(doc, node, false, true) && is_edge(doc, node, true, true)
         }
         PseudoClass::Nth {
             a,
@@ -809,6 +844,68 @@ mod tests {
         let mut list = selectors(css);
         assert_eq!(list.len(), 1, "expected exactly one selector from {css:?}");
         list.remove(0)
+    }
+
+    fn element_children(doc: &Document, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        doc.children(parent)
+            .filter(|c| matches!(doc.data(*c), NodeData::Element { .. }))
+    }
+
+    /// The straightforward definition the fast paths must agree with.
+    fn reference_position(
+        doc: &Document,
+        node: NodeId,
+        from_end: bool,
+        of_type: bool,
+    ) -> Option<i64> {
+        let parent = doc.parent(node)?;
+        let tag = tag_of(doc, node)?;
+        let siblings: Vec<NodeId> = element_children(doc, parent)
+            .filter(|s| !of_type || tag_of(doc, *s) == Some(tag))
+            .collect();
+        let index = siblings.iter().position(|s| *s == node)?;
+        Some(if from_end {
+            (siblings.len() - index) as i64
+        } else {
+            index as i64 + 1
+        })
+    }
+
+    #[test]
+    fn sibling_positions_match_the_plain_definition_on_mixed_children() {
+        let html =
+            "<body>\n<ul> <li>a</li> text <li>b</li><p>x</p><li>c</li><!-- c --><p>y</p> </ul>\
+                    <div><span>1</span></div><div></div><div><i></i><b></b><i></i></div></body>";
+        let doc = blueice_html::parse(html);
+        let mut elements = 0;
+        let mut stack = vec![doc.root()];
+        while let Some(n) = stack.pop() {
+            stack.extend(doc.children(n));
+            if tag_of(&doc, n).is_none() {
+                continue;
+            }
+            elements += 1;
+            for (from_end, of_type) in [(false, false), (true, false), (false, true), (true, true)]
+            {
+                let expected = reference_position(&doc, n, from_end, of_type);
+                assert_eq!(
+                    position(&doc, n, from_end, of_type),
+                    expected,
+                    "{:?} end={from_end} type={of_type}",
+                    tag_of(&doc, n)
+                );
+                assert_eq!(
+                    is_edge(&doc, n, from_end, of_type),
+                    expected == Some(1),
+                    "{:?} end={from_end} type={of_type}",
+                    tag_of(&doc, n)
+                );
+            }
+        }
+        assert!(
+            elements > 12,
+            "the tree has real siblings to compare ({elements})"
+        );
     }
 
     #[test]

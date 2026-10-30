@@ -92,6 +92,93 @@ pub struct Document {
     // Browser-owned display names are separate from author attributes. This
     // carries no path or bytes and survives frozen print-document cloning.
     file_names: HashMap<NodeId, Vec<String>>,
+    // What changed since a consumer last took it; see [`Document::take_changes`].
+    journal: Changes,
+}
+
+/// A node's data as it was before it was first touched in a journal period.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Before {
+    Element {
+        tag_name: String,
+        attributes: Vec<(String, String)>,
+    },
+    Text {
+        data: String,
+    },
+}
+
+/// Most entries a journal keeps before it gives up and reports `overflow`.
+const JOURNAL_LIMIT: usize = 100_000;
+
+/// One detachment recorded in [`Changes::detached`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Detached {
+    pub parent: NodeId,
+    pub child: NodeId,
+    pub prev: Option<NodeId>,
+    pub next: Option<NodeId>,
+}
+
+/// What happened to a document since [`Document::take_changes`] was last called,
+/// for a consumer (the style system) that wants to redo only what changed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Changes {
+    /// Nodes whose data was handed out for mutation, with the data as it was before
+    /// the first time. A node whose data ends up equal to this changed in no way.
+    pub touched: HashMap<NodeId, Before>,
+    /// `(parent, child)`: `child` was attached under `parent`.
+    pub attached: Vec<(NodeId, NodeId)>,
+    /// `child` was detached from `parent`, between `prev` and `next` (the siblings it
+    /// had then, which may since have moved or gone).
+    pub detached: Vec<Detached>,
+    /// More happened than is worth tracking: treat everything as changed.
+    pub overflow: bool,
+}
+
+impl Changes {
+    pub fn is_empty(&self) -> bool {
+        !self.overflow
+            && self.touched.is_empty()
+            && self.attached.is_empty()
+            && self.detached.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        self.touched.len() + self.attached.len() + self.detached.len()
+    }
+}
+
+impl Document {
+    /// Takes (and clears) the record of what changed since the last call.
+    pub fn take_changes(&mut self) -> Changes {
+        std::mem::take(&mut self.journal)
+    }
+
+    fn note_attached(&mut self, parent: NodeId, child: NodeId) {
+        if self.journal.overflow {
+            return;
+        }
+        self.journal.attached.push((parent, child));
+        self.check_journal_limit();
+    }
+
+    fn note_detached(&mut self, detached: Detached) {
+        if self.journal.overflow {
+            return;
+        }
+        self.journal.detached.push(detached);
+        self.check_journal_limit();
+    }
+
+    fn check_journal_limit(&mut self) {
+        if self.journal.len() > JOURNAL_LIMIT {
+            self.journal = Changes {
+                overflow: true,
+                ..Changes::default()
+            };
+        }
+    }
 }
 
 impl Document {
@@ -184,6 +271,23 @@ impl Document {
     /// `NodeId`, breaking plan §1's "stable ID across mutations"
     /// guarantee for the very node being mutated).
     pub fn data_mut(&mut self, id: NodeId) -> &mut NodeData {
+        if !self.journal.overflow && !self.journal.touched.contains_key(&id) {
+            let before = match &self.nodes[&id].data {
+                NodeData::Element {
+                    tag_name,
+                    attributes,
+                } => Some(Before::Element {
+                    tag_name: tag_name.clone(),
+                    attributes: attributes.clone(),
+                }),
+                NodeData::Text { data } => Some(Before::Text { data: data.clone() }),
+                NodeData::Document => None,
+            };
+            if let Some(before) = before {
+                self.journal.touched.insert(id, before);
+                self.check_journal_limit();
+            }
+        }
         &mut self
             .nodes
             .get_mut(&id)
@@ -247,6 +351,7 @@ impl Document {
         child_rec.prev_sibling = prev_last;
 
         self.nodes.get_mut(&parent).unwrap().last_child = Some(child);
+        self.note_attached(parent, child);
     }
 
     /// Inserts `child` into `parent`'s children, immediately before
@@ -285,6 +390,7 @@ impl Document {
         child_rec.parent = Some(parent);
         child_rec.prev_sibling = prev;
         child_rec.next_sibling = Some(reference);
+        self.note_attached(parent, child);
     }
 
     /// Detaches `id` from its parent/siblings, but keeps it (and its
@@ -312,6 +418,14 @@ impl Document {
         rec.parent = None;
         rec.prev_sibling = None;
         rec.next_sibling = None;
+        if let Some(parent) = parent {
+            self.note_detached(Detached {
+                parent,
+                child: id,
+                prev,
+                next,
+            });
+        }
     }
 
     /// Detaches `id` (if attached) and frees it and its entire subtree
@@ -387,6 +501,122 @@ fn dump_node(doc: &Document, id: NodeId, depth: usize, out: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn element(doc: &mut Document, tag: &str, attrs: &[(&str, &str)]) -> NodeId {
+        doc.create_node(NodeData::Element {
+            tag_name: tag.to_string(),
+            attributes: attrs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        })
+    }
+
+    #[test]
+    fn attaching_and_detaching_are_journaled_with_their_parent() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let (a, b, c) = (
+            element(&mut doc, "a", &[]),
+            element(&mut doc, "b", &[]),
+            element(&mut doc, "c", &[]),
+        );
+        doc.take_changes();
+        doc.append_child(root, a);
+        doc.insert_before(root, b, Some(a));
+        doc.append_child(a, c);
+        doc.detach(c);
+        doc.remove_subtree(b);
+        let changes = doc.take_changes();
+        assert_eq!(changes.attached, vec![(root, a), (root, b), (a, c)]);
+        assert_eq!(
+            changes.detached,
+            vec![
+                Detached {
+                    parent: a,
+                    child: c,
+                    prev: None,
+                    next: None
+                },
+                Detached {
+                    parent: root,
+                    child: b,
+                    prev: None,
+                    next: Some(a)
+                }
+            ],
+            "with the siblings each had at the time"
+        );
+        assert!(changes.touched.is_empty());
+        assert!(!changes.overflow);
+    }
+
+    #[test]
+    fn a_touched_node_keeps_its_data_from_before_the_first_touch() {
+        let mut doc = Document::new();
+        let node = element(&mut doc, "p", &[("class", "one")]);
+        let text = doc.create_node(NodeData::Text {
+            data: "hello".to_string(),
+        });
+        doc.take_changes();
+        for value in ["two", "three"] {
+            if let NodeData::Element { attributes, .. } = doc.data_mut(node) {
+                attributes[0].1 = value.to_string();
+            }
+        }
+        if let NodeData::Text { data } = doc.data_mut(text) {
+            data.push('!');
+        }
+        let changes = doc.take_changes();
+        assert_eq!(
+            changes.touched[&node],
+            Before::Element {
+                tag_name: "p".to_string(),
+                attributes: vec![("class".to_string(), "one".to_string())]
+            },
+            "the first value, not the intermediate one"
+        );
+        assert_eq!(
+            changes.touched[&text],
+            Before::Text {
+                data: "hello".to_string()
+            }
+        );
+        assert_eq!(changes.touched.len(), 2);
+    }
+
+    #[test]
+    fn taking_changes_starts_a_new_period() {
+        let mut doc = Document::new();
+        let node = element(&mut doc, "p", &[]);
+        let root = doc.root();
+        doc.append_child(root, node);
+        assert!(!doc.take_changes().is_empty());
+        assert!(doc.take_changes().is_empty());
+        // The first touch of the new period is recorded afresh.
+        doc.data_mut(node);
+        assert_eq!(doc.take_changes().touched.len(), 1);
+    }
+
+    #[test]
+    fn a_journal_that_grows_too_large_reports_overflow_and_stops_growing() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        doc.take_changes();
+        for _ in 0..(JOURNAL_LIMIT / 2 + 10) {
+            let n = element(&mut doc, "i", &[]);
+            doc.append_child(root, n);
+            doc.detach(n);
+        }
+        let changes = doc.take_changes();
+        assert!(changes.overflow);
+        assert!(
+            changes.attached.is_empty()
+                && changes.detached.is_empty()
+                && changes.touched.is_empty()
+        );
+        assert!(!changes.is_empty(), "an overflow is a change");
+    }
 
     #[test]
     fn dump_renders_nested_elements_and_text() {

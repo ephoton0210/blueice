@@ -254,7 +254,12 @@ impl Page {
         let started = std::time::Instant::now();
         self.restyle_and_relayout();
         if std::env::var("BI_DIAG").is_ok() {
-            eprintln!("DIAG restyle+relayout {:?}", started.elapsed());
+            eprintln!(
+                "DIAG restyle+relayout {:?} (incremental {}, full {})",
+                started.elapsed(),
+                self.restyle_counts.0,
+                self.restyle_counts.1
+            );
         }
         self.web_relayout_pending = false;
         self.web_last_relayout = Some(std::time::Instant::now());

@@ -361,6 +361,17 @@ mod tests {
                 }
             }
             eprintln!("{turns} timer turns changed the document");
+            if let Some(n) = std::env::var("BI_CASCADE_LOOP")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+            {
+                // Only the cascade, repeated, so a sampling profiler sees nothing else.
+                let started = std::time::Instant::now();
+                for _ in 0..n {
+                    page.recascade();
+                }
+                eprintln!("CASCADE x{n}: {:?} each", started.elapsed() / n);
+            }
             if let Ok(probe) = std::env::var("BI_EVAL") {
                 page.web_eval(&probe);
             }
