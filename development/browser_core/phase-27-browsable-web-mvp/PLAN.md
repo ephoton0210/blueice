@@ -690,13 +690,40 @@ and fixed the three things that dominated, in the order they did:
   the same before and after the capture pruning and Test262 does not cover it; the cause is
   that code's run-time by-name lookup (`with_get`/`active_binding_slot`), which does not
   find the frame's self binding.
-- **Still slow, in the order it bites.** The caller-roots push above; layout is a full
-  relayout (~55 ms; an incremental one needs a layout cache that survives between passes
-  and the set of nodes whose style changed, which `cascade_incremental` knows but does not
-  report); most of the ~536 `with_roots` call sites are not converted (convert one only
-  after checking it fails before changing anything and is safe to repeat); a `class`/`id`
-  change on a high element still restyles its whole subtree; the GLSL interpreter (a
-  bytecode or register form with unboxed vectors would be the next step).
+- **Incremental layout.** A block-level layout is a pure function of its node's subtree and the
+  constraint it is laid out against, and a pass already memoised on that. `LayoutCache`
+  (`layout/src/cache.rs`) keeps the memo between passes (`layout_with_cache`) and
+  `LayoutCache::invalidate` drops what a change can have affected: every node whose style
+  came to differ or whose data changed, all of their ancestors, and every child of a parent
+  anything changed under (a list item numbers itself from its siblings and its parent's
+  `start`/`reversed`, the only two reads layout makes outside a node's own subtree besides
+  generated `::before`/`::after` boxes). The viewport and root font size are the cache's
+  epoch. `cascade_incremental_report` is `cascade_incremental` that also reports the nodes
+  whose style actually came to differ; a randomized test checks that report equals the real
+  difference. In `Page`, only an incremental restyle keeps the cache (and invalidates exactly
+  its changes); a full cascade, and every `relayout()` that did not come through one, clear
+  it, because native editing, selection, images and dragging change the document and styles
+  in ways the cache is not told about. Verification: a randomized differential test in the
+  layout crate (60 seeds x 40 steps of attribute, text, insert, remove and move edits over
+  floats, flex, inline-block, tables, positioning, transforms and lists) and a list-numbering
+  one require the cached layout to equal a fresh one after every edit; an engine test does
+  the same through scripts and `restyle_and_relayout`. Dropping the ancestors, the children
+  of a touched node, or a detached parent's children each fail them, and dropping the
+  engine's `invalidate` call fails the engine test on its second step. On the live page:
+  223 relayouts at a mean 59.7 ms (13.3 s in a 120 s window) became 248 at a mean 3.4 ms
+  (median 2.4 ms; 0.85 s), the one expensive pass being the first, cold one. A cache hit
+  still clones the cached fragment subtree (`Placed` owns its `Fragment`), so a pass is
+  O(page) in copying but not in layout; sharing subtrees (`Arc`) is the next step if that
+  shows up.
+- **Where the time is now** (a run of the live page, 138 s): start-up ("styled, scripted
+  and laid out") went from 7.4-7.9 s to 3.4 s with the BlueJS call-path work; relayout is
+  0.85 s, find/selection 0.9 s, accessibility 0.4 s; the rest is the page's own script and
+  the software GL.
+- **Still slow, in the order it bites.** The caller-roots push above; most of the ~536
+  `with_roots` call sites are not converted (convert one only after checking it fails before
+  changing anything and is safe to repeat); a `class`/`id` change on a high element still
+  restyles its whole subtree; the GLSL interpreter (a bytecode or register form with unboxed
+  vectors would be the next step); `find`/selection rebuild after every relayout.
 - **Developer tools added.** `BI_PROFILE_LAYOUT` (stage timings of a restyle), `BI_CASCADE_LOOP=N`
   (only the cascade, repeated, for a sampling profiler), `BI_SCROLL_TO`/`BI_SCROLL_SECS`.
   Profile with macOS `sample <pid> 10 -file out.txt` on the test binary (not `cargo`'s pid).
