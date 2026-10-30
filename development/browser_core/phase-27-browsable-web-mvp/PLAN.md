@@ -616,13 +616,34 @@ and fixed the three things that dominated, in the order they did:
   these fixes a sample of the live run is dominated by the software GL itself
   (`glsl::interp::Machine::eval` ~17%, `draw::fetch_attrib` ~11%, value coercion,
   allocation), not by the JavaScript engine.
-- **Still slow, in the order it bites.** The software GL's per-fragment and per-vertex
-  interpreter cost (`fetch_attrib` re-reads a buffer and converts per vertex per attribute,
-  `Machine::eval` allocates values); layout is a full relayout (~55 ms); most of the ~536
-  `with_roots` call sites are not converted (convert one only after checking it fails
-  before changing anything and is safe to repeat); a `class`/`id` change on a high element
-  still restyles its whole subtree; CSS `transform` is not applied, so the globe's pinned
-  caption card is drawn in the page's top-left corner instead of beside its pin.
+- **Software GL speed.** After the JavaScript fixes, a sample of the live run was dominated by
+  the GL itself, and the 96 draws of the globe's instanced dots (2.4 M vertex-shader runs,
+  ~400 k triangles each) were 95% of GL time: ~547 ms per draw, of which vertex 332,
+  assembly 202 (single-threaded), fragment 13. Changes, each checked against the previous
+  implementation by a pixel fingerprint of a synthetic reproduction
+  (`blueice-gl/tests/bench_draw.rs`): vertex output in flat arrays instead of a `Vec<u32>` per
+  vertex; each attribute's bytes, stride and type resolved once per draw instead of a hash
+  lookup and an allocation per attribute per vertex; a per-thread memory of recent
+  `(index, instance)` vertices, because an indexed mesh names most vertices several times
+  (about 3x fewer shader runs on a disc); triangles keep vertex ids into the store instead of
+  cloning their varyings (only clipped polygons own copies), triangles wholly inside the
+  clip volume skip clipping and ones wholly beyond the near or far plane are dropped, and
+  assembly runs on all cores (215 ms -> 13 ms); the time budget reads the clock every 16
+  fragments rather than every fragment. On the reproduction a draw is ~680 ms -> ~120 ms with
+  an identical picture; on the live page ~547 ms -> ~103 ms (vertex 84, assembly 8, fragment
+  11), and the whole run's GL time fell from 55 s for 3,021 draws to 19 s for 4,596, about
+  8% of the run. What is left of the vertex stage is the GLSL interpreter itself (`eval`,
+  `binary`, `coerce`, a few allocations): a tree walk that builds a ~70-byte value per node.
+  Tests written against the old code first cover attribute decoding (normalized and
+  unnormalized bytes and shorts, stride and offset, integer attributes, constants, divisors,
+  half floats, matrix columns, repeated indices) and near-plane clipping.
+- **Still slow, in the order it bites.** The GLSL interpreter (a bytecode or
+  register form with unboxed vectors would be the next step, and only matters if a page draws
+  more than this one does); layout is a full relayout (~55 ms); most of the ~536 `with_roots`
+  call sites are not converted (convert one only after checking it fails before changing
+  anything and is safe to repeat); a `class`/`id` change on a high element still restyles
+  its whole subtree; CSS `transform` is not applied, so the globe's pinned caption card is
+  drawn in the page's top-left corner instead of beside its pin.
 - **Developer tools added.** `BI_PROFILE_LAYOUT` (stage timings of a restyle), `BI_CASCADE_LOOP=N`
   (only the cascade, repeated, for a sampling profiler), `BI_SCROLL_TO`/`BI_SCROLL_SECS`.
   Profile with macOS `sample <pid> 10 -file out.txt` on the test binary (not `cargo`'s pid).
