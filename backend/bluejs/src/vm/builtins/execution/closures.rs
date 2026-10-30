@@ -347,15 +347,20 @@ impl Vm {
         self.stack
             .push(receiver.object_id().map_or(Value::Undefined, Value::Object));
         let base = self.stack.len();
-        self.stack.extend(
-            self.bindings
-                .iter()
-                .flatten()
-                .filter_map(Value::object_id)
-                .map(Value::Object),
-        );
+        // The caller's bindings and cells are rooted for the callee's lifetime. A closure's
+        // table can be hundreds of entries and this runs on every call, so reserve once and
+        // push in a plain loop: `extend` over a filtered iterator has no length to go on and
+        // pays a capacity check, and a slow generic path, per element.
         self.stack
-            .extend(self.cells.values().copied().map(Value::Object));
+            .reserve(self.bindings.len().saturating_add(self.cells.len()));
+        for value in self.bindings.iter().flatten() {
+            if let Some(id) = value.object_id() {
+                self.stack.push(Value::Object(id));
+            }
+        }
+        for &cell in self.cells.values() {
+            self.stack.push(Value::Object(cell));
+        }
         self.stack.push(
             self.completion
                 .object_id()

@@ -14,7 +14,9 @@ use crate::JsString;
 use num_bigint::BigInt;
 use std::sync::Arc;
 
+mod mentions;
 mod retained_payload;
+pub(crate) use mentions::{function_mentions, Mentions};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {

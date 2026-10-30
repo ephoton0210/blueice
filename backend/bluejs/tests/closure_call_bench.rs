@@ -11,9 +11,22 @@ use blueice_bluejs::{compile, parse, Value, Vm, VmConfig};
 use std::time::Instant;
 
 fn script(captured: usize, calls: usize) -> String {
+    script_with(captured, calls, "{}")
+}
+
+/// A caller that holds `captured` object-valued bindings: each one is a root the VM keeps
+/// alive for the whole of every call the caller makes.
+fn script_with(captured: usize, calls: usize, init: &str) -> String {
     let mut s = String::from("(function () {\n");
     for i in 0..captured {
-        s += &format!("let v{i} = {i};\n");
+        s += &format!(
+            "let v{i} = {};\n",
+            if init == "{}" {
+                "{}".to_string()
+            } else {
+                i.to_string()
+            }
+        );
     }
     let uses: Vec<String> = (0..captured).map(|i| format!("v{i}")).collect();
     s += &format!(
@@ -47,5 +60,36 @@ fn calls_of_a_closure_with_many_captures() {
             "{captured:>4} captured: {:>8.0} ns per call  (result {result:?})",
             best / 20_000.0 * 1e9
         );
+    }
+}
+
+/// The caller's own bindings are rooted on every call, whether or not the callee touches
+/// them, so the cost of a call grows with how many the caller holds: a bundled page script's
+/// top-level function has thousands.
+#[test]
+#[ignore = "a measurement; run by hand"]
+fn calls_made_by_a_caller_that_holds_many_objects() {
+    for held in [10usize, 400, 4000] {
+        let mut source = String::from("(function () {\n");
+        for i in 0..held {
+            source += &format!("let v{i} = {{}};\n");
+        }
+        source += "function f(x) { return x; }\nlet t = 0;\n";
+        source += "for (let i = 0; i < 20000; i++) t = f(1);\n";
+        // Keep every binding live without calling through them.
+        source += &format!("return t + (v0 === v{} ? 0 : 0);\n}})()", held - 1);
+        let program = compile(&parse(&source).unwrap()).unwrap();
+        let mut best = f64::INFINITY;
+        for _ in 0..3 {
+            let mut vm = Vm::new(VmConfig {
+                instruction_budget: u64::MAX / 2,
+                ..VmConfig::default()
+            })
+            .unwrap();
+            let start = Instant::now();
+            vm.execute(&program).unwrap();
+            best = best.min(start.elapsed().as_secs_f64());
+        }
+        println!("{held:>5} held: {:>8.0} ns per call", best / 20_000.0 * 1e9);
     }
 }

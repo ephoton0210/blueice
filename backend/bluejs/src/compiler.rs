@@ -203,6 +203,7 @@ fn compile_with_limit_and_mode(
         ));
     }
     let mut compiler = Compiler {
+        prune_guards: Vec::new(),
         bytecode: Bytecode::empty(),
         names: Vec::new(),
         private_scopes: Vec::new(),
@@ -584,6 +585,7 @@ fn compile_eval_inner(
     } = context;
     let with_depth = with_scopes.depth;
     let mut compiler = Compiler {
+        prune_guards: Vec::new(),
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
         private_scopes: vec![HashMap::new()],
@@ -716,7 +718,19 @@ struct Loop {
     iterator: Option<u32>,
 }
 
+/// The names a closure being compiled was *not* given from its enclosing scopes because its
+/// source never mentions them (see `ast::function_mentions`). If compiling the closure still
+/// looks one of them up, the analysis was wrong; `missed` records that so the closure is
+/// compiled again with every name captured.
+struct PruneGuard {
+    pruned: std::cell::RefCell<BTreeSet<String>>,
+    missed: std::cell::Cell<bool>,
+}
+
 struct Compiler {
+    /// One guard per enclosing closure that left names out, innermost last; a function nested
+    /// in it inherits them, since a name it needs must come through each.
+    prune_guards: Vec<std::rc::Rc<PruneGuard>>,
     diagnostic_ast_ids: Option<std::rc::Rc<crate::program_debug::ast_ids::DiagnosticAstNodeIds>>,
     diagnostic_owner: Option<u32>,
     bytecode: Bytecode,
@@ -929,10 +943,19 @@ impl Compiler {
     }
 
     fn resolve(&self, name: &str) -> Option<u32> {
-        self.names
+        let found = self
+            .names
             .iter()
             .rev()
-            .find_map(|scope| scope.get(name).copied())
+            .find_map(|scope| scope.get(name).copied());
+        if found.is_none() {
+            for guard in &self.prune_guards {
+                if guard.pruned.borrow().contains(name) {
+                    guard.missed.set(true);
+                }
+            }
+        }
+        found
     }
 
     /// Returns an active lexical binding that is inside the innermost `with`

@@ -7,6 +7,7 @@ use super::*;
 fn bare_compiler() -> Compiler {
     let limits = CompileLimits::default();
     Compiler {
+        prune_guards: Vec::new(),
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
         private_scopes: Vec::new(),
@@ -152,4 +153,104 @@ fn child_function_metadata_limits_reject_each_initial_binding() {
         derived.function_named_with(&Function::default(), false, None, false, options),
         Err(CompileError::ProgramTooLarge)
     ));
+}
+
+/// The `captures` of the function declared first in the body of the outermost function of
+/// `source`, after the outer function is compiled.
+fn captures_of_first_inner(source: &str) -> usize {
+    let bytecode = crate::compile(&crate::parse(source).unwrap()).unwrap();
+    let outer = &bytecode.functions[0];
+    outer.functions[0].captures.len()
+}
+
+#[test]
+fn a_closure_captures_only_the_names_it_mentions() {
+    assert_eq!(
+        captures_of_first_inner(
+            "function outer() { let a = 1, b = 2, c = 3; return function inner() { return b; }; }"
+        ),
+        1
+    );
+    assert_eq!(
+        captures_of_first_inner(
+            "function outer() { let a = 1, b = 2, c = 3; return function inner() { return 1; }; }"
+        ),
+        0
+    );
+    assert_eq!(
+        captures_of_first_inner("function outer(p, q) { let a = 1; return () => p + a; }"),
+        2
+    );
+}
+
+#[test]
+fn a_name_used_only_by_a_nested_function_is_captured_by_each_function_in_between() {
+    let bytecode = crate::compile(
+        &crate::parse(
+            "function outer() { let a = 1, b = 2; \
+             return function mid() { return function inner() { return a; }; }; }",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mid = &bytecode.functions[0].functions[0];
+    assert_eq!(mid.captures.len(), 1, "mid passes `a` through");
+    assert_eq!(mid.functions[0].captures.len(), 1);
+}
+
+#[test]
+fn a_direct_eval_anywhere_inside_keeps_every_name() {
+    for body in [
+        "return function inner() { return eval('a'); };",
+        "return function inner() { return () => eval('a'); };",
+    ] {
+        let source = format!("function outer() {{ let a = 1, b = 2, c = 3; {body} }}");
+        assert!(
+            captures_of_first_inner(&source) >= 3,
+            "every visible name must stay reachable by eval: {source}"
+        );
+    }
+}
+
+#[test]
+fn internal_names_are_always_captured() {
+    // A derived constructor's arrows reach `this` through a hidden binding.
+    let bytecode = crate::compile(
+        &crate::parse(
+            "class B {} class D extends B { constructor() { const f = () => this; super(); f(); } }",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(!bytecode.functions.is_empty());
+}
+
+#[test]
+fn looking_up_a_name_that_was_left_out_is_noticed() {
+    let mut compiler = bare_compiler();
+    let guard = std::rc::Rc::new(PruneGuard {
+        pruned: std::cell::RefCell::new(["x".to_string()].into()),
+        missed: std::cell::Cell::new(false),
+    });
+    compiler.prune_guards.push(std::rc::Rc::clone(&guard));
+    assert_eq!(compiler.resolve("somewhere_else"), None);
+    assert!(!guard.missed.get(), "an unrelated global is not a miss");
+    assert_eq!(compiler.resolve("x"), None);
+    assert!(
+        guard.missed.get(),
+        "a name that was pruned and is needed is"
+    );
+}
+
+#[test]
+fn a_name_that_resolves_is_never_a_miss() {
+    let mut compiler = bare_compiler();
+    compiler.names[0].insert("x".to_string(), 0);
+    let guard = std::rc::Rc::new(PruneGuard {
+        pruned: std::cell::RefCell::new(["x".to_string()].into()),
+        missed: std::cell::Cell::new(false),
+    });
+    compiler.prune_guards.push(std::rc::Rc::clone(&guard));
+    assert_eq!(compiler.resolve("x"), Some(0));
+    assert!(!guard.missed.get());
 }

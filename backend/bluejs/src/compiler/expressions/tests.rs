@@ -7,6 +7,7 @@ use super::*;
 fn bare_compiler() -> Compiler {
     let limits = CompileLimits::default();
     Compiler {
+        prune_guards: Vec::new(),
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
         private_scopes: Vec::new(),

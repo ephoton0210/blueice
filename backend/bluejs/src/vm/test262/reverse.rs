@@ -785,12 +785,16 @@ mod tests {
                         "var other = $262.createRealm();
              var target = { x: 1, get y() { return 2 } };
              function fn() { return 1 }
-             other.global.target = target; other.global.fn = fn;",
+             other.global.target = target; other.global.fn = fn;
+             other;",
                     )
                     .unwrap(),
                 )
                 .unwrap(),
             )
+            // The script's value is kept until the parent's next execution, which keeps the
+            // realm alive: a closure used to do that by capturing every name in scope, `other`
+            // among them, whether or not it used it.
             .unwrap();
         let code = compile(
             &parse(&format!(

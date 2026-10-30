@@ -1107,8 +1107,81 @@ impl Compiler {
         named_expression: bool,
         options: FunctionCompileOptions,
     ) -> Result<(), CompileError> {
+        // A closure captures the names it can use, not everything visible where it is made:
+        // a function in a scope of thousands of bindings otherwise pays for all of them on
+        // every call. The analysis is a hint. If compiling the function still looks up a
+        // name it left out (or fails, having left some out), it is compiled again with all.
+        let mentions = crate::ast::function_mentions(function);
+        let (pruned, missed) = self.build_function(
+            function,
+            arrow,
+            inferred_name,
+            named_expression,
+            options,
+            Some(&mentions),
+        );
+        let (child, remaining) = match pruned {
+            Ok(built) if !missed => built,
+            Ok(_) | Err(_) if missed => {
+                self.build_function(
+                    function,
+                    arrow,
+                    inferred_name,
+                    named_expression,
+                    options,
+                    None,
+                )
+                .0?
+            }
+            Err(error) => return Err(error),
+            Ok(built) => built,
+        };
+        self.finish_child_function(child, remaining)
+    }
+
+    /// Compiles `function` as a child of this compiler without changing this compiler. With
+    /// `prune`, enclosing names the function's source never mentions are not captured. Also
+    /// reports whether a left-out name was looked up anyway.
+    #[allow(clippy::type_complexity)]
+    fn build_function(
+        &self,
+        function: &Function,
+        arrow: bool,
+        inferred_name: Option<&str>,
+        named_expression: bool,
+        options: FunctionCompileOptions,
+        prune: Option<&crate::ast::Mentions<'_>>,
+    ) -> (Result<(Bytecode, u32), CompileError>, bool) {
+        let guard = std::rc::Rc::new(PruneGuard {
+            pruned: std::cell::RefCell::new(BTreeSet::new()),
+            missed: std::cell::Cell::new(false),
+        });
+        let built = self.build_function_inner(
+            function,
+            arrow,
+            inferred_name,
+            named_expression,
+            options,
+            prune,
+            &guard,
+        );
+        (built, guard.missed.get())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_function_inner(
+        &self,
+        function: &Function,
+        arrow: bool,
+        inferred_name: Option<&str>,
+        named_expression: bool,
+        options: FunctionCompileOptions,
+        prune: Option<&crate::ast::Mentions<'_>>,
+        guard: &std::rc::Rc<PruneGuard>,
+    ) -> Result<(Bytecode, u32), CompileError> {
         let child_budget = self.max_bytecode_bytes.saturating_sub(self.offset());
         let mut child = Compiler {
+            prune_guards: self.prune_guards.clone(),
             bytecode: Bytecode::empty(),
             names: vec![HashMap::new()],
             private_scopes: self.private_scopes.clone(),
@@ -1183,6 +1256,11 @@ impl Compiler {
             .iter()
             .take_while(|p| !p.rest && p.default.is_none())
             .count() as u32;
+        // Inside a `with`, or a sloppy function that contains a direct eval, a free name is
+        // looked up by name at run time (`with_get`, with the captured bindings as the
+        // fallback), and that search reads the captures. Leaving some out would change what
+        // it finds, so such a function keeps every name, as it always did.
+        let prune = prune.filter(|_| child.with_depth == 0);
         let mut visible = std::collections::BTreeMap::new();
         for scope in &self.names {
             visible.extend(scope.iter().map(|(name, slot)| (name.clone(), *slot)));
@@ -1191,6 +1269,10 @@ impl Compiler {
             // Only an arrow function shares its creator's `this` and derived
             // constructor; any other function has its own receiver.
             if !arrow && (name == DERIVED_THIS_BINDING || name == DERIVED_CONSTRUCTOR_BINDING) {
+                continue;
+            }
+            if prune.is_some_and(|mentions| !mentions.may_use(&name)) {
+                guard.pruned.borrow_mut().insert(name);
                 continue;
             }
             // These are unique names from the parent, whose binding table
@@ -1202,6 +1284,9 @@ impl Compiler {
                 .bindings_mut()
                 .push(self.bytecode.bindings[slot as usize].clone());
             child.bytecode.captures.push(slot);
+        }
+        if !guard.pruned.borrow().is_empty() {
+            child.prune_guards.push(std::rc::Rc::clone(guard));
         }
         if named_expression {
             let name = function
@@ -1387,7 +1472,7 @@ impl Compiler {
         child.constant(Value::Undefined)?;
         child.emit(Opcode::Return, 0)?;
         let child_remaining = child.max_bytecode_bytes.saturating_sub(child.offset());
-        self.finish_child_function(child.bytecode, child_remaining)
+        Ok((child.bytecode, child_remaining))
     }
 
     fn mapped_argument_slots(&self, params: &[Param]) -> Vec<Option<u32>> {
