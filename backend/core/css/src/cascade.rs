@@ -56,7 +56,7 @@ pub struct ComputedStyle {
     pub other: HashMap<String, Value>,
     /// The element's resolved custom properties (`--name`), inherited from
     /// its parent and overlaid with its own.
-    pub custom: HashMap<String, Vec<crate::tokenizer::Token>>,
+    pub custom: crate::vars::SharedCustomProperties,
 }
 
 impl ComputedStyle {
@@ -102,7 +102,7 @@ impl ComputedStyle {
             line_height: None,
             text_align: None,
             other: HashMap::new(),
-            custom: HashMap::new(),
+            custom: Default::default(),
         }
     }
 }
@@ -1264,6 +1264,40 @@ mod tests {
         assert_eq!(style.other["margin-right"], px(2.0));
         assert_eq!(style.color, Color::Rgba(0x10, 0x20, 0x30, 255));
         assert!(matches!(style.other["width"], Value::Calc(_)));
+    }
+
+    #[test]
+    fn elements_with_no_custom_properties_of_their_own_share_their_parents_table() {
+        let html = "<div><p>a</p><section><p>b</p></section></div>";
+        let css = "div { --x: 10px; --y: 2px; } section { --x: 30px; }";
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let author = parse(css);
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        let by_tag = |tag: &str| {
+            let mut ids: Vec<NodeId> = styles
+                .keys()
+                .copied()
+                .filter(|n| matches!(doc.data(*n), NodeData::Element { tag_name, .. } if tag_name == tag))
+                .collect();
+            ids.sort_by_key(|n| n.as_u64());
+            ids
+        };
+        let (div, ps, section) = (by_tag("div")[0], by_tag("p"), by_tag("section")[0]);
+        assert!(
+            std::sync::Arc::ptr_eq(&styles[&div].custom, &styles[&ps[0]].custom),
+            "a child with nothing of its own reuses the table"
+        );
+        assert!(
+            !std::sync::Arc::ptr_eq(&styles[&div].custom, &styles[&section].custom),
+            "an element that sets one gets its own"
+        );
+        assert!(
+            std::sync::Arc::ptr_eq(&styles[&section].custom, &styles[&ps[1]].custom),
+            "and its children share that"
+        );
+        assert_eq!(styles[&section].custom["--x"], styles[&ps[1]].custom["--x"]);
+        assert_eq!(styles[&div].custom.len(), 2);
     }
 
     #[test]

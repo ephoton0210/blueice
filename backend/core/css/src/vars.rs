@@ -13,6 +13,10 @@ use std::collections::{HashMap, HashSet};
 
 pub(crate) type CustomProperties = HashMap<String, Vec<Token>>;
 
+/// An element's resolved table, shared with every descendant that sets none of its own
+/// (the common case; a Tailwind page defines hundreds in `:root`).
+pub(crate) type SharedCustomProperties = std::sync::Arc<CustomProperties>;
+
 /// Substitution may nest `var()` this deep before it gives up (a guard
 /// against pathological chains on top of the explicit cycle check).
 const MAX_DEPTH: usize = 32;
@@ -102,13 +106,13 @@ fn substitute_at(tokens: &[Token], props: &CustomProperties, depth: usize) -> Op
 /// refers to itself, directly or through others, is invalid and removes the
 /// property -- including an inherited one of that name.
 pub(crate) fn resolve(
-    inherited: &CustomProperties,
+    inherited: &SharedCustomProperties,
     own: HashMap<String, Vec<Token>>,
-) -> CustomProperties {
+) -> SharedCustomProperties {
     if own.is_empty() {
-        return inherited.clone();
+        return std::sync::Arc::clone(inherited);
     }
-    let mut result = inherited.clone();
+    let mut result: CustomProperties = (**inherited).clone();
     let mut resolved: HashMap<String, Option<Vec<Token>>> = HashMap::new();
     // In name order: which chains are too deep to trust must not depend on the
     // map's iteration order.
@@ -127,7 +131,7 @@ pub(crate) fn resolve(
             }
         }
     }
-    result
+    std::sync::Arc::new(result)
 }
 
 fn resolve_one(
@@ -246,7 +250,7 @@ mod tests {
             ("--wide", "calc(var(--base) * 2)"),
             ("--base2", "var(--wide)"),
         ]);
-        let resolved = resolve(&parent, own);
+        let resolved = resolve(&std::sync::Arc::new(parent.clone()), own);
         assert_eq!(resolved.get("--base"), parent.get("--base"));
         let text = |name: &str| {
             resolved[name]
@@ -274,7 +278,7 @@ mod tests {
             ("--b", "var(--a)"),
             ("--self", "var(--self)"),
         ]);
-        let resolved = resolve(&parent, own);
+        let resolved = resolve(&std::sync::Arc::new(parent.clone()), own);
         assert!(
             !resolved.contains_key("--a"),
             "cyclic, so invalid even though inherited"
@@ -291,7 +295,7 @@ mod tests {
             own.insert(format!("--p{i}"), tokenize(&format!("var(--p{})", i + 1)));
         }
         own.insert("--p100".to_string(), tokenize("1px"));
-        let resolved = resolve(&CustomProperties::new(), own);
+        let resolved = resolve(&SharedCustomProperties::default(), own);
         assert!(resolved.contains_key("--p100"));
         assert!(
             !resolved.contains_key("--p0"),

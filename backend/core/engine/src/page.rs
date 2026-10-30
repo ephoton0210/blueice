@@ -314,6 +314,8 @@ impl Page {
     }
 
     fn relayout(&mut self) {
+        let profile = std::env::var("BI_PROFILE_LAYOUT").is_ok();
+        let started = std::time::Instant::now();
         self.native_undo.prune(&self.doc);
         self.fragment = layout(
             &self.doc,
@@ -324,29 +326,50 @@ impl Page {
                 viewport_height: self.viewport_height,
             },
         );
+        let laid_out = started.elapsed();
         self.adjust_native_select_scroll();
         self.adjust_native_editor_scroll();
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
         self.rebuild_find();
         self.rebuild_document_selection();
+        let found = started.elapsed();
         self.refresh_accessibility();
+        if profile {
+            eprintln!(
+                "PROFILE layout={laid_out:?} find+selection={:?} accessibility={:?}",
+                found - laid_out,
+                started.elapsed() - found
+            );
+        }
     }
 
     fn recascade(&mut self) {
+        let profile = std::env::var("BI_PROFILE_LAYOUT").is_ok();
+        let started = std::time::Instant::now();
         self.remember_native_form_defaults();
         let author = crate::stylesheet::extract_inline_stylesheets_with_linked(
             &self.doc,
             &self.media_environment(),
             &self.linked_styles,
         );
+        let collected = started.elapsed();
         self.styles = cascade_with_viewport(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
             self.viewport_width,
             self.viewport_height,
         );
+        let cascaded = started.elapsed();
         self.rebuild_images();
+        if profile {
+            eprintln!(
+                "PROFILE rules={} stylesheets={collected:?} cascade={:?} images={:?}",
+                author.len(),
+                cascaded - collected,
+                started.elapsed() - cascaded
+            );
+        }
     }
 
     /// Test-only direct navigation for exercising the fetch-to-document path.
