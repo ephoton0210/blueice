@@ -21,6 +21,7 @@ use crate::fragment::{Fragment, FragmentKind};
 use crate::text::{default_line_height, StyleMap};
 use blueice_css::Value;
 use blueice_dom::{Document, NodeData, NodeId};
+use std::collections::HashMap;
 
 /// A margin that can collapse: the largest positive and most negative parts
 /// contributing to it.
@@ -81,7 +82,7 @@ pub(crate) struct PendingAbs {
 /// What a block-level layout depends on besides the (immutable) document.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct LayoutKey {
-    node: NodeId,
+    pub(crate) node: NodeId,
     cb_width: u64,
     cb_height: Option<u64>,
     root: bool,
@@ -1205,7 +1206,7 @@ fn line_height_for(style: &Style<'_>, value: &Value) -> Option<f64> {
 }
 
 /// Compatibility entry point: lays out `node` at `available_width` against a
-/// default viewport. Used by tests; real callers go through [`layout_root`].
+/// default viewport. Used by tests; real callers go through `layout`.
 #[cfg(test)]
 pub(crate) fn layout_block(
     doc: &Document,
@@ -1236,13 +1237,16 @@ pub(crate) fn layout_block(
 }
 
 /// Lays out the root element against the viewport.
-pub(crate) fn layout_root(
+/// Lays out the root box starting from `layouts`, the block layouts an earlier pass computed
+/// that are still valid, and hands back every layout this pass holds for the next one.
+pub(crate) fn layout_root_with(
     doc: &Document,
     node: NodeId,
     styles: &StyleMap,
     viewport_width: f64,
     viewport_height: f64,
-) -> Fragment {
+    layouts: HashMap<LayoutKey, Placed>,
+) -> (Fragment, HashMap<LayoutKey, Placed>) {
     let root_font_size = styles.get(&node).map_or(16.0, |s| s.font_size_px);
     let ctx = Ctx {
         doc,
@@ -1252,7 +1256,7 @@ pub(crate) fn layout_root(
         root_font_size,
         intrinsic: Default::default(),
         content_widths: Default::default(),
-        layouts: Default::default(),
+        layouts: std::cell::RefCell::new(layouts),
         floats: Default::default(),
         pseudo: crate::ctx::generated_nodes(doc, styles),
     };
@@ -1263,7 +1267,7 @@ pub(crate) fn layout_root(
     };
     let mut fragment = layout_block_level(&ctx, node, &c, Forced::default()).fragment;
     detach_generated(&mut fragment);
-    fragment
+    (fragment, ctx.layouts.into_inner())
 }
 
 /// Apply the list's scroll position and clip option hit/AX bounds to its content.

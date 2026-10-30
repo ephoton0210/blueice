@@ -7,7 +7,7 @@
 //! inputs to the rules themselves may have changed.
 
 use super::Page;
-use blueice_css::{cascade_incremental, MediaEnvironment, Origin};
+use blueice_css::{cascade_incremental_report, MediaEnvironment, Origin};
 use blueice_dom::{Changes, Document, NodeData, NodeId};
 
 /// What the last full cascade was computed from, besides the document itself.
@@ -119,17 +119,23 @@ impl Page {
             }
             return false;
         }
-        let done = cascade_incremental(
+        let mut style_changed = Vec::new();
+        let done = cascade_incremental_report(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &self.author_rules)],
             self.viewport_width,
             self.viewport_height,
             &mut self.styles,
             &changes,
+            &mut style_changed,
         );
         if done {
             self.restyle_counts.0 += 1;
             self.rebuild_images();
+            // Layout reuses what it computed for every box these changes cannot have
+            // touched.
+            self.layout_cache
+                .invalidate(&self.doc, &changes, &style_changed);
         } else if profile {
             eprintln!(
                 "RESTYLE full: the incremental path declined ({} touched, {} attached, {} detached, overflow {})",
@@ -251,5 +257,117 @@ mod tests {
         page.settle();
         assert!(page.styles.len() < before);
         assert_eq!(page.styles, fresh(&page));
+    }
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    const DOCUMENT: &str = "<style>\
+        .a { float: left; width: 30px; height: 10px } .b { display: inline-block; width: 20px } \
+        .c { display: flex } .c > * { flex: 1 } .d { position: relative; top: 2px } \
+        .e { position: absolute; left: 3px; top: 4px; width: 5px; height: 5px } \
+        .f { padding: 3px; border: 1px solid red; margin: 4px } p { margin: 6px 0 } \
+        li { margin-bottom: 2px } .g { width: 50% } .h { overflow: hidden; height: 20px } \
+        .i { transform: translate(5px, 5px) } .j { display: none } ul, ol { padding-left: 20px }\
+        </style><body>\
+        <div id=n0 class=f><p id=n1>alpha beta gamma</p><p id=n2>delta epsilon</p></div>\
+        <ol id=n3><li id=n4>one</li><li id=n5>two</li><li id=n6>three</li></ol>\
+        <div id=n7 class=c><span id=n8>x</span><span id=n9>y</span></div>\
+        <section id=n10><ul id=n11><li id=n12>a</li><li id=n13>b</li></ul><p id=n14>tail text</p></section>\
+        </body>";
+
+    /// One random edit as script, guarded so that it does nothing if its target was removed.
+    fn edit(rng: &mut Rng, ids: &mut u32) -> String {
+        const CLASSES: &[&str] = &["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", ""];
+        const STYLES: &[&str] = &[
+            "width: 40px",
+            "height: 12px",
+            "display: none",
+            "float: right",
+            "padding: 4px",
+            "",
+        ];
+        const TAGS: &[&str] = &["div", "p", "span", "li", "section"];
+        let target = format!("document.getElementById('n{}')", rng.below(*ids as usize));
+        let body = match rng.below(9) {
+            0 => format!("t.className = '{}';", CLASSES[rng.below(CLASSES.len())]),
+            1 => format!("t.setAttribute('style', '{}');", STYLES[rng.below(STYLES.len())]),
+            2 => format!("t.textContent = 'w{} {}';", rng.below(100), "word ".repeat(rng.below(6))),
+            3 => {
+                *ids += 1;
+                format!(
+                    "var e = document.createElement('{}'); e.id = 'n{}'; e.className = '{}'; e.textContent = 'new {}'; t.appendChild(e);",
+                    TAGS[rng.below(TAGS.len())],
+                    *ids - 1,
+                    CLASSES[rng.below(CLASSES.len())],
+                    rng.below(50)
+                )
+            }
+            4 => {
+                *ids += 1;
+                format!(
+                    "var e = document.createElement('li'); e.id = 'n{}'; e.textContent = 'item'; \
+                     t.insertBefore(e, t.firstChild);",
+                    *ids - 1
+                )
+            }
+            5 => "if (t.parentNode && t.id != 'n0') t.remove();".to_string(),
+            6 => format!("t.setAttribute('start', '{}');", 1 + rng.below(9)),
+            7 => format!("t.setAttribute('value', '{}');", 1 + rng.below(9)),
+            _ => format!(
+                "var o = document.getElementById('n{}'); if (o && t.parentNode && !t.contains(o) && o.nodeType == 1) o.appendChild(t);",
+                rng.below(*ids as usize)
+            ),
+        };
+        format!("(function(){{ var t = {target}; if (t) {{ {body} }} }})();")
+    }
+
+    #[test]
+    fn a_page_relaid_out_through_the_cache_equals_a_fresh_layout_after_random_script_edits() {
+        let mut reused = 0;
+        let mut passes = 0;
+        for seed in 1..=6u64 {
+            let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+            let mut page = page(DOCUMENT);
+            let mut ids = 15u32;
+            for step in 0..15 {
+                let mut script = String::new();
+                for _ in 0..1 + rng.below(3) {
+                    script.push_str(&edit(&mut rng, &mut ids));
+                }
+                page.web_eval(&script);
+                page.settle();
+                let fresh_layout = blueice_layout::layout(
+                    &page.doc,
+                    page.doc.root(),
+                    &page.styles,
+                    blueice_layout::Constraints {
+                        available_width: page.viewport_width,
+                        viewport_height: page.viewport_height,
+                    },
+                );
+                assert!(
+                    page.fragment == fresh_layout,
+                    "seed {seed} step {step}: the page's fragment tree differs from a fresh layout\n{script}"
+                );
+                assert_eq!(page.styles, fresh(&page), "seed {seed} step {step}: styles");
+                passes += 1;
+            }
+            reused += page.layout_reuse;
+        }
+        assert!(
+            reused * 2 > passes,
+            "the cache must actually be reused ({reused} of {passes} passes)"
+        );
     }
 }

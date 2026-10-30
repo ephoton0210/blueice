@@ -17,6 +17,7 @@
 //! positioning yet).
 
 mod block;
+mod cache;
 mod ctx;
 mod flex;
 mod float;
@@ -30,6 +31,7 @@ mod text;
 mod transform;
 
 pub use block::update_select_option_bounds;
+pub use cache::LayoutCache;
 pub use fragment::{Constraints, Fragment, FragmentKind, NativeForm, SelectOption};
 pub use native_text::{
     input_button_label, input_range_values, select_display_size, select_options,
@@ -52,25 +54,69 @@ pub fn layout(
     styles: &HashMap<NodeId, ComputedStyle>,
     constraints: Constraints,
 ) -> Fragment {
+    layout_inner(doc, root, styles, constraints, None)
+}
+
+/// [`layout`] that keeps what it computes in `cache` and reuses what an earlier call left
+/// there. Before each call after the document or styles changed, `cache` must have been
+/// told what changed ([`LayoutCache::invalidate`]) or been cleared; the result is then
+/// exactly what [`layout`] returns.
+pub fn layout_with_cache(
+    doc: &Document,
+    root: NodeId,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    constraints: Constraints,
+    cache: &mut LayoutCache,
+) -> Fragment {
+    layout_inner(doc, root, styles, constraints, Some(cache))
+}
+
+fn layout_inner(
+    doc: &Document,
+    root: NodeId,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    constraints: Constraints,
+    cache: Option<&mut LayoutCache>,
+) -> Fragment {
     let effective_root = if styles.contains_key(&root) {
         Some(root)
     } else {
         doc.children(root).find(|c| styles.contains_key(c))
     };
-    match effective_root {
-        Some(node) => {
-            let mut fragment = block::layout_root(
+    let Some(node) = effective_root else {
+        if let Some(cache) = cache {
+            cache.clear();
+        }
+        return Fragment::empty_block();
+    };
+    let (width, height) = (constraints.available_width, constraints.viewport_height);
+    let (mut fragment, layouts) = match cache {
+        Some(cache) => {
+            let epoch = [
+                width.to_bits(),
+                height.to_bits(),
+                styles.get(&node).map_or(16.0, |s| s.font_size_px).to_bits(),
+            ];
+            if cache.epoch != Some(epoch) {
+                cache.layouts.clear();
+                cache.epoch = Some(epoch);
+            }
+            let (fragment, layouts) = block::layout_root_with(
                 doc,
                 node,
                 styles,
-                constraints.available_width,
-                constraints.viewport_height,
+                width,
+                height,
+                std::mem::take(&mut cache.layouts),
             );
-            transform::apply(&mut fragment);
-            fragment
+            cache.layouts = layouts;
+            (fragment, HashMap::new())
         }
-        None => Fragment::empty_block(),
-    }
+        None => block::layout_root_with(doc, node, styles, width, height, HashMap::new()),
+    };
+    drop(layouts);
+    transform::apply(&mut fragment);
+    fragment
 }
 
 #[cfg(test)]

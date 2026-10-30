@@ -37,7 +37,7 @@ use blueice_dom::{Document, NodeData, NodeId};
 use std::collections::HashMap;
 
 mod incremental;
-pub use incremental::cascade_incremental;
+pub use incremental::{cascade_incremental, cascade_incremental_report};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Origin {

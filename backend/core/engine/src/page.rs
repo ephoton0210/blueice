@@ -28,7 +28,7 @@ use blueice_css::{cascade_with_viewport, ua_stylesheet, ComputedStyle, Origin, R
 use blueice_dom::{Document, NodeData, NodeId};
 use blueice_ipc::gatekeeper::GatekeeperSettingsChange;
 use blueice_ipc::{AiSnapshot, NodeAction};
-use blueice_layout::{layout, Constraints, Fragment};
+use blueice_layout::{layout_with_cache, Constraints, Fragment, LayoutCache};
 use blueice_paint::{Color, Frame, PaintCommand, Rect};
 use blueice_raster::{rasterize, Pixmap};
 use std::collections::HashMap;
@@ -53,6 +53,12 @@ pub struct Page {
     style_epoch: Option<restyle::StyleEpoch>,
     /// How many restyles were incremental, and how many were full cascades.
     restyle_counts: (u32, u32),
+    /// Block layouts that survive between passes. Only an incremental restyle keeps them
+    /// (and drops exactly what its changes may have affected); a full cascade, and every
+    /// `relayout` that did not come through one, starts over.
+    layout_cache: LayoutCache,
+    /// How many layout passes reused something from the cache's last pass.
+    layout_reuse: u32,
     fragment: Fragment,
     ua: Vec<Rule>,
     viewport_width: f64,
@@ -173,6 +179,8 @@ impl Page {
             author_rules: Vec::new(),
             style_epoch: None,
             restyle_counts: (0, 0),
+            layout_cache: LayoutCache::default(),
+            layout_reuse: 0,
             fragment: Fragment::empty_block(),
             ua: ua_stylesheet(),
             viewport_width,
@@ -322,14 +330,23 @@ impl Page {
         if !self.restyle_incrementally() {
             self.recascade();
         }
-        self.relayout();
+        // Whatever the restyle left in the cache is exactly what is still valid.
+        self.relayout_keeping_cache();
     }
 
+    /// Lays the document out again from scratch: the document and styles may have changed in
+    /// ways the layout cache was not told about.
     fn relayout(&mut self) {
+        self.layout_cache.clear();
+        self.relayout_keeping_cache();
+    }
+
+    fn relayout_keeping_cache(&mut self) {
         let profile = std::env::var("BI_PROFILE_LAYOUT").is_ok();
         let started = std::time::Instant::now();
         self.native_undo.prune(&self.doc);
-        self.fragment = layout(
+        let cached = self.layout_cache.len();
+        self.fragment = layout_with_cache(
             &self.doc,
             self.doc.root(),
             &self.styles,
@@ -337,7 +354,11 @@ impl Page {
                 available_width: self.viewport_width,
                 viewport_height: self.viewport_height,
             },
+            &mut self.layout_cache,
         );
+        if cached > 0 {
+            self.layout_reuse += 1;
+        }
         let laid_out = started.elapsed();
         self.adjust_native_select_scroll();
         self.adjust_native_editor_scroll();
@@ -375,6 +396,7 @@ impl Page {
         );
         let cascaded = started.elapsed();
         let rule_count = author.len();
+        self.layout_cache.clear();
         self.note_full_cascade(author, environment);
         self.rebuild_images();
         if profile {

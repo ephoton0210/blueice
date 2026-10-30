@@ -250,6 +250,30 @@ pub fn cascade_incremental(
     styles: &mut HashMap<NodeId, ComputedStyle>,
     changes: &Changes,
 ) -> bool {
+    cascade_incremental_report(
+        doc,
+        stylesheets,
+        viewport_width,
+        viewport_height,
+        styles,
+        changes,
+        &mut Vec::new(),
+    )
+}
+
+/// [`cascade_incremental`] that also appends to `changed` every node whose style came to
+/// differ (one added, one removed, or one with a different value), pseudo-element nodes
+/// included. A consumer that keeps what it derived from the styles, such as layout, redoes
+/// only those nodes. On `false` nothing was changed and `changed` is left as it was.
+pub fn cascade_incremental_report(
+    doc: &Document,
+    stylesheets: &[(Origin, &[Rule])],
+    viewport_width: f64,
+    viewport_height: f64,
+    styles: &mut HashMap<NodeId, ComputedStyle>,
+    changes: &Changes,
+    changed: &mut Vec<NodeId>,
+) -> bool {
     if changes.overflow {
         return false;
     }
@@ -381,13 +405,19 @@ pub fn cascade_incremental(
         return false;
     }
     let overlay = restyle.overlay;
+    let mut differing = Vec::new();
     for (id, style) in overlay {
         match style {
             Some(style) => {
+                if styles.get(&id) != Some(&style) {
+                    differing.push(id);
+                }
                 styles.insert(id, style);
             }
             None => {
-                styles.remove(&id);
+                if styles.remove(&id).is_some() {
+                    differing.push(id);
+                }
             }
         }
     }
@@ -405,9 +435,14 @@ pub fn cascade_incremental(
             } else {
                 *id
             };
-            reachable.contains(&owner)
+            let keep = reachable.contains(&owner);
+            if !keep {
+                differing.push(*id);
+            }
+            keep
         });
     }
+    changed.extend(differing);
     true
 }
 
@@ -593,8 +628,35 @@ mod tests {
                 }
                 let changes = doc.take_changes();
                 let expected = full(&doc, &rules);
-                if cascade_incremental(&doc, &rules, 1000.0, 500.0, &mut styles, &changes) {
+                let before = styles.clone();
+                let mut reported = Vec::new();
+                if cascade_incremental_report(
+                    &doc,
+                    &rules,
+                    1000.0,
+                    500.0,
+                    &mut styles,
+                    &changes,
+                    &mut reported,
+                ) {
                     incremental_runs += 1;
+                    // The report is exactly the nodes whose style came to differ: a layout
+                    // that reuses what it computed for every other node relies on it.
+                    let mut differing: Vec<u64> = before
+                        .keys()
+                        .chain(styles.keys())
+                        .filter(|id| before.get(id) != styles.get(id))
+                        .map(|id| id.as_u64())
+                        .collect();
+                    differing.sort_unstable();
+                    differing.dedup();
+                    let mut reported: Vec<u64> = reported.iter().map(|id| id.as_u64()).collect();
+                    reported.sort_unstable();
+                    reported.dedup();
+                    assert_eq!(
+                        reported, differing,
+                        "seed {seed} step {step}: the reported changed styles are not the changed styles"
+                    );
                 } else {
                     fallbacks += 1;
                     styles = expected.clone();
