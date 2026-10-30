@@ -541,12 +541,73 @@ render) paint into the page through the same image map as `<img>`.
   compiles), `BI_GL_PROFILE` (per-draw stage timings) and `BI_DIAG` (draw durations).
   `blueice-gl`'s `bench_vertex` measures a dumped shader's cost
   (`BI_VERT`/`BI_FRAG`).
-- **Next.** Incremental restyle (the real limit now), derivatives and mip LOD for
+- **Next.** Derivatives and mip LOD for
   shaders that use them, `<video>` poster painting and AVIF, a persistent cookie jar,
   unhandled-rejection reporting in the page realm (calling
   `install_host_rejection_tracking` makes the realm's own bootstrap fail with "page
   scheduling budget exhausted", so it needs a budget decision first), and stack traces on BlueJS errors (a thrown error names no function today,
   which made the diagnosis above much slower).
+
+## Making script-driven pages fast enough (2026-10-29)
+
+The Cloudflare globe needed minutes of wall time to appear in the developer tool, so the
+branch measured where that time went (a sampling profiler on the live run, not guesses)
+and fixed the three things that dominated, in the order they did:
+
+- **Restyle was a full cascade per script change (~730 ms of ~800 ms).** Layout was only
+  ~55 ms. Three changes: an element with no custom properties of its own now shares its
+  parent's resolved table (`Arc`) instead of deep-copying hundreds of token vectors; the
+  structural pseudo-classes (`:first-child`, `:last-child`, `:nth-*`, `:*-of-type`) no
+  longer collect every sibling into a `Vec` per check (a full cascade 730 -> 307 ms);
+  and the cascade is now **incremental**.
+- **Incremental restyle.** `blueice_dom::Document` journals what changes (attribute and
+  text touches with the data from before the first touch, attachments, and detachments
+  with the neighbours each had). `blueice_css::cascade_incremental` restyles only what a
+  change can reach: a `style`-attribute-only change stops at the first element whose
+  computed style does not change; a `class`/`id`/other attribute change or an insertion
+  redoes its subtree; the siblings that `:first-child`, `:nth-child`, `+`, `~` or
+  `:empty` can see are redone only if the rules use such selectors (adjacent ones when
+  that is enough). It declines (the caller does a full cascade, and the styles are left
+  untouched) when it cannot be sure: a journal overflow, or a change to the root
+  element's font size. `Page` also does a full cascade when the media environment
+  changed or a stylesheet source (`<style>`, `<base>`, `<link rel=stylesheet>`) did. A
+  **differential test** builds random trees, applies random edits (class, id, style,
+  insert, remove, move) and requires the incremental result to equal a full cascade
+  after every step; two deliberate mutants of the implementation fail it. An incremental
+  restyle + relayout of Cloudflare is ~80 ms.
+- **The JavaScript engine gathered every GC root for every heap operation.** After the
+  restyle work, ~89% of busy time was `Vm::prepare_gc_trace` walking the operand stack
+  (3,600 values on average, 2 million calls in a minute) before each allocation or
+  property write, though almost none of them collect. The heap can now be told not to
+  collect (`Heap::set_collection_deferred`): an operation that would then have to
+  collect fails with `HeapError::CollectionDeferred` *before it changes anything*, and
+  `Vm::with_roots_lazy` runs the operation without roots and repeats it with them only
+  then. It is opt-in per call site, for single-primitive operations that are safe to
+  repeat: iterator results, `Array.prototype.push` and array construction, typed-array
+  element writes, loop-scope cells, global stores and `[[DefineOwnProperty]]`.
+  `backend/bluejs/tests/lazy_roots.rs` runs those paths with a one-object nursery, so
+  the retry happens on nearly every allocation, and a mutant that retries without roots
+  fails it. The full Test262 inventory is unchanged (102,921 pass, 0 fail,
+  1 `stale_corpus`, 4 `excluded`). An earlier attempt, caching the operand stack's object
+  ids, did nothing (replaying 3,600 ids is itself the cost) and was removed.
+- **GC sizing.** A realm for page scripts gets a 16,384-object nursery and a 16 MiB first
+  major threshold, not the test-sized defaults (256 objects, 256 KiB): script start-up on
+  Cloudflare 9.6 s -> 7.7 s.
+- **Measured.** Script start-up 11.5-12 s -> 7.7 s; per-change restyle + relayout
+  ~800 ms -> ~80 ms; 60 WebGL draws within a 100 s window where there were none in 120 s.
+  The globe's graticule is up in that window; its land-point dots are added by the page in
+  `requestAnimationFrame` batches that each sample the earth image's pixels in JavaScript,
+  so they take minutes of interpreter time (a 300 s window showed them all). That is now
+  plain interpreter speed, not GC or restyle.
+- **Still slow, in the order it bites.** Layout is still a full relayout (~55 ms);
+  `[[Get]]`/`binding_value` clone a whole string on every read, which is expensive when
+  a script holds a megabyte of text in a variable (seen under `String.prototype`
+  methods); most of the ~536 `with_roots` call sites are not converted (convert one only
+  after checking it fails before changing anything and is safe to repeat); a
+  `class`/`id` change on a high element still restyles its whole subtree.
+- **Developer tools added.** `BI_PROFILE_LAYOUT` (stage timings of a restyle), `BI_CASCADE_LOOP=N`
+  (only the cascade, repeated, for a sampling profiler), `BI_SCROLL_TO`/`BI_SCROLL_SECS`.
+  Profile with macOS `sample <pid> 10 -file out.txt` on the test binary (not `cargo`'s pid).
 
 ## Non-goals
 
