@@ -309,39 +309,221 @@ fn coord4(v: &V) -> R<[f32; 4]> {
     Ok(floats(v)?.1)
 }
 
+/// A built-in function, resolved from its name once, when a shader is lowered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Builtin {
+    Radians,
+    Degrees,
+    Sin,
+    Cos,
+    Tan,
+    Asin,
+    Acos,
+    Atan,
+    Sinh,
+    Cosh,
+    Tanh,
+    Asinh,
+    Acosh,
+    Atanh,
+    Pow,
+    Exp,
+    Log,
+    Exp2,
+    Log2,
+    Sqrt,
+    Inversesqrt,
+    Abs,
+    Sign,
+    Floor,
+    Ceil,
+    Trunc,
+    Round,
+    RoundEven,
+    Fract,
+    Mod,
+    Min,
+    Max,
+    Clamp,
+    Mix,
+    Step,
+    Smoothstep,
+    Isnan,
+    Isinf,
+    Length,
+    Distance,
+    Dot,
+    Cross,
+    Normalize,
+    Faceforward,
+    Reflect,
+    Refract,
+    LessThan,
+    LessThanEqual,
+    GreaterThan,
+    GreaterThanEqual,
+    Equal,
+    NotEqual,
+    Any,
+    All,
+    Not,
+    MatrixCompMult,
+    OuterProduct,
+    Transpose,
+    Determinant,
+    Inverse,
+    DFdx,
+    DFdy,
+    Fwidth,
+    FloatBitsToInt,
+    FloatBitsToUint,
+    IntBitsToFloat,
+    UintBitsToFloat,
+    Texture,
+    Texture2D,
+    TextureCube,
+    Texture3D,
+    Texture2DArray,
+    TextureProj,
+    Texture2DProj,
+    TextureLod,
+    Texture2DLod,
+    TextureCubeLod,
+    TexelFetch,
+    TextureSize,
+}
+
+impl Builtin {
+    pub fn from_name(name: &str) -> Option<Builtin> {
+        Some(match name {
+            "radians" => Builtin::Radians,
+            "degrees" => Builtin::Degrees,
+            "sin" => Builtin::Sin,
+            "cos" => Builtin::Cos,
+            "tan" => Builtin::Tan,
+            "asin" => Builtin::Asin,
+            "acos" => Builtin::Acos,
+            "atan" => Builtin::Atan,
+            "sinh" => Builtin::Sinh,
+            "cosh" => Builtin::Cosh,
+            "tanh" => Builtin::Tanh,
+            "asinh" => Builtin::Asinh,
+            "acosh" => Builtin::Acosh,
+            "atanh" => Builtin::Atanh,
+            "pow" => Builtin::Pow,
+            "exp" => Builtin::Exp,
+            "log" => Builtin::Log,
+            "exp2" => Builtin::Exp2,
+            "log2" => Builtin::Log2,
+            "sqrt" => Builtin::Sqrt,
+            "inversesqrt" => Builtin::Inversesqrt,
+            "abs" => Builtin::Abs,
+            "sign" => Builtin::Sign,
+            "floor" => Builtin::Floor,
+            "ceil" => Builtin::Ceil,
+            "trunc" => Builtin::Trunc,
+            "round" => Builtin::Round,
+            "roundEven" => Builtin::RoundEven,
+            "fract" => Builtin::Fract,
+            "mod" => Builtin::Mod,
+            "min" => Builtin::Min,
+            "max" => Builtin::Max,
+            "clamp" => Builtin::Clamp,
+            "mix" => Builtin::Mix,
+            "step" => Builtin::Step,
+            "smoothstep" => Builtin::Smoothstep,
+            "isnan" => Builtin::Isnan,
+            "isinf" => Builtin::Isinf,
+            "length" => Builtin::Length,
+            "distance" => Builtin::Distance,
+            "dot" => Builtin::Dot,
+            "cross" => Builtin::Cross,
+            "normalize" => Builtin::Normalize,
+            "faceforward" => Builtin::Faceforward,
+            "reflect" => Builtin::Reflect,
+            "refract" => Builtin::Refract,
+            "lessThan" => Builtin::LessThan,
+            "lessThanEqual" => Builtin::LessThanEqual,
+            "greaterThan" => Builtin::GreaterThan,
+            "greaterThanEqual" => Builtin::GreaterThanEqual,
+            "equal" => Builtin::Equal,
+            "notEqual" => Builtin::NotEqual,
+            "any" => Builtin::Any,
+            "all" => Builtin::All,
+            "not" => Builtin::Not,
+            "matrixCompMult" => Builtin::MatrixCompMult,
+            "outerProduct" => Builtin::OuterProduct,
+            "transpose" => Builtin::Transpose,
+            "determinant" => Builtin::Determinant,
+            "inverse" => Builtin::Inverse,
+            "dFdx" => Builtin::DFdx,
+            "dFdy" => Builtin::DFdy,
+            "fwidth" => Builtin::Fwidth,
+            "floatBitsToInt" => Builtin::FloatBitsToInt,
+            "floatBitsToUint" => Builtin::FloatBitsToUint,
+            "intBitsToFloat" => Builtin::IntBitsToFloat,
+            "uintBitsToFloat" => Builtin::UintBitsToFloat,
+            "texture" => Builtin::Texture,
+            "texture2D" => Builtin::Texture2D,
+            "textureCube" => Builtin::TextureCube,
+            "texture3D" => Builtin::Texture3D,
+            "texture2DArray" => Builtin::Texture2DArray,
+            "textureProj" => Builtin::TextureProj,
+            "texture2DProj" => Builtin::Texture2DProj,
+            "textureLod" => Builtin::TextureLod,
+            "texture2DLod" => Builtin::Texture2DLod,
+            "textureCubeLod" => Builtin::TextureCubeLod,
+            "texelFetch" => Builtin::TexelFetch,
+            "textureSize" => Builtin::TextureSize,
+            _ => return None,
+        })
+    }
+}
+
 /// Calls built-in `name`, or `None` when it is not one.
 pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
+    call_resolved(Builtin::from_name(name)?, name, args, textures)
+}
+
+/// Calls the already-resolved built-in `which`, named `name` (for messages and the few
+/// variants that read their own name).
+pub fn call_resolved(
+    which: Builtin,
+    name: &str,
+    args: &[V],
+    textures: &dyn Textures,
+) -> Option<R<V>> {
     let a = |i: usize| {
         args.get(i)
             .ok_or_else(|| format!("{name}: missing argument {i}"))
     };
-    let r: R<V> = (|| match name {
-        "radians" => map1(a(0)?, f32::to_radians),
-        "degrees" => map1(a(0)?, f32::to_degrees),
-        "sin" => map1(a(0)?, f32::sin),
-        "cos" => map1(a(0)?, f32::cos),
-        "tan" => map1(a(0)?, f32::tan),
-        "asin" => map1(a(0)?, f32::asin),
-        "acos" => map1(a(0)?, f32::acos),
-        "atan" if args.len() == 1 => map1(a(0)?, f32::atan),
-        "atan" => map2(a(0)?, a(1)?, f32::atan2),
-        "sinh" => map1(a(0)?, f32::sinh),
-        "cosh" => map1(a(0)?, f32::cosh),
-        "tanh" => map1(a(0)?, f32::tanh),
-        "asinh" => map1(a(0)?, f32::asinh),
-        "acosh" => map1(a(0)?, f32::acosh),
-        "atanh" => map1(a(0)?, f32::atanh),
-        "pow" => map2(a(0)?, a(1)?, f32::powf),
-        "exp" => map1(a(0)?, f32::exp),
-        "log" => map1(a(0)?, f32::ln),
-        "exp2" => map1(a(0)?, f32::exp2),
-        "log2" => map1(a(0)?, f32::log2),
-        "sqrt" => map1(a(0)?, f32::sqrt),
-        "inversesqrt" => map1(a(0)?, |x| 1.0 / x.sqrt()),
-        "abs" if integer_kind(args).is_some() => map_int(args, |l| l[0].abs()),
-        "abs" => map1(a(0)?, f32::abs),
-        "sign" if integer_kind(args).is_some() => map_int(args, |l| l[0].signum()),
-        "sign" => map1(a(0)?, |x| {
+    let r: R<V> = (|| match which {
+        Builtin::Radians => map1(a(0)?, f32::to_radians),
+        Builtin::Degrees => map1(a(0)?, f32::to_degrees),
+        Builtin::Sin => map1(a(0)?, f32::sin),
+        Builtin::Cos => map1(a(0)?, f32::cos),
+        Builtin::Tan => map1(a(0)?, f32::tan),
+        Builtin::Asin => map1(a(0)?, f32::asin),
+        Builtin::Acos => map1(a(0)?, f32::acos),
+        Builtin::Atan if args.len() == 1 => map1(a(0)?, f32::atan),
+        Builtin::Atan => map2(a(0)?, a(1)?, f32::atan2),
+        Builtin::Sinh => map1(a(0)?, f32::sinh),
+        Builtin::Cosh => map1(a(0)?, f32::cosh),
+        Builtin::Tanh => map1(a(0)?, f32::tanh),
+        Builtin::Asinh => map1(a(0)?, f32::asinh),
+        Builtin::Acosh => map1(a(0)?, f32::acosh),
+        Builtin::Atanh => map1(a(0)?, f32::atanh),
+        Builtin::Pow => map2(a(0)?, a(1)?, f32::powf),
+        Builtin::Exp => map1(a(0)?, f32::exp),
+        Builtin::Log => map1(a(0)?, f32::ln),
+        Builtin::Exp2 => map1(a(0)?, f32::exp2),
+        Builtin::Log2 => map1(a(0)?, f32::log2),
+        Builtin::Sqrt => map1(a(0)?, f32::sqrt),
+        Builtin::Inversesqrt => map1(a(0)?, |x| 1.0 / x.sqrt()),
+        Builtin::Abs if integer_kind(args).is_some() => map_int(args, |l| l[0].abs()),
+        Builtin::Abs => map1(a(0)?, f32::abs),
+        Builtin::Sign if integer_kind(args).is_some() => map_int(args, |l| l[0].signum()),
+        Builtin::Sign => map1(a(0)?, |x| {
             if x > 0.0 {
                 1.0
             } else if x < 0.0 {
@@ -350,22 +532,22 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 0.0
             }
         }),
-        "floor" => map1(a(0)?, f32::floor),
-        "ceil" => map1(a(0)?, f32::ceil),
-        "trunc" => map1(a(0)?, f32::trunc),
-        "round" => map1(a(0)?, f32::round),
-        "roundEven" => map1(a(0)?, round_even),
-        "fract" => map1(a(0)?, |x| x - x.floor()),
-        "mod" => map2(a(0)?, a(1)?, mod_f),
-        "min" if integer_kind(args).is_some() => map_int(args, |l| l[0].min(l[1])),
-        "max" if integer_kind(args).is_some() => map_int(args, |l| l[0].max(l[1])),
-        "min" => map2(a(0)?, a(1)?, f32::min),
-        "max" => map2(a(0)?, a(1)?, f32::max),
-        "clamp" if integer_kind(args).is_some() => {
+        Builtin::Floor => map1(a(0)?, f32::floor),
+        Builtin::Ceil => map1(a(0)?, f32::ceil),
+        Builtin::Trunc => map1(a(0)?, f32::trunc),
+        Builtin::Round => map1(a(0)?, f32::round),
+        Builtin::RoundEven => map1(a(0)?, round_even),
+        Builtin::Fract => map1(a(0)?, |x| x - x.floor()),
+        Builtin::Mod => map2(a(0)?, a(1)?, mod_f),
+        Builtin::Min if integer_kind(args).is_some() => map_int(args, |l| l[0].min(l[1])),
+        Builtin::Max if integer_kind(args).is_some() => map_int(args, |l| l[0].max(l[1])),
+        Builtin::Min => map2(a(0)?, a(1)?, f32::min),
+        Builtin::Max => map2(a(0)?, a(1)?, f32::max),
+        Builtin::Clamp if integer_kind(args).is_some() => {
             map_int(args, |l| l[0].clamp(l[1].min(l[2]), l[2]))
         }
-        "clamp" => map3(a(0)?, a(1)?, a(2)?, |x, lo, hi| x.max(lo).min(hi)),
-        "mix" => {
+        Builtin::Clamp => map3(a(0)?, a(1)?, a(2)?, |x, lo, hi| x.max(lo).min(hi)),
+        Builtin::Mix => {
             if matches!(
                 args.get(2),
                 Some(V::Vec {
@@ -396,23 +578,23 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 map3(a(0)?, a(1)?, a(2)?, |x, y, t| x * (1.0 - t) + y * t)
             }
         }
-        "step" => map2(a(0)?, a(1)?, |edge, x| if x < edge { 0.0 } else { 1.0 }),
-        "smoothstep" => map3(a(0)?, a(1)?, a(2)?, |e0, e1, x| {
+        Builtin::Step => map2(a(0)?, a(1)?, |edge, x| if x < edge { 0.0 } else { 1.0 }),
+        Builtin::Smoothstep => map3(a(0)?, a(1)?, a(2)?, |e0, e1, x| {
             let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
             t * t * (3.0 - 2.0 * t)
         }),
-        "isnan" => Ok(bool_of(a(0)?, f32::is_nan)?),
-        "isinf" => Ok(bool_of(a(0)?, f32::is_infinite)?),
-        "length" => {
+        Builtin::Isnan => Ok(bool_of(a(0)?, f32::is_nan)?),
+        Builtin::Isinf => Ok(bool_of(a(0)?, f32::is_infinite)?),
+        Builtin::Length => {
             let v = a(0)?;
             Ok(V::f(dot(v, v)?.sqrt()))
         }
-        "distance" => {
+        Builtin::Distance => {
             let d = binary(BinOp::Sub, a(0)?, a(1)?)?;
             Ok(V::f(dot(&d, &d)?.sqrt()))
         }
-        "dot" => Ok(V::f(dot(a(0)?, a(1)?)?)),
-        "cross" => {
+        Builtin::Dot => Ok(V::f(dot(a(0)?, a(1)?)?)),
+        Builtin::Cross => {
             let ((_, x), (_, y)) = (floats(a(0)?)?, floats(a(1)?)?);
             Ok(from_floats(
                 3,
@@ -424,12 +606,12 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 ],
             ))
         }
-        "normalize" => {
+        Builtin::Normalize => {
             let v = a(0)?;
             let len = dot(v, v)?.sqrt();
             map1(v, |x| x / len)
         }
-        "faceforward" => {
+        Builtin::Faceforward => {
             let d = dot(a(2)?, a(1)?)?;
             if d < 0.0 {
                 Ok(a(0)?.clone())
@@ -437,12 +619,12 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 negate(a(0)?)
             }
         }
-        "reflect" => {
+        Builtin::Reflect => {
             let d = dot(a(1)?, a(0)?)?;
             let scaled = binary(BinOp::Mul, a(1)?, &V::f(2.0 * d))?;
             binary(BinOp::Sub, a(0)?, &scaled)
         }
-        "refract" => {
+        Builtin::Refract => {
             let eta = a(2)?.as_f32().ok_or("refract needs a float eta")?;
             let d = dot(a(1)?, a(0)?)?;
             let k = 1.0 - eta * eta * (1.0 - d * d);
@@ -454,22 +636,22 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 binary(BinOp::Sub, &i, &n)
             }
         }
-        "lessThan" => bool_vec(a(0)?, a(1)?, |x, y| x < y),
-        "lessThanEqual" => bool_vec(a(0)?, a(1)?, |x, y| x <= y),
-        "greaterThan" => bool_vec(a(0)?, a(1)?, |x, y| x > y),
-        "greaterThanEqual" => bool_vec(a(0)?, a(1)?, |x, y| x >= y),
-        "equal" => bool_vec(a(0)?, a(1)?, |x, y| x == y),
-        "notEqual" => bool_vec(a(0)?, a(1)?, |x, y| x != y),
-        "any" => {
+        Builtin::LessThan => bool_vec(a(0)?, a(1)?, |x, y| x < y),
+        Builtin::LessThanEqual => bool_vec(a(0)?, a(1)?, |x, y| x <= y),
+        Builtin::GreaterThan => bool_vec(a(0)?, a(1)?, |x, y| x > y),
+        Builtin::GreaterThanEqual => bool_vec(a(0)?, a(1)?, |x, y| x >= y),
+        Builtin::Equal => bool_vec(a(0)?, a(1)?, |x, y| x == y),
+        Builtin::NotEqual => bool_vec(a(0)?, a(1)?, |x, y| x != y),
+        Builtin::Any => {
             let (n, c) = floats(a(0)?)?;
             Ok(V::b((0..n as usize).any(|i| c[i] != 0.0)))
         }
-        "all" => {
+        Builtin::All => {
             let (n, c) = floats(a(0)?)?;
             Ok(V::b((0..n as usize).all(|i| c[i] != 0.0)))
         }
-        "not" => logical_not(a(0)?),
-        "matrixCompMult" => {
+        Builtin::Not => logical_not(a(0)?),
+        Builtin::MatrixCompMult => {
             let (V::Mat { cols, rows, d: d1 }, V::Mat { d: d2, .. }) = (a(0)?, a(1)?) else {
                 return Err("matrixCompMult needs matrices".into());
             };
@@ -483,7 +665,7 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 d,
             })
         }
-        "outerProduct" => {
+        Builtin::OuterProduct => {
             let ((nr, c), (nc, r)) = (floats(a(0)?)?, floats(a(1)?)?);
             let mut d = [0.0; 16];
             for col in 0..nc as usize {
@@ -497,15 +679,20 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 d,
             })
         }
-        "transpose" => transpose(a(0)?),
-        "determinant" => Ok(V::f(determinant(a(0)?)?)),
-        "inverse" => inverse(a(0)?),
-        "dFdx" | "dFdy" | "fwidth" => map1(a(0)?, |_| 0.0),
-        "floatBitsToInt" => map_bits(a(0)?, Scalar::Int),
-        "floatBitsToUint" => map_bits(a(0)?, Scalar::UInt),
-        "intBitsToFloat" | "uintBitsToFloat" => map_bits(a(0)?, Scalar::Float),
-        "texture" | "texture2D" | "textureCube" | "texture3D" | "texture2DArray"
-        | "textureProj" | "texture2DProj" => {
+        Builtin::Transpose => transpose(a(0)?),
+        Builtin::Determinant => Ok(V::f(determinant(a(0)?)?)),
+        Builtin::Inverse => inverse(a(0)?),
+        Builtin::DFdx | Builtin::DFdy | Builtin::Fwidth => map1(a(0)?, |_| 0.0),
+        Builtin::FloatBitsToInt => map_bits(a(0)?, Scalar::Int),
+        Builtin::FloatBitsToUint => map_bits(a(0)?, Scalar::UInt),
+        Builtin::IntBitsToFloat | Builtin::UintBitsToFloat => map_bits(a(0)?, Scalar::Float),
+        Builtin::Texture
+        | Builtin::Texture2D
+        | Builtin::TextureCube
+        | Builtin::Texture3D
+        | Builtin::Texture2DArray
+        | Builtin::TextureProj
+        | Builtin::Texture2DProj => {
             let (unit, kind) = sampler(a(0)?)?;
             let mut coord = coord4(a(1)?)?;
             let proj = name.contains("Proj");
@@ -522,7 +709,7 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 textures.sample(unit, kind, coord, None, bias),
             ))
         }
-        "textureLod" | "texture2DLod" | "textureCubeLod" => {
+        Builtin::TextureLod | Builtin::Texture2DLod | Builtin::TextureCubeLod => {
             let (unit, kind) = sampler(a(0)?)?;
             let coord = coord4(a(1)?)?;
             let lod = a(2)?.as_f32().unwrap_or(0.0);
@@ -531,7 +718,7 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 textures.sample(unit, kind, coord, Some(lod), 0.0),
             ))
         }
-        "texelFetch" => {
+        Builtin::TexelFetch => {
             let (unit, kind) = sampler(a(0)?)?;
             let (_, c) = floats(a(1)?)?;
             let lod = a(2)?.as_i32().unwrap_or(0);
@@ -540,7 +727,7 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
                 textures.fetch(unit, kind, [c[0] as i32, c[1] as i32, c[2] as i32], lod),
             ))
         }
-        "textureSize" => {
+        Builtin::TextureSize => {
             let (unit, kind) = sampler(a(0)?)?;
             let s = textures.size(unit, kind, a(1)?.as_i32().unwrap_or(0));
             let lanes = if matches!(kind, SamplerKind::S3D | SamplerKind::S2DArray) {
@@ -550,12 +737,8 @@ pub fn call(name: &str, args: &[V], textures: &dyn Textures) -> Option<R<V>> {
             };
             Ok(V::of_kind(Scalar::Int, &s.map(|x| x as u32)[..lanes]))
         }
-        _ => Err(String::new()),
     })();
-    match r {
-        Err(e) if e.is_empty() => None,
-        other => Some(other),
-    }
+    Some(r)
 }
 
 fn bool_of(v: &V, f: impl Fn(f32) -> bool) -> R<V> {
@@ -583,88 +766,7 @@ fn map_bits(v: &V, to: Scalar) -> R<V> {
 }
 
 pub fn is_builtin(name: &str) -> bool {
-    matches!(
-        name,
-        "radians"
-            | "degrees"
-            | "sin"
-            | "cos"
-            | "tan"
-            | "asin"
-            | "acos"
-            | "atan"
-            | "sinh"
-            | "cosh"
-            | "tanh"
-            | "asinh"
-            | "acosh"
-            | "atanh"
-            | "pow"
-            | "exp"
-            | "log"
-            | "exp2"
-            | "log2"
-            | "sqrt"
-            | "inversesqrt"
-            | "abs"
-            | "sign"
-            | "floor"
-            | "ceil"
-            | "trunc"
-            | "round"
-            | "roundEven"
-            | "fract"
-            | "mod"
-            | "min"
-            | "max"
-            | "clamp"
-            | "mix"
-            | "step"
-            | "smoothstep"
-            | "isnan"
-            | "isinf"
-            | "length"
-            | "distance"
-            | "dot"
-            | "cross"
-            | "normalize"
-            | "faceforward"
-            | "reflect"
-            | "refract"
-            | "lessThan"
-            | "lessThanEqual"
-            | "greaterThan"
-            | "greaterThanEqual"
-            | "equal"
-            | "notEqual"
-            | "any"
-            | "all"
-            | "not"
-            | "matrixCompMult"
-            | "outerProduct"
-            | "transpose"
-            | "determinant"
-            | "inverse"
-            | "dFdx"
-            | "dFdy"
-            | "fwidth"
-            | "floatBitsToInt"
-            | "floatBitsToUint"
-            | "intBitsToFloat"
-            | "uintBitsToFloat"
-            | "texture"
-            | "texture2D"
-            | "textureCube"
-            | "texture3D"
-            | "texture2DArray"
-            | "textureProj"
-            | "texture2DProj"
-            | "textureLod"
-            | "texture2DLod"
-            | "textureCubeLod"
-            | "texelFetch"
-            | "textureSize"
-    )
+    Builtin::from_name(name).is_some()
 }
 
 #[cfg(test)]
@@ -836,6 +938,18 @@ mod tests {
             V::b(false)
         );
         assert_eq!(run("isnan", &[V::f(f32::NAN)]), V::b(true));
+    }
+
+    #[test]
+    fn a_name_resolves_to_the_built_in_that_call_by_name_runs() {
+        let one = V::f(0.5);
+        for name in ["sin", "abs", "exp2", "sqrt", "radians", "fract", "sign"] {
+            let which = Builtin::from_name(name).expect(name);
+            let by_id = call_resolved(which, name, &[one.clone()], &NoTextures);
+            assert_eq!(by_id, call(name, &[one.clone()], &NoTextures), "{name}");
+        }
+        assert_eq!(Builtin::from_name("myFunction"), None);
+        assert!(call("myFunction", &[], &NoTextures).is_none());
     }
 
     #[test]

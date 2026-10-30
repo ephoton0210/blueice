@@ -28,7 +28,7 @@ enum N {
     Field(Box<N>, String),
     Index(Box<N>, Box<N>),
     CallUser(usize, Vec<N>),
-    CallBuiltin(String, Vec<N>),
+    CallBuiltin(builtins::Builtin, String, Vec<N>),
     Ctor(Ty, Vec<N>),
     ArrCtor(Ty, Vec<N>),
     Un(UnOp, Box<N>),
@@ -229,7 +229,7 @@ impl Program {
                 }
                 N::Cond(a, b, c) => node(a, slot) || node(b, slot) || node(c, slot),
                 N::CallUser(_, args)
-                | N::CallBuiltin(_, args)
+                | N::CallBuiltin(_, _, args)
                 | N::Ctor(_, args)
                 | N::ArrCtor(_, args) => args.iter().any(|a| node(a, slot)),
             }
@@ -284,7 +284,7 @@ impl Program {
                 }
                 N::Cond(a, b, c) => in_node(a, slot) || in_node(b, slot) || in_node(c, slot),
                 N::CallUser(_, args)
-                | N::CallBuiltin(_, args)
+                | N::CallBuiltin(_, _, args)
                 | N::Ctor(_, args)
                 | N::ArrCtor(_, args) => args.iter().any(|a| in_node(a, slot)),
                 _ => false,
@@ -487,8 +487,8 @@ impl Compiler<'_> {
                     N::Ctor(ty, args)
                 } else if self.unit.structs.iter().any(|s| &s.name == name) {
                     N::Ctor(Ty::Struct(name.clone()), args)
-                } else if builtins::is_builtin(name) {
-                    N::CallBuiltin(name.clone(), args)
+                } else if let Some(which) = builtins::Builtin::from_name(name) {
+                    N::CallBuiltin(which, name.clone(), args)
                 } else {
                     return Err(format!("'{name}' is not a function"));
                 }
@@ -840,7 +840,7 @@ impl<'p> Machine<'p> {
                 index_value(&b, i)?
             }
             N::CallUser(i, args) => self.call_user(*i, args)?,
-            N::CallBuiltin(name, args) => {
+            N::CallBuiltin(which, name, args) => {
                 let mut values = self.arg_pool.pop().unwrap_or_default();
                 for a in args {
                     match self.eval(a) {
@@ -852,7 +852,7 @@ impl<'p> Machine<'p> {
                         }
                     }
                 }
-                let result = builtins::call(name, &values, self.textures);
+                let result = builtins::call_resolved(*which, name, &values, self.textures);
                 values.clear();
                 self.arg_pool.push(values);
                 result.ok_or_else(|| format!("'{name}' is not a built-in"))??
