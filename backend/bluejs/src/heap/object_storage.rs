@@ -388,6 +388,9 @@ impl Heap {
             return Err(*error);
         }
         if self.nursery.len() >= self.config.nursery_capacity {
+            if self.collection_deferred {
+                return Err(HeapError::CollectionDeferred);
+            }
             self.minor_gc(ProtectedRoots::Allocation(&kind, prototype))?;
         }
         let bytes = OBJECT_BYTES

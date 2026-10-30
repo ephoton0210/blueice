@@ -38,6 +38,14 @@ const MAX_STRING_BYTES: usize = 48 * 1024 * 1024;
 const INSTRUCTION_BUDGET: u64 = 400_000_000;
 /// Heap a document's script may hold.
 const MAX_HEAP_BYTES: usize = 384 * 1024 * 1024;
+
+/// Young objects before a minor collection, and the managed bytes at which the first major
+/// one runs. The engine's own defaults (256 objects, 256 KiB) suit tests that want to
+/// collect constantly; a page that builds React and three.js spends a fifth of its start-up
+/// in collections at those sizes, and nothing is gained by collecting that often (measured
+/// on a large page: 9.6 s to start scripts at the defaults, 7.7 s from 4096 objects up).
+const NURSERY_OBJECTS: usize = 16_384;
+const MAJOR_THRESHOLD_BYTES: usize = 16 * 1024 * 1024;
 /// Console lines kept for diagnostics.
 const MAX_CONSOLE_LINES: usize = 500;
 
@@ -91,7 +99,8 @@ impl WebHost {
             max_string_bytes: MAX_STRING_BYTES,
             heap: blueice_bluejs::HeapConfig {
                 max_heap_bytes: MAX_HEAP_BYTES,
-                ..defaults.heap
+                nursery_capacity: NURSERY_OBJECTS,
+                major_threshold_bytes: MAJOR_THRESHOLD_BYTES,
             },
             ..defaults
         };

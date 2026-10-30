@@ -993,7 +993,7 @@ impl Vm {
                 };
             }
         }
-        self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
+        self.with_roots_lazy(|heap| heap.set(cell, "value", value.clone()))?;
         if let Some(name) = property {
             let global = *self.globals.get("globalThis").expect(
                 "a property-backed global binding was published with its permanent global object",
@@ -1057,12 +1057,12 @@ impl Vm {
                 .binding_value(slot)
                 .expect("the active lexical for cell remains live")
                 .expect("lexical for initializers complete before CloneScope");
-            let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+            let cell = self.with_roots_lazy(|heap| heap.alloc_object(None))?;
             // Insert before the allocation-backed store so the fresh cell is
             // an interpreter root if the store needs to collect.
             self.cells.insert(slot, cell);
             self.bindings[slot] = None;
-            self.with_roots(|heap| heap.set(cell, "value", value))?;
+            self.with_roots_lazy(|heap| heap.set(cell, "value", value.clone()))?;
         }
         Ok(())
     }
@@ -1496,6 +1496,25 @@ impl Vm {
             return Err(error.into());
         }
         result.map_err(RuntimeError::from)
+    }
+
+    /// Like [`Vm::with_roots`], for an operation that is safe to run twice (it fails
+    /// before it changes anything when the heap needs to collect, and repeating it is
+    /// harmless). Gathering the VM's roots is the dominant cost of a heap operation
+    /// and almost no operation collects, so this runs the operation without them,
+    /// with collection forbidden, and gathers them and runs it again only when the
+    /// heap says it must collect.
+    pub(super) fn with_roots_lazy<T>(
+        &mut self,
+        mut operation: impl FnMut(&mut Heap) -> Result<T, HeapError>,
+    ) -> Result<T, RuntimeError> {
+        self.heap.set_collection_deferred(true);
+        let result = operation(&mut self.heap);
+        self.heap.set_collection_deferred(false);
+        match result {
+            Err(HeapError::CollectionDeferred) => self.with_roots(operation),
+            other => other.map_err(RuntimeError::from),
+        }
     }
 
     pub(super) fn run(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {

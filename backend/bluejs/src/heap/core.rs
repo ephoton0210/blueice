@@ -79,6 +79,7 @@ impl Heap {
             collector: CollectorWorkspace::default(),
             host_code_cache: None,
             collection_error: None,
+            collection_deferred: false,
             managed_bytes: ManagedBytes::default(),
             next_major_bytes: config.major_threshold_bytes,
             #[cfg(any(test, coverage))]

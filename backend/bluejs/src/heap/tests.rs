@@ -4258,3 +4258,70 @@ fn numeric_index_keys_reject_ill_formed_utf16_and_noncanonical_spellings() {
     assert_eq!(binary_data::f64_to_f16_bits(1.0006), 0x3c01);
     assert_eq!(binary_data::f64_to_f16_bits(1.5 * 2f64.powi(-24)), 0x0002);
 }
+
+#[test]
+fn a_deferred_heap_refuses_to_collect_before_it_changes_anything() {
+    // A nursery of 4: the fifth allocation would normally run a minor collection.
+    let mut heap = Heap::new(HeapConfig {
+        nursery_capacity: 4,
+        major_threshold_bytes: usize::MAX,
+        max_heap_bytes: usize::MAX,
+    })
+    .unwrap();
+    let kept: Vec<ObjectId> = (0..4).map(|_| heap.alloc_object(None).unwrap()).collect();
+    heap.set_collection_deferred(true);
+    let before = heap.stats();
+    assert_eq!(heap.alloc_object(None), Err(HeapError::CollectionDeferred));
+    let after = heap.stats();
+    assert_eq!(
+        after.minor_collections, before.minor_collections,
+        "nothing was collected"
+    );
+    assert_eq!(
+        after.nursery_objects, before.nursery_objects,
+        "and nothing was allocated"
+    );
+    for id in &kept {
+        assert!(
+            heap.is_extensible(*id).is_ok(),
+            "every earlier object is still there"
+        );
+    }
+    // Once allowed again the same allocation collects and succeeds.
+    heap.set_collection_deferred(false);
+    assert!(heap.alloc_object(None).is_ok());
+}
+
+#[test]
+fn a_deferred_heap_still_allocates_and_sets_when_nothing_needs_collecting() {
+    let mut heap = Heap::default();
+    heap.set_collection_deferred(true);
+    let object = heap.alloc_object(None).unwrap();
+    heap.set(object, "k", Value::Number(1.0)).unwrap();
+    assert_eq!(heap.get(object, "k"), Ok(Value::Number(1.0)));
+    assert_eq!(heap.stats().minor_collections, 0);
+}
+
+#[test]
+fn a_deferred_heap_refuses_a_major_collection_the_byte_budget_asks_for() {
+    let mut heap = Heap::new(HeapConfig {
+        nursery_capacity: usize::MAX,
+        major_threshold_bytes: 2048,
+        max_heap_bytes: usize::MAX,
+    })
+    .unwrap();
+    let object = heap.alloc_object(None).unwrap();
+    heap.set_collection_deferred(true);
+    let big = Value::String("x".repeat(4096).into());
+    let majors = heap.stats().major_collections;
+    assert_eq!(
+        heap.set(object, "big", big),
+        Err(HeapError::CollectionDeferred)
+    );
+    assert_eq!(heap.stats().major_collections, majors);
+    assert_eq!(
+        heap.get(object, "big"),
+        Ok(Value::Undefined),
+        "the failed set left no property"
+    );
+}

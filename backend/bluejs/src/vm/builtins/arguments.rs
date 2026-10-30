@@ -437,10 +437,12 @@ impl Vm {
                     .expect("an array being appended to is a live object"),
             );
             if kind == 0 {
-                self.with_roots(|heap| heap.set(id, (length as u32).to_string(), value.clone()))?;
+                self.with_roots_lazy(|heap| {
+                    heap.set(id, (length as u32).to_string(), value.clone())
+                })?;
             }
             // Even an extensible array rejects a length greater than 2^32-1.
-            self.with_roots(|heap| heap.set(id, "length", Value::Number(length + 1.0)))?;
+            self.with_roots_lazy(|heap| heap.set(id, "length", Value::Number(length + 1.0)))?;
         }
         Ok(())
     }

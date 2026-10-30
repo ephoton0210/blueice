@@ -119,6 +119,14 @@ impl Heap {
             .expect("the safepoint batch is still attached")
     }
 
+    /// While `deferred`, an operation that would have to collect fails with
+    /// [`HeapError::CollectionDeferred`] before it changes anything, so a caller that has
+    /// not gathered its roots can try again with them. Used to skip gathering them for
+    /// the great majority of operations, which never collect.
+    pub(crate) fn set_collection_deferred(&mut self, deferred: bool) {
+        self.collection_deferred = deferred;
+    }
+
     pub(super) fn ensure_room(
         &mut self,
         additional: usize,
@@ -143,6 +151,9 @@ impl Heap {
         if proposed.is_none_or(|bytes| bytes >= self.next_major_bytes)
             || self.managed_bytes.would_exceed(additional)
         {
+            if self.collection_deferred {
+                return Err(HeapError::CollectionDeferred);
+            }
             self.major_gc(protected)?;
         }
         self.managed_bytes.check_room(additional)?;

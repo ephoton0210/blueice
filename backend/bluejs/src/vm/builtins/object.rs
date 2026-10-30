@@ -139,11 +139,14 @@ impl Vm {
         if let Some(numeric) = self.heap.typed_array_numeric_key(object, &key)? {
             return self.typed_array_define_own_property(object, numeric, descriptor);
         }
-        self.with_roots(|heap| {
-            if let Some(storage) = storage {
+        // Defining a property fails before it changes anything when the heap has to collect,
+        // and applying the same definition twice is the same as once, so the VM's roots are
+        // gathered only if the first, rootless attempt is refused.
+        self.with_roots_lazy(|heap| {
+            if let Some(storage) = storage.as_mut() {
                 storage.release_to(0);
             }
-            heap.define_own_property(object, key, descriptor)
+            heap.define_own_property(object, key.clone(), descriptor.clone())
         })
     }
 

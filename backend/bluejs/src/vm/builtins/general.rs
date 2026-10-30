@@ -506,11 +506,11 @@ impl Vm {
         configurable: bool,
     ) -> Result<(), RuntimeError> {
         let key = key.into();
-        let result = self.with_roots(|heap| {
+        let result = self.with_roots_lazy(|heap| {
             heap.define_own_property(
                 owner,
-                key,
-                PropertyDescriptor::data(value, writable, enumerable, configurable),
+                key.clone(),
+                PropertyDescriptor::data(value.clone(), writable, enumerable, configurable),
             )
         })?;
         result
@@ -547,11 +547,11 @@ impl Vm {
         let base = self.stack.len();
         self.stack.extend(values.iter().cloned());
         let result = (|| {
-            let array =
-                self.with_roots(|heap| heap.alloc_array(values.len() as u32, Some(prototype)))?;
+            let array = self
+                .with_roots_lazy(|heap| heap.alloc_array(values.len() as u32, Some(prototype)))?;
             self.stack.push(Value::Object(array));
             for (index, value) in values.into_iter().enumerate() {
-                self.with_roots(|heap| heap.set(array, index.to_string(), value))?;
+                self.with_roots_lazy(|heap| heap.set(array, index.to_string(), value.clone()))?;
             }
             Ok(Value::Object(array))
         })();
@@ -568,10 +568,10 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(value.clone());
         let outcome = (|| {
-            let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            let result = self.with_roots_lazy(|heap| heap.alloc_object(Some(prototype)))?;
             self.stack.push(Value::Object(result));
-            self.with_roots(|heap| heap.set(result, "value", value))?;
-            self.with_roots(|heap| heap.set(result, "done", Value::Bool(done)))?;
+            self.with_roots_lazy(|heap| heap.set(result, "value", value.clone()))?;
+            self.with_roots_lazy(|heap| heap.set(result, "done", Value::Bool(done)))?;
             Ok(Value::Object(result))
         })();
         self.stack.truncate(base);

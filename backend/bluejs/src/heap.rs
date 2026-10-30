@@ -139,12 +139,17 @@ pub enum HeapError {
     ImmutableArrayBuffer,
     UninitializedModuleExport,
     ReadOnlyProperty,
-    HeapLimitExceeded { limit: usize },
+    HeapLimitExceeded {
+        limit: usize,
+    },
     CollectorStorageLimit,
     RootStorageLimit,
     AsyncGeneratorStorageLimit,
     CodeSourceStorageLimit,
     IdExhausted,
+    /// The heap was told not to collect during this operation and one was needed;
+    /// raised before the operation changed anything, so it can be run again.
+    CollectionDeferred,
 }
 
 impl fmt::Display for HeapError {
@@ -174,6 +179,7 @@ impl fmt::Display for HeapError {
                 write!(f, "BlueJS managed heap limit exceeded ({limit} bytes)")
             }
             Self::IdExhausted => write!(f, "BlueJS heap identity counter exhausted"),
+            Self::CollectionDeferred => write!(f, "a BlueJS collection was deferred"),
             Self::RootStorageLimit => write!(f, "BlueJS root table native storage limit exceeded"),
             Self::AsyncGeneratorStorageLimit => {
                 write!(f, "BlueJS async generator request storage limit exceeded")
@@ -1837,6 +1843,9 @@ pub struct Heap {
     collector: CollectorWorkspace,
     host_code_cache: Option<Rc<std::cell::RefCell<crate::vm::HostCodeCache>>>,
     collection_error: Option<HeapError>,
+    /// While set, an operation that would collect fails with
+    /// [`HeapError::CollectionDeferred`] instead, before changing anything.
+    collection_deferred: bool,
     managed_bytes: ManagedBytes,
     next_major_bytes: usize,
     /// First refused request in a test allocation sweep, after normal GC.

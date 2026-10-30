@@ -1530,8 +1530,10 @@ impl Vm {
                     .enumerate()
                     .try_for_each(|(index, value)| {
                         let value = self.typed_array_element_value(kind, &value)?;
-                        self.with_roots(|heap| heap.typed_array_set_index(object, index, &value))
-                            .map(|_| ())
+                        self.with_roots_lazy(|heap| {
+                            heap.typed_array_set_index(object, index, &value)
+                        })
+                        .map(|_| ())
                     });
                 self.stack.pop();
                 writes?;
