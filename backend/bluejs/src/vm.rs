@@ -973,7 +973,7 @@ struct SuspendedModuleExecution {
     result_root: Option<RootId>,
     stack: Vec<Value>,
     bindings: Vec<Option<Value>>,
-    binding_metadata: Vec<Binding>,
+    binding_metadata: std::sync::Arc<Vec<Binding>>,
     completion: Value,
     completion_empty: bool,
     active_scopes: Vec<u32>,
@@ -1064,7 +1064,7 @@ pub struct Vm {
     bindings: Vec<Option<Value>>,
     // The matching static metadata for `bindings`; nested calls and direct
     // eval swap it together with their runtime binding vector.
-    binding_metadata: Vec<Binding>,
+    binding_metadata: std::sync::Arc<Vec<Binding>>,
     completion: Value,
     completion_empty: bool,
     active_scopes: Vec<u32>,

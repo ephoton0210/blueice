@@ -535,7 +535,7 @@ impl Vm {
             self.enqueue_finalization_cleanup_jobs()?;
             self.stack.clear();
             self.bindings.clear();
-            self.binding_metadata.clear();
+            self.binding_metadata = Default::default();
             self.cells.clear();
             self.active_scopes.clear();
             self.active_scope_slots.clear();
@@ -973,7 +973,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         self.stack.clear();
         self.bindings.clear();
-        self.binding_metadata.clear();
+        self.binding_metadata = Default::default();
         self.cells.clear();
         self.active_scopes.clear();
         self.active_scope_slots.clear();

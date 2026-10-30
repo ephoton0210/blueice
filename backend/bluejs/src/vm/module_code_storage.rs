@@ -60,11 +60,17 @@ impl PreparedModuleCode {
                 prepared.resize(prepared.bytes().saturating_add(pending))?;
             }};
         }
-        reserve!(bindings, Binding);
+        prepared
+            .code
+            .bindings_mut()
+            .try_reserve_exact(1)
+            .map_err(|_| fail(scope))?;
+        pending -= std::mem::size_of::<Binding>();
+        prepared.resize(prepared.bytes().saturating_add(pending))?;
         reserve!(scopes, Vec<u32>);
         reserve!(module_exports, ModuleExport);
         let name = module_referrers::copy_referrer("default", scope)?;
-        prepared.code.bindings.push(Binding {
+        prepared.code.bindings_mut().push(Binding {
             name,
             mutable: false,
             strict_immutable: true,

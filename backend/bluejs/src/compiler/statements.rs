@@ -1296,7 +1296,7 @@ impl Compiler {
             let mut catch_var_slots = HashMap::new();
             if let Some(Pattern::Identifier(name)) = &catch.param {
                 let slot = self.resolve(name).expect("catch parameter was declared");
-                self.bytecode.bindings[slot as usize].catch_parameter = true;
+                self.bytecode.bindings_mut()[slot as usize].catch_parameter = true;
                 catch_var_slots.insert(name.clone(), slot);
             }
             self.catch_var_slots.push(catch_var_slots);

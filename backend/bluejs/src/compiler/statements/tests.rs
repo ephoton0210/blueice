@@ -286,7 +286,7 @@ fn recursive_tail_call_errors_propagate_at_every_emission_boundary() {
     full.bytecode.strict = true;
     full.bytecode.self_slot = Some(0);
     full.names[0].insert("self".into(), 0);
-    full.bytecode.bindings.push(Binding {
+    full.bytecode.bindings_mut().push(Binding {
         name: "self".into(),
         mutable: false,
         strict_immutable: true,
@@ -521,7 +521,7 @@ fn statement_forms_propagate_every_byte_budget_failure() {
     }
     assert_statement_byte_boundaries(&Stmt::ClassDecl(class()), |compiler| {
         compiler.names[0].insert("C".into(), 0);
-        compiler.bytecode.bindings.push(Binding {
+        compiler.bytecode.bindings_mut().push(Binding {
             name: "C".into(),
             mutable: false,
             strict_immutable: true,
@@ -642,7 +642,7 @@ fn internal_declaration_and_cleanup_paths_propagate_byte_limits() {
         "function declaration with a var binding",
         |compiler| {
             compiler.names[0].insert("f".into(), 0);
-            compiler.bytecode.bindings.push(Binding {
+            compiler.bytecode.bindings_mut().push(Binding {
                 name: "f".into(),
                 mutable: true,
                 strict_immutable: false,
@@ -665,7 +665,7 @@ fn internal_declaration_and_cleanup_paths_propagate_byte_limits() {
         compiler.names[0].insert("f".into(), 0);
         compiler.names.push(HashMap::from([("f".into(), 1)]));
         for lexical in [false, true] {
-            compiler.bytecode.bindings.push(Binding {
+            compiler.bytecode.bindings_mut().push(Binding {
                 name: "f".into(),
                 mutable: true,
                 strict_immutable: false,
@@ -706,7 +706,7 @@ fn internal_declaration_and_cleanup_paths_propagate_byte_limits() {
     };
     let record_setup = |compiler: &mut Compiler| {
         compiler.names[0].insert("record".into(), 0);
-        compiler.bytecode.bindings.push(Binding {
+        compiler.bytecode.bindings_mut().push(Binding {
             name: "record".into(),
             mutable: false,
             strict_immutable: true,
@@ -725,7 +725,7 @@ fn binding_patterns_propagate_byte_limits_for_existing_slots_and_iterators() {
     let setup = |eval_var: bool, lexical: bool| {
         move |compiler: &mut Compiler| {
             compiler.names[0].insert("bound".into(), 0);
-            compiler.bytecode.bindings.push(Binding {
+            compiler.bytecode.bindings_mut().push(Binding {
                 name: "bound".into(),
                 mutable: true,
                 strict_immutable: false,
@@ -877,7 +877,7 @@ fn recursive_calls_with_spread_keep_the_ordinary_return_path() {
     compiler.bytecode.strict = true;
     compiler.bytecode.self_slot = Some(0);
     compiler.names[0].insert("self".into(), 0);
-    compiler.bytecode.bindings.push(Binding {
+    compiler.bytecode.bindings_mut().push(Binding {
         name: "self".into(),
         mutable: false,
         strict_immutable: true,

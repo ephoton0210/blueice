@@ -48,7 +48,19 @@ fn active_control_capacity_tracks_independent_container_allocations() {
         let delta = match part {
             0 => grow(&mut vm.stack),
             1 => grow(&mut vm.bindings),
-            2 => grow(&mut vm.binding_metadata),
+            // The binding table is shared with the code and charged at its exact length, so
+            // what a frame pays for is the entries it holds, not spare capacity.
+            2 => {
+                std::sync::Arc::make_mut(&mut vm.binding_metadata).push(Binding {
+                    name: "x".into(),
+                    mutable: true,
+                    strict_immutable: false,
+                    lexical: false,
+                    catch_parameter: false,
+                    eval_var: false,
+                });
+                std::mem::size_of::<Binding>() + 1
+            }
             3 => grow(&mut vm.arguments),
             4 => grow(&mut vm.with_objects),
             5 => grow(&mut vm.active_scopes),

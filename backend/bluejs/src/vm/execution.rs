@@ -221,7 +221,7 @@ impl Vm {
         };
         self.stack.clear();
         self.bindings.clear();
-        self.binding_metadata.clear();
+        self.binding_metadata = Default::default();
         self.cells.clear();
         self.dynamic_eval_bindings.clear();
         self.eval_dynamic_slots.clear();

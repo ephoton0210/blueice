@@ -1199,7 +1199,7 @@ impl Compiler {
             child.names[0].insert(name, index);
             child
                 .bytecode
-                .bindings
+                .bindings_mut()
                 .push(self.bytecode.bindings[slot as usize].clone());
             child.bytecode.captures.push(slot);
         }
@@ -1211,7 +1211,7 @@ impl Compiler {
                 .clone();
             let slot = child.metadata_index(child.bytecode.bindings.len())?;
             child.names[0].insert(name.clone(), slot);
-            child.bytecode.bindings.push(Binding {
+            child.bytecode.bindings_mut().push(Binding {
                 name,
                 mutable: false,
                 strict_immutable: false,
@@ -1227,7 +1227,7 @@ impl Compiler {
             // expression's own name.
             let slot = child.metadata_index(child.bytecode.bindings.len())?;
             child.names[0].insert(DERIVED_CONSTRUCTOR_BINDING.into(), slot);
-            child.bytecode.bindings.push(Binding {
+            child.bytecode.bindings_mut().push(Binding {
                 name: DERIVED_CONSTRUCTOR_BINDING.into(),
                 mutable: false,
                 strict_immutable: true,

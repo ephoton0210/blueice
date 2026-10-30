@@ -12,11 +12,15 @@ pub(super) enum FrameBindingKind {
     ResumedGenerator,
 }
 
-type FrameBindingParts = (Vec<Option<Value>>, Vec<Binding>, Vec<String>);
+type FrameBindingParts = (
+    Vec<Option<Value>>,
+    std::sync::Arc<Vec<Binding>>,
+    Vec<String>,
+);
 
 pub(super) struct PreparedFrameBindings {
     bindings: Vec<Option<Value>>,
-    metadata: Vec<Binding>,
+    metadata: std::sync::Arc<Vec<Binding>>,
     lexicals: Vec<String>,
     _charge: execution_payload::ExecutionPayloadCharge,
 }
@@ -56,7 +60,7 @@ impl Vm {
                     .len()
                     .saturating_mul(std::mem::size_of::<Binding>()),
             );
-        for binding in &code.bindings {
+        for binding in code.bindings.iter() {
             bytes = bytes.saturating_add(binding.name.len());
         }
         let lexical_count = if lexicals {
@@ -75,19 +79,26 @@ impl Vm {
             ..Default::default()
         })?;
         let bindings = vec![None; count];
-        let metadata = code.bindings.clone();
+        let metadata = std::sync::Arc::clone(&code.bindings);
         let mut names = Vec::with_capacity(lexical_count);
         if lexicals {
             names.extend(lexical_bindings().map(|binding| binding.name.clone()));
         }
+        // The metadata is shared with the code, not copied, but a frame is still charged
+        // what a private copy of its exact length would cost (as it was when it was one):
+        // the budget then does not depend on how much room compiling left in the shared
+        // vector, and stays a ceiling on what a frame could hold.
         let mut actual = host_scheduling::slots(&bindings)
-            .saturating_add(host_scheduling::slots(&metadata))
+            .saturating_add(
+                metadata
+                    .len()
+                    .saturating_mul(std::mem::size_of::<Binding>()),
+            )
             .saturating_add(host_scheduling::slots(&names));
-        for name in metadata
-            .iter()
-            .map(|binding| &binding.name)
-            .chain(names.iter())
-        {
+        for binding in metadata.iter() {
+            actual = actual.saturating_add(binding.name.len());
+        }
+        for name in &names {
             actual = actual.saturating_add(name.capacity());
         }
         let prepared = PreparedFrameBindings {

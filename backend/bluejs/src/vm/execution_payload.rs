@@ -100,12 +100,13 @@ macro_rules! frame_control_bytes {
     }};
 }
 
-fn binding_metadata_bytes(values: &Vec<Binding>) -> usize {
-    values
-        .iter()
-        .fold(host_scheduling::slots(values), |bytes, binding| {
-            bytes.saturating_add(binding.name.capacity())
-        })
+/// What a frame is charged for its binding table: the table is shared with the code, so this
+/// counts it at its exact length, the same as when the frame is admitted (`frame_bindings`).
+fn binding_metadata_bytes(values: &[Binding]) -> usize {
+    values.iter().fold(
+        values.len().saturating_mul(std::mem::size_of::<Binding>()),
+        |bytes, binding| bytes.saturating_add(binding.name.len()),
+    )
 }
 
 fn scope_bytes(scopes: &Vec<u32>, slots: &Vec<Vec<u32>>) -> usize {
@@ -534,7 +535,7 @@ impl Vm {
         }
         self.stack = Vec::new();
         self.bindings = Vec::new();
-        self.binding_metadata = Vec::new();
+        self.binding_metadata = Default::default();
         self.arguments = Vec::new();
         self.with_objects = Vec::new();
         self.active_scopes = Vec::new();

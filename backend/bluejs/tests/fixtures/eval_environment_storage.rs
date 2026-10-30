@@ -25,7 +25,7 @@ fn binding(name: &str) -> Binding {
 fn visible_page() -> Vm {
     let mut vm = page();
     vm.bindings = vec![Some(Value::Number(1.0))];
-    vm.binding_metadata = vec![binding("x")];
+    vm.binding_metadata = vec![binding("x")].into();
     vm
 }
 fn leave_room(vm: &mut Vm, room: usize) -> SharedSchedulingCharge {
@@ -71,15 +71,16 @@ fn scoped_page() -> Vm {
     ]
     .into_iter()
     .map(binding)
-    .collect();
+    .collect::<Vec<_>>()
+    .into();
     for slot in [0, 3, 7, 8, 9] {
-        vm.binding_metadata[slot].lexical = true;
+        std::sync::Arc::make_mut(&mut vm.binding_metadata)[slot].lexical = true;
     }
-    vm.binding_metadata[0].mutable = false;
-    vm.binding_metadata[0].strict_immutable = true;
-    vm.binding_metadata[3].strict_immutable = true;
-    vm.binding_metadata[4].mutable = false;
-    vm.binding_metadata[7].catch_parameter = true;
+    std::sync::Arc::make_mut(&mut vm.binding_metadata)[0].mutable = false;
+    std::sync::Arc::make_mut(&mut vm.binding_metadata)[0].strict_immutable = true;
+    std::sync::Arc::make_mut(&mut vm.binding_metadata)[3].strict_immutable = true;
+    std::sync::Arc::make_mut(&mut vm.binding_metadata)[4].mutable = false;
+    std::sync::Arc::make_mut(&mut vm.binding_metadata)[7].catch_parameter = true;
     vm.bindings = vec![None; vm.binding_metadata.len()];
     vm.bindings[4] = Some(Value::Number(4.0));
     vm.bindings[5] = Some(Value::Number(5.0));
@@ -386,7 +387,7 @@ fn eval_environment_storage_foreign_and_detached_scopes_refuse() {
 fn eval_environment_storage_unbounded_snapshot_attaches_and_terminal_reuse_refuses() {
     let unbounded = Vm {
         bindings: vec![Some(Value::Number(1.0))],
-        binding_metadata: vec![binding("x")],
+        binding_metadata: vec![binding("x")].into(),
         ..Vm::default()
     };
     let mut environment = EvalCompileEnvironment::visible(&unbounded).unwrap();

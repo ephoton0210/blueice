@@ -113,7 +113,7 @@ fn child_function_metadata_limits_reject_each_initial_binding() {
     let mut captured = bare_compiler();
     captured.max_metadata_entries = 0;
     captured.names[0].insert("outer".into(), 0);
-    captured.bytecode.bindings.push(Binding {
+    captured.bytecode.bindings_mut().push(Binding {
         name: "outer".into(),
         mutable: true,
         strict_immutable: false,

@@ -620,7 +620,7 @@ fn super_and_eval_context_errors_describe_missing_internal_context() {
             "super constructor is not a constructor".into()
         ))
     );
-    vm.binding_metadata.push(Binding {
+    std::sync::Arc::make_mut(&mut vm.binding_metadata).push(Binding {
         name: "captured".into(),
         mutable: true,
         strict_immutable: false,

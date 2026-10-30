@@ -1284,7 +1284,7 @@ fn code_bytes(code: &Bytecode, cloned: bool) -> usize {
             cloned,
         ));
     }
-    for binding in &code.bindings {
+    for binding in code.bindings.iter() {
         bytes = bytes.saturating_add(code_buffer_len(
             binding.name.len(),
             binding.name.capacity(),

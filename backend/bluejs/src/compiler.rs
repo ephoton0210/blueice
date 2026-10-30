@@ -648,7 +648,7 @@ fn compile_eval_inner(
                 scope_map.insert(private_name, name.clone());
             }
         }
-        compiler.bytecode.bindings.push(binding.clone());
+        compiler.bytecode.bindings_mut().push(binding.clone());
         compiler.bytecode.captures.push(*caller_slot);
     }
     let lexical = lexical_names(&program.body);
@@ -692,8 +692,9 @@ fn compile_eval_inner(
                     .copied()
             })
             .collect();
-        for &slot in &compiler.bytecode.dynamic_eval_slots {
-            compiler.bytecode.bindings[slot as usize].eval_var = true;
+        let slots = compiler.bytecode.dynamic_eval_slots.clone();
+        for slot in slots {
+            compiler.bytecode.bindings_mut()[slot as usize].eval_var = true;
         }
     }
     if has_using_declaration(&program.body) {
@@ -895,7 +896,7 @@ impl Compiler {
                 return Err(CompileError::DuplicateBinding(name));
             }
             let slot = self.metadata_index(self.bytecode.bindings.len())?;
-            self.bytecode.bindings.push(Binding {
+            self.bytecode.bindings_mut().push(Binding {
                 name: name.clone(),
                 mutable: !matches!(
                     kind,

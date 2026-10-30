@@ -589,7 +589,9 @@ pub struct Bytecode {
     /// erased, or compound statement has no declaration-slot evidence.
     pub(crate) root_declaration_binding_slots: Vec<Option<u32>>,
     pub(crate) constants: Vec<Value>,
-    pub(crate) bindings: Vec<Binding>,
+    /// Shared: a call hands its frame this same table instead of copying every binding
+    /// and its name, and nothing changes it in place.
+    pub(crate) bindings: std::sync::Arc<Vec<Binding>>,
     pub(crate) scopes: Vec<Vec<u32>>,
     /// Names declared by top-level function declarations. Global declaration
     /// instantiation treats these differently from `var` declarations.
@@ -699,6 +701,12 @@ pub struct Bytecode {
 }
 
 impl Bytecode {
+    /// The binding table for editing while code is being built; the table is unshared then,
+    /// so this never copies it.
+    pub(crate) fn bindings_mut(&mut self) -> &mut Vec<Binding> {
+        std::sync::Arc::make_mut(&mut self.bindings)
+    }
+
     pub(crate) fn empty() -> Self {
         Self {
             code: Vec::new(),
@@ -714,7 +722,7 @@ impl Bytecode {
             root_statement_child_ranges: Vec::new(),
             root_declaration_binding_slots: Vec::new(),
             constants: Vec::new(),
-            bindings: Vec::new(),
+            bindings: Default::default(),
             scopes: Vec::new(),
             global_function_names: Vec::new(),
             dynamic_eval_slots: Vec::new(),
