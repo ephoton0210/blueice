@@ -858,11 +858,21 @@ impl<'p> Machine<'p> {
                 result.ok_or_else(|| format!("'{name}' is not a built-in"))??
             }
             N::Ctor(ty, args) => {
-                let mut values = Vec::with_capacity(args.len());
+                let mut values = self.arg_pool.pop().unwrap_or_default();
                 for a in args {
-                    values.push(self.eval(a)?);
+                    match self.eval(a) {
+                        Ok(v) => values.push(v),
+                        Err(e) => {
+                            values.clear();
+                            self.arg_pool.push(values);
+                            return Err(e);
+                        }
+                    }
                 }
-                construct(ty, values, &self.prog.structs)?
+                let result = construct(ty, &mut values, &self.prog.structs);
+                values.clear();
+                self.arg_pool.push(values);
+                result?
             }
             N::ArrCtor(ty, args) => {
                 let mut values = Vec::with_capacity(args.len());
@@ -1064,26 +1074,47 @@ fn index_value(base: &V, i: i32) -> R<V> {
 }
 
 /// Flattens constructor arguments into lanes (matrices column-major).
-fn lanes_of(args: &[V]) -> R<Vec<(Scalar, u32)>> {
-    let mut out = Vec::new();
+/// The lanes of constructor arguments, in order. No constructor reads more than the 16 of a
+/// mat4, so that is all that is kept; a longer argument list is still checked.
+struct Lanes {
+    buf: [(Scalar, u32); 16],
+    len: usize,
+}
+
+impl Lanes {
+    fn push(&mut self, lane: (Scalar, u32)) {
+        if self.len < 16 {
+            self.buf[self.len] = lane;
+            self.len += 1;
+        }
+    }
+    fn as_slice(&self) -> &[(Scalar, u32)] {
+        &self.buf[..self.len]
+    }
+}
+
+fn lanes_of(args: &[V]) -> R<Lanes> {
+    let mut out = Lanes {
+        buf: [(Scalar::Float, 0); 16],
+        len: 0,
+    };
     for a in args {
         match a {
-            V::Vec { k, n, c } => out.extend((0..*n as usize).map(|i| (*k, c[i]))),
-            V::Mat { cols, rows, d } => out.extend(
-                d[..(*cols * *rows) as usize]
-                    .iter()
-                    .map(|x| (Scalar::Float, x.to_bits())),
-            ),
+            V::Vec { k, n, c } => (0..*n as usize).for_each(|i| out.push((*k, c[i]))),
+            V::Mat { cols, rows, d } => d[..(*cols * *rows) as usize]
+                .iter()
+                .for_each(|x| out.push((Scalar::Float, x.to_bits()))),
             _ => return Err("this cannot be used to build a value".into()),
         }
     }
     Ok(out)
 }
 
-pub fn construct(ty: &Ty, args: Vec<V>, structs: &[StructDef]) -> R<V> {
+pub fn construct(ty: &Ty, args: &mut Vec<V>, structs: &[StructDef]) -> R<V> {
     match ty {
         Ty::Scalar(k) => {
-            let lanes = lanes_of(&args)?;
+            let lanes = lanes_of(args)?;
+            let lanes = lanes.as_slice();
             let (from, bits) = *lanes.first().ok_or("a constructor needs an argument")?;
             Ok(V::Vec {
                 k: *k,
@@ -1092,7 +1123,8 @@ pub fn construct(ty: &Ty, args: Vec<V>, structs: &[StructDef]) -> R<V> {
             })
         }
         Ty::Vec(k, n) => {
-            let lanes = lanes_of(&args)?;
+            let lanes = lanes_of(args)?;
+            let lanes = lanes.as_slice();
             let mut out = [0u32; 4];
             if lanes.len() == 1 {
                 let (from, bits) = lanes[0];
@@ -1131,7 +1163,8 @@ pub fn construct(ty: &Ty, args: Vec<V>, structs: &[StructDef]) -> R<V> {
                     }
                 }
             } else {
-                let lanes = lanes_of(&args)?;
+                let lanes = lanes_of(args)?;
+                let lanes = lanes.as_slice();
                 if lanes.len() == 1 {
                     let x = lane_f32(lanes[0].0, lanes[0].1);
                     for i in 0..(*cols).min(*rows) as usize {
@@ -1162,7 +1195,7 @@ pub fn construct(ty: &Ty, args: Vec<V>, structs: &[StructDef]) -> R<V> {
             }
             Ok(V::Struct(
                 index,
-                args.into_iter()
+                args.drain(..)
                     .zip(&def.fields)
                     .map(|(v, (_, t))| coerce(v, t))
                     .collect(),
