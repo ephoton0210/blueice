@@ -1083,6 +1083,10 @@ pub struct Vm {
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
     cells: crate::slot_map::CellMap,
+    /// The bindings and cells of every caller a closure call has displaced, innermost last.
+    /// Parking them here instead of copying their object ids onto the operand stack makes
+    /// a call cost the same whatever the caller holds; the collector reads them in place.
+    saved_caller_frames: Vec<(Vec<Option<Value>>, crate::slot_map::CellMap)>,
     /// Bytecodes supplied by the host for this realm's module loader.
     /// Dynamic imports resolve only inside this explicit registry.
     module_registry: ModuleRegistry,

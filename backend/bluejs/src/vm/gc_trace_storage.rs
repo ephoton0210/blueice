@@ -36,6 +36,7 @@ impl Vm {
         self.stack
             .iter()
             .chain(self.bindings.iter().flatten())
+            .chain(self.saved_caller_frames.iter().flat_map(|(bindings, _)| bindings.iter().flatten()))
             .chain([&self.completion, &self.this, &self.callee, &self.new_target])
             .chain(self.arguments.iter())
             .chain(self.with_objects.iter())
@@ -54,6 +55,7 @@ impl Vm {
             .chain(self.joining.iter())
             .chain(self.call_stack.iter())
             .chain(self.cells.values())
+            .chain(self.saved_caller_frames.iter().flat_map(|(_, cells)| cells.values()))
             .chain(self.parameter_eval_env.iter())
             .copied()
             .for_each(&mut visit);

@@ -347,20 +347,8 @@ impl Vm {
         self.stack
             .push(receiver.object_id().map_or(Value::Undefined, Value::Object));
         let base = self.stack.len();
-        // The caller's bindings and cells are rooted for the callee's lifetime. A closure's
-        // table can be hundreds of entries and this runs on every call, so reserve once and
-        // push in a plain loop: `extend` over a filtered iterator has no length to go on and
-        // pays a capacity check, and a slow generic path, per element.
-        self.stack
-            .reserve(self.bindings.len().saturating_add(self.cells.len()));
-        for value in self.bindings.iter().flatten() {
-            if let Some(id) = value.object_id() {
-                self.stack.push(Value::Object(id));
-            }
-        }
-        for &cell in self.cells.values() {
-            self.stack.push(Value::Object(cell));
-        }
+        // The caller's bindings and cells are parked in `saved_caller_frames` below, which the
+        // collector reads, so rooting them costs nothing per call.
         self.stack.push(
             self.completion
                 .object_id()
@@ -412,9 +400,10 @@ impl Vm {
         }
         let disposables = std::mem::take(&mut self.disposables);
         let dispose_marks = std::mem::take(&mut self.dispose_marks);
-        let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
+        let caller_bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, frame_metadata);
-        let cells = std::mem::replace(&mut self.cells, prepared_maps.take_cells());
+        let caller_cells = std::mem::replace(&mut self.cells, prepared_maps.take_cells());
+        self.saved_caller_frames.push((caller_bindings, caller_cells));
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
         let mut dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
         dynamic_eval_outer_bindings.push(dynamic_eval_bindings);
@@ -711,6 +700,10 @@ impl Vm {
         self.completion_saves = completion_saves;
         self.disposables = disposables;
         self.dispose_marks = dispose_marks;
+        let (bindings, cells) = self
+            .saved_caller_frames
+            .pop()
+            .expect("the call parked its caller's frame");
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;

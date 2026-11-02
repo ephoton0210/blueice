@@ -729,7 +729,16 @@ and fixed the three things that dominated, in the order they did:
   The collector's mark/remembered sets and the global-name tables (`NameMap`) use the same
   hash: start-up 3.18 s -> 3.03 s more. Total this round 3.70 s -> 3.03 s (-18%); the
   largest remaining entry in a profile is `prepare_gc_trace` gathering roots.
-- **Still slow, in the order it bites.** The caller-roots push above; most of the ~536
+- **Caller roots parked, not copied.** A closure call used to copy the caller's object ids
+  onto the operand stack so the collector could see them (O(caller) per call). The caller's
+  bindings and cells now move into `Vm::saved_caller_frames` (restored on return, one
+  restore point) and `visit_execution_roots` reads them in place. Micro-benchmark: a caller
+  holding 4,000 objects 21.3 -> 11.1 us per call, 400 held 4.6 -> 3.5 us; the live Cloudflare
+  page is unchanged (3.03 s) because its callers are small. Covered by
+  `tests/caller_frames_survive_collection.rs` (fails if the collector stops reading them).
+  What remains O(caller) per call is the payload *accounting*
+  (`caller_execution_payload_bytes`), not rooting.
+- **Still slow, in the order it bites.** The caller-payload accounting above; most of the ~536
   `with_roots` call sites are not converted (convert one only after checking it fails before
   changing anything and is safe to repeat); a `class`/`id` change on a high element still
   restyles its whole subtree; the GLSL interpreter (a bytecode or register form with unboxed
