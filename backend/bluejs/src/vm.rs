@@ -1087,6 +1087,12 @@ pub struct Vm {
     /// Parking them here instead of copying their object ids onto the operand stack makes
     /// a call cost the same whatever the caller holds; the collector reads them in place.
     saved_caller_frames: Vec<(Vec<Option<Value>>, crate::slot_map::CellMap)>,
+    /// The summed name length of a large binding table, by table identity: a call is charged
+    /// for the caller's table and that sum was recomputed by walking every name each time.
+    /// The entry keeps its table alive, so an address can never be reused for another table,
+    /// and a table shared by two holders is copied before it is edited, so its content under
+    /// one address cannot change.
+    binding_name_bytes: std::cell::RefCell<crate::prop_map::TableSums>,
     /// Bytecodes supplied by the host for this realm's module loader.
     /// Dynamic imports resolve only inside this explicit registry.
     module_registry: ModuleRegistry,

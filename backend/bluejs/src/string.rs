@@ -241,9 +241,41 @@ impl JsString {
     }
 }
 
+/// Names the engine itself keeps converting (`"value"` for every captured variable read,
+/// `"length"`, `"prototype"`...) were each re-encoded into a fresh allocation on every use;
+/// in a profile of a script-heavy page that was the largest single source of allocation.
+/// Short names are encoded once per thread and the buffer is shared afterwards. A hit hands
+/// back exactly what a fresh conversion would (same units, same charged size), so nothing
+/// that counts string bytes can tell the difference.
+const INTERNED_MAX_UNITS: usize = 32;
+const INTERNED_MAX_ENTRIES: usize = 2048;
+
+thread_local! {
+    static INTERNED: std::cell::RefCell<
+        std::collections::HashMap<
+            Box<str>,
+            JsString,
+            std::hash::BuildHasherDefault<crate::prop_map::PropHasher>,
+        >,
+    > = Default::default();
+}
+
 impl From<&str> for JsString {
     fn from(text: &str) -> Self {
-        Self::from_code_units(text.encode_utf16().collect())
+        if text.len() > INTERNED_MAX_UNITS {
+            return Self::from_code_units(text.encode_utf16().collect());
+        }
+        INTERNED.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if let Some(found) = cache.get(text) {
+                return Self(std::sync::Arc::clone(&found.0), found.1);
+            }
+            let fresh = Self::from_code_units(text.encode_utf16().collect());
+            if cache.len() < INTERNED_MAX_ENTRIES {
+                cache.insert(text.into(), Self(std::sync::Arc::clone(&fresh.0), fresh.1));
+            }
+            fresh
+        })
     }
 }
 
@@ -385,5 +417,63 @@ mod tests {
     fn an_array_index_rejects_addition_overflow() {
         let overflow = (usize::MAX as u128 + 1).to_string();
         assert_eq!(JsString::from(overflow).index(), None);
+    }
+}
+
+#[cfg(test)]
+mod interning_tests {
+    use super::*;
+
+    fn fresh(text: &str) -> JsString {
+        JsString::from_code_units(text.encode_utf16().collect())
+    }
+
+    #[test]
+    fn a_short_name_converted_twice_shares_a_buffer_and_matches_a_fresh_conversion() {
+        let first = JsString::from("interned-name");
+        let second = JsString::from("interned-name");
+        assert!(std::sync::Arc::ptr_eq(&first.0, &second.0));
+        let plain = fresh("interned-name");
+        assert_eq!(first, plain);
+        assert_eq!(first.len(), plain.len());
+        // What a holder is charged for does not depend on whether the buffer was shared.
+        assert_eq!(first.owned_heap_payload_bytes(), plain.owned_heap_payload_bytes());
+        assert_eq!(second.owned_heap_payload_bytes(), plain.owned_heap_payload_bytes());
+    }
+
+    #[test]
+    fn editing_one_conversion_never_changes_another() {
+        let a = JsString::from("editable-name");
+        let mut b = JsString::from("editable-name");
+        b.units_mut().push(u16::from(b'!'));
+        b.settle();
+        assert_eq!(JsString::from("editable-name"), a);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn non_ascii_and_empty_names_round_trip() {
+        for text in ["", "é", "名稱", "a😀b"] {
+            assert_eq!(JsString::from(text), fresh(text));
+            assert_eq!(JsString::from(text), fresh(text));
+        }
+    }
+
+    #[test]
+    fn a_long_name_is_never_shared() {
+        let long = "x".repeat(INTERNED_MAX_UNITS + 1);
+        let a = JsString::from(long.as_str());
+        let b = JsString::from(long.as_str());
+        assert!(!std::sync::Arc::ptr_eq(&a.0, &b.0));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn the_table_stops_growing_at_its_limit_but_keeps_converting_correctly() {
+        for i in 0..INTERNED_MAX_ENTRIES + 50 {
+            let text = format!("bulk-{i}");
+            assert_eq!(JsString::from(text.as_str()), fresh(&text));
+        }
+        assert!(INTERNED.with(|cache| cache.borrow().len()) <= INTERNED_MAX_ENTRIES);
     }
 }

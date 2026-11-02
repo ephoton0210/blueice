@@ -70,6 +70,13 @@ pub(crate) type ObjectSet = std::collections::HashSet<ObjectId, BuildHasherDefau
 /// A map keyed by a global's name, looked up on every global read and write.
 pub(crate) type NameMap<V> = HashMap<String, V, BuildHasherDefault<PropHasher>>;
 
+/// A binding table (kept alive by the entry) and a sum computed from it, by table address.
+pub(crate) type TableSums = HashMap<
+    usize,
+    (std::sync::Arc<Vec<crate::bytecode::Binding>>, usize),
+    BuildHasherDefault<PropHasher>,
+>;
+
 #[cfg(test)]
 mod tests {
     use super::*;

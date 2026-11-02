@@ -738,7 +738,17 @@ and fixed the three things that dominated, in the order they did:
   `tests/caller_frames_survive_collection.rs` (fails if the collector stops reading them).
   What remains O(caller) per call is the payload *accounting*
   (`caller_execution_payload_bytes`), not rooting.
-- **Still slow, in the order it bites.** The caller-payload accounting above; most of the ~536
+- **Allocation and accounting, measured.** A sampled page showed ~30% of the allocation samples
+  were `JsString::from(&str)` re-encoding the same short names (`"value"` on every captured-variable
+  read, property names): short names (<= 32 bytes, 2,048 entries, per thread) now share one buffer,
+  with the same units and the same charged size as a fresh conversion. Allocation samples -40%,
+  active samples -11%, a closure call 2.76 -> 1.91 us. The summed name length of a large binding
+  table (charged on every call) is remembered by table identity: a caller holding 4,000 objects
+  10.5 -> 8.3 us per call. What is left there is `caller_execution_payload_bytes` scanning every
+  binding (4,000 x 32 bytes per call, memory-bandwidth bound); removing it needs per-frame payload
+  tracking through every binding write, which touches the exact-accounting tests and buys nothing
+  on the live page (small callers), so it is left.
+- **Still slow, in the order it bites.** The caller-payload scan above; most of the ~536
   `with_roots` call sites are not converted (convert one only after checking it fails before
   changing anything and is safe to repeat); a `class`/`id` change on a high element still
   restyles its whole subtree; the GLSL interpreter (a bytecode or register form with unboxed

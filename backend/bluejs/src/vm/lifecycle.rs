@@ -69,6 +69,7 @@ impl Vm {
             stack: Vec::new(),
             bindings: Vec::new(),
             saved_caller_frames: Vec::new(),
+            binding_name_bytes: Default::default(),
             binding_metadata: Default::default(),
             completion: Value::Undefined,
             completion_empty: true,

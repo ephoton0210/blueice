@@ -572,10 +572,32 @@ impl Vm {
         frame_control_bytes!(self)
     }
 
+    /// [`binding_metadata_bytes`] of the current table, remembered for tables long enough that
+    /// walking their names is the cost of the call.
+    fn cached_binding_metadata_bytes(&self) -> usize {
+        const WALK_BELOW: usize = 32;
+        const MAX_TABLES: usize = 1024;
+        let table = &self.binding_metadata;
+        if table.len() < WALK_BELOW {
+            return binding_metadata_bytes(table);
+        }
+        let key = std::sync::Arc::as_ptr(table) as usize;
+        let mut cache = self.binding_name_bytes.borrow_mut();
+        if let Some((_, bytes)) = cache.get(&key) {
+            return *bytes;
+        }
+        let bytes = binding_metadata_bytes(table);
+        if cache.len() >= MAX_TABLES {
+            cache.clear();
+        }
+        cache.insert(key, (std::sync::Arc::clone(table), bytes));
+        bytes
+    }
+
     pub(super) fn displaced_control_bytes(&self, transfer: ControlTransfer) -> usize {
         use host_scheduling::{map_slots, named_cells_bytes, named_slots_bytes, slots};
         let base = slots(&self.bindings)
-            .saturating_add(binding_metadata_bytes(&self.binding_metadata))
+            .saturating_add(self.cached_binding_metadata_bytes())
             .saturating_add(map_slots(&self.cells))
             .saturating_add(named_slots_bytes(&self.script_global_slots))
             .saturating_add(scope_bytes(&self.active_scopes, &self.active_scope_slots));
@@ -716,5 +738,62 @@ impl Vm {
             self.last_execution_payload_bytes = bytes;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod binding_name_cache_tests {
+    use super::*;
+
+    fn table(names: usize, width: usize) -> std::sync::Arc<Vec<Binding>> {
+        let template = Binding {
+            name: String::new(),
+            mutable: true,
+            strict_immutable: false,
+            lexical: true,
+            catch_parameter: false,
+            eval_var: false,
+        };
+        std::sync::Arc::new(
+            (0..names)
+                .map(|i| Binding {
+                    name: format!("{i:0>width$}"),
+                    ..template.clone()
+                })
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn a_remembered_table_sum_equals_the_walk_and_follows_an_edit_to_a_shared_table() {
+        let mut vm = Vm::new(VmConfig::default()).unwrap();
+        for (names, width) in [(5usize, 3usize), (200, 4), (200, 4)] {
+            vm.binding_metadata = table(names, width);
+            let walked = binding_metadata_bytes(&vm.binding_metadata);
+            // Twice: the second answer comes from the cache.
+            assert_eq!(vm.cached_binding_metadata_bytes(), walked);
+            assert_eq!(vm.cached_binding_metadata_bytes(), walked);
+        }
+        // Editing a table the cache also holds copies it first, so the edited table is a
+        // different table with its own (different) sum.
+        let mut shared = table(100, 2);
+        vm.binding_metadata = std::sync::Arc::clone(&shared);
+        let before = vm.cached_binding_metadata_bytes();
+        std::sync::Arc::make_mut(&mut shared)[0].name.push_str("-extra");
+        vm.binding_metadata = shared;
+        let after = vm.cached_binding_metadata_bytes();
+        assert_eq!(after, before + "-extra".len());
+        assert_eq!(after, binding_metadata_bytes(&vm.binding_metadata));
+    }
+
+    #[test]
+    fn the_cache_is_bounded() {
+        let vm = Vm::new(VmConfig::default()).unwrap();
+        let mut vm = vm;
+        for _ in 0..1100 {
+            vm.binding_metadata = table(40, 2);
+            vm.cached_binding_metadata_bytes();
+        }
+        assert!(vm.binding_name_bytes.borrow().len() <= 1024);
     }
 }
