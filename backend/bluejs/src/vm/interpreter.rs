@@ -1373,9 +1373,19 @@ impl Vm {
                     Opcode::PreparePropertyReference => {
                         let base = self.stack.len() - 2;
                         if matches!(self.stack[base], Value::Null | Value::Undefined) {
-                            return Err(RuntimeError::TypeError(
-                                "cannot access a property of null or undefined".into(),
-                            ));
+                            let receiver = self.stack[base].clone();
+                            let key = self.stack[base + 1].clone();
+                            // Naming the key must not run user code before the TypeError.
+                            let key = match &key {
+                                Value::String(text) => PropertyName::String(text.clone()),
+                                Value::Symbol(symbol) => PropertyName::Symbol(symbol.clone()),
+                                Value::Number(n) if n.fract() == 0.0 && n.abs() < 1e15 => {
+                                    PropertyName::from(format!("{}", *n as i64))
+                                }
+                                Value::Number(n) => PropertyName::from(n.to_string()),
+                                _ => PropertyName::from("?"),
+                            };
+                            return Err(super::properties::nullish_property_error(&receiver, &key, "reading"));
                         }
                         let key = self.coerce_property_key(&self.stack[base + 1].clone())?;
                         self.stack[base + 1] = key.value();

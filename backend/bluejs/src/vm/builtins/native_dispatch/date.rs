@@ -4,6 +4,8 @@
 
 use super::*;
 
+mod legacy;
+
 fn days_from_civil(year: i128, month: i128, day: i128) -> i128 {
     // Howard Hinnant's proleptic-Gregorian civil-date conversion, with the
     // Unix epoch as day zero. Month is normalized by the caller to 1..=12.
@@ -419,11 +421,13 @@ fn parse_spaced_date(source: &str) -> Option<f64> {
 }
 
 /// The time value of a Date string: the ISO format, the two formats
-/// `toString` and `toUTCString` print, or the spaced variant above.
+/// `toString` and `toUTCString` print, the spaced variant above, or one of the
+/// legacy formats every engine reads (`date/legacy.rs`).
 fn parse_date_string(source: &str) -> Option<f64> {
     parse_iso_date(source)
         .or_else(|| parse_own_date_string(source))
         .or_else(|| parse_spaced_date(source))
+        .or_else(|| legacy::parse_legacy_date(source))
 }
 
 fn date_from_parts(

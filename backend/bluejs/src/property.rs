@@ -83,6 +83,30 @@ pub enum PropertyName {
 }
 
 impl PropertyName {
+    /// The key as an error message shows it: a string as is (cut when long), a symbol as
+    /// `Symbol(description)`.
+    pub(crate) fn describe(&self) -> String {
+        const MAX_UNITS: usize = 48;
+        match self {
+            Self::String(text) => {
+                let units = text.as_code_units();
+                let shown = &units[..units.len().min(MAX_UNITS)];
+                let mut out = String::from_utf16_lossy(shown);
+                if units.len() > MAX_UNITS {
+                    out.push_str("...");
+                }
+                out
+            }
+            Self::Symbol(symbol) => format!(
+                "Symbol({})",
+                symbol
+                    .description
+                    .as_ref()
+                    .map_or(String::new(), |d| d.to_utf8().unwrap_or_default())
+            ),
+        }
+    }
+
     pub(crate) fn into_string(self) -> Option<JsString> {
         match self {
             Self::String(value) => Some(value),

@@ -260,7 +260,16 @@ impl WebHost {
     fn collect_console(&mut self) {
         if let Ok(batch) = self.vm.drain_host_console() {
             for record in batch.records {
-                self.note(&format!("[{}] {}", record.method, record.message));
+                // Where the script said it, when BlueJS knows: a page's errors are only
+                // actionable with a file and line.
+                let at = record
+                    .source
+                    .as_ref()
+                    .filter(|source| !source.filename.is_empty())
+                    .map_or(String::new(), |source| {
+                        format!(" ({}:{}:{})", source.filename, source.line, source.column)
+                    });
+                self.note(&format!("[{}] {}{at}", record.method, record.message));
             }
         }
     }

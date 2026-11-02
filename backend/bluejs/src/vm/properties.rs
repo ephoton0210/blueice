@@ -47,9 +47,7 @@ impl Vm {
                 let (_, prototype) = self.string_intrinsics()?;
                 self.get_from_prototype(prototype, receiver, key)
             }
-            Value::Null | Value::Undefined => Err(RuntimeError::TypeError(
-                "cannot access a property of null or undefined".into(),
-            )),
+            Value::Null | Value::Undefined => Err(nullish_property_error(receiver, key, "reading")),
             _ => {
                 let constructor = self.global(match receiver {
                     Value::Symbol(_) => "Symbol",
@@ -287,9 +285,9 @@ impl Vm {
         let key = self.pop();
         let key = self.coerce_property_key(&key)?;
         match self.pop() {
-            Value::Null | Value::Undefined => Err(RuntimeError::TypeError(
-                "cannot access a property of null or undefined".into(),
-            )),
+            receiver @ (Value::Null | Value::Undefined) => {
+                Err(nullish_property_error(&receiver, &key, "reading"))
+            }
             receiver => Ok((receiver, key)),
         }
     }
@@ -756,4 +754,27 @@ impl Vm {
         self.stack.truncate(base);
         result
     }
+}
+
+/// The error for touching a property of `null` or `undefined`, worded as the engines pages are
+/// written against word it, with the property and the value named.
+pub(super) fn nullish_property_error(
+    receiver: &Value,
+    key: &PropertyName,
+    action: &str,
+) -> RuntimeError {
+    let of = if matches!(receiver, Value::Null) {
+        "null"
+    } else {
+        "undefined"
+    };
+    let (verb, gerund) = if action == "setting" {
+        ("set", "setting")
+    } else {
+        ("read", "reading")
+    };
+    RuntimeError::TypeError(format!(
+        "Cannot {verb} properties of {of} ({gerund} '{}')",
+        key.describe()
+    ))
 }

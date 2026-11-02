@@ -287,6 +287,16 @@ impl Page {
                     )
                 });
                 let ok = source.is_some();
+                let trace = std::env::var_os("BI_NET_LOG").is_some();
+                if trace {
+                    eprintln!(
+                        "script-load {src} -> {}",
+                        source.as_ref().map_or("not fetched".to_string(), |s| format!(
+                            "{} bytes",
+                            s.len()
+                        ))
+                    );
+                }
                 let call = format!(
                     "__blueice.scriptLoaded({}, {}, {});",
                     node.as_u64(),
@@ -294,7 +304,10 @@ impl Page {
                     ok
                 );
                 let (more, dirty) = self.web_turn_once(&mut |host: &mut WebHost| {
-                    let _ = host.run("blueice:script-load", &call);
+                    let outcome = host.run("blueice:script-load", &call);
+                    if trace {
+                        eprintln!("script-load {src} ran: {outcome:?}");
+                    }
                 });
                 changed |= dirty;
                 next.extend(more);
@@ -459,7 +472,15 @@ impl Page {
                 let id = script.node.as_u64();
                 let _ = host.run("blueice:current", &format!("__blueice.setCurrentScript({id});"));
                 let ran = std::time::Instant::now();
-                let _ = host.run(&name, &source);
+                let logged = host.console().len();
+                let outcome = host.run(&name, &source);
+                // Developer aid: which script said or failed what (`BI_NET_LOG=1`).
+                if std::env::var_os("BI_NET_LOG").is_some() {
+                    eprintln!("script {} ran in {:?}: {outcome:?}", &name[..name.len().min(110)], ran.elapsed());
+                    for line in host.console().iter().skip(logged) {
+                        eprintln!("    | {}", &line[..line.len().min(240)]);
+                    }
+                }
                 if std::env::var("BI_DIAG").is_ok() && ran.elapsed().as_millis() > 100 {
                     eprintln!("DIAG classic {} took {:?}", &name[..name.len().min(70)], ran.elapsed());
                 }

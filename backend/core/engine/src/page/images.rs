@@ -305,6 +305,12 @@ mod tests {
                     }
                 }
             }
+            if let Ok(dir) = std::env::var("BI_SAVE") {
+                let _ = std::fs::create_dir_all(format!("{dir}/scripts"));
+                for (n, (src, text)) in page.pending_linked_scripts.iter().enumerate() {
+                    let _ = std::fs::write(format!("{dir}/scripts/{n}.js"), format!("// {src}\n{text}"));
+                }
+            }
             eprintln!(
                 "fetched {} scripts and {} modules",
                 page.pending_linked_scripts.len(),

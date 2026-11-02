@@ -85,6 +85,30 @@ fn allows_origin(headers: &[(String, String)], origin: &str) -> bool {
 
 /// Runs a job to completion. Blocking: call it off the session thread.
 pub(crate) fn perform(job: &NetJob, review: &dyn Fn(&str) -> bool) -> NetOutcome {
+    let started = std::time::Instant::now();
+    let outcome = perform_request(job, review);
+    // Developer aid: `BI_NET_LOG=1` prints every script request and how it ended.
+    if std::env::var_os("BI_NET_LOG").is_some() {
+        match &outcome {
+            NetOutcome::Done { status, body, .. } => eprintln!(
+                "net {} {} -> {status} ({} bytes, {:?})",
+                job.method,
+                job.url,
+                body.len(),
+                started.elapsed()
+            ),
+            NetOutcome::Failed(why) => eprintln!(
+                "net {} {} -> FAILED: {why} ({:?})",
+                job.method,
+                job.url,
+                started.elapsed()
+            ),
+        }
+    }
+    outcome
+}
+
+fn perform_request(job: &NetJob, review: &dyn Fn(&str) -> bool) -> NetOutcome {
     let fail = |message: &str| NetOutcome::Failed(message.to_string());
     let Some(target_origin) = origin_of(&job.url) else {
         return fail("only http and https requests can be made");
