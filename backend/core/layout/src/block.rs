@@ -1058,7 +1058,21 @@ fn layout_block_level_uncached(
                 } else {
                     (container_x, container_y, container_w, container_h)
                 };
-                placed_abs.push(layout_abs(ctx, &pending, (vx, vy, vw, vh)));
+                let (placed, inside_fixed) = layout_abs(ctx, &pending, (vx, vy, vw, vh));
+                placed_abs.push(placed);
+                // Fixed boxes inside this absolutely positioned one belong to the viewport.
+                // Below the root they keep climbing; at the root they are placed against it.
+                for inner in inside_fixed {
+                    if c.root {
+                        placed_abs.push(layout_abs(
+                            ctx,
+                            &inner,
+                            (0.0, 0.0, ctx.viewport_width, ctx.viewport_height),
+                        ).0);
+                    } else {
+                        escaping.push(inner);
+                    }
+                }
             }
         }
         fragment.children.extend(placed_abs);
@@ -1097,7 +1111,11 @@ fn layout_block_level_uncached(
 
 /// An absolutely positioned box placed against `cb` (x, y, width, height in
 /// the coordinates of the fragment that contains it).
-fn layout_abs(ctx: &Ctx<'_>, pending: &PendingAbs, cb: (f64, f64, f64, f64)) -> Fragment {
+fn layout_abs(
+    ctx: &Ctx<'_>,
+    pending: &PendingAbs,
+    cb: (f64, f64, f64, f64),
+) -> (Fragment, Vec<PendingAbs>) {
     let (cb_x, cb_y, cb_w, cb_h) = cb;
     let style = ctx.style(pending.node);
     let padding = style.padding(cb_w);
@@ -1193,7 +1211,7 @@ fn layout_abs(ctx: &Ctx<'_>, pending: &PendingAbs, cb: (f64, f64, f64, f64)) -> 
             height: None,
         },
     );
-    let mut fragment = placed.fragment;
+    let mut fragment = std::mem::replace(&mut placed.fragment, Fragment::empty_block());
     if let Some(h) = forced_height {
         fragment.height = clamp_h(h) + pb_v;
     } else {
@@ -1214,9 +1232,10 @@ fn layout_abs(ctx: &Ctx<'_>, pending: &PendingAbs, cb: (f64, f64, f64, f64)) -> 
     fragment.positioned = true;
     fragment.fixed = style.position() == Position::Fixed;
     fragment.z_index = style.z_index();
-    // An abspos box's own descendants escape only if they are fixed.
-    let _ = &mut placed.pending_abs;
-    fragment
+    // An abspos box's own descendants escape only if they are fixed: what is still pending
+    // after its layout is exactly those (the ones it contains were placed inside it).
+    let escaping = std::mem::take(&mut placed.pending_abs);
+    (fragment, escaping)
 }
 
 fn line_height_for(style: &Style<'_>, value: &Value) -> Option<f64> {

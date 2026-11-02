@@ -183,4 +183,80 @@ mod tests {
         assert_eq!(fragment.node, None);
         assert_eq!(fragment.width, 0.0);
     }
+
+    /// The boxes of the element named `tag` with the given `id` (searching the whole fragment tree).
+    fn find_by_id<'a>(
+        doc: &blueice_dom::Document,
+        f: &'a Fragment,
+        id: &str,
+    ) -> Option<&'a Fragment> {
+        if let Some(node) = f.node {
+            if let NodeData::Element { attributes, .. } = doc.data(node) {
+                if attributes.iter().any(|(k, v)| k == "id" && v == id) {
+                    return Some(f);
+                }
+            }
+        }
+        f.children.iter().find_map(|c| find_by_id(doc, c, id))
+    }
+
+    #[test]
+    fn a_fixed_box_inside_an_absolutely_positioned_box_is_still_laid_out() {
+        // A sticky sidebar: `position: fixed` set on a descendant of an absolutely positioned
+        // column. The fixed box belongs to the viewport, so it must survive its parent's layout.
+        for (label, fixed_style) in [
+            ("sized", "position:fixed;top:10px;width:306px"),
+            ("shrink-wrapped", "position:fixed;top:10px"),
+            ("pinned right", "position:fixed;top:10px;right:20px;width:306px"),
+        ] {
+            let html = format!(
+                "<body style='margin:0'><div style='position:relative;width:1200px'>\
+                   <div style='position:absolute;top:0;right:0;width:306px'>\
+                     <div id=fx style='{fixed_style}'><section style='padding:4px'><p>hello world</p></section></div>\
+                   </div></div></body>"
+            );
+            let doc = blueice_html::parse(&html);
+            let ua = ua_stylesheet();
+            let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+            let fragment = layout(
+                &doc,
+                doc.root(),
+                &styles,
+                Constraints {
+                    available_width: 1280.0,
+                    viewport_height: 900.0,
+                },
+            );
+            let fixed = find_by_id(&doc, &fragment, "fx")
+                .unwrap_or_else(|| panic!("{label}: the fixed box vanished"));
+            assert!(fixed.fixed, "{label}: it keeps its fixed flag");
+            assert!(
+                fixed.width > 50.0 && fixed.height > 10.0,
+                "{label}: laid out with its content: {}x{}",
+                fixed.width,
+                fixed.height
+            );
+            assert_eq!(fixed.y, 10.0, "{label}: placed against the viewport, not the column");
+        }
+    }
+
+    #[test]
+    fn a_fixed_box_in_an_ordinary_flow_is_unchanged() {
+        let doc = blueice_html::parse(
+            "<body style='margin:0'><div><div id=fx style='position:fixed;top:5px;left:7px;width:100px'><p>x</p></div></div></body>",
+        );
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        let fragment = layout(
+            &doc,
+            doc.root(),
+            &styles,
+            Constraints {
+                available_width: 800.0,
+                viewport_height: 600.0,
+            },
+        );
+        let fixed = find_by_id(&doc, &fragment, "fx").expect("laid out");
+        assert_eq!((fixed.x, fixed.y, fixed.width), (7.0, 5.0, 100.0));
+    }
 }
