@@ -726,6 +726,9 @@ and fixed the three things that dominated, in the order they did:
   (3.67 s vs 3.72 s); the object table is what paid: start-up 3.70 s -> 3.18 s on the live
   page, Test262 unchanged at 102,921 pass / 0 fail, BlueJS suite 7,622 pass. The keys are
   per-object and bounded by the heap budget, so flood resistance buys nothing here.
+  The collector's mark/remembered sets and the global-name tables (`NameMap`) use the same
+  hash: start-up 3.18 s -> 3.03 s more. Total this round 3.70 s -> 3.03 s (-18%); the
+  largest remaining entry in a profile is `prepare_gc_trace` gathering roots.
 - **Still slow, in the order it bites.** The caller-roots push above; most of the ~536
   `with_roots` call sites are not converted (convert one only after checking it fails before
   changing anything and is safe to repeat); a `class`/`id` change on a high element still

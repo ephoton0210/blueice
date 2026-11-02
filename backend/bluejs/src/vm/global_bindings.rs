@@ -4,6 +4,7 @@
 
 //! Realm-global records retain native ownership across script and realm entry.
 
+use std::hash::BuildHasherDefault;
 use super::host_scheduling::value_payload_bytes;
 use super::*;
 
@@ -68,7 +69,7 @@ pub(super) struct PreparedGlobalValue {
 
 pub(super) struct PreparedGlobalRecords {
     rows: Vec<GlobalRecord>,
-    globals: Option<SchedulingMapCapacity<String, GlobalBinding>>,
+    globals: Option<SchedulingMapCapacity<String, GlobalBinding, BuildHasherDefault<crate::prop_map::PropHasher>>>,
     aliases: Option<SchedulingMapCapacity<usize, String>>,
     charge: execution_payload::ExecutionPayloadCharge,
     payload: execution_payload::ExecutionPayloadCharge,
@@ -171,7 +172,7 @@ impl PreparedGlobalRecords {
 }
 
 pub(super) struct SuspendedGlobalBindings {
-    bindings: HashMap<String, GlobalBinding>,
+    bindings: crate::prop_map::NameMap<GlobalBinding>,
     charge: execution_payload::ExecutionPayloadCharge,
 }
 
@@ -189,7 +190,7 @@ impl SuspendedGlobalBindings {
     }
 }
 
-fn storage_bytes(bindings: &HashMap<String, GlobalBinding>) -> usize {
+fn storage_bytes(bindings: &crate::prop_map::NameMap<GlobalBinding>) -> usize {
     bindings
         .keys()
         .fold(host_scheduling::map_slots(bindings), |bytes, name| {
@@ -197,7 +198,7 @@ fn storage_bytes(bindings: &HashMap<String, GlobalBinding>) -> usize {
         })
 }
 
-fn minimum_table_bytes<K, V>(table: &HashMap<K, V>, added: usize) -> usize {
+fn minimum_table_bytes<K, V, S>(table: &HashMap<K, V, S>, added: usize) -> usize {
     let required = table.len().saturating_add(added);
     if required > table.capacity() {
         required.saturating_mul(std::mem::size_of::<(K, V)>())
@@ -448,7 +449,7 @@ impl Vm {
                 payload_bytes: count.saturating_mul(std::mem::size_of::<(String, GlobalBinding)>()),
                 ..Default::default()
             })?;
-            let mut bindings = HashMap::new();
+            let mut bindings = crate::prop_map::NameMap::<GlobalBinding>::default();
             if bindings.try_reserve(count).is_err() {
                 return Err(self
                     .host_scheduling

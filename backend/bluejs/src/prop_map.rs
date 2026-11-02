@@ -67,6 +67,9 @@ pub(crate) type ObjectMap<V> = HashMap<ObjectId, V, BuildHasherDefault<PropHashe
 /// A set of object handles (the collector's mark set, the remembered set).
 pub(crate) type ObjectSet = std::collections::HashSet<ObjectId, BuildHasherDefault<PropHasher>>;
 
+/// A map keyed by a global's name, looked up on every global read and write.
+pub(crate) type NameMap<V> = HashMap<String, V, BuildHasherDefault<PropHasher>>;
+
 #[cfg(test)]
 mod tests {
     use super::*;

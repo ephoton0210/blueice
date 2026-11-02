@@ -1192,7 +1192,7 @@ pub struct Vm {
     // Module top-level code has an undefined `this`; classic scripts lazily
     // substitute the realm global when `this` is first observed.
     top_level_module: bool,
-    globals: HashMap<String, ObjectId>,
+    globals: crate::prop_map::NameMap<ObjectId>,
     /// Host callbacks are private to this realm. Native function objects hold
     /// only an index into this vector, so GC sees no Rust references.
     host_functions: HostRegistrations<Box<dyn HostFunction>>,
@@ -1229,7 +1229,7 @@ pub struct Vm {
     host_animation_frame_timestamp_ms: f64,
     active_host_drag_event: Option<ObjectId>,
     event_time_origin: std::time::Instant,
-    global_bindings: HashMap<String, GlobalBinding>,
+    global_bindings: crate::prop_map::NameMap<GlobalBinding>,
     /// Reentrant evaluations must leave slots for suspended lexical globals.
     reserved_global_binding_slots: usize,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an

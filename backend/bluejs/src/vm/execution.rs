@@ -559,7 +559,7 @@ impl Vm {
             binding.property
         });
         if self.global_bindings.is_empty() && self.reserved_global_binding_slots == 0 {
-            self.global_bindings = HashMap::new();
+            self.global_bindings = Default::default();
         }
         self.reconcile_scheduling_ownership();
     }
