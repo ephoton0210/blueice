@@ -1108,7 +1108,12 @@ pub(crate) fn layout_run_around(
             .collect();
         children.splice(0..0, boxes);
 
-        result.extent = result.extent.max(offset + used_width.max(x));
+        // How far the content reaches, not how far alignment pushed it: a preferred width is
+        // measured with unlimited room, where a centered or right-aligned line would otherwise
+        // report half of that room.
+        result.extent = result
+            .extent
+            .max(line.left + line_indent + used_width.max(x));
         result.lines.push(Fragment {
             node: None,
             kind: FragmentKind::Line,
@@ -1770,5 +1775,77 @@ mod tests {
             img_size("<p><img></p>", "img { max-width: 100%; }", 150.0),
             (150.0, 75.0)
         );
+    }
+
+    #[test]
+    fn an_inline_block_shrinks_to_its_content_whatever_the_text_align() {
+        // Preferred widths are measured by laying the box out with unlimited room; a centered or
+        // right-aligned line must not count the room it was pushed across.
+        for align in ["left", "center", "right"] {
+            let f = body(
+                &format!(
+                    "<div style='text-align:{align};width:400px'><span style='display:inline-block'>abc</span></div>"
+                ),
+                "",
+                800.0,
+            );
+            let line = &f.children[0].children[0];
+            let atomic = line
+                .children
+                .iter()
+                .find(|c| matches!(c.kind, FragmentKind::Block))
+                .unwrap_or_else(|| panic!("{align}: no inline-block on the line"));
+            assert!(
+                (atomic.width - word_width("abc")).abs() < 0.01,
+                "{align}: shrink-to-fit width was {}",
+                atomic.width
+            );
+        }
+    }
+
+    #[test]
+    fn two_centered_inline_blocks_sit_side_by_side_not_stacked() {
+        let f = body(
+            "<div style='text-align:center;width:400px'><span style='display:inline-block;width:50px'>a</span><span style='display:inline-block'>bb</span></div>",
+            "",
+            800.0,
+        );
+        assert_eq!(f.children[0].children.len(), 1, "one line holds both boxes");
+    }
+
+    #[test]
+    fn a_button_input_is_as_wide_as_its_label_and_buttons_share_a_line() {
+        let f = body(
+            "<div style='width:600px'><input type=submit value='Search'><input type=button value='Go'></div>",
+            "",
+            800.0,
+        );
+        let div = &f.children[0];
+        assert_eq!(div.children.len(), 1, "both buttons on one line");
+        let buttons: Vec<&Fragment> = div.children[0]
+            .children
+            .iter()
+            .filter(|c| matches!(c.kind, FragmentKind::NativeControl { .. }))
+            .collect();
+        assert_eq!(buttons.len(), 2);
+        let search = word_width("Search");
+        assert!(
+            buttons[0].width > search && buttons[0].width < search + 40.0,
+            "label plus padding and border, not the 20em of a text field: {}",
+            buttons[0].width
+        );
+        assert!(buttons[1].width < buttons[0].width, "a shorter label is a narrower button");
+        // The author's own width still wins.
+        let wide = body(
+            "<div style='width:600px'><input type=submit value='Search' style='width:200px'></div>",
+            "",
+            800.0,
+        );
+        let button = wide.children[0].children[0]
+            .children
+            .iter()
+            .find(|c| matches!(c.kind, FragmentKind::NativeControl { .. }))
+            .unwrap();
+        assert_eq!(button.width, 200.0);
     }
 }

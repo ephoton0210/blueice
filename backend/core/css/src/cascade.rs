@@ -466,6 +466,26 @@ fn compute_style_for(
         }
     }
 
+    // Presentational attributes (`align`, `bgcolor`...): author declarations of specificity
+    // zero, placed before every rule so the stable sort below leaves each of them beaten by
+    // any rule of the same origin and weight.
+    let hint_declarations = if pseudo.is_some() {
+        Vec::new()
+    } else {
+        crate::presentational::hints(doc, node)
+    };
+    for (i, decl) in hint_declarations.iter().enumerate() {
+        matched.insert(
+            i,
+            Matched {
+                origin: Origin::Author,
+                specificity: (0, 0, 0),
+                source_order: 0,
+                declaration: decl,
+            },
+        );
+    }
+
     // Inline `style="..."` (plan §"MVP CSS scope": part of the Author
     // origin, same as a `<style>` sheet). Per spec it beats *any*
     // selector-based author rule regardless of specificity, but is
@@ -709,6 +729,7 @@ h1, h2, h3, h4, h5, h6, hr, search, optgroup {
 }
 li { display: list-item; }
 table { display: table; border-spacing: 2px; box-sizing: border-box; }
+center { text-align: -webkit-center; }
 caption { display: table-caption; text-align: center; }
 thead { display: table-header-group; }
 tbody { display: table-row-group; }
@@ -735,6 +756,12 @@ input, textarea, select {
   background-color: #ffffff;
 }
 textarea { height: 6em; }
+/* A push button is as wide as its caption (the layout reads the label), not the width of a
+ * text field. */
+input[type="submit"], input[type="button"], input[type="reset"] {
+  width: auto;
+  padding: 1px 6px;
+}
 input[type="checkbox"], input[type="radio"] { width: 1.5em; height: 1.5em; padding: 1px; }
 input[type="range"] { width: 12em; height: 1.5em; }
 [hidden], input[type="hidden"] { display: none; }

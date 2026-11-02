@@ -704,8 +704,19 @@ fn layout_block_level_uncached(
     };
 
     // ---- horizontal: width and side margins ----
-    let auto_left = style.is_auto("margin-left");
-    let auto_right = style.is_auto("margin-right");
+    // `<center>` (`text-align: -webkit-center`) also centers the tables and shrink-wrapped
+    // blocks inside it, as long as the box's own side margins have not been set.
+    let webkit_centered = matches!(display, Display::Table)
+        && !blueice_css::is_pseudo_node(node)
+        && ctx
+            .doc
+            .parent(node)
+            .and_then(|parent| ctx.style(parent).style.and_then(|s| s.text_align.clone()))
+            .is_some_and(|align| matches!(align.as_str(), "-webkit-center" | "-moz-center"))
+        && style.side("margin-left", cbw) == 0.0
+        && style.side("margin-right", cbw) == 0.0;
+    let auto_left = style.is_auto("margin-left") || webkit_centered;
+    let auto_right = style.is_auto("margin-right") || webkit_centered;
     let mut margin_left = if auto_left {
         0.0
     } else {
@@ -804,7 +815,19 @@ fn layout_block_level_uncached(
         top_pass = Margin::default();
         bottom_pass = Margin::default();
         pending_abs = Vec::new();
-        extent = 0.0;
+        // A push button's content is its caption; everything else native is sized by its style.
+        extent = match &form {
+            Some(crate::NativeForm::Button(label)) => {
+                let style = ctx.style(node);
+                blueice_font::measure_text_width(
+                    label,
+                    style.font_size(),
+                    style.style.is_some_and(|s| s.is_bold()),
+                    style.style.is_some_and(|s| s.is_italic()),
+                )
+            }
+            _ => 0.0,
+        };
         empty = false;
     } else if matches!(display, Display::Table | Display::InlineTable) {
         let table = crate::table::layout_table(

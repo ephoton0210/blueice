@@ -269,7 +269,26 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
     }
     let total_space = space_x * (columns + 1) as f64;
     let min_total: f64 = col_min.iter().sum::<f64>() + total_space;
-    let max_total: f64 = col_max.iter().sum::<f64>() + total_space;
+    let mut max_total: f64 = col_max.iter().sum::<f64>() + total_space;
+    // Percentage columns widen an automatic table: each must fit its content in its share,
+    // and the other columns must fit in what the percentages leave. (Percentages that add past
+    // a hundred cannot all be honoured and take no part in this.)
+    let pct_total: f64 = col_pct.iter().sum();
+    if pct_total > 0.0 && pct_total <= 100.0 {
+        let mut room = col_max.iter().sum::<f64>();
+        let mut others = 0.0;
+        for i in 0..columns {
+            if col_pct[i] > 0.0 {
+                room = room.max(col_max[i] * 100.0 / col_pct[i]);
+            } else {
+                others += col_max[i];
+            }
+        }
+        if pct_total < 100.0 {
+            room = room.max(others * 100.0 / (100.0 - pct_total));
+        }
+        max_total = max_total.max(room + total_space);
+    }
 
     let table_width = if let Some(w) = input.specified {
         w.max(min_total)
@@ -712,5 +731,92 @@ mod tests {
             <td><i style='width:10px'></i></td></tr></table>";
         let f = table(html, "", 800.0);
         assert_eq!(cells(&f)[0].2, 100.0);
+    }
+
+    /// Google's home page: 25% | content | 25% with an auto-width table.
+    const SIDE_COLUMNS: &str = "<table><tr><td style='width:25%'><i style='width:5px'></i></td>\
+        <td><i style='width:400px'></i></td>\
+        <td style='width:25%'><i style='width:50px'></i></td></tr></table>";
+
+    #[test]
+    fn percentage_columns_widen_an_auto_width_table_so_the_other_columns_fit_the_rest() {
+        // 400px of content must fit in the 50% the side columns leave: the table is 800px.
+        let f = table(SIDE_COLUMNS, "", 1000.0);
+        assert_eq!(f.width.round(), 800.0);
+        assert_eq!(cells(&f).iter().map(|c| c.2).collect::<Vec<_>>(), vec![200.0, 400.0, 200.0]);
+    }
+
+    #[test]
+    fn a_percentage_column_with_wide_content_sets_the_table_width_too() {
+        // 100px of content in a 10% column needs a 1000px table.
+        let html = "<table><tr><td style='width:10%'><i style='width:100px'></i></td>\
+            <td><i style='width:10px'></i></td></tr></table>";
+        let f = table(html, "", 2000.0);
+        assert_eq!(f.width.round(), 1000.0);
+    }
+
+    #[test]
+    fn percentage_columns_never_push_a_table_past_its_container() {
+        let f = table(SIDE_COLUMNS, "", 500.0);
+        assert!(f.width <= 500.0 + 0.01, "{}", f.width);
+    }
+
+    #[test]
+    fn percentages_adding_past_a_hundred_are_ignored_for_the_table_width() {
+        let html = "<table><tr><td style='width:60%'><i style='width:10px'></i></td>\
+            <td style='width:60%'><i style='width:10px'></i></td></tr></table>";
+        let f = table(html, "", 1000.0);
+        assert_eq!(f.width.round(), 20.0);
+    }
+
+    /// The table fragment inside `<center>` (or a block in it), at `width`.
+    fn centered_table_x(html: &str, width: f64) -> f64 {
+        fn table_fragment<'a>(
+            doc: &blueice_dom::Document,
+            f: &'a Fragment,
+        ) -> Option<&'a Fragment> {
+            if let Some(node) = f.node {
+                if matches!(doc.data(node), NodeData::Element { tag_name, .. } if tag_name == "table") {
+                    return Some(f);
+                }
+            }
+            f.children.iter().find_map(|c| table_fragment(doc, c))
+        }
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let author = blueice_css::parse("body,p { margin: 0; } table { border-spacing: 0; } td { padding: 0; } i { display: block; height: 20px; }").rules;
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        let body = find(&doc, doc.root(), "body").unwrap();
+        let laid = layout_block(&doc, body, &styles, width);
+        let mut x = 0.0;
+        let mut at = &laid;
+        // Walk down to the table, summing the offsets of its containers.
+        loop {
+            if let Some(t) = table_fragment(&doc, at).filter(|t| std::ptr::eq(*t, at)) {
+                let _ = t;
+                return x;
+            }
+            let next = at.children.iter().find(|c| table_fragment(&doc, c).is_some());
+            match next {
+                Some(c) => {
+                    x += c.x;
+                    at = c;
+                }
+                None => panic!("no table"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_table_inside_center_is_centered_as_a_block() {
+        let table = "<table><tr><td><i style='width:100px'></i></td></tr></table>";
+        let direct = centered_table_x(&format!("<center>{table}</center>"), 500.0);
+        assert!((direct - 200.0).abs() < 1.0, "direct child: {direct}");
+        // Through an ordinary block, as Google's form puts it.
+        let nested = centered_table_x(&format!("<center><form>{table}</form></center>"), 500.0);
+        assert!((nested - 200.0).abs() < 1.0, "inside a form: {nested}");
+        // Without <center> the table stays at the left.
+        let plain = centered_table_x(&format!("<div>{table}</div>"), 500.0);
+        assert!(plain.abs() < 1.0, "plain: {plain}");
     }
 }

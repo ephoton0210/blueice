@@ -233,6 +233,14 @@ mod tests {
             &review,
             crate::linked_styles::DEFAULT_SHEET_LIMITS,
         );
+        if let Ok(dir) = std::env::var("BI_SAVE") {
+            // Developer aid: keep the page and its sheets to read what the layout is given.
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(format!("{dir}/page.html"), &fetched.body);
+            for (n, (href, css)) in styles.iter().enumerate() {
+                let _ = std::fs::write(format!("{dir}/sheet{n}.css"), format!("/* {href} */\n{css}"));
+            }
+        }
         let linked_images = crate::images::fetch_linked_images(
             &fetched.body,
             &styles,
