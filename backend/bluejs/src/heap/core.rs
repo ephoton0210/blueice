@@ -72,7 +72,7 @@ impl Heap {
             objects: Default::default(),
             closure_metadata: Default::default(),
             nursery: Vec::new(),
-            remembered: HashSet::new(),
+            remembered: Default::default(),
             roots: RootTable::default(),
             realm_pins: realm_roots::RealmPins::default(),
             scoped_trace: None,

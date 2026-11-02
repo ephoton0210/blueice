@@ -1834,7 +1834,7 @@ pub struct Heap {
     objects: crate::prop_map::ObjectMap<Object>,
     closure_metadata: crate::prop_map::ObjectMap<ClosureMetadata>,
     nursery: Vec<ObjectId>,
-    remembered: HashSet<ObjectId>,
+    remembered: crate::prop_map::ObjectSet,
     roots: RootTable,
     realm_pins: realm_roots::RealmPins,
     /// Heap operations run no JS and cannot reenter the VM. One admitted

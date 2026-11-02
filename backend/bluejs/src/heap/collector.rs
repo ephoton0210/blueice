@@ -63,12 +63,12 @@ impl ProtectedRoots<'_> {
 
 pub(crate) struct CollectorMarks {
     heap: u64,
-    marked: HashSet<ObjectId>,
+    marked: crate::prop_map::ObjectSet,
     charge: Option<HeapNativeCharge>,
     budget: Option<HeapNativeBudget>,
 }
 impl Deref for CollectorMarks {
-    type Target = HashSet<ObjectId>;
+    type Target = crate::prop_map::ObjectSet;
     fn deref(&self) -> &Self::Target {
         &self.marked
     }
@@ -78,8 +78,8 @@ impl Deref for CollectorMarks {
 pub(super) struct CollectorWorkspace {
     work: Vec<ObjectId>,
     waiters: Vec<Waiter>,
-    heads: HashMap<ObjectId, usize>,
-    marked: HashSet<ObjectId>,
+    heads: crate::prop_map::ObjectMap<usize>,
+    marked: crate::prop_map::ObjectSet,
     budget: Option<HeapNativeBudget>,
     charge: Option<HeapNativeCharge>,
 }
@@ -100,10 +100,12 @@ fn new_vec<T>(capacity: Option<usize>) -> Result<Option<Vec<T>>, HeapError> {
         })
         .transpose()
 }
-fn new_set<T: Eq + Hash>(capacity: Option<usize>) -> Result<Option<HashSet<T>>, HeapError> {
+fn new_set<T: Eq + Hash, S: std::hash::BuildHasher + Default>(
+    capacity: Option<usize>,
+) -> Result<Option<HashSet<T, S>>, HeapError> {
     capacity
         .map(|capacity| {
-            let mut values = HashSet::new();
+            let mut values = HashSet::<T, S>::default();
             values
                 .try_reserve(capacity)
                 .map_err(|_| HeapError::CollectorStorageLimit)?;
@@ -111,10 +113,12 @@ fn new_set<T: Eq + Hash>(capacity: Option<usize>) -> Result<Option<HashSet<T>>, 
         })
         .transpose()
 }
-fn new_map<K: Eq + Hash, V>(capacity: Option<usize>) -> Result<Option<HashMap<K, V>>, HeapError> {
+fn new_map<K: Eq + Hash, V, S: std::hash::BuildHasher + Default>(
+    capacity: Option<usize>,
+) -> Result<Option<HashMap<K, V, S>>, HeapError> {
     capacity
         .map(|capacity| {
-            let mut values = HashMap::new();
+            let mut values = HashMap::<K, V, S>::default();
             values
                 .try_reserve(capacity)
                 .map_err(|_| HeapError::CollectorStorageLimit)?;
@@ -181,8 +185,8 @@ impl CollectorWorkspace {
             Ok::<_, HeapError>((
                 new_vec::<ObjectId>(work)?,
                 new_vec::<Waiter>(waiters)?,
-                new_set::<ObjectId>(marked)?,
-                new_map::<ObjectId, usize>(heads)?,
+                new_set::<ObjectId, _>(marked)?,
+                new_map::<ObjectId, usize, _>(heads)?,
             ))
         })();
         let (new_work, new_waiters, new_marked, new_heads) =

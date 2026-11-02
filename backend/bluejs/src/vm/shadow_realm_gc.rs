@@ -48,7 +48,7 @@ impl Vm {
         Ok(marked?)
     }
 
-    fn prune_shadow_owners(&mut self, plan: &RealmCollection, live: &HashSet<ObjectId>) {
+    fn prune_shadow_owners(&mut self, plan: &RealmCollection, live: &crate::prop_map::ObjectSet) {
         let parent = plan
             .index_of(self.object_prototype.heap)
             .expect("collected parent");

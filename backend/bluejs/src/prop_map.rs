@@ -64,6 +64,9 @@ pub(crate) type PropMap<V> = HashMap<PropertyName, V, BuildHasherDefault<PropHas
 /// lookup here, and the two-word key hashed with SipHash was the next-largest cost.
 pub(crate) type ObjectMap<V> = HashMap<ObjectId, V, BuildHasherDefault<PropHasher>>;
 
+/// A set of object handles (the collector's mark set, the remembered set).
+pub(crate) type ObjectSet = std::collections::HashSet<ObjectId, BuildHasherDefault<PropHasher>>;
+
 #[cfg(test)]
 mod tests {
     use super::*;
