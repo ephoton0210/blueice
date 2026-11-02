@@ -1528,9 +1528,9 @@ struct Object {
     /// Host-defined Annex B slot. It changes only the abstract operations
     /// explicitly named by ECMAScript's IsHTMLDDA compatibility semantics.
     is_html_dda: bool,
-    properties: HashMap<PropertyName, Value>,
+    properties: crate::prop_map::PropMap<Value>,
     order: Vec<PropertyName>,
-    attributes: HashMap<PropertyName, PropertyDescriptor>,
+    attributes: crate::prop_map::PropMap<PropertyDescriptor>,
     /// Lazily allocated private internal slots. Ordinary objects pay no
     /// fixed-size cost for private-element support.
     private: Option<Box<PrivateData>>,
@@ -1831,8 +1831,8 @@ pub struct Heap {
     next_object: u64,
     next_root: u64,
     config: HeapConfig,
-    objects: HashMap<ObjectId, Object>,
-    closure_metadata: HashMap<ObjectId, ClosureMetadata>,
+    objects: crate::prop_map::ObjectMap<Object>,
+    closure_metadata: crate::prop_map::ObjectMap<ClosureMetadata>,
     nursery: Vec<ObjectId>,
     remembered: HashSet<ObjectId>,
     roots: RootTable,

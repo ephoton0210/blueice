@@ -719,6 +719,13 @@ and fixed the three things that dominated, in the order they did:
   and laid out") went from 7.4-7.9 s to 3.4 s with the BlueJS call-path work; relayout is
   0.85 s, find/selection 0.9 s, accessibility 0.4 s; the rest is the page's own script and
   the software GL.
+- **Hashing.** A second profile showed SipHash (the keyed default) as the largest single cost:
+  every property read looks the object up in the heap's `ObjectId` table and then hashes the
+  key in the object's property table. Both now use a non-keyed multiply-rotate hash
+  (`prop_map.rs`: `PropMap`, `ObjectMap`). Changing only the property tables moved nothing
+  (3.67 s vs 3.72 s); the object table is what paid: start-up 3.70 s -> 3.18 s on the live
+  page, Test262 unchanged at 102,921 pass / 0 fail, BlueJS suite 7,622 pass. The keys are
+  per-object and bounded by the heap budget, so flood resistance buys nothing here.
 - **Still slow, in the order it bites.** The caller-roots push above; most of the ~536
   `with_roots` call sites are not converted (convert one only after checking it fails before
   changing anything and is safe to repeat); a `class`/`id` change on a high element still

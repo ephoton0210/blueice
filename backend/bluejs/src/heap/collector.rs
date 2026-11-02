@@ -227,7 +227,7 @@ impl CollectorWorkspace {
         }
         Ok(())
     }
-    fn enqueue(&mut self, objects: &HashMap<ObjectId, Object>, young: bool, id: ObjectId) {
+    fn enqueue(&mut self, objects: &crate::prop_map::ObjectMap<Object>, young: bool, id: ObjectId) {
         let Some(object) = objects.get(&id) else {
             return;
         };
@@ -246,14 +246,14 @@ impl CollectorWorkspace {
             self.work.push(id);
         }
     }
-    fn key_live(&self, objects: &HashMap<ObjectId, Object>, young: bool, key: ObjectId) -> bool {
+    fn key_live(&self, objects: &crate::prop_map::ObjectMap<Object>, young: bool, key: ObjectId) -> bool {
         objects
             .get(&key)
             .is_some_and(|object| (young && !object.young) || self.marked.contains(&key))
     }
     fn conditional(
         &mut self,
-        objects: &HashMap<ObjectId, Object>,
+        objects: &crate::prop_map::ObjectMap<Object>,
         young: bool,
         key: ObjectId,
         target: ObjectId,
@@ -281,7 +281,7 @@ impl CollectorWorkspace {
     }
     fn activate(
         &mut self,
-        objects: &HashMap<ObjectId, Object>,
+        objects: &crate::prop_map::ObjectMap<Object>,
         young: bool,
         entries: &HashMap<WeakCollectionKey, Value>,
     ) {

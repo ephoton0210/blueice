@@ -469,9 +469,9 @@ impl Heap {
             Object {
                 kind,
                 is_html_dda: false,
-                properties: HashMap::new(),
+                properties: Default::default(),
                 order: Vec::new(),
-                attributes: HashMap::new(),
+                attributes: Default::default(),
                 private: None,
                 extensible: true,
                 prototype,
