@@ -35,7 +35,13 @@ pub(crate) struct WebNet {
     tx: std::sync::mpsc::Sender<(u64, crate::web::net::NetOutcome)>,
     rx: std::sync::mpsc::Receiver<(u64, crate::web::net::NetOutcome)>,
     inflight: usize,
+    /// Requests the page has made that are waiting for a free slot.
+    queue: std::collections::VecDeque<crate::web::net::NetJob>,
 }
+
+/// How many of a page's requests run at once; the rest wait in order, as a browser's
+/// connection limits make them.
+const MAX_INFLIGHT_REQUESTS: usize = 16;
 
 /// A script element of the document.
 struct PageScript {
@@ -304,9 +310,10 @@ impl Page {
                     ok
                 );
                 let (more, dirty) = self.web_turn_once(&mut |host: &mut WebHost| {
+                    let started = std::time::Instant::now();
                     let outcome = host.run("blueice:script-load", &call);
                     if trace {
-                        eprintln!("script-load {src} ran: {outcome:?}");
+                        eprintln!("script-load {src} ran in {:?}: {outcome:?}", started.elapsed());
                     }
                 });
                 changed |= dirty;
@@ -340,9 +347,22 @@ impl Page {
                 tx,
                 rx,
                 inflight: 0,
+                queue: std::collections::VecDeque::new(),
             }
         });
-        for job in jobs {
+        net.queue.extend(jobs);
+        self.pump_net_jobs();
+    }
+
+    /// Starts queued requests while there are free slots.
+    fn pump_net_jobs(&mut self) {
+        let Some(net) = self.web_net.as_mut() else {
+            return;
+        };
+        while net.inflight < MAX_INFLIGHT_REQUESTS {
+            let Some(job) = net.queue.pop_front() else {
+                break;
+            };
             net.inflight += 1;
             let tx = net.tx.clone();
             let review = self.web_review.clone();
@@ -368,6 +388,11 @@ impl Page {
             net.inflight = net.inflight.saturating_sub(1);
             done.push(result);
         }
+        // Slots freed by the requests that finished go to the ones waiting.
+        self.pump_net_jobs();
+        let Some(_) = self.web_net.as_mut() else {
+            return;
+        };
         for (id, outcome) in done {
             let call = match outcome {
                 crate::web::net::NetOutcome::Done {
@@ -441,6 +466,10 @@ impl Page {
                     path.rsplit_once('/').map_or("", |(dir, _)| dir).to_string()
                 })
                 .unwrap_or_default();
+            // Developer aid: `BI_PRELUDE` is JavaScript run before any of the page's scripts.
+            if let Ok(prelude) = std::env::var("BI_PRELUDE") {
+                let _ = host.run("blueice:prelude", &prelude);
+            }
             let compiled = std::time::Instant::now();
             host.set_module_sources(
                 &document
@@ -1190,6 +1219,161 @@ mod tests {
         assert!(all.contains("fetch POST:blob-one"), "{all}");
         assert!(all.contains("xhr POST:blob-two"), "{all}");
         assert!(!all.contains("[object Blob]"), "{all}");
+    }
+
+    #[test]
+    fn attribute_nodes_can_be_read_set_and_removed() {
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.load_html_str(
+            "<body><p id=o class=k data-x=1>x</p><script>\
+               const el = document.getElementById('o');\
+               const log = [];\
+               const cls = el.getAttributeNode('class');\
+               log.push(cls.name + '=' + cls.value + ' owner:' + (cls.ownerElement === el));\
+               log.push('missing:' + el.getAttributeNode('nope'));\
+               const made = document.createAttribute('title'); made.value = 'hello';\
+               log.push('replaced:' + el.setAttributeNode(made));\
+               log.push('set:' + el.getAttribute('title') + ' owner:' + (made.ownerElement === el));\
+               const again = document.createAttribute('title'); again.value = 'bye';\
+               log.push('previous:' + el.setAttributeNode(again).value);\
+               log.push('removed:' + el.removeAttributeNode(el.getAttributeNode('data-x')).name);\
+               log.push('gone:' + el.hasAttribute('data-x'));\
+               try { el.removeAttributeNode(made); } catch (e) { log.push('stale:' + e.name); }\
+               console.log('RESULT ' + log.join(' | '));\
+             </script></body>",
+            Some("http://page.example/".to_string()),
+        );
+        let line = p
+            .web_console()
+            .iter()
+            .find(|l| l.contains("RESULT"))
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(
+            line,
+            "[log] RESULT class=k owner:true | missing:null | replaced:null | set:hello owner:true | previous:hello | removed:data-x | gone:false | stale:NotFoundError"
+        );
+    }
+
+    #[test]
+    fn attributes_taken_from_the_attribute_list_can_be_removed_one_by_one() {
+        // What React's hydration does to the extra attributes of an element.
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.load_html_str(
+            "<body><p id=o class=k data-x=1 title=t>x</p><script>\
+               const el = document.getElementById('o');\
+               const same = el.attributes[0] === el.getAttributeNode(el.attributes[0].name);\
+               const names = [];\
+               for (const a of Array.from(el.attributes)) { if (a.name !== 'id') { el.removeAttributeNode(a); names.push(a.name); } }\
+               console.log('RESULT ' + same + ' ' + names.join('+') + ' left:' + el.getAttributeNames().join('+'));\
+             </script></body>",
+            Some("http://page.example/".to_string()),
+        );
+        let line = p
+            .web_console()
+            .iter()
+            .find(|l| l.contains("RESULT"))
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(line, "[log] RESULT true class+data-x+title left:id");
+    }
+
+    #[test]
+    fn the_attribute_list_is_live() {
+        // React clears an element with `for (l = el.attributes; l.length;) el.removeAttributeNode(l[0])`.
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.load_html_str(
+            "<body><p id=o class=k data-x=1>x</p><script>\
+               const el = document.getElementById('o');\
+               const list = el.attributes;\
+               const log = ['len:' + list.length, 'first:' + list[0].name, 'item:' + list.item(1).name, 'named:' + list.getNamedItem('data-x').value, 'out:' + list[9]];\
+               el.setAttribute('title', 't');\
+               log.push('grew:' + list.length);\
+               let guard = 0;\
+               for (const l = el.attributes; l.length && guard++ < 10;) el.removeAttributeNode(l[0]);\
+               log.push('emptied:' + list.length + ' ' + el.hasAttributes());\
+               el.setAttribute('a', '1'); el.setAttribute('b', '2');\
+               log.push('keys:' + Object.keys(list).join(',') + ' spread:' + [...list].map(a => a.name).join('+') + ' map:' + Array.prototype.map.call(list, a => a.value).join('+'));\
+               log.push('removeNamed:' + list.removeNamedItem('a').name + ' left:' + list.length);\
+               console.log('RESULT ' + log.join(' | '));\
+             </script></body>",
+            Some("http://page.example/".to_string()),
+        );
+        let line = p
+            .web_console()
+            .iter()
+            .find(|l| l.contains("RESULT"))
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(
+            line,
+            "[log] RESULT len:3 | first:id | item:class | named:1 | out:undefined | grew:4 | emptied:0 false | keys:0,1 spread:a+b map:1+2 | removeNamed:a left:1"
+        );
+    }
+
+    #[test]
+    fn node_lists_and_html_collections_have_item_and_named_item() {
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.load_html_str(
+            "<body><p id=a class=c name=n1>1</p><p id=b class=c>2</p><script>\
+               const log = [];\
+               log.push(document.querySelectorAll('p').item(1).id);\
+               log.push(document.getElementsByTagName('p').item(0).id);\
+               log.push(document.getElementsByClassName('c').item(1).id);\
+               log.push(document.body.children.item(0).id);\
+               log.push(String(document.body.childNodes.item(99)));\
+               log.push(String(document.querySelectorAll('p').item(-1)));\
+               log.push(document.body.children.namedItem('b').id);\
+               log.push(String(document.body.children.namedItem('zzz')));\
+               log.push(String(document.getElementsByClassName('nothing').item(0)));\
+               log.push(document.body.children.length + ':' + Array.from(document.body.children).length);\
+               console.log('RESULT ' + log.join(','));\
+             </script></body>",
+            Some("http://page.example/".to_string()),
+        );
+        let line = p
+            .web_console()
+            .iter()
+            .find(|l| l.contains("RESULT"))
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(line, "[log] RESULT b,a,b,a,null,null,b,null,null,3:3");
+    }
+
+    #[test]
+    fn a_burst_of_requests_is_queued_not_refused() {
+        // A page may start far more requests in one turn than the engine runs at once; the
+        // rest wait their turn instead of throwing (which took React's whole tree down).
+        let origin = serve(vec![("/n", "text/plain", "ok")]);
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.set_network_review(Arc::new(|_| true));
+        p.load_html_str(
+            "<body><script>\
+               let ok = 0, bad = 0;\
+               for (let i = 0; i < 150; i++) fetch('/n?i=' + i).then(r => r.text()).then(() => { ok++; report(); }, () => { bad++; report(); });\
+               function report() { if (ok + bad === 150) console.log('RESULT ' + ok + ' ok ' + bad + ' failed'); }\
+             </script></body>",
+            Some(format!("{origin}/")),
+        );
+        let until = std::time::Instant::now() + Duration::from_secs(20);
+        while std::time::Instant::now() < until
+            && !p.web_console().iter().any(|l| l.contains("RESULT"))
+        {
+            p.tick_web();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let line = p
+            .web_console()
+            .iter()
+            .find(|l| l.contains("RESULT"))
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(line, "[log] RESULT 150 ok 0 failed");
     }
 
     #[test]

@@ -339,7 +339,16 @@ impl Vm {
                             {
                                 vm.direct_eval(native::argument(&args.values, 0))
                             } else {
+                                let callee_id = callee.object_id();
                                 args.call_native(vm, callee, receiver, operand != 0)
+                                    .map_err(|error| {
+                                        vm.word_uncallable_callee(
+                                            error,
+                                            callee_id,
+                                            code,
+                                            instruction.offset,
+                                        )
+                                    })
                             }
                         })?;
                         self.stack.truncate(base);
@@ -1815,6 +1824,7 @@ impl Vm {
                                 &mut self.debugger_nested_direct_caller_generation,
                                 caller_generation,
                             );
+                            let callee_id = callee.object_id();
                             let result = self.call_native(
                                 callee,
                                 receiver,
@@ -1824,7 +1834,14 @@ impl Vm {
                             self.debugger_nested_direct_call = previous;
                             self.debugger_nested_direct_caller_generation =
                                 previous_caller_generation;
-                            result?
+                            result.map_err(|error| {
+                                self.word_uncallable_callee(
+                                    error,
+                                    callee_id,
+                                    code,
+                                    instruction.offset,
+                                )
+                            })?
                         };
                         if self.debugger_nested_continuation.is_none() {
                             self.stack.truncate(base);

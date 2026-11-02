@@ -28,6 +28,42 @@ impl Vm {
         Ok(bits)
     }
 
+    /// Words a call's failure by what the source called, when the failure is that the callee
+    /// itself is not a function (`a.b.c is not a function`). A callback a builtin rejects
+    /// raises the same generic message from inside the builtin; it is left alone.
+    pub(super) fn word_uncallable_callee(
+        &self,
+        error: RuntimeError,
+        callee: Option<ObjectId>,
+        code: &Bytecode,
+        offset: usize,
+    ) -> RuntimeError {
+        let RuntimeError::TypeError(message) = &error else {
+            return error;
+        };
+        if message != "value is not callable" {
+            return error;
+        }
+        let callee_is_callable = match callee {
+            None => false,
+            Some(id) => self.is_callable(&Value::Object(id)).unwrap_or(true),
+        };
+        if callee_is_callable {
+            return error;
+        }
+        let at = offset as u32;
+        match code
+            .call_names
+            .binary_search_by_key(&at, |(call_offset, _)| *call_offset)
+        {
+            Ok(index) => RuntimeError::TypeError(format!(
+                "{} is not a function",
+                code.call_names[index].1
+            )),
+            Err(_) => error,
+        }
+    }
+
     pub(super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
         match value.object_id() {
             Some(object) => Ok(self.value_capabilities(object)?.callable),

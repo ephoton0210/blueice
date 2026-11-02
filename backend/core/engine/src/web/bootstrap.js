@@ -430,6 +430,27 @@
   let upgradeTarget = null;
 
   const ELEMENT_CLASSES = new Map();
+  // `item(i)` and `namedItem(name)` of NodeList / HTMLCollection, on the arrays the DOM hands out.
+  const withItem = (list) => {
+    Object.defineProperty(list, 'item', {
+      value: (i) => {
+        let n = Number(i);
+        n = Number.isNaN(n) ? 0 : Math.trunc(n);
+        return n >= 0 ? list[n] || null : null;
+      },
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(list, 'namedItem', {
+      value: (name) => {
+        name = toStr(name);
+        return list.find((e) => e && e.nodeType === 1 && (e.id === name || e.getAttribute('name') === name)) || null;
+      },
+      configurable: true,
+      writable: true,
+    });
+    return list;
+  };
   const wrap = (id) => {
     if (id === null || id === undefined || id < 0) return null;
     let w = wrappers.get(id);
@@ -561,7 +582,7 @@
       return p && p.nodeType === 1 ? p : null;
     }
     get childNodes() {
-      return JSON.parse(bi('children', this._id)).map(wrap);
+      return withItem(JSON.parse(bi('children', this._id)).map(wrap));
     }
     get firstChild() {
       return wrap(bi('firstChild', this._id));
@@ -745,7 +766,7 @@
   class ParentNodeMixin {}
   const parentNodeMethods = {
     get children() {
-      return this.childNodes.filter((n) => n.nodeType === 1);
+      return withItem(this.childNodes.filter((n) => n.nodeType === 1));
     },
     get childElementCount() {
       return this.children.length;
@@ -761,7 +782,7 @@
       return wrap(bi('query', this._id, toStr(selector)));
     },
     querySelectorAll(selector) {
-      return JSON.parse(bi('queryAll', this._id, toStr(selector))).map(wrap);
+      return withItem(JSON.parse(bi('queryAll', this._id, toStr(selector))).map(wrap));
     },
     append(...nodes) {
       for (const n of nodes) this.appendChild(toNode(n));
@@ -783,7 +804,7 @@
         .filter(Boolean)
         .map((c) => '.' + CSS.escape(c))
         .join('');
-      return sel ? this.querySelectorAll(sel) : [];
+      return sel ? this.querySelectorAll(sel) : withItem([]);
     },
   };
   const mixIn = (proto, source) => {
@@ -986,11 +1007,20 @@
     constructor(name, value, owner) {
       this.name = name;
       this.localName = name;
-      this.value = value;
+      this._value = value;
       this.ownerElement = owner || null;
       this.namespaceURI = null;
       this.prefix = null;
       this.specified = true;
+    }
+    get value() {
+      if (!this.ownerElement) return this._value;
+      const live = this.ownerElement.getAttribute(this.name);
+      return live === null ? this._value : live;
+    }
+    set value(v) {
+      this._value = toStr(v);
+      if (this.ownerElement) this.ownerElement.setAttribute(this.name, this._value);
     }
     get nodeValue() {
       return this.value;
@@ -1044,10 +1074,47 @@
       this.setAttribute('style', v);
     }
     get attributes() {
-      const list = JSON.parse(bi('attrs', this._id)).map(([k, v]) => new Attr(k, v, this));
-      list.item = (i) => list[i] || null;
-      list.getNamedItem = (n) => list.find((a) => a.name === n) || null;
-      return list;
+      // A NamedNodeMap is live: pages clear an element with
+      // `for (l = el.attributes; l.length;) el.removeAttributeNode(l[0])`.
+      const self = this;
+      const snapshot = () => JSON.parse(bi('attrs', self._id)).map(([k]) => self.getAttributeNode(k));
+      const methods = {
+        item: (i) => snapshot()[i] || null,
+        getNamedItem: (n) => self.getAttributeNode(n),
+        setNamedItem: (a) => self.setAttributeNode(a),
+        removeNamedItem: (n) => {
+          const a = self.getAttributeNode(n);
+          if (!a) throw new DOMException('The attribute is not an attribute of this element.', 'NotFoundError');
+          return self.removeAttributeNode(a);
+        },
+      };
+      const isIndex = (p) => typeof p === 'string' && /^(0|[1-9][0-9]*)$/.test(p);
+      return new Proxy([], {
+        get(_, prop) {
+          if (prop === 'length') return snapshot().length;
+          if (isIndex(prop)) return snapshot()[Number(prop)];
+          if (typeof prop === 'string' && Object.prototype.hasOwnProperty.call(methods, prop)) return methods[prop];
+          if (prop === Symbol.iterator) return () => snapshot()[Symbol.iterator]();
+          const list = snapshot();
+          const value = list[prop];
+          return typeof value === 'function' ? value.bind(list) : value;
+        },
+        has(_, prop) {
+          if (isIndex(prop)) return Number(prop) < snapshot().length;
+          return prop === 'length' || Object.prototype.hasOwnProperty.call(methods, prop);
+        },
+        ownKeys() {
+          const keys = snapshot().map((_, i) => String(i));
+          keys.push('length');
+          return keys;
+        },
+        getOwnPropertyDescriptor(_, prop) {
+          const list = snapshot();
+          if (prop === 'length') return { value: list.length, writable: true, enumerable: false, configurable: false };
+          if (isIndex(prop) && Number(prop) < list.length) return { value: list[Number(prop)], writable: false, enumerable: true, configurable: true };
+          return undefined;
+        },
+      });
     }
     getAttribute(name) {
       return bi('getAttr', this._id, toStr(name).toLowerCase());
@@ -1074,6 +1141,39 @@
     }
     hasAttribute(name) {
       return bi('getAttr', this._id, toStr(name).toLowerCase()) !== null;
+    }
+    getAttributeNode(name) {
+      name = toStr(name).toLowerCase();
+      const nodes = this._attrNodes || (this._attrNodes = new Map());
+      if (bi('getAttr', this._id, name) === null) {
+        nodes.delete(name);
+        return null;
+      }
+      let node = nodes.get(name);
+      if (!node) {
+        node = new Attr(name, bi('getAttr', this._id, name), this);
+        nodes.set(name, node);
+      }
+      return node;
+    }
+    setAttributeNode(attr) {
+      const previous = this.getAttributeNode(attr.name);
+      if (previous && previous !== attr) previous.ownerElement = null;
+      this.setAttribute(attr.name, attr._value === undefined ? '' : attr._value);
+      attr.ownerElement = this;
+      (this._attrNodes || (this._attrNodes = new Map())).set(attr.name, attr);
+      return previous === attr ? null : previous;
+    }
+    removeAttributeNode(attr) {
+      const nodes = this._attrNodes || (this._attrNodes = new Map());
+      if (!attr || attr.ownerElement !== this || !this.hasAttribute(attr.name)) {
+        throw new DOMException('The attribute is not an attribute of this element.', 'NotFoundError');
+      }
+      attr._value = this.getAttribute(attr.name);
+      this.removeAttribute(attr.name);
+      nodes.delete(attr.name);
+      attr.ownerElement = null;
+      return attr;
     }
     hasAttributes() {
       return JSON.parse(bi('attrs', this._id)).length > 0;
@@ -2953,6 +3053,9 @@
       if (t.startsWith('key')) return new KeyboardEvent('');
       if (t.startsWith('custom')) return new CustomEvent('');
       return new Event('');
+    }
+    createAttribute(name) {
+      return new Attr(toStr(name).toLowerCase(), '', null);
     }
     createRange() {
       return { setStart() {}, setEnd() {}, selectNodeContents() {}, collapse() {}, getBoundingClientRect: () => ({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 }), createContextualFragment: (html) => { const f = document.createDocumentFragment(); const d = document.createElement('div'); d.innerHTML = html; for (const k of d.childNodes) f.appendChild(k); return f; } };

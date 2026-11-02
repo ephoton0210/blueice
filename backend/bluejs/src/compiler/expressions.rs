@@ -67,6 +67,14 @@ impl Compiler {
         })
     }
 
+    /// Remembers what the call instruction about to be emitted calls, for its error message.
+    fn note_call(&mut self, callee: &Expr) {
+        // Names are kept short and only for calls a script can make a mistake in.
+        let name = callee_description(callee, 0);
+        let offset = self.offset();
+        self.bytecode.call_names.push((offset, name));
+    }
+
     fn spread_argument(&mut self, argument: &Argument) -> Result<(), CompileError> {
         match argument {
             Argument::Normal(value) => {
@@ -924,6 +932,7 @@ impl Compiler {
                     for arg in args {
                         self.spread_argument(arg)?;
                     }
+                    self.note_call(callee);
                     self.emit(
                         if !construct
                             && matches!(&**callee, Expr::Identifier(name) if name == "eval")
@@ -940,6 +949,7 @@ impl Compiler {
                     self.expression(argument_expr(arg))?;
                 }
                 let eval_candidate = matches!(&**callee, Expr::Identifier(name) if name == "eval");
+                self.note_call(callee);
                 if tail {
                     self.emit(
                         Opcode::TailCall,
@@ -1174,11 +1184,13 @@ impl Compiler {
                     for arg in args {
                         self.spread_argument(arg)?;
                     }
+                    self.note_call(callee);
                     self.emit(Opcode::CallSpread, 0)?;
                 } else {
                     for arg in args {
                         self.expression(argument_expr(arg))?;
                     }
+                    self.note_call(callee);
                     self.emit(Opcode::Call, argument_count)?;
                 }
             }
@@ -2214,3 +2226,37 @@ impl Compiler {
 
 #[cfg(test)]
 mod tests;
+
+/// How the source spells a callee: `f`, `a.b.c`, `a[...]`, `this.x`; anything else is an
+/// "intermediate value", as engines word it.
+fn callee_description(expr: &Expr, depth: usize) -> String {
+    const MAX_DEPTH: usize = 8;
+    const MAX_LEN: usize = 80;
+    if depth > MAX_DEPTH {
+        return "(intermediate value)".to_string();
+    }
+    let text = match expr {
+        Expr::Identifier(name) => name.clone(),
+        Expr::This => "this".to_string(),
+        Expr::Super => "super".to_string(),
+        Expr::Parenthesized(inner) => callee_description(inner, depth + 1),
+        Expr::Member {
+            object,
+            property,
+            computed,
+        } => {
+            let base = callee_description(object, depth + 1);
+            match (&**property, computed) {
+                (Expr::Identifier(name), false) => format!("{base}.{name}"),
+                _ => format!("{base}[...]"),
+            }
+        }
+        _ => "(intermediate value)".to_string(),
+    };
+    if text.chars().count() > MAX_LEN {
+        let cut: String = text.chars().take(MAX_LEN).collect();
+        format!("{cut}...")
+    } else {
+        text
+    }
+}

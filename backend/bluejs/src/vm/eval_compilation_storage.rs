@@ -48,6 +48,7 @@ impl ParsedEvalInput {
     ) -> Result<Self, RuntimeError> {
         let charge = parsing_charge(source, scope)?;
         let ast = crate::parse_eval(source, strict).map_err(|error| {
+            trace_parse_failure("eval", source, &error.message);
             error
                 .resource
                 .unwrap_or(RuntimeError::SyntaxError(error.message))
@@ -60,6 +61,7 @@ impl ParsedEvalInput {
     ) -> Result<Self, RuntimeError> {
         let charge = parsing_charge(source, scope)?;
         let ast = crate::parser::parse_encoded(source).map_err(|error| {
+            trace_parse_failure("script", source, &error.message);
             error
                 .resource
                 .unwrap_or(RuntimeError::SyntaxError(error.message))
@@ -524,5 +526,20 @@ impl EvalCompileEnvironment {
             lexical,
             _charge: charge,
         })
+    }
+}
+
+/// Developer aid: `BI_NET_LOG=1` prints the text an `eval` or a `Function` constructor could
+/// not parse, since the error itself carries no position in the page's own scripts.
+pub(super) fn trace_parse_failure(kind: &str, source: &str, message: &str) {
+    if std::env::var_os("BI_NET_LOG").is_some() {
+        let head: String = source.chars().take(200).collect();
+        eprintln!("parse failure in {kind} ({message}): {head:?}");
+        if let Some(dir) = std::env::var_os("BI_SAVE") {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(std::path::Path::new(&dir).join(format!("parse_failure_{n}.js")), source);
+        }
     }
 }

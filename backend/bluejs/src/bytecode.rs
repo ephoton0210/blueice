@@ -565,6 +565,10 @@ pub struct Bytecode {
     pub(crate) diagnostic_source_map: Option<std::rc::Rc<crate::diagnostics::DiagnosticSourceMap>>,
     pub(crate) diagnostic_ast_owners: Vec<crate::diagnostics::DiagnosticInstructionOwner>,
     pub(crate) diagnostic_source_node_count: usize,
+    /// What each call instruction calls, as the source spells it (`a.b.c`), by the offset of
+    /// the instruction, in offset order. Only read to word the error for a callee that is
+    /// not a function.
+    pub(crate) call_names: Vec<(u32, String)>,
     /// Compiler-recorded instruction starts for the root program's source
     /// order statements. `None` means the statement emits no root-code-unit
     /// instruction and therefore has no executable safe point.
@@ -715,6 +719,7 @@ impl Bytecode {
             diagnostic_source_map: None,
             diagnostic_ast_owners: Vec::new(),
             diagnostic_source_node_count: 0,
+            call_names: Vec::new(),
             root_statement_offsets: Vec::new(),
             identifier_offsets: Vec::new(),
             root_statement_ranges: Vec::new(),

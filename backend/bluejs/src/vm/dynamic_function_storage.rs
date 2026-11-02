@@ -18,6 +18,7 @@ impl ParsedFunctionInput {
     ) -> Result<Self, RuntimeError> {
         let charge = parsing_charge(source, scope)?;
         let ast = crate::parser::parse_encoded(source).map_err(|error| {
+            super::eval_compilation_storage::trace_parse_failure("Function", source, &error.message);
             error
                 .resource
                 .unwrap_or(RuntimeError::SyntaxError(error.message))

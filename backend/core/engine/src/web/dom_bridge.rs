@@ -74,6 +74,10 @@ pub(crate) enum NavigationRequest {
     Go(i32),
 }
 
+/// A bound on the requests one turn of script may start (they then queue behind the
+/// engine's concurrency limit); only a runaway script reaches it.
+const MAX_REQUESTS_PER_TURN: usize = 4096;
+
 pub(crate) struct DomState {
     pub doc: Document,
     /// Something a script changed needs restyle and layout.
@@ -724,7 +728,7 @@ impl DomState {
                     .unwrap_or_default();
                 let id = self.next_request;
                 self.next_request += 1;
-                if self.net_jobs.len() >= 64 {
+                if self.net_jobs.len() >= MAX_REQUESTS_PER_TURN {
                     return Err("too many requests are pending".to_string());
                 }
                 self.net_jobs.push(crate::web::net::NetJob {
@@ -851,6 +855,16 @@ impl DomState {
             "tr" => ("<table><tbody><tr>", "</tr></tbody></table>"),
             "select" | "optgroup" => ("<select>", "</select>"),
             "colgroup" => ("<table><colgroup>", "</colgroup></table>"),
+            // Elements whose content is text, not markup (raw text or escapable raw text):
+            // parsed inside their own tag so the tokenizer reads the content as text.
+            "script" => ("<script>", "</script>"),
+            "style" => ("<style>", "</style>"),
+            "textarea" => ("<textarea>", "</textarea>"),
+            "title" => ("<title>", "</title>"),
+            "xmp" => ("<xmp>", "</xmp>"),
+            "iframe" => ("<iframe>", "</iframe>"),
+            "noembed" => ("<noembed>", "</noembed>"),
+            "noframes" => ("<noframes>", "</noframes>"),
             _ => ("", ""),
         };
         let parsed = blueice_html::parse(&format!("<body>{open}{html}{close}"));
@@ -867,7 +881,8 @@ impl DomState {
         for _ in 0..match context {
             "table" | "thead" | "tbody" | "tfoot" => 2,
             "tr" => 3,
-            "select" | "optgroup" | "colgroup" => 1,
+            "select" | "optgroup" | "colgroup" | "script" | "style" | "textarea" | "title"
+            | "xmp" | "iframe" | "noembed" | "noframes" => 1,
             _ => 0,
         } {
             holder = match parsed
@@ -1288,6 +1303,39 @@ mod tests {
         assert_eq!(s.call("textContent", &[n(p)]).unwrap(), text("x<y"));
         assert_eq!(s.doc.children(p).count(), 1);
         assert_eq!(s.call("innerHTML", &[n(p)]).unwrap(), text("x&lt;y"));
+    }
+
+    #[test]
+    fn inner_html_of_a_script_or_style_is_its_text_not_markup() {
+        // What React does for `dangerouslySetInnerHTML` on a <script>: the text must arrive
+        // whole, `<` and `>` included, or a bundle's `s<e;s++)...t.length>3` loses its middle.
+        let code = "for(var s=0;s<e;s++)t[s]=1;if(t.length>3&&a<b)go();/* <b>no</b> */";
+        for tag in ["script", "style"] {
+            let mut s = state(&format!("<{tag} id=x></{tag}>"));
+            let x = id_of(s.call("byId", &[text("x")]).unwrap());
+            s.call("setInnerHTML", &[n(x), text(code)]).unwrap();
+            assert_eq!(s.doc.children(x).count(), 1, "{tag}: one text node");
+            assert_eq!(s.call("textContent", &[n(x)]).unwrap(), text(code), "{tag}");
+        }
+    }
+
+    #[test]
+    fn inner_html_of_a_textarea_or_title_is_text_with_references_decoded() {
+        for tag in ["textarea", "title"] {
+            let mut s = state(&format!("<{tag} id=x></{tag}>"));
+            let x = id_of(s.call("byId", &[text("x")]).unwrap());
+            s.call("setInnerHTML", &[n(x), text("a<b>c&amp;d")]).unwrap();
+            assert_eq!(s.doc.children(x).count(), 1, "{tag}: one text node");
+            assert_eq!(s.call("textContent", &[n(x)]).unwrap(), text("a<b>c&d"), "{tag}");
+        }
+    }
+
+    #[test]
+    fn inner_html_of_an_ordinary_element_is_still_parsed_as_markup() {
+        let mut s = state("<div id=x></div>");
+        let x = id_of(s.call("byId", &[text("x")]).unwrap());
+        s.call("setInnerHTML", &[n(x), text("a<b>c</b>")]).unwrap();
+        assert_eq!(s.doc.children(x).count(), 2);
     }
 
     #[test]
