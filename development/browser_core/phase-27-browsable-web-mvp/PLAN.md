@@ -748,6 +748,41 @@ and fixed the three things that dominated, in the order they did:
   binding (4,000 x 32 bytes per call, memory-bandwidth bound); removing it needs per-frame payload
   tracking through every binding write, which touches the exact-accounting tests and buys nothing
   on the live page (small callers), so it is left.
+- **Real-site correctness and start-up, measured (tw.yahoo.com, Google, Cloudflare).** Tools:
+  `BI_NET_LOG=1` (every script request and how it ended, each script's result and console
+  output, text an `eval`/`Function` could not parse), `BI_SAVE=<dir>` (the page, its sheets and
+  scripts, parse failures), `BI_PRELUDE=<js>` (run before the page's scripts, e.g. to wrap timers
+  and print what they throw), `BI_EVAL`, and `RUST_MIN_STACK` (a `cargo test` thread has 2 MiB,
+  so a deep React render reports `maximum call depth exceeded` there; `blueice-core` runs on an
+  8 MiB main thread and does not). What a profile of Yahoo found, in order:
+  - *Correctness first.* `Date.parse` read only ISO and RFC 1123, so dayjs's time-zone code
+    (`new Date("11/2/2026, 5:06:22 PM")`) gave NaN and the horoscope module threw; `innerHTML` on a
+    `<script>`/`<style>`/`<textarea>`/`<title>` parsed its text as markup and ate the middle of
+    a bundle; `removeAttributeNode` and a live `attributes` list were missing (React clears an
+    element with `for (l = el.attributes; l.length;) el.removeAttributeNode(l[0])`); `NodeList`
+    had no `item()`; more than 64 requests in a turn threw (now a queue, 16 at a time); a `Blob`
+    request body was sent as the text `[object Blob]`; `fetch(..., {mode: 'no-cors'})` and
+    `sendBeacon` were CORS-checked; a `position: fixed` box inside an absolutely positioned
+    box was dropped by layout. With these the app hydrates and the feed and right rail load.
+  - *Legacy HTML.* Google's basic page is HTML 3.2: presentational attributes
+    (`blueice-css`'s `presentational.rs`: `align`, `valign`, `bgcolor`, `cellpadding`,
+    `cellspacing`, `nowrap`, a cell's `width`, `<font>`), `<center>` (`-webkit-center` centers
+    tables too), a button input as wide as its caption, percentage columns widening an automatic
+    table, and a preferred width no longer counting the room a centered line was pushed across.
+  - *Start-up.* Yahoo 15.3 s -> 8.0 s, Cloudflare 3.7 s -> 2.1 s, from: the compiler walking every
+    visible name per function (now only the names a function mentions; the "pruned name was
+    looked up" guard asks the creator after the build), and `with_roots` gathering ~1,100
+    roots on 500,000 calls (now `with_roots_lazy` at the hottest sites: captured-variable cells,
+    closures, object/array literals, `for-in`, legacy function properties; 100,000 calls left,
+    spread flat over many sites). SipHash on the heap's object and property tables, the
+    collector's sets and the global-name tables was replaced by a non-keyed hash, short
+    `&str` -> `JsString` conversions share a buffer, and a caller's frame is parked in
+    `saved_caller_frames` instead of being copied onto the stack per call.
+  - *Still open for these sites.* The top of Yahoo's page has a blank band before the focus
+    block; `NodeFilter`/`TreeWalker` are missing (an ad script); one ad script (305 KB,
+    obfuscated) reaches the 384 MB managed-heap limit; `window` `error` events are not delivered
+    to listeners added with `addEventListener` for errors thrown from timers; the uncaught-error
+    report for a `DOMException` prints `[Object]` without its message.
 - **Still slow, in the order it bites.** The caller-payload scan above; most of the ~536
   `with_roots` call sites are not converted (convert one only after checking it fails before
   changing anything and is safe to repeat); a `class`/`id` change on a high element still
