@@ -87,10 +87,12 @@ impl Vm {
         if let Some(&cell) = self.cells.get(&slot) {
             return Ok(cell);
         }
-        let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+        // Both heap operations fail before changing anything when the heap has to collect, so
+        // the VM's roots are gathered only if the first, rootless attempt is refused.
+        let cell = self.with_roots_lazy(|heap| heap.alloc_object(None))?;
         self.cells.insert(slot, cell);
         if let Some(value) = self.bindings[slot].take() {
-            self.with_roots(|heap| heap.set(cell, "value", value))?;
+            self.with_roots_lazy(|heap| heap.set(cell, "value", value.clone()))?;
         }
         Ok(cell)
     }

@@ -161,8 +161,9 @@ impl Vm {
                 configurable: Some(false),
                 ..PropertyDescriptor::default()
             };
-            let defined =
-                self.with_roots(|heap| heap.define_own_property(function, name, descriptor))?;
+            let defined = self.with_roots_lazy(|heap| {
+                heap.define_own_property(function, name, descriptor.clone())
+            })?;
             assert!(defined, "a new function accepts its legacy properties");
         }
         Ok(())

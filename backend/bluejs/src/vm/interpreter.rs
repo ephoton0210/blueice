@@ -1030,8 +1030,13 @@ impl Vm {
                         } else {
                             Value::Undefined
                         };
-                        let id = self.with_roots(|heap| {
-                            heap.alloc_closure(child.clone(), captures, this, function_prototype)
+                        let id = self.with_roots_lazy(|heap| {
+                            heap.alloc_closure(
+                                child.clone(),
+                                captures.clone(),
+                                this.clone(),
+                                function_prototype,
+                            )
                         })?;
                         referrer.publish(self, id);
                         self.stack.push(Value::Object(id));
@@ -1106,8 +1111,8 @@ impl Vm {
                             )?;
                         } else if child.constructible {
                             let object_prototype = self.object_prototype;
-                            let prototype =
-                                self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                            let prototype = self
+                                .with_roots_lazy(|heap| heap.alloc_object(Some(object_prototype)))?;
                             self.define_data(
                                 id,
                                 "prototype",
@@ -1720,13 +1725,14 @@ impl Vm {
                     }
                     Opcode::NewObject => {
                         let prototype = self.object_prototype;
-                        let id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                        let id = self.with_roots_lazy(|heap| heap.alloc_object(Some(prototype)))?;
                         self.stack.push(Value::Object(id));
                     }
                     Opcode::NewArray => {
                         let prototype = self.array_prototype;
-                        let id = self
-                            .with_roots(|heap| heap.alloc_array(operand as u32, Some(prototype)))?;
+                        let id = self.with_roots_lazy(|heap| {
+                            heap.alloc_array(operand as u32, Some(prototype))
+                        })?;
                         self.stack.push(Value::Object(id));
                     }
                     Opcode::GetProperty | Opcode::GetMethod => {

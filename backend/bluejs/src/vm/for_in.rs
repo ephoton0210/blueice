@@ -180,7 +180,7 @@ impl Vm {
                 let Some(descriptor) = self.object_get_own_property(object, &name)? else {
                     continue;
                 };
-                self.with_roots(|heap| heap.set(visited, name, Value::Bool(true)))?;
+                self.with_roots_lazy(|heap| heap.set(visited, name.clone(), Value::Bool(true)))?;
                 if descriptor.enumerable == Some(true) {
                     return Ok(Some(Value::String(key)));
                 }
