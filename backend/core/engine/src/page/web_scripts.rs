@@ -1167,6 +1167,32 @@ mod tests {
     }
 
     #[test]
+    fn a_blob_body_is_sent_as_its_bytes_through_fetch_and_xmlhttprequest() {
+        let origin = serve(vec![("/echo", "text/plain", "{method}:{body}")]);
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.set_network_review(Arc::new(|_| true));
+        p.load_html_str(
+            "<body><p id=a>wait</p><p id=b>wait</p><script>\
+               fetch('/echo', { method: 'POST', body: new Blob(['blob-one'], { type: 'text/plain' }) })\
+                 .then(r => r.text()).then(t => { document.getElementById('a').textContent = 'fetch ' + t; });\
+               const x = new XMLHttpRequest(); x.open('POST', '/echo');\
+               x.onload = () => { document.getElementById('b').textContent = 'xhr ' + x.responseText; };\
+               x.send(new Blob(['blob-two'], { type: 'text/plain' }));\
+             </script></body>",
+            Some(format!("{origin}/")),
+        );
+        wait_for(&mut p, |p| {
+            let t = texts(p).join(" ");
+            t.contains("blob-one") && t.contains("blob-two")
+        });
+        let all = texts(&p).join(" ");
+        assert!(all.contains("fetch POST:blob-one"), "{all}");
+        assert!(all.contains("xhr POST:blob-two"), "{all}");
+        assert!(!all.contains("[object Blob]"), "{all}");
+    }
+
+    #[test]
     fn a_pjax_navigation_fetches_a_fragment_swaps_it_in_and_pushes_the_url() {
         let origin = serve(vec![("/next", "text/html", "<html><head><title>Next</title></head><body><main id=m>second page</main></body></html>")]);
         let mut p = Page::new(400.0, 300.0);
@@ -1227,5 +1253,95 @@ mod tests {
         );
         wait_for(&mut p, |p| texts(p).contains(&"AbortError".to_string()));
         assert_eq!(texts(&p), vec!["AbortError"]);
+    }
+
+    /// A server that answers every request `200 OK` with no CORS headers and reports the first
+    /// line (method and path) of each request it gets.
+    fn recording_server() -> (String, std::sync::mpsc::Receiver<String>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                stream
+                    .set_read_timeout(Some(Duration::from_millis(300)))
+                    .unwrap();
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                let _ = tx.send(text.lines().next().unwrap_or("").to_string());
+                let _ = stream.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                );
+            }
+        });
+        (origin, rx)
+    }
+
+    fn cross_origin_page(script: &str) -> Page {
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        p.set_network_review(Arc::new(|_| true));
+        p.load_html_str(
+            &format!("<body><p id=o>pending</p><script>{script}</script></body>"),
+            Some("http://page.example/".to_string()),
+        );
+        p
+    }
+
+    fn outcome(p: &mut Page) -> String {
+        wait_for(p, |p| {
+            p.web_console().iter().any(|l| l.contains("RESULT"))
+        });
+        p.web_console()
+            .iter()
+            .find(|l| l.contains("RESULT"))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn a_no_cors_fetch_to_another_origin_sends_and_resolves_an_opaque_response() {
+        let (origin, rx) = recording_server();
+        let mut p = cross_origin_page(&format!(
+            "fetch('{origin}/track', {{ mode: 'no-cors' }}).then(r => console.log('RESULT ' + r.type + ' ' + r.status + ' ' + r.ok), e => console.log('RESULT rejected'));"
+        ));
+        assert_eq!(outcome(&mut p), "[log] RESULT opaque 0 false");
+        assert_eq!(rx.try_recv().unwrap(), "GET /track HTTP/1.1");
+    }
+
+    #[test]
+    fn the_same_fetch_in_cors_mode_is_refused() {
+        let (origin, _rx) = recording_server();
+        let mut p = cross_origin_page(&format!(
+            "fetch('{origin}/track').then(r => console.log('RESULT resolved'), e => console.log('RESULT rejected'));"
+        ));
+        assert_eq!(outcome(&mut p), "[log] RESULT rejected");
+    }
+
+    #[test]
+    fn a_beacon_with_a_plain_body_reaches_another_origin_without_preflight() {
+        let (origin, rx) = recording_server();
+        let mut p = cross_origin_page(&format!(
+            "console.log('RESULT ' + navigator.sendBeacon('{origin}/beacon', 'ping=1'));"
+        ));
+        assert_eq!(outcome(&mut p), "[log] RESULT true");
+        let first = rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_eq!(first, "POST /beacon HTTP/1.1", "no OPTIONS before it");
+    }
+
+    #[test]
+    fn a_beacon_with_a_json_body_is_a_cors_request_and_is_preflighted() {
+        let (origin, rx) = recording_server();
+        let mut p = cross_origin_page(&format!(
+            "console.log('RESULT ' + navigator.sendBeacon('{origin}/beacon', new Blob(['{{}}'], {{ type: 'application/json' }})));"
+        ));
+        assert_eq!(outcome(&mut p), "[log] RESULT true");
+        let first = rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_eq!(first, "OPTIONS /beacon HTTP/1.1");
+        // The server grants nothing, so the POST itself is never sent.
+        assert!(rx.recv_timeout(Duration::from_millis(500)).is_err());
     }
 }

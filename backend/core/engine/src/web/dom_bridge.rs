@@ -734,7 +734,7 @@ impl DomState {
                     headers,
                     body,
                     origin,
-                    no_cors: text(4) == "image",
+                    no_cors: matches!(text(4).as_str(), "image" | "beacon" | "no-cors"),
                 });
                 Reply::Number(id as f64)
             }

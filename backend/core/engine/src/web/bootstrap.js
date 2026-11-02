@@ -3492,6 +3492,10 @@
     if (ArrayBuffer.isView(body)) return { bytes: new Uint8Array(body.buffer, body.byteOffset, body.byteLength), type: null };
     return { bytes: encoder.encode(String(body)), type: 'text/plain;charset=UTF-8' };
   };
+  // A Blob's bytes can only be read asynchronously, so a request carrying one is sent once they
+  // are in hand (a Blob sent as `String(body)` would put "[object Blob]" on the wire).
+  const isBlob = (body) => typeof Blob === 'function' && body instanceof Blob;
+  const blobBytes = (blob) => blob.arrayBuffer().then((buffer) => ({ bytes: new Uint8Array(buffer), type: blob.type || null }));
 
   class Response {
     constructor(body, init) {
@@ -3594,7 +3598,7 @@
         reject(abortError());
         return;
       }
-      const { bytes, type } = encodeBody(request.body);
+      const go = ({ bytes, type }) => {
       if (type && !request.headers.has('content-type')) request.headers.set('content-type', type);
       if (request.method === 'GET' || request.method === 'HEAD') {
         if (bytes && bytes.length) {
@@ -3605,10 +3609,24 @@
       let settled = false;
       const headers = Array.from(request.headers);
       let id;
+      // `no-cors` across origins: the request goes out and the page may not look at the answer.
+      const opaque = request.mode === 'no-cors' && request.url.split('/').slice(0, 3).join('/') !== loc().origin;
       try {
         id = netSend(request.method, request.url, headers, bytes, (r) => {
           if (settled) return;
           settled = true;
+          if (opaque) {
+            const hidden = new Response(null, { status: 200 });
+            Object.defineProperties(hidden, {
+              type: { value: 'opaque' },
+              status: { value: 0 },
+              ok: { value: false },
+              statusText: { value: '' },
+              url: { value: '' },
+            });
+            resolve(hidden);
+            return;
+          }
           const response = new Response(null, { status: r.status, statusText: r.statusText, headers: r.headers });
           response._bytes = r.bytes;
           response.url = r.url;
@@ -3620,7 +3638,7 @@
           settled = true;
           console.error('Failed to fetch ' + request.url + ': ' + message);
           reject(new TypeError('Failed to fetch'));
-        });
+        }, opaque ? 'no-cors' : undefined);
       } catch (e) {
         reject(new TypeError('Failed to fetch'));
         return;
@@ -3633,6 +3651,9 @@
           reject(abortError());
         });
       }
+      };
+      if (isBlob(request.body)) blobBytes(request.body).then(go, () => reject(new TypeError('Failed to fetch')));
+      else go(encodeBody(request.body));
     });
 
   class XMLHttpRequest extends EventTarget {
@@ -3709,7 +3730,15 @@
     }
     send(body) {
       if (this.readyState !== 1) throw new DOMException('The object is in an invalid state.', 'InvalidStateError');
-      const { bytes, type } = this._method === 'GET' || this._method === 'HEAD' ? { bytes: null, type: null } : encodeBody(body);
+      if (isBlob(body) && !this._blobBody && this._method !== 'GET' && this._method !== 'HEAD') {
+        blobBytes(body).then((encoded) => {
+          this._blobBody = encoded;
+          this.send(body);
+        });
+        return;
+      }
+      const { bytes, type } = this._method === 'GET' || this._method === 'HEAD' ? { bytes: null, type: null } : this._blobBody || encodeBody(body);
+      this._blobBody = null;
       if (type && !this._headers.has('content-type')) this._headers.set('content-type', type);
       this._fire('loadstart');
       let id;
@@ -3890,8 +3919,15 @@
     pdfViewerEnabled: false,
     sendBeacon: (url, data) => {
       try {
-        const { bytes, type } = encodeBody(data);
-        netSend('POST', resolveUrl(String(url)), type ? [['content-type', type]] : [], bytes, () => {}, () => {});
+        const target = resolveUrl(String(url));
+        const send = ({ bytes, type }) => {
+          // A beacon is a no-cors request unless its body type needs CORS (JSON, say), in which
+          // case it is preflighted like any other cross-origin request.
+          const simple = !type || /^(text\/plain|application\/x-www-form-urlencoded|multipart\/form-data)\s*(;|$)/i.test(type);
+          netSend('POST', target, type ? [['content-type', type]] : [], bytes, () => {}, () => {}, simple ? 'beacon' : '');
+        };
+        if (isBlob(data)) blobBytes(data).then(send, () => {});
+        else send(encodeBody(data));
         return true;
       } catch (_) {
         return false;

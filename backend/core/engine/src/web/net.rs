@@ -116,7 +116,8 @@ fn perform_request(job: &NetJob, review: &dyn Fn(&str) -> bool) -> NetOutcome {
     let method = job.method.to_ascii_uppercase();
     let cross = target_origin != job.origin;
 
-    if cross && needs_preflight(&method, &job.headers) {
+    // A no-cors request is restricted to what needs no preflight; it is never preflighted.
+    if cross && !job.no_cors && needs_preflight(&method, &job.headers) {
         if !review(&job.url) {
             return fail("the request was blocked");
         }
