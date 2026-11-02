@@ -778,8 +778,9 @@ and fixed the three things that dominated, in the order they did:
     collector's sets and the global-name tables was replaced by a non-keyed hash, short
     `&str` -> `JsString` conversions share a buffer, and a caller's frame is parked in
     `saved_caller_frames` instead of being copied onto the stack per call.
-  - *Still open for these sites.* The top of Yahoo's page has a blank band before the focus
-    block; `NodeFilter`/`TreeWalker` are missing (an ad script); one ad script (305 KB,
+  - *Not a defect.* The blank band under Yahoo's header is the billboard ad slot (`#fullbleed`,
+    258 px reserved by the page's own CSS); with no ad filled in it is empty in any browser.
+  - *Still open for these sites.* `NodeFilter`/`TreeWalker` are missing (an ad script); one ad script (305 KB,
     obfuscated) reaches the 384 MB managed-heap limit; `window` `error` events are not delivered
     to listeners added with `addEventListener` for errors thrown from timers; the uncaught-error
     report for a `DOMException` prints `[Object]` without its message.
