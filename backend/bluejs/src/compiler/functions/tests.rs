@@ -226,31 +226,136 @@ fn internal_names_are_always_captured() {
 }
 
 #[test]
-fn looking_up_a_name_that_was_left_out_is_noticed() {
+fn a_lookup_that_finds_nothing_is_recorded_and_one_that_resolves_is_not() {
     let mut compiler = bare_compiler();
+    compiler.names[0].insert("found".to_string(), 0);
     let guard = std::rc::Rc::new(PruneGuard {
-        pruned: std::cell::RefCell::new(["x".to_string()].into()),
-        missed: std::cell::Cell::new(false),
+        not_found: std::cell::RefCell::new(Default::default()),
     });
     compiler.prune_guards.push(std::rc::Rc::clone(&guard));
+    assert_eq!(compiler.resolve("found"), Some(0));
+    assert!(guard.not_found.borrow().is_empty(), "a name that resolves is never a miss");
     assert_eq!(compiler.resolve("somewhere_else"), None);
-    assert!(!guard.missed.get(), "an unrelated global is not a miss");
-    assert_eq!(compiler.resolve("x"), None);
-    assert!(
-        guard.missed.get(),
-        "a name that was pruned and is needed is"
+    assert_eq!(compiler.resolve("somewhere_else"), None);
+    assert_eq!(
+        guard.not_found.borrow().iter().cloned().collect::<Vec<_>>(),
+        vec!["somewhere_else".to_string()],
+        "a miss is recorded once"
     );
 }
 
 #[test]
-fn a_name_that_resolves_is_never_a_miss() {
+fn the_unrecorded_lookup_leaves_the_guards_alone() {
     let mut compiler = bare_compiler();
-    compiler.names[0].insert("x".to_string(), 0);
+    compiler.names[0].insert("x".to_string(), 3);
     let guard = std::rc::Rc::new(PruneGuard {
-        pruned: std::cell::RefCell::new(["x".to_string()].into()),
-        missed: std::cell::Cell::new(false),
+        not_found: std::cell::RefCell::new(Default::default()),
     });
     compiler.prune_guards.push(std::rc::Rc::clone(&guard));
-    assert_eq!(compiler.resolve("x"), Some(0));
-    assert!(!guard.missed.get());
+    assert_eq!(compiler.resolve_unrecorded("x"), Some(3));
+    assert_eq!(compiler.resolve_unrecorded("y"), None);
+    assert!(guard.not_found.borrow().is_empty());
+}
+
+/// The `Function` of the first function expression statement in `source`.
+fn first_function(program: &crate::Program) -> &Function {
+    program
+        .body
+        .iter()
+        .find_map(|statement| match statement {
+            crate::ast::Stmt::Expr(crate::ast::Expr::Function(function)) => Some(function),
+            crate::ast::Stmt::Expr(crate::ast::Expr::Parenthesized(inner)) => match &**inner {
+                crate::ast::Expr::Function(function) => Some(function),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("a function expression")
+}
+
+/// A compiler whose scope holds `x` (slot 0) and `y` (slot 1).
+fn compiler_with_x_and_y() -> Compiler {
+    let mut compiler = bare_compiler();
+    for (slot, name) in ["x", "y"].into_iter().enumerate() {
+        compiler.names[0].insert(name.to_string(), slot as u32);
+        compiler.bytecode.bindings_mut().push(Binding {
+            name: name.to_string(),
+            mutable: true,
+            strict_immutable: false,
+            lexical: true,
+            catch_parameter: false,
+            eval_var: false,
+        });
+    }
+    compiler
+}
+
+fn build(
+    compiler: &Compiler,
+    function: &Function,
+    mentions: Option<&crate::ast::Mentions<'_>>,
+) -> (Vec<String>, bool) {
+    let options = FunctionCompileOptions {
+        constructible: true,
+        force_strict: false,
+        class_constructor: false,
+        derived_constructor: false,
+        default_derived_constructor: false,
+        class_method: false,
+        class_field_initializer: false,
+    };
+    let (built, missed) = compiler.build_function(function, false, None, false, options, mentions);
+    let (code, _) = built.expect("the function compiles");
+    (
+        code.bindings.iter().take(code.captures.len()).map(|b| b.name.clone()).collect(),
+        missed,
+    )
+}
+
+#[test]
+fn a_function_captures_only_what_it_mentions_and_its_guard_stays_quiet() {
+    let compiler = compiler_with_x_and_y();
+    let program = crate::parse("(function () { return x; })").unwrap();
+    let function = first_function(&program);
+    let mentions = crate::ast::function_mentions(function);
+    let (captured, missed) = build(&compiler, function, Some(&mentions));
+    assert_eq!(captured, vec!["x".to_string()], "y is not mentioned, so not captured");
+    assert!(!missed);
+    // Unpruned, both come through, in name order.
+    let (all, missed) = build(&compiler, function, None);
+    assert_eq!(all, vec!["x".to_string(), "y".to_string()]);
+    assert!(!missed);
+}
+
+#[test]
+fn a_name_the_analysis_left_out_but_the_code_uses_is_noticed_after_the_build() {
+    let compiler = compiler_with_x_and_y();
+    let uses_x = crate::parse("(function () { return x; })").unwrap();
+    let uses_y = crate::parse("(function () { return y; })").unwrap();
+    // The analysis of a different function stands in for an analysis that missed `x`.
+    let wrong = crate::ast::function_mentions(first_function(&uses_y));
+    let (captured, missed) = build(&compiler, first_function(&uses_x), Some(&wrong));
+    assert_eq!(captured, vec!["y".to_string()]);
+    assert!(missed, "the function looked up `x`, which the creator could see and it left out");
+}
+
+#[test]
+fn a_global_the_creator_cannot_see_is_not_a_miss() {
+    let compiler = compiler_with_x_and_y();
+    let program = crate::parse("(function () { return window + x; })").unwrap();
+    let function = first_function(&program);
+    let mentions = crate::ast::function_mentions(function);
+    let (_, missed) = build(&compiler, function, Some(&mentions));
+    assert!(!missed, "`window` is simply a global");
+}
+
+#[test]
+fn a_direct_eval_captures_everything_visible() {
+    let compiler = compiler_with_x_and_y();
+    let program = crate::parse("(function () { return eval('1'); })").unwrap();
+    let function = first_function(&program);
+    let mentions = crate::ast::function_mentions(function);
+    let (captured, missed) = build(&compiler, function, Some(&mentions));
+    assert_eq!(captured, vec!["x".to_string(), "y".to_string()]);
+    assert!(!missed);
 }

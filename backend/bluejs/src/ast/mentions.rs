@@ -25,8 +25,22 @@ pub(crate) struct Mentions<'a> {
     eval: bool,
 }
 
+impl<'a> Mentions<'a> {
+    /// The names the source mentions, in order; meaningless (incomplete) when
+    /// [`Self::mentions_eval`], which stands for every name.
+    pub(crate) fn names(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.names.iter().copied()
+    }
+
+    /// Whether a direct eval may appear inside: then any enclosing name can be used.
+    pub(crate) fn mentions_eval(&self) -> bool {
+        self.eval
+    }
+}
+
 impl Mentions<'_> {
     /// Whether code inside may use `name` from an enclosing scope.
+    #[cfg(test)]
     pub(crate) fn may_use(&self, name: &str) -> bool {
         self.eval || name.starts_with('\0') || self.names.contains(name)
     }

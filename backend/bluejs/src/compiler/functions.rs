@@ -1153,8 +1153,7 @@ impl Compiler {
         prune: Option<&crate::ast::Mentions<'_>>,
     ) -> (Result<(Bytecode, u32), CompileError>, bool) {
         let guard = std::rc::Rc::new(PruneGuard {
-            pruned: std::cell::RefCell::new(BTreeSet::new()),
-            missed: std::cell::Cell::new(false),
+            not_found: std::cell::RefCell::new(HashSet::new()),
         });
         let built = self.build_function_inner(
             function,
@@ -1165,7 +1164,15 @@ impl Compiler {
             prune,
             &guard,
         );
-        (built, guard.missed.get())
+        // Only when names were left out can a lookup have wrongly missed one. The two derived
+        // bindings are never captured by a non-arrow function, pruned or not.
+        let missed = prune.is_some()
+            && guard.not_found.borrow().iter().any(|name| {
+                name != DERIVED_THIS_BINDING
+                    && name != DERIVED_CONSTRUCTOR_BINDING
+                    && self.resolve_unrecorded(name).is_some()
+            });
+        (built, missed)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1261,31 +1268,49 @@ impl Compiler {
         // fallback), and that search reads the captures. Leaving some out would change what
         // it finds, so such a function keeps every name, as it always did.
         let prune = prune.filter(|_| child.with_depth == 0);
-        let mut visible = std::collections::BTreeMap::new();
-        for scope in &self.names {
-            visible.extend(scope.iter().map(|(name, slot)| (name.clone(), *slot)));
+        // What the child captures, in name order: with pruning only what its source mentions
+        // (looked up directly, so the work follows the function's size, not the number of
+        // names in scope) plus the compiler's own NUL-prefixed bindings; otherwise every
+        // visible name, the innermost declaration of each winning.
+        let mut chosen: std::collections::BTreeMap<&str, u32> = std::collections::BTreeMap::new();
+        match prune.filter(|mentions| !mentions.mentions_eval()) {
+            Some(mentions) => {
+                for name in mentions.names() {
+                    if let Some(slot) = self.resolve_unrecorded(name) {
+                        chosen.insert(name, slot);
+                    }
+                }
+                for scope in &self.names {
+                    for (name, slot) in scope {
+                        if name.starts_with('\0') {
+                            chosen.insert(name.as_str(), *slot);
+                        }
+                    }
+                }
+            }
+            None => {
+                for scope in &self.names {
+                    chosen.extend(scope.iter().map(|(name, slot)| (name.as_str(), *slot)));
+                }
+            }
         }
-        for (name, slot) in visible {
+        for (name, slot) in chosen {
             // Only an arrow function shares its creator's `this` and derived
             // constructor; any other function has its own receiver.
             if !arrow && (name == DERIVED_THIS_BINDING || name == DERIVED_CONSTRUCTOR_BINDING) {
                 continue;
             }
-            if prune.is_some_and(|mentions| !mentions.may_use(&name)) {
-                guard.pruned.borrow_mut().insert(name);
-                continue;
-            }
             // These are unique names from the parent, whose binding table
             // already passed the same limit. Every child index fits u32.
             let index = child.bytecode.bindings.len() as u32;
-            child.names[0].insert(name, index);
+            child.names[0].insert(name.to_owned(), index);
             child
                 .bytecode
                 .bindings_mut()
                 .push(self.bytecode.bindings[slot as usize].clone());
             child.bytecode.captures.push(slot);
         }
-        if !guard.pruned.borrow().is_empty() {
+        if prune.is_some() {
             child.prune_guards.push(std::rc::Rc::clone(guard));
         }
         if named_expression {

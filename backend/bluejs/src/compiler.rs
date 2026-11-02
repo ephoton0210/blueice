@@ -723,8 +723,10 @@ struct Loop {
 /// looks one of them up, the analysis was wrong; `missed` records that so the closure is
 /// compiled again with every name captured.
 struct PruneGuard {
-    pruned: std::cell::RefCell<BTreeSet<String>>,
-    missed: std::cell::Cell<bool>,
+    /// Names the function (or one nested in it) looked up and did not find among what it
+    /// captured. After the build, the creator is asked whether it could see any of them: a
+    /// name it could is one the analysis wrongly left out.
+    not_found: std::cell::RefCell<HashSet<String>>,
 }
 
 struct Compiler {
@@ -942,6 +944,14 @@ impl Compiler {
         Ok(())
     }
 
+    /// [`Self::resolve`] without recording a miss for the enclosing closures' guards.
+    fn resolve_unrecorded(&self, name: &str) -> Option<u32> {
+        self.names
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
+    }
+
     fn resolve(&self, name: &str) -> Option<u32> {
         let found = self
             .names
@@ -950,8 +960,9 @@ impl Compiler {
             .find_map(|scope| scope.get(name).copied());
         if found.is_none() {
             for guard in &self.prune_guards {
-                if guard.pruned.borrow().contains(name) {
-                    guard.missed.set(true);
+                let mut seen = guard.not_found.borrow_mut();
+                if !seen.contains(name) {
+                    seen.insert(name.to_owned());
                 }
             }
         }
