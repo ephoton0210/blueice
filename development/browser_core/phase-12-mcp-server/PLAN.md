@@ -14,6 +14,7 @@ Raised while Phase 5 was fresh, not while working through the numbered sequence:
 
 - `navigate(url)`, `get_page_representation()` — wrap `ClientMessage::Navigate`/`GetRepresentation` directly.
 - `click(node_id)`, `type_text(node_id, text)`, `focus(node_id)`, `scroll_into_view(node_id)` — wrap `ActOn` with each `NodeAction` variant.
+- `scroll(delta_y, notch_px?, interval_ms?, track?, tab_id?)` — scrolls like a mouse wheel: separate `Scroll` notches, each awaited until core's frame. The result is a *trajectory*, not screenshots: the page's `scroll_y` and each tracked node's document and viewport position before the first notch and after every notch (read from core's own layout), with per-notch send-to-frame time, frame generation and size. At most 2000 notches / 60 s per call.
 - `highlight(node_id)` — wraps `Highlight`.
 - `screenshot()` — the one tool with no direct `ClientMessage` equivalent: reads the most recently cached `FrameReady`'s shared-memory frame and PNG-encodes it, since there's no "resend the current frame" message (every frame is the side effect of some state change).
 - `get_dom()` — wraps `ClientMessage::GetDom`, added specifically for [Phase 15](../phase-15-chromium-differential-testing/PLAN.md)'s differential-testing harness (needs the *unfiltered* DOM, unlike `get_page_representation`'s AI-facing subset).

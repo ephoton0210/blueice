@@ -71,6 +71,120 @@ pub struct ToolOutcome {
     pub snapshot: AiSnapshot,
 }
 
+/// How many nodes a scroll follows when the caller names none.
+const DEFAULT_TRACKED_NODES: usize = 8;
+
+/// Where one tracked node is at one moment. `doc_y` is its position in the
+/// page; `viewport_y` is that minus the scroll position, which is where it
+/// is in the window and so what a person sees move.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct NodePosition {
+    pub id: u64,
+    pub doc_x: f64,
+    pub doc_y: f64,
+    pub viewport_y: f64,
+    pub width: f64,
+    pub height: f64,
+    /// Whether any of it is inside the viewport (needs the frame height).
+    pub in_view: Option<bool>,
+}
+
+/// The page and its tracked nodes at one moment.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct TrajectorySample {
+    /// Time since the scroll began.
+    pub at_ms: f64,
+    pub scroll_y: f64,
+    /// Core's frame generation this layout belongs to.
+    pub generation: u64,
+    pub nodes: Vec<NodePosition>,
+    /// Tracked nodes the page no longer has.
+    pub missing: Vec<u64>,
+}
+
+fn sample(
+    snapshot: &AiSnapshot,
+    ids: &[u64],
+    viewport_height: Option<u32>,
+    at: Duration,
+) -> TrajectorySample {
+    let mut nodes = Vec::new();
+    let mut missing = Vec::new();
+    for &id in ids {
+        match snapshot.nodes.iter().find(|node| node.id == id) {
+            Some(node) => {
+                let viewport_y = node.bounds.y - snapshot.scroll_y;
+                nodes.push(NodePosition {
+                    id,
+                    doc_x: node.bounds.x,
+                    doc_y: node.bounds.y,
+                    viewport_y,
+                    width: node.bounds.width,
+                    height: node.bounds.height,
+                    in_view: viewport_height.map(|h| {
+                        viewport_y + node.bounds.height > 0.0 && viewport_y < f64::from(h)
+                    }),
+                });
+            }
+            None => missing.push(id),
+        }
+    }
+    TrajectorySample {
+        at_ms: at.as_secs_f64() * 1000.0,
+        scroll_y: snapshot.scroll_y,
+        generation: snapshot.generation,
+        nodes,
+        missing,
+    }
+}
+
+/// One wheel notch of [`CoreConnection::scroll`], what it cost, and where the
+/// page and its tracked nodes were afterwards.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ScrollStep {
+    pub index: usize,
+    pub delta_y: f64,
+    /// When the notch was sent, from the start of the scroll.
+    pub sent_at_ms: f64,
+    /// Send to core's frame for it; `None` when core never produced one.
+    pub frame_ms: Option<f64>,
+    pub generation: Option<u64>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    /// The layout after this notch; `None` when core refused it.
+    pub position: Option<TrajectorySample>,
+}
+
+/// The complete record of one [`CoreConnection::scroll`].
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ScrollRecord {
+    pub error: Option<String>,
+    pub total_ms: f64,
+    pub url: Option<String>,
+    /// The nodes whose positions every sample carries.
+    pub tracked: Vec<u64>,
+    /// The layout before the first notch.
+    pub start: TrajectorySample,
+    pub steps: Vec<ScrollStep>,
+}
+
+/// Splits a scroll of `total` pixels into wheel notches of at most `notch`
+/// pixels, keeping the sign; a zero total or non-positive notch is no scroll.
+pub fn scroll_notches(total: f64, notch: f64) -> Vec<f64> {
+    if !total.is_finite() || !notch.is_finite() || total == 0.0 || notch <= 0.0 {
+        return Vec::new();
+    }
+    let sign = total.signum();
+    let mut left = total.abs();
+    let mut out = Vec::new();
+    while left > 1e-9 {
+        let step = left.min(notch);
+        out.push(sign * step);
+        left -= step;
+    }
+    out
+}
+
 /// The result of a live-translation control: `core`'s `TranslationState` reply
 /// plus the page representation that follows it (translated text is primary,
 /// with each node's `original_name` attached). `error` is set when `core`
@@ -479,6 +593,131 @@ impl<S: Read + Write> CoreConnection<S> {
     /// Restore the next session-history entry for `tab_id`.
     pub fn go_forward(&mut self, tab_id: Option<u64>) -> io::Result<ToolOutcome> {
         self.send_navigation_and_wait(tab_id, ClientMessage::GoForward)
+    }
+
+    /// Scrolls the way a person's mouse wheel does: `total_delta_y` CSS pixels
+    /// (positive scrolls down) in notches of at most `notch_px`, each sent as
+    /// its own `Scroll` and awaited until core's frame for it arrives, with
+    /// `interval` between notches. After the starting position and after every
+    /// notch the page's scroll position and the position of each tracked node
+    /// are read from core's own layout, so the result is a trajectory of the
+    /// page and its DOM over time rather than a pile of screenshots. `track`
+    /// names the nodes to follow; without it the first few visible, named
+    /// nodes at the start are followed.
+    pub fn scroll(
+        &mut self,
+        total_delta_y: f64,
+        notch_px: f64,
+        interval: Duration,
+        track: Option<Vec<u64>>,
+        tab_id: Option<u64>,
+    ) -> io::Result<ScrollRecord> {
+        let started = Instant::now();
+        let first = self.representation(tab_id)?;
+        let tracked_ids: Vec<u64> = match track {
+            Some(ids) => ids,
+            None => first
+                .nodes
+                .iter()
+                .filter(|node| {
+                    node.name.as_deref().is_some_and(|n| !n.trim().is_empty())
+                        && node.bounds.height > 0.0
+                        && node.bounds.y + node.bounds.height > first.scroll_y
+                })
+                .map(|node| node.id)
+                .take(DEFAULT_TRACKED_NODES)
+                .collect(),
+        };
+        let start = sample(&first, &tracked_ids, None, started.elapsed());
+        let mut steps = Vec::new();
+        let mut error = None;
+        for (index, delta_y) in scroll_notches(total_delta_y, notch_px)
+            .into_iter()
+            .enumerate()
+        {
+            if index > 0 && !interval.is_zero() {
+                std::thread::sleep(interval);
+            }
+            let request_id = self.next_request_id();
+            let sent = Instant::now();
+            let sent_at_ms = started.elapsed().as_secs_f64() * 1000.0;
+            blueice_ipc::write_client_message_with_ids(
+                &mut self.stream,
+                tab_id,
+                Some(request_id),
+                &ClientMessage::Scroll { delta_y },
+            )?;
+            let mut frame = None;
+            loop {
+                let (frame_tab_id, reply_id, message) =
+                    blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+                if reply_id != Some(request_id) {
+                    continue;
+                }
+                match message {
+                    ServerMessage::FrameReady {
+                        shm_path,
+                        width,
+                        height,
+                        generation,
+                    } => {
+                        frame = Some((sent.elapsed(), width, height, generation));
+                        self.record_frame(
+                            frame_tab_id,
+                            FrameInfo {
+                                shm_path,
+                                width,
+                                height,
+                                generation,
+                            },
+                            true,
+                        );
+                        break;
+                    }
+                    ServerMessage::Error { message } => {
+                        error = Some(message);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            let (frame_ms, generation, width, height) = match frame {
+                Some((took, width, height, generation)) => (
+                    Some(took.as_secs_f64() * 1000.0),
+                    Some(generation),
+                    Some(width),
+                    Some(height),
+                ),
+                None => (None, None, None, None),
+            };
+            let position = if error.is_none() {
+                let snapshot = self.representation(tab_id)?;
+                Some(sample(&snapshot, &tracked_ids, height, started.elapsed()))
+            } else {
+                None
+            };
+            steps.push(ScrollStep {
+                index,
+                delta_y,
+                sent_at_ms,
+                frame_ms,
+                generation,
+                width,
+                height,
+                position,
+            });
+            if error.is_some() {
+                break;
+            }
+        }
+        Ok(ScrollRecord {
+            error,
+            total_ms: started.elapsed().as_secs_f64() * 1000.0,
+            url: first.url.clone(),
+            tracked: tracked_ids,
+            start,
+            steps,
+        })
     }
 
     /// Chooses the language pages fetched from now on are translated into

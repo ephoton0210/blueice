@@ -58,6 +58,21 @@ struct NodeIdParams {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+struct ScrollParams {
+    /// Total CSS pixels to scroll; positive scrolls down, negative up.
+    delta_y: f64,
+    /// Pixels per wheel notch (default 20).
+    notch_px: Option<f64>,
+    /// Milliseconds between notches (default 16).
+    interval_ms: Option<u64>,
+    /// Node IDs whose positions to record at every step; omit to follow the
+    /// first eight visible named nodes.
+    track: Option<Vec<u64>>,
+    /// Which tab to scroll, or omit for the default tab.
+    tab_id: Option<u64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 struct TypeTextParams {
     /// A stable node ID from a prior `get_page_representation` call.
     node_id: u64,

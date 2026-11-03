@@ -239,6 +239,47 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
+        description = "Scroll the page the way a person's mouse wheel does: delta_y CSS pixels (positive = down) sent as separate wheel notches (notch_px each, default 20, the amount one wheel line scrolls in the human window), interval_ms apart (default 16). Each notch waits for core's frame, and the result is a trajectory, not screenshots: the page's scroll position and, for each tracked node, its document and viewport position before the first notch and after every notch, with per-notch send-to-frame time, frame generation and size. track lists node IDs to follow; omit it to follow the first eight visible named nodes. At most 2000 notches and 60 s per call."
+    )]
+    pub(super) async fn scroll(
+        &self,
+        Parameters(ScrollParams {
+            delta_y,
+            notch_px,
+            interval_ms,
+            track,
+            tab_id,
+        }): Parameters<ScrollParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let notch_px = notch_px.unwrap_or(20.0);
+        let interval_ms = interval_ms.unwrap_or(16);
+        let notches = crate::scroll_notches(delta_y, notch_px).len() as u64;
+        if notches > 2000 || notches.saturating_mul(interval_ms) > 60_000 {
+            return Err(ErrorData::invalid_params(
+                "scroll is limited to 2000 notches and 60 s in total; use a larger notch_px or a shorter interval_ms",
+                None,
+            ));
+        }
+        let record = blocking(self.core.clone(), move |conn| {
+            conn.scroll(
+                delta_y,
+                notch_px,
+                std::time::Duration::from_millis(interval_ms),
+                track,
+                tab_id,
+            )
+        })
+        .await?;
+        let text = serde_json::to_string_pretty(&record).unwrap_or_else(|_| "{}".to_string());
+        let text = crate::wrap_untrusted_page_content(&text);
+        if record.error.is_some() {
+            Ok(CallToolResult::error(vec![Content::text(text)]))
+        } else {
+            Ok(CallToolResult::success(vec![Content::text(text)]))
+        }
+    }
+
+    #[tool(
         description = "Highlight an element for the human-visible window (an outline drawn around its current bounds), or clear the highlight by omitting node_id"
     )]
     pub(super) async fn highlight(

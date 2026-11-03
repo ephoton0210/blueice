@@ -297,3 +297,143 @@ fn frame_to_png_bytes_produces_a_real_decodable_png() {
         &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
     );
 }
+
+#[test]
+fn a_wheel_scroll_records_the_page_and_node_trajectory_notch_by_notch() {
+    let (client, server) = UnixStream::pair().unwrap();
+    // Node 1 sits at document y 100; the page is scrolled to `scroll_y`.
+    let representation = |scroll_y: f64, generation: u64| -> FakeCoreStep {
+        Box::new(move |msg, s| {
+            assert!(matches!(msg, ClientMessage::GetRepresentation));
+            let mut snapshot = sample_snapshot(generation);
+            snapshot.scroll_y = scroll_y;
+            snapshot.nodes[0].bounds.y = 100.0;
+            reply(s, &ServerMessage::Representation(snapshot));
+        })
+    };
+    let notch = |expected: f64, generation: u64| -> FakeCoreStep {
+        Box::new(move |msg, s| {
+            assert_eq!(msg, ClientMessage::Scroll { delta_y: expected });
+            reply_tab(
+                s,
+                1,
+                &ServerMessage::FrameReady {
+                    shm_path: "/tmp/x".to_string(),
+                    width: 10,
+                    height: 40,
+                    generation,
+                },
+            );
+        })
+    };
+    fake_core(
+        server,
+        vec![
+            representation(0.0, 4),
+            notch(20.0, 5),
+            representation(20.0, 5),
+            notch(20.0, 6),
+            representation(40.0, 6),
+            notch(10.0, 7),
+            representation(50.0, 7),
+        ],
+    );
+
+    let mut conn = CoreConnection::new(client);
+    let record = conn
+        .scroll(50.0, 20.0, Duration::ZERO, Some(vec![1, 99]), None)
+        .unwrap();
+    assert_eq!(record.error, None);
+    assert_eq!(record.tracked, [1, 99]);
+    assert_eq!(record.start.scroll_y, 0.0);
+    assert_eq!(record.start.nodes[0].viewport_y, 100.0);
+    assert_eq!(record.start.missing, [99]);
+    assert_eq!(
+        record.steps.iter().map(|s| s.delta_y).collect::<Vec<_>>(),
+        [20.0, 20.0, 10.0]
+    );
+    assert_eq!(
+        record
+            .steps
+            .iter()
+            .map(|s| s.generation)
+            .collect::<Vec<_>>(),
+        [Some(5), Some(6), Some(7)]
+    );
+    assert!(record.steps.iter().all(|s| s.frame_ms.is_some()));
+    // The node's document position never changes; its place in the window
+    // moves up by exactly what was scrolled, and it leaves the 40px view.
+    let after: Vec<(f64, f64, Option<bool>)> = record
+        .steps
+        .iter()
+        .map(|s| {
+            let p = s.position.as_ref().unwrap();
+            (p.scroll_y, p.nodes[0].viewport_y, p.nodes[0].in_view)
+        })
+        .collect();
+    assert_eq!(
+        after,
+        [
+            (20.0, 80.0, Some(false)),
+            (40.0, 60.0, Some(false)),
+            (50.0, 50.0, Some(false))
+        ]
+    );
+    assert!(record
+        .steps
+        .iter()
+        .all(|s| s.position.as_ref().unwrap().nodes[0].doc_y == 100.0));
+    assert_eq!(conn.last_frame(Some(1)).unwrap().generation, 7);
+}
+
+#[test]
+fn without_a_track_list_the_first_visible_named_nodes_are_followed() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![Box::new(|_, s| {
+            reply(s, &ServerMessage::Representation(sample_snapshot(1)));
+        })],
+    );
+    let mut conn = CoreConnection::new(client);
+    let record = conn.scroll(0.0, 20.0, Duration::ZERO, None, None).unwrap();
+    assert_eq!(record.tracked, [1]);
+    assert!(record.steps.is_empty());
+    assert_eq!(record.start.nodes.len(), 1);
+}
+
+#[test]
+fn an_upward_scroll_sends_negative_notches() {
+    assert_eq!(scroll_notches(-45.0, 20.0), [-20.0, -20.0, -5.0]);
+    assert_eq!(scroll_notches(40.0, 20.0), [20.0, 20.0]);
+    assert!(scroll_notches(0.0, 20.0).is_empty());
+}
+
+#[test]
+fn a_wheel_scroll_the_core_refuses_stops_and_reports_why() {
+    let (client, server) = UnixStream::pair().unwrap();
+    fake_core(
+        server,
+        vec![
+            Box::new(|_, s| {
+                reply(s, &ServerMessage::Representation(sample_snapshot(1)));
+            }),
+            Box::new(|_, s| {
+                reply(
+                    s,
+                    &ServerMessage::Error {
+                        message: "unknown tab 9".to_string(),
+                    },
+                );
+            }),
+        ],
+    );
+    let mut conn = CoreConnection::new(client);
+    let record = conn
+        .scroll(100.0, 20.0, Duration::ZERO, None, Some(9))
+        .unwrap();
+    assert_eq!(record.error.as_deref(), Some("unknown tab 9"));
+    assert_eq!(record.steps.len(), 1);
+    assert_eq!(record.steps[0].generation, None);
+    assert_eq!(record.steps[0].position, None);
+}
