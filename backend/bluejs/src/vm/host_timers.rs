@@ -47,6 +47,11 @@ pub struct BlueJsTimerRun {
     /// Callbacks, or microtasks they queued, that ended in an uncaught page
     /// exception. Such an exception ends only that callback.
     pub uncaught_errors: u32,
+    /// Callbacks stopped (and, for an interval, cancelled) because they ran
+    /// past the host's wall-clock limit; see [`Vm::set_script_time_limits`].
+    pub timed_out: u32,
+    /// Due timers left for the next pass because this one used its time slice.
+    pub deferred: u32,
 }
 
 pub(super) struct HostTimer {
@@ -224,9 +229,17 @@ impl Vm {
             }
         }
         let due = self.snapshot_due_host_timers(now_ms)?;
-        for &(_, id) in due.iter().take(MAX_HOST_TIMER_TASKS_PER_TURN) {
+        let started = std::time::Instant::now();
+        let slice = self.script_time.slice;
+        let planned = due.len().min(MAX_HOST_TIMER_TASKS_PER_TURN);
+        for (position, &(_, id)) in due.iter().take(MAX_HOST_TIMER_TASKS_PER_TURN).enumerate() {
             self.run_host_timer_entry(id, &mut run)?;
             if self.checkpoint_completion_pending() {
+                break;
+            }
+            // The host has input to answer: what is still due waits one pass.
+            if slice.is_some_and(|slice| started.elapsed() >= slice) {
+                run.deferred = (planned - position - 1) as u32;
                 break;
             }
         }
@@ -364,9 +377,41 @@ impl Vm {
         if self.host_timers.is_empty() {
             self.host_timers.shrink_to_fit();
         }
+        let source = self.timer_callback_description(callback);
+        self.script_time.expired_flag = false;
+        self.script_time.expired_where = None;
+        self.script_time.deadline = self
+            .script_time
+            .callback_limit
+            .map(|limit| std::time::Instant::now() + limit);
         let outcome = self
             .synchronize_scheduling_usage()
             .and_then(|()| self.run_timer_task(callback, prepared, nesting, run));
+        self.script_time.deadline = None;
+        // The callback ran past its wall-clock limit and was stopped. Like an
+        // uncaught exception it ends only that callback, but it must also not
+        // be asked to run again: an interval that always overruns would
+        // otherwise freeze the host once per period for ever.
+        let outcome = if self.script_time.expired_flag
+            && matches!(outcome, Err(RuntimeError::InstructionLimit))
+        {
+            self.script_time.expired_flag = false;
+            run.timed_out += 1;
+            let at = self
+                .script_time
+                .expired_where
+                .take()
+                .unwrap_or_else(|| "(unknown)".to_string());
+            self.script_time_reports.push(format!(
+                "timer callback {source} stopped after running longer than the wall-clock limit; it was in: {at}"
+            ));
+            if let Some(index) = self.host_timers.iter().position(|timer| timer.id == id) {
+                self.host_timers.remove(index);
+            }
+            Ok(())
+        } else {
+            outcome
+        };
         self.async_frame_roots.truncate(root_base);
         self.release_timer_roots(snapshot.roots);
         drop(snapshot.storage);
@@ -395,6 +440,40 @@ impl Vm {
                 .saturating_add(self.run_host_microtask_checkpoint()?);
         }
         Ok(())
+    }
+
+    /// Gives page scripts wall-clock limits: no timer callback (with its
+    /// microtasks) may run longer than `callback`, and one pass over the due
+    /// timers stops starting new callbacks after `slice`. A callback that
+    /// overruns is stopped and cancelled. `None` removes a limit.
+    pub fn set_script_time_limits(
+        &mut self,
+        callback: Option<std::time::Duration>,
+        slice: Option<std::time::Duration>,
+    ) {
+        self.script_time.callback_limit = callback;
+        self.script_time.slice = slice;
+    }
+
+    /// Descriptions of the callbacks stopped by the wall-clock limit since
+    /// the last call: each names the function and the start of its source.
+    pub fn take_script_time_reports(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.script_time_reports)
+    }
+
+    fn timer_callback_description(&self, callback: ObjectId) -> String {
+        let text = self
+            .heap
+            .function_source_text(callback)
+            .ok()
+            .flatten()
+            .map(|source| String::from_utf16_lossy(source.as_code_units()))
+            .unwrap_or_else(|| "(native function)".to_string());
+        let mut short: String = text.chars().take(160).collect();
+        if text.chars().count() > 160 {
+            short.push('…');
+        }
+        short.replace('\n', " ")
     }
 
     fn release_timer_roots(&mut self, roots: Vec<RootId>) {

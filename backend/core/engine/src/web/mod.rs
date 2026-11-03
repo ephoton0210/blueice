@@ -36,6 +36,13 @@ use std::time::Instant;
 const MAX_STRING_BYTES: usize = 48 * 1024 * 1024;
 
 const INSTRUCTION_BUDGET: u64 = 400_000_000;
+/// How long one timer callback may run before it is stopped and cancelled. The
+/// instruction budget above is no bound on time: it is minutes of work in a
+/// slow build, and the core answers a person and an AI on the same thread.
+const CALLBACK_WALL_LIMIT: std::time::Duration = std::time::Duration::from_millis(1500);
+/// How long one pass over the due timers may keep starting callbacks; what is
+/// still due waits for the next pass so input is answered in between.
+const TICK_SLICE: std::time::Duration = std::time::Duration::from_millis(30);
 /// Heap a document's script may hold.
 const MAX_HEAP_BYTES: usize = 384 * 1024 * 1024;
 
@@ -105,6 +112,7 @@ impl WebHost {
             ..defaults
         };
         let mut vm = Vm::new(config).map_err(|e| format!("{e:?}"))?;
+        vm.set_script_time_limits(Some(CALLBACK_WALL_LIMIT), Some(TICK_SLICE));
         let started = Instant::now();
         let state = Rc::new(RefCell::new(state));
         vm.install_web_file_api().map_err(|e| e.to_string())?;
@@ -235,8 +243,21 @@ impl WebHost {
             .vm
             .run_due_host_timers(now)
             .map_or(0, |run| run.tasks_run as usize);
+        for report in self.vm.take_script_time_reports() {
+            self.note(&format!("page script stopped: {report}"));
+        }
         self.collect_console();
         ran
+    }
+
+    /// Replaces the wall-clock limits on timer callbacks (see the constants
+    /// above for the defaults); a test wants far shorter ones.
+    #[cfg(test)]
+    fn set_time_limits(&mut self, callback_ms: u64, slice_ms: u64) {
+        self.vm.set_script_time_limits(
+            Some(std::time::Duration::from_millis(callback_ms)),
+            Some(std::time::Duration::from_millis(slice_ms)),
+        );
     }
 
     /// When the next timer is due, on the realm's clock.
@@ -393,6 +414,167 @@ mod tests {
             );
         });
         assert!(h.console().iter().any(|l| l.contains("frame")));
+    }
+
+    #[test]
+    fn a_timer_callback_that_never_returns_is_stopped_and_the_page_goes_on() {
+        let mut h = host("<p id=p>0</p>");
+        h.set_time_limits(60, 1000);
+        h.run(
+            "t",
+            "setTimeout(() => { for (;;) {} }, 0);\
+             setTimeout(() => console.log('second ran'), 0);",
+        )
+        .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let started = Instant::now();
+        assert_eq!(h.tick(), 2, "both callbacks were started");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "the tick returned instead of spinning: {:?}",
+            started.elapsed()
+        );
+        assert!(h.console().iter().any(|l| l.contains("second ran")));
+        let stopped: Vec<_> = h
+            .console()
+            .iter()
+            .filter(|l| l.contains("page script stopped"))
+            .collect();
+        assert_eq!(stopped.len(), 1, "{:?}", h.console());
+        assert!(
+            stopped[0].contains("for (;;)"),
+            "names the callback: {}",
+            stopped[0]
+        );
+    }
+
+    #[test]
+    fn an_interval_that_always_overruns_is_cancelled_not_retried() {
+        let mut h = host("<p></p>");
+        h.set_time_limits(40, 1000);
+        h.run("t", "setInterval(() => { for (;;) {} }, 5);")
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(h.tick(), 1);
+        assert_eq!(
+            h.next_timer_due(),
+            None,
+            "it was cancelled, not rescheduled"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(h.tick(), 0);
+    }
+
+    #[test]
+    fn a_tick_that_used_its_slice_leaves_the_rest_of_the_due_timers_for_the_next() {
+        let mut h = host("<p></p>");
+        h.set_time_limits(5000, 25);
+        h.run(
+            "t",
+            "let done = 0;\
+             for (let i = 0; i < 12; i++) setTimeout(() => {\
+               const end = Date.now() + 10; while (Date.now() < end) {} done++;\
+             }, 0);",
+        )
+        .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let first = h.tick();
+        assert!(
+            (1..12).contains(&first),
+            "the first pass stopped early: {first}"
+        );
+        let mut total = first;
+        while total < 12 {
+            let ran = h.tick();
+            assert!(ran >= 1, "every later pass still makes progress");
+            total += ran;
+        }
+        assert_eq!(total, 12);
+    }
+
+    #[test]
+    fn text_encoder_produces_utf8_for_every_kind_of_character() {
+        let mut h = host("<p></p>");
+        assert_eq!(
+            log(
+                &mut h,
+                r"const e = new TextEncoder();
+                  const hex = (s) => Array.from(e.encode(s), (b) => b.toString(16).padStart(2, '0')).join('');
+                  console.log(hex('aZ'), hex('\u00e9'), hex('\u20ac'), hex('\u{1F600}'), hex('a\ud800b'), hex(''), hex(String(null)), e.encode('\u20ac') instanceof Uint8Array)"
+            ),
+            "[log] 615a c3a9 e282ac f09f9880 61efbfbd62  6e756c6c true"
+        );
+    }
+
+    #[test]
+    fn text_encoder_encodes_megabytes_well_inside_the_callback_limit() {
+        let mut h = host("<p></p>");
+        let out = log(
+            &mut h,
+            r"const big = 'abc\u00e9\u20ac\u{1F600}'.repeat(500000);
+              const t = Date.now(); const n = new TextEncoder().encode(big).length;
+              console.log(n, Date.now() - t < 1000)",
+        );
+        assert_eq!(out, "[log] 6000000 true");
+    }
+
+    #[test]
+    fn text_decoder_reads_utf8_from_every_kind_of_view() {
+        let mut h = host("<p></p>");
+        assert_eq!(
+            log(
+                &mut h,
+                r"const d = new TextDecoder();
+                  const enc = new TextEncoder();
+                  const bytes = (...b) => new Uint8Array(b);
+                  const slice = enc.encode('xx\u65e5\u672c!yy').subarray(2, 9);
+                  console.log(d.decode(), JSON.stringify(d.decode(bytes())), d.decode(bytes(0x61, 0xc3, 0xa9)),
+                    d.decode(enc.encode('\u{1F600}')), d.decode(bytes(0x61, 0xff, 0x62)), d.decode(bytes(0xe2, 0x82)),
+                    d.decode(bytes(0xef, 0xbb, 0xbf, 0x61)), d.decode(slice), d.decode(enc.encode('\u20ac').buffer),
+                    d.decode(new DataView(enc.encode('\u00e9').buffer)), d.encoding)"
+            ),
+            "[log]  \"\" a\u{e9} \u{1F600} a\u{fffd}b \u{fffd} a \u{65e5}\u{672c}! \u{20ac} \u{e9} utf-8"
+        );
+    }
+
+    #[test]
+    fn text_decoder_decodes_megabytes_inside_the_callback_limit() {
+        let mut h = host("<p></p>");
+        let out = log(
+            &mut h,
+            r"const big = 'abc\u00e9\u20ac\u{1F600}'.repeat(300000);
+              const bytes = new TextEncoder().encode(big);
+              const t = Date.now(); const back = new TextDecoder().decode(bytes);
+              console.log(back === big, back.length, Date.now() - t < 1000)",
+        );
+        assert_eq!(out, "[log] true 2100000 true");
+    }
+
+    #[test]
+    fn btoa_and_atob_follow_the_html_rules() {
+        let mut h = host("<p></p>");
+        assert_eq!(
+            log(
+                &mut h,
+                r"const err = (f) => { try { f(); return 'no error'; } catch (e) { return e.name; } };
+                  console.log(btoa(''), btoa('hello'), btoa('\u00ff\u0080'), atob('aGVsbG8='), atob(' aGVs\nbG8 '), atob('YQ'), atob('YQ=='),
+                    atob('/+8=').split('').map((c) => c.charCodeAt(0)).join(','),
+                    err(() => btoa('\u20ac')), err(() => atob('a*b=')), err(() => atob('a')), btoa(null))"
+            ),
+            "[log]  aGVsbG8= /4A= hello hello a a 255,239 InvalidCharacterError InvalidCharacterError InvalidCharacterError bnVsbA=="
+        );
+    }
+
+    #[test]
+    fn btoa_and_atob_handle_megabytes_inside_the_callback_limit() {
+        let mut h = host("<p></p>");
+        let out = log(
+            &mut h,
+            r"const big = 'abcdefgh'.repeat(400000);
+              const t = Date.now(); const back = atob(btoa(big));
+              console.log(back.length, back === big, Date.now() - t < 1000)",
+        );
+        assert_eq!(out, "[log] 3200000 true true");
     }
 
     #[test]

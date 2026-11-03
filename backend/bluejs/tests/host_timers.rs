@@ -299,7 +299,8 @@ fn a_throwing_timer_microtask_is_counted_before_the_next_timer() {
         page.tick(1),
         BlueJsTimerRun {
             tasks_run: 2,
-            uncaught_errors: 1
+            uncaught_errors: 1,
+            ..BlueJsTimerRun::default()
         }
     );
     assert_eq!(page.log(), "cleanup,next");

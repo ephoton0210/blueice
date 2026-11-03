@@ -3340,20 +3340,12 @@
     });
   };
 
+  // UTF-8 and base64 are done natively, so a page that encodes megabytes costs
+  // the host's time and one byte buffer, not a script loop and an array holding
+  // a number per byte.
   const encoder = {
     encode(str) {
-      const out = [];
-      str = toStr(str);
-      for (let i = 0; i < str.length; i++) {
-        let c = str.codePointAt(i);
-        if (c > 0xffff) i++;
-        if (c >= 0xd800 && c <= 0xdfff) c = 0xfffd;
-        if (c < 0x80) out.push(c);
-        else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
-        else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-        else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-      }
-      return new Uint8Array(out);
+      return Uint8Array.fromBase64(bi('utf8Base64', toStr(str)));
     },
   };
   class TextEncoder {
@@ -3379,48 +3371,17 @@
     decode(input) {
       if (input === undefined) return '';
       const b = input instanceof ArrayBuffer ? new Uint8Array(input) : new Uint8Array(input.buffer || input, input.byteOffset || 0, input.byteLength);
-      let out = '';
-      for (let i = 0; i < b.length; ) {
-        const c = b[i++];
-        let cp;
-        if (c < 0x80) cp = c;
-        else if (c >= 0xc0 && c < 0xe0) cp = ((c & 31) << 6) | (b[i++] & 63);
-        else if (c >= 0xe0 && c < 0xf0) cp = ((c & 15) << 12) | ((b[i++] & 63) << 6) | (b[i++] & 63);
-        else if (c >= 0xf0) cp = ((c & 7) << 18) | ((b[i++] & 63) << 12) | ((b[i++] & 63) << 6) | (b[i++] & 63);
-        else cp = 0xfffd;
-        out += String.fromCodePoint(cp > 0x10ffff ? 0xfffd : cp);
-      }
-      return out;
+      return bi('utf8Decode', b.toBase64());
     }
   }
-  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   const btoa = (s) => {
-    s = toStr(s);
-    let out = '';
-    for (let i = 0; i < s.length; i += 3) {
-      const a = s.charCodeAt(i);
-      const b = i + 1 < s.length ? s.charCodeAt(i + 1) : NaN;
-      const c = i + 2 < s.length ? s.charCodeAt(i + 2) : NaN;
-      if (a > 255 || b > 255 || c > 255) throw new DOMException('The string to be encoded contains characters outside of the Latin1 range.', 'InvalidCharacterError');
-      out += B64[a >> 2] + B64[((a & 3) << 4) | ((b || 0) >> 4)] + (isNaN(b) ? '=' : B64[((b & 15) << 2) | ((c || 0) >> 6)]) + (isNaN(c) ? '=' : B64[c & 63]);
-    }
+    const out = bi('latin1Base64', String(s));
+    if (out === null) throw new DOMException('The string to be encoded contains characters outside of the Latin1 range.', 'InvalidCharacterError');
     return out;
   };
   const atob = (s) => {
-    s = toStr(s).replace(/[\t\n\f\r ]+/g, '').replace(/=+$/, '');
-    let out = '';
-    let bits = 0;
-    let acc = 0;
-    for (const ch of s) {
-      const v = B64.indexOf(ch);
-      if (v < 0) throw new DOMException('The string to be decoded is not correctly encoded.', 'InvalidCharacterError');
-      acc = (acc << 6) | v;
-      bits += 6;
-      if (bits >= 8) {
-        bits -= 8;
-        out += String.fromCharCode((acc >> bits) & 255);
-      }
-    }
+    const out = bi('base64Latin1', String(s));
+    if (out === null) throw new DOMException('The string to be decoded is not correctly encoded.', 'InvalidCharacterError');
     return out;
   };
   const structuredCloneImpl = (v, seen) => {

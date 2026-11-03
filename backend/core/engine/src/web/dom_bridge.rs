@@ -200,6 +200,57 @@ impl DomState {
             }
         };
         Ok(match op {
+            // Text codecs done natively: a page can ask for megabytes, and a
+            // script loop over them takes minutes and a heap of numbers.
+            // The UTF-8 bytes of a string (lone surrogates arrive as U+FFFD,
+            // as `TextEncoder` encodes them), as base64.
+            "utf8Base64" => Reply::Text(crate::web::net::base64_encode(text(0).as_bytes())),
+            // `TextDecoder`'s UTF-8: base64 bytes to a string, a leading byte
+            // order mark dropped and each invalid sequence one U+FFFD.
+            "utf8Decode" => {
+                let bytes = crate::web::net::base64_decode(&text(0)).unwrap_or_default();
+                let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes);
+                Reply::Text(String::from_utf8_lossy(bytes).into_owned())
+            }
+            // `btoa`: a Latin-1 "binary string" as base64, or null when it has
+            // a character above U+00FF.
+            "latin1Base64" => {
+                let bytes: Option<Vec<u8>> = text(0)
+                    .chars()
+                    .map(|c| u8::try_from(u32::from(c)).ok())
+                    .collect();
+                bytes.map_or(Reply::Null, |bytes| {
+                    Reply::Text(crate::web::net::base64_encode(&bytes))
+                })
+            }
+            // `atob`: the forgiving-base64 decode of the HTML standard (ASCII
+            // whitespace ignored, up to two trailing `=`, a length that
+            // leaves one stray digit is an error) as a Latin-1 binary string,
+            // or null when the input is not valid.
+            "base64Latin1" => {
+                let cleaned: String = text(0)
+                    .chars()
+                    .filter(|c| !matches!(c, '\t' | '\n' | '\u{c}' | '\r' | ' '))
+                    .collect();
+                let body = match cleaned.len() % 4 {
+                    0 => cleaned
+                        .strip_suffix("==")
+                        .or_else(|| cleaned.strip_suffix('=')),
+                    _ => None,
+                }
+                .unwrap_or(&cleaned);
+                let valid = !body.contains('=')
+                    && body.len() % 4 != 1
+                    && body
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/');
+                if !valid {
+                    return Ok(Reply::Null);
+                }
+                crate::web::net::base64_decode(body).map_or(Reply::Null, |bytes| {
+                    Reply::Text(bytes.into_iter().map(char::from).collect())
+                })
+            }
             // An image element's picture arrived: (node, url, body as base64, or
             // empty for a `data:` URL). Replies `WxH`, or null if it will not decode.
             "imageSet" => {
@@ -1324,9 +1375,14 @@ mod tests {
         for tag in ["textarea", "title"] {
             let mut s = state(&format!("<{tag} id=x></{tag}>"));
             let x = id_of(s.call("byId", &[text("x")]).unwrap());
-            s.call("setInnerHTML", &[n(x), text("a<b>c&amp;d")]).unwrap();
+            s.call("setInnerHTML", &[n(x), text("a<b>c&amp;d")])
+                .unwrap();
             assert_eq!(s.doc.children(x).count(), 1, "{tag}: one text node");
-            assert_eq!(s.call("textContent", &[n(x)]).unwrap(), text("a<b>c&d"), "{tag}");
+            assert_eq!(
+                s.call("textContent", &[n(x)]).unwrap(),
+                text("a<b>c&d"),
+                "{tag}"
+            );
         }
     }
 

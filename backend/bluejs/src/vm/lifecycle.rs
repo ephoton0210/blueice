@@ -11,7 +11,8 @@ use std::rc::Rc;
 use crate::{Bytecode, Heap, HeapError, ImportPhase, Value};
 
 use super::{
-    test262_agents, AgentSymbolRegistry, MembraneMap, ModuleRegistry, RuntimeError, Vm, VmConfig,
+    test262_agents, AgentSymbolRegistry, MembraneMap, ModuleRegistry, RuntimeError, ScriptTime, Vm,
+    VmConfig,
 };
 
 impl Default for Vm {
@@ -81,6 +82,8 @@ impl Vm {
             parameter_eval_env: None,
             completion_saves: Vec::new(),
             remaining_instructions: 0,
+            script_time: ScriptTime::default(),
+            script_time_reports: Vec::new(),
             cells: Default::default(),
             module_registry: ModuleRegistry::default(),
             json_module_sources: Default::default(),

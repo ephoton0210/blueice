@@ -1082,6 +1082,10 @@ pub struct Vm {
     pending_tail_call: Option<Vec<Value>>,
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
+    /// Wall-clock limits a host sets for page scripts; see
+    /// [`Vm::set_script_time_limits`].
+    script_time: ScriptTime,
+    script_time_reports: Vec<String>,
     cells: crate::slot_map::CellMap,
     /// The bindings and cells of every caller a closure call has displaced, innermost last.
     /// Parking them here instead of copying their object ids onto the operand stack makes
@@ -1620,6 +1624,22 @@ impl Vm {
             return Err(RuntimeError::InstructionLimit);
         }
         self.remaining_instructions -= 1;
+        if self.script_time.deadline.is_some() {
+            self.script_time.steps = self.script_time.steps.wrapping_add(1);
+            // Reading the clock costs more than a dispatch step, so look at it
+            // once per few thousand.
+            if self
+                .script_time
+                .steps
+                .is_multiple_of(SCRIPT_TIME_CHECK_STEPS)
+                && self.script_time.expired()
+            {
+                if self.script_time.expired_where.is_none() {
+                    self.script_time.expired_where = Some(self.describe_running_functions());
+                }
+                return Err(RuntimeError::InstructionLimit);
+            }
+        }
         Ok(())
     }
 }
@@ -2264,3 +2284,62 @@ impl Vm {
 #[cfg(any(test, coverage))]
 #[path = "../tests/fixtures/vm_internal.rs"]
 mod tests;
+
+/// Dispatch steps between looks at the wall clock while a script deadline is set.
+const SCRIPT_TIME_CHECK_STEPS: u64 = 2048;
+
+/// Wall-clock limits for page scripts, which the instruction budget alone
+/// cannot give: a few hundred million steps is minutes of work in a slow
+/// build, and the host that runs the script has input to answer meanwhile.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ScriptTime {
+    /// How long one timer callback (with its microtasks) may run.
+    callback_limit: Option<std::time::Duration>,
+    /// How long one `run_due_host_timers` pass may spend before leaving the
+    /// timers still due for the next pass.
+    slice: Option<std::time::Duration>,
+    /// The armed limit of the callback now running.
+    deadline: Option<std::time::Instant>,
+    /// Set when `deadline` stopped a callback.
+    expired_flag: bool,
+    /// The functions running when `deadline` stopped the callback.
+    expired_where: Option<String>,
+    steps: u64,
+}
+
+impl Vm {
+    /// The innermost few functions on the call stack, each as the start of its
+    /// source: where a runaway callback was when it was stopped.
+    fn describe_running_functions(&self) -> String {
+        let mut parts = Vec::new();
+        for &function in self.call_stack.iter().rev().take(3) {
+            let text = self
+                .heap
+                .function_source_text(function)
+                .ok()
+                .flatten()
+                .map(|source| String::from_utf16_lossy(source.as_code_units()))
+                .unwrap_or_else(|| "(native function)".to_string());
+            let mut short: String = text.chars().take(200).collect();
+            if text.chars().count() > 200 {
+                short.push('…');
+            }
+            parts.push(short.replace('\n', " "));
+        }
+        if parts.is_empty() {
+            "(no function on the call stack)".to_string()
+        } else {
+            parts.join(" <- called from <- ")
+        }
+    }
+}
+
+impl ScriptTime {
+    fn expired(&mut self) -> bool {
+        let over = self
+            .deadline
+            .is_some_and(|deadline| std::time::Instant::now() >= deadline);
+        self.expired_flag |= over;
+        over
+    }
+}
