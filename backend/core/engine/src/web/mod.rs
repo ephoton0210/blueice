@@ -38,8 +38,12 @@ const MAX_STRING_BYTES: usize = 48 * 1024 * 1024;
 const INSTRUCTION_BUDGET: u64 = 400_000_000;
 /// How long one timer callback may run before it is stopped and cancelled. The
 /// instruction budget above is no bound on time: it is minutes of work in a
-/// slow build, and the core answers a person and an AI on the same thread.
-const CALLBACK_WALL_LIMIT: std::time::Duration = std::time::Duration::from_millis(1500);
+/// slow build, and the core answers a person and an AI on the same thread. A
+/// real page's longest callback (Yahoo's React render) measures about 7 s here,
+/// so this is a guard against a loop that never ends, not a responsiveness
+/// target; it comes down as the engine gets faster. Until page scripts run in a
+/// separate process, the core is unresponsive for as long as a callback runs.
+const CALLBACK_WALL_LIMIT: std::time::Duration = std::time::Duration::from_secs(20);
 /// How long one pass over the due timers may keep starting callbacks; what is
 /// still due waits for the next pass so input is answered in between.
 const TICK_SLICE: std::time::Duration = std::time::Duration::from_millis(30);
