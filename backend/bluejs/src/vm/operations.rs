@@ -95,7 +95,7 @@ impl Vm {
         // Even a zero limit converts the separator first (§22.1.3.23).
         let search = self.coerce_string(separator)?;
         let prototype = self.array_prototype;
-        let array = self.with_roots(|heap| heap.alloc_array(0, Some(prototype)))?;
+        let array = self.with_roots_lazy(|heap| heap.alloc_array(0, Some(prototype)))?;
         self.stack.push(Value::Object(array)); // Root the growing result through every store.
         let mut count = 0u32;
         let units = string.as_code_units();
@@ -117,7 +117,7 @@ impl Vm {
                 units.len()
             };
             let value = Value::String(JsString::from_code_units(units[start..end].to_vec()));
-            self.with_roots(|heap| heap.set(array, count.to_string(), value))?;
+            self.with_roots_lazy(|heap| heap.set(array, count.to_string(), value.clone()))?;
             count += 1;
             if end == units.len() {
                 break;

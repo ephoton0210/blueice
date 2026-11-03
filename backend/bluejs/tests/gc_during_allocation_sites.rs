@@ -88,3 +88,42 @@ fn legacy_function_properties_and_arguments_survive_collection() {
     assert!(result.contains("2:"), "{result}");
     assert!(result.ends_with("number,string,object,object,object,undefined"), "{result}");
 }
+
+#[test]
+fn iterator_records_survive_collection_for_of_spread_and_destructuring() {
+    let result = agrees(
+        "(function () {
+            const list = Array.from({ length: 25 }, (_, i) => ({ i, s: 'item' + i }));
+            let a = 0;
+            for (const { i, s } of list) a += i + s.length;
+            const [first, , third, ...rest] = list;
+            const spread = [...list, ...'xyz', ...new Set([1, 2, 2, 3])];
+            const m = new Map(list.map((o) => [o.s, o]));
+            let viaMap = 0;
+            for (const [k, v] of m) viaMap += k.length + v.i;
+            function* gen() { for (const o of list) yield o.i; }
+            return [a, first.s, third.s, rest.length, spread.length, viaMap, [...gen()].length].join(',');
+        })()",
+    );
+    assert_eq!(result, "440,item0,item2,22,31,440,25");
+}
+
+#[test]
+fn regexp_results_and_string_splits_survive_collection() {
+    let result = agrees(
+        "(function () {
+            const re = /(?<year>\\d{4})-(?<month>\\d{2})/dg;
+            const text = '2020-01 and 2021-02 and 2022-03';
+            const found = [];
+            let m;
+            while ((m = re.exec(text))) found.push(m.groups.year + '/' + m.groups.month + '@' + m.indices.groups.year[0] + '#' + m.indices.length);
+            const parts = 'a,b;c d,e;f g'.split(/[,; ]/);
+            const all = [...text.matchAll(/\\d+/g)].map((x) => x[0]);
+            return found.join('|') + ':' + parts.join('') + ':' + all.length + ':' + text.replace(/(\\d{4})/g, '<$1>');
+        })()",
+    );
+    assert_eq!(
+        result,
+        "2020/01@0#3|2021/02@12#3|2022/03@24#3:abcdefg:6:<2020>-01 and <2021>-02 and <2022>-03"
+    );
+}

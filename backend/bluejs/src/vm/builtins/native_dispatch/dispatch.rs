@@ -1987,7 +1987,7 @@ impl Vm {
                 if construct && self.new_target != object_constructor {
                     let prototype = self.constructor_prototype(self.object_prototype)?;
                     return Ok(Value::Object(
-                        self.with_roots(|heap| heap.alloc_object(Some(prototype)))?,
+                        self.with_roots_lazy(|heap| heap.alloc_object(Some(prototype)))?,
                     ));
                 }
                 if matches!(first, Value::Undefined | Value::Null) {
@@ -1995,7 +1995,7 @@ impl Vm {
                     // Object constructor owns this immutable prototype slot.
                     let proto = self.object_prototype;
                     return Ok(Value::Object(
-                        self.with_roots(|heap| heap.alloc_object(Some(proto)))?,
+                        self.with_roots_lazy(|heap| heap.alloc_object(Some(proto)))?,
                     ));
                 }
                 self.coerce_object(first).map(Value::Object)
@@ -2013,9 +2013,9 @@ impl Vm {
                     .base_iterator_prototype()
                     .expect("Iterator installation initialized its base prototype");
                 let prototype = self.constructor_prototype(iterator_prototype)?;
-                Ok(Value::Object(
-                    self.with_roots(|heap| heap.alloc_object(Some(prototype)))?,
-                ))
+                Ok(Value::Object(self.with_roots_lazy(|heap| {
+                    heap.alloc_object(Some(prototype))
+                })?))
             }
             NativeFunction::IteratorFrom => {
                 if construct {

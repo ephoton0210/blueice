@@ -28,18 +28,18 @@ impl Vm {
         // while the record's own objects are allocated.
         self.stack.push(object.clone());
         let result = (|| {
-            let record = self.with_roots(|heap| heap.alloc_object(None))?;
+            let record = self.with_roots_lazy(|heap| heap.alloc_object(None))?;
             self.stack.push(Value::Object(record));
-            let visited = self.with_roots(|heap| heap.alloc_object(None))?;
+            let visited = self.with_roots_lazy(|heap| heap.alloc_object(None))?;
             self.stack.push(Value::Object(visited));
             let chain = self.array_from(Vec::new())?;
             self.stack.push(chain.clone());
-            self.with_roots(|heap| heap.set(record, "forInObject", object))?;
-            self.with_roots(|heap| heap.set(record, "forInKeys", Value::Undefined))?;
-            self.with_roots(|heap| heap.set(record, "forInIndex", Value::Number(0.0)))?;
-            self.with_roots(|heap| heap.set(record, "forInVisited", Value::Object(visited)))?;
-            self.with_roots(|heap| heap.set(record, "forInChain", chain))?;
-            self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
+            self.with_roots_lazy(|heap| heap.set(record, "forInObject", object.clone()))?;
+            self.with_roots_lazy(|heap| heap.set(record, "forInKeys", Value::Undefined))?;
+            self.with_roots_lazy(|heap| heap.set(record, "forInIndex", Value::Number(0.0)))?;
+            self.with_roots_lazy(|heap| heap.set(record, "forInVisited", Value::Object(visited)))?;
+            self.with_roots_lazy(|heap| heap.set(record, "forInChain", chain.clone()))?;
+            self.with_roots_lazy(|heap| heap.set(record, "done", Value::Bool(false)))?;
             Ok(Value::Object(record))
         })();
         self.stack.truncate(base);

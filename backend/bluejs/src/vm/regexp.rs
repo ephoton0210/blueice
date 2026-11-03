@@ -23,7 +23,8 @@ impl Vm {
         let root = self.heap.root(constructor)?;
         let result = (|| {
             let object_prototype = self.object_prototype;
-            let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+            let prototype =
+                self.with_roots_lazy(|heap| heap.alloc_object(Some(object_prototype)))?;
             self.define_data(
                 constructor,
                 "prototype",
@@ -174,7 +175,8 @@ impl Vm {
         name: &str,
         native: NativeFunction,
     ) -> Result<(), RuntimeError> {
-        let id = self.with_roots(|heap| heap.alloc_native_function(native, name, prototype))?;
+        let id =
+            self.with_roots_lazy(|heap| heap.alloc_native_function(native, name, prototype))?;
         let base = self.stack.len();
         self.stack.push(Value::Object(id));
         let result = (|| {
@@ -314,7 +316,9 @@ impl Vm {
             let mut regexp =
                 RegExp::compile_with_timeout(source, &flags, self.config.regex_timeout)?;
             regexp.legacy_features = !construct || self.new_target == constructor;
-            let object = self.with_roots(|heap| heap.alloc_regexp(Rc::new(regexp), prototype))?;
+            let regexp = Rc::new(regexp);
+            let object =
+                self.with_roots_lazy(|heap| heap.alloc_regexp(Rc::clone(&regexp), prototype))?;
             self.stack.push(Value::Object(object));
             self.define_data(object, "lastIndex", Value::Number(0.0), true, false, false)?;
             Ok(Value::Object(object))
@@ -762,7 +766,9 @@ impl Vm {
             self.with_roots(|heap| {
                 heap.set(array_id, "index", Value::Number(matched.start() as f64))
             })?;
-            self.with_roots(|heap| heap.set(array_id, "input", Value::String(string.clone())))?;
+            self.with_roots_lazy(|heap| {
+                heap.set(array_id, "input", Value::String(string.clone()))
+            })?;
             let named: Vec<_> = matched
                 .named_groups()
                 .map(|(name, range)| (name.to_string(), range))
@@ -770,7 +776,7 @@ impl Vm {
             let groups = if named.is_empty() {
                 Value::Undefined
             } else {
-                let object = self.with_roots(|heap| heap.alloc_object(None))?;
+                let object = self.with_roots_lazy(|heap| heap.alloc_object(None))?;
                 self.stack.push(Value::Object(object));
                 for (name, range) in &named {
                     let value = range.as_ref().map_or(Value::Undefined, |r| {
@@ -778,12 +784,12 @@ impl Vm {
                             string.as_code_units()[r.clone()].to_vec(),
                         ))
                     });
-                    self.with_roots(|heap| heap.set(object, name.as_str(), value))?;
+                    self.with_roots_lazy(|heap| heap.set(object, name.as_str(), value.clone()))?;
                 }
                 self.stack.pop();
                 Value::Object(object)
             };
-            self.with_roots(|heap| heap.set(array_id, "groups", groups))?;
+            self.with_roots_lazy(|heap| heap.set(array_id, "groups", groups.clone()))?;
             if regexp.flags.contains('d') {
                 let mut pairs = Vec::new();
                 for range in matched.groups() {
@@ -803,7 +809,7 @@ impl Vm {
                 let groups = if named.is_empty() {
                     Value::Undefined
                 } else {
-                    let object = self.with_roots(|heap| heap.alloc_object(None))?;
+                    let object = self.with_roots_lazy(|heap| heap.alloc_object(None))?;
                     self.stack.push(Value::Object(object));
                     for (name, _) in named {
                         let capture = regexp.capture_names.iter().find(|(candidate, index)| {
@@ -816,12 +822,14 @@ impl Vm {
                         } else {
                             Value::Undefined
                         };
-                        self.with_roots(|heap| heap.set(object, name, pair))?;
+                        self.with_roots_lazy(|heap| heap.set(object, name.clone(), pair.clone()))?;
                     }
                     Value::Object(object)
                 };
-                self.with_roots(|heap| heap.set(indices.object_id().unwrap(), "groups", groups))?;
-                self.with_roots(|heap| heap.set(array_id, "indices", indices))?;
+                self.with_roots_lazy(|heap| {
+                    heap.set(indices.object_id().unwrap(), "groups", groups.clone())
+                })?;
+                self.with_roots_lazy(|heap| heap.set(array_id, "indices", indices.clone()))?;
             }
             Ok(array)
         })();
@@ -1009,7 +1017,7 @@ impl Vm {
         }
         let function_prototype = self.function_prototype()?;
         let iterator_base = self.base_iterator_prototype()?;
-        let prototype = self.with_roots(|heap| heap.alloc_object(Some(iterator_base)))?;
+        let prototype = self.with_roots_lazy(|heap| heap.alloc_object(Some(iterator_base)))?;
         let root = self.heap.root(prototype)?;
         let result = (|| {
             self.install_native(

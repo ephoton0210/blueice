@@ -112,7 +112,13 @@ impl WebHost {
             ..defaults
         };
         let mut vm = Vm::new(config).map_err(|e| format!("{e:?}"))?;
-        vm.set_script_time_limits(Some(CALLBACK_WALL_LIMIT), Some(TICK_SLICE));
+        // `BI_SCRIPT_LIMIT_MS` overrides the callback limit while measuring how
+        // long a real page's callbacks need.
+        let callback_limit = std::env::var("BI_SCRIPT_LIMIT_MS")
+            .ok()
+            .and_then(|ms| ms.parse().ok())
+            .map_or(CALLBACK_WALL_LIMIT, std::time::Duration::from_millis);
+        vm.set_script_time_limits(Some(callback_limit), Some(TICK_SLICE));
         let started = Instant::now();
         let state = Rc::new(RefCell::new(state));
         vm.install_web_file_api().map_err(|e| e.to_string())?;
@@ -239,12 +245,24 @@ impl WebHost {
     /// Runs every timer that is due and the microtasks they queue.
     pub fn tick(&mut self) -> usize {
         let now = self.now_ms();
+        let turn_started = Instant::now();
         let ran = self
             .vm
             .run_due_host_timers(now)
             .map_or(0, |run| run.tasks_run as usize);
+        if turn_started.elapsed() > std::time::Duration::from_millis(100)
+            && std::env::var("BI_DIAG").is_ok()
+        {
+            eprintln!(
+                "DIAG timer turn: {ran} callbacks took {:?}",
+                turn_started.elapsed()
+            );
+        }
         for report in self.vm.take_script_time_reports() {
-            self.note(&format!("page script stopped: {report}"));
+            // One console line is cut short, so each part gets its own.
+            for part in report.split("; it was in: ") {
+                self.note(&format!("page script stopped: {part}"));
+            }
         }
         self.collect_console();
         ran

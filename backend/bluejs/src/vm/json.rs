@@ -289,8 +289,9 @@ impl Vm {
             }
             JsonNode::Array(values) => {
                 let prototype = self.array_prototype;
-                let array =
-                    self.with_roots(|heap| heap.alloc_array(values.len() as u32, Some(prototype)))?;
+                let array = self.with_roots_lazy(|heap| {
+                    heap.alloc_array(values.len() as u32, Some(prototype))
+                })?;
                 self.stack.push(Value::Object(array));
                 let result = (|| {
                     for (index, child) in values.iter().enumerate() {
@@ -298,7 +299,7 @@ impl Vm {
                         let value = self.json_from_node(child, sources)?;
                         self.stack.push(value.clone());
                         let key: JsString = index.to_string().into();
-                        self.with_roots(|heap| heap.set(array, key.clone(), value.clone()))?;
+                        self.with_roots_lazy(|heap| heap.set(array, key.clone(), value.clone()))?;
                         self.json_record_source(array, key, child, &value, sources);
                         self.stack.pop();
                     }
@@ -309,14 +310,14 @@ impl Vm {
             }
             JsonNode::Object(values) => {
                 let prototype = self.object_prototype;
-                let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                let object = self.with_roots_lazy(|heap| heap.alloc_object(Some(prototype)))?;
                 self.stack.push(Value::Object(object));
                 let result = (|| {
                     for (key, child) in values {
                         self.charge_step()?;
                         let value = self.json_from_node(child, sources)?;
                         self.stack.push(value.clone());
-                        self.with_roots(|heap| heap.set(object, key.clone(), value.clone()))?;
+                        self.with_roots_lazy(|heap| heap.set(object, key.clone(), value.clone()))?;
                         self.json_record_source(object, key.clone(), child, &value, sources);
                         self.stack.pop();
                     }

@@ -445,7 +445,9 @@ impl Vm {
                 // Adding the marker property grows the helper's state, which
                 // can run a major collection: root the result first.
                 self.stack.push(values.clone());
-                self.with_roots(|heap| heap.set(state.record, "zipStarted", Value::Bool(true)))?;
+                self.with_roots_lazy(|heap| {
+                    heap.set(state.record, "zipStarted", Value::Bool(true))
+                })?;
                 let result = self.iterator_result(values, false);
                 self.stack.pop();
                 result
@@ -492,7 +494,7 @@ impl Vm {
         metadata: ObjectId,
         values: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        let result = self.with_roots(|heap| heap.alloc_object(None))?;
+        let result = self.with_roots_lazy(|heap| heap.alloc_object(None))?;
         let base = self.stack.len();
         self.stack.push(Value::Object(result));
         let outcome = (|| {
@@ -1432,11 +1434,11 @@ impl Vm {
             self.stack.push(iterator.clone());
             let next = self.get_property(&iterator, &"next".into())?;
             self.stack.push(next.clone());
-            let record = self.with_roots(|heap| heap.alloc_object(None))?;
+            let record = self.with_roots_lazy(|heap| heap.alloc_object(None))?;
             self.stack.push(Value::Object(record));
-            self.with_roots(|heap| heap.set(record, "iterator", iterator))?;
-            self.with_roots(|heap| heap.set(record, "next", next))?;
-            self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
+            self.with_roots_lazy(|heap| heap.set(record, "iterator", iterator.clone()))?;
+            self.with_roots_lazy(|heap| heap.set(record, "next", next.clone()))?;
+            self.with_roots_lazy(|heap| heap.set(record, "done", Value::Bool(false)))?;
             Ok(Value::Object(record))
         })();
         self.stack.truncate(base);
@@ -1469,7 +1471,7 @@ impl Vm {
             .expect("GetIterator creates an iterator record");
         self.stack.push(Value::Object(record_id));
         let result =
-            self.with_roots(|heap| heap.set(record_id, "asyncFromSync", Value::Bool(true)));
+            self.with_roots_lazy(|heap| heap.set(record_id, "asyncFromSync", Value::Bool(true)));
         self.stack.pop();
         result?;
         Ok(Value::Object(record_id))
@@ -1492,11 +1494,11 @@ impl Vm {
             self.stack.push(iterator.clone());
             let next = self.get_property(&iterator, &"next".into())?;
             self.stack.push(next.clone());
-            let record = self.with_roots(|heap| heap.alloc_object(None))?;
+            let record = self.with_roots_lazy(|heap| heap.alloc_object(None))?;
             self.stack.push(Value::Object(record));
-            self.with_roots(|heap| heap.set(record, "iterator", iterator))?;
-            self.with_roots(|heap| heap.set(record, "next", next))?;
-            self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
+            self.with_roots_lazy(|heap| heap.set(record, "iterator", iterator.clone()))?;
+            self.with_roots_lazy(|heap| heap.set(record, "next", next.clone()))?;
+            self.with_roots_lazy(|heap| heap.set(record, "done", Value::Bool(false)))?;
             Ok(Value::Object(record))
         })();
         self.stack.truncate(base);
@@ -1529,7 +1531,7 @@ impl Vm {
             .get_own(record, "next")
             .expect("the validated private iterator record remains live")
             .unwrap_or(Value::Undefined);
-        self.with_roots(|heap| heap.set(record, "asyncNextPending", Value::Bool(true)))?;
+        self.with_roots_lazy(|heap| heap.set(record, "asyncNextPending", Value::Bool(true)))?;
         let epoch = self.throw_epoch;
         let result = self.call_native(next, iterator, argument.into_iter().collect(), false);
         if !matches!(
@@ -1571,7 +1573,8 @@ impl Vm {
         let prototype = self
             .function_prototype()
             .expect("the AsyncFromSync continuation already created a native Promise");
-        let id = self.with_roots(|heap| heap.alloc_native_function(function, "", prototype))?;
+        let id =
+            self.with_roots_lazy(|heap| heap.alloc_native_function(function, "", prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
             self.define_data(id, "name", Value::String("".into()), false, false, true)?;
@@ -1728,8 +1731,8 @@ impl Vm {
             if let Ok(Some(value)) = &outcome {
                 self.stack.push(value.clone());
             }
-            let updated =
-                self.with_roots(|heap| heap.set(record, "asyncNextPending", Value::Bool(false)));
+            let updated = self
+                .with_roots_lazy(|heap| heap.set(record, "asyncNextPending", Value::Bool(false)));
             self.stack.truncate(base);
             updated?;
         }
