@@ -69,12 +69,14 @@ mod unix {
     use winit::application::ApplicationHandler;
     use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
     use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
-    use winit::keyboard::{Key, NamedKey};
+    use winit::keyboard::{Key, ModifiersState, NamedKey};
     use winit::window::{Window, WindowId};
 
+    mod address_bar;
     mod assistant_panel;
     mod debug_aids;
     mod permission_panel;
+    use address_bar::{is_focus_shortcut, AddressBar, AddressCommand};
     use assistant_panel::{AssistantCommand, AssistantPanel};
     use permission_panel::{PanelCommand, PermissionPanel};
 
@@ -187,6 +189,10 @@ mod unix {
     /// coordinates below it, while the tab strip itself is rendered here from the
     /// same core-owned tab/group state an MCP observer can inspect.
     const TAB_STRIP_HEIGHT: u32 = 34;
+    /// A second chrome row under the tab strip holds the address field. Page
+    /// coordinates start below both rows.
+    const ADDRESS_BAR_HEIGHT: u32 = 28;
+    const CHROME_HEIGHT: u32 = TAB_STRIP_HEIGHT + ADDRESS_BAR_HEIGHT;
     const TAB_WIDTH: u32 = 150;
     const GROUP_HEADER_WIDTH: u32 = 104;
     const HISTORY_BUTTON_WIDTH: u32 = 26;
@@ -345,6 +351,10 @@ mod unix {
         next_request_id: u64,
         window_size: (u32, u32),
         cursor: (f64, f64),
+        /// The editable address field under the tab strip, and the modifier
+        /// keys held (for Command/Control-L).
+        address_bar: AddressBar,
+        modifiers: ModifiersState,
         locale: &'static str,
     }
 
@@ -581,6 +591,25 @@ mod unix {
             self.request_redraw();
         }
 
+        /// The selected tab's URL, or empty before one has loaded.
+        fn selected_url(&self) -> &str {
+            self.selected_tab
+                .and_then(|id| self.tabs.iter().find(|tab| tab.id == id))
+                .and_then(|tab| tab.url.as_deref())
+                .unwrap_or_default()
+        }
+
+        fn apply_address_command(&mut self, command: AddressCommand) {
+            match command {
+                AddressCommand::None => {}
+                AddressCommand::Redraw => self.request_redraw(),
+                AddressCommand::Navigate(url) => {
+                    self.send_selected(&ClientMessage::Navigate { url });
+                    self.request_redraw();
+                }
+            }
+        }
+
         fn request_redraw(&self) {
             if let Some(window) = &self.window {
                 window.request_redraw();
@@ -704,6 +733,15 @@ mod unix {
                 &strip,
                 popup,
                 generation_badge,
+            );
+            let current_url = self.selected_url().to_string();
+            draw_address_bar(
+                &mut pixels,
+                size.width,
+                size.height,
+                self.address_bar.display(&current_url),
+                self.address_bar.is_editing(),
+                self.address_bar.is_selected(),
             );
             self.permission_panel.draw(
                 &mut pixels,
@@ -918,9 +956,9 @@ mod unix {
         let mut pixels = vec![0x00FF_FFFF; width as usize * height as usize];
         if let Some(frame) = frame {
             let copy_width = width.min(frame.width) as usize;
-            let copy_height = height.saturating_sub(TAB_STRIP_HEIGHT).min(frame.height) as usize;
+            let copy_height = height.saturating_sub(CHROME_HEIGHT).min(frame.height) as usize;
             for row in 0..copy_height {
-                let destination = (row + TAB_STRIP_HEIGHT as usize) * width as usize;
+                let destination = (row + CHROME_HEIGHT as usize) * width as usize;
                 let source = row * frame.width as usize;
                 pixels[destination..destination + copy_width]
                     .copy_from_slice(&frame.pixels_xrgb[source..source + copy_width]);
@@ -1067,7 +1105,7 @@ mod unix {
     ) {
         let label = format!("SRC:{frame_source:016X} TAB:{tab_id} GEN:{generation}");
         let badge_width = label.len() as u32 * 6 + 12;
-        if badge_width + 8 > width || height < TAB_STRIP_HEIGHT + 28 {
+        if badge_width + 8 > width || height < CHROME_HEIGHT + 28 {
             return;
         }
         let rect = Rect {
@@ -1093,7 +1131,7 @@ mod unix {
     /// optional action label; it cannot supply HTML, links, arbitrary controls,
     /// coordinates, or chrome colors.
     fn draw_extension_popup(pixels: &mut [u32], width: u32, height: u32, popup: &ExtensionPopup) {
-        if width < 120 || height < TAB_STRIP_HEIGHT + 100 {
+        if width < 120 || height < CHROME_HEIGHT + 100 {
             return;
         }
         let panel_width = width.saturating_sub(16).min(360);
@@ -1101,7 +1139,7 @@ mod unix {
         let line_count = popup.body.len().div_ceil(chars_per_line.max(1));
         let panel = Rect {
             x: (width - panel_width) / 2,
-            y: TAB_STRIP_HEIGHT + 8,
+            y: CHROME_HEIGHT + 8,
             width: panel_width,
             height: 70 + line_count as u32 * 14 + if popup.action_label.is_some() { 30 } else { 0 },
         };
@@ -1182,7 +1220,7 @@ mod unix {
         popup: &ExtensionPopup,
     ) -> Option<Rect> {
         let label = popup.action_label.as_deref()?;
-        if popup.id == 0 || width < 120 || height < TAB_STRIP_HEIGHT + 100 {
+        if popup.id == 0 || width < 120 || height < CHROME_HEIGHT + 100 {
             return None;
         }
         let panel_width = width.saturating_sub(16).min(360);
@@ -1191,7 +1229,7 @@ mod unix {
         let button_width = (label.len() as u32 * 6 + 16).min(panel_width.saturating_sub(20));
         let rect = Rect {
             x: (width - button_width) / 2,
-            y: TAB_STRIP_HEIGHT + 8 + 55 + line_count as u32 * 14,
+            y: CHROME_HEIGHT + 8 + 55 + line_count as u32 * 14,
             width: button_width,
             height: 22,
         };
@@ -1225,6 +1263,90 @@ mod unix {
             let start = y as usize * width as usize + rect.x.min(width) as usize;
             let end = y as usize * width as usize + right as usize;
             pixels[start..end].fill(color);
+        }
+    }
+
+    /// The address row under the tab strip: a field showing the URL, or the
+    /// text being typed (with a caret, or highlighted when freshly selected).
+    fn draw_address_bar(
+        pixels: &mut [u32],
+        width: u32,
+        height: u32,
+        text: &str,
+        editing: bool,
+        selected: bool,
+    ) {
+        let row = Rect {
+            x: 0,
+            y: TAB_STRIP_HEIGHT,
+            width,
+            height: ADDRESS_BAR_HEIGHT,
+        };
+        draw_rect(pixels, width, height, row, CHROME_BG);
+        let field = address_field_rect(width);
+        draw_rect(
+            pixels,
+            width,
+            height,
+            field,
+            if editing { 0x00FF_FFFF } else { TAB_BG },
+        );
+        let capacity = (field.width.saturating_sub(12) / 6) as usize;
+        let count = text.chars().count();
+        // A long URL shows its start; text being typed shows its end.
+        let skip = if editing {
+            count.saturating_sub(capacity)
+        } else {
+            0
+        };
+        let shown: String = text.chars().skip(skip).take(capacity).collect();
+        let text_width = shown.chars().count() as u32 * 6;
+        if editing && selected {
+            draw_rect(
+                pixels,
+                width,
+                height,
+                Rect {
+                    x: field.x + 5,
+                    y: field.y + 3,
+                    width: text_width + 2,
+                    height: field.height - 6,
+                },
+                0x00B3_D4FF,
+            );
+        }
+        draw_text_line(
+            pixels,
+            width,
+            height,
+            field.x + 6,
+            field.y + 6,
+            &shown,
+            capacity,
+            if editing { 0x0010_1010 } else { TEXT },
+        );
+        if editing && !selected {
+            draw_rect(
+                pixels,
+                width,
+                height,
+                Rect {
+                    x: field.x + 6 + text_width,
+                    y: field.y + 4,
+                    width: 1,
+                    height: field.height - 8,
+                },
+                0x0010_1010,
+            );
+        }
+    }
+
+    fn address_field_rect(width: u32) -> Rect {
+        Rect {
+            x: 6,
+            y: TAB_STRIP_HEIGHT + 3,
+            width: width.saturating_sub(12),
+            height: ADDRESS_BAR_HEIGHT - 6,
         }
     }
 
@@ -1475,10 +1597,10 @@ mod unix {
             self.window = Some(window);
             self.surface = Some(surface);
             let (width, height) = self.window_size;
-            if width > 0 && height > TAB_STRIP_HEIGHT {
+            if width > 0 && height > CHROME_HEIGHT {
                 self.send_selected(&ClientMessage::Resize {
                     width,
-                    height: height - TAB_STRIP_HEIGHT,
+                    height: height - CHROME_HEIGHT,
                 });
             }
             self.refresh_title();
@@ -1504,7 +1626,7 @@ mod unix {
                     self.window_size = (size.width, size.height);
                     self.send_selected(&ClientMessage::Resize {
                         width: size.width,
-                        height: size.height.saturating_sub(TAB_STRIP_HEIGHT).max(1),
+                        height: size.height.saturating_sub(CHROME_HEIGHT).max(1),
                     });
                 }
                 WindowEvent::RedrawRequested => self.redraw(),
@@ -1517,10 +1639,10 @@ mod unix {
                     // truth for "what's hovered" -- see
                     // `phase-1-ai-representation-layer/PLAN.md` §4 and
                     // `blueice_ipc::ClientMessage::Hover`'s own docs.
-                    if position.y >= f64::from(TAB_STRIP_HEIGHT) {
+                    if position.y >= f64::from(CHROME_HEIGHT) {
                         self.send_selected(&ClientMessage::Hover {
                             x: position.x,
-                            y: position.y - f64::from(TAB_STRIP_HEIGHT),
+                            y: position.y - f64::from(CHROME_HEIGHT),
                         });
                     }
                 }
@@ -1553,6 +1675,16 @@ mod unix {
                         );
                         self.handle_permission_panel_command(command);
                         return;
+                    }
+                    if y >= f64::from(TAB_STRIP_HEIGHT) && y < f64::from(CHROME_HEIGHT) {
+                        let current = self.selected_url().to_string();
+                        self.address_bar.focus(&current);
+                        self.request_redraw();
+                        return;
+                    }
+                    if self.address_bar.is_editing() {
+                        self.address_bar.blur();
+                        self.request_redraw();
                     }
                     if y < f64::from(TAB_STRIP_HEIGHT) {
                         let strip = tab_strip(
@@ -1609,10 +1741,13 @@ mod unix {
                         } else {
                             self.send_selected(&ClientMessage::Click {
                                 x,
-                                y: y - f64::from(TAB_STRIP_HEIGHT),
+                                y: y - f64::from(CHROME_HEIGHT),
                             });
                         }
                     }
+                }
+                WindowEvent::ModifiersChanged(modifiers) => {
+                    self.modifiers = modifiers.state();
                 }
                 WindowEvent::MouseWheel { delta, .. } => {
                     if self.permission_panel.is_open() {
@@ -1694,6 +1829,19 @@ mod unix {
                         ) {
                             self.send_selected(&message);
                         }
+                        return;
+                    }
+                    if is_focus_shortcut(&event.logical_key, self.modifiers) {
+                        let current = self.selected_url().to_string();
+                        self.address_bar.focus(&current);
+                        self.request_redraw();
+                        return;
+                    }
+                    if self.address_bar.is_editing() {
+                        let command = self
+                            .address_bar
+                            .key(&event.logical_key, event.text.as_deref());
+                        self.apply_address_command(command);
                         return;
                     }
                     match event.logical_key {
@@ -2478,6 +2626,8 @@ mod unix {
             next_request_id: 0,
             window_size: (800, 600),
             cursor: (0.0, 0.0),
+            address_bar: AddressBar::default(),
+            modifiers: ModifiersState::empty(),
             locale,
         };
         app.send_unscoped(&ClientMessage::ListTabs);
@@ -2901,9 +3051,52 @@ mod unix {
                 pixels_xrgb: vec![0x0011_2233; 4],
             };
             let strip = tab_strip(&[], &[], None, &HashMap::new(), 2, None);
-            let pixels = compose_window(2, TAB_STRIP_HEIGHT + 2, Some(&frame), &strip, None, None);
+            let pixels = compose_window(2, CHROME_HEIGHT + 2, Some(&frame), &strip, None, None);
             assert_eq!(pixels[0], CHROME_BG);
-            assert_eq!(pixels[TAB_STRIP_HEIGHT as usize * 2], 0x0011_2233);
+            assert_eq!(pixels[CHROME_HEIGHT as usize * 2], 0x0011_2233);
+            // The address row sits between the strip and the page.
+            assert_eq!(pixels[TAB_STRIP_HEIGHT as usize * 2], 0x00FF_FFFF);
+        }
+
+        #[test]
+        fn the_address_field_shows_the_url_and_a_caret_or_selection_while_editing() {
+            let (w, h) = (300u32, CHROME_HEIGHT + 4);
+            let field = address_field_rect(w);
+            let at = |pixels: &[u32], x: u32, y: u32| pixels[y as usize * w as usize + x as usize];
+            let mut idle = vec![0u32; (w * h) as usize];
+            draw_address_bar(&mut idle, w, h, "a.b", false, false);
+            assert_eq!(at(&idle, 0, TAB_STRIP_HEIGHT), CHROME_BG);
+            assert_eq!(at(&idle, field.x + field.width - 1, field.y + 1), TAB_BG);
+            assert!(idle.contains(&TEXT), "the URL text is drawn");
+
+            let mut typing = vec![0u32; (w * h) as usize];
+            draw_address_bar(&mut typing, w, h, "a.b", true, false);
+            assert_eq!(
+                at(&typing, field.x + field.width - 1, field.y + 1),
+                0x00FF_FFFF
+            );
+            // One column right of the three 6-pixel glyphs: the caret.
+            assert_eq!(at(&typing, field.x + 6 + 18, field.y + 5), 0x0010_1010);
+
+            let mut selected = vec![0u32; (w * h) as usize];
+            draw_address_bar(&mut selected, w, h, "a.b", true, true);
+            assert_eq!(at(&selected, field.x + 5, field.y + 3), 0x00B3_D4FF);
+            assert_ne!(at(&selected, field.x + 6 + 18, field.y + 5), 0x0010_1010);
+        }
+
+        #[test]
+        fn typed_text_longer_than_the_field_shows_its_end() {
+            let (w, h) = (60u32, CHROME_HEIGHT + 4);
+            let mut pixels = vec![0u32; (w * h) as usize];
+            // Capacity is (48 - 12) / 6 = 6 characters; no panic and nothing
+            // is drawn past the field.
+            draw_address_bar(&mut pixels, w, h, "abcdefghijklmnop", true, false);
+            let field = address_field_rect(w);
+            for y in 0..h {
+                for x in (field.x + field.width)..w {
+                    assert_ne!(pixels[(y * w + x) as usize], 0x0010_1010);
+                }
+            }
         }
 
         #[test]
@@ -2981,18 +3174,9 @@ mod unix {
             };
             let plain = compose_window(400, 260, None, &strip, None, None);
             let shown = compose_window(400, 260, None, &strip, Some(&popup), None);
-            assert_eq!(
-                plain[(TAB_STRIP_HEIGHT as usize + 8) * 400 + 20],
-                0x00FF_FFFF
-            );
-            assert_eq!(
-                shown[(TAB_STRIP_HEIGHT as usize + 8) * 400 + 20],
-                0x0020_2228
-            );
-            assert_eq!(
-                shown[(TAB_STRIP_HEIGHT as usize + 10) * 400 + 22],
-                0x003A_526C
-            );
+            assert_eq!(plain[(CHROME_HEIGHT as usize + 8) * 400 + 20], 0x00FF_FFFF);
+            assert_eq!(shown[(CHROME_HEIGHT as usize + 8) * 400 + 20], 0x0020_2228);
+            assert_eq!(shown[(CHROME_HEIGHT as usize + 10) * 400 + 22], 0x003A_526C);
             assert!(extension_popup_action_rect(400, 260, &popup).is_none());
         }
 
@@ -3010,7 +3194,7 @@ mod unix {
             let shown = compose_window(400, 260, None, &strip, Some(&popup), None);
             assert_eq!(shown[rect.y as usize * 400 + rect.x as usize], 0x003A_526C);
             assert!(rect.contains(f64::from(rect.x + 1), f64::from(rect.y + 1)));
-            assert!(!rect.contains(20.0, f64::from(TAB_STRIP_HEIGHT + 8)));
+            assert!(!rect.contains(20.0, f64::from(CHROME_HEIGHT + 8)));
         }
 
         #[test]
