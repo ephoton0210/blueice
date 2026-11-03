@@ -330,6 +330,17 @@ pub fn rasterize_viewport(
     pixel_height: u32,
     scale: f64,
 ) -> std::io::Result<Pixmap> {
+    rasterize_viewport_culled(frame, scroll_y, pixel_width, pixel_height, scale, true)
+}
+
+fn rasterize_viewport_culled(
+    frame: &Frame,
+    scroll_y: f64,
+    pixel_width: u32,
+    pixel_height: u32,
+    scale: f64,
+    cull: bool,
+) -> std::io::Result<Pixmap> {
     if ![scroll_y, scale].iter().all(|v| v.is_finite())
         || scroll_y < 0.0
         || scale <= 0.0
@@ -347,9 +358,14 @@ pub fn rasterize_viewport(
         width: r.width * scale,
         height: r.height * scale,
     };
+    // Only what can touch the visible band is translated and drawn; a page
+    // thousands of pixels tall costs what one screenful does.
+    let top = scroll_y;
+    let bottom = scroll_y + f64::from(pixel_height) / scale;
     let commands = frame
         .commands
         .iter()
+        .filter(|command| !cull || may_reach_band(command, top, bottom))
         .cloned()
         .map(|command| match command {
             PaintCommand::PushClip { rect: r } => PaintCommand::PushClip { rect: rect(r) },
@@ -443,10 +459,116 @@ pub fn rasterize_viewport(
     }))
 }
 
+/// Whether `command` can change a pixel of the band `top..bottom` (in page
+/// coordinates). Clip pushes and pops are always kept so they stay balanced;
+/// everything else is judged by a deliberately generous vertical extent.
+fn may_reach_band(command: &PaintCommand, top: f64, bottom: f64) -> bool {
+    let overlaps =
+        |y: f64, height: f64, margin: f64| y - margin <= bottom && y + height + margin >= top;
+    match command {
+        PaintCommand::PushClip { .. } | PaintCommand::PopClip => true,
+        PaintCommand::Rect { rect, .. }
+        | PaintCommand::BorderEdge { rect, .. }
+        | PaintCommand::RoundRect { rect, .. }
+        | PaintCommand::RoundBorder { rect, .. }
+        | PaintCommand::Image { rect, .. }
+        | PaintCommand::Gradient { rect, .. } => overlaps(rect.y, rect.height, 1.0),
+        PaintCommand::Shadow {
+            rect,
+            dy,
+            blur,
+            spread,
+            ..
+        } => overlaps(
+            rect.y,
+            rect.height,
+            dy.abs() + blur.abs() * 2.0 + spread.abs() + 1.0,
+        ),
+        // The text origin may be a top or a baseline and glyphs can overhang
+        // it: allow a few font heights either side.
+        PaintCommand::Text {
+            y, font_size_px, ..
+        } => overlaps(*y - font_size_px * 2.0, font_size_px * 4.0, 1.0),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use blueice_paint::Rect;
+
+    #[test]
+    fn a_viewport_matches_the_same_rows_of_a_full_page_raster() {
+        let rect = |x: f64, y: f64, width: f64, height: f64| Rect {
+            x,
+            y,
+            width,
+            height,
+        };
+        let color = Color::Rgba(30, 90, 200, 255);
+        let mut commands = Vec::new();
+        for i in 0..40 {
+            let y = f64::from(i) * 25.0;
+            commands.push(PaintCommand::Rect {
+                rect: rect(10.0, y, 80.0, 12.0),
+                color,
+            });
+            commands.push(PaintCommand::Text {
+                x: 12.0,
+                y: y + 2.0,
+                text: format!("row {i}"),
+                color: Color::Rgba(0, 0, 0, 255),
+                font_size_px: 14.0,
+                bold: false,
+                italic: false,
+            });
+        }
+        let page = frame(100.0, 1000.0, commands.clone());
+        let full = rasterize(&page);
+        for scroll in [0u32, 130, 333, 360, 700] {
+            let view = rasterize_viewport(&page, f64::from(scroll), 100, 200, 1.0).unwrap();
+            let start = (scroll * 100 * 4) as usize;
+            let end = start + 200 * 100 * 4;
+            assert_eq!(view.pixels, full.pixels[start..end], "scroll {scroll}");
+        }
+    }
+
+    #[test]
+    fn skipping_commands_outside_the_band_changes_no_pixel() {
+        let mut commands = Vec::new();
+        for i in 0..40 {
+            let y = f64::from(i) * 25.0;
+            commands.push(PaintCommand::Text {
+                x: 12.0,
+                y,
+                text: format!("row {i}"),
+                color: Color::Rgba(0, 0, 0, 255),
+                font_size_px: 14.0,
+                bold: false,
+                italic: false,
+            });
+        }
+        commands.push(PaintCommand::Shadow {
+            rect: Rect {
+                x: 20.0,
+                y: 300.0,
+                width: 60.0,
+                height: 30.0,
+            },
+            radii: [(0.0, 0.0); 4],
+            dx: 0.0,
+            dy: 40.0,
+            blur: 12.0,
+            spread: 4.0,
+            color: Color::Rgba(0, 0, 0, 200),
+        });
+        let page = frame(100.0, 1000.0, commands);
+        for scroll in [0.0, 130.0, 333.5, 360.0, 700.0] {
+            let culled = rasterize_viewport_culled(&page, scroll, 100, 200, 1.0, true).unwrap();
+            let all = rasterize_viewport_culled(&page, scroll, 100, 200, 1.0, false).unwrap();
+            assert_eq!(culled.pixels, all.pixels, "scroll {scroll}");
+        }
+    }
 
     fn frame(width: f64, height: f64, commands: Vec<PaintCommand>) -> Frame {
         Frame {

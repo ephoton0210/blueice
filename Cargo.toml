@@ -66,6 +66,44 @@ opt-level = 3
 [profile.test.package."*"]
 opt-level = 3
 
+# The render pipeline runs on every scroll, resize and script-driven change of
+# a live page, so an unoptimised build made a single scroll of a long page cost
+# seconds (measured: 100 ms per scroll of a 1,500-item page after culling, from
+# 15 s before). Keep these crates optimised in development and test builds too,
+# with debug information, so the browser is usable from a debug build.
+[profile.dev.package.blueice-dom]
+opt-level = 3
+[profile.dev.package.blueice-html]
+opt-level = 3
+[profile.dev.package.blueice-css]
+opt-level = 3
+[profile.dev.package.blueice-layout]
+opt-level = 3
+[profile.dev.package.blueice-paint]
+opt-level = 3
+[profile.dev.package.blueice-raster]
+opt-level = 3
+[profile.dev.package.blueice-font]
+opt-level = 3
+[profile.dev.package.blueice-engine]
+opt-level = 3
+[profile.test.package.blueice-dom]
+opt-level = 3
+[profile.test.package.blueice-html]
+opt-level = 3
+[profile.test.package.blueice-css]
+opt-level = 3
+[profile.test.package.blueice-layout]
+opt-level = 3
+[profile.test.package.blueice-paint]
+opt-level = 3
+[profile.test.package.blueice-raster]
+opt-level = 3
+[profile.test.package.blueice-font]
+opt-level = 3
+[profile.test.package.blueice-engine]
+opt-level = 3
+
 [profile.dev.package.regress]
 opt-level = 3
 debug-assertions = false

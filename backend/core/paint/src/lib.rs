@@ -707,6 +707,7 @@ fn paint_order(children: &[Fragment]) -> Vec<&Fragment> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_fragment(
     fragment: &Fragment,
     offset_x: f64,
@@ -714,6 +715,7 @@ fn paint_fragment(
     styles: &StyleMap,
     images: &ImageMap,
     inherited: Inherited,
+    band: Option<(f64, f64)>,
     out: &mut Vec<PaintCommand>,
 ) {
     let x = offset_x + fragment.x;
@@ -938,7 +940,12 @@ fn paint_fragment(
     };
     if form.is_none() {
         for child in paint_order(&fragment.children) {
-            paint_fragment(child, x, y, styles, images, below, out);
+            if let Some((top, bottom)) = band {
+                if !may_show_in_band(child, y, styles, top, bottom) {
+                    continue;
+                }
+            }
+            paint_fragment(child, x, y, styles, images, below, band, out);
         }
     }
     if let (Some(form), Some(rect), Some(style)) = (form, native_clip, own_style) {
@@ -1143,6 +1150,60 @@ pub fn paint_with_images(
     styles: &HashMap<NodeId, ComputedStyle>,
     images: &ImageMap,
 ) -> Frame {
+    paint_band_with_images(fragment, styles, images, None)
+}
+
+/// How far past its box a fragment may draw: glyph overhang, outlines and
+/// the largest shadow blur this painter keeps culling for. A box with a
+/// `box-shadow` gets the larger allowance.
+const OVERHANG: f64 = 16.0;
+const SHADOW_OVERHANG: f64 = 400.0;
+
+/// Whether anything in `fragment`'s subtree can be drawn inside the vertical
+/// band `top..bottom` (page coordinates; `parent_y` is its parent's page y).
+/// Only boxes that clip their content, or whose children all lie within their
+/// own box, let a whole subtree be skipped on the box alone, so every
+/// descendant's extent is taken into account.
+fn may_show_in_band(
+    fragment: &Fragment,
+    parent_y: f64,
+    styles: &StyleMap,
+    top: f64,
+    bottom: f64,
+) -> bool {
+    let y = parent_y + fragment.y;
+    let (low, high) = subtree_extent(fragment, y, styles);
+    high >= top && low <= bottom
+}
+
+fn subtree_extent(fragment: &Fragment, y: f64, styles: &StyleMap) -> (f64, f64) {
+    let shadowed = fragment
+        .style_node
+        .or(fragment.node)
+        .and_then(|n| styles.get(&n))
+        .is_some_and(|style| style.other.contains_key("box-shadow"));
+    let reach = if shadowed { SHADOW_OVERHANG } else { OVERHANG };
+    let mut low = y - reach;
+    let mut high = y + fragment.height + reach;
+    // An `overflow` clip bounds everything inside it to the box.
+    if !fragment.clips {
+        for child in &fragment.children {
+            let (child_low, child_high) = subtree_extent(child, y + child.y, styles);
+            low = low.min(child_low);
+            high = high.max(child_high);
+        }
+    }
+    (low, high)
+}
+
+/// [`paint_with_images`] limited to the vertical band `top..bottom` (page
+/// coordinates), skipping subtrees that cannot reach it. `None` paints it all.
+pub fn paint_band_with_images(
+    fragment: &Fragment,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    images: &ImageMap,
+    band: Option<(f64, f64)>,
+) -> Frame {
     let mut commands = Vec::new();
     paint_fragment(
         fragment,
@@ -1151,6 +1212,7 @@ pub fn paint_with_images(
         styles,
         images,
         Inherited::root(),
+        band,
         &mut commands,
     );
     Frame {

@@ -1438,8 +1438,14 @@ impl Page {
     }
 
     pub fn render(&self) -> Frame {
+        self.render_band(None)
+    }
+
+    /// [`Self::render`], painting only what can reach the vertical band
+    /// `top..bottom` of the page (a scroll only ever shows one screenful).
+    fn render_band(&self, band: Option<(f64, f64)>) -> Frame {
         let mut frame =
-            blueice_paint::paint_with_images(&self.fragment, &self.styles, &self.images);
+            blueice_paint::paint_band_with_images(&self.fragment, &self.styles, &self.images, band);
         self.paint_native_editor(&mut frame);
         self.paint_document_selection(&mut frame);
         self.paint_native_focus(&mut frame);
@@ -1458,8 +1464,12 @@ impl Page {
     pub fn render_visible(&self) -> Pixmap {
         if let Some(display) = self.display_viewport {
             let (pixel_width, pixel_height) = display.pixel_size();
+            let band = (
+                self.scroll_y,
+                self.scroll_y + f64::from(pixel_height) / (display.device_scale * self.page_zoom),
+            );
             return blueice_raster::rasterize_viewport(
-                &self.render(),
+                &self.render_band(Some(band)),
                 self.scroll_y,
                 pixel_width,
                 pixel_height,
@@ -1467,7 +1477,24 @@ impl Page {
             )
             .expect("validated display viewport has bounded physical dimensions");
         }
-        let full = rasterize(&self.render());
+        // One CSS pixel per device pixel, but still only the visible band is
+        // drawn: rasterizing the whole page to crop one screenful out of it
+        // made every scroll cost the page's height, not the window's.
+        let band = (self.scroll_y, self.scroll_y + self.viewport_height);
+        let frame = self.render_band(Some(band));
+        let (width, height) = (self.viewport_width.round(), self.viewport_height.round());
+        if (1.0..=4096.0).contains(&width) && (1.0..=4096.0).contains(&height) {
+            if let Ok(pixmap) = blueice_raster::rasterize_viewport(
+                &frame,
+                self.scroll_y.round().max(0.0),
+                width as u32,
+                height as u32,
+                1.0,
+            ) {
+                return pixmap;
+            }
+        }
+        let full = rasterize(&frame);
         crop(
             &full,
             self.scroll_y,
