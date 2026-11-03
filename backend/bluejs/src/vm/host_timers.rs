@@ -384,10 +384,20 @@ impl Vm {
             .script_time
             .callback_limit
             .map(|limit| std::time::Instant::now() + limit);
+        let callback_started = std::time::Instant::now();
         let outcome = self
             .synchronize_scheduling_usage()
             .and_then(|()| self.run_timer_task(callback, prepared, nesting, run));
         self.script_time.deadline = None;
+        if let Some(threshold) = self.script_time.slow_report {
+            let took = callback_started.elapsed();
+            if took >= threshold {
+                self.script_time_reports.push(format!(
+                    "slow timer callback ({} ms): {source}",
+                    took.as_millis()
+                ));
+            }
+        }
         // The callback ran past its wall-clock limit and was stopped. Like an
         // uncaught exception it ends only that callback, but it must also not
         // be asked to run again: an interval that always overruns would
@@ -453,6 +463,12 @@ impl Vm {
     ) {
         self.script_time.callback_limit = callback;
         self.script_time.slice = slice;
+    }
+
+    /// Makes every timer callback that runs at least `threshold` appear in
+    /// [`Vm::take_script_time_reports`] (a measuring aid; `None` turns it off).
+    pub fn set_slow_callback_report(&mut self, threshold: Option<std::time::Duration>) {
+        self.script_time.slow_report = threshold;
     }
 
     /// Descriptions of the callbacks stopped by the wall-clock limit since

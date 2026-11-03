@@ -123,6 +123,9 @@ impl WebHost {
             .and_then(|ms| ms.parse().ok())
             .map_or(CALLBACK_WALL_LIMIT, std::time::Duration::from_millis);
         vm.set_script_time_limits(Some(callback_limit), Some(TICK_SLICE));
+        if std::env::var("BI_DIAG").is_ok() {
+            vm.set_slow_callback_report(Some(std::time::Duration::from_millis(80)));
+        }
         let started = Instant::now();
         let state = Rc::new(RefCell::new(state));
         vm.install_web_file_api().map_err(|e| e.to_string())?;
@@ -264,8 +267,13 @@ impl WebHost {
         }
         for report in self.vm.take_script_time_reports() {
             // One console line is cut short, so each part gets its own.
+            let label = if report.starts_with("slow timer callback") {
+                ""
+            } else {
+                "page script stopped: "
+            };
             for part in report.split("; it was in: ") {
-                self.note(&format!("page script stopped: {part}"));
+                self.note(&format!("{label}{part}"));
             }
         }
         self.collect_console();
@@ -460,13 +468,16 @@ mod tests {
         let stopped: Vec<_> = h
             .console()
             .iter()
-            .filter(|l| l.contains("page script stopped"))
+            .filter(|l| l.contains("stopped after running longer than the wall-clock limit"))
             .collect();
         assert_eq!(stopped.len(), 1, "{:?}", h.console());
+        // The report names where it was, on a line of its own.
         assert!(
-            stopped[0].contains("for (;;)"),
-            "names the callback: {}",
-            stopped[0]
+            h.console()
+                .iter()
+                .any(|l| l.contains("page script stopped:") && l.contains("for (;;)")),
+            "names the callback: {:?}",
+            h.console()
         );
     }
 

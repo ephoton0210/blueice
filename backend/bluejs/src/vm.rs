@@ -2298,6 +2298,8 @@ pub(crate) struct ScriptTime {
     /// How long one `run_due_host_timers` pass may spend before leaving the
     /// timers still due for the next pass.
     slice: Option<std::time::Duration>,
+    /// Report any timer callback that runs longer than this (a diagnostic).
+    slow_report: Option<std::time::Duration>,
     /// The armed limit of the callback now running.
     deadline: Option<std::time::Instant>,
     /// Set when `deadline` stopped a callback.
