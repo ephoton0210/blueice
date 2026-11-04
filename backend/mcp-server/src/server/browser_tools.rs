@@ -300,20 +300,7 @@ impl BlueIceMcpServer {
         &self,
         Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let screenshot = blocking(self.core.clone(), move |conn| {
-            let Some((resolved_tab_id, frame)) = conn.last_frame_with_tab_id(tab_id) else {
-                return Ok(None);
-            };
-            let mapped = blueice_ipc::shm::map_frame(std::path::Path::new(&frame.shm_path))?;
-            let png = crate::frame_to_png_bytes(&mapped, frame.width, frame.height)?;
-            Ok(Some((
-                png,
-                resolved_tab_id,
-                frame.generation,
-                frame.frame_source(),
-            )))
-        })
-        .await?;
+        let screenshot = blocking(self.core.clone(), move |conn| conn.screenshot_png(tab_id)).await?;
 
         match screenshot {
             Some((bytes, resolved_tab_id, generation, frame_source)) => {

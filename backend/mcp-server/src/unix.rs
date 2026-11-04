@@ -1630,6 +1630,81 @@ impl<S: Read + Write> CoreConnection<S> {
         }
     }
 
+    /// Asks core to render `tab_id` again and takes the frame it answers with, so
+    /// a frame file that has since been replaced does not have to be the one used.
+    pub fn refresh_frame(&mut self, tab_id: Option<u64>) -> io::Result<()> {
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            tab_id,
+            Some(request_id),
+            &ClientMessage::Scroll { delta_y: 0.0 },
+        )?;
+        loop {
+            let (frame_tab_id, reply_id, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            if reply_id != Some(request_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::FrameReady {
+                    shm_path,
+                    width,
+                    height,
+                    generation,
+                } => {
+                    self.record_frame(
+                        frame_tab_id,
+                        FrameInfo {
+                            shm_path,
+                            width,
+                            height,
+                            generation,
+                        },
+                        true,
+                    );
+                    return Ok(());
+                }
+                ServerMessage::Error { message } => return Err(io::Error::other(message)),
+                _ => {}
+            }
+        }
+    }
+
+    /// A PNG of the most recent frame for `tab_id` (see [`CoreConnection::last_frame`]),
+    /// with the tab and generation it shows and its frame source; `None` when no frame
+    /// has been rendered. A page that repaints all the time replaces its frame files, so
+    /// a frame file that is gone is replaced by a fresh frame (up to three tries) rather
+    /// than reported as an error.
+    #[allow(clippy::type_complexity)]
+    pub fn screenshot_png(
+        &mut self,
+        tab_id: Option<u64>,
+    ) -> io::Result<Option<(Vec<u8>, u64, u64, u64)>> {
+        for attempt in 0..3 {
+            let Some((tab, frame)) = self.last_frame_with_tab_id(tab_id) else {
+                return Ok(None);
+            };
+            let (width, height, generation, source) = (
+                frame.width,
+                frame.height,
+                frame.generation,
+                frame.frame_source(),
+            );
+            match blueice_ipc::shm::map_frame(std::path::Path::new(&frame.shm_path)) {
+                Ok(mapped) => {
+                    let png = frame_to_png_bytes(&mapped, width, height)?;
+                    return Ok(Some((png, tab, generation, source)));
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound && attempt < 2 => {
+                    self.refresh_frame(Some(tab))?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(None)
+    }
+
     /// The most recent frame for `tab_id`, or (if `None`) the frame for
     /// the tab this MCP connection most recently rendered through one
     /// of its own requests. An unsolicited frame for a human's tab is

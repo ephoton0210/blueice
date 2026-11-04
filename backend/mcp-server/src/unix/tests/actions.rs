@@ -437,3 +437,51 @@ fn a_wheel_scroll_the_core_refuses_stops_and_reports_why() {
     assert_eq!(record.steps[0].generation, None);
     assert_eq!(record.steps[0].position, None);
 }
+
+#[test]
+fn a_screenshot_whose_frame_file_has_been_replaced_asks_for_a_fresh_frame() {
+    // A page that keeps repainting rotates its frame files; the one this connection
+    // last heard of may be gone by the time a screenshot reads it.
+    let dir = std::env::temp_dir().join(format!("bi-mcp-shot-{}", std::process::id()));
+    let fresh = blueice_ipc::shm::write_frame(&dir, 1, 8, &[200u8; 4 * 4 * 4]).unwrap();
+    let (client, server) = UnixStream::pair().unwrap();
+    let fresh_path = fresh.to_string_lossy().into_owned();
+    fake_core(
+        server,
+        vec![Box::new(move |msg, s| {
+            assert_eq!(msg, ClientMessage::Scroll { delta_y: 0.0 });
+            reply_tab(
+                s,
+                1,
+                &ServerMessage::FrameReady {
+                    shm_path: fresh_path.clone(),
+                    width: 4,
+                    height: 4,
+                    generation: 8,
+                },
+            );
+        })],
+    );
+    let mut conn = CoreConnection::new(client);
+    conn.record_frame(
+        Some(1),
+        FrameInfo {
+            shm_path: dir.join("gone.frame").to_string_lossy().into_owned(),
+            width: 4,
+            height: 4,
+            generation: 7,
+        },
+        true,
+    );
+    let (png, tab, generation, _) = conn.screenshot_png(None).unwrap().expect("a screenshot");
+    assert!(png.starts_with(&[0x89, b'P', b'N', b'G']));
+    assert_eq!((tab, generation), (1, 8));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_screenshot_with_no_frame_at_all_is_none_not_an_error() {
+    let (client, _server) = UnixStream::pair().unwrap();
+    let mut conn = CoreConnection::new(client);
+    assert!(conn.screenshot_png(None).unwrap().is_none());
+}
