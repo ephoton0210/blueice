@@ -313,6 +313,10 @@ mod tests {
                 for (n, (src, text)) in page.pending_linked_scripts.iter().enumerate() {
                     let _ = std::fs::write(format!("{dir}/scripts/{n}.js"), format!("// {src}\n{text}"));
                 }
+                let _ = std::fs::create_dir_all(format!("{dir}/modules"));
+                for (n, (key, text)) in page.pending_linked_modules.iter().enumerate() {
+                    let _ = std::fs::write(format!("{dir}/modules/{n}.js"), format!("// {key}\n{text}"));
+                }
             }
             eprintln!(
                 "fetched {} scripts and {} modules",
@@ -406,6 +410,13 @@ mod tests {
             }
             if let Ok(probe) = std::env::var("BI_EVAL") {
                 page.web_eval(&probe);
+            }
+            // A probe's own lines (`console.log('EVAL ...')`) and its failures, found among
+            // whatever noise the page made.
+            for line in page.web_console().iter().filter(|l| {
+                l.starts_with("[log] EVAL") || l.starts_with("[error] Uncaught") || l.starts_with("[error] TypeError")
+            }) {
+                eprintln!("eval: {}", &line[..line.len().min(300)]);
             }
             for line in page.web_console().iter().take(60) {
                 eprintln!("console: {}", &line[..line.len().min(300)]);

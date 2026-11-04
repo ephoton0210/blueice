@@ -71,6 +71,8 @@ pub(crate) struct WebHost {
     state: Rc<RefCell<DomState>>,
     started: Instant,
     console: Vec<String>,
+    /// Every line ever noted, including those the record has since dropped.
+    console_total: usize,
     /// Every module of the page, compiled; passed whole to each module run so
     /// that all of them share one registry and one set of instances.
     modules: HashMap<String, Bytecode>,
@@ -159,6 +161,7 @@ impl WebHost {
             state,
             started,
             console: Vec::new(),
+            console_total: 0,
             modules: HashMap::new(),
         };
         host.run("blueice:bootstrap", BOOTSTRAP)
@@ -334,6 +337,19 @@ impl WebHost {
             self.console.remove(0);
         }
         self.console.push(line.to_string());
+        self.console_total += 1;
+    }
+
+    /// The lines the console has gained since `already` lines had been taken (a count
+    /// that only grows, so it stays right after the record has dropped its oldest
+    /// lines), and the new count. When more arrived than the record keeps, the oldest
+    /// of them are gone and the rest are returned.
+    pub fn console_since(&self, already: usize) -> (Vec<String>, usize) {
+        let new = self.console_total.saturating_sub(already).min(self.console.len());
+        (
+            self.console[self.console.len() - new..].to_vec(),
+            self.console_total,
+        )
     }
 }
 
@@ -432,6 +448,190 @@ mod tests {
             ),
             "[log] 1 false true"
         );
+    }
+
+    #[test]
+    fn an_elements_style_has_every_standard_property_not_only_the_ones_set() {
+        // Animation libraries ask `property in element.style` to learn whether a property
+        // exists before they set it; a style object that only "has" what is already written
+        // inline makes them give up ("Invalid property width set to 0").
+        let mut h = host("<div id=d style='opacity:0.5'></div>");
+        assert_eq!(
+            log(
+                &mut h,
+                "const s = document.getElementById('d').style;\
+                 const yes = ['opacity','width','height','display','transform','translate','scale','rotate',\
+                   'backgroundColor','background-color','zIndex','flexBasis','borderTopLeftRadius','pointerEvents',\
+                   'transformOrigin','willChange','cssFloat','float','clipPath','backdropFilter','inset','gap'];\
+                 const no = ['then','toJSON','bogus','notAProperty','constructor2'];\
+                 console.log(yes.filter((p) => !(p in s)).join(',') || 'all', no.filter((p) => p in s).join(',') || 'none')"
+            ),
+            "[log] all none"
+        );
+        // Setting through one of them still works and is then also readable.
+        assert_eq!(
+            log(
+                &mut h,
+                "const st = document.getElementById('d').style; st.width = '10px'; st.translate = '3px 4px';\
+                 console.log(st.width, st.getPropertyValue('translate'), st.opacity)"
+            ),
+            "[log] 10px 3px 4px 0.5"
+        );
+    }
+
+    /// Runs the host's timers for `ms` of real time.
+    fn run_for(h: &mut WebHost, ms: u64) {
+        let until = Instant::now() + std::time::Duration::from_millis(ms);
+        while Instant::now() < until {
+            h.tick();
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        h.tick();
+    }
+
+    #[test]
+    fn an_element_animation_runs_for_its_time_and_then_finishes() {
+        // A library that animates with `element.animate` writes the final value when
+        // `onfinish` is called; an animation that never finishes leaves it where it started.
+        let mut h = host("<div id=d></div>");
+        h.run(
+            "p",
+            "const el = document.getElementById('d');\
+             globalThis.events = [];\
+             const a = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 60, easing: 'ease-out' });\
+             globalThis.anim = a;\
+             events.push('start:' + a.playState + ':' + el.getAnimations().length);\
+             a.onfinish = (e) => events.push('onfinish:' + a.playState + ':' + (e && e.type));\
+             a.addEventListener('finish', () => events.push('finish-event'));\
+             a.finished.then((x) => events.push('finished-promise:' + (x === a)));",
+        )
+        .unwrap();
+        run_for(&mut h, 20);
+        assert_eq!(
+            log(&mut h, "console.log(events.join(' '))"),
+            "[log] start:running:1",
+            "not finished before its 60 ms"
+        );
+        run_for(&mut h, 120);
+        assert_eq!(
+            log(
+                &mut h,
+                "console.log(events.join(' '), document.getElementById('d').getAnimations().length)"
+            ),
+            "[log] start:running:1 finished-promise:true onfinish:finished:finish finish-event 0"
+        );
+    }
+
+    #[test]
+    fn an_animation_honours_its_delay_iterations_and_end_delay() {
+        let mut h = host("<div id=d></div>");
+        h.run(
+            "p",
+            "const a = document.getElementById('d').animate([{ opacity: 0 }, { opacity: 1 }],\
+               { duration: 20, delay: 30, iterations: 2, endDelay: 10 });\
+             globalThis.done = false; a.onfinish = () => { globalThis.done = true; };\
+             globalThis.infinite = document.getElementById('d').animate({ opacity: [0, 1] }, { duration: 10, iterations: Infinity });\
+             globalThis.fin = false; infinite.onfinish = () => { globalThis.fin = true; };",
+        )
+        .unwrap();
+        run_for(&mut h, 60);
+        assert_eq!(log(&mut h, "console.log(done)"), "[log] false", "30 + 40 + 10 is 80 ms");
+        run_for(&mut h, 120);
+        assert_eq!(log(&mut h, "console.log(done, fin, infinite.playState)"), "[log] true false running");
+    }
+
+    #[test]
+    fn an_animation_can_be_paused_resumed_finished_and_cancelled() {
+        let mut h = host("<div id=d></div>");
+        h.run(
+            "p",
+            "const el = document.getElementById('d'); globalThis.log2 = [];\
+             const a = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 40 });\
+             a.onfinish = () => log2.push('a-finished');\
+             a.pause(); log2.push('paused:' + a.playState);\
+             const b = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 10000 });\
+             b.onfinish = () => log2.push('b-finished'); b.oncancel = () => log2.push('b-cancelled');\
+             b.finished.catch((e) => log2.push('b-rejected:' + e.name));\
+             b.finish(); log2.push('b-after-finish:' + b.playState);\
+             const c = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 10000 });\
+             c.oncancel = () => log2.push('c-cancelled'); c.finished.catch((e) => log2.push('c-rejected:' + e.name));\
+             c.cancel(); log2.push('c-after-cancel:' + c.playState);\
+             globalThis.a = a;",
+        )
+        .unwrap();
+        run_for(&mut h, 120);
+        assert_eq!(
+            log(&mut h, "console.log(log2.join(' '))"),
+            "[log] paused:paused b-after-finish:finished c-after-cancel:idle b-finished \
+             c-rejected:AbortError c-cancelled",
+            "a paused animation does not finish on its own"
+        );
+        h.run("p", "a.play();").unwrap();
+        run_for(&mut h, 120);
+        assert!(log(&mut h, "console.log(log2.join(' '))").ends_with("a-finished"));
+    }
+
+    #[test]
+    fn the_document_timeline_tells_time_and_lists_the_running_animations() {
+        let mut h = host("<div id=d></div>");
+        assert_eq!(
+            log(
+                &mut h,
+                "const t0 = document.timeline.currentTime;\
+                 const a = document.getElementById('d').animate({ opacity: [0, 1] }, 10000);\
+                 console.log(typeof t0, document.getAnimations().length, a.timeline === document.timeline, \
+                   a.effect.getTiming().duration, a.effect.target === document.getElementById('d'), \
+                   typeof a.currentTime, a instanceof Animation)"
+            ),
+            "[log] number 1 true 10000 true number true"
+        );
+        run_for(&mut h, 30);
+        assert_eq!(log(&mut h, "console.log(document.timeline.currentTime > 0)"), "[log] true");
+    }
+
+    #[test]
+    fn document_fonts_is_one_loaded_font_face_set() {
+        let mut h = host("<p></p>");
+        h.run(
+            "p",
+            "globalThis.same = document.fonts === document.fonts;\
+             document.fonts.ready.then((f) => { globalThis.readyIsTheSet = f === document.fonts; });",
+        )
+        .unwrap();
+        h.tick();
+        assert_eq!(
+            log(
+                &mut h,
+                "const f = document.fonts;\
+                 console.log(same, readyIsTheSet, f.status, typeof f.size, f.check('12px sans-serif'), \
+                   typeof f.add, typeof f.has, typeof f.delete, typeof f.forEach, f.onloadingdone === null)"
+            ),
+            "[log] true true loaded number true function function function function true"
+        );
+    }
+
+    #[test]
+    fn console_lines_are_reported_once_even_after_the_record_drops_its_oldest() {
+        let mut h = host("<p></p>");
+        let (first, mut seen) = h.console_since(0);
+        assert!(first.is_empty());
+        for i in 0..(MAX_CONSOLE_LINES + 300) {
+            h.note(&format!("line {i}"));
+        }
+        // More arrived than the record keeps: the newest are returned, and counted all.
+        let (batch, total) = h.console_since(seen);
+        assert_eq!(batch.len(), MAX_CONSOLE_LINES);
+        assert_eq!(batch.last().unwrap(), &format!("line {}", MAX_CONSOLE_LINES + 299));
+        assert_eq!(total, MAX_CONSOLE_LINES + 300);
+        seen = total;
+        // Later lines still arrive, one batch each, with the record full and wrapping.
+        h.note("after one");
+        h.note("after two");
+        let (batch, total) = h.console_since(seen);
+        assert_eq!(batch, vec!["after one".to_string(), "after two".to_string()]);
+        seen = total;
+        let (batch, _) = h.console_since(seen);
+        assert!(batch.is_empty(), "nothing is reported twice");
     }
 
     #[test]

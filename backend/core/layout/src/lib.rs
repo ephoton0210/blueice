@@ -200,6 +200,110 @@ mod tests {
         f.children.iter().find_map(|c| find_by_id(doc, c, id))
     }
 
+    /// The width of the box with `id` in `html`, laid out in a 1280 px window.
+    fn width_of(html: &str, id: &str) -> f64 {
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        let fragment = layout(
+            &doc,
+            doc.root(),
+            &styles,
+            Constraints {
+                available_width: 1280.0,
+                viewport_height: 900.0,
+            },
+        );
+        find_by_id(&doc, &fragment, id)
+            .unwrap_or_else(|| panic!("no box with id {id}"))
+            .width
+    }
+
+    #[test]
+    fn a_flex_button_is_as_wide_as_its_content_however_the_content_is_aligned() {
+        // A button that is itself a flex container with its content centred (or pushed to an
+        // end, or spread), and does not shrink, takes its width from its content. Measured at a
+        // stand-in "unlimited" width, where aligned content sits far from the start, the
+        // alignment must not be counted as part of the content.
+        let plain = width_of(
+            "<body style='margin:0'><div style='display:flex;width:1000px'>\
+               <a id=b style='display:flex;flex-shrink:0;padding:0 12px'>Login</a></div></body>",
+            "b",
+        );
+        for (label, extra) in [
+            ("centred", "justify-content:center"),
+            ("at the end", "justify-content:flex-end"),
+            ("spread", "justify-content:space-between"),
+            ("space around", "justify-content:space-around"),
+            ("space evenly", "justify-content:space-evenly"),
+            ("centred, items centred", "justify-content:center;align-items:center"),
+        ] {
+            let html = format!(
+                "<body style='margin:0'><div style='display:flex;justify-content:flex-end;width:1000px'>\
+                   <a id=b style='display:flex;flex-shrink:0;padding:0 12px;{extra}'>Login</a></div></body>"
+            );
+            let width = width_of(&html, "b");
+            assert!(
+                (width - plain).abs() < 1.0,
+                "{label}: {width} px wide, but the same button without alignment is {plain}"
+            );
+        }
+        // The same with several items and a gap: the width is their sum and the gaps.
+        let two = width_of(
+            "<body style='margin:0'><div style='display:flex;justify-content:flex-end;width:1000px'>\
+               <a id=b style='display:flex;flex-shrink:0;justify-content:center;gap:10px'>\
+                 <span style='display:block;width:30px'>a</span><span style='display:block;width:40px'>b</span></a></div></body>",
+            "b",
+        );
+        assert!((two - 80.0).abs() < 1.0, "30 + 10 + 40 is 80, got {two}");
+        // A column flex container is as wide as its widest item, wherever they are aligned.
+        let column = width_of(
+            "<body style='margin:0'><div style='display:flex;justify-content:flex-end;width:1000px'>\
+               <a id=b style='display:flex;flex-direction:column;flex-shrink:0;align-items:center'>\
+                 <span style='display:block;width:30px'>a</span><span style='display:block;width:70px'>b</span></a></div></body>",
+            "b",
+        );
+        assert!((column - 70.0).abs() < 1.0, "the widest item is 70, got {column}");
+    }
+
+    #[test]
+    fn a_box_laid_over_a_shrink_wrapped_button_adds_nothing_to_its_width() {
+        // A button with a background layer pinned over it (`position:absolute; inset:-1px`, as
+        // utility CSS builds them) is as wide as its label, wherever it sits. Measured for its
+        // preferred width at a stand-in "unlimited" size, the layer must not stretch it.
+        let layer = "<span style='position:absolute;top:-1px;left:-1px;right:-1px;bottom:-1px'></span>";
+        let cases = [
+            (
+                "a flex item that does not shrink",
+                format!(
+                    "<body style='margin:0'><div style='display:flex;justify-content:flex-end;width:1000px'>\
+                       <a id=b style='display:flex;flex-shrink:0;position:relative;padding:0 8px'>Login{layer}</a></div></body>"
+                ),
+            ),
+            (
+                "an inline flex box in a flex row",
+                format!(
+                    "<body style='margin:0'><div style='display:flex;justify-content:flex-end;width:1000px'>\
+                       <a id=b style='display:inline-flex;position:relative;padding:0 8px'>Login{layer}</a></div></body>"
+                ),
+            ),
+            (
+                "an absolutely positioned shrink-to-fit box",
+                format!(
+                    "<body style='margin:0'><div style='position:relative;width:1000px;height:50px'>\
+                       <a id=b style='position:absolute;top:0;right:0;display:block;padding:0 8px'>Login{layer}</a></div></body>"
+                ),
+            ),
+        ];
+        for (label, html) in cases {
+            let width = width_of(&html, "b");
+            assert!(
+                (20.0..120.0).contains(&width),
+                "{label}: the button is {width} px wide, not about its label's width"
+            );
+        }
+    }
+
     #[test]
     fn a_fixed_box_inside_an_absolutely_positioned_box_is_still_laid_out() {
         // A sticky sidebar: `position: fixed` set on a descendant of an absolutely positioned

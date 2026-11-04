@@ -1374,3 +1374,122 @@ fn publishing_a_frame_clears_the_unpublished_script_change() {
         "the frame just published already shows the change"
     );
 }
+
+
+/// The width of the first element with `id` in `html`, laid out in an 800 px page.
+#[cfg(test)]
+fn width_of_id(html: &str, id: &str) -> f64 {
+    let mut page = Page::new(800.0, 600.0);
+    page.load_html_str(html, Some("https://example.test/".into()));
+    let node = {
+        let mut found = None;
+        let mut stack = vec![page.doc.root()];
+        while let Some(n) = stack.pop() {
+            if let blueice_dom::NodeData::Element { attributes, .. } = page.doc.data(n) {
+                if attributes.iter().any(|(k, v)| k == "id" && v == id) {
+                    found = Some(n);
+                    break;
+                }
+            }
+            stack.extend(page.doc.children(n));
+        }
+        found.unwrap_or_else(|| panic!("no element with id {id}"))
+    };
+    find_fragment_bounds(page.fragment(), node, 0.0, 0.0)
+        .unwrap_or_else(|| panic!("element {id} has no box"))
+        .width
+}
+
+#[test]
+fn a_utility_css_button_is_as_wide_as_its_label_and_padding() {
+    // Tailwind v4's own rules for a right-aligned header button: logical padding from
+    // `calc(var(--spacing) * 3)`, a gap, a background layer pinned over it with `inset`, and a
+    // pill radius of `calc(infinity * 1px)`.
+    let html = "<style>\
+        :root{--spacing:.25rem;--radius-xl:.75rem;--radius-full:calc(infinity * 1px)}\
+        .px-3{padding-inline:calc(var(--spacing) * 3)}\
+        .py-1\\.5{padding-block:calc(var(--spacing) * 1.5)}\
+        .gap-2{gap:calc(var(--spacing) * 2)}\
+        .shrink-0{flex-shrink:0}.hidden{display:none}.relative{position:relative}\
+        .rounded-xl{border-radius:var(--radius-xl)}\
+        @media (min-width:48rem){.md\\:flex{display:flex}.md\\:rounded-full{border-radius:var(--radius-full)}}\
+        .before\\:absolute::before{position:absolute;content:''}\
+        .before\\:-inset-\\[1px\\]::before{inset:calc(1px * -1)}\
+        .flex{display:flex}.justify-end{justify-content:flex-end}.items-center{align-items:center}\
+        </style>\
+        <div class='flex items-center justify-end gap-2' style='width:700px'>\
+          <a id=b class='relative shrink-0 gap-2 rounded-xl md:rounded-full px-3 py-1.5 hidden md:flex \
+                       before:absolute before:-inset-[1px]'>Login</a></div>";
+    let width = width_of_id(html, "b");
+    // The label's width plus 12 px of padding on each side.
+    assert!(
+        (30.0..90.0).contains(&width),
+        "the button is {width} px wide; its label is a few dozen"
+    );
+}
+
+
+/// Developer tool, not a test: loads a page and its style sheets saved by `BI_SAVE`
+/// (`BI_SAVED_DIR`), measures the box with id `BI_ID`, and then removes each of its classes
+/// in turn to show which ones decide its width.
+///
+/// `BI_SAVED_DIR=/tmp/saved BI_ID=nav-login-button cargo test -p blueice-engine --release
+/// --lib bisect_a_saved_pages_width -- --ignored --nocapture`
+#[test]
+#[ignore = "needs a page saved with BI_SAVE; run by hand"]
+fn bisect_a_saved_pages_width() {
+    let Ok(dir) = std::env::var("BI_SAVED_DIR") else {
+        return;
+    };
+    let id = std::env::var("BI_ID").unwrap_or_else(|_| "nav-login-button".into());
+    let html = std::fs::read_to_string(format!("{dir}/page.html")).expect("page.html");
+    let mut sheets: Vec<(usize, String, String)> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| {
+            let name = e.ok()?.file_name().into_string().ok()?;
+            let n: usize = name.strip_prefix("sheet")?.strip_suffix(".css")?.parse().ok()?;
+            let text = std::fs::read_to_string(format!("{dir}/{name}")).ok()?;
+            let (first, rest) = text.split_once('\n')?;
+            let href = first.trim_start_matches("/* ").trim_end_matches(" */").to_string();
+            Some((n, href, rest.to_string()))
+        })
+        .collect();
+    sheets.sort();
+    let measure = |html: &str| -> f64 {
+        let mut page = Page::new(1280.0, 900.0);
+        page.pending_linked_styles = sheets.iter().map(|(_, h, c)| (h.clone(), c.clone())).collect();
+        page.load_html_str(html, Some("https://www.cloudflare.com/".into()));
+        let mut found = None;
+        let mut stack = vec![page.doc.root()];
+        while let Some(n) = stack.pop() {
+            if let blueice_dom::NodeData::Element { attributes, .. } = page.doc.data(n) {
+                if attributes.iter().any(|(k, v)| k == "id" && *v == id) {
+                    found = Some(n);
+                    break;
+                }
+            }
+            stack.extend(page.doc.children(n));
+        }
+        found
+            .and_then(|n| find_fragment_bounds(page.fragment(), n, 0.0, 0.0))
+            .map_or(f64::NAN, |b| b.width)
+    };
+    let tag_start = html.find(&format!("id=\"{id}\"")).expect("the element");
+    let open = html[..tag_start].rfind('<').unwrap();
+    let close = tag_start + html[tag_start..].find('>').unwrap();
+    let tag = &html[open..=close];
+    let class_at = tag.find("class=\"").expect("a class attribute") + 7;
+    let class_end = class_at + tag[class_at..].find('"').unwrap();
+    let classes: Vec<&str> = tag[class_at..class_end].split_whitespace().collect();
+    let base = measure(&html);
+    eprintln!("BISECT {id}: {} classes, width {base}", classes.len());
+    for (i, class) in classes.iter().enumerate() {
+        let kept: Vec<&str> = classes.iter().enumerate().filter(|(j, _)| *j != i).map(|(_, c)| *c).collect();
+        let new_tag = format!("{}{}{}", &tag[..class_at], kept.join(" "), &tag[class_end..]);
+        let variant = html.replacen(tag, &new_tag, 1);
+        let width = measure(&variant);
+        if (width - base).abs() > 1.0 {
+            eprintln!("BISECT without `{class}`: width {width}");
+        }
+    }
+}

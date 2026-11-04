@@ -779,6 +779,7 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
 
     // ---- per line: cross alignment and main placement ----
     let used_main_total = container_main;
+    let mut natural_main = 0.0f64;
     for (index, line) in lines.iter().enumerate() {
         let cross_size = line_cross[index];
         // baseline alignment shares one baseline across the line
@@ -877,6 +878,18 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
             items[i].main_pos = cursor + start_margin;
             cursor += start_margin + items[i].used + end_margin + between;
         }
+        // What the line itself takes, whatever `justify-content` does with the room around it
+        // (auto margins take none of it): its items' margin boxes and the gaps between them.
+        let natural_line = line
+            .iter()
+            .map(|&i| {
+                items[i].margin_main(row, true).unwrap_or(0.0)
+                    + items[i].used
+                    + items[i].margin_main(row, false).unwrap_or(0.0)
+            })
+            .sum::<f64>()
+            + gap_main * (line.len().saturating_sub(1)) as f64;
+        natural_main = natural_main.max(natural_line);
         if reverse {
             if let Some(total) = used_main_total {
                 for &i in line {
@@ -887,7 +900,7 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
     }
 
     // ---- fragments ----
-    let mut max_right = 0.0f64;
+    let mut natural_cross = 0.0f64;
     let mut max_bottom = 0.0f64;
     for item in items {
         let mut fragment = item.fragment;
@@ -898,7 +911,10 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
         };
         fragment.x = x;
         fragment.y = y;
-        max_right = max_right.max(x + fragment.width + item.margin[1].unwrap_or(0.0));
+        // For a column, the widest item's margin box, wherever `align-items` puts it.
+        natural_cross = natural_cross.max(
+            item.margin[3].unwrap_or(0.0) + fragment.width + item.margin[1].unwrap_or(0.0),
+        );
         max_bottom = max_bottom.max(y + fragment.height + item.margin[2].unwrap_or(0.0));
         for p in item.pending {
             result.pending_abs.push(PendingAbs {
@@ -909,7 +925,10 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
         }
         result.children.push(fragment);
     }
-    result.extent = max_right;
+    // How far the content reaches for intrinsic sizing is its natural size, not where
+    // alignment put it: aligned inside an unlimited stand-in width, `justify-content: center`
+    // would otherwise put the far edge half a million pixels out.
+    result.extent = if row { natural_main } else { natural_cross };
     let natural = if row {
         total_cross.max(0.0)
     } else {

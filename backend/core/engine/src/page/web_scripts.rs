@@ -470,6 +470,20 @@ impl Page {
                         crate::scripts_fetch::DEFAULT_SCRIPT_LIMITS,
                     )
                 });
+                // Developer aid: keep the scripts the page loaded after it started (`BI_SAVE`).
+                if let (Ok(dir), Some(text)) = (std::env::var("BI_SAVE"), source.as_ref()) {
+                    let _ = std::fs::create_dir_all(format!("{dir}/loaded"));
+                    let name: String = src
+                        .chars()
+                        .map(|c| if c.is_ascii_alphanumeric() || c == '.' { c } else { '_' })
+                        .rev()
+                        .take(120)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect();
+                    let _ = std::fs::write(format!("{dir}/loaded/{name}"), text);
+                }
                 let trace = std::env::var_os("BI_NET_LOG").is_some();
                 if trace {
                     eprintln!(
@@ -924,6 +938,25 @@ mod tests {
             begun.elapsed()
         );
         assert_eq!(texts(&page), vec!["next"]);
+    }
+
+    #[test]
+    fn the_root_elements_client_size_is_the_window_and_the_screen_is_at_least_the_window() {
+        // Scripts read `document.documentElement.clientHeight` as the height of the window
+        // (the page can be far taller), and a screen is never smaller than the window on it.
+        let page = page(
+            "<body style='margin:0'><div style='height:3000px'>tall</div><p id=out>x</p><script>\
+             const de = document.documentElement;\
+             document.getElementById('out').textContent = [de.clientWidth === innerWidth, \
+               de.clientHeight === innerHeight, document.body.clientHeight > innerHeight, \
+               de.scrollHeight >= 3000, screen.width >= innerWidth, screen.height >= innerHeight, \
+               screen.availHeight >= innerHeight].join(',');</script></body>",
+        );
+        assert!(
+            texts(&page).iter().any(|t| t == "true,true,true,true,true,true,true"),
+            "{:?}",
+            texts(&page)
+        );
     }
 
     #[test]

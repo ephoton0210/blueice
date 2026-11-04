@@ -171,8 +171,8 @@ fn serve(stream: UnixStream) -> io::Result<()> {
                     s.doc.revision()
                 });
                 run_turn(&mut host, turn);
-                let console = host.console()[console_sent..].to_vec();
-                console_sent += console.len();
+                let (console, total) = host.console_since(console_sent);
+                console_sent = total;
                 let done = host.with_state(|s| ChildDone {
                     dirty: s.dirty || s.doc.revision() != revision,
                     navigations: std::mem::take(&mut s.navigations),

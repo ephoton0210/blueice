@@ -813,6 +813,35 @@
     }
   };
 
+  // `document.fonts`: no web fonts are loaded or tracked, so the set is always empty and
+  // loaded; `ready` resolves to the set itself, as it does once fonts have loaded.
+  const fontFaceSet = (() => {
+    const faces = new Set();
+    const set = {
+      get status() { return 'loaded'; },
+      get size() { return faces.size; },
+      onloading: null,
+      onloadingdone: null,
+      onloadingerror: null,
+      add(face) { faces.add(face); return set; },
+      delete(face) { return faces.delete(face); },
+      has(face) { return faces.has(face); },
+      clear() { faces.clear(); },
+      load: () => Promise.resolve([]),
+      check: () => true,
+      forEach(callback, thisArg) { faces.forEach((f) => callback.call(thisArg, f, f, set)); },
+      entries: () => faces.entries(),
+      keys: () => faces.keys(),
+      values: () => faces.values(),
+      [Symbol.iterator]: () => faces.values(),
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent: () => true,
+    };
+    set.ready = Promise.resolve(set);
+    return set;
+  })();
+
   class DocumentFragment extends Node {
     constructor() {
       super();
@@ -822,6 +851,290 @@
     }
   }
   mixIn(DocumentFragment.prototype, parentNodeMethods);
+
+  // ------------------------------------------------------ Web Animations
+  // Timing, not interpolation: nothing here paints a value between the first and last keyframe,
+  // but an animation behaves as one does to the code that drives it. It runs for its delay,
+  // iterations and end delay, can be paused, resumed, reversed, finished and cancelled, says
+  // so with `finish`/`cancel` events and its `finished` promise, and is listed while it is
+  // active. Libraries that animate with `element.animate` write the final value when the
+  // animation reports that it has finished.
+  const runningAnimations = new Set();
+  class AnimationTimeline {
+    get currentTime() {
+      return nowMs();
+    }
+    get duration() {
+      return null;
+    }
+  }
+  class DocumentTimeline extends AnimationTimeline {
+    constructor() {
+      super();
+    }
+  }
+  const documentTimeline = new DocumentTimeline();
+  const normalizeTiming = (options) => {
+    const o = typeof options === 'number' ? { duration: options } : options || {};
+    const number = (v, d) => (typeof v === 'number' && !Number.isNaN(v) ? v : d);
+    return {
+      delay: number(o.delay, 0),
+      endDelay: number(o.endDelay, 0),
+      fill: o.fill || 'auto',
+      iterationStart: number(o.iterationStart, 0),
+      iterations: o.iterations === undefined ? 1 : number(+o.iterations, 1),
+      duration: o.duration === undefined || o.duration === 'auto' ? 0 : number(+o.duration, 0),
+      direction: o.direction || 'normal',
+      easing: o.easing || 'linear',
+    };
+  };
+  const normalizeKeyframes = (keyframes) => {
+    if (keyframes === null || keyframes === undefined) return [];
+    if (Array.isArray(keyframes)) return keyframes.map((k) => Object.assign({}, k));
+    const props = Object.keys(keyframes);
+    const count = Math.max(1, ...props.map((p) => (Array.isArray(keyframes[p]) ? keyframes[p].length : 1)));
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const frame = {};
+      for (const p of props) {
+        const v = keyframes[p];
+        if (p === 'offset' || p === 'easing' || p === 'composite') {
+          frame[p] = Array.isArray(v) ? v[i] : v;
+        } else {
+          frame[p] = Array.isArray(v) ? v[Math.min(i, v.length - 1)] : v;
+        }
+      }
+      out.push(frame);
+    }
+    return out;
+  };
+  class AnimationEffect {
+    getTiming() {
+      return Object.assign({}, this._timing);
+    }
+    getComputedTiming() {
+      const t = this._timing;
+      const active = t.iterations === Infinity ? Infinity : t.duration * t.iterations;
+      return Object.assign({}, t, { activeDuration: active, endTime: t.delay + active + t.endDelay, localTime: null, progress: null, currentIteration: null });
+    }
+    updateTiming(timing) {
+      Object.assign(this._timing, normalizeTiming(Object.assign({}, this._timing, timing || {})));
+    }
+  }
+  class KeyframeEffect extends AnimationEffect {
+    constructor(target, keyframes, options) {
+      super();
+      Object.defineProperty(this, '_timing', { value: normalizeTiming(options), writable: true });
+      Object.defineProperty(this, '_target', { value: target || null, writable: true });
+      Object.defineProperty(this, '_keyframes', { value: normalizeKeyframes(keyframes), writable: true });
+    }
+    get target() {
+      return this._target;
+    }
+    set target(t) {
+      this._target = t;
+    }
+    get pseudoElement() {
+      return null;
+    }
+    getKeyframes() {
+      return this._keyframes.map((k) => Object.assign({}, k));
+    }
+    setKeyframes(keyframes) {
+      this._keyframes = normalizeKeyframes(keyframes);
+    }
+  }
+  class Animation extends EventTarget {
+    constructor(effect, timeline) {
+      super();
+      const state = { effect: effect || null, timeline: timeline === undefined ? documentTimeline : timeline, state: 'idle', elapsed: 0, startedAt: 0, rate: 1, timer: null, id: '' };
+      Object.defineProperty(this, '_s', { value: state });
+      this.onfinish = null;
+      this.oncancel = null;
+      this.onremove = null;
+      this._newFinished();
+    }
+    _newFinished() {
+      const s = this._s;
+      s.finished = new Promise((resolve, reject) => {
+        s.resolveFinished = resolve;
+        s.rejectFinished = reject;
+      });
+      // A cancelled animation rejects `finished`; one nobody waits on is not an error.
+      s.finished.catch(() => {});
+    }
+    _total() {
+      const t = this._s.effect ? this._s.effect.getComputedTiming() : { endTime: 0 };
+      return t.endTime;
+    }
+    _now() {
+      const s = this._s;
+      return s.state === 'running' ? s.elapsed + (nowMs() - s.startedAt) * s.rate : s.elapsed;
+    }
+    _arm() {
+      const s = this._s;
+      if (s.timer !== null) clearTimeout(s.timer);
+      s.timer = null;
+      if (s.state !== 'running' || s.rate === 0) return;
+      const target = s.rate > 0 ? this._total() : 0;
+      if (!Number.isFinite(target)) return;
+      const remaining = (target - this._now()) / s.rate;
+      s.timer = setTimeout(() => {
+        s.timer = null;
+        this._complete();
+      }, Math.max(0, remaining));
+    }
+    _complete() {
+      const s = this._s;
+      if (s.state !== 'running') return;
+      s.elapsed = s.rate > 0 ? this._total() : 0;
+      s.state = 'finished';
+      runningAnimations.delete(this);
+      s.resolveFinished(this);
+      // The event is delivered after the call that finished the animation returns.
+      const at = s.elapsed;
+      queueMicrotask(() => {
+        if (s.state !== 'finished') return;
+        const event = new Event('finish');
+        Object.defineProperties(event, { currentTime: { value: at }, timelineTime: { value: nowMs() } });
+        if (typeof this.onfinish === 'function') this.onfinish.call(this, event);
+        this.dispatchEvent(event);
+      });
+    }
+    get id() {
+      return this._s.id;
+    }
+    set id(v) {
+      this._s.id = String(v);
+    }
+    get effect() {
+      return this._s.effect;
+    }
+    set effect(e) {
+      this._s.effect = e;
+    }
+    get timeline() {
+      return this._s.timeline;
+    }
+    get playState() {
+      return this._s.state;
+    }
+    get replaceState() {
+      return 'active';
+    }
+    get pending() {
+      return false;
+    }
+    get ready() {
+      return Promise.resolve(this);
+    }
+    get finished() {
+      return this._s.finished;
+    }
+    get playbackRate() {
+      return this._s.rate;
+    }
+    set playbackRate(r) {
+      this.updatePlaybackRate(r);
+    }
+    updatePlaybackRate(rate) {
+      const s = this._s;
+      const at = this._now();
+      s.rate = +rate || 0;
+      s.elapsed = at;
+      s.startedAt = nowMs();
+      this._arm();
+    }
+    get currentTime() {
+      const s = this._s;
+      return s.state === 'idle' ? null : Math.min(Math.max(this._now(), 0), this._total());
+    }
+    set currentTime(v) {
+      const s = this._s;
+      s.elapsed = +v || 0;
+      s.startedAt = nowMs();
+      if (s.state === 'idle') s.state = 'paused';
+      this._arm();
+    }
+    get startTime() {
+      const s = this._s;
+      return s.state === 'running' ? s.startedAt - s.elapsed / s.rate : null;
+    }
+    play() {
+      const s = this._s;
+      if (s.state === 'finished' || s.state === 'idle') {
+        if (s.state === 'finished' || s.rate >= 0) s.elapsed = s.rate >= 0 ? 0 : this._total();
+        if (s.state === 'finished') this._newFinished();
+      }
+      s.state = 'running';
+      s.startedAt = nowMs();
+      runningAnimations.add(this);
+      this._arm();
+    }
+    pause() {
+      const s = this._s;
+      if (s.state === 'paused' || s.state === 'finished') return;
+      s.elapsed = s.state === 'idle' ? 0 : this._now();
+      s.state = 'paused';
+      if (s.timer !== null) clearTimeout(s.timer);
+      s.timer = null;
+      runningAnimations.add(this);
+    }
+    reverse() {
+      this.updatePlaybackRate(-this._s.rate);
+      if (this._s.state !== 'running') this.play();
+    }
+    finish() {
+      const s = this._s;
+      if (s.state === 'finished') return;
+      if (s.rate > 0 && !Number.isFinite(this._total())) throw new DOMException('Cannot finish an animation with an infinite duration.', 'InvalidStateError');
+      if (s.state === 'idle' || s.state === 'paused') {
+        s.state = 'running';
+        s.startedAt = nowMs();
+      }
+      if (s.timer !== null) clearTimeout(s.timer);
+      s.timer = null;
+      this._complete();
+    }
+    cancel() {
+      const s = this._s;
+      if (s.state === 'idle') return;
+      if (s.timer !== null) clearTimeout(s.timer);
+      s.timer = null;
+      const wasFinished = s.state === 'finished';
+      s.state = 'idle';
+      s.elapsed = 0;
+      runningAnimations.delete(this);
+      if (!wasFinished) s.rejectFinished(new DOMException('The animation was aborted.', 'AbortError'));
+      this._newFinished();
+      queueMicrotask(() => {
+        const event = new Event('cancel');
+        if (typeof this.oncancel === 'function') this.oncancel.call(this, event);
+        this.dispatchEvent(event);
+      });
+    }
+    persist() {}
+    commitStyles() {
+      const e = this._s.effect;
+      const target = e && e.target;
+      if (!target || !target.style) return;
+      const frames = e.getKeyframes();
+      const last = frames[frames.length - 1] || {};
+      for (const k of Object.keys(last)) {
+        if (k === 'offset' || k === 'easing' || k === 'composite') continue;
+        target.style[k === 'cssFloat' ? 'float' : k] = last[k];
+      }
+    }
+  }
+  const animationsOf = (root, subtree) => {
+    const out = [];
+    for (const a of runningAnimations) {
+      const t = a.effect && a.effect.target;
+      if (!t) continue;
+      if (t === root || (subtree && root.contains && root.contains(t))) out.push(a);
+    }
+    return out;
+  };
 
   // ------------------------------------------------------ style, classList
   const parseStyle = (text) => {
@@ -836,6 +1149,73 @@
     return map;
   };
   const styleText = (map) => Array.from(map, ([k, v]) => k + ': ' + v + ';').join(' ');
+  // The CSS properties an element's `style` has, as a real `CSSStyleDeclaration` does whether
+  // or not one is set: libraries ask `property in element.style` to find out what exists.
+  const STYLE_PROPERTIES = new Set(
+    (
+      'accent-color align-content align-items align-self all animation animation-composition animation-delay ' +
+      'animation-direction animation-duration animation-fill-mode animation-iteration-count animation-name ' +
+      'animation-play-state animation-timing-function appearance aspect-ratio backdrop-filter backface-visibility ' +
+      'background background-attachment background-blend-mode background-clip background-color background-image ' +
+      'background-origin background-position background-position-x background-position-y background-repeat ' +
+      'background-size block-size border border-block border-block-color border-block-end border-block-end-color ' +
+      'border-block-end-style border-block-end-width border-block-start border-block-start-color ' +
+      'border-block-start-style border-block-start-width border-block-style border-block-width border-bottom ' +
+      'border-bottom-color border-bottom-left-radius border-bottom-right-radius border-bottom-style ' +
+      'border-bottom-width border-collapse border-color border-end-end-radius border-end-start-radius border-image ' +
+      'border-image-outset border-image-repeat border-image-slice border-image-source border-image-width ' +
+      'border-inline border-inline-color border-inline-end border-inline-end-color border-inline-end-style ' +
+      'border-inline-end-width border-inline-start border-inline-start-color border-inline-start-style ' +
+      'border-inline-start-width border-inline-style border-inline-width border-left border-left-color ' +
+      'border-left-style border-left-width border-radius border-right border-right-color border-right-style ' +
+      'border-right-width border-spacing border-start-end-radius border-start-start-radius border-style border-top ' +
+      'border-top-color border-top-left-radius border-top-right-radius border-top-style border-top-width ' +
+      'border-width bottom box-decoration-break box-shadow box-sizing break-after break-before break-inside ' +
+      'caption-side caret-color clear clip clip-path clip-rule color color-interpolation color-scheme column-count ' +
+      'column-fill column-gap column-rule column-rule-color column-rule-style column-rule-width column-span ' +
+      'column-width columns contain contain-intrinsic-size container container-name container-type content ' +
+      'content-visibility counter-increment counter-reset counter-set cursor cx cy d direction display ' +
+      'dominant-baseline empty-cells fill fill-opacity fill-rule filter flex flex-basis flex-direction flex-flow ' +
+      'flex-grow flex-shrink flex-wrap float flood-color flood-opacity font font-family font-feature-settings ' +
+      'font-kerning font-optical-sizing font-size font-size-adjust font-stretch font-style font-synthesis ' +
+      'font-variant font-variant-caps font-variant-east-asian font-variant-ligatures font-variant-numeric ' +
+      'font-variant-position font-variation-settings font-weight forced-color-adjust gap grid grid-area ' +
+      'grid-auto-columns grid-auto-flow grid-auto-rows grid-column grid-column-end grid-column-gap ' +
+      'grid-column-start grid-gap grid-row grid-row-end grid-row-gap grid-row-start grid-template ' +
+      'grid-template-areas grid-template-columns grid-template-rows hanging-punctuation height hyphens ' +
+      'image-orientation image-rendering inline-size inset inset-block inset-block-end inset-block-start ' +
+      'inset-inline inset-inline-end inset-inline-start isolation justify-content justify-items justify-self left ' +
+      'letter-spacing lighting-color line-break line-height list-style list-style-image list-style-position ' +
+      'list-style-type margin margin-block margin-block-end margin-block-start margin-bottom margin-inline ' +
+      'margin-inline-end margin-inline-start margin-left margin-right margin-top marker marker-end marker-mid ' +
+      'marker-start mask mask-clip mask-composite mask-image mask-mode mask-origin mask-position mask-repeat ' +
+      'mask-size mask-type max-block-size max-height max-inline-size max-width min-block-size min-height ' +
+      'min-inline-size min-width mix-blend-mode object-fit object-position offset offset-anchor offset-distance ' +
+      'offset-path offset-rotate opacity order orphans outline outline-color outline-offset outline-style ' +
+      'outline-width overflow overflow-anchor overflow-block overflow-clip-margin overflow-inline overflow-wrap ' +
+      'overflow-x overflow-y overscroll-behavior overscroll-behavior-block overscroll-behavior-inline ' +
+      'overscroll-behavior-x overscroll-behavior-y padding padding-block padding-block-end padding-block-start ' +
+      'padding-bottom padding-inline padding-inline-end padding-inline-start padding-left padding-right ' +
+      'padding-top page page-break-after page-break-before page-break-inside paint-order perspective ' +
+      'perspective-origin place-content place-items place-self pointer-events position print-color-adjust quotes r ' +
+      'resize right rotate row-gap ruby-position rx ry scale scroll-behavior scroll-margin scroll-margin-block ' +
+      'scroll-margin-bottom scroll-margin-inline scroll-margin-left scroll-margin-right scroll-margin-top ' +
+      'scroll-padding scroll-padding-block scroll-padding-bottom scroll-padding-inline scroll-padding-left ' +
+      'scroll-padding-right scroll-padding-top scroll-snap-align scroll-snap-stop scroll-snap-type ' +
+      'scrollbar-color scrollbar-gutter scrollbar-width shape-image-threshold shape-margin shape-outside ' +
+      'shape-rendering stop-color stop-opacity stroke stroke-dasharray stroke-dashoffset stroke-linecap ' +
+      'stroke-linejoin stroke-miterlimit stroke-opacity stroke-width tab-size table-layout text-align ' +
+      'text-align-last text-anchor text-combine-upright text-decoration text-decoration-color ' +
+      'text-decoration-line text-decoration-skip-ink text-decoration-style text-decoration-thickness ' +
+      'text-emphasis text-emphasis-color text-emphasis-position text-emphasis-style text-indent ' +
+      'text-justify text-orientation text-overflow text-rendering text-shadow text-size-adjust text-transform ' +
+      'text-underline-offset text-underline-position text-wrap top touch-action transform transform-box ' +
+      'transform-origin transform-style transition transition-behavior transition-delay transition-duration ' +
+      'transition-property transition-timing-function translate unicode-bidi user-select vector-effect ' +
+      'vertical-align view-transition-name visibility white-space widows width will-change word-break ' +
+      'word-spacing word-wrap writing-mode x y z-index zoom'
+    ).split(' '),
+  );
   const makeStyle = (el) => {
     const read = () => parseStyle(bi('getAttr', el._id, 'style'));
     const write = (map) => {
@@ -881,7 +1261,12 @@
         return true;
       },
       has(target, prop) {
-        return prop in target || read().has(camelToKebab(String(prop)));
+        if (prop in target) return true;
+        if (typeof prop !== 'string') return false;
+        const name = camelToKebab(prop === 'cssFloat' ? 'float' : prop);
+        // `webkitTransform` is `-webkit-transform`: vendor spellings of a property that exists.
+        const vendor = /^-?(webkit|moz|ms|o)-/.test(name) ? name.replace(/^-?(webkit|moz|ms|o)-/, '') : null;
+        return STYLE_PROPERTIES.has(name) || (vendor !== null && STYLE_PROPERTIES.has(vendor)) || read().has(name);
       },
     });
   };
@@ -1322,11 +1707,13 @@
     get offsetParent() {
       return this.isConnected ? document.body : null;
     }
+    // The root element's client size is the window's (the page may be far taller than it),
+    // which is how scripts ask for the size of the viewport.
     get clientWidth() {
-      return this.offsetWidth;
+      return this === document.documentElement ? viewportSize()[0] : this.offsetWidth;
     }
     get clientHeight() {
-      return this.offsetHeight;
+      return this === document.documentElement ? viewportSize()[1] : this.offsetHeight;
     }
     get clientTop() {
       return 0;
@@ -1383,12 +1770,14 @@
     get shadowRoot() {
       return this._shadow && this._shadow.mode === 'open' ? this._shadow : null;
     }
-    animate() {
-      const done = Promise.resolve();
-      return { finished: done, ready: done, cancel() {}, finish() {}, play() {}, pause() {}, reverse() {}, addEventListener() {}, removeEventListener() {}, onfinish: null, playState: 'finished', currentTime: 0 };
+    animate(keyframes, options) {
+      const animation = new Animation(new KeyframeEffect(this, keyframes, options), documentTimeline);
+      if (options && typeof options === 'object' && options.id !== undefined) animation.id = options.id;
+      animation.play();
+      return animation;
     }
-    getAnimations() {
-      return [];
+    getAnimations(options) {
+      return animationsOf(this, !!(options && options.subtree));
     }
     checkVisibility() {
       return this.isConnected;
@@ -3007,7 +3396,13 @@
       return [];
     }
     get fonts() {
-      return { ready: Promise.resolve(), load: () => Promise.resolve([]), check: () => true, addEventListener() {}, forEach() {} };
+      return fontFaceSet;
+    }
+    get timeline() {
+      return documentTimeline;
+    }
+    getAnimations() {
+      return Array.from(runningAnimations);
     }
     get adoptedStyleSheets() {
       return [];
@@ -4006,7 +4401,16 @@
     geolocation: { getCurrentPosition(_, err) { if (err) err({ code: 1, message: 'denied' }); }, watchPosition: () => 0, clearWatch() {} },
     connection: undefined,
   };
-  const screenApi = { width: 1280, height: 720, availWidth: 1280, availHeight: 720, colorDepth: 24, pixelDepth: 24, orientation: { type: 'landscape-primary', angle: 0, addEventListener() {} } };
+  // A screen is never smaller than the window on it.
+  const screenApi = {
+    get width() { return Math.max(1280, viewportSize()[0]); },
+    get height() { return Math.max(720, viewportSize()[1]); },
+    get availWidth() { return Math.max(1280, viewportSize()[0]); },
+    get availHeight() { return Math.max(720, viewportSize()[1]); },
+    colorDepth: 24,
+    pixelDepth: 24,
+    orientation: { type: 'landscape-primary', angle: 0, addEventListener() {} },
+  };
 
   const viewportSize = () => JSON.parse(bi('viewport'));
   const scheduleCallbacks = {
@@ -4134,6 +4538,8 @@
     Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, KeyboardEvent, FocusEvent, InputEvent, MessageEvent,
     PopStateEvent, HashChangeEvent, ErrorEvent, ProgressEvent, TransitionEvent, AnimationEvent, WheelEvent, TouchEvent,
     EventTarget,
+    // animations
+    Animation, KeyframeEffect, AnimationEffect, AnimationTimeline, DocumentTimeline,
     // nodes
     Node, CharacterData, Text, Comment, DocumentFragment, Document, HTMLDocument, Element, HTMLElement, HTMLUnknownElement,
     SVGElement, SVGSVGElement, Attr, DOMTokenList, MutationObserver, MutationRecord,

@@ -88,6 +88,9 @@ pub(crate) trait PageQueries {
 /// answering at all.
 const HARD_TURN_LIMIT: Duration = Duration::from_secs(90);
 
+/// How many console lines the page's handle keeps.
+const MAX_KEPT_CONSOLE_LINES: usize = 500;
+
 struct Job {
     handoff: Handoff,
     turn: Turn,
@@ -203,8 +206,8 @@ impl ScriptWorker {
                         canvases: s.take_canvas_pictures(),
                         loaded_images: std::mem::take(&mut s.loaded_images),
                     });
-                    let console = host.console()[console_sent..].to_vec();
-                    console_sent += console.len();
+                    let (console, total) = host.console_since(console_sent);
+                    console_sent = total;
                     let done = Done {
                         returned,
                         next_timer_due: host.next_timer_due(),
@@ -592,6 +595,12 @@ impl ScriptWorker {
         self.clock_ms = done.clock_ms;
         self.sampled = done.sampled;
         self.console.extend(done.console.iter().cloned());
+        // The page keeps what a person or a test would look at, not every line a noisy
+        // page ever logged.
+        if self.console.len() > MAX_KEPT_CONSOLE_LINES {
+            let drop = self.console.len() - MAX_KEPT_CONSOLE_LINES;
+            self.console.drain(..drop);
+        }
         done
     }
 

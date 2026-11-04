@@ -247,6 +247,10 @@ fn feature(tokens: &[Token], env: &MediaEnvironment) -> Truth {
             "prefers-contrast" => Truth::of(env.high_contrast),
             "prefers-reduced-motion" => Truth::of(env.reduced_motion),
             "width" | "height" | "resolution" => Truth::Yes,
+            // The device always has these (see `device_feature`): a boolean query asks
+            // whether the feature is there at all.
+            "hover" | "any-hover" | "pointer" | "any-pointer" | "orientation" | "scripting"
+            | "update" | "forced-colors" | "display-mode" => Truth::Yes,
             _ => Truth::Unknown,
         };
     }
@@ -262,7 +266,7 @@ fn feature(tokens: &[Token], env: &MediaEnvironment) -> Truth {
                 ("prefers-contrast", "less" | "custom") => Some(false),
                 ("prefers-reduced-motion", "reduce") => Some(env.reduced_motion),
                 ("prefers-reduced-motion", "no-preference") => Some(!env.reduced_motion),
-                _ => None,
+                _ => device_feature(name.as_str(), value.as_str(), env),
             };
             if let Some(result) = result {
                 return Truth::of(result);
@@ -285,6 +289,30 @@ fn feature(tokens: &[Token], env: &MediaEnvironment) -> Truth {
         return Truth::Unknown;
     }
     range(tokens, env)
+}
+/// What the device is, for the discrete features that describe it. BlueIce runs in a desktop
+/// window with a mouse: a fine pointer that can hover, no touch; it runs scripts, redraws at
+/// full speed, forces no colours and is a browser window rather than an installed app.
+/// `None` is a feature or value this does not know.
+fn device_feature(name: &str, value: &str, env: &MediaEnvironment) -> Option<bool> {
+    Some(match (name, value) {
+        ("hover" | "any-hover", "hover") => true,
+        ("hover" | "any-hover", "none" | "on-demand") => false,
+        ("pointer" | "any-pointer", "fine") => true,
+        ("pointer" | "any-pointer", "coarse" | "none") => false,
+        // A square window counts as portrait, as in browsers.
+        ("orientation", "landscape") => env.width > env.height,
+        ("orientation", "portrait") => env.width <= env.height,
+        ("scripting", "enabled") => true,
+        ("scripting", "none" | "initial-only") => false,
+        ("update", "fast") => true,
+        ("update", "slow" | "none") => false,
+        ("forced-colors", "none") => true,
+        ("forced-colors", "active") => false,
+        ("display-mode", "browser") => true,
+        ("display-mode", "standalone" | "minimal-ui" | "fullscreen" | "picture-in-picture") => false,
+        _ => return None,
+    })
 }
 fn dimension(name: &str, env: &MediaEnvironment) -> Option<f64> {
     match name {
