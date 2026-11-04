@@ -228,6 +228,7 @@ impl SpawnedCore {
         if let Some(gatekeeper_socket) = &options.gatekeeper_socket {
             command.arg("--gatekeeper-socket").arg(gatekeeper_socket);
         }
+        command.args(options.page_script_args());
         if let Some(config) = &page_host_config {
             command
                 .arg("--out-of-process-bluejs-socket")

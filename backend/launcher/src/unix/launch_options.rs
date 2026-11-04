@@ -25,6 +25,23 @@ impl CoreLaunchOptions {
         self
     }
 
+    /// Starts core without running the pages' own scripts. By default a launched
+    /// core runs them, on a thread of their own so a long script turn does not
+    /// hold the session (`--web-scripts --async-scripts`).
+    pub fn without_page_scripts(mut self) -> Self {
+        self.without_page_scripts = true;
+        self
+    }
+
+    /// The core flags that decide whether and how pages' scripts run.
+    pub(crate) fn page_script_args(&self) -> &'static [&'static str] {
+        if self.without_page_scripts {
+            &[]
+        } else {
+            &["--web-scripts", "--async-scripts"]
+        }
+    }
+
     /// Wires core to the assistant this launcher supervises.
     pub fn with_assistant(mut self, assistant: AssistantWiring) -> Self {
         self.assistant = Some(assistant);
@@ -461,5 +478,22 @@ impl CoreLaunchOptions {
         self.debugger_static_metadata_symbol_inventory = true;
         self.debugger_static_scope_relation = true;
         self
+    }
+}
+
+#[cfg(test)]
+mod page_script_tests {
+    use super::*;
+
+    #[test]
+    fn a_launched_core_runs_pages_scripts_in_the_background_unless_told_not_to() {
+        assert_eq!(
+            CoreLaunchOptions::default().page_script_args(),
+            ["--web-scripts", "--async-scripts"]
+        );
+        assert!(CoreLaunchOptions::default()
+            .without_page_scripts()
+            .page_script_args()
+            .is_empty());
     }
 }

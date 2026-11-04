@@ -793,6 +793,63 @@ and fixed the three things that dominated, in the order they did:
   (only the cascade, repeated, for a sampling profiler), `BI_SCROLL_TO`/`BI_SCROLL_SECS`.
   Profile with macOS `sample <pid> 10 -file out.txt` on the test binary (not `cargo`'s pid).
 
+## Page scripts off the session thread (2026-11-03)
+
+**Problem, measured.** In the macOS app on tw.yahoo.com, a wheel scroll's frame took a
+median 221 ms (p95 831 ms, max 7.7 s) because the core ran page scripts on the thread that
+answers input: one React render is a single timer callback of about 7 s here, and a steady
+stream of 200–300 ms callbacks followed it.
+
+**What was found on the way (all fixed, with tests).**
+- A scroll rasterized the whole page and cropped one screenful (10–15 s per scroll on a
+  1,500-item page in a debug build). Paint and raster now cover only the visible band; the
+  render-pipeline crates are optimised in dev/test profiles.
+- `TextEncoder`, `TextDecoder`, `btoa` and `atob` were per-character script loops (a 6 MB
+  string exhausted the 384 MB heap; `btoa` cost about 7 µs a character). They are native
+  bridge operations.
+- `JSON.parse`, iterators, `for-in`, `RegExp` results and `String.split` gathered every GC
+  root at each allocation, which a deep call stack makes expensive. They use
+  `with_roots_lazy`. The longest Yahoo turn went from 35 s to about 7 s.
+- A timer callback now has a wall-clock limit (20 s, a guard against a loop that never ends,
+  not a responsiveness target; Yahoo's longest real callback is about 7 s), and a pass over
+  the due timers stops starting callbacks after 30 ms. A stopped callback is reported with
+  the functions it was in. `BI_DIAG` reports every callback over 80 ms; `BI_SCRIPT_LIMIT_MS`
+  overrides the limit while measuring.
+
+**The change.** With `blueice-core --web-scripts --async-scripts` a document's `WebHost` lives
+on a thread of its own (`web/worker.rs`). A turn is a hand-off: the page lends a copy of its
+document, styles and layout boxes, says what to run, and keeps painting and answering input
+from what it has; the result (the document back, navigations, requests, canvases) is taken at
+the next tick. One turn is in flight at a time. The launcher passes both flags to every core it
+starts (`--no-page-scripts` turns them off). Page startup and the blocking callers still wait
+for their turn.
+
+**Result** (same app, same page, 95 wheel notches, frame latency):
+
+| | scripts on the session thread | scripts in the background |
+|---|---|---|
+| median | 221 ms | 13.8 ms |
+| p95 | 831 ms | 17.1 ms |
+| max | 7.7 s | 146 ms |
+
+Page position and the document position of every tracked node were identical in both runs.
+
+**Limits, stated plainly.**
+- A thread is not a process: a script that crashes the realm or exhausts memory still takes the
+  core with it. A process needs the hand-off to cross a boundary (serialising the document, or
+  shipping its change journal) instead of moving through a channel; the turn protocol does not
+  change.
+- A change the core makes to the document while a turn runs (typing into a field, say) is
+  overwritten when the turn's document comes back.
+- A callback that runs past the wall-clock limit is stopped and cancelled, so a legitimately
+  longer one would lose its work.
+
+**Also found: the launcher drops a client that stops reading.** Its per-client writer gives up
+after 5 s on a full socket and the client's end stays open and silent, so an MCP session idle
+between tool calls on a page that keeps repainting never got another reply. The MCP connection
+now reads on a thread of its own and keeps only the latest unsolicited frame notice per tab
+(`backend/mcp-server/src/unix/drained.rs`). The launcher's behaviour is unchanged.
+
 ## Non-goals
 
 - Raw HTTP/DOM handles for AI clients; the MCP surface stays typed and

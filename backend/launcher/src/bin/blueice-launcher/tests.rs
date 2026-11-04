@@ -461,6 +461,7 @@ fn every_flag_is_parsed() {
             frame_dir: Some(PathBuf::from("/tmp/frames")),
             extension_manifest: Some(PathBuf::from("/tmp/extension.json")),
             trusted_frontend: true,
+            no_page_scripts: false,
             exit_on_stdin_eof: true,
             gatekeeper_socket: Some(PathBuf::from("/tmp/gatekeeper.sock")),
             owned_gatekeeper_socket: None,
@@ -910,4 +911,10 @@ fn static_metadata_symbol_contract_requires_its_owner_prerequisites() {
     ])
     .unwrap();
     assert!(parsed.debugger_static_metadata_symbol_contract);
+}
+
+#[test]
+fn page_scripts_can_be_left_off_for_the_core_it_starts() {
+    assert!(!args(&[]).unwrap().no_page_scripts);
+    assert!(args(&["--no-page-scripts"]).unwrap().no_page_scripts);
 }

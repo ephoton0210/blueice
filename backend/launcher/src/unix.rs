@@ -79,6 +79,8 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CoreLaunchOptions {
     gatekeeper_socket: Option<PathBuf>,
+    /// Leaves the page's own scripts off; see [`Self::without_page_scripts`].
+    without_page_scripts: bool,
     /// An installed package to run through core's authenticated extension
     /// host. Each core generation gets a fresh private socket and credential.
     extension_manifest: Option<PathBuf>,
