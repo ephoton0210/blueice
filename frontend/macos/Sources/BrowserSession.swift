@@ -106,8 +106,11 @@ final class BrowserSession: @unchecked Sendable {
                                     "--control-socket", self.runtimeDirectory.appendingPathComponent("control.sock").path,
                                     "--owned-gatekeeper-socket", self.runtimeDirectory.appendingPathComponent("blueice/gatekeeper.sock").path,
                                     "--frame-dir", self.frameDirectory.path,
-                                    "--width", "1024", "--height", "640", "--exit-on-stdin-eof",
-                                    "--out-of-process-bluejs", "--page-dom-bindings"
+                                    "--width", "1024", "--height", "640", "--exit-on-stdin-eof"
+                                    // Page scripts: the launcher starts core with the web layer
+                                    // (`--web-scripts --async-scripts`), which runs a page's scripts on
+                                    // a thread of its own. Adding `--out-of-process-bluejs` here would
+                                    // switch that off in favour of the fixed-profile sandboxed host.
                                 ]
                                 let panels = executable.deletingLastPathComponent().appendingPathComponent("BlueIcePanels.app/Contents/MacOS/BlueIcePanels")
                                 if FileManager.default.isExecutableFile(atPath: panels.path) {

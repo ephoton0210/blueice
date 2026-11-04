@@ -33,9 +33,12 @@ impl CoreLaunchOptions {
         self
     }
 
-    /// The core flags that decide whether and how pages' scripts run.
+    /// The core flags that decide whether and how pages' scripts run. A core
+    /// whose scripts are run by the supervised out-of-process page host does not
+    /// also get the in-process web layer: two executors would each run the same
+    /// page's timers and animation frames.
     pub(crate) fn page_script_args(&self) -> &'static [&'static str] {
-        if self.without_page_scripts {
+        if self.without_page_scripts || self.supervise_out_of_process_bluejs {
             &[]
         } else {
             &["--web-scripts", "--async-scripts"]
@@ -493,6 +496,18 @@ mod page_script_tests {
         );
         assert!(CoreLaunchOptions::default()
             .without_page_scripts()
+            .page_script_args()
+            .is_empty());
+    }
+
+    #[test]
+    fn asking_for_the_out_of_process_page_host_leaves_the_web_layer_off() {
+        assert!(CoreLaunchOptions::default()
+            .supervise_out_of_process_bluejs()
+            .page_script_args()
+            .is_empty());
+        assert!(CoreLaunchOptions::default()
+            .supervise_out_of_process_bluejs_with_page_dom()
             .page_script_args()
             .is_empty());
     }
