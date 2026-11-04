@@ -20,6 +20,7 @@ pub(crate) mod canvas2d;
 pub(crate) mod dom_bridge;
 pub(crate) mod gl_bridge;
 pub(crate) mod net;
+pub(crate) mod worker;
 
 use blueice_bluejs::{
     compile, compile_module, parse, parse_module, Bytecode, HostFunctionError, HostValue, Vm,

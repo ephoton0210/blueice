@@ -1732,9 +1732,11 @@ pub(crate) fn sibling_binary(this_exe: &Path, stem: &str) -> PathBuf {
 /// socket. A monotonic counter alongside the PID makes every call
 /// unique regardless of how many happen in this process's lifetime.
 mod process;
+pub use drained::DrainedStream;
 pub use process::CoreProcess;
 #[cfg(test)]
 use process::*;
+mod drained;
 
 use super::server;
 pub use server::BlueIceMcpServer;

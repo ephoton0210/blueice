@@ -84,7 +84,9 @@ pub struct Page {
     pending_linked_modules: crate::scripts_fetch::LinkedModules,
     /// The realm running this document's own scripts, when the embedder has
     /// enabled them (see [`crate::enable_web_scripts`]).
-    web: Option<crate::web::WebHost>,
+    web: Option<crate::web::worker::ScriptWorker>,
+    /// Test hook overriding the process setting for background script turns.
+    web_async_override: Option<bool>,
     /// What each WebGL canvas last drew.
     canvas_pictures: HashMap<NodeId, std::sync::Arc<crate::images::LoadedImage>>,
     web_scripts_override: Option<bool>,
@@ -201,6 +203,7 @@ impl Page {
             linked_modules: Default::default(),
             pending_linked_modules: Default::default(),
             web: None,
+            web_async_override: None,
             canvas_pictures: HashMap::new(),
             web_scripts_override: None,
             web_navigation: None,

@@ -42,6 +42,19 @@ pub fn enable_web_scripts(enabled: bool) {
 pub(crate) fn web_scripts_enabled() -> bool {
     WEB_SCRIPTS.load(std::sync::atomic::Ordering::SeqCst)
 }
+
+static ASYNC_SCRIPTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Runs each page's scripts in the background: the session keeps painting and
+/// answering input from the document it has while a script turn runs, and takes
+/// the result when it is done. Off by default, as page scripts themselves are.
+pub fn enable_async_scripts(enabled: bool) {
+    ASYNC_SCRIPTS.store(enabled, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub(crate) fn async_scripts_enabled() -> bool {
+    ASYNC_SCRIPTS.load(std::sync::atomic::Ordering::SeqCst)
+}
 mod tabs;
 mod translation;
 

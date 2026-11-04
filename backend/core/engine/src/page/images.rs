@@ -258,6 +258,9 @@ mod tests {
         let scripts = std::env::var("BI_SCRIPTS").is_ok();
         if scripts {
             page.set_web_scripts(true);
+            if std::env::var("BI_ASYNC").is_ok() {
+                page.set_async_scripts(true);
+            }
             page.set_network_review(std::sync::Arc::new(|_| true));
             page.pending_linked_scripts = crate::scripts_fetch::fetch_linked_scripts(
                 &fetched.body,

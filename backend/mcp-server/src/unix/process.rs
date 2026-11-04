@@ -38,7 +38,7 @@ pub(super) enum CoreOwnership {
 /// real subprocess.
 pub struct CoreProcess {
     pub(super) ownership: CoreOwnership,
-    pub conn: Arc<Mutex<CoreConnection<std::os::unix::net::UnixStream>>>,
+    pub conn: Arc<Mutex<CoreConnection<super::DrainedStream>>>,
 }
 
 /// Connects to a socket a child process is still setting up. The socket
@@ -103,7 +103,7 @@ impl CoreProcess {
     }
 
     fn from_shared_stream(stream: std::os::unix::net::UnixStream) -> io::Result<Self> {
-        let mut conn = CoreConnection::new(stream);
+        let mut conn = CoreConnection::new(super::DrainedStream::new(stream)?);
         conn.handshake()?;
         Ok(CoreProcess {
             ownership: CoreOwnership::Shared,
@@ -152,7 +152,7 @@ impl CoreProcess {
             )));
         }
         let stream = connect_when_listening(&socket_path, Duration::from_secs(5))?;
-        let mut conn = CoreConnection::new(stream);
+        let mut conn = CoreConnection::new(super::DrainedStream::new(stream)?);
         conn.handshake()?;
         Ok(CoreProcess {
             ownership: CoreOwnership::PrivatelySpawned { child, socket_path },

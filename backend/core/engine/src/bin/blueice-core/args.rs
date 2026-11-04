@@ -95,6 +95,9 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             // Run each page's own scripts (ordinary web JavaScript) in its
             // BlueJS realm. Off unless the embedder asks for it.
             "--web-scripts" => blueice_engine::enable_web_scripts(true),
+            // Page scripts run on a thread of their own, so a long script turn
+            // does not hold the session. Meaningful with `--web-scripts`.
+            "--async-scripts" => blueice_engine::enable_async_scripts(true),
             "--extension-socket" => extension_socket = Some(PathBuf::from(value()?)),
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             "--extension-host" => extension_host = Some(PathBuf::from(value()?)),

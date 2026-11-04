@@ -12,7 +12,8 @@
 
 use super::Page;
 use crate::web::{
-    dom_bridge::{DomState, NavigationRequest},
+    dom_bridge::NavigationRequest,
+    worker::{Done, Handoff, ScriptWorker},
     WebHost,
 };
 use blueice_dom::{Document, NodeData, NodeId};
@@ -159,50 +160,129 @@ impl Page {
         self.web_navigation.take()
     }
 
-    /// Runs `f` on the realm with the page's DOM, styles and layout boxes
-    /// handed over, then takes them back; a changed DOM is restyled and laid
-    /// out and marked for publication. Returns the external scripts the turn
-    /// asked to load.
-    fn web_turn_once(&mut self, f: &mut dyn FnMut(&mut WebHost)) -> (Vec<(NodeId, String)>, bool) {
-        let Some(mut host) = self.web.take() else {
-            return (Vec::new(), false);
-        };
-        let doc = std::mem::replace(&mut self.doc, Document::new());
-        let styles = std::mem::take(&mut self.styles);
+    /// Whether this page's scripts run without holding the session: a timer,
+    /// scroll or network turn is started and its result taken when it is done,
+    /// while the page keeps answering from the document it has.
+    fn web_async_on(&self) -> bool {
+        self.web_async_override
+            .unwrap_or_else(crate::async_scripts_enabled)
+    }
+
+    /// Test and embedder hook: run turns in the background (or not) regardless
+    /// of the process setting.
+    #[cfg(test)]
+    pub(crate) fn set_async_scripts(&mut self, enabled: bool) {
+        self.web_async_override = Some(enabled);
+    }
+
+    /// The page's DOM, styles and layout boxes, lent to a turn. `lend` moves
+    /// the document out (the page waits for it); otherwise the scripts get a
+    /// copy and the page keeps painting from its own.
+    fn web_handoff(&mut self, lend: bool) -> Handoff {
         let mut rects = HashMap::new();
         collect_rects(&self.fragment, 0.0, 0.0, &mut rects);
-        let url = self.url.clone();
-        let images = self.images.content.clone();
-        let viewport = (self.viewport_width, self.viewport_height);
-        host.with_state(|s| {
-            s.doc = doc;
-            s.styles = styles;
-            s.rects = rects;
-            s.images = images;
-            s.viewport = viewport;
-            if let Some(url) = url {
-                s.url = url;
+        let (doc, styles) = if lend {
+            (
+                std::mem::replace(&mut self.doc, Document::new()),
+                std::mem::take(&mut self.styles),
+            )
+        } else {
+            (self.doc.clone(), self.styles.clone())
+        };
+        Handoff {
+            doc,
+            styles,
+            rects,
+            images: self.images.content.clone(),
+            viewport: (self.viewport_width, self.viewport_height),
+            url: self.url.clone(),
+        }
+    }
+
+    /// Runs `f` on the realm with the page's DOM, styles and layout boxes
+    /// handed over and waits for it, then takes them back; a changed DOM is
+    /// restyled and laid out and marked for publication. Returns the external
+    /// scripts the turn asked to load.
+    fn web_turn_once(
+        &mut self,
+        f: impl FnOnce(&mut WebHost) + Send + 'static,
+    ) -> (Vec<(NodeId, String)>, bool) {
+        let Some(mut worker) = self.web.take() else {
+            return (Vec::new(), false);
+        };
+        // A background turn still running must be taken first.
+        let earlier = worker.wait();
+        let mut earlier_result = (Vec::new(), false);
+        self.web = Some(worker);
+        if let Some(done) = earlier {
+            earlier_result = self.finish_turn(done, false);
+        }
+        let handoff = self.web_handoff(true);
+        let mut worker = self.web.take().expect("put back above");
+        worker.submit(handoff, f);
+        let done = worker.wait();
+        self.web = Some(worker);
+        match done {
+            Some(done) => {
+                let (mut requests, relayed) = self.finish_turn(done, true);
+                let mut earlier_requests = earlier_result.0;
+                earlier_requests.append(&mut requests);
+                (earlier_requests, relayed || earlier_result.1)
             }
-            s.dirty = false;
-        });
-        f(&mut host);
-        let (doc, styles, dirty, navigations, requests, url, jobs, canvases, loaded) = host
-            .with_state(|s| {
-                (
-                    std::mem::replace(&mut s.doc, Document::new()),
-                    std::mem::take(&mut s.styles),
-                    std::mem::take(&mut s.dirty),
-                    std::mem::take(&mut s.navigations),
-                    std::mem::take(&mut s.script_requests),
-                    s.url.clone(),
-                    std::mem::take(&mut s.net_jobs),
-                    s.take_canvas_pictures(),
-                    std::mem::take(&mut s.loaded_images),
-                )
-            });
-        self.doc = doc;
-        self.styles = styles;
-        self.web = Some(host);
+            None => {
+                // The scripts' thread is gone; the page goes on without them.
+                self.web = None;
+                earlier_result
+            }
+        }
+    }
+
+    /// Starts `f` as a turn that the page does not wait for. Nothing is started
+    /// while an earlier turn is still running.
+    fn web_turn_in_background(&mut self, f: impl FnOnce(&mut WebHost) + Send + 'static) -> bool {
+        if self.web.as_ref().is_none_or(ScriptWorker::busy) {
+            return false;
+        }
+        let started = std::time::Instant::now();
+        let handoff = self.web_handoff(false);
+        if std::env::var("BI_DIAG").is_ok() && started.elapsed().as_millis() > 20 {
+            eprintln!("DIAG handoff copy took {:?}", started.elapsed());
+        }
+        if let Some(worker) = self.web.as_mut() {
+            worker.submit(handoff, f);
+        }
+        true
+    }
+
+    /// Starts `f` in the background when the page's scripts run that way, and
+    /// otherwise runs it and waits.
+    fn web_turn_auto(&mut self, f: impl FnOnce(&mut WebHost) + Send + 'static) {
+        if self.web_async_on() {
+            self.web_turn_in_background(f);
+        } else {
+            self.web_turn(f);
+        }
+    }
+
+    /// Takes the result of a turn that has finished: the document comes back
+    /// with whatever the scripts did to it, and what they asked for is started.
+    /// `lent` is whether the page's own document went out with the turn (so its
+    /// styles come back too); a turn run on a copy leaves the page's styles.
+    fn finish_turn(&mut self, done: Done, lent: bool) -> (Vec<(NodeId, String)>, bool) {
+        let r = done.returned;
+        let (dirty, navigations, requests, url, jobs, canvases, loaded) = (
+            r.dirty,
+            r.navigations,
+            r.script_requests,
+            r.url,
+            r.net_jobs,
+            r.canvases,
+            r.loaded_images,
+        );
+        self.doc = r.doc;
+        if lent {
+            self.styles = r.styles;
+        }
         self.start_net_jobs(jobs);
         for navigation in navigations {
             match navigation {
@@ -277,8 +357,14 @@ impl Page {
     /// One turn, then the scripts it inserted: each fetched under the same
     /// review as any request and run (or failed) as its own turn. A bounded
     /// number of rounds, so scripts that insert scripts cannot run forever.
-    fn web_turn(&mut self, mut f: impl FnMut(&mut WebHost)) {
-        let (mut pending, mut changed) = self.web_turn_once(&mut f);
+    fn web_turn(&mut self, f: impl FnOnce(&mut WebHost) + Send + 'static) {
+        let (pending, changed) = self.web_turn_once(f);
+        self.web_followups(pending, changed);
+    }
+
+    /// What a finished turn leaves to do: the scripts it inserted, then the
+    /// observers that report on layout once it has caught up.
+    fn web_followups(&mut self, mut pending: Vec<(NodeId, String)>, mut changed: bool) {
         for _ in 0..16 {
             if pending.is_empty() {
                 break;
@@ -309,11 +395,15 @@ impl Page {
                     js_string(&source.unwrap_or_default()),
                     ok
                 );
-                let (more, dirty) = self.web_turn_once(&mut |host: &mut WebHost| {
+                let traced = src.clone();
+                let (more, dirty) = self.web_turn_once(move |host: &mut WebHost| {
                     let started = std::time::Instant::now();
                     let outcome = host.run("blueice:script-load", &call);
                     if trace {
-                        eprintln!("script-load {src} ran in {:?}: {outcome:?}", started.elapsed());
+                        eprintln!(
+                            "script-load {traced} ran in {:?}: {outcome:?}",
+                            started.elapsed()
+                        );
                     }
                 });
                 changed |= dirty;
@@ -328,7 +418,7 @@ impl Page {
             if !changed {
                 break;
             }
-            let (_, dirty) = self.web_turn_once(&mut |host: &mut WebHost| {
+            let (_, dirty) = self.web_turn_once(|host: &mut WebHost| {
                 let _ = host.run("blueice:layout", "__blueice.afterLayout();");
             });
             changed = dirty;
@@ -393,6 +483,7 @@ impl Page {
         let Some(_) = self.web_net.as_mut() else {
             return;
         };
+        let mut calls = Vec::new();
         for (id, outcome) in done {
             let call = match outcome {
                 crate::web::net::NetOutcome::Done {
@@ -415,8 +506,14 @@ impl Page {
                     format!("__blueice.netFail({id}, {});", js_string(&message))
                 }
             };
-            self.web_turn(move |host| {
-                let _ = host.run("blueice:net", &call);
+            calls.push(call);
+        }
+        if !calls.is_empty() {
+            // One turn for everything that arrived.
+            self.web_turn_auto(move |host| {
+                for call in &calls {
+                    let _ = host.run("blueice:net", call);
+                }
             });
         }
     }
@@ -430,17 +527,16 @@ impl Page {
         if !self.web_scripts_on() {
             return;
         }
-        let mut scripts = collect_scripts(&self.doc);
+        let scripts = collect_scripts(&self.doc);
         // The realm is built against (a copy of) the real document: its root
         // node's id is part of what the platform captures.
-        let state = DomState::new(
+        let created = std::time::Instant::now();
+        let worker = match ScriptWorker::spawn(
             self.doc.clone(),
             self.url.as_deref().unwrap_or("about:blank"),
             (self.viewport_width, self.viewport_height),
-        );
-        let created = std::time::Instant::now();
-        let host = match WebHost::new(state) {
-            Ok(host) => host,
+        ) {
+            Ok(worker) => worker,
             Err(error) => {
                 if std::env::var("BI_DIAG").is_ok() {
                     eprintln!("page scripts could not start: {error}");
@@ -451,13 +547,14 @@ impl Page {
         if std::env::var("BI_DIAG").is_ok() {
             eprintln!("DIAG realm created in {:?}", created.elapsed());
         }
-        self.web = Some(host);
+        self.web = Some(worker);
         self.web_force_relayout = true;
         let linked = self.linked_scripts.clone();
         let modules = self.linked_modules.clone();
         let document = self.url.as_deref().and_then(|u| url::Url::parse(u).ok());
         let startup = std::time::Instant::now();
-        self.web_turn(|host| {
+        self.web_turn(move |host| {
+            let mut scripts = scripts;
             let document = document.clone();
             let document_dir = document
                 .as_ref()
@@ -553,40 +650,62 @@ impl Page {
 
     /// Runs the timers that are due. True when the document changed.
     pub(crate) fn tick_web(&mut self) -> bool {
+        let background = self.web_async_on();
+        let mut published = false;
+        if background {
+            // A turn that finished since the last tick comes back first, and only
+            // then is another started: the scripts have one turn in flight.
+            if let Some(done) = self.web.as_mut().and_then(ScriptWorker::try_finish) {
+                let (requests, relayed) = self.finish_turn(done, false);
+                self.web_followups(requests, relayed);
+                published = std::mem::take(&mut self.script_change_unpublished_by_web);
+            }
+            if self.web.as_ref().is_none_or(ScriptWorker::busy) {
+                return published;
+            }
+        }
         // Scrolling reaches the page's scripts as a scroll event and a fresh
         // look at what is visible.
         if self.web.is_some() && (self.scroll_y - self.web_scroll_seen).abs() > 0.5 {
             self.web_scroll_seen = self.scroll_y;
             let y = self.scroll_y;
-            self.web_turn(|host| {
+            self.web_turn_auto(move |host| {
                 let _ = host.run("blueice:scroll", &format!("__blueice.scrolled({y});"));
             });
+            if background {
+                return published;
+            }
         }
         self.deliver_net_results();
+        if background && self.web.as_ref().is_none_or(ScriptWorker::busy) {
+            return published;
+        }
         self.relayout_for_scripts(false);
         let due = self
             .web
             .as_ref()
-            .and_then(|host| host.next_timer_due().map(|due| due <= host.now_ms()))
+            .and_then(|worker| worker.next_timer_due().map(|due| due <= worker.now_ms()))
             .unwrap_or(false);
         if !due {
-            return false;
+            return published;
         }
-        self.web_turn(|host| {
+        self.web_turn_auto(|host| {
             host.tick();
         });
+        if background {
+            return published;
+        }
         std::mem::take(&mut self.script_change_unpublished_by_web)
     }
 
     /// How long until this document's scripts next have work, if ever.
     pub(crate) fn web_wake_in(&self) -> Option<Duration> {
-        let host = self.web.as_ref()?;
-        // While requests are out, look for their answers often.
-        let waiting = self
-            .web_net
-            .as_ref()
-            .is_some_and(|net| net.inflight > 0)
-            .then_some(Duration::from_millis(10));
+        let worker = self.web.as_ref()?;
+        // While requests are out, look for their answers often; while a turn
+        // runs in the background, look for its result.
+        let waiting = (self.web_net.as_ref().is_some_and(|net| net.inflight > 0)
+            || worker.busy())
+        .then_some(Duration::from_millis(10));
         let relayout = self.web_relayout_pending.then(|| {
             WEB_RELAYOUT_INTERVAL.saturating_sub(
                 self.web_last_relayout
@@ -597,9 +716,7 @@ impl Page {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
-        let timer = host
-            .next_timer_due()
-            .map(|due| Duration::from_millis(due.saturating_sub(host.now_ms())));
+        let timer = worker.until_next_timer();
         match (waiting, timer) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
@@ -620,7 +737,7 @@ impl Page {
     pub(crate) fn web_console(&self) -> Vec<String> {
         self.web
             .as_ref()
-            .map(|host| host.console().to_vec())
+            .map(|worker| worker.console().to_vec())
             .unwrap_or_default()
     }
 }
@@ -664,6 +781,96 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    fn background_page(html: &str) -> Page {
+        let mut page = Page::new(400.0, 300.0);
+        page.set_web_scripts(true);
+        page.set_async_scripts(true);
+        page.load_html_str(html, Some("https://example.com/p".to_string()));
+        page
+    }
+
+    const SLOW_TIMER: &str = "<body><p id=a>old</p><script>\
+        setTimeout(function () { var end = Date.now() + 600; while (Date.now() < end) {} \
+          document.getElementById('a').textContent = 'new'; }, 0);</script></body>";
+
+    #[test]
+    fn a_long_timer_turn_in_the_background_does_not_hold_the_page() {
+        let mut page = background_page(SLOW_TIMER);
+        std::thread::sleep(Duration::from_millis(20));
+        let begun = std::time::Instant::now();
+        page.tick_web();
+        assert!(
+            begun.elapsed() < Duration::from_millis(300),
+            "starting the turn returned at once: {:?}",
+            begun.elapsed()
+        );
+        // The script is still spinning; the page paints and scrolls from what it has.
+        let asked = std::time::Instant::now();
+        page.scroll_by(10.0);
+        assert_eq!(texts(&page), vec!["old"]);
+        assert!(
+            asked.elapsed() < Duration::from_millis(200),
+            "painting did not wait for the script: {:?}",
+            asked.elapsed()
+        );
+        // Its result arrives when the turn is done.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while texts(&page) != vec!["new"] && std::time::Instant::now() < deadline {
+            page.tick_web();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(texts(&page), vec!["new"]);
+        assert!(
+            begun.elapsed() >= Duration::from_millis(500),
+            "the turn really took its 600 ms: {:?}",
+            begun.elapsed()
+        );
+    }
+
+    #[test]
+    fn without_background_turns_the_same_tick_holds_the_page() {
+        let mut page = page(SLOW_TIMER);
+        std::thread::sleep(Duration::from_millis(20));
+        let begun = std::time::Instant::now();
+        page.tick_web();
+        assert!(
+            begun.elapsed() >= Duration::from_millis(500),
+            "the tick waited for the script: {:?}",
+            begun.elapsed()
+        );
+        assert_eq!(texts(&page), vec!["new"]);
+    }
+
+    #[test]
+    fn background_timers_chain_one_turn_after_another() {
+        let mut page = background_page(
+            "<body><p id=a>0</p><script>let n = 0; (function again() { n += 1; \
+             document.getElementById('a').textContent = String(n); if (n < 4) setTimeout(again, 0); })();\
+             </script></body>",
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while texts(&page) != vec!["4"] && std::time::Instant::now() < deadline {
+            page.tick_web();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(texts(&page), vec!["4"]);
+    }
+
+    #[test]
+    fn leaving_a_page_with_a_turn_running_does_not_wait_for_it() {
+        let mut page = background_page(SLOW_TIMER);
+        std::thread::sleep(Duration::from_millis(20));
+        page.tick_web();
+        let begun = std::time::Instant::now();
+        page.load_html_str("<body><p>next</p></body>", Some("https://example.com/n".into()));
+        assert!(
+            begun.elapsed() < Duration::from_millis(300),
+            "loading the next document did not wait: {:?}",
+            begun.elapsed()
+        );
+        assert_eq!(texts(&page), vec!["next"]);
     }
 
     #[test]

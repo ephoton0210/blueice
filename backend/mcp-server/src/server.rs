@@ -293,7 +293,7 @@ impl CoreHandle {
         }
     }
 
-    fn connection(&self) -> io::Result<Arc<Mutex<CoreConnection<UnixStream>>>> {
+    fn connection(&self) -> io::Result<Arc<Mutex<CoreConnection<crate::DrainedStream>>>> {
         let mut process = self
             .process
             .lock()
@@ -322,7 +322,7 @@ use ecma402_tools::*;
 
 async fn blocking<T, F>(core: Arc<CoreHandle>, f: F) -> Result<T, ErrorData>
 where
-    F: FnOnce(&mut CoreConnection<UnixStream>) -> io::Result<T> + Send + 'static,
+    F: FnOnce(&mut CoreConnection<crate::DrainedStream>) -> io::Result<T> + Send + 'static,
     T: Send + 'static,
 {
     tokio::task::spawn_blocking(move || {
