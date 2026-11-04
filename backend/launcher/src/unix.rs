@@ -81,6 +81,9 @@ pub struct CoreLaunchOptions {
     gatekeeper_socket: Option<PathBuf>,
     /// Leaves the page's own scripts off; see [`Self::without_page_scripts`].
     without_page_scripts: bool,
+    /// Runs the pages' scripts on a thread instead of a process; see
+    /// [`Self::without_script_process`].
+    without_script_process: bool,
     /// An installed package to run through core's authenticated extension
     /// host. Each core generation gets a fresh private socket and credential.
     extension_manifest: Option<PathBuf>,

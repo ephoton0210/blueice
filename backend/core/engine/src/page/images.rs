@@ -341,6 +341,21 @@ mod tests {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
+            if std::env::var("BI_DOC_COST").is_ok() {
+                let t = std::time::Instant::now();
+                let bytes = page.doc.encode();
+                let encoded = t.elapsed();
+                let t = std::time::Instant::now();
+                let back = blueice_dom::Document::decode(&bytes);
+                eprintln!(
+                    "DOCCOST nodes ~ {} bytes {} encode {:?} decode {:?} ok {}",
+                    page.doc.next_node_id(),
+                    bytes.len(),
+                    encoded,
+                    t.elapsed(),
+                    back.is_some()
+                );
+            }
             if let Some(to) = std::env::var("BI_SCROLL_TO")
                 .ok()
                 .and_then(|v| v.parse::<f64>().ok())

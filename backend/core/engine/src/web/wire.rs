@@ -305,8 +305,6 @@ impl Turn {
 pub(crate) enum Query {
     /// A node's computed value of a CSS property.
     Computed { node: u64, property: String },
-    /// A node's border box in document coordinates.
-    Rect(u64),
     /// A node's decoded picture.
     Image(u64),
 }
@@ -315,7 +313,6 @@ pub(crate) enum Query {
 #[derive(Debug, Clone)]
 pub(crate) enum Answer {
     Text(Option<String>),
-    Rect(Option<(f64, f64, f64, f64)>),
     Image(Option<Arc<RasterImage>>),
 }
 
@@ -330,10 +327,13 @@ pub(crate) enum ToChild {
     },
     /// The page changed the document itself; this is it now.
     Doc(Vec<u8>),
-    /// Run a turn. `viewport` and `url` are the page's now.
+    /// Run a turn. `viewport` and `url` are the page's now. `rects` are every
+    /// laid-out box by node in document coordinates, sent when the page has laid out
+    /// again since the last turn that carried them.
     Turn {
         viewport: (f64, f64),
         url: Option<String>,
+        rects: Option<Vec<(u64, [f64; 4])>>,
         turn: Turn,
     },
     /// Send the document as it is now.
@@ -349,7 +349,6 @@ impl PartialEq for AnswerWire {
     fn eq(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             (Answer::Text(a), Answer::Text(b)) => a == b,
-            (Answer::Rect(a), Answer::Rect(b)) => a == b,
             (Answer::Image(a), Answer::Image(b)) => match (a, b) {
                 (Some(a), Some(b)) => {
                     (a.width, a.height, &a.rgba, a.natural())
@@ -381,12 +380,26 @@ impl ToChild {
             ToChild::Turn {
                 viewport,
                 url,
+                rects,
                 turn,
             } => {
                 e.u8(2);
                 e.f64(viewport.0);
                 e.f64(viewport.1);
                 e.opt_str(url);
+                match rects {
+                    Some(rects) => {
+                        e.u8(1);
+                        e.u64(rects.len() as u64);
+                        for (node, rect) in rects {
+                            e.u64(*node);
+                            for v in rect {
+                                e.f64(*v);
+                            }
+                        }
+                    }
+                    None => e.u8(0),
+                }
                 turn.encode(&mut e);
             }
             ToChild::FetchDoc => e.u8(3),
@@ -396,18 +409,6 @@ impl ToChild {
                     Answer::Text(t) => {
                         e.u8(0);
                         e.opt_str(t);
-                    }
-                    Answer::Rect(r) => {
-                        e.u8(1);
-                        match r {
-                            Some((x, y, w, h)) => {
-                                e.u8(1);
-                                for v in [x, y, w, h] {
-                                    e.f64(*v);
-                                }
-                            }
-                            None => e.u8(0),
-                        }
                     }
                     Answer::Image(i) => {
                         e.u8(2);
@@ -437,16 +438,23 @@ impl ToChild {
             2 => ToChild::Turn {
                 viewport: (d.f64()?, d.f64()?),
                 url: d.opt_str()?,
+                rects: match d.u8()? {
+                    0 => None,
+                    1 => {
+                        let n = d.count()?;
+                        let mut rects = Vec::with_capacity(n);
+                        for _ in 0..n {
+                            rects.push((d.u64()?, [d.f64()?, d.f64()?, d.f64()?, d.f64()?]));
+                        }
+                        Some(rects)
+                    }
+                    _ => return None,
+                },
                 turn: Turn::decode(&mut d)?,
             },
             3 => ToChild::FetchDoc,
             4 => ToChild::Answer(AnswerWire(match d.u8()? {
                 0 => Answer::Text(d.opt_str()?),
-                1 => Answer::Rect(match d.u8()? {
-                    0 => None,
-                    1 => Some((d.f64()?, d.f64()?, d.f64()?, d.f64()?)),
-                    _ => return None,
-                }),
                 2 => Answer::Image(match d.u8()? {
                     0 => None,
                     1 => Some(Arc::new(d.image()?)),
@@ -557,10 +565,6 @@ impl FromChild {
                         e.u64(*node);
                         e.str(property);
                     }
-                    Query::Rect(node) => {
-                        e.u8(1);
-                        e.u64(*node);
-                    }
                     Query::Image(node) => {
                         e.u8(2);
                         e.u64(*node);
@@ -647,7 +651,6 @@ impl FromChild {
                     node: d.u64()?,
                     property: d.str()?,
                 },
-                1 => Query::Rect(d.u64()?),
                 2 => Query::Image(d.u64()?),
                 _ => return None,
             }),
@@ -748,8 +751,6 @@ mod tests {
             ToChild::FetchDoc,
             ToChild::Answer(AnswerWire(Answer::Text(Some("block".into())))),
             ToChild::Answer(AnswerWire(Answer::Text(None))),
-            ToChild::Answer(AnswerWire(Answer::Rect(Some((1.0, 2.0, 3.5, 4.25))))),
-            ToChild::Answer(AnswerWire(Answer::Rect(None))),
             ToChild::Answer(AnswerWire(Answer::Image(Some(picture(3, 2, 9))))),
             ToChild::Answer(AnswerWire(Answer::Image(None))),
         ];
@@ -757,11 +758,13 @@ mod tests {
             messages.push(ToChild::Turn {
                 viewport: (1280.0, 720.0),
                 url: Some("https://e.test/x".into()),
+                rects: Some(vec![(3, [1.0, 2.0, 3.5, 4.25]), (9, [0.0, 0.0, 0.0, 0.0])]),
                 turn: turn.clone(),
             });
             messages.push(ToChild::Turn {
                 viewport: (1.0, 2.0),
                 url: None,
+                rects: None,
                 turn,
             });
         }
@@ -834,7 +837,6 @@ mod tests {
                 node: 3,
                 property: "color".into(),
             }),
-            FromChild::Query(Query::Rect(8)),
             FromChild::Query(Query::Image(9)),
             FromChild::Doc {
                 doc: vec![5; 40],

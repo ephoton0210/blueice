@@ -40,6 +40,9 @@ pub(crate) struct Handoff {
     pub doc: Document,
     pub styles: HashMap<NodeId, ComputedStyle>,
     pub rects: Rects,
+    /// Whether `rects` is new to the worker (the page has laid out since it last had
+    /// them). A thread worker is always sent them.
+    pub rects_changed: bool,
     pub images: Pictures,
     pub viewport: (f64, f64),
     pub url: Option<String>,
@@ -76,7 +79,6 @@ pub(crate) struct Done {
 /// What a process worker asks the page while a turn runs.
 pub(crate) trait PageQueries {
     fn computed(&self, node: NodeId, property: &str) -> Option<String>;
-    fn rect(&self, node: NodeId) -> Option<(f64, f64, f64, f64)>;
     fn image(&self, node: NodeId) -> Option<Arc<blueice_image::RasterImage>>;
 }
 
@@ -349,9 +351,17 @@ impl ScriptWorker {
             }
             Backend::Process(link) => {
                 link.turn_started = Some(Instant::now());
+                let rects = handoff.rects_changed.then(|| {
+                    handoff
+                        .rects
+                        .iter()
+                        .map(|(node, (x, y, w, h))| (node.as_u64(), [*x, *y, *w, *h]))
+                        .collect()
+                });
                 let message = ToChild::Turn {
                     viewport: handoff.viewport,
                     url: handoff.url,
+                    rects,
                     turn,
                 };
                 if wire::write_frame(&mut link.stream, &message.encode()).is_err() {
@@ -483,6 +493,9 @@ impl ScriptWorker {
             let left = HARD_TURN_LIMIT.checked_sub(started.elapsed())?;
             match link.events.recv_timeout(left) {
                 Ok(Event::Message(FromChild::Doc { doc, changes })) => {
+                    if std::env::var("BI_DIAG").is_ok() && started.elapsed().as_millis() > 10 {
+                        eprintln!("DIAG fetch_document waited {:?}", started.elapsed());
+                    }
                     return match (Document::decode(&doc), blueice_dom::Changes::decode(&changes)) {
                         (Some(doc), Some(changes)) => {
                             link.synced_revision = doc.revision();
@@ -513,16 +526,19 @@ impl ScriptWorker {
         match event {
             Event::Message(FromChild::Done(done)) => Some(done),
             Event::Message(FromChild::Query(query)) => {
+                let began = Instant::now();
                 let answer = match query {
                     Query::Computed { node, property } => Answer::Text(
                         page.computed(NodeId::from_u64(node), &property),
                     ),
-                    Query::Rect(node) => Answer::Rect(page.rect(NodeId::from_u64(node))),
                     Query::Image(node) => Answer::Image(page.image(NodeId::from_u64(node))),
                 };
                 let reply = ToChild::Answer(AnswerWire(answer));
                 if wire::write_frame(&mut link.stream, &reply.encode()).is_err() {
                     link.failed = true;
+                }
+                if std::env::var("BI_DIAG").is_ok() && began.elapsed().as_millis() > 5 {
+                    eprintln!("DIAG a query took {:?} to answer", began.elapsed());
                 }
                 None
             }

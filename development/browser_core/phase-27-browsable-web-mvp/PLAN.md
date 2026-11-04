@@ -834,11 +834,9 @@ for their turn.
 
 Page position and the document position of every tracked node were identical in both runs.
 
-**Limits, stated plainly.**
+**Limits of the thread version, stated plainly.**
 - A thread is not a process: a script that crashes the realm or exhausts memory still takes the
-  core with it. A process needs the hand-off to cross a boundary (serialising the document, or
-  shipping its change journal) instead of moving through a channel; the turn protocol does not
-  change.
+  core with it (the process version below removes this).
 - A change the core makes to the document while a turn runs (typing into a field, say) is
   overwritten when the turn's document comes back.
 - A callback that runs past the wall-clock limit is stopped and cancelled, so a legitimately
@@ -849,6 +847,57 @@ after 5 s on a full socket and the client's end stays open and silent, so an MCP
 between tool calls on a page that keeps repainting never got another reply. The MCP connection
 now reads on a thread of its own and keeps only the latest unsolicited frame notice per tab
 (`backend/mcp-server/src/unix/drained.rs`). The launcher's behaviour is unchanged.
+
+### A process of their own (2026-11-03)
+
+`blueice-core --script-process` (with `--web-scripts --async-scripts`) runs each page's
+scripts in a child process: the core starts itself as `blueice-core --page-scripts-child
+<socket>` (no new binary to package). The launcher passes it by default (`--no-script-process`
+keeps the thread). A script that crashes, hangs or eats memory costs the page its scripts, not
+the core; tested with `kill -9`, after which the page keeps what it last had and a new document
+gets scripts again.
+
+*What crosses the boundary.* A turn is plain data (`web::turn::Turn`: startup, a loaded script,
+after-layout, scroll, network calls, tick) in a hand-written length-prefixed binary format
+(`web::wire`; every message is round-trip tested and refused when truncated or corrupt).
+- **The document** lives in the child. The core sends it once (`Document::encode`/`decode`,
+  which keep node IDs, tree links, gaps and the next ID) and fetches it back, with the DOM's
+  change journal (`Changes::encode`/`decode`, `absorb_changes`), when a turn changed it, so
+  incremental restyle and layout reuse still work across the swap. A change the core makes to
+  its own copy is detected by a revision counter and sent before the next turn.
+- **Layout boxes** go to the child once per layout, with the next turn, so
+  `getBoundingClientRect` never leaves the process. An earlier version asked for each box over
+  the socket; an `IntersectionObserver` pass asks for thousands, and the core was held for about
+  110 ms per layout.
+- **Computed styles and pictures** are asked of the core mid-turn, one question at a time, and
+  cached in the child until the next layout.
+- **Everything the scripts want to do outside** (network requests, navigations, canvas pictures,
+  scripts they insert) comes back as data and is reviewed by the core exactly as before. The
+  child has no network or file code path.
+- Reports on layout (`AfterLayout`) run as background turns instead of blocking the session.
+
+*Measured* (macOS app, tw.yahoo.com, 95 wheel notches, frame latency, same page and steps):
+
+| | scripts on the session thread | background thread | own process |
+|---|---|---|---|
+| median | 221 ms | 15.3 ms | **13.4 ms** |
+| p95 | 831 ms | 25.7 ms | **20.2 ms** |
+| max | 7.7 s | 115 ms | **39.5 ms** |
+
+The loaded page is the same: both modes reach 507/508 nodes with the same roles at the same
+rate, and the page position and every tracked node's position were identical in all runs.
+
+*Not done, stated plainly.*
+- **No operating-system sandbox.** The child is a separate process, not a restricted one: no
+  `sandbox_init`, no resource limits. It has no network or file code path of its own, but nothing
+  stops a compromised realm from using the OS. Memory is bounded by the realm's own 384 MB heap
+  limit, not by the OS.
+- A turn that runs past 90 s is ended by killing the process (the realm's own 20 s per-callback
+  limit comes first).
+- Page startup and a script the page inserts later are fetched and run with the session waiting
+  (the fetch is network I/O on the core's thread).
+- A change the core makes to the document while a *background* turn is running is lost when that
+  turn's document comes back.
 
 ## Non-goals
 

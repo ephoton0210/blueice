@@ -89,6 +89,12 @@ pub struct Page {
     web_async_override: Option<bool>,
     /// Every laid-out box by node, for a process that asks; cleared at each layout.
     web_rects: Option<std::collections::HashMap<NodeId, (f64, f64, f64, f64)>>,
+    /// Counts layouts, so a process is sent the boxes once per layout.
+    layout_generation: u64,
+    web_rects_sent: u64,
+    /// Reports on layout still to be run in the background after the page changed.
+    web_after_layout: u8,
+    web_in_flight_after_layout: bool,
     /// The page's scripts stopped working and were dropped (their process died).
     web_scripts_lost: bool,
     /// What each WebGL canvas last drew.
@@ -209,6 +215,10 @@ impl Page {
             web: None,
             web_async_override: None,
             web_rects: None,
+            layout_generation: 1,
+            web_rects_sent: 0,
+            web_after_layout: 0,
+            web_in_flight_after_layout: false,
             web_scripts_lost: false,
             canvas_pictures: HashMap::new(),
             web_scripts_override: None,
@@ -366,6 +376,7 @@ impl Page {
             &mut self.layout_cache,
         );
         self.web_rects = None;
+        self.layout_generation += 1;
         if cached > 0 {
             self.layout_reuse += 1;
         }

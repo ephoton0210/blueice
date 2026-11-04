@@ -78,16 +78,16 @@ pub(crate) enum NavigationRequest {
 /// engine's concurrency limit); only a runaway script reaches it.
 const MAX_REQUESTS_PER_TURN: usize = 4096;
 
-/// Where a realm that does not hold the page's layout gets it from: the page
-/// answers while a turn runs. A realm in the page's own process leaves this unset
-/// and reads the maps the page lent it.
+/// Where a realm that does not hold the page's styles and pictures gets them from:
+/// the page answers while a turn runs. A realm in the page's own process leaves
+/// this unset and reads the maps the page lent it. (Boxes are sent with the turn.)
 pub(crate) trait RemoteQueries {
     /// A node's computed value of a CSS property.
     fn computed(&self, node: NodeId, property: &str) -> Option<String>;
-    /// A node's border box in document coordinates.
-    fn rect(&self, node: NodeId) -> Option<(f64, f64, f64, f64)>;
     /// A node's decoded picture.
     fn image(&self, node: NodeId) -> Option<std::sync::Arc<blueice_image::RasterImage>>;
+    /// The page laid out again: what was asked before may have a new answer.
+    fn forget(&self);
 }
 
 pub(crate) struct DomState {
@@ -743,11 +743,8 @@ impl DomState {
             }
             "rect" => {
                 let id = self.node(args.first())?;
-                let rect = match &self.remote {
-                    Some(remote) => remote.rect(id),
-                    None => self.rects.get(&id).copied(),
-                };
-                match rect {
+                // Boxes are sent with each turn after a layout, so this never leaves the realm.
+                match self.rects.get(&id).copied() {
                     Some((x, y, w, h)) => format!("[{x},{y},{w},{h}]").into(),
                     None => "[0,0,0,0]".into(),
                 }

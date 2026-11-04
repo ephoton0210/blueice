@@ -73,6 +73,8 @@ struct Args {
     trusted_frontend: bool,
     /// Start core without running the pages' own scripts.
     no_page_scripts: bool,
+    /// Run the pages' scripts on a thread of the core, not in a process of their own.
+    no_script_process: bool,
     /// Opt-in lifetime pipe: EOF on stdin requests normal broker shutdown.
     exit_on_stdin_eof: bool,
     /// Optional owner-selected gatekeeper endpoint for the core child. This
@@ -224,6 +226,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut extension_manifest = None;
     let mut trusted_frontend = false;
     let mut no_page_scripts = false;
+    let mut no_script_process = false;
     let mut exit_on_stdin_eof = false;
     let mut gatekeeper_socket = None;
     let mut owned_gatekeeper_socket = None;
@@ -290,6 +293,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             "--trusted-frontend" => trusted_frontend = true,
             "--no-page-scripts" => no_page_scripts = true,
+            "--no-script-process" => no_script_process = true,
             "--exit-on-stdin-eof" => exit_on_stdin_eof = true,
             "--assistant" => {
                 assistant_settings
@@ -723,6 +727,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         extension_manifest,
         trusted_frontend,
         no_page_scripts,
+        no_script_process,
         exit_on_stdin_eof,
         gatekeeper_socket,
         owned_gatekeeper_socket,
@@ -859,6 +864,9 @@ fn main() -> ExitCode {
         CoreLaunchOptions::default().with_gatekeeper_socket(gatekeeper_socket.clone());
     if args.no_page_scripts {
         core_options = core_options.without_page_scripts();
+    }
+    if args.no_script_process {
+        core_options = core_options.without_script_process();
     }
     if let Some(manifest) = args.extension_manifest.clone() {
         core_options = core_options.with_extension_manifest(manifest);

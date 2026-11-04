@@ -33,6 +33,15 @@ impl CoreLaunchOptions {
         self
     }
 
+    /// Keeps the pages' scripts in the core's own process (on a thread) rather than
+    /// in a process of their own. By default each page's scripts run in a separate
+    /// process, so a script that crashes, hangs or eats memory costs the page its
+    /// scripts and not the core.
+    pub fn without_script_process(mut self) -> Self {
+        self.without_script_process = true;
+        self
+    }
+
     /// The core flags that decide whether and how pages' scripts run. A core
     /// whose scripts are run by the supervised out-of-process page host does not
     /// also get the in-process web layer: two executors would each run the same
@@ -40,8 +49,10 @@ impl CoreLaunchOptions {
     pub(crate) fn page_script_args(&self) -> &'static [&'static str] {
         if self.without_page_scripts || self.supervise_out_of_process_bluejs {
             &[]
-        } else {
+        } else if self.without_script_process {
             &["--web-scripts", "--async-scripts"]
+        } else {
+            &["--web-scripts", "--async-scripts", "--script-process"]
         }
     }
 
@@ -492,6 +503,12 @@ mod page_script_tests {
     fn a_launched_core_runs_pages_scripts_in_the_background_unless_told_not_to() {
         assert_eq!(
             CoreLaunchOptions::default().page_script_args(),
+            ["--web-scripts", "--async-scripts", "--script-process"]
+        );
+        assert_eq!(
+            CoreLaunchOptions::default()
+                .without_script_process()
+                .page_script_args(),
             ["--web-scripts", "--async-scripts"]
         );
         assert!(CoreLaunchOptions::default()

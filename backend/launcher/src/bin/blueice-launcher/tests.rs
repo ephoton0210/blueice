@@ -462,6 +462,7 @@ fn every_flag_is_parsed() {
             extension_manifest: Some(PathBuf::from("/tmp/extension.json")),
             trusted_frontend: true,
             no_page_scripts: false,
+            no_script_process: false,
             exit_on_stdin_eof: true,
             gatekeeper_socket: Some(PathBuf::from("/tmp/gatekeeper.sock")),
             owned_gatekeeper_socket: None,
@@ -917,4 +918,10 @@ fn static_metadata_symbol_contract_requires_its_owner_prerequisites() {
 fn page_scripts_can_be_left_off_for_the_core_it_starts() {
     assert!(!args(&[]).unwrap().no_page_scripts);
     assert!(args(&["--no-page-scripts"]).unwrap().no_page_scripts);
+}
+
+#[test]
+fn page_scripts_can_be_kept_on_a_thread_of_the_core() {
+    assert!(!args(&[]).unwrap().no_script_process);
+    assert!(args(&["--no-script-process"]).unwrap().no_script_process);
 }

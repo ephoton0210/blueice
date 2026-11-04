@@ -134,3 +134,61 @@ fn a_dead_scripts_process_costs_the_page_its_scripts_and_nothing_else() {
     assert_eq!(page.script_backend(), "process");
     assert_eq!(texts(&page), vec!["alive"]);
 }
+
+#[test]
+fn observers_of_visibility_still_report_once_layout_has_caught_up() {
+    let mut page = page(
+        "<body style='margin:0'><div id=box style='height:50px'>x</div><p id=out>waiting</p>\
+         <script>new IntersectionObserver((entries) => { for (const e of entries) \
+           if (e.isIntersecting) document.getElementById('out').textContent = 'seen'; })\
+           .observe(document.getElementById('box'));</script></body>",
+    );
+    until(&mut page, "the observer to report", |p| texts(p).iter().any(|t| t == "seen"));
+}
+
+#[test]
+fn the_boxes_a_script_reads_follow_the_pages_latest_layout() {
+    let mut page = page(
+        "<body style='margin:0'><div id=box style='height:50px'>x</div><p id=out>0</p><script>\
+         const box = document.getElementById('box');\
+         const show = () => { document.getElementById('out').textContent = String(box.getBoundingClientRect().height); };\
+         setTimeout(() => { box.style.height = '80px'; }, 0);\
+         setTimeout(show, 900);</script></body>",
+    );
+    until(&mut page, "the script to read the new height", |p| texts(p).iter().any(|t| t == "80"));
+}
+
+#[test]
+fn what_the_page_itself_changes_in_the_document_is_what_scripts_read_next() {
+    let mut page = page(
+        "<body><input id=field value=before><p id=out>0</p><script>\
+         setTimeout(() => { document.getElementById('out').textContent = \
+           'read:' + document.getElementById('field').value; }, 400);</script></body>",
+    );
+    assert_eq!(page.script_backend(), "process");
+    // The page edits its own copy, as typing into the field does.
+    page.edit_document(|doc| {
+        let mut stack = vec![doc.root()];
+        while let Some(id) = stack.pop() {
+            if let blueice_dom::NodeData::Element { tag_name, .. } = doc.data(id) {
+                if tag_name == "input" {
+                    if let blueice_dom::NodeData::Element { attributes, .. } = doc.data_mut(id) {
+                        for (name, value) in attributes.iter_mut() {
+                            if name == "value" {
+                                *value = "typed by the page".to_string();
+                            }
+                        }
+                    }
+                    return;
+                }
+            }
+            stack.extend(doc.children(id));
+        }
+        panic!("no input");
+    });
+    until(&mut page, "the script to read the edited field", |p| {
+        // Only the script writes "read:" (text is painted a word at a time); the field
+        // paints its own value either way.
+        texts(p).iter().any(|t| t == "read:typed")
+    });
+}

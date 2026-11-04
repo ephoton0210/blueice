@@ -19,6 +19,7 @@ use super::WebHost;
 use blueice_dom::{Document, NodeId};
 use blueice_image::RasterImage;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -50,9 +51,12 @@ pub fn run_script_child(socket: &Path) -> i32 {
     }
 }
 
-/// Asks the core about layout while a turn runs.
+/// Asks the core about styles and pictures while a turn runs. An answer holds until
+/// the page lays out again: a script asks about the same element many times.
 struct ChildQueries {
     stream: RefCell<UnixStream>,
+    computed: RefCell<HashMap<(u64, String), Option<String>>>,
+    images: RefCell<HashMap<u64, Option<Arc<RasterImage>>>>,
 }
 
 impl ChildQueries {
@@ -69,27 +73,36 @@ impl ChildQueries {
 
 impl RemoteQueries for ChildQueries {
     fn computed(&self, node: NodeId, property: &str) -> Option<String> {
-        match self.ask(Query::Computed {
-            node: node.as_u64(),
-            property: property.to_string(),
+        let key = (node.as_u64(), property.to_string());
+        if let Some(known) = self.computed.borrow().get(&key) {
+            return known.clone();
+        }
+        let answer = match self.ask(Query::Computed {
+            node: key.0,
+            property: key.1.clone(),
         })? {
             Answer::Text(text) => text,
             _ => None,
-        }
-    }
-
-    fn rect(&self, node: NodeId) -> Option<(f64, f64, f64, f64)> {
-        match self.ask(Query::Rect(node.as_u64()))? {
-            Answer::Rect(rect) => rect,
-            _ => None,
-        }
+        };
+        self.computed.borrow_mut().insert(key, answer.clone());
+        answer
     }
 
     fn image(&self, node: NodeId) -> Option<Arc<RasterImage>> {
-        match self.ask(Query::Image(node.as_u64()))? {
+        if let Some(known) = self.images.borrow().get(&node.as_u64()) {
+            return known.clone();
+        }
+        let answer = match self.ask(Query::Image(node.as_u64()))? {
             Answer::Image(image) => image,
             _ => None,
-        }
+        };
+        self.images.borrow_mut().insert(node.as_u64(), answer.clone());
+        answer
+    }
+
+    fn forget(&self) {
+        self.computed.borrow_mut().clear();
+        self.images.borrow_mut().clear();
     }
 }
 
@@ -116,6 +129,8 @@ fn serve(stream: UnixStream) -> io::Result<()> {
     let mut state = DomState::new(doc, &url, viewport);
     state.remote = Some(Box::new(ChildQueries {
         stream: RefCell::new(stream.try_clone()?),
+        computed: RefCell::new(HashMap::new()),
+        images: RefCell::new(HashMap::new()),
     }));
     let mut host = match WebHost::new(state) {
         Ok(host) => host,
@@ -134,12 +149,23 @@ fn serve(stream: UnixStream) -> io::Result<()> {
             ToChild::Turn {
                 viewport,
                 url,
+                rects,
                 turn,
             } => {
                 let revision = host.with_state(|s| {
                     s.viewport = viewport;
                     if let Some(url) = url {
                         s.url = url;
+                    }
+                    if let Some(rects) = rects {
+                        // The page laid out again: new boxes, and old answers may be stale.
+                        s.rects = rects
+                            .into_iter()
+                            .map(|(node, [x, y, w, h])| (NodeId::from_u64(node), (x, y, w, h)))
+                            .collect();
+                        if let Some(remote) = &s.remote {
+                            remote.forget();
+                        }
                     }
                     s.dirty = false;
                     s.doc.revision()

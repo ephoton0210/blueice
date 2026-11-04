@@ -124,16 +124,12 @@ fn collect_rects(
 /// What the page tells a process worker about its layout while a turn runs.
 struct PageView<'a> {
     styles: &'a HashMap<NodeId, blueice_css::ComputedStyle>,
-    rects: &'a HashMap<NodeId, (f64, f64, f64, f64)>,
     images: &'a HashMap<NodeId, Arc<blueice_image::RasterImage>>,
 }
 
 impl PageQueries for PageView<'_> {
     fn computed(&self, node: NodeId, property: &str) -> Option<String> {
         crate::web::dom_bridge::computed_value_of(self.styles.get(&node)?, property)
-    }
-    fn rect(&self, node: NodeId) -> Option<(f64, f64, f64, f64)> {
-        self.rects.get(&node).copied()
     }
     fn image(&self, node: NodeId) -> Option<Arc<blueice_image::RasterImage>> {
         self.images.get(&node).cloned()
@@ -196,11 +192,21 @@ impl Page {
     fn web_handoff(&mut self, lend: bool) -> Handoff {
         let lent_state = self.web.as_ref().is_none_or(ScriptWorker::is_lent_state);
         if !lent_state {
-            // A process holds its own document and asks about layout when it needs to.
+            // A process holds its own document and asks about styles and pictures when it
+            // needs to; it is sent the boxes once per layout.
+            let rects_changed = self.layout_generation != self.web_rects_sent;
+            let rects = if rects_changed {
+                self.ensure_web_rects();
+                self.web_rects_sent = self.layout_generation;
+                self.web_rects.clone().unwrap_or_default()
+            } else {
+                HashMap::new()
+            };
             return Handoff {
                 doc: Document::new(),
                 styles: HashMap::new(),
-                rects: HashMap::new(),
+                rects,
+                rects_changed,
                 images: HashMap::new(),
                 viewport: (self.viewport_width, self.viewport_height),
                 url: self.url.clone(),
@@ -220,6 +226,7 @@ impl Page {
             doc,
             styles,
             rects,
+            rects_changed: true,
             images: self.images.content.clone(),
             viewport: (self.viewport_width, self.viewport_height),
             url: self.url.clone(),
@@ -255,11 +262,9 @@ impl Page {
         let Some(mut worker) = self.web.take() else {
             return (Vec::new(), false);
         };
-        self.ensure_web_rects();
         // A background turn still running must be taken first.
         let view = PageView {
             styles: &self.styles,
-            rects: self.web_rects.as_ref().expect("made above"),
             images: &self.images.content,
         };
         let earlier = worker.wait(&view);
@@ -279,10 +284,8 @@ impl Page {
             handoff
         };
         worker.submit(handoff, turn);
-        self.ensure_web_rects();
         let view = PageView {
             styles: &self.styles,
-            rects: self.web_rects.as_ref().expect("made above"),
             images: &self.images.content,
         };
         let done = worker.wait(&view);
@@ -349,10 +352,8 @@ impl Page {
         let mut adopted = r.doc.map(|doc| (doc, None));
         if adopted.is_none() && dirty {
             // The scripts hold the document; take it now that they changed it.
-            self.ensure_web_rects();
             let view = PageView {
                 styles: &self.styles,
-                rects: self.web_rects.as_ref().expect("made above"),
                 images: &self.images.content,
             };
             if let Some(worker) = self.web.as_mut() {
@@ -492,6 +493,14 @@ impl Page {
         // A change of the document moves things, which observers of visibility
         // report on once layout has caught up; their callbacks may change it
         // again, a few rounds at most.
+        if self.web_async_on() {
+            // The scripts run in the background: let them report on layout when they
+            // next have a turn, without holding the session for it.
+            if changed {
+                self.web_after_layout = 3;
+            }
+            return;
+        }
         for _ in 0..3 {
             if !changed {
                 break;
@@ -595,6 +604,9 @@ impl Page {
     pub(super) fn start_web_scripts(&mut self) {
         self.web = None;
         self.web_scripts_lost = false;
+        self.web_rects_sent = 0;
+        self.web_after_layout = 0;
+        self.web_in_flight_after_layout = false;
         self.web_relayout_pending = false;
         self.web_last_relayout = None;
         if !self.web_scripts_on() {
@@ -652,29 +664,49 @@ impl Page {
 
     /// Runs the timers that are due. True when the document changed.
     pub(crate) fn tick_web(&mut self) -> bool {
+        let ticked = std::time::Instant::now();
+        let published = self.tick_web_inner();
+        if ticked.elapsed().as_millis() > 30 && std::env::var("BI_DIAG").is_ok() {
+            eprintln!("DIAG tick_web held the session for {:?}", ticked.elapsed());
+        }
+        published
+    }
+
+    fn tick_web_inner(&mut self) -> bool {
         let background = self.web_async_on();
         let mut published = false;
         if background {
             // A turn that finished since the last tick comes back first, and only
             // then is another started: the scripts have one turn in flight.
-            self.ensure_web_rects();
             let finished = {
                 let view = PageView {
                     styles: &self.styles,
-                    rects: self.web_rects.as_ref().expect("made above"),
                     images: &self.images.content,
                 };
                 self.web.as_mut().and_then(|worker| worker.try_finish(&view))
             };
             self.drop_failed_scripts();
             if let Some(done) = finished {
+                let rounds_left = self.web_after_layout;
+                let was_after_layout = std::mem::take(&mut self.web_in_flight_after_layout);
                 let (requests, relayed) = self.finish_turn(done, false);
                 self.web_followups(requests, relayed);
+                if was_after_layout {
+                    // A report on layout that changed the page does not start the count over.
+                    self.web_after_layout = rounds_left;
+                }
                 published = std::mem::take(&mut self.script_change_unpublished_by_web);
             }
             if self.web.as_ref().is_none_or(ScriptWorker::busy) {
                 return published;
             }
+        }
+        if background && self.web_after_layout > 0 {
+            self.web_after_layout -= 1;
+            if self.web_turn_in_background(Turn::AfterLayout) {
+                self.web_in_flight_after_layout = true;
+            }
+            return published;
         }
         // Scrolling reaches the page's scripts as a scroll event and a fresh
         // look at what is visible.
@@ -741,6 +773,14 @@ impl Page {
             None if self.web_scripts_lost => "lost",
             None => "none",
         }
+    }
+
+    /// Changes the page's own copy of the document the way a native edit does (typing
+    /// into a field, say), for tests of what scripts see afterwards.
+    #[doc(hidden)]
+    pub fn edit_document(&mut self, edit: impl FnOnce(&mut Document)) {
+        edit(&mut self.doc);
+        self.web_relayout_pending = true;
     }
 
     /// The ID of the process running this page's scripts, if they run in one.
