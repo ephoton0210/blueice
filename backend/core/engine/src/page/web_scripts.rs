@@ -13,17 +13,13 @@
 use super::Page;
 use crate::web::{
     dom_bridge::NavigationRequest,
+    turn::{js_string, ScriptPlan, Startup, Turn},
     worker::{Done, Handoff, ScriptWorker},
-    WebHost,
 };
 use blueice_dom::{Document, NodeData, NodeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-
-/// How long a document's scripts may spend starting up before the rest are
-/// left unrun, so one heavy page cannot hold the session for long.
-const STARTUP_BUDGET: Duration = Duration::from_secs(6);
 
 /// The least time between two relayouts a script's changes cause.
 const WEB_RELAYOUT_INTERVAL: Duration = Duration::from_millis(250);
@@ -203,10 +199,7 @@ impl Page {
     /// handed over and waits for it, then takes them back; a changed DOM is
     /// restyled and laid out and marked for publication. Returns the external
     /// scripts the turn asked to load.
-    fn web_turn_once(
-        &mut self,
-        f: impl FnOnce(&mut WebHost) + Send + 'static,
-    ) -> (Vec<(NodeId, String)>, bool) {
+    fn web_turn_once(&mut self, turn: Turn) -> (Vec<(NodeId, String)>, bool) {
         let Some(mut worker) = self.web.take() else {
             return (Vec::new(), false);
         };
@@ -219,7 +212,7 @@ impl Page {
         }
         let handoff = self.web_handoff(true);
         let mut worker = self.web.take().expect("put back above");
-        worker.submit(handoff, f);
+        worker.submit(handoff, turn);
         let done = worker.wait();
         self.web = Some(worker);
         match done {
@@ -239,7 +232,7 @@ impl Page {
 
     /// Starts `f` as a turn that the page does not wait for. Nothing is started
     /// while an earlier turn is still running.
-    fn web_turn_in_background(&mut self, f: impl FnOnce(&mut WebHost) + Send + 'static) -> bool {
+    fn web_turn_in_background(&mut self, turn: Turn) -> bool {
         if self.web.as_ref().is_none_or(ScriptWorker::busy) {
             return false;
         }
@@ -249,18 +242,18 @@ impl Page {
             eprintln!("DIAG handoff copy took {:?}", started.elapsed());
         }
         if let Some(worker) = self.web.as_mut() {
-            worker.submit(handoff, f);
+            worker.submit(handoff, turn);
         }
         true
     }
 
     /// Starts `f` in the background when the page's scripts run that way, and
     /// otherwise runs it and waits.
-    fn web_turn_auto(&mut self, f: impl FnOnce(&mut WebHost) + Send + 'static) {
+    fn web_turn_auto(&mut self, turn: Turn) {
         if self.web_async_on() {
-            self.web_turn_in_background(f);
+            self.web_turn_in_background(turn);
         } else {
-            self.web_turn(f);
+            self.web_turn(turn);
         }
     }
 
@@ -357,8 +350,8 @@ impl Page {
     /// One turn, then the scripts it inserted: each fetched under the same
     /// review as any request and run (or failed) as its own turn. A bounded
     /// number of rounds, so scripts that insert scripts cannot run forever.
-    fn web_turn(&mut self, f: impl FnOnce(&mut WebHost) + Send + 'static) {
-        let (pending, changed) = self.web_turn_once(f);
+    fn web_turn(&mut self, turn: Turn) {
+        let (pending, changed) = self.web_turn_once(turn);
         self.web_followups(pending, changed);
     }
 
@@ -378,7 +371,6 @@ impl Page {
                         crate::scripts_fetch::DEFAULT_SCRIPT_LIMITS,
                     )
                 });
-                let ok = source.is_some();
                 let trace = std::env::var_os("BI_NET_LOG").is_some();
                 if trace {
                     eprintln!(
@@ -389,22 +381,10 @@ impl Page {
                         ))
                     );
                 }
-                let call = format!(
-                    "__blueice.scriptLoaded({}, {}, {});",
-                    node.as_u64(),
-                    js_string(&source.unwrap_or_default()),
-                    ok
-                );
-                let traced = src.clone();
-                let (more, dirty) = self.web_turn_once(move |host: &mut WebHost| {
-                    let started = std::time::Instant::now();
-                    let outcome = host.run("blueice:script-load", &call);
-                    if trace {
-                        eprintln!(
-                            "script-load {traced} ran in {:?}: {outcome:?}",
-                            started.elapsed()
-                        );
-                    }
+                let (more, dirty) = self.web_turn_once(Turn::ScriptLoaded {
+                    node: node.as_u64(),
+                    src,
+                    source,
                 });
                 changed |= dirty;
                 next.extend(more);
@@ -418,9 +398,7 @@ impl Page {
             if !changed {
                 break;
             }
-            let (_, dirty) = self.web_turn_once(|host: &mut WebHost| {
-                let _ = host.run("blueice:layout", "__blueice.afterLayout();");
-            });
+            let (_, dirty) = self.web_turn_once(Turn::AfterLayout);
             changed = dirty;
         }
     }
@@ -510,11 +488,7 @@ impl Page {
         }
         if !calls.is_empty() {
             // One turn for everything that arrived.
-            self.web_turn_auto(move |host| {
-                for call in &calls {
-                    let _ = host.run("blueice:net", call);
-                }
-            });
+            self.web_turn_auto(Turn::NetCalls(calls));
         }
     }
 
@@ -549,102 +523,21 @@ impl Page {
         }
         self.web = Some(worker);
         self.web_force_relayout = true;
-        let linked = self.linked_scripts.clone();
-        let modules = self.linked_modules.clone();
-        let document = self.url.as_deref().and_then(|u| url::Url::parse(u).ok());
-        let startup = std::time::Instant::now();
-        self.web_turn(move |host| {
-            let mut scripts = scripts;
-            let document = document.clone();
-            let document_dir = document
-                .as_ref()
-                .map(|u| {
-                    let path = u.path();
-                    path.rsplit_once('/').map_or("", |(dir, _)| dir).to_string()
+        self.web_turn(Turn::Startup(Startup {
+            scripts: scripts
+                .into_iter()
+                .map(|s| ScriptPlan {
+                    node: s.node.as_u64(),
+                    module: s.module,
+                    src: s.src,
+                    inline: s.inline,
+                    deferred: s.deferred,
                 })
-                .unwrap_or_default();
-            // Developer aid: `BI_PRELUDE` is JavaScript run before any of the page's scripts.
-            if let Ok(prelude) = std::env::var("BI_PRELUDE") {
-                let _ = host.run("blueice:prelude", &prelude);
-            }
-            let compiled = std::time::Instant::now();
-            host.set_module_sources(
-                &document
-                    .as_ref()
-                    .map(|u| crate::scripts_fetch::module_key(u, u))
-                    .unwrap_or_default(),
-                modules.clone(),
-            );
-            if std::env::var("BI_DIAG").is_ok() {
-                eprintln!("DIAG {} modules compiled in {:?}", modules.len(), compiled.elapsed());
-            }
-            // Parser-blocking and async classic scripts in order, then the
-            // deferred ones, then modules (which are deferred by nature).
-            let all = std::mem::take(&mut scripts);
-            let (module_scripts, classic): (Vec<_>, Vec<_>) = all.into_iter().partition(|s| s.module);
-            let (deferred, immediate): (Vec<_>, Vec<_>) = classic.into_iter().partition(|s| s.deferred);
-            for script in immediate.into_iter().chain(deferred) {
-                if startup.elapsed() > STARTUP_BUDGET {
-                    host.note_line("page scripts stopped: the startup time budget is spent");
-                    break;
-                }
-                let (name, source) = match &script.src {
-                    Some(src) => match linked.get(src) {
-                        Some(text) => (src.clone(), text.clone()),
-                        None => continue,
-                    },
-                    None => ("inline script".to_string(), script.inline),
-                };
-                let id = script.node.as_u64();
-                let _ = host.run("blueice:current", &format!("__blueice.setCurrentScript({id});"));
-                let ran = std::time::Instant::now();
-                let logged = host.console().len();
-                let outcome = host.run(&name, &source);
-                // Developer aid: which script said or failed what (`BI_NET_LOG=1`).
-                if std::env::var_os("BI_NET_LOG").is_some() {
-                    eprintln!("script {} ran in {:?}: {outcome:?}", &name[..name.len().min(110)], ran.elapsed());
-                    for line in host.console().iter().skip(logged) {
-                        eprintln!("    | {}", &line[..line.len().min(240)]);
-                    }
-                }
-                if std::env::var("BI_DIAG").is_ok() && ran.elapsed().as_millis() > 100 {
-                    eprintln!("DIAG classic {} took {:?}", &name[..name.len().min(70)], ran.elapsed());
-                }
-            }
-            for (n, script) in module_scripts.into_iter().enumerate() {
-                let key_source = match &script.src {
-                    Some(src) => document
-                        .as_ref()
-                        .and_then(|d| d.join(src).ok().map(|u| (crate::scripts_fetch::module_key(&u, d), src.clone())))
-                        .and_then(|(key, _)| modules.get(&key).map(|text| (key, text.clone()))),
-                    None => Some((
-                        format!("{document_dir}/__inline_module_{n}.js"),
-                        script.inline.clone(),
-                    )),
-                };
-                if startup.elapsed() > STARTUP_BUDGET {
-                    host.note_line("page scripts stopped: the startup time budget is spent");
-                    break;
-                }
-                if let Some((key, text)) = key_source {
-                    let id = script.node.as_u64();
-                    let _ = host.run("blueice:current", &format!("__blueice.setCurrentScript({id});"));
-                    let ran = std::time::Instant::now();
-                    let _ = host.run_module(&key, &text, &modules);
-                    if std::env::var("BI_DIAG").is_ok() && ran.elapsed().as_millis() > 100 {
-                        eprintln!("DIAG module {} took {:?}", &key[..key.len().min(70)], ran.elapsed());
-                    }
-                }
-            }
-            let _ = host.run(
-                "blueice:ready",
-                "__blueice.setCurrentScript(null); __blueice.setReadyState('interactive'); __blueice.fireDocument('DOMContentLoaded', { bubbles: true });",
-            );
-            let _ = host.run(
-                "blueice:load",
-                "__blueice.setReadyState('complete'); for (const i of document.querySelectorAll('img')) i.dispatchEvent(new Event('load')); __blueice.fire('load'); __blueice.fire('pageshow');",
-            );
-        });
+                .collect(),
+            linked: self.linked_scripts.clone(),
+            modules: self.linked_modules.clone(),
+            document: self.url.clone(),
+        }));
         self.web_force_relayout = false;
     }
 
@@ -669,9 +562,7 @@ impl Page {
         if self.web.is_some() && (self.scroll_y - self.web_scroll_seen).abs() > 0.5 {
             self.web_scroll_seen = self.scroll_y;
             let y = self.scroll_y;
-            self.web_turn_auto(move |host| {
-                let _ = host.run("blueice:scroll", &format!("__blueice.scrolled({y});"));
-            });
+            self.web_turn_auto(Turn::Scrolled(y));
             if background {
                 return published;
             }
@@ -689,9 +580,7 @@ impl Page {
         if !due {
             return published;
         }
-        self.web_turn_auto(|host| {
-            host.tick();
-        });
+        self.web_turn_auto(Turn::Tick);
         if background {
             return published;
         }
@@ -726,10 +615,7 @@ impl Page {
     /// Runs `source` in the page's realm as a diagnostic probe.
     #[allow(dead_code)]
     pub(crate) fn web_eval(&mut self, source: &str) {
-        let source = source.to_string();
-        self.web_turn(move |host| {
-            let _ = host.run("probe", &source);
-        });
+        self.web_turn(Turn::Probe(source.to_string()));
     }
 
     /// What the realm's scripts have logged (diagnostics).
@@ -742,23 +628,6 @@ impl Page {
     }
 }
 
-fn js_string(text: &str) -> String {
-    let mut out = String::from("\"");
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\u{2028}' => out.push_str("\\u2028"),
-            '\u{2029}' => out.push_str("\\u2029"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
 
 #[cfg(test)]
 mod tests {
@@ -1155,12 +1024,9 @@ mod tests {
         // An inline `defer` is ignored, so the script after it saw only `ai`...
         assert_eq!(texts(&p), vec!["ai"]);
         // ...and the deferred external script ran last.
-        p.web_turn(|host| {
-            let _ = host.run(
-                "t",
-                "document.getElementById('o').textContent = window.order;",
-            );
-        });
+        p.web_turn(Turn::Probe(
+            "document.getElementById('o').textContent = window.order;".to_string(),
+        ));
         p.settle();
         assert_eq!(texts(&p), vec!["aid"]);
     }

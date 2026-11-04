@@ -13,6 +13,7 @@
 //! at a time.
 
 use super::dom_bridge::{DomState, NavigationRequest};
+use super::turn::{run_turn, Turn};
 use super::WebHost;
 use blueice_dom::{Document, NodeId};
 use blueice_css::ComputedStyle;
@@ -59,11 +60,9 @@ pub(crate) struct Done {
     pub console: Vec<String>,
 }
 
-type Run = Box<dyn FnOnce(&mut WebHost) + Send>;
-
 struct Job {
     handoff: Handoff,
-    run: Run,
+    turn: Turn,
 }
 
 /// The page's handle on its scripts' thread.
@@ -104,7 +103,7 @@ impl ScriptWorker {
                 };
                 let mut console_sent = 0;
                 for job in job_rx {
-                    let Job { handoff, run } = job;
+                    let Job { handoff, turn } = job;
                     host.with_state(|s| {
                         s.doc = handoff.doc;
                         s.styles = handoff.styles;
@@ -116,7 +115,7 @@ impl ScriptWorker {
                         }
                         s.dirty = false;
                     });
-                    run(&mut host);
+                    run_turn(&mut host, turn);
                     let returned = host.with_state(|s| Returned {
                         doc: std::mem::replace(&mut s.doc, Document::new()),
                         styles: std::mem::take(&mut s.styles),
@@ -163,13 +162,10 @@ impl ScriptWorker {
     }
 
     /// Starts a turn. The page must not have one in flight.
-    pub fn submit(&mut self, handoff: Handoff, run: impl FnOnce(&mut WebHost) + Send + 'static) {
+    pub fn submit(&mut self, handoff: Handoff, turn: Turn) {
         debug_assert!(!self.busy, "one turn at a time");
         self.busy = true;
-        let _ = self.jobs.send(Job {
-            handoff,
-            run: Box::new(run),
-        });
+        let _ = self.jobs.send(Job { handoff, turn });
     }
 
     /// The in-flight turn's result if it has finished.
