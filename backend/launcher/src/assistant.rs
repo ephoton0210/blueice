@@ -80,8 +80,9 @@ pub struct Limits {
     /// (A `cgroup` or Job Object limit would need privileges the launcher
     /// cannot assume; watching resident memory is portable and testable.)
     pub max_resident_bytes: Option<u64>,
-    /// Scheduling niceness applied to the child (0 to 19), so a busy model does
-    /// not starve `core` of CPU.
+    /// How many steps below the launcher's own priority the child runs (0 to 19; the
+    /// result stops at the lowest priority), so a busy model does not starve `core`
+    /// of CPU and the child is never above the launcher.
     pub nice: Option<i32>,
     /// How often resident memory is checked.
     pub watch_interval: Duration,
@@ -97,10 +98,44 @@ impl Default for Limits {
     }
 }
 
-/// Lowers `pid`'s scheduling priority to `nice`. Failure is reported, not
-/// fatal: an assistant that could not be deprioritized still works, and the
-/// launcher should not refuse to run it over a scheduling nicety.
-fn apply_nice(pid: u32, nice: i32) -> io::Result<()> {
+/// The niceness a child gets for a configured `relative` niceness: that many steps
+/// below the launcher's own (`own`), never above it and never past the lowest priority.
+/// A launcher that has itself been run at a low priority (a background job) must not
+/// start the assistant at a higher one than its own.
+fn target_niceness(own: i32, relative: i32) -> i32 {
+    own.saturating_add(relative.max(0)).min(MAX_NICENESS)
+}
+
+/// The lowest scheduling priority (highest niceness) the operating system offers.
+const MAX_NICENESS: i32 = 19;
+
+/// This process's own niceness, or `None` when the operating system will not say.
+fn own_niceness() -> Option<i32> {
+    // `getpriority` returns -1 both for an error and for a niceness of -1, so errno
+    // is cleared first and read after.
+    // SAFETY: only reads its integer arguments; errno is this thread's own.
+    unsafe {
+        #[cfg(target_os = "macos")]
+        {
+            *libc::__error() = 0;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            *libc::__errno_location() = 0;
+        }
+        let value = libc::getpriority(libc::PRIO_PROCESS, 0);
+        (value != -1 || io::Error::last_os_error().raw_os_error() == Some(0)).then_some(value)
+    }
+}
+
+/// Lowers `pid`'s scheduling priority by `relative` steps below the launcher's own.
+/// Failure is reported, not fatal: an assistant that could not be deprioritized
+/// still works, and the launcher should not refuse to run it over a scheduling
+/// nicety.
+fn apply_nice(pid: u32, relative: i32) -> io::Result<()> {
+    let own = own_niceness()
+        .ok_or_else(|| io::Error::other("the launcher's own priority is not readable"))?;
+    let nice = target_niceness(own, relative);
     // SAFETY: `setpriority` only reads its integer arguments; an invalid pid
     // is reported through the return value and `errno`, never as UB.
     let result = unsafe { libc::setpriority(libc::PRIO_PROCESS, pid as libc::id_t, nice) };

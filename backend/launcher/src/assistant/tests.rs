@@ -570,6 +570,38 @@ fn niceness(pid: u32) -> i32 {
 }
 
 #[test]
+fn a_configured_niceness_is_steps_below_the_launchers_own_and_never_above_it() {
+    // The launcher at its usual priority, and as a background job would run it.
+    assert_eq!(target_niceness(0, 10), 10);
+    assert_eq!(target_niceness(5, 10), 15);
+    // Not past the lowest priority.
+    assert_eq!(target_niceness(15, 10), 19);
+    assert_eq!(target_niceness(19, 0), 19);
+    // A configured 0 is the launcher's own priority, not a higher one.
+    assert_eq!(target_niceness(5, 0), 5);
+    assert_eq!(target_niceness(10, 0), 10);
+    // A negative setting is no better than 0, and arithmetic cannot wrap.
+    assert_eq!(target_niceness(5, -3), 5);
+    assert_eq!(target_niceness(i32::MAX, 10), 19);
+}
+
+#[test]
+fn a_child_gets_the_configured_niceness_below_the_launchers_whatever_that_is() {
+    let own = own_niceness().expect("the launcher's own priority is readable");
+    for relative in [0, 3, 10, 19] {
+        let mut child = Command::new("sleep").arg("30").spawn().unwrap();
+        apply_nice(child.id(), relative).unwrap();
+        assert_eq!(
+            niceness(child.id()),
+            target_niceness(own, relative),
+            "relative {relative} from {own}"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
+#[test]
 fn the_assistants_priority_is_lowered_as_configured() {
     let limits = Limits {
         nice: Some(10),
