@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn a_decoded_document_has_no_journal_and_a_fresh_revision() {
-        let mut doc = sample();
+        let doc = sample();
         let mut copy = Document::decode(&doc.encode()).unwrap();
         assert!(copy.take_changes().is_empty());
         assert_eq!(copy.revision(), 0);
