@@ -87,6 +87,10 @@ pub struct Page {
     web: Option<crate::web::worker::ScriptWorker>,
     /// Test hook overriding the process setting for background script turns.
     web_async_override: Option<bool>,
+    /// Every laid-out box by node, for a process that asks; cleared at each layout.
+    web_rects: Option<std::collections::HashMap<NodeId, (f64, f64, f64, f64)>>,
+    /// The page's scripts stopped working and were dropped (their process died).
+    web_scripts_lost: bool,
     /// What each WebGL canvas last drew.
     canvas_pictures: HashMap<NodeId, std::sync::Arc<crate::images::LoadedImage>>,
     web_scripts_override: Option<bool>,
@@ -204,6 +208,8 @@ impl Page {
             pending_linked_modules: Default::default(),
             web: None,
             web_async_override: None,
+            web_rects: None,
+            web_scripts_lost: false,
             canvas_pictures: HashMap::new(),
             web_scripts_override: None,
             web_navigation: None,
@@ -359,6 +365,7 @@ impl Page {
             },
             &mut self.layout_cache,
         );
+        self.web_rects = None;
         if cached > 0 {
             self.layout_reuse += 1;
         }

@@ -14,7 +14,7 @@ use super::Page;
 use crate::web::{
     dom_bridge::NavigationRequest,
     turn::{js_string, ScriptPlan, Startup, Turn},
-    worker::{Done, Handoff, ScriptWorker},
+    worker::{Done, Handoff, PageQueries, ScriptWorker},
 };
 use blueice_dom::{Document, NodeData, NodeId};
 use std::collections::HashMap;
@@ -121,6 +121,25 @@ fn collect_rects(
     }
 }
 
+/// What the page tells a process worker about its layout while a turn runs.
+struct PageView<'a> {
+    styles: &'a HashMap<NodeId, blueice_css::ComputedStyle>,
+    rects: &'a HashMap<NodeId, (f64, f64, f64, f64)>,
+    images: &'a HashMap<NodeId, Arc<blueice_image::RasterImage>>,
+}
+
+impl PageQueries for PageView<'_> {
+    fn computed(&self, node: NodeId, property: &str) -> Option<String> {
+        crate::web::dom_bridge::computed_value_of(self.styles.get(&node)?, property)
+    }
+    fn rect(&self, node: NodeId) -> Option<(f64, f64, f64, f64)> {
+        self.rects.get(&node).copied()
+    }
+    fn image(&self, node: NodeId) -> Option<Arc<blueice_image::RasterImage>> {
+        self.images.get(&node).cloned()
+    }
+}
+
 impl Page {
     fn web_scripts_on(&self) -> bool {
         self.web_scripts_override
@@ -175,6 +194,18 @@ impl Page {
     /// the document out (the page waits for it); otherwise the scripts get a
     /// copy and the page keeps painting from its own.
     fn web_handoff(&mut self, lend: bool) -> Handoff {
+        let lent_state = self.web.as_ref().is_none_or(ScriptWorker::is_lent_state);
+        if !lent_state {
+            // A process holds its own document and asks about layout when it needs to.
+            return Handoff {
+                doc: Document::new(),
+                styles: HashMap::new(),
+                rects: HashMap::new(),
+                images: HashMap::new(),
+                viewport: (self.viewport_width, self.viewport_height),
+                url: self.url.clone(),
+            };
+        }
         let mut rects = HashMap::new();
         collect_rects(&self.fragment, 0.0, 0.0, &mut rects);
         let (doc, styles) = if lend {
@@ -195,6 +226,27 @@ impl Page {
         }
     }
 
+    /// Every laid-out box by node, kept until the next layout.
+    fn ensure_web_rects(&mut self) {
+        if self.web_rects.is_none() {
+            let mut rects = HashMap::new();
+            collect_rects(&self.fragment, 0.0, 0.0, &mut rects);
+            self.web_rects = Some(rects);
+        }
+    }
+
+    /// Ends the page's scripts if their process has stopped working: the page
+    /// goes on without them, as a page whose scripts all threw would.
+    fn drop_failed_scripts(&mut self) {
+        if self.web.as_ref().is_some_and(ScriptWorker::failed) {
+            if std::env::var("BI_DIAG").is_ok() || std::env::var_os("BI_NET_LOG").is_some() {
+                eprintln!("page scripts: the scripts' process stopped working; the page goes on without them");
+            }
+            self.web = None;
+            self.web_scripts_lost = true;
+        }
+    }
+
     /// Runs `f` on the realm with the page's DOM, styles and layout boxes
     /// handed over and waits for it, then takes them back; a changed DOM is
     /// restyled and laid out and marked for publication. Returns the external
@@ -203,17 +255,37 @@ impl Page {
         let Some(mut worker) = self.web.take() else {
             return (Vec::new(), false);
         };
+        self.ensure_web_rects();
         // A background turn still running must be taken first.
-        let earlier = worker.wait();
+        let view = PageView {
+            styles: &self.styles,
+            rects: self.web_rects.as_ref().expect("made above"),
+            images: &self.images.content,
+        };
+        let earlier = worker.wait(&view);
         let mut earlier_result = (Vec::new(), false);
         self.web = Some(worker);
         if let Some(done) = earlier {
             earlier_result = self.finish_turn(done, false);
         }
-        let handoff = self.web_handoff(true);
-        let mut worker = self.web.take().expect("put back above");
+        let Some(mut worker) = self.web.take() else {
+            return earlier_result;
+        };
+        worker.sync_document(&self.doc);
+        let handoff = {
+            self.web = Some(worker);
+            let handoff = self.web_handoff(true);
+            worker = self.web.take().expect("put back just above");
+            handoff
+        };
         worker.submit(handoff, turn);
-        let done = worker.wait();
+        self.ensure_web_rects();
+        let view = PageView {
+            styles: &self.styles,
+            rects: self.web_rects.as_ref().expect("made above"),
+            images: &self.images.content,
+        };
+        let done = worker.wait(&view);
         self.web = Some(worker);
         match done {
             Some(done) => {
@@ -223,8 +295,9 @@ impl Page {
                 (earlier_requests, relayed || earlier_result.1)
             }
             None => {
-                // The scripts' thread is gone; the page goes on without them.
+                // The scripts' thread or process is gone; the page goes on without them.
                 self.web = None;
+                self.web_scripts_lost = true;
                 earlier_result
             }
         }
@@ -242,6 +315,7 @@ impl Page {
             eprintln!("DIAG handoff copy took {:?}", started.elapsed());
         }
         if let Some(worker) = self.web.as_mut() {
+            worker.sync_document(&self.doc);
             worker.submit(handoff, turn);
         }
         true
@@ -272,10 +346,34 @@ impl Page {
             r.canvases,
             r.loaded_images,
         );
-        self.doc = r.doc;
-        if lent {
-            self.styles = r.styles;
+        let mut adopted = r.doc.map(|doc| (doc, None));
+        if adopted.is_none() && dirty {
+            // The scripts hold the document; take it now that they changed it.
+            self.ensure_web_rects();
+            let view = PageView {
+                styles: &self.styles,
+                rects: self.web_rects.as_ref().expect("made above"),
+                images: &self.images.content,
+            };
+            if let Some(worker) = self.web.as_mut() {
+                adopted = worker
+                    .fetch_document(&view)
+                    .map(|(doc, changes)| (doc, Some(changes)));
+            }
         }
+        if let Some((mut doc, changes)) = adopted {
+            if let Some(changes) = changes {
+                // What the page itself changed and has not restyled for yet, then
+                // what the scripts changed: the restyle sees both across the swap.
+                doc.absorb_changes(self.doc.take_changes());
+                doc.absorb_changes(changes);
+            }
+            self.doc = doc;
+        }
+        if let Some(styles) = r.styles.filter(|_| lent) {
+            self.styles = styles;
+        }
+        self.drop_failed_scripts();
         self.start_net_jobs(jobs);
         for navigation in navigations {
             match navigation {
@@ -496,6 +594,7 @@ impl Page {
     /// classic script, then `DOMContentLoaded` and `load`.
     pub(super) fn start_web_scripts(&mut self) {
         self.web = None;
+        self.web_scripts_lost = false;
         self.web_relayout_pending = false;
         self.web_last_relayout = None;
         if !self.web_scripts_on() {
@@ -505,11 +604,21 @@ impl Page {
         // The realm is built against (a copy of) the real document: its root
         // node's id is part of what the platform captures.
         let created = std::time::Instant::now();
-        let worker = match ScriptWorker::spawn(
-            self.doc.clone(),
-            self.url.as_deref().unwrap_or("about:blank"),
-            (self.viewport_width, self.viewport_height),
-        ) {
+        let url = self.url.clone().unwrap_or_else(|| "about:blank".to_string());
+        let viewport = (self.viewport_width, self.viewport_height);
+        let spawned = match crate::script_process_exe() {
+            Some(exe) => ScriptWorker::spawn_process(&exe, &self.doc, &url, viewport).or_else(
+                |error| {
+                    // Scripts on a thread are better than none; say so.
+                    eprintln!(
+                        "page scripts: the scripts' process could not start ({error}); running them on a thread"
+                    );
+                    ScriptWorker::spawn(self.doc.clone(), &url, viewport)
+                },
+            ),
+            None => ScriptWorker::spawn(self.doc.clone(), &url, viewport),
+        };
+        let worker = match spawned {
             Ok(worker) => worker,
             Err(error) => {
                 if std::env::var("BI_DIAG").is_ok() {
@@ -548,7 +657,17 @@ impl Page {
         if background {
             // A turn that finished since the last tick comes back first, and only
             // then is another started: the scripts have one turn in flight.
-            if let Some(done) = self.web.as_mut().and_then(ScriptWorker::try_finish) {
+            self.ensure_web_rects();
+            let finished = {
+                let view = PageView {
+                    styles: &self.styles,
+                    rects: self.web_rects.as_ref().expect("made above"),
+                    images: &self.images.content,
+                };
+                self.web.as_mut().and_then(|worker| worker.try_finish(&view))
+            };
+            self.drop_failed_scripts();
+            if let Some(done) = finished {
                 let (requests, relayed) = self.finish_turn(done, false);
                 self.web_followups(requests, relayed);
                 published = std::mem::take(&mut self.script_change_unpublished_by_web);
@@ -610,6 +729,31 @@ impl Page {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         }
+    }
+
+    /// Where this page's scripts run: `"process"`, `"thread"`, `"lost"` (their
+    /// process stopped working) or `"none"`.
+    #[doc(hidden)]
+    pub fn script_backend(&self) -> &'static str {
+        match &self.web {
+            Some(worker) if worker.is_lent_state() => "thread",
+            Some(_) => "process",
+            None if self.web_scripts_lost => "lost",
+            None => "none",
+        }
+    }
+
+    /// The ID of the process running this page's scripts, if they run in one.
+    #[doc(hidden)]
+    pub fn script_process_id(&self) -> Option<u32> {
+        self.web.as_ref().and_then(ScriptWorker::process_id)
+    }
+
+    /// Runs the page's script work that is due (what a session does on each
+    /// tick); true when the document changed.
+    #[doc(hidden)]
+    pub fn tick_scripts(&mut self) -> bool {
+        self.tick_web()
     }
 
     /// Runs `source` in the page's realm as a diagnostic probe.

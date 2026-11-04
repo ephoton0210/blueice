@@ -98,6 +98,12 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             // Page scripts run on a thread of their own, so a long script turn
             // does not hold the session. Meaningful with `--web-scripts`.
             "--async-scripts" => blueice_engine::enable_async_scripts(true),
+            // Each page's scripts run in a process of their own (this binary,
+            // started with `--page-scripts-child`). Meaningful with `--web-scripts`.
+            "--script-process" => match std::env::current_exe() {
+                Ok(exe) => blueice_engine::enable_script_process(Some(exe)),
+                Err(error) => return Err(format!("--script-process: no executable path: {error}")),
+            },
             "--extension-socket" => extension_socket = Some(PathBuf::from(value()?)),
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             "--extension-host" => extension_host = Some(PathBuf::from(value()?)),

@@ -20,7 +20,9 @@ pub(crate) mod canvas2d;
 pub(crate) mod dom_bridge;
 pub(crate) mod gl_bridge;
 pub(crate) mod net;
+pub mod process_child;
 pub(crate) mod turn;
+pub(crate) mod wire;
 pub(crate) mod worker;
 
 use blueice_bluejs::{

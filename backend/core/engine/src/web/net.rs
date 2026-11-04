@@ -19,6 +19,7 @@ use url::Url;
 pub(crate) const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 5;
 
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct NetJob {
     pub id: u64,
     pub method: String,

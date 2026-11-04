@@ -78,7 +78,21 @@ pub(crate) enum NavigationRequest {
 /// engine's concurrency limit); only a runaway script reaches it.
 const MAX_REQUESTS_PER_TURN: usize = 4096;
 
+/// Where a realm that does not hold the page's layout gets it from: the page
+/// answers while a turn runs. A realm in the page's own process leaves this unset
+/// and reads the maps the page lent it.
+pub(crate) trait RemoteQueries {
+    /// A node's computed value of a CSS property.
+    fn computed(&self, node: NodeId, property: &str) -> Option<String>;
+    /// A node's border box in document coordinates.
+    fn rect(&self, node: NodeId) -> Option<(f64, f64, f64, f64)>;
+    /// A node's decoded picture.
+    fn image(&self, node: NodeId) -> Option<std::sync::Arc<blueice_image::RasterImage>>;
+}
+
 pub(crate) struct DomState {
+    /// Set in a realm that asks the page for styles, boxes and pictures.
+    pub remote: Option<Box<dyn RemoteQueries>>,
     pub doc: Document,
     /// Something a script changed needs restyle and layout.
     pub dirty: bool,
@@ -112,6 +126,7 @@ pub(crate) struct DomState {
 impl DomState {
     pub fn new(doc: Document, url: &str, viewport: (f64, f64)) -> Self {
         DomState {
+            remote: None,
             doc,
             dirty: false,
             added: 0,
@@ -376,7 +391,11 @@ impl DomState {
             // The RGBA pixels of an element's picture, as `WxH:base64`.
             "imagePixels" => {
                 let id = self.node(args.first())?;
-                match self.images.get(&id).or_else(|| self.script_images.get(&id)) {
+                let lent = match &self.remote {
+                    Some(remote) => remote.image(id),
+                    None => self.images.get(&id).cloned(),
+                };
+                match lent.as_ref().or_else(|| self.script_images.get(&id)) {
                     Some(img) if img.width * img.height <= 16_000_000 => Reply::Text(format!(
                         "{}x{}:{}",
                         img.width,
@@ -716,12 +735,19 @@ impl DomState {
             // ---- style and geometry ----
             "computed" => {
                 let id = self.node(args.first())?;
-                self.computed_value(id, &text(1))
-                    .map_or(Reply::Text(String::new()), Reply::Text)
+                let value = match &self.remote {
+                    Some(remote) => remote.computed(id, &text(1)),
+                    None => self.computed_value(id, &text(1)),
+                };
+                value.map_or(Reply::Text(String::new()), Reply::Text)
             }
             "rect" => {
                 let id = self.node(args.first())?;
-                match self.rects.get(&id) {
+                let rect = match &self.remote {
+                    Some(remote) => remote.rect(id),
+                    None => self.rects.get(&id).copied(),
+                };
+                match rect {
                     Some((x, y, w, h)) => format!("[{x},{y},{w},{h}]").into(),
                     None => "[0,0,0,0]".into(),
                 }
@@ -1028,17 +1054,7 @@ impl DomState {
     }
 
     fn computed_value(&self, id: NodeId, property: &str) -> Option<String> {
-        let style = self.styles.get(&id)?;
-        let property = property.trim().to_ascii_lowercase();
-        match property.as_str() {
-            "display" => Some(style.display.clone()),
-            "color" => Some(css_text(&Value::Color(style.color))),
-            "font-size" => Some(format!("{}px", style.font_size_px)),
-            "text-align" => style.text_align.clone(),
-            "font-family" => style.font_family.clone(),
-            "font-style" => style.font_style.clone().or(Some("normal".into())),
-            other => style.other.get(other).map(css_text),
-        }
+        computed_value_of(self.styles.get(&id)?, property)
     }
 
     /// `document.cookie = "name=value; attributes"`.
@@ -1075,6 +1091,20 @@ impl DomState {
             .map(|(k, v)| format!("{k}={v}"))
             .collect::<Vec<_>>()
             .join("; ");
+    }
+}
+
+/// A style's computed value of `property`, as `getComputedStyle` reports it.
+pub(crate) fn computed_value_of(style: &ComputedStyle, property: &str) -> Option<String> {
+    let property = property.trim().to_ascii_lowercase();
+    match property.as_str() {
+        "display" => Some(style.display.clone()),
+        "color" => Some(css_text(&Value::Color(style.color))),
+        "font-size" => Some(format!("{}px", style.font_size_px)),
+        "text-align" => style.text_align.clone(),
+        "font-family" => style.font_family.clone(),
+        "font-style" => style.font_style.clone().or(Some("normal".into())),
+        other => style.other.get(other).map(css_text),
     }
 }
 

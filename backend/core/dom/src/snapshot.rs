@@ -219,6 +219,130 @@ impl Document {
     }
 }
 
+impl super::Changes {
+    /// These changes as bytes; see [`super::Changes::decode`].
+    pub fn encode(&self) -> Vec<u8> {
+        let mut w = Writer(Vec::new());
+        w.u8(u8::from(self.overflow));
+        let mut touched: Vec<_> = self.touched.iter().collect();
+        touched.sort_unstable_by_key(|(id, _)| **id);
+        w.u64(touched.len() as u64);
+        for (id, before) in touched {
+            w.u64(id.as_u64());
+            match before {
+                super::Before::Element {
+                    tag_name,
+                    attributes,
+                } => {
+                    w.u8(1);
+                    w.str(tag_name);
+                    w.u64(attributes.len() as u64);
+                    for (name, value) in attributes {
+                        w.str(name);
+                        w.str(value);
+                    }
+                }
+                super::Before::Text { data } => {
+                    w.u8(2);
+                    w.str(data);
+                }
+            }
+        }
+        w.u64(self.attached.len() as u64);
+        for (parent, child) in &self.attached {
+            w.u64(parent.as_u64());
+            w.u64(child.as_u64());
+        }
+        w.u64(self.detached.len() as u64);
+        for d in &self.detached {
+            w.u64(d.parent.as_u64());
+            w.u64(d.child.as_u64());
+            w.opt(d.prev);
+            w.opt(d.next);
+        }
+        w.0
+    }
+
+    /// Changes from [`super::Changes::encode`]'s bytes, or `None` when they are
+    /// not whole.
+    pub fn decode(bytes: &[u8]) -> Option<super::Changes> {
+        let mut r = Reader(bytes);
+        let overflow = match r.u8()? {
+            0 => false,
+            1 => true,
+            _ => return None,
+        };
+        let mut touched = HashMap::new();
+        for _ in 0..r.len()? {
+            let id = NodeId::from_u64(r.u64()?);
+            let before = match r.u8()? {
+                1 => {
+                    let tag_name = r.str()?;
+                    let n = r.len()?;
+                    let mut attributes = Vec::with_capacity(n);
+                    for _ in 0..n {
+                        attributes.push((r.str()?, r.str()?));
+                    }
+                    super::Before::Element {
+                        tag_name,
+                        attributes,
+                    }
+                }
+                2 => super::Before::Text { data: r.str()? },
+                _ => return None,
+            };
+            touched.insert(id, before);
+        }
+        let n = r.len()?;
+        let mut attached = Vec::with_capacity(n);
+        for _ in 0..n {
+            attached.push((NodeId::from_u64(r.u64()?), NodeId::from_u64(r.u64()?)));
+        }
+        let n = r.len()?;
+        let mut detached = Vec::with_capacity(n);
+        for _ in 0..n {
+            detached.push(super::Detached {
+                parent: NodeId::from_u64(r.u64()?),
+                child: NodeId::from_u64(r.u64()?),
+                prev: r.opt()?,
+                next: r.opt()?,
+            });
+        }
+        r.0.is_empty().then_some(super::Changes {
+            touched,
+            attached,
+            detached,
+            overflow,
+        })
+    }
+}
+
+impl Document {
+    /// Adds `changes`, which happened after everything already in this
+    /// document's journal, to it: a node keeps the data it had before its first
+    /// touch, and an overflow on either side stays an overflow. For a document
+    /// that was replaced by a copy that has since moved on, so the consumer of the
+    /// journal sees what changed since it last looked across the replacement.
+    pub fn absorb_changes(&mut self, changes: super::Changes) {
+        if self.journal.overflow {
+            return;
+        }
+        if changes.overflow {
+            self.journal = super::Changes {
+                overflow: true,
+                ..Default::default()
+            };
+            return;
+        }
+        for (id, before) in changes.touched {
+            self.journal.touched.entry(id).or_insert(before);
+        }
+        self.journal.attached.extend(changes.attached);
+        self.journal.detached.extend(changes.detached);
+        self.check_journal_limit();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -390,5 +514,87 @@ mod tests {
             .expect("a link to the root");
         bytes[at + 1] = 99;
         assert!(Document::decode(&bytes).is_none());
+    }
+
+    #[test]
+    fn changes_round_trip_and_a_truncated_record_is_refused() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let a = doc.create_node(element("a", &[("href", "/x")]));
+        doc.append_child(root, a);
+        let _ = doc.take_changes();
+        if let NodeData::Element { attributes, .. } = doc.data_mut(a) {
+            attributes.push(("class".into(), "k".into()));
+        }
+        let t = doc.create_node(NodeData::Text { data: "t".into() });
+        doc.append_child(a, t);
+        doc.detach(t);
+        let changes = doc.take_changes();
+        assert!(!changes.is_empty());
+        let bytes = changes.encode();
+        assert_eq!(super::super::Changes::decode(&bytes), Some(changes.clone()));
+        for cut in 0..bytes.len() {
+            assert!(super::super::Changes::decode(&bytes[..cut]).is_none(), "cut {cut}");
+        }
+        let overflowed = super::super::Changes {
+            overflow: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            super::super::Changes::decode(&overflowed.encode()),
+            Some(overflowed)
+        );
+    }
+
+    #[test]
+    fn absorbed_changes_follow_the_ones_already_there_and_keep_the_earliest_before() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let a = doc.create_node(element("a", &[("n", "0")]));
+        doc.append_child(root, a);
+        let _ = doc.take_changes();
+        // A change the document already holds...
+        if let NodeData::Element { attributes, .. } = doc.data_mut(a) {
+            attributes[0].1 = "1".into();
+        }
+        // ...and a later one, made elsewhere, on the same node and a new one.
+        let mut later = super::super::Changes::default();
+        later.touched.insert(
+            a,
+            super::super::Before::Element {
+                tag_name: "a".into(),
+                attributes: vec![("n".into(), "1".into())],
+            },
+        );
+        later.attached.push((root, NodeId::from_u64(99)));
+        doc.absorb_changes(later);
+        let held = doc.take_changes();
+        assert_eq!(
+            held.touched[&a],
+            super::super::Before::Element {
+                tag_name: "a".into(),
+                attributes: vec![("n".into(), "0".into())],
+            },
+            "the data from before the first touch survives"
+        );
+        assert_eq!(held.attached, vec![(root, NodeId::from_u64(99))]);
+        assert!(!held.overflow);
+
+        // An overflow on either side is an overflow.
+        doc.absorb_changes(super::super::Changes {
+            overflow: true,
+            ..Default::default()
+        });
+        assert!(doc.take_changes().overflow);
+        let mut overflowed = Document::new();
+        overflowed.absorb_changes(super::super::Changes {
+            overflow: true,
+            ..Default::default()
+        });
+        overflowed.absorb_changes(super::super::Changes {
+            attached: vec![(root, root)],
+            ..Default::default()
+        });
+        assert!(overflowed.take_changes().overflow);
     }
 }

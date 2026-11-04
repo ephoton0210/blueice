@@ -55,6 +55,33 @@ pub fn enable_async_scripts(enabled: bool) {
 pub(crate) fn async_scripts_enabled() -> bool {
     ASYNC_SCRIPTS.load(std::sync::atomic::Ordering::SeqCst)
 }
+
+static SCRIPT_PROCESS: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+
+/// Runs each page's scripts in a process of its own: `exe` is started as
+/// `exe --page-scripts-child <socket>` (the core binary does this itself; see
+/// [`run_script_child`]). `None` goes back to a thread. A script that crashes, hangs
+/// or eats memory then costs the page its scripts, not the core.
+pub fn enable_script_process(exe: Option<std::path::PathBuf>) {
+    *SCRIPT_PROCESS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = exe;
+}
+
+pub(crate) fn script_process_exe() -> Option<std::path::PathBuf> {
+    SCRIPT_PROCESS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+/// The scripts' process: what `blueice-core --page-scripts-child <socket>` runs.
+/// Returns the exit status.
+#[doc(hidden)]
+#[cfg(unix)]
+pub fn run_script_child(socket: &std::path::Path) -> i32 {
+    web::process_child::run_script_child(socket)
+}
 mod tabs;
 mod translation;
 

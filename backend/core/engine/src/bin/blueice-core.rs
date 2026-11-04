@@ -305,6 +305,21 @@ fn main() -> ExitCode {
     {
         return stdio::main();
     }
+    // A document's scripts, run in a process of their own for a core that asked.
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--page-scripts-child")
+    {
+        return match std::env::args_os().nth(2) {
+            Some(socket) => {
+                ExitCode::from(blueice_engine::run_script_child(std::path::Path::new(&socket)) as u8)
+            }
+            None => {
+                eprintln!("blueice-core: --page-scripts-child needs a socket path");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
         Err(message) => {
