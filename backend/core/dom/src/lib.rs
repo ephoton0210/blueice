@@ -13,6 +13,8 @@
 
 use std::collections::HashMap;
 
+mod snapshot;
+
 /// Stable identity for a DOM node, assigned once at construction and
 /// never reused -- a monotonic counter, not a slab/array index, so a
 /// freed node's ID can never be handed to an unrelated later node (the
@@ -94,6 +96,9 @@ pub struct Document {
     file_names: HashMap<NodeId, Vec<String>>,
     // What changed since a consumer last took it; see [`Document::take_changes`].
     journal: Changes,
+    // Counts every change made to this copy of the document, so a holder of another
+    // copy can tell whether this one has moved on since it was copied.
+    revision: u64,
 }
 
 /// A node's data as it was before it was first touched in a journal period.
@@ -187,6 +192,7 @@ impl Document {
     }
 
     pub fn set_file_control_names(&mut self, id: NodeId, names: Vec<String>) {
+        self.revision += 1;
         if self.contains(id) {
             if names.is_empty() {
                 self.file_names.remove(&id);
@@ -220,6 +226,13 @@ impl Document {
         doc
     }
 
+    /// How many changes this copy of the document has had. Two copies of one
+    /// document that report the same revision since they were last made equal
+    /// have had no change in between.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     /// The `NodeId` value this document would allocate next -- for a
     /// caller (e.g. `Page::load_html`) about to replace this document
     /// with a new one via [`Document::new_continuing_from`], so the
@@ -236,6 +249,7 @@ impl Document {
     /// node starts detached; use [`Document::append_child`] to place it
     /// in the tree.
     pub fn create_node(&mut self, data: NodeData) -> NodeId {
+        self.revision += 1;
         let id = self.allocator.allocate();
         self.nodes.insert(
             id,
@@ -271,6 +285,7 @@ impl Document {
     /// `NodeId`, breaking plan §1's "stable ID across mutations"
     /// guarantee for the very node being mutated).
     pub fn data_mut(&mut self, id: NodeId) -> &mut NodeData {
+        self.revision += 1;
         if !self.journal.overflow && !self.journal.touched.contains_key(&id) {
             let before = match &self.nodes[&id].data {
                 NodeData::Element {
@@ -334,6 +349,7 @@ impl Document {
     /// Panics if `child` is already attached somewhere in the tree --
     /// call [`Document::detach`] first.
     pub fn append_child(&mut self, parent: NodeId, child: NodeId) {
+        self.revision += 1;
         assert!(
             self.nodes[&child].parent.is_none(),
             "child is already attached; detach it first"
@@ -365,6 +381,7 @@ impl Document {
     /// Panics if `child` is already attached, or if `reference` is not
     /// currently a child of `parent`.
     pub fn insert_before(&mut self, parent: NodeId, child: NodeId, reference: Option<NodeId>) {
+        self.revision += 1;
         let Some(reference) = reference else {
             return self.append_child(parent, child);
         };
@@ -397,6 +414,7 @@ impl Document {
     /// subtree) resolvable in the node table. Use
     /// [`Document::remove_subtree`] to actually reclaim memory.
     pub fn detach(&mut self, id: NodeId) {
+        self.revision += 1;
         let (parent, prev, next) = {
             let rec = &self.nodes[&id];
             (rec.parent, rec.prev_sibling, rec.next_sibling)
@@ -432,6 +450,7 @@ impl Document {
     /// from the node table, reclaiming their memory. `id` and every
     /// descendant [`NodeId`] are invalid to use after this call.
     pub fn remove_subtree(&mut self, id: NodeId) {
+        self.revision += 1;
         self.detach(id);
         self.free_subtree(id);
     }
