@@ -220,6 +220,36 @@ mod tests {
     }
 
     #[test]
+    fn a_centred_item_of_a_column_flex_box_is_as_wide_as_its_content() {
+        // `flex-direction: column; align-items: center` shrink-wraps each item across; only
+        // `stretch` (the default) fills the width. A flex container item is no exception.
+        let content = width_of(
+            "<body style='margin:0'><div style='display:flex;width:1000px'>\
+               <a id=b style='display:flex;padding:0 12px'>Start</a></div></body>",
+            "b",
+        );
+        for (label, item) in [
+            ("a block", "<a id=b style='display:block;padding:0 12px'>Start</a>"),
+            ("an inline-flex box", "<a id=b style='display:inline-flex;padding:0 12px;justify-content:center;align-items:center'>Start</a>"),
+            ("a flex box", "<a id=b style='display:flex;padding:0 12px;justify-content:center'>Start</a>"),
+            ("a flex box in a box", "<div id=b style='display:flex;padding:0 12px'><span>Start</span></div>"),
+        ] {
+            let html = format!(
+                "<body style='margin:0'><div style='display:flex;flex-direction:column;align-items:center;width:1000px'>{item}</div></body>"
+            );
+            let width = width_of(&html, "b");
+            assert!((width - content).abs() < 1.0, "{label}: {width} px, content is {content}");
+        }
+        // Stretch still fills the width.
+        let stretched = width_of(
+            "<body style='margin:0'><div style='display:flex;flex-direction:column;width:1000px'>\
+               <a id=b style='display:flex;padding:0 12px'>Start</a></div></body>",
+            "b",
+        );
+        assert!((stretched - 1000.0).abs() < 1.0, "{stretched}");
+    }
+
+    #[test]
     fn a_flex_button_is_as_wide_as_its_content_however_the_content_is_aligned() {
         // A button that is itself a flex container with its content centred (or pushed to an
         // end, or spread), and does not shrink, takes its width from its content. Measured at a

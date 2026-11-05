@@ -515,6 +515,17 @@ fn expand_border_radius(tokens: &[Token]) -> Vec<(String, Value)> {
 /// keyword or a list) and a colour to `text-decoration-color`; the style and
 /// thickness components are accepted and ignored.
 fn expand_text_decoration(tokens: &[Token]) -> Vec<(String, Value)> {
+    // A CSS-wide keyword applies to every longhand the shorthand sets.
+    if let [token] = components(tokens).as_slice() {
+        if let Some(Value::Keyword(k)) = parse_value(token) {
+            if matches!(k.as_str(), "inherit" | "initial" | "unset" | "revert") {
+                return ["text-decoration-line", "text-decoration-color"]
+                    .into_iter()
+                    .map(|name| (name.to_string(), Value::Keyword(k.clone())))
+                    .collect();
+            }
+        }
+    }
     let mut lines: Vec<Value> = Vec::new();
     let mut color = None;
     for part in components(tokens) {
@@ -1628,6 +1639,21 @@ mod tests {
             props.contains(&"color") && props.contains(&"margin-top"),
             "{props:?}"
         );
+    }
+
+    #[test]
+    fn text_decoration_takes_the_css_wide_keywords_for_every_longhand() {
+        // Tailwind's preflight resets links with `text-decoration: inherit`; dropping it
+        // leaves the user-agent underline on every link.
+        for keyword in ["inherit", "initial", "unset"] {
+            for longhand in ["text-decoration-line", "text-decoration-color"] {
+                assert_eq!(
+                    value_of(&format!("text-decoration: {keyword};"), longhand),
+                    Some(Value::Keyword(keyword.to_string())),
+                    "{keyword} for {longhand}"
+                );
+            }
+        }
     }
 
     #[test]
