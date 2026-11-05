@@ -106,6 +106,9 @@ impl Page {
             self.svg_renders.clear();
         }
         let rendered = render_svg_source(&markup, natural).map(Arc::new);
+        if rendered.is_none() && std::env::var_os("BI_DIAG").is_some() {
+            eprintln!("inline svg not drawn ({} bytes): {}", markup.len(), &markup[..markup.len().min(400)]);
+        }
         self.svg_renders.insert(key, rendered.clone());
         rendered
     }
@@ -144,6 +147,32 @@ mod tests {
         let pixels = blueice_raster::rasterize(&page.render());
         let i = ((15 * pixels.width + 15) * 4) as usize;
         assert_eq!(&pixels.pixels[i..i + 4], [0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn a_logo_svg_with_painted_groups_and_a_hidden_light_variant_draws_its_base() {
+        // The shape of Cloudflare's header logo: `fill="none"` on the root, a base group whose
+        // paths carry their own fill, and a second group faded out with `opacity: 0`.
+        let mut page = Page::new(400.0, 300.0);
+        page.load_html_str(
+            "<style>.logo{height:26px;width:57px;flex-shrink:0;color:#ff5e1f} .fade{transition:opacity .2s}\
+             .light{opacity:0}</style>\
+             <body style='margin:0'><a style='display:flex;padding:4px'><svg xmlns='http://www.w3.org/2000/svg' \
+             width='66' height='30' viewBox='0 0 100 50' fill='none' class='logo'>\
+             <g class='base fade'><path d='M0 0H100V50H0Z' fill='#FF5F08'/></g>\
+             <g class='light fade' fill='currentColor'><path d='M0 0H10V10H0Z'/></g></svg></a></body>",
+            None,
+        );
+        let boxes = image_commands(&page);
+        assert_eq!(boxes.len(), 1, "the logo is one picture: {boxes:?}");
+        assert_eq!((boxes[0].2, boxes[0].3), (57.0, 26.0));
+        let pixels = blueice_raster::rasterize(&page.render());
+        let at = |x: u32, y: u32| {
+            let i = ((y * pixels.width + x) * 4) as usize;
+            [pixels.pixels[i], pixels.pixels[i + 1], pixels.pixels[i + 2]]
+        };
+        // Inside the logo, away from the faded corner: the base group's orange.
+        assert_eq!(at((boxes[0].0 + 40.0) as u32, (boxes[0].1 + 18.0) as u32), [0xFF, 0x5F, 0x08]);
     }
 
     #[test]

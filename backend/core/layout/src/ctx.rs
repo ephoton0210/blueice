@@ -290,8 +290,15 @@ impl<'a> Style<'a> {
     /// `property` in pixels, or `None` when unset, `auto`, or a percentage
     /// with no base.
     pub fn px(&self, property: &str, percent_base: f64) -> Option<f64> {
-        self.raw(property)?
-            .to_px(&self.length_context(percent_base))
+        // While a box is measured for its content width the room is a stand-in for
+        // "unlimited" (`intrinsic::UNBOUNDED`): a percentage of that is not a size, it is
+        // `auto` (the percentage is cyclic with the content that is being measured).
+        let base = if percent_base >= crate::intrinsic::UNBOUNDED / 2.0 {
+            f64::NAN
+        } else {
+            percent_base
+        };
+        self.raw(property)?.to_px(&self.length_context(base))
     }
 
     /// Whether the property is `auto` (an unset property is not).

@@ -13,7 +13,7 @@ use crate::ctx::Ctx;
 use blueice_dom::NodeId;
 
 /// Room enough that nothing wraps.
-const UNBOUNDED: f64 = 1.0e6;
+pub(crate) const UNBOUNDED: f64 = 1.0e6;
 
 /// `(min-content, max-content)` border-box widths of `node`'s *content*, ignoring
 /// its own `width`: what flexbox needs for an item's automatic minimum size and

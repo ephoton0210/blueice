@@ -389,6 +389,10 @@ const SVG_STYLE_PROPERTIES: [&str; 9] = [
     "display",
 ];
 
+/// The SVG properties that inherit down the tree.
+const INHERITED_SVG_PROPERTIES: [&str; 5] =
+    ["fill", "stroke", "stroke-width", "fill-opacity", "stroke-opacity"];
+
 /// The inline `<svg>` at `node` as a standalone document. The page's CSS
 /// reaches it through the computed values: `currentColor` is the svg's text
 /// colour, and the presentation properties above are written out as a `style`
@@ -404,6 +408,7 @@ pub(crate) fn svg_markup(
         styles: &HashMap<blueice_dom::NodeId, blueice_css::ComputedStyle>,
         node: blueice_dom::NodeId,
         root: bool,
+        parent: Option<blueice_dom::NodeId>,
         out: &mut String,
     ) {
         match doc.data(node) {
@@ -421,8 +426,17 @@ pub(crate) fn svg_markup(
                             computed.push_str(&format!("color:{c};"));
                         }
                     }
+                    let parent_style = parent.and_then(|p| styles.get(&p));
                     for property in SVG_STYLE_PROPERTIES {
-                        if let Some(v) = style.other.get(property).and_then(css_value) {
+                        let value = style.other.get(property);
+                        // A value the element only inherits is left to inherit: written as this
+                        // element's own `style` it would beat its presentation attributes.
+                        if INHERITED_SVG_PROPERTIES.contains(&property)
+                            && parent_style.is_some_and(|p| p.other.get(property) == value)
+                        {
+                            continue;
+                        }
+                        if let Some(v) = value.and_then(css_value) {
                             computed.push_str(&format!("{property}:{v};"));
                         }
                     }
@@ -454,7 +468,7 @@ pub(crate) fn svg_markup(
                 }
                 out.push('>');
                 for child in doc.children(node) {
-                    write(doc, styles, child, false, out);
+                    write(doc, styles, child, false, Some(node), out);
                 }
                 out.push_str("</");
                 out.push_str(tag_name);
@@ -464,7 +478,7 @@ pub(crate) fn svg_markup(
         }
     }
     let mut out = String::new();
-    write(doc, styles, node, true, &mut out);
+    write(doc, styles, node, true, None, &mut out);
     out
 }
 
@@ -625,6 +639,29 @@ mod tests {
         let loaded = render_svg_source(&markup, (4.0, 4.0)).unwrap();
         let p = &loaded.image.rgba[((2 * loaded.image.width + 6) * 4) as usize..][..4];
         assert_eq!(p, [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn an_inherited_fill_does_not_override_a_childs_own_fill_attribute() {
+        // A root `fill: none` reaches every descendant by inheritance; written out as a `style`
+        // on each of them it would beat the path's own `fill="..."` and blank the drawing.
+        let (doc, styles) = styled(
+            "<svg viewBox='0 0 4 4'><g><path d='M0 0h4v4z' fill='#00ff00'/></g></svg>",
+            "svg { fill: none; stroke: #0000ff; } path { stroke-width: 0.2px; }",
+        );
+        let svg = first_svg(&doc, doc.root()).unwrap();
+        let markup = svg_markup(&doc, &styles, svg);
+        assert_eq!(
+            markup.matches("fill:none").count(),
+            1,
+            "only the element that declares it writes it: {markup}"
+        );
+        assert_eq!(markup.matches("stroke:rgba(0,0,255,1)").count(), 1, "{markup}");
+        assert!(markup.contains("stroke-width:0.2"), "{markup}");
+        let loaded = render_svg_source(&markup, (4.0, 4.0)).unwrap();
+        // (3, 1) in a 4x4 drawing at twice its size: inside the triangle, clear of its edges.
+        let p = &loaded.image.rgba[((2 * loaded.image.width + 6) * 4) as usize..][..4];
+        assert_eq!(p, [0, 255, 0, 255], "the path keeps its own green fill");
     }
 
     #[test]

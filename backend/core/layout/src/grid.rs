@@ -1262,8 +1262,9 @@ pub(crate) fn layout_grid(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
                      mode: &str,
                      normal_start: bool|
          -> f64 {
-            let free = free.max(0.0);
             if auto_start || auto_end {
+                // Auto margins share only the space that exists.
+                let free = free.max(0.0);
                 return match (auto_start, auto_end) {
                     (true, true) => free / 2.0,
                     (true, false) => free,
@@ -1392,6 +1393,81 @@ mod tests {
             "row 2 starts after row 1 (20) and the 10px gap"
         );
         assert_eq!(f.height.round(), 40.0);
+    }
+
+    #[test]
+    fn a_header_grid_keeps_its_last_column_inside() {
+        // The site-header layout: logo | nav | actions. An `auto` column is as wide as its
+        // content even when that content is a centred flex container, the fraction columns
+        // share what is left, and the grid never overflows.
+        let items = "<i style='height:10px;width:80px'></i>\
+                     <i style='height:10px;display:flex;justify-content:center'><b style='display:block;width:300px'></b></i>\
+                     <i style='height:10px;display:flex;justify-self:end;gap:8px'>\
+                       <b style='display:block;width:100px;flex-shrink:0'></b>\
+                       <b style='display:block;width:150px;flex-shrink:0'></b></i>";
+        for (label, columns, nav_x) in [
+            ("auto 1fr auto", "auto minmax(0,1fr) auto", 8.0 + 80.0 + 12.0),
+            ("1fr auto 1fr", "minmax(0,1fr) auto minmax(0,1fr)", 0.0),
+        ] {
+            let f = grid(
+                items,
+                &format!(".g {{ grid-template-columns: {columns}; column-gap: 12px; padding: 0 8px; }}"),
+                1280.0,
+            );
+            let b = boxes(&f);
+            assert_eq!(b[0].0, 8.0, "{label}: logo starts after the padding: {b:?}");
+            assert_eq!(b[2].2, 258.0, "{label}: actions are their content and gap: {b:?}");
+            assert_eq!(b[2].0 + b[2].2, 1272.0, "{label}: and end at the padding edge: {b:?}");
+            assert!(b[1].2 <= 1240.0 - 24.0 && b[1].2 >= 300.0, "{label}: {b:?}");
+            if nav_x > 0.0 {
+                assert_eq!(b[1].0, nav_x, "{label}: {b:?}");
+                assert_eq!(b[1].0 + b[1].2 + 12.0, b[2].0, "{label}: nav fills the rest: {b:?}");
+            } else {
+                assert_eq!(b[1].2, 300.0, "{label}: the middle is its content: {b:?}");
+                assert_eq!(b[1].0 + b[1].2 / 2.0, 640.0, "{label}: and sits in the middle: {b:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_percentage_width_inside_an_auto_column_does_not_widen_the_column() {
+        // While a column is being sized to its content, a `width: 100%` descendant has nothing
+        // to be a percentage of: it counts as `auto`, so the column is as wide as the content.
+        let items = "<i style='height:10px'></i>\
+                     <i style='height:10px;display:block'><i style='height:10px;display:flex;width:100%;justify-content:center'>\
+                       <b style='display:block;width:300px'></b></i></i>\
+                     <i style='height:10px'></i>";
+        let f = grid(
+            items,
+            ".g { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); }",
+            1000.0,
+        );
+        let b = boxes(&f);
+        assert_eq!(b[1].2, 300.0, "{b:?}");
+        assert_eq!(b[0].2, 350.0, "{b:?}");
+        assert_eq!(b[2].0, 650.0, "{b:?}");
+    }
+
+    #[test]
+    fn an_item_wider_than_its_area_overflows_towards_the_start_when_aligned_to_the_end_or_centre() {
+        // Alignment is not "safe" by default: an item that does not fit still lines up its end
+        // (or centre) with the area's, and spills out on the other side.
+        let wide = "<i style='height:10px;width:150px'></i>";
+        for (justify, expect_x) in [("end", -50.0), ("flex-end", -50.0), ("center", -25.0), ("start", 0.0)] {
+            let f = grid(
+                wide,
+                &format!(".g {{ grid-template-columns: 100px; }} .g i {{ justify-self: {justify}; }}"),
+                300.0,
+            );
+            assert_eq!(boxes(&f)[0].0, expect_x, "justify-self: {justify}");
+        }
+        // Auto margins never go negative: they only take free space that exists.
+        let f = grid(
+            "<i style='height:10px;width:150px;margin-left:auto'></i>",
+            ".g { grid-template-columns: 100px; }",
+            300.0,
+        );
+        assert_eq!(boxes(&f)[0].0, 0.0);
     }
 
     #[test]
