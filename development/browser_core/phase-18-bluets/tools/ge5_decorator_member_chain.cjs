@@ -1,0 +1,16 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// Descriptor syntax supplies both accessor functions to the shared construction chain.
+const assert=require('node:assert/strict');
+function compare(ts,native,nn,n,actual,an,a,source){
+ const originals=source.members.filter(member=>ts.isGetAccessorDeclaration(member)||ts.isSetAccessorDeclaration(member));assert.equal(originals.length,source.members.length,'closed accessor-only source class');
+ function read(view,item){const paired=[];function original(kind,key,isStatic){const found=originals.filter(member=>member.kind===kind&&member.name.text===key&&!!member.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.StaticKeyword)===isStatic);assert.equal(found.length,1,'unique original accessor kind/key/static identity');assert(!paired.includes(found[0]),'one emitted callable per original accessor');paired.push(found[0]);return found[0];}
+  if(item.native){for(const member of item.node.members){if(!ts.isGetAccessorDeclaration(member)&&!ts.isSetAccessorDeclaration(member))continue;original(member.kind,member.name.text,!!member.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.StaticKeyword));}assert.equal(paired.length,originals.length);return item;}
+  const methods=[];for(const statement of item.factory.body.statements){if(!ts.isExpressionStatement(statement)||!ts.isCallExpression(statement.expression)||statement.expression.expression.getText()!=='Object.defineProperty')continue;const call=statement.expression;assert.equal(call.arguments.length,3);const [receiver,key,descriptor]=call.arguments;assert(ts.isPropertyAccessExpression(receiver)&&receiver.expression.getText()===source.name.text&&receiver.name.text==='prototype','exact original instance accessor descriptor receiver');assert(ts.isStringLiteral(key)||ts.isNumericLiteral(key));assert(ts.isObjectLiteralExpression(descriptor));const labels=['get','set'].filter(label=>originals.some(member=>(label==='get'?ts.isGetAccessorDeclaration(member):ts.isSetAccessorDeclaration(member))&&member.name.text===key.text&&!member.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.StaticKeyword)));assert.deepEqual(descriptor.properties.map(property=>property.name.getText()),[...labels,'enumerable','configurable'],'complete original accessor descriptor shape');for(const property of descriptor.properties.slice(0,labels.length)){const kind=property.name.getText()==='get'?ts.SyntaxKind.GetAccessor:ts.SyntaxKind.SetAccessor,member=original(kind,key.text,false),fn=property.initializer;assert(ts.isFunctionExpression(fn)&&!fn.name&&!fn.asteriskToken&&!fn.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.AsyncKeyword));assert.equal(fn.parameters.length,member.parameters.length);methods.push({statement,fn,source:member});}}
+  assert.equal(paired.length,originals.length,'complete original accessor function inventory');return {...item,methods};
+ }
+ const nread=read(native,n),aread=read(actual,a),pairs=require('./ge5_class_declaration_chain.cjs').compare(ts,native,nn,nread,actual,an,aread);return{source,pairs,native:nread,actual:aread};
+}
+module.exports={compare};

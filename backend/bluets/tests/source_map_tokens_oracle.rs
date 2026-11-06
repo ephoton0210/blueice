@@ -40,6 +40,9 @@ mod non_decorator;
 #[path = "source_map_tokens_oracle/system_wrapper.rs"]
 mod system_wrapper;
 
+#[path = "source_map_tokens_oracle/whole_module_bridge.rs"]
+mod whole_module_bridge;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Mapping {
     generated_line: usize,
@@ -348,6 +351,22 @@ fn decoded_token_maps_match_pinned_typescript() {
         assert_eq!(blue_run.stdout, native_run.stdout, "{name}: runtime output");
         assert_eq!(blue_run.stderr, native_run.stderr, "{name}: runtime stderr");
 
+        whole_module_bridge::verify_rows(
+            &row,
+            &source,
+            &native,
+            &native_without_inline,
+            [
+                whole_module_bridge::Blue {
+                    code: &artifact.javascript,
+                    map: &blue_map,
+                },
+                whole_module_bridge::Blue {
+                    code: &without_inline_artifact.javascript,
+                    map: &without_inline_map,
+                },
+            ],
+        );
         let native_mappings = decode_map(&native_map);
         let blue_mappings = decode_map(&blue_map);
         alignment::assert_transition_inventory(name, &native_mappings, &blue_mappings);

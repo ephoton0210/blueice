@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-29).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-06).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 21,084 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 39,118 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 20,357/20,363 (99.9705%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 88 BlueTS owner = 721; excluded from direct agreement |
-| Case labels | 21,078 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 121 suites / 285 ignored Rust functions; not a case denominator |
-| Suite labels | 117 scoped closed, 1 open, 3 refused |
+| Direct agreement | 38,379/38,385 (99.9844%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 100 BlueTS owner = 733; excluded from direct agreement |
+| Case labels | 39,112 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 177 suites / 379 ignored Rust functions; not a case denominator |
+| Suite labels | 173 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 223 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 21,084 recorded case expectations pass; expected differences/refusals are not
+All 39,118 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:00fe51530f8ddd9da245c4274059e2f6f34d54f0`.
-Input graph SHA-256: `6549cded424ad9f66e764b9e352c50186b8be6ba37b8690bf82be9e7dba7e1bd`.
+Compiler/oracle source: `backend-tree:a5f61a09b651e3a770b11049020ecea1b28ed393`.
+Input graph SHA-256: `bc065aba4cebe044d5c54273f8315235736e09e478424013136bb2f2744142e1`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -44,8 +44,8 @@ Older dated measurements below retain their original scope; they are not this cu
 **Current work (2026-10-30):** A–J and K.1–K.14 are the completed baseline,
 not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
 compatibility packages and deferred platform evidence G-M3. **G-C1, G-T1
-(both stages), G-T2–G-T10, G-M1–G-M2, G-D1–G-D2 and G-E1–G-E4 are complete for their
-scopes below; 3 packages remain unchecked. Next: G-E5.**
+(both stages), G-T2–G-T10, G-M1–G-M2, G-D1–G-D2 and G-E1–G-E5 are complete for their
+scopes below; 2 packages remain unchecked. Next: G-C3; G-M3 stays deferred.**
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -830,7 +830,24 @@ Existing measured behavior is reused; it is not implemented again.
     audits pass. All 19,542 earlier observations and 12,043 old fixture files
     remain intact. The broader feature row stays open; full parity stays OFF.
 
-- [ ] **G-E5 — Maps for newly supported constructs and generated helpers.**
+- [x] **G-E5 — Maps for newly supported constructs and generated helpers.**
+  - **Accepted (2026-11-06):** frozen source42/cache70 passes **177/177** complete
+    oracle suites. The declaration/map suite passes **64/64** across **8,407**
+    configurations, each built twice; exact coverage accepts **10,193 JavaScript
+    maps** and **10,397 declaration maps**. Raw reports, observations and suite
+    logs are retained in the durable cohort archive. All **21,084** earlier
+    observations and **39,118** Main41 observations retain their identities and
+    classifications in the matching source42 publication. Source/case/status,
+    inventory, format, all-target Clippy and the final complete unfiltered
+    workspace pass. K.11 passes API **28/28** and real-process **22/22**; original
+    Native fingerprints and fixture authorities remain unchanged. The ordinary
+    accessor map-on/off mismatch and unauthorized-constructor budget fixture
+    are repaired with their strict regressions retained. Original failed runs
+    and source41 evidence keep their original scope; full TypeScript parity stays OFF.
+    [Final integration evidence](GE5_CURRENT_INTEGRATION_MEASUREMENT.json),
+    [complete coverage](GE5_COHORT_COVERAGE.json),
+    [durable artifact index](GE5_COHORT_ARTIFACTS.json) and
+    [source41 history](history/ge5-main41/GE5_COHORT_ARTIFACTS.json).
   - **Scope:** every new class/async/generator/module/decorator lowering admitted
     by G-E1–G-E3 and the non-scalar declaration forms admitted by G-D2.
   - **Pass:** complete decoded token/name/mapped-unmapped transitions, metadata,
@@ -838,6 +855,60 @@ Existing measured behavior is reused; it is not implemented again.
     Re-run K.11's real-process positive/negative matrix: stale/substituted/corrupt
     maps cannot arm a breakpoint or disclose source, and helper frames never acquire
     user-source coordinates. Do not reopen already-complete metadata authorization.
+  - **Frozen minimum (2026-10-30):** preserve all **3,950** previously admitted
+    direct configurations from G-E1/G-E2/G-E3/G-D2, each with original source and
+    a CRLF/astral coordinate variant. Add 12 function-signature/enum regressions
+    across both modules and all four LF/CRLF/astral products, plus three additional
+    publication profiles for each of the 137 suite-qualified source families:
+    **8,407 configurations**, every artifact and two builds per implementation.
+    Parent case/reference bytes are hash-bound; old fixtures are not rewritten.
+  - **Comparison:** preserve complete diagnostics and artifact inventories, raw
+    declaration bytes, every decoded segment in order (including same-position
+    Native entries), names, metadata and mapped/unmapped transitions. Identical
+    JavaScript requires complete decoded-map equality. Divergent lowerings require
+    a complete ordered source-role/generated-gap contract; a missing role is a
+    failure. A source-anchor inventory, sampled tokens, or an arbitrary snapshot
+    of BlueTSC maps cannot establish parity. All coordinate/publication variants
+    and repeated builds must pass; failed configurations remain in the matrix.
+  - **Owner/gates:** retain six canonical-output/atomicity/work/cache/helper/process
+    controls, re-run the unchanged eleven-row K.11 real-process matrix and its
+    stale/substituted/corrupt-map negatives, and preserve all 21,084 old observations
+    and prior fixture bytes. Complete the immutable cohort, unfiltered ordinary
+    gate, format/Clippy and source/case/tool/status audits before checking or
+    submitting this item. [Frozen record](PLAN.md#phase-l--g-e5-implementation).
+  - **Native defect correction (2026-10-30):** all **572 map occurrences**
+    (452 configurations / 138 distinct raw maps / 14 families) have one verified
+    System execute-block root cause. The independent local TypeScript 5.9.3
+    patch passes all 8,407 configurations and 20,590 maps twice, changing only
+    the generated-brace EOF/EOF+1 segments. BlueTSC passes all 452 corresponding
+    configurations and 572 maps twice, including strict bounds and unmapped
+    execute braces. Stock references remain unchanged; upstream is not submitted.
+    [Complete 572-row ledger](GE5_NATIVE_MAP_DEFECTS.md) and
+    [per-map measurements](GE5_NATIVE_MAP_MEASUREMENT.json). This resolves the
+    identified Native coordinate defects; final G-E5 acceptance is recorded above.
+  - **Evidence boundaries:** historical v20 full-family claims for fourteen
+    families were withdrawn after the complete endpoint audit; its 1,389 failing
+    checks are retained in [the class endpoint audit](GE5_CLASS_ENDPOINT_AUDIT.json).
+    The separate metadata audit found 424 missing provider enum endpoints;
+    [the correction](GE5_METADATA_ENUM_ENDPOINT_AUDIT.md) and
+    [compiler-bound repaired replay](GE5_METADATA_INTEGRATION_MEASUREMENT.json)
+    retain their original scope. Earlier standalone and shared results cannot
+    substitute for the current complete same-compiler run.
+  - **Historical detail:** compiler-specific progress and worktree deliveries
+    remain in [PLAN](PLAN.md#phase-l--g-e5-implementation),
+    [Main32](GE5_MAIN32_SHARED_MEASUREMENT.json),
+    [Main33](GE5_MAIN33_SHARED_MEASUREMENT.json),
+    [Main34](GE5_MAIN34_SHARED_MEASUREMENT.json), and
+    [the family inventory](GE5_FAMILY_EVIDENCE_INVENTORY.json).
+    Failed [Main35](GE5_MAIN35_FAILED_MEASUREMENT.json),
+    [Main36](GE5_MAIN36_FAILED_MEASUREMENT.json),
+    [Main37](GE5_MAIN37_FAILED_MEASUREMENT.json) and
+    [Main38](GE5_MAIN38_FAILED_MEASUREMENT.json) measurements are preserved.
+    Their partial results do not establish integrated acceptance.
+  - **Completion boundary:** the complete 177-suite measurement, exact JS coverage,
+    durable evidence publication and final unfiltered workspace gates are verified.
+    Submit this completed item together with its implementation and measurement data.
+    No additional TODO identifier or platform requirement is introduced.
 
 - [ ] **G-C3 — Remaining JSX provider and decorator-type compositions.**
   - **Scope:** JSX overload/union/recursive props, conditional/re-exported and missing

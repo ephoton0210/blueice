@@ -9,24 +9,24 @@
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-10-29).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-06).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 21,084 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 39,118 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 20,357/20,363 (99.9705%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 88 BlueTS owner = 721; excluded from direct agreement |
-| Case labels | 21,078 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 121 suites / 285 ignored Rust functions; not a case denominator |
-| Suite labels | 117 scoped closed, 1 open, 3 refused |
+| Direct agreement | 38,379/38,385 (99.9844%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 100 BlueTS owner = 733; excluded from direct agreement |
+| Case labels | 39,112 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 177 suites / 379 ignored Rust functions; not a case denominator |
+| Suite labels | 173 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 223 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 21,084 recorded case expectations pass; expected differences/refusals are not
+All 39,118 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:00fe51530f8ddd9da245c4274059e2f6f34d54f0`.
-Input graph SHA-256: `6549cded424ad9f66e764b9e352c50186b8be6ba37b8690bf82be9e7dba7e1bd`.
+Compiler/oracle source: `backend-tree:a5f61a09b651e3a770b11049020ecea1b28ed393`.
+Input graph SHA-256: `bc065aba4cebe044d5c54273f8315235736e09e478424013136bb2f2744142e1`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -16074,3 +16074,2366 @@ and current-status audits pass. All 27 changed Rust source/test files remain bel
 headers. G-E4 is complete for the frozen minimum and its implementation and matching
 measurement are submitted together. G-E5 is next; the broader row remains open,
 full parity stays OFF and G-M3 remains deferred.
+
+## Phase L — G-E5 implementation
+
+The source-only input generator fixes all **3,950** previously admitted direct
+configurations: 500 G-E1, 2,527 G-E2, 727 G-E3 and 196 G-D2, with no sampling of
+target/module/flag products. Each has original bytes and a physical CRLF variant
+with an astral comment before the first source line, exercising UTF-16 columns
+independently of UTF-8 byte offsets. Shared tslib provider bytes remain unchanged.
+The 12 additional function-signature/enum regressions cover both modules and
+LF/CRLF with/without the astral prefix. Every one of the 137 suite-qualified
+families also has external-without-content, inline and rooted-map profiles.
+The frozen input has **8,407 configurations**, SHA-256
+`5b736263464566250127ae12beddc7dae3c488f48fcec018261c198ccc59e12e`.
+Both parent input and prior Native-reference bytes are explicitly hash-bound.
+
+The Native-only recorder compiles every configuration twice before accepting a
+reference, retains complete diagnostics/selected inputs/artifact bytes and stores
+raw output/map blobs by SHA-256 without normalizing declaration bytes. Complete
+decoded metadata, names, segments and state changes are independently bound.
+Pinned TypeScript emits distinct class-closure mappings at the same generated
+coordinate in the called-imported-heritage configuration; these entries retain
+their order and last-entry lookup semantics rather than being dropped by a set.
+The decoder tests cover this behavior, malformed indices/deltas/UTF-16 bounds,
+line resets, every metadata field and fake inline-map directives inside strings.
+
+Identical generated JavaScript requires the complete decoded mapping sequence.
+Different lowering layouts require an explicit complete ordered source-role and
+generated-gap contract, including names and trivia transitions. A missing role
+fails; equal anchor inventories or arbitrary BlueTSC map snapshots are not
+acceptance. All raw declarations, coordinates, publication profiles and repeated
+builds remain required. Native option rejections are retained with their complete
+diagnostics rather than silently removing a profile from the input.
+
+Six owner controls retain canonical source/map-output authority, atomic
+publication/corruption rejection, charged generation/decoding/lookup, option and
+source/cache identity, generated-only helper coordinates and real-process map
+binding. K.11's eleven-row fixture stays unchanged; its actual-process positives
+and stale/substituted/corrupt negatives must run again. No metadata authorization
+or opaque-handle boundary is reopened. All **21,084** prior observations and old
+fixture bytes must remain intact. G-E5 stays unchecked until implementation,
+matching complete immutable cohort, unfiltered ordinary gate, format/Clippy and
+source/case/tool/status audits pass together. G-M3 remains deferred and full
+parity stays OFF.
+
+The complete Native-only recording passes all **8,407 configurations**, with
+**8,406 accepts / one rejected option product**, **20,590 maps** (10,397 declaration
+and 10,193 JavaScript maps), and both builds identical. The rejected inherited
+mapRoot/inlineSourceMap product retains both TS5053 diagnostics and its exact
+configuration bytes, so primary diagnostic positions are reproducible. The input
+hash above is unchanged; final Native reference SHA-256 is
+`166af4ea3dd8b1af12aeb0c76c9f3f4a7f8b47aab0971bb2e93e72d01ded32f3`.
+All 8,407 earlier observations and all 6,034 initial raw Native blobs remain
+unchanged when that diagnostic input is added. There are 6,035 blobs in total.
+
+Native recording also retains **572 maps with source-coordinate bound issues**
+confirmed against inline source text. For example, a System ES5 class wrapper
+maps its generated closure to column one of an empty source EOF line. These
+raw tuples and their issue reports remain present; recording does not turn them
+into valid source grants or passing BlueTSC comparisons. Actual-map validation
+keeps the strict bounds check. The user subsequently requested enumeration and
+correction of every occurrence. The independently patched Native observations
+below retain the stock authority as negative evidence; configurations are not
+removed from the matrix or treated as approved exceptions.
+
+The initial public regression run visits all **132 signature/enum configurations**
+and reports **143 differences** before production changes. Restricting return-type
+mapping to the known function header and adding enum/member provenance reduces
+this to 66. Avoiding a spurious function-type parameter-close mapping, formatting
+record constraints canonically, and recognizing records nested in tuple/array/
+readonly annotations then passes **all 132 configurations**. The harness run is
+**5 passed / one Native replay ignored**, zero failed/filtered; its independent
+Native replay remains required in the final cohort. The full 8,407-configuration
+declaration gate is running next; this focused result is not G-E5 completion.
+Declaration provenance identity is v3, declaration option identity v4 and private
+build-state epoch 27. Old epochs 4–26 must rebuild; runtime helpers and debugger
+metadata grants remain unchanged.
+
+The first complete public declaration sweep visits **all 8,407 configurations**
+and repeats every build. It finishes in **912.83 seconds** and fails with **3,492
+observations across 2,906 configurations**: 3,483 decoded declaration-map
+comparisons, eight raw declaration comparisons and one option verdict/diagnostic
+comparison. There are no repeated-build, selected-input or artifact-inventory
+failures. This is a failing development run, not a passing acceptance gate.
+
+The eight text differences come from an astral block comment before the file's
+leading JSDoc on the same line; the Native JSDoc remains a leading comment.
+Leading-comment detection now accepts closed block trivia without interpreting
+comment-like strings or line-comment contents as preceding block trivia. The
+mapRoot/inlineSourceMap product now rejects before publication and retains both
+TS5053 primary diagnostics at their original configuration keys. All **19**
+metadata/coordinate/option configurations then pass both builds, and all **132**
+signature/enum configurations remain green. The focused harness is **6 passed /
+one Native replay ignored / one full-sweep function filtered**; that filter is
+only a development check and cannot satisfy the final unfiltered gate. The
+remaining map differences require further implementation and a new complete
+sweep. No G-E5 commit has been made.
+
+The next declaration implementation pass replaces punctuation-based module
+mapping with binding/specifier/clause boundaries, retains export-default modifier
+positions, maps heritage-clause starts at their source keyword, and excludes
+zero-span synthetic heritage declarations. Decorator/accessor and inline-type
+modifier positions retain their own origins. Destructured parameters and typed
+arrow fields preserve their nested signature nodes.
+
+For inferred class wrappers, the declaration renderer now passes the already
+expanded checked type and its retained member spans into the map builder.
+Returned class expressions and inherited members therefore use actual source
+origins; they do not guess a class from a coincidentally matching spelling.
+Member origins are indexed by span. Synthesized wrappers/names remain unmapped.
+The representative public sweep improves from **57 to 8 to 4 to zero**
+comparisons, across all **137** suite-qualified families and both builds. The
+132 signature/enum and 19 metadata configurations remain green. The focused
+harness passes **7 functions**, with one Native replay ignored and the full sweep
+filtered only for development. The existing G-D2 target independently passes
+**13/13**, including both Native functions, exact declarations/consumers/execution
+and its owner controls. All six new Node map-decoder tests pass. Changed Rust
+sources remain below 1,500 lines (largest emitter.rs: 1,214 lines).
+
+The second complete declaration sweep passes **all 8,407 configurations and both
+builds**, in **1,099.73 seconds**, with zero differences in raw declarations,
+complete decoded declaration maps, diagnostics, selected inputs or artifact
+inventories. The development invocation selects that full-sweep function; it is
+not the final unfiltered ordinary/cohort gate.
+
+The initial separate JavaScript diagnostic retains every token and decoded map
+for 137 families / 164 maps. It finds **88 BlueTSC maps with original-coordinate
+bound errors**. Target-map composition previously added generated-column deltas
+to original anchors and selected a predecessor across physical lines or before
+the first mapping. Composition now uses the exact mapped predecessor on the
+same line, keeps unmapped states, and preserves all existing boundaries in copied
+ranges through later edits, including LF/CRLF conversion. Generated prologues and
+helper definitions no longer acquire a default source anchor. The repeated
+164-map diagnostic has **zero invalid BlueTSC maps** and matching metadata for
+all maps; this diagnostic is not whole-matrix acceptance.
+
+Original parser spans now anchor CommonJS variable/function/class exports,
+generic callable headers, default parameters, returned expression delimiters,
+class fields/accessors/constructors, parameter-property assignments and enum
+wrappers/members. Generated class closures remain unmapped. A public CLI
+regression compares **every mapped and unmapped token in order**, full metadata,
+strict bounds even without inline content, and both builds for **202
+configurations / 22 forms / 154 JavaScript maps**, across all retained coordinate
+and publication products for those forms. All pass. This covers retained syntax
+and enum emission; it does not establish the remaining divergent class,
+suspension, module and decorator lowering contracts or all trivia transitions.
+
+The wider development preflight passes **92 functions across nine targets**, zero
+failures or ignored functions, including all **23 K.11 map functions** and pinned
+Native publication/enum comparisons. Its two full G-E5 functions are filtered
+only for focused development. The CRLF/astral transition expectation now equals
+Native's complete decoded transition fingerprint; the eleven-row input remains
+unchanged. New test temporary directories are allocated independently so parallel
+tests cannot delete another test's graph. The largest changed Rust source is
+emitter.rs at 1,266 lines. Full JavaScript role/transition coverage, six owner
+controls, real-process K.11 positives/negatives and the final immutable/unfiltered
+gates remain mandatory. At this checkpoint, Native defect handling was unresolved.
+G-E5 stays unchecked; no G-E5 commit has been made.
+
+The expanded whole-stream development sweep subsequently passes **all 8,407
+configurations / two builds**, in **913.77 seconds**. It checks exact declarations
+and every ordered declaration-map entry, JavaScript-map metadata, every generated
+and original coordinate, segment order and name/source table indices, complete
+diagnostics and artifact/input inventories. Maps without inline content use the
+hash-bound external sibling's original source text and verify that text belongs
+to the resolved input graph. Both builds retain all artifact bytes. Production
+sources (488 files) and compiler binary remain unchanged during this sweep;
+compiler SHA-256 is
+`4d6466973a956913ee9d0b61ea25155b5e9e6594c77213c4e4da635f518efa82`.
+This is full declaration parity plus full JavaScript metadata/bounds validation,
+not a claim of complete JavaScript source-role/trivia parity.
+
+The unchanged K.11 real-process matrix and generated debugger positive/negative
+tests pass **22/22**, including malformed and substituted map rejection through
+the actual launcher/core/child. The sandbox-only attempt fails before cases run
+because test sockets cannot bind; the local-socket-enabled rerun passes. No
+metadata grant or opaque-handle policy is expanded. Retained ES5 generator names,
+parameters and operands now keep their moved source ranges; continuation
+dispatchers remain unmapped. The new public lookup regressions fail before this
+fix and pass afterward. Existing strict-runtime checks retain explicit owned
+ingress/egress anchors. Library, async/default-generator and target protocol
+regressions pass **259 functions**, including all selected Native functions.
+
+The next retained-token pass adds namespace wrappers, members, merging and
+namespace enums, and distinguishes a retained ESM export modifier from erased
+CommonJS/namespace modifiers. CommonJS export initialization deduplicates merged
+symbols and excludes already-hoisted function merges. All **406 configurations /
+26 forms** pass complete mapped/unmapped token comparison twice, across CommonJS
+and ESM. The broader development regression passes **355 functions across 13
+targets**, zero failures/ignored; only the two full G-E5 functions are filtered.
+The current extension covers all **617 G-D2/signature/enum configurations / 43
+forms**, retaining the rejected Native option product. Its first CommonJS run
+finds computed-field, unannotated-default-parameter, namespace-class and switch
+anchors plus a superfluous default-expression export initialization. These are
+implementation failures, not exclusions. The complete **617-configuration /
+43-form / two-module / two-build** source-role rerun then passes in **109.65
+seconds**. It also fixes the erased ESM module marker and export-default origin;
+all cross-module outputs participate, including the original rejected option
+product. Pinned TypeScript 5.9.3 independently confirms that a type-only re-export
+emits `export {};`, so the former empty-JavaScript unit expectation is corrected.
+The wider regression then passes **356 functions across 13 targets**, zero
+failures or ignored functions, with only the two full G-E5 functions filtered
+for development. Formatting and both-crate all-target warnings-denied Clippy
+pass. All prior tracked fixture bytes and published completed-item measurement
+files remain unchanged. Complete source-role/trivia contracts remain unverified
+for **94 families**: 32 G-E1, 22 G-E2 and 40 G-E3. At that checkpoint, the Native
+invalid-map correction had not yet been requested; no exception was applied. Full
+divergent-lowering/trivia contracts, final complete cohort and unfiltered gates
+still remain. Published completed-item measurements are not
+replaced by these development runs, and G-E5 remains unchecked.
+
+The user then requested a complete enumeration and correction of the **572
+Native map occurrences**. Fresh `tsc` processes reproduce the frozen raw bytes,
+and an instrumented independent compiler identifies one root cause: the System
+transformer's generated `execute` block carries the source statement-list EOF
+range. Printing the generated closing brace maps both EOF and EOF+1. The local
+TypeScript 5.9.3 patch sets `NoTokenSourceMaps` on that generated block, retaining
+every nested user-statement mapping. It is applied in an independent module with
+an exact stock bundle hash; the installed package and stock reference are never
+modified. This is a source-text bounds/provenance correction, not a claim that
+every affected map violates the ECMA-426 encoding grammar.
+
+All **516 System configurations** reproduce the original results twice. The
+patched compiler then passes **8,407 configurations / 20,590 maps / two builds**
+in **317.034 seconds**. Exactly **572 maps / 452 configurations / 138 distinct
+raw maps / 14 source families** change. In each map, only the two generated
+closing-brace EOF/EOF+1 entries disappear; all remaining ordered entries and
+metadata match. All JavaScript, declarations, declaration maps, diagnostic
+records, selected sources and output inventories remain byte-identical to stock.
+The other **20,018 maps** are unchanged. This correction does not overwrite or
+normalize stock evidence, including ordered duplicate Native positions.
+
+The public BlueTSC CLI independently passes all **452 configurations / 572 maps /
+two builds** in **209.47 seconds**. Full-map bounds/metadata, declarations,
+inventories and both generated execute braces pass; the unmodified stock maps
+remain negative controls rejected by public lookup. The two Rust regressions and
+nine Node regressions pass, including fresh CLI processes, changed-bundle refusal,
+no final newline, CRLF/astral, empty type-only modules, hoisted functions and
+unaffected CommonJS/ESNext transforms. The [572-row ledger](GE5_NATIVE_MAP_DEFECTS.md)
+and [per-map measurements](GE5_NATIVE_MAP_MEASUREMENT.json) record exact hashes,
+coordinates, correction and BlueTSC verification for every occurrence.
+The patch is local and has not been submitted or merged upstream. G-E5's
+remaining complete lowering/trivia contracts and final gates remain open; no
+new TODO identifier, completed-item measurement replacement, commit or push is
+introduced by this Native-defect correction.
+
+The subsequent feasibility review strengthens retained-JavaScript comparison
+from token starts to every UTF-16 token position and ordered trivia/gap owners.
+Only fresh Node require-bridge bindings identified by the complete generated
+prologue may be renamed; source binding names remain unchanged. Missing tokens,
+retargeted token interiors and source grants in generated comments fail mutation
+controls. Formatting can add/remove an unmapped gap or reset a physical line;
+surviving mapped gap positions must follow Native ownership in order. Identical
+JavaScript still requires complete decoded-map equality. The 572 independently
+reproduced Native corrections are now selected by exact case/map/stock hash;
+the other 20,018 maps remain stock byte-for-byte.
+
+The first Node contract run exposes **59 differences** across the complete
+146-configuration / 214-JavaScript-map matrix. Corrections align exported
+import-equals publication, preserve explicit generated/unmapped insertion
+boundaries, remove grants on erased type trivia, and retain correct keyword
+gaps. The complete matrix then passes twice. Strengthening the existing retained
+contracts exposes **186** CommonJS differences; both modules are subsequently
+checked together, with 176, 53 and 11 differences in successive complete runs.
+Class/namespace endpoints, getter/setter keywords, arrows, generator stars,
+switch/case/yield trivia and `as const` endpoints are corrected. All **617
+G-D2/signature/enum configurations / 431 JavaScript maps / two modules / two
+builds** then pass the strengthened contract. Assertion endpoints use retained
+parser spans rather than editing or normalizing reference maps. JavaScript
+provenance identity is v3 and private build-state epoch is 28; epochs 4–27 rebuild.
+
+At this earlier stage, complete source-role coverage was **51 families / 763 configurations /
+645 JavaScript maps**. Remaining implementation plus complete contracts cover
+**86 families / 7,644 configurations / 9,548 JavaScript maps**: 32 G-E1 families
+(1,096 configurations / 1,147 maps), 14 G-E2 families (4,974 / 6,063) and 40 G-E3
+families (1,574 / 2,338). These are retained admitted products, not exclusions,
+asserted refusals or completed work. The [scope report](GE5_ROLE_CONTRACTS.md)
+and [measurement](GE5_ROLE_CONTRACTS_MEASUREMENT.json) preserve the family list,
+counts, current compiler/source hashes, per-case Node observations and renewed
+572-map public-CLI replay. Compiler SHA-256 is
+`fffc73884e0a2e538992b588bb193cde5805fb0096c0bee41cca92884faa0adb`.
+
+The development regression passes **15 targets / 339 functions**, zero failed,
+with 24 existing ignored Native functions and the two full G-E5 functions
+filtered; this is not the final ordinary gate. The actual K.11 launcher/core/child
+generated cohort passes **22/22**, including the unchanged eleven-row helper
+matrix and stale/substituted/malformed-map negatives, with 33 unrelated functions
+filtered. Both-crate all-target warnings-denied Clippy and workspace formatting
+pass. Published completed-item measurements and old fixture bytes remain
+unchanged. The remaining lowering provenance/contracts, complete immutable
+cohort and unfiltered ordinary gate are still required; G-E5 remains unchecked,
+with no G-E5 commit or push.
+
+### G-E5 named async and native-generator source roles — 2026-10-30
+
+At this intermediate stage, the role/gap contract passed **1,063 configurations / 945 JavaScript
+maps**, including **300 additional ES2015+ products** across five named-async
+and ten native-generator families. The original 51 families remain fully
+covered; these 15 additional families are partial until their **105 ES5 and
+additional-publication products** pass complete contracts. The remaining
+**86 families / 7,344 configurations / 9,248 JavaScript maps** stay required.
+The current [scope report](GE5_ROLE_CONTRACTS.md) and
+[measurement](GE5_ROLE_CONTRACTS_MEASUREMENT.json) supersede the preceding
+partial measurements for the compiler identified below.
+
+The async adapter independently parses both entire emitted modules with pinned
+TypeScript 5.9.3. It matches signatures and user bodies through the explicit
+awaiter/generator ABI, checks token UTF-16 interiors, ordered physical gaps,
+metadata, callback/body/completion endpoints and EOF, and requires every
+generated character to have a defined role. Helpers, constructor guards and
+additional grouping cannot claim user source. Identical JavaScript still
+requires every decoded map entry. The entire frozen selection and both public
+CLI builds are bound to the measured compiler binary. Eighteen isolated,
+bounded mapping mutations across original and CRLF/astral sources are rejected;
+no Blue map snapshot or source-anchor inventory supplies an expected result.
+
+Corrections retain named-async await operands, template interpolation interiors,
+relocated callback closes and driver completion points. Native generators expose
+and correct control parentheses, empty array ends, `catch`/`finally`/`try`,
+`yield*` and switch-case gap differences. ES5 resumes retain the original
+declaration binding separately from `await` and the return/throw statement;
+ES5 template interpolation operands now retain their original provenance.
+Original and CRLF/astral regression tests cover resumed bindings, return opcodes
+and template-await operands. Those targeted ES5 checks do not close the pending
+whole-module continuation contracts. Provenance identity is **v4** and private
+build-state epoch is **29**; states from epochs 4–28 rebuild.
+
+Verification on compiler SHA-256
+`fe3983a2d9c17358daa23592f4c9b93b11ea8c648d30ff343723ffdfb37e8262`:
+the 100 named-async and 200 native-generator configurations each pass twice;
+the development regression passes **15 targets / 342 functions**, zero failed,
+26 ignored oracle functions and two full G-E5 functions filtered. The new two
+oracle functions were run separately. The focused G-E1/control/ES5 boundary run
+also passes. The unchanged K.11 actual launcher/core/child cohort passes
+**22/22**, including its eleven-row helper matrix and corrupt/substituted/stale
+map negatives. The first sandboxed K.11 run could not bind its loopback test
+socket; the complete rerun with that local permission passes. Both BlueTS crates
+pass all-target Clippy with warnings denied, and workspace formatting passes.
+
+The current compiler repeats all 452 Native-defect configurations / 572 maps,
+and the former 617 retained plus 146 Node configurations, twice. Frozen inputs,
+stock Native references and earlier fixture bytes remain unchanged. Remaining
+lowering implementation/contracts, the complete immutable cohort and unfiltered
+ordinary gate remain pending. **G-E5 is unchecked; no commit or push is made.**
+
+### G-E5 complete opaque-generator family — 2026-10-30
+
+At this intermediate stage, implementation and matching measurements covered **1,070 configurations
+/ 952 JavaScript maps**: **52 fully covered families** and 14 partially covered
+async/generator families. The opaque-generator family now passes all **27**
+frozen products. Its final seven ES5 products cover both modules, original and
+CRLF/astral coordinates, external maps, omitted sourcesContent, inline maps and
+rooted publication. All 14 other partial families retain their **98** required
+ES5/additional-publication products. Overall remaining work is **85 families /
+7,337 configurations / 9,241 JavaScript maps** (G-E1 31/789/840, G-E2
+14/4,974/6,063 and G-E3 40/1,574/2,338).
+
+The independent continuation adapter parses the complete Native and BlueTSC
+modules and follows every reachable state. It requires the ordered control,
+operand, yield, resume and completion roles, validates the driver ABI and local
+slot, rejects extra/unreachable/skipped states, and classifies every UTF-16 code
+unit. Retained user syntax, yield opcodes, operand endpoints and resumed
+terminators use Native owners. Generated dispatch/helper code remains unmapped;
+only a structurally identified fresh context may be renamed. Seventy isolated
+map/control-flow mutations across all seven products fail as required; together
+with the prior 18 async mutations, this is **88 rejected controls**. Expected
+positions come from frozen Native maps, never a BlueTSC map snapshot.
+
+Non-suspending switches retain their original syntax. Switches with declarations,
+returns, outer continues or labelled breaks still use continuation lowering,
+preserving local state across a later yield. A Native/BlueTSC execution regression
+checks a switch-local value of 7 after resume. Yield opcodes, resumed values and
+statement terminators now preserve separate original boundaries. JavaScript
+provenance identity is **v5** and private build-state epoch is **30**; states from
+epochs 4–29 rebuild.
+
+Compiler SHA-256 is
+`49094d58c84e71bb6014f8c646b0ee6ae9295338550c59206ef1b82e826a905a`.
+The 100 async, 200 native-generator and seven ES5 continuation configurations
+pass twice on this same compiler. All **500** G-E1 programs pass **1,000**
+declaration consumers and **500** actual executions. Fifteen development targets
+pass **343** functions, zero failed, with 27 ignored oracle functions and the two
+full G-E5 functions filtered; the three new role oracles ran separately without
+ignored functions. The focused owner/atomicity/budget/cache controls and ES5
+boundary regressions pass. All four emitted-target tests pass, including both
+Native execution tests and the BlueJS edition gate. The unchanged K.11 actual
+launcher/core/child cohort passes **22/22**, including the eleven-row helper
+matrix and malformed/substituted/stale-map negatives. Both BlueTS crates pass
+all-target warnings-denied Clippy and workspace formatting passes.
+
+The current [scope report](GE5_ROLE_CONTRACTS.md) and
+[measurement](GE5_ROLE_CONTRACTS_MEASUREMENT.json) contain this compiler/source
+binding, per-map hashes, all 88 negative controls and the renewed 617 retained,
+146 Node and 452 Native-defect configuration replays. Frozen inputs/references
+and earlier fixture bytes remain unchanged. The immutable cohort, unfiltered
+ordinary gate and remaining lowering contracts still need completion.
+**G-E5 remains unchecked. No G-E5 commit or push is made.**
+
+### G-E5 binary and short-circuit continuation roles — 2026-11-02
+
+At this intermediate stage, the implementation and source-bound measurements covered **1,084
+configurations / 966 JavaScript maps**, with **54 fully covered families** and
+12 partially covered families. Binary-yield and logical-yield generators now
+each pass all **27 frozen products**. Each final seven-product ES5 set retains
+both modules, original/CRLF/astral coordinates and external/no-content/inline/
+rooted publication. The remaining **83 families / 7,323 configurations / 9,227
+JavaScript maps** stay required: G-E1 29/775/826, G-E2 14/4,974/6,063 and G-E3
+40/1,574/2,338. The other 12 partial async/generator families still require their
+84 ES5/additional-publication products.
+
+The independent adapter reconstructs a data-flow trace from each complete
+Native and BlueTSC emitted generator. It compares the entire expression DAG,
+retained grouping, operator/token owners, carried values, original user writes
+and completion endpoints. Short-circuit control expands all four abstract
+two-branch paths, including the branch that the fixed runtime input skips.
+Every reviewed state must be reached by the full path inventory; an unused
+implicit completion must have the exact generated-only ABI shape. Unknown
+evaluations, wrong initialized slots, inverted branches and skipped resumes
+fail. User binding names remain unchanged. Compiler slot names must be fresh,
+declared and initialized; they are resolved through their data-flow rather
+than compared to an arbitrary Blue output snapshot.
+
+The first operator regression exposes `+` incorrectly owned by the enclosing
+return at column 54 instead of Native's operand at column 61. Source-preserving
+grouping and explicit carried-value/operator origins correct this. The next
+regression exposes a short-circuit initializer terminator owned by its name end
+at column 65 instead of the complete initializer end at column 87. Binding-end
+provenance now remains correct on both evaluated and skipped branches. Return/
+throw source metadata retains separate statement start, expression end and
+statement end boundaries. The seven binary products reject **98** isolated,
+bounded map/control-flow mutations and the seven logical products reject **77**;
+together with the existing 88 controls this is **263 rejected controls**. All 14
+Native maps have no duplicate generated positions. Their original bytes remain
+unchanged. JavaScript provenance identity is **v6** and private build-state epoch
+is **31**; states from epochs 4–30 rebuild.
+
+Compiler SHA-256 is
+`27ed0da54171c3f464a0de1c15b20f13ae6b0df3f81c0281783cbf8a31d0c9fd`.
+All five new role-oracle functions pass without ignored functions: **321**
+configurations, each built twice by the public CLI. All **500** G-E1 programs
+pass **1,000** declaration consumers and **500** actual executions. Five
+emitted-target tests pass, including the multi-resume arithmetic/short-circuit
+regression, switch-local state preservation, opaque-generator Native execution
+and BlueJS edition parsing. Fifteen development targets pass **345** functions,
+zero failed, with 29 oracle functions ignored and two full G-E5 functions
+filtered; this is not the final ordinary gate. Focused owner/atomicity/budget/
+cache controls and 11 source-boundary regressions pass. The unchanged K.11
+launcher/core/child cohort passes **22/22**, including the eleven-row helper
+matrix and malformed/substituted/stale-map negatives. Both BlueTS crates pass
+all-target warnings-denied Clippy and workspace formatting passes.
+
+The current [scope report](GE5_ROLE_CONTRACTS.md) and
+[measurement](GE5_ROLE_CONTRACTS_MEASUREMENT.json) include complete per-map and
+negative-control evidence, compiler/source hashes and renewed 617 retained,
+146 Node and 452 Native-defect configuration replays. All frozen parent/case/
+reference bytes and the 21,084 earlier observations remain intact. Remaining
+lowering contracts, the immutable cohort and unfiltered ordinary gate are still
+pending. **G-E5 remains unchecked. No commit or push is made.**
+
+### G-E5 ES5 named async signatures, calls and conditional joins — 2026-11-02
+
+At this intermediate stage the measured role/gap contract covered **1,105 configurations / 987 JavaScript
+maps**, with **57 fully covered source families** and nine partially covered
+families. Helper-name collisions, nested await calls and conditional await
+expressions each complete all **27 frozen products**, including their seven ES5,
+CommonJS/ESNext, original/CRLF/astral and external/no-content/inline/rooted products.
+The remaining **80 families / 7,302 configurations / 9,206 JavaScript maps** stay
+required: G-E1 26/754/805, G-E2 14/4,974/6,063 and G-E3 40/1,574/2,338. The nine
+partial async/generator families still require 63 ES5/additional-publication products.
+
+The complete emitted-AST adapter compares the explicit outer awaiter ABI and inner
+continuation graph. It retains original binding/property names, follows captured
+receiver and method identities across nested awaits, and compares every expression,
+source role, UTF-16 interior, ordered gap and completion endpoint. All two abstract
+conditional-expression paths must match, with every reviewed state covered. The
+21 newly covered maps retain all **1,039 ordered Native segments**; none has a
+same-position duplicate. Stock Native bytes and the frozen matrix remain unchanged.
+
+The first failures expose moved parameter parentheses without their source owner,
+a captured resume incorrectly inheriting the outer statement terminator, missing
+property/method origins and a conditional true-arm resume borrowing the false-arm
+endpoint. The emitter now moves logical signature origins into the async callback,
+keeps captured expression and statement endpoints separate, preserves method/getter
+and logical call-close origins, and joins conditional completions through a carried
+result slot. Native-generated precedence groups and captured-call transports have
+explicit reviewed roles. Unclassified source grants remain failures. JavaScript
+provenance identity is **v7**, private build-state epoch is **32**, and old epochs
+4–31 rebuild.
+
+The three seven-product sets reject **84**, **98** and **91** isolated mapping/
+control-flow mutations respectively: **273 new controls / 536 total**. Controls
+include wrong methods/receivers, skipped resumes, inverted branches, erased return
+slots and source grants in generated helper/transport code. Rejecting an incorrect
+receiver uses a direct identity predicate so the test harness does not try to print
+a cyclic emitted AST. Native/BlueTSC execution checks both conditional arms, helper
+collisions, the outer getter being captured before the inner await, the captured
+method receiver and rejection propagation that skips the outer invocation.
+
+Compiler SHA-256 is
+`00f39a37525362ff3cc1ea7bfc0ccdb22ba296817561d36f16513447112d40ac`.
+All eight role oracles pass without ignored functions: **342 configurations**, each
+built twice by the public CLI. The 15-target development regression passes **345**
+functions with zero failed, 32 oracle functions ignored and two full G-E5 functions
+filtered; the final ordinary gate remains pending. All **500** G-E1 programs pass
+**1,000** declaration consumers and **500** executions; all six emitted-target tests
+pass. The six owner/cache/helper/atomicity/budget controls and 11 source-boundary
+regressions pass. K.11 launcher/core/child generated tests pass **22/22**, including
+the unchanged eleven-row helper matrix and malformed/substituted/stale-map negatives.
+Both BlueTS crates pass all-target warnings-denied Clippy; workspace formatting,
+nine map/Native-patch tool tests and source/case/tool/status audits pass.
+
+The [current report](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind these results to the compiler,
+source/test/tool hashes and complete per-map observations, including renewed 617
+retained, 146 Node and 452 Native-defect configuration replays. The 21,084 earlier
+observations and prior fixture bytes remain intact. Remaining lowering contracts,
+the immutable cohort and unfiltered ordinary gate are pending. **G-E5 remains
+unchecked. No commit or push is made.**
+
+### G-E5 conditional await statements and compound write origins — 2026-11-02
+
+At this intermediate stage the measured contract covered **1,112 configurations / 994 JavaScript maps**,
+with **58 fully covered source families** and eight partially covered families.
+Conditional-await statements complete their seven ES5/publication products and
+therefore all **27 frozen products**. Both abstract if/else paths are compared,
+including the false path skipped by the frozen runtime input. Remaining work is
+**79 families / 7,295 configurations / 9,199 JavaScript maps**: G-E1 25/747/798,
+G-E2 14/4,974/6,063 and G-E3 40/1,574/2,338. The eight partial async/generator
+families retain their 56 required ES5/additional-publication products.
+
+The first full contract fails at the compound write's source entry: Native owns
+column 121 while BlueTSC has no source. Captured prior values, the write target,
+the lowered binary operation and the resumed operand now retain distinct original
+roles. Expression-statement semicolons and their following endpoints preserve
+their original owners; declaration initializers keep their separate endpoint
+rules. The independent adapter recognizes only the explicit generated assignment
+grouping, compares the complete initialized data-flow and both branch traces,
+and checks all generated-only transport and dispatch characters. It retains the
+Native statement-end owner when validating the subsequent physical gap.
+
+All seven products reject **126** additional bounded map/control-flow mutations,
+including wrong user write targets, changed compound operations, erased write
+interiors/terminators/endpoints and inverted branches. The total is **662 rejected
+controls**. The four ES5 async families cover **28 maps / 1,502 ordered Native
+segments**, with no same-position duplicates and no changes to frozen Native bytes.
+Execution also compares the statement's true result of **3** and false result of
+**9**, along with both conditional-expression arms, nested receiver/getter capture
+order and rejection propagation. JavaScript provenance is **v8**; private build
+state is epoch **33**, with old epochs 4–32 rebuilt.
+
+Compiler SHA-256 is
+`5d84a726cba2ead18c9218924bbaff4ffc8a9a5b490c2b213e51c1bc3336edb4`.
+All nine role oracles pass without ignored functions: **349 configurations**, each
+built twice through the public CLI. The 15-target development regression passes
+**345** functions, zero failed, with 33 oracle functions ignored and two full G-E5
+functions filtered. All six emitted-target tests pass. All **500** G-E1 programs
+pass **1,000** declaration consumers and **500** executions. Six owner/cache/helper/
+atomicity/budget controls and 11 source-boundary regressions pass. The unchanged
+K.11 launcher/core/child generated matrix passes **22/22**, including the eleven-row
+helper matrix and stale/substituted/malformed-map negatives. Both BlueTS crates
+pass all-target warnings-denied Clippy; workspace formatting and source/case/tool/
+status audits pass.
+
+[Current scope](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) include the source/compiler/tool
+binding and renewed 617 retained, 146 Node and 452 Native-defect configuration
+replays. All 21,084 earlier observations and frozen fixture bytes remain intact.
+The complete immutable cohort and unfiltered ordinary gate still await the
+remaining lowering contracts. **G-E5 remains unchecked; no commit or push is made.**
+
+### G-E5 template await/yield boundaries and concat data flow — 2026-11-02
+
+The measured role/gap contract now covers **1,126 configurations / 1,008 JavaScript
+maps**, with **60 fully covered source families** and six partially covered
+generator families. Template-await and template-yield each complete all **27
+frozen products**, including their seven ES5, original/CRLF/astral and
+external/no-content/inline/rooted products. All five selected named async families
+are fully covered. Remaining work is **77 families / 7,281 configurations / 9,185
+JavaScript maps**: G-E1 23/733/784, G-E2 14/4,974/6,063 and G-E3 40/1,574/2,338.
+The six partial generator families retain 42 required ES5/publication products.
+
+The first complete template contracts expose missing interpolation endpoints,
+separate fixed-text concat calls, and lost logical carried-template origins.
+The emitter now appends fixed text to the preceding concat argument list and
+retains both each interpolation's endpoint and the complete template boundary.
+The generated initial literal prefetch remains unmapped. A carried logical group
+uses its mapped whole-expression boundary when its first captured string literal
+is generated-only; ordinary original grouping keeps its inner expression origin.
+This lookup follows the preceding emitted provenance, without creating source
+positions in helper definitions or captured intrinsic transport. The existing
+ordinary template operand regression now includes each logical suspension endpoint;
+the physical temporary-assignment semicolon remains generated-only.
+
+The independent adapter compares both complete captured concat calls, every
+argument/separator/property, the string receiver identity, all original/moved
+source roles and complete generated gaps. It also follows the generator's discarded
+resume and checks its endpoint. Logical template origins are compared against the
+Native expression entry rather than inferred from a surviving Blue map grant. A
+negative case initially exposes an erased opening being reclassified as generated
+grouping; that erasure now fails against Native authority. No original Native map
+bytes or frozen configurations are changed. The six complete async/template
+expression sets retain **42 maps / 2,260 ordered Native segments**, with no
+same-position duplicates.
+
+The seven async-template products reject **147** bounded mapping/control-flow
+mutations, and the seven generator-template products reject **140**: **287 new /
+949 total**. They cover logical openings/closings, captured literal and property
+interiors, method/receiver changes, fixed-text changes, skipped resumes, discarded
+resume changes and source grants in helpers/dispatch/transport. A Native/BlueTSC
+runtime regression compares concat getter order, the two/one argument grouping,
+string-hint conversion after await and early generator return/throw. Its VM event
+arrays are normalized across realm prototypes before comparison.
+
+JavaScript provenance is **v9**, private build state is epoch **34**, and old epochs
+4–33 rebuild. Compiler SHA-256 is
+`e27236ea94f03fe3d266376707883976e02b4127f860f1071ee890cffbe2a3ce`.
+All eleven role oracles pass without ignored functions: **363 configurations**,
+each built twice through the public CLI. Fifteen development targets pass **345**
+functions, zero failed, with 35 oracle functions ignored and the two full G-E5
+functions filtered. All seven emitted-target/runtime tests pass. All **500** G-E1
+programs pass **1,000** declaration consumers and **500** executions. The six
+owner/cache/helper/atomicity/budget controls and 11 source-boundary regressions
+pass. K.11 passes **22/22** actual launcher/core/child generated tests, including
+the unchanged eleven-row helper matrix and malformed/substituted/stale-map
+negatives. Both BlueTS crates pass all-target warnings-denied Clippy; workspace
+formatting and source/case/tool/status audits pass.
+
+[Current scope](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind this evidence to the
+compiler and source/test/tool hashes, including renewed 617 retained, 146 Node
+and 452 Native-defect configuration replays. The 21,084 earlier observations and
+prior fixture bytes remain intact. Remaining lowering contracts, the complete
+immutable cohort and unfiltered ordinary gate are still pending. **G-E5 remains
+unchecked; no commit or push is made.**
+
+### G-E5 optional/nullish complete module family — 2026-11-02
+
+The optional/nullish family completes all **363 frozen configurations / 363
+JavaScript maps**, including all targets, CommonJS/ESM/AMD/UMD/System/Node16/
+NodeNext formats, helper-flag combinations, original/CRLF/astral coordinates and
+additional publication products. Every configuration passes two public CLI builds,
+complete diagnostics/artifact inventories, exact declarations and declaration maps.
+The frozen input/reference and all previously tracked fixture bytes are unchanged.
+
+The emitter retains original receiver, property, predicate, captured-branch,
+fallback and grouping owners through optional/coalesce lowering. Copied operands
+use relocation markers rather than generated text anchors. Retained getter/object
+closes and original expression-group endpoints match Native. System variable
+keyword removal also removes its whitespace when no comment intervenes, preventing
+deleted keyword trivia from retaining user coordinates. Integration first exposed
+22 existing callable-return configuration differences: an empty arrow parameter
+list was treated as an expression group at its closing endpoint. Empty parameter/
+call lists now retain their opener through the following gap, and all 617 retained
+configuration contracts pass after that correction.
+
+Independent whole-module ABI contracts validate CommonJS, ESM, AMD, both UMD
+loader branches and System registration/publication, fresh bindings and complete
+helper definitions. The expression contract checks every physical UTF-16 character,
+all original roles, mapped predicates and branch endpoints, complete generated
+transport/gaps and metadata; identical JavaScript still requires full decoded-map
+equality. Corrected Native authority is used only for exact hash-bound ledger
+entries. No Blue map snapshot or unordered owner inventory is accepted.
+
+All **8,515** new isolated valid map/code mutations are rejected, including erased
+or retargeted interiors/grouping/endpoints, altered published bindings, receiver/
+property/fallback changes, incorrect capture slots, inverted strict nullish guards,
+module transport changes and source grants in helper/header/comments. The unchanged
+original artifacts execute **806** times across Native/BlueTSC and both UMD
+branches, yielding 42. Another **1,612** runtime-fixture executions replace the
+original object initializer with null or undefined and yield 0. These additional
+runtime fixtures neither replace nor enlarge the frozen map cohort.
+
+The measured total is **1,489 configurations / 1,371 JavaScript maps**: **61 fully
+covered families** and six partially covered generator families. Remaining work is
+**76 families / 6,918 configurations / 8,822 maps**: G-E1 23/733/784,
+G-E2 13/4,611/5,700 and G-E3 40/1,574/2,338. The six partial generator families
+retain their 42 required ES5/publication products.
+
+JavaScript provenance is **v10**, private build state is epoch **35**, and epochs
+4–34 rebuild. Compiler SHA-256 is
+`77fb84d39fb28aa08072c772f0d708c581f8066bd29ef8f6a1b784284deb8010`. All twelve role oracles pass with no ignored functions:
+**726 configurations**, two builds each, and **9,464** rejected bounded controls.
+The 15-target development regression passes **346** functions with zero failures,
+36 ignored oracle functions and the two final G-E5 functions filtered. All seven
+emitted-target/runtime tests, all **500** G-E1 programs with **1,000** declaration
+consumers and **500** actual executions, six owner/cache/helper/atomicity/budget
+controls and 11 source-boundary regressions pass. The current compiler replays all
+452 Native-defect configurations / 572 maps twice. K.11 passes **22/22** actual
+launcher/core/child generated tests, including the unchanged eleven-row helper
+matrix and stale/substituted/malformed-map negatives. Both BlueTS crates pass
+all-target warnings-denied Clippy; workspace format and source/case/tool/status
+audits pass. Production Rust files remain below 1,500 lines.
+
+[Current scope](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind these results to the compiler
+and source/test/tool hashes. All 21,084 earlier observations remain intact.
+Remaining lowering contracts, the complete immutable cohort and unfiltered ordinary
+gate are pending. **G-E5 remains unchecked; no commit or push is made.**
+
+### G-E5 array/call spread complete module family — 2026-11-02
+
+All **363 frozen array/call-spread configurations / 363 JavaScript maps** pass
+complete source-role contracts: every target, module format, helper flag,
+original/CRLF/astral coordinate variant and extra publication profile. Each
+configuration passes two public CLI builds, complete diagnostics/artifact
+inventories, exact declarations and complete declaration maps. No frozen inputs,
+Native reference bytes or previously tracked fixtures are changed.
+
+Initial tests expose a retained spread-call endpoint missing before addition,
+lost operand interiors, the wrong inherited array-helper prefix, and callee/
+argument transport collapsed to one source owner. The emitter moves original
+operands through verbatim relocation markers and preserves the distinct callee,
+argument and close boundaries. Retained calls before binary operators keep their
+full closing endpoint; ES5 apply calls retain the final argument endpoint. The
+latter is found with one bounded linear delimiter-stack pass. Generated inline
+invocation functions remain unmapped.
+
+The complete module cohort also exposes System-specific issues. Hoisted original
+functions now carry their ending map segment and leading original comments.
+Lowered array-assignment terminators retain the final operand owner, while the
+statement endpoint remains separate. Relocation offsets count expanded text bytes
+rather than marker bytes. Original comments are hoisted with their function,
+including the CRLF/astral prefix, instead of being stranded in execute.
+
+Shared module transport and physical-role accounting retain strict metadata,
+ordered gap ownership, every token interior and all generated-only code. The new
+spread contract checks the complete original function/array statements, all helper
+calls and actual argument flow. It validates CommonJS, ESM, AMD, both UMD branches,
+System setters/publication, imported or global tslib helpers, two coherent complete
+inline helper groups and the generated invocation ABI. Original bindings cannot
+be renamed; fresh compiler bindings follow only reviewed roles. Identical code
+still requires full decoded-map equality.
+
+All **9,397** new isolated bounded mapping/code mutations fail: erased/retargeted
+original interiors/endpoints, wrong callee/arguments/bindings/operators, changed
+module/helper dependencies, disabled sparse packing, unrequested iteration,
+changed invocation intrinsics, and helper/import/comment source grants. Actual
+Native/BlueTSC artifact execution passes **806** runs with result 44. Another
+**806** sparse runtime-fixture executions preserve all three copied indexes,
+including an explicit undefined value at the original hole. Supplemental runtime
+fixtures neither replace nor enlarge the frozen map cohort.
+
+The measured total is **1,852 configurations / 1,734 JavaScript maps**, with **62
+fully covered families** and six partial generator families. Remaining work is
+**75 families / 6,555 configurations / 8,459 maps**: G-E1 23/733/784,
+G-E2 12/4,248/5,337 and G-E3 40/1,574/2,338. The six partial generator families
+still require their 42 ES5/publication products.
+
+JavaScript provenance is **v11**, private build state is epoch **36**, and epochs
+4–35 rebuild. Compiler SHA-256 is
+`7315e595db3f327fc77f7ec8b1f870db7f3df74af503a112bb640c39d84b01ba`. All thirteen role oracles pass without ignored functions:
+**1,089 configurations**, two builds each, and **18,861** rejected bounded controls.
+The 15-target development regression passes **347** functions, zero failed, with
+37 ignored oracle functions and two final G-E5 functions filtered. All seven
+emitted-target/runtime tests and all **500** G-E1 programs pass, including **1,000**
+declaration consumers and **500** actual executions. Six owner/cache/helper/
+atomicity/budget controls and 11 source-boundary regressions pass. The current
+compiler replays all 452 Native-defect configurations / 572 maps twice. K.11 passes
+**22/22** actual launcher/core/child tests, including the unchanged eleven-row
+helper matrix and stale/substituted/malformed-map negatives. Both BlueTS crates
+pass all-target warnings-denied Clippy; workspace formatting and source/case/tool/
+status audits pass. Production Rust files remain below 1,500 lines.
+
+[Current scope](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind this proof to compiler and
+source/test/tool hashes. All 21,084 previous observations remain intact. Remaining
+lowering contracts, the complete immutable cohort and final unfiltered ordinary
+gate are pending. **G-E5 remains unchecked; no commit or push is made.**
+
+### G-E5 tagged-template complete module family — 2026-11-02
+
+All **363 frozen tagged-template configurations / 363 JavaScript maps** pass
+complete source-role contracts, including every target/module/helper combination,
+original/CRLF/astral coordinates and additional publication profiles. Each passes
+two public CLI builds, complete diagnostics/artifact inventories, exact declaration
+bytes and complete declaration maps. Frozen inputs/reference, the 572-row ledger
+and all previously tracked fixtures remain unchanged.
+
+Initial tests pass all 288 retained-template configurations and expose missing
+raw-tail/substitution roles in the 75 ES5 products. The emitter now preserves each
+raw span's beginning/end and moves substitutions with verbatim provenance. A
+mapped-fragment completion operation retains the logical caller endpoint without
+replacing internal raw span endpoints. Syntax context distinguishes full variable
+initializer extents from assignment calls ending at the final substitution;
+System top-level declarations become assignments. This resolves all ESM, Node
+ESM and CommonJS/wrapped/System endpoint differences. A new ordinary public-
+compiler regression compares raw/substitution/statement boundaries for CommonJS/
+ESM and both coordinate variants, and confirms constructor definitions remain
+unmapped.
+
+The complete module contract validates all site-cache reads/writes and slot
+inventory, complete constructor/import ABI, both cooked/raw arrays, every physical
+transport character and all original tag/substitution token interiors. The common
+tslib import contract now serves spread and tagged profiles. Generated callback
+parameters reject default/rest/typed forms; System setter parameters may share a
+name with an unrelated user-function local but cannot capture module bindings.
+Every original binding keeps its spelling. Identical emitted code still requires
+full decoded-map equality; generated helpers/imports/comments remain unmapped.
+
+All **8,533** new isolated valid bounded map/code mutations fail, including missing
+or retargeted raw/substitution/endpoints, changed cooked/raw text, wrong tag/value/
+publication, inverted cache guards, writes to another cache slot, changed module/
+helper dependencies, and source grants in site declarations, helpers and comments.
+Native/BlueTSC pass **806** original artifact executions with result 42. A separate
+**806** repeated-site fixture execution set verifies stable site identity, cooked/
+raw values, raw descriptor flags and the target-specific Native frozen state.
+These supplemental runtime fixtures neither replace nor enlarge map acceptance.
+
+The measured total is **2,215 configurations / 2,097 JavaScript maps**: **63 fully
+covered families** and six partially covered generator families. Remaining work
+is **74 families / 6,192 configurations / 8,096 maps**: G-E1 23/733/784,
+G-E2 11/3,885/4,974 and G-E3 40/1,574/2,338. The six partial generator families
+still require all 42 ES5/publication products.
+
+JavaScript provenance is **v12**, private build state is epoch **37**, and epochs
+4–36 rebuild. Compiler SHA-256 is
+`58ded8df8d0aea8c61131b15bb8d8a8a383c32dc6c4b172896a15a41ec4c4241`. All fourteen role oracles pass without ignored functions:
+**1,452 configurations**, two builds each, and **27,394** rejected bounded controls.
+Fifteen development targets pass **349** functions, zero failed, with 38 ignored
+oracle functions and two final G-E5 functions filtered. Seven emitted-target/
+runtime tests and all **500** G-E1 programs pass, including **1,000** declaration
+consumers and **500** executions. Six owner/cache/helper/atomicity/budget controls
+and 12 source-boundary regressions pass. The current compiler replays all 452
+Native-defect configurations / 572 maps twice. K.11 passes **22/22** real launcher/
+core/child generated tests, including the unchanged eleven-row helper matrix and
+stale/substituted/malformed-map negatives. Both BlueTS crates pass all-target
+warnings-denied Clippy; workspace formatting and source/case/tool/status audits
+pass. Production Rust files remain below 1,500 lines.
+
+[Current scope](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind the compiler and source/
+test/tool hashes. All 21,084 prior observations remain intact. The remaining
+lowering contracts, complete immutable cohort and final unfiltered ordinary gate
+are pending. **G-E5 remains unchecked; no commit or push is made.**
+
+### G-E5 computed-assignment generator complete family — 2026-11-02
+
+All **27 frozen computed-assignment-yield configurations** now pass: the seven
+ES5 CommonJS/ESM and additional-publication products join the twenty previously
+validated retained-generator products. Each has two public CLI builds, complete
+diagnostics/artifact lists, exact declarations and complete declaration maps.
+Frozen inputs, Native references and the 572-row defect ledger remain unchanged.
+
+The continuation contract models dense arrays, computed references and writes,
+each saved object's/key's identity, suspension/resume order, carried RHS values
+and original binding reads. Every physical reference character is checked against
+the complete Native reference role, while the operation retains its own owner.
+This catches late re-evaluation of a user array after a suspension. The emitter
+retains the whole saved-reference range and preserves the dense initializer's
+statement ending separately from its expression ending. Integration initially
+exposed a logical-yield endpoint regression: synthetic split-initializer stores
+must end at the initializer, whereas an intact initializer retains the statement
+ending. Tracking the complete original initializer range fixes that distinction;
+all existing logical-yield products pass again without changing expectations.
+
+All **238** new isolated valid bounded map/code controls are rejected, including
+incorrect saved object/key aliases, late array reads, changed yields, swapped key/
+RHS values, changed writes/resume operations and source grants in generated code.
+Native and BlueTSC pass **14 original artifact executions** and **42 supplemental
+executions**: a zero key, array rebinding during suspension and early return before
+the write. The rebinding fixture verifies both the saved original array and the
+new current binding, so an incorrectly delayed reference evaluation cannot pass.
+Supplemental runtime fixtures do not replace frozen map inputs. An ordinary
+public-compiler regression checks every saved-reference character, the operation
+and initializer statement endpoint against Native for both coordinate variants.
+
+Measured coverage is **2,222 configurations / 2,104 JavaScript maps**, with
+**64 fully covered families** and **five partially covered generator families**.
+Remaining work is **73 families / 6,185 configurations / 8,089 maps**:
+G-E1 22/726/777, G-E2 11/3,885/4,974 and G-E3 40/1,574/2,338. The five partial
+families still require all 35 ES5/publication products.
+
+JavaScript provenance is **v13**, build-state epoch **38**; epochs 4–37 rebuild.
+Compiler SHA-256 is `8b887e561eaa0ad090177cd4931e5e0535399fd3c5878557d5a24badf2205013`. All **15 role oracles** pass, covering **1,459
+configurations**, two builds each, and **27,632 rejected bounded controls**.
+Fifteen development targets pass **350 functions**, zero failed, with 39 ignored
+oracle functions and two final G-E5 functions filtered. Seven emitted-target/
+runtime tests, all **500 G-E1 programs**, **1,000 declaration consumers** and **500
+executions** pass. Six owner/cache/helper/atomicity/budget controls and 13 source
+boundary regressions pass. The current compiler replays all 452 Native-defect
+configurations / 572 maps twice. K.11 passes **22/22** real launcher/core/child
+generated tests, including the unchanged eleven-row helper matrix and stale/
+substituted/malformed-map negatives. Both BlueTS crates pass all-target warnings-
+denied Clippy; formatting and source/case/tool/status audits pass. Production Rust
+files remain below 1,500 lines. All 21,084 prior observations remain intact.
+
+[Current scope](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind the compiler and source/
+test/tool hashes. The remaining complete lowering contracts, full immutable
+cohort and unfiltered ordinary gate are pending. **G-E5 remains unchecked; no
+commit or push is made.**
+
+### G-E5 switch-fallthrough generator complete family — 2026-11-02
+
+All **27 frozen switch-suspension-fallthrough configurations** pass complete
+source-role contracts. The seven ES5 CommonJS/ESM/publication products join the
+twenty retained-generator products. Every configuration passes two public CLI
+builds, diagnostics/artifact inventories, exact declarations and full declaration
+maps. Frozen Native inputs/reference and the 572-row defect ledger are unchanged.
+
+The independent continuation trace follows all **three complete selection paths**:
+the first case with suspension and fallthrough, direct selection of the second
+case, and default. Every case expression, original punctuation, source jump,
+compound write, carried resumed value and break completion is classified. Source
+case jumps and breaks retain their separate Native statement endpoints. The
+emitter retains synchronous case selection as a switch instead of introducing
+extra comparison continuations; case tests with suspension and the external
+helper ABI retain their existing continuation strategy. Case punctuation is
+followed by a generated line reset rather than inheriting a trivia owner from a
+different original case-body shape. This preserves full character ownership
+without manufacturing missing original coordinates. Carried user writes now use
+the Native RHS role, distinguishing an assignment from a declaration initializer.
+
+All **301 isolated bounded map/code mutations** are rejected: missing case values,
+colons, jump interiors/endpoints, default/selector source grants, duplicate cases,
+wrong case/default/break destinations, skipped fallthrough, changed compound
+operations, initial/fallback/yield values, resumed targets and source grants in
+helpers/dispatch/comments. Native and BlueTSC pass **14 original executions** and
+**70 supplemental executions**, including direct case/default selection, a zero
+resume value, early return and an external throw. Supplemental fixtures do not
+replace frozen map configurations. A new ordinary public-compiler regression
+checks every source case-jump/break character and their distinct endpoints against
+Native for original and CRLF/astral sources.
+
+Coverage is **2,229 configurations / 2,111 JavaScript maps**, **65 fully covered
+families** and **four partially covered generator families**. Remaining work is
+**72 families / 6,178 configurations / 8,082 maps**: G-E1 21/719/770,
+G-E2 11/3,885/4,974 and G-E3 40/1,574/2,338. The four partial generator families
+still require 28 ES5/publication products.
+
+JavaScript provenance is **v14**, build-state epoch **39**, epochs 4–38 rebuild.
+Compiler SHA-256 is `521c3d49bb93a9bc1d5629c4f282fb6be7fd7aebb9e63de819cb0c4e7e960eab`. All **16 role oracles** pass: **1,466 configurations**,
+two builds each, **27,933 rejected controls**. Fifteen development targets pass
+**351 functions**, zero failed, with 40 ignored oracle functions and two final
+G-E5 functions filtered. Seven local emitted-target/runtime tests, all **500 G-E1
+programs**, **1,000 declaration consumers** and **500 executions** pass. Six owner/
+atomicity/budget/helper/cache controls and 14 source-boundary regressions pass.
+The current compiler replays all 452 Native-defect configurations / 572 maps
+twice. K.11 passes **22/22** real launcher/core/child generated tests, including
+the unchanged eleven-row helper matrix and stale/substituted/malformed-map
+negatives. Both BlueTS crates pass all-target warnings-denied Clippy; formatting,
+source/case/tool/status, fixture preservation and source-size audits pass. All
+21,084 prior observations remain intact; production Rust remains below 1,500 lines.
+
+[Current scope](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind the actual compiler and
+source/test/tool hashes. Remaining lowering contracts, the complete immutable
+cohort and final unfiltered ordinary gate are pending. **G-E5 remains unchecked;
+no commit or push is made.**
+
+### G-E5 finally-return and catch/finally complete families — 2026-11-02
+
+All **54 frozen configurations** in the two families pass complete source-role
+contracts, including all fourteen ES5 CommonJS/ESM/publication products and forty
+retained-generator products. Every configuration has two public CLI builds,
+complete diagnostics/artifact inventories, exact declarations and full declaration
+maps. Production code requires no correction for these two families.
+
+The independent exception-region model decodes Native try descriptors and BlueTSC
+entry actions, validates all state references and follows body/catch/finally phases,
+pending returns, finalizer overrides, source throws, normal leave and end-finally
+routing. All original evaluations, hygienic catch alias reads, side effects and
+source endings match Native. Every generated-only character remains unmapped.
+The complete source path inventory includes both the selected case and default;
+the union covers all original states. Exact generated dead-state inventories
+reject extra or substituted scaffold states. Separate valid bounded code negatives
+initially exposed accepted unreachable statements after entry/finish actions; the
+trace now requires every region transfer and source throw to end its entire state. Ordinary public-compiler tests check
+distinct return roles, caught alias interiors/endpoints, finalizer effects and
+unmapped region/catch transport for original and CRLF/astral sources.
+
+All **728 isolated bounded map/code controls** fail: 294 for finally-return and
+434 for catch/finally. They include retargeted region edges, missing finally,
+changed masked/pending returns, wrong overrides, substituted catch values/aliases,
+changed logging/conversion, skipped source operations and source grants in region,
+helper, dispatch and unreachable scaffolds. Native and BlueTSC pass **28 original
+artifact executions** plus **238 supplemental executions**. Scenarios cover abrupt
+completion before start, in try, in catch, in finally and after completion. A
+supplemental selector change exercises the otherwise unselected default return
+through finally. Supplemental fixtures suppress the original steps initializer
+to avoid pre-running the log; original artifact executions remain separate.
+No supplemental source or expectation replaces the frozen map configurations.
+
+Coverage is **2,243 configurations / 2,125 JavaScript maps**, with **67 fully
+covered families** and **two partial generator families**. Remaining work is
+**70 families / 6,164 configurations / 8,068 maps**: G-E1 19/705/756,
+G-E2 11/3,885/4,974 and G-E3 40/1,574/2,338. Loop-abrupt-finally and delegated
+external-return/finally retain all 14 required ES5/publication products.
+
+The compiler SHA-256 remains `521c3d49bb93a9bc1d5629c4f282fb6be7fd7aebb9e63de819cb0c4e7e960eab`, provenance **v14** and state epoch **39**.
+Every production source hash is checked against the prior accepted measurement.
+Its same-binary **seven local tests**, **500 G-E1 programs / 1,000 declaration
+consumers / 500 executions** and **22 K.11 real-process tests** are explicitly
+reused, with original log hashes and the baseline measurement hash retained.
+These are not claimed as freshly executed. Refreshed checks pass **18 role
+oracles / 1,480 configurations / 28,661 rejected controls**, **353 functions** in
+15 development targets (42 oracle functions ignored, two final G-E5 functions
+filtered), six owner/cache/helper/atomicity/budget controls, 16 source-boundary
+tests, both-crate all-target warnings-denied Clippy and workspace formatting.
+The current compiler replays all 452 Native-defect configurations / 572 maps
+twice. Source/case/tool/status, frozen authority, fixture, MPL and production-size
+audits pass. All 21,084 prior observations are intact; production Rust remains
+below 1,500 lines. Frozen Native inputs/reference and the defect ledger are unchanged.
+
+[Current scope](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind the compiler and source/
+test/tool hashes. Remaining lowering contracts, the complete immutable cohort
+and unfiltered ordinary gate are pending. **G-E5 remains unchecked; no commit or
+push is made.**
+
+### G-E5 loop-abrupt/finally complete family — 2026-11-02
+
+All **27 frozen loop-abrupt-finally configurations** pass complete source-role
+contracts, including seven ES5/publication products and twenty retained-generator
+products. Every configuration passes two public CLI builds, diagnostics/artifact
+inventories, exact declarations and complete declaration maps. Frozen Native
+inputs/reference and the defect ledger remain unchanged.
+
+The independent bounded scalar model identifies the hygienic loop binding using
+the original declaration coordinate, then tracks initialization, snapshots,
+comparisons and increments. Native and BlueTSC regions preserve each iteration's
+normal leave, continue and break destinations through finally. Every original
+evaluation and physical source role is compared; complete dead-state inventories
+and termination checks reject extra generated code. The unselected guard exit is
+statically tied to the final continuation, so an incorrect but valid destination
+cannot escape merely because the original input exits with break.
+
+Tests expose and correct three provenance gaps: for-header initialization ends
+at its initializer instead of inheriting the delimiter's statement endpoint;
+captured synchronous if predicates retain original keyword/closing roles; the
+latent loop exit keeps its Native condition-ending owner. Structured initializer
+origins distinguish headers from standalone declarations. Source predicate origins
+stay separate from generated dispatch. Existing async/suspending predicates retain
+their established lowering. A public-compiler regression compares these distinct
+roles against Native for original and CRLF/astral source.
+
+All **364 bounded map/code controls** are rejected, including missing initializer/
+predicate/update/jump boundaries, erased or retargeted guard exits, unselected exit
+destinations, wrong increments, region destinations/depth, changed abrupt tests,
+missing finally and unreachable code after a generated transfer. Native and
+BlueTSC pass **14 original executions** and **126 supplemental executions**:
+zero iterations, continue/guard exits, suppressed continue/break conditions and
+return/throw during body/finally suspension, including the second iteration.
+Supplemental fixtures suppress the original steps initializer and do not replace
+any frozen map configuration.
+
+Coverage is **2,250 configurations / 2,132 maps**, **68 fully covered families**
+and **one partial generator family**. Remaining work is **69 families / 6,157
+configurations / 8,061 maps**: G-E1 18/698/749, G-E2 11/3,885/4,974 and
+G-E3 40/1,574/2,338. Delegated external-return/finally retains all seven required
+ES5/publication products.
+
+The compiler SHA-256 is `ad5ccfe0a00104b7468239b90b81315e5a08bd6897c4ce3d87310bcd741441bd`, provenance **v15**, state epoch **40**; old epochs
+4–39 rebuild. All **19 role oracles / 1,487 configurations / 29,025 rejected
+controls** pass. Fifteen development targets pass **354 functions**, zero failed,
+43 ignored oracle functions and two final G-E5 functions filtered. Six owner/
+cache/helper/atomicity/budget controls, 17 source-boundary tests, both-crate
+all-target warnings-denied Clippy and workspace formatting pass. All behavior
+gates are refreshed for this compiler: **seven local tests**, **500 G-E1 programs
+/ 1,000 declaration consumers / 500 executions**, and **22 K.11 real-process
+tests**, including the unchanged eleven-row helper-frame matrix and stale/
+substituted/malformed-map negatives. The current compiler replays all 452 Native-
+defect configurations / 572 maps twice. Source/case/tool/status, frozen authority,
+fixture, MPL and production-size audits pass; production Rust remains below 1,500
+lines and all 21,084 prior observations remain intact.
+
+[Current scope](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind the actual compiler and
+source/test/tool hashes. Remaining lowering contracts, the full immutable cohort
+and unfiltered ordinary gate are pending. **G-E5 remains unchecked; no commit or
+push is made.**
+
+
+### G-E5 binding/delegation complete-family integration — 2026-11-02
+
+Five complete binding families add 159 frozen configurations/maps. Their
+contracts compare every source token/interior, ordered gap, helper/continuation
+ABI, declaration artifact and map across two public CLI builds. All 13,797
+bounded controls are rejected; 318 original and 798 supplemental executions pass.
+The remaining seven delegate/finally ES5 products also pass: both complete
+function graphs preserve pending returns through finalizers, all 546 map/code/
+helper controls fail, and 14 original plus 126 supplemental executions pass.
+No production delegation change is required.
+
+Production corrections preserve binding root/leaf/default/parameter origins and
+rest-loop phases; named ES5 class publication uses the name span, while System
+class assignment/completion and unmapped publication have separate roles.
+Retained legacy classes publish their initial constructor before decorators;
+ES5 preserves Native's absent initial module publication. A separate 32-case
+cycle oracle passes two CLI builds, complete declarations/maps, 80 actual loader
+executions and 56 deletion controls. It does not enlarge the frozen map cohort
+or establish complete decorator-family parity. Metadata/rest helper scope alone
+is not counted as a complete family.
+
+All 25 role oracles pass 1,653 configurations and reject 43,368 bounded controls.
+The common regression passes 17 targets / 367 tests; seven local behavior tests,
+500 G-E1 programs / 1,000 consumers / 500 executions, six owner/cache/helper/budget
+controls, 19 source-boundary tests, both-crate all-target Clippy, formatting and
+22 real-process K.11 tests pass. The 452 Native-defect configurations / 572 maps
+are replayed twice using the current compiler. Provenance v16 / state epoch 41
+invalidates epochs 4–40. Compiler SHA-256:
+`6e69b6b7fa40da6090c66f8742a94737a236c536a2199958daeb6c40aecdb2b7`.
+
+Three independent worktrees continue class/super, object/iteration and decorator
+work; only baseline-relative completed deltas enter the integration branch.
+Current acceptance covers **74 complete families / 2,416 configurations / 2,298
+JavaScript maps**. Remaining: **63 families / 5,991 configurations / 7,895 maps**.
+[Role contracts](GE5_ROLE_CONTRACTS.md) and [measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json)
+bind the compiler and source/test/tool hashes. Remaining lowering contracts,
+the full immutable cohort and unfiltered ordinary gate are pending.
+**G-E5 remains unchecked; no commit or push is made.**
+
+
+### G-E5 parallel class/iteration/decorator/callable integration — 2026-11-02
+
+Three independent worktrees close fifteen additional complete source families:
+seven class/super families (661 configurations / 712 maps), object/rest-spread
+(351/351), iterable binding/for-of (339/339), four preserved private/decorator
+families (28/28), async-arrow defaults (27/27), and legacy parameter decorators
+(363/363). Every frozen target, module, helper, coordinate and publication
+product passes two public CLI builds, diagnostics/artifact inventories, raw
+declarations and complete decoded declaration maps. The prior super-write
+subset is included once in the complete class/super coverage.
+
+Production corrections retain original field initializer subtrees and logical
+endpoints, class/heritage/super/constructor origins, imported grouping and clause
+boundaries, and separate module factory/publication phases. System moved-function
+completion stays in the factory; execute trivia is unmapped while an adjacent
+real statement keeps its own origin. Comments attached to erased declarations
+cannot acquire a source grant. A generic class-span renderer uses global
+relocation coordinates and preserves moved V/A fragments; the four standard
+literal-field regression products execute successfully with original initializer
+owners retained. The existing G3 helper-prefix/static-field contracts remain
+required and are not closed by that regression.
+
+Async-arrow callback headers, body-entry gaps and callback/driver logical
+endpoints follow Native phases. The ES5 default guard has an independent complete
+three-state proof and a closed original-AST/verified-UTF-16 prologue capability;
+the core continuation remains independently checked. The complete family rejects
+745 controls and passes 54 original plus 378 supplemental executions. All inline
+map controls remain coherent with their encoded sourceMappingURL. The complete
+legacy-parameter-decorator family rejects 6,805 controls and passes 986 actual
+loader scenarios. Four preserved private/decorator families retain exact frozen
+Native adapter outcomes, including the expected private-super SyntaxError; this
+does not claim direct Node support for preserved decorator syntax.
+
+The common compiler passes **34 role oracles / 3,422 configurations / 137,764
+rejected controls**. Class/super execution passes 1,402 Native/Blue artifact runs;
+all 1,424 programs parse at the selected edition. Common development regression
+passes **31 targets / 434 tests**, with 60 ignored oracle functions and two final
+G-E5 functions filtered. Seven local runtime tests, 500 G-E1 programs / 1,000
+declaration consumers / 500 executions, six owner/cache/helper/budget controls,
+20 source-boundary tests, both-crate all-target warnings-denied Clippy and
+workspace formatting pass. All 22 K.11 real-process tests pass, preserving the
+eleven-row helper-frame matrix and stale/substituted/malformed negatives.
+Supplemental decorator publication and initialization-phase checks pass 32/64
+configurations, 80/160 executions and 56/352 controls respectively.
+
+Provenance **v17**, private state epoch **42**, rebuilds old epochs 4–41. Compiler
+SHA-256: `c8c2f497b5eefa9f15807014683d444476dce03fc086d1ee0d7fc51c6d1923f7`.
+All 452 Native-defect configurations / 572 maps replay twice. Frozen input,
+reference and defect-ledger hashes, all prior fixture bytes and all 21,084 earlier
+observations remain intact. Source/case/tool/status checks pass; current refusal
+locations are regenerated from production without changing prior measured labels.
+
+Current coverage is **89 fully covered families / 4,185 configurations / 4,118
+JavaScript maps**, with no partial family counted. Remaining: **48 families /
+4,222 configurations / 6,075 maps** (G-E1 5/207/207, G-E2 7/2,469/3,558,
+G-E3 36/1,546/2,310). [Role contracts](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind actual compiler,
+artifacts and source/test/tool hashes. The full immutable cohort and unfiltered
+ordinary gate are pending. **G-E5 remains unchecked; no commit or push is made.**
+
+
+### G-E5 lexical receiver and object-method integration — 2026-11-02
+
+Two further complete families pass every frozen option, coordinate and publication
+product: async-arrow lexical receivers (51 configurations/maps) and async object
+methods (27). Both public CLI builds retain complete diagnostics, selected inputs,
+artifact inventories, byte-exact declarations and complete decoded declaration maps.
+The common immutable compiler is
+`142a7926a207ba088c727f8f0f3f7823937173492eddded18ce959b9d80002eb`.
+
+The lexical-arrow contract proves the original class-field/constructor/factory/
+callback receiver chain, plain formal relocation, complete expression endpoints
+and every generated grouping/transport character. Typed field delegation accepts
+only exact original/native/actual AST subtrees after every UTF-16 unit and logical
+endpoint has already been proved. Constructor captures and generated comments
+remain tied to that same exact field proof. Unfinished class-expression generated
+binding rules are excluded. All 1,916 coherent mapping/code/capability controls
+fail; 102 original and 1,224 supplemental Native/Blue executions pass.
+
+Object-method lowering now copies method identity, parameter and body subtrees
+with provenance rather than plain text. The implementation is a separate method
+module. Retained method bodies keep the original parameter-list completion across
+erased return annotations. Lowered driver completion retains the original method
+endpoint; its carrier is consumed before the generated apply wrapper. Original-AST
+method identity distinguishes this completion from ordinary function and arrow
+paths. The complete dynamic-this/apply/arguments/awaiter/generator chain is checked;
+all generated names, guards and helper definitions remain unmapped. A closed
+relocated-signature capability requires exact original ancestry, runtime formals,
+callback identity, full header intervals and independent coverage of every unit.
+All 2,469 coherent controls fail. The 54 original and 702 supplemental executions
+include borrowed/bound/detached receivers, apply argument forwarding, getter order,
+left reads before await-side mutation and getter/await rejection.
+
+Provenance v18 and private state epoch 43 invalidate epochs 4–42. The common replay
+passes 37 role functions / 3,500 unique configurations / 142,149 controls, including
+all previously accepted class, binding, object, iteration, module and continuation
+families. Development regression passes 36 targets / 440 tests (63 oracle functions
+ignored by that command and two final G-E5 functions filtered). Seven local runtime
+tests, 500 G-E1 programs / 1,000 declaration consumers / 500 executions, six owner/
+cache/helper/budget controls, 20 source-boundary tests, formatting and both-crate
+all-target warnings-denied Clippy pass. One boundary test still expected epoch 42;
+its two assertions were updated to 43 and the entire six-control entry rerun.
+All 22 K.11 real-process tests pass, preserving the eleven-row helper matrix and
+stale/substituted/malformed negatives. All 24 map/patch/typed-field unit tests pass;
+the separate relocated-signature API test passes one positive and eleven negatives.
+Class artifact execution/syntax and supplemental decorator publication/initialization
+checks are refreshed against the same compiler. All 452 Native-defect configurations /
+572 maps replay twice; the source/case/tool/status audits pass. Frozen inputs,
+reference bytes, old fixture graph and all 21,084 prior observations remain intact.
+
+Current coverage is 91 fully covered families / 4,263 configurations / 4,196
+JavaScript maps, with no partial family counted. Remaining: 46 families / 4,144
+configurations / 5,997 maps (G-E1 3/129/129, G-E2 7/2,469/3,558 and G-E3
+36/1,546/2,310). The [role contracts](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind the compiler, artifacts and
+source/test/tool hashes. Remaining lowering contracts, the full immutable cohort
+and unfiltered ordinary gate are pending. **G-E5 remains unchecked; no commit or push.**
+
+
+### G-E5 async class-method and generator integration — 2026-11-03
+
+Two further complete families pass all frozen products: async class methods (51
+configurations/maps) and async-generator exception/templates (27). Every product
+uses two public CLI builds, full diagnostics and selected-input/artifact inventories,
+byte-exact declarations, complete declaration maps and strict JavaScript metadata,
+coordinates, token interiors, logical endings, generated transport and ordered gaps.
+The immutable common compiler is
+`5d57a1e7f575b12ce0163f35e31a5dcdb3ec410b29199918ceb0bed6a90e4289`.
+
+Class-method wrappers retain original typed method signatures and closing endpoints
+through ES5 descriptor and callback relocation. A source-bound completion carrier
+is consumed before generated apply transport. The exact original async method,
+emitted class member and every independently proved UTF-16 unit are required before
+delegation; the enclosing class still owns descriptor transport and surrounding
+gaps. No initializer endpoint rule is substituted for a method's physical boundary.
+The shared relocated-signature kernel checks exact class ancestry, callbacks,
+plain runtime formals and complete preproved header ranges. All 5,419 coherent
+controls fail; 102 original and 1,428 supplemental executions pass, including
+borrowed/bound/detached receivers, arity, argument forwarding, getter order, left
+reads before await-side mutation and getter/await rejection. Both producers parse
+at every configured target in Acorn.
+
+Async-generator lowering retains global operand/template spans and separate
+await, yield, return and statement-completion phases. Both complete physical state
+machines are proved before comparing their logical events, including Native's
+extra public forwarding and implicit return-await operations. Typed WeakMap proofs
+bind the original body, helper/marker ABI, every state, slot, pending finally edge
+and preproved callback header. Source identifiers following template substitutions
+come from the original AST. Private queued return adopts its value before enqueueing,
+matching pinned lowered Native behavior; retained ES2018/ES2022 remain native async
+generators. All 1,466 coherent controls fail. The 54 original and 810 supplemental
+executions cover queued next/return/throw requests, promised return, abrupt getters,
+conversion order and finally effects. The neighboring 363-product generator family
+has runtime-only evidence and remains open; no partial family is counted.
+
+Common provenance v19 / state epoch 44 rebuilds epochs 4–43. All 39 role functions
+pass 3,578 unique configurations and reject 149,034 bounded controls. Development
+acceptance passes 42 targets / 451 tests, with 67 ignored oracle functions executed
+separately where selected and two final G-E5 functions still filtered. Seven local
+runtime tests, 500 G-E1 programs / 1,000 declaration consumers / 500 executions,
+six owner/cache/helper/budget controls, 20 source-boundary tests, both-crate
+all-target warnings-denied Clippy and workspace formatting pass. All 22 K.11
+real-process tests pass, preserving the eleven-row helper matrix and stale,
+substituted and malformed map negatives. All 31 map/patch/typed-subtree unit tests
+and three separate capability API checks (three positives / 24 negatives) pass.
+Class execution/syntax and supplemental decorator publication/initialization checks
+are refreshed against the same compiler. All 452 Native-defect configurations /
+572 maps replay twice; source/case/tool/status audits pass. Frozen references,
+the old fixture graph and all 21,084 prior observations remain intact. Source
+refusal accounting remains 226 sites / 11 areas.
+
+Current coverage is 93 complete families / 4,341 configurations / 4,274 JavaScript
+maps. Remaining: 44 families / 4,066 configurations / 5,919 maps (G-E1 1/51/51,
+G-E2 7/2,469/3,558 and G-E3 36/1,546/2,310). The [role contracts](GE5_ROLE_CONTRACTS.md)
+and [measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind compiler, artifacts and
+source/test/tool hashes. The remaining lowering contracts, full immutable cohort
+and unfiltered ordinary gate are pending. **G-E5 remains unchecked; no commit or push.**
+
+
+### G-E5 async super-method and whole-module generator integration — 2026-11-03
+
+Two further complete families pass every frozen product: async super methods
+(51 configurations/maps) and whole-module async-generator/finally (363).
+Every configuration uses two public CLI builds, complete diagnostics and selected
+input/artifact inventories, byte-exact declarations, every decoded declaration-map
+entry, and complete JavaScript metadata, coordinate, token, endpoint and gap roles.
+The immutable common compiler is
+`e9d8b90eebfd73add1a17caea06d29805885743fe6c4ae88193d4a8fe4fc988e`.
+
+Super-method mapping preserves the distinct original super receiver, named member,
+invocation completion and following arithmetic-operator phases. Empty ES5 method
+signatures keep their original async start through descriptor/callback relocation.
+The complete enclosing class, getter/arrow bridge and every physical UTF-16 unit
+are proved before a private WeakMap capability delegates the exact super lookup to
+the continuation graph. Forged views, sources, callbacks, bindings and reversed
+proofs fail closed. All 6,741 coherent mutations fail; 102 original and 1,326
+supplemental executions pass. Borrowed/bound/detached calls, arity, late base-method
+and getter replacement, lookup/call order, and rejection paths agree with Native.
+All target products pass pinned Acorn syntax checks.
+
+The whole-module generator contract proves private, ambient and imported helpers,
+module/export/header phases, all operand endpoints and comments, complete physical
+state machines, pending return through finally, and generated transport. Private
+lowered iterator methods follow Native closure receiver behavior; retained intrinsic
+methods preserve their receiver checks. All 19,572 coherent controls fail; 806
+original and 12,090 supplemental executions pass, including both UMD branches.
+The G-E1 generator replay adds 162 borrowed next/return/throw executions, bringing
+that unchanged 27-product family to 1,026 executions. The runtime loader publishes
+ambient helpers only for noEmitHelpers without importHelpers, ensuring private
+artifacts execute their actual emitted algorithms. Twelve independent routing
+controls and sixty captured receiver/argument products (120 executions) pass.
+
+A hoisted CommonJS function-publication carrier now preserves the source completion
+before generated transport. Twelve target/coordinate/map products pass public
+boundary checks and 36 effective controls; all 36 JavaScript/declaration/map
+artifacts retain their prior bytes, including six no-map products. Existing binding
+contracts now reject fifteen additional publication-endpoint mutations, increasing
+their total to 13,812. This component does not close a G-E3 class-expression family;
+those contracts remain in separate worktrees.
+
+Provenance v20 / state epoch 45 rebuilds epochs 4–44. All 41 role functions pass
+3,992 unique configurations and reject 175,362 bounded controls. Development
+acceptance passes 48 targets / 461 tests, with 73 ignored oracle functions and two
+final G-E5 functions still filtered. Seven local runtime tests, 500 G-E1 programs /
+1,000 declaration consumers / 500 executions, six owner/cache/helper/budget controls,
+20 source-boundary tests, both-crate all-target warnings-denied Clippy and workspace
+formatting pass. All 22 K.11 real-process tests pass, including the unchanged
+eleven-row helper matrix and stale/substituted/malformed-map negatives. All 31
+map/patch/typed-subtree unit tests and four capability API checks (four positives /
+32 negatives) pass. Class execution/syntax and supplemental decorator publication
+and initialization checks are refreshed against the same compiler. All 452
+Native-defect configurations / 572 maps replay twice. Source/case/tool/status audits
+pass; frozen references, prior fixtures and all 21,084 observations remain intact.
+Current refusal accounting is 227 sites / 11 areas, including the precise refusal
+when an async-super invocation closing boundary cannot be retained.
+
+Current coverage is 95 complete families / 4,755 configurations / 4,688 JavaScript
+maps. Remaining: 42 families / 3,652 configurations / 5,505 maps. G-E1 has no
+remaining families; G-E2 has 6/2,106/3,195 and G-E3 has 36/1,546/2,310.
+The [role contracts](GE5_ROLE_CONTRACTS.md) and
+[measurements](GE5_ROLE_CONTRACTS_MEASUREMENT.json) bind compiler, artifacts and
+source/test/tool hashes. The remaining lowering contracts, full immutable cohort
+and unfiltered ordinary gate are pending. **G-E5 remains unchecked; no commit or push.**
+
+
+### G-E5 class declaration endpoint audit correction — 2026-11-03
+
+An independent audit contradicts ten full-family claims in the v20 source-role
+measurement. The accepted compiler
+`e9d8b90eebfd73add1a17caea06d29805885743fe6c4ae88193d4a8fe4fc988e`
+and the independently frozen class-expression compiler `ec168443...` both fail
+1,147 of 1,769 exact original class-construction/declaration endpoint checks:
+958 retained class-syntax endings and 189 ES5 class-binding declaration endings.
+All 249 factory-call and 249 initializer endings already agree. The complete
+module IR itself reports no failure because its gap policy did not require these
+specific declaration endpoints. This is an implementation and acceptance gap;
+older green checks do not prove these missing roles. Extending the same audit to
+accepted20's async-class-method, async-super-method and lexical-arrow contracts
+adds 193 failures in 204 class-declaration checks, with zero complete-IR failures.
+The combined contradiction is 1,340 failed endpoints / 1,973 checks in ten families.
+
+A separate replay of the four preserved private/decorator families adds 49 failed
+class-declaration endings in 56 checks. The current known total is fourteen
+withdrawn full-family claims, 842 configurations / 893 maps, and 1,389 endpoint
+failures / 2,029 checks. At most 81 families / 3,913 configurations / 3,795 maps
+retain earlier evidence; at least 56 families / 4,494 configurations / 6,398 maps
+remain pending. These counts supersede the narrower audit below until the repaired
+common compiler is accepted. The retained-module comparer now requires every
+class-declaration endpoint and challenges erasure and retargeting independently
+of complete token and gap checks.
+
+The ten affected families cover 814 configurations / 865 JavaScript maps.
+Their full-family closure claims are withdrawn, including otherwise passing
+products of those families. The original v20 measurement, compiler, frozen
+references and observations are preserved. After the known withdrawals, at most
+85 families / 3,941 configurations / 3,823 maps retain their earlier evidence;
+at least 52 families / 4,466 configurations / 6,370 maps remain pending. Further
+class-declaration endpoint checks and the integrated immutable gate remain
+required before publishing a replacement closure count. The reproducible
+[audit tool](tools/audit_ge5_class_endpoints.cjs) and
+[complete endpoint/artifact record](GE5_CLASS_ENDPOINT_AUDIT.json) bind every
+observation, original source and Native/Blue artifact pair.
+
+The independent worktrees also delivered focused contracts for four class-expression
+families (140 products / 5,034 controls / 280 executions) and async-arrow/finally
+(363 / 30,209 / 12,090). Root completed helper-name collision (363 / 25,972 /
+8,060), including native-derived concise-arrow header, return, grouping and closure
+roles; two generated precedence delimiters stay unmapped. Original source helper-like
+bindings remain distinct from private, ambient and imported helper bindings.
+These six candidates do not enlarge the corrected current closure count. The
+b619 common run stops at 44 class-expression regressions: the original concise-arrow
+correction also changed generated decorator-access arrows. A typed phase/provenance
+repair must preserve original source arrows that survive decorator reparse; generated
+access arrows keep the pinned Native roles. Common acceptance awaits this repair
+and the general class-declaration endpoint correction. Shared integration preserves the accepted async-class/super
+capabilities and publication carriers; whole-file child snapshots cannot replace
+parent changes. The general declaration-endpoint repair has priority over further
+metadata compositions. **G-E5 remains unchecked; no commit or push.**
+
+### G-E5 worktree integration checkpoint — 2026-11-03
+
+The three worktrees now separate declaration/metadata origins, decorator/arrow
+phases and generator delegation. Root integrates reviewed incremental patches;
+before/after hashes and preserved parent deltas prevent child snapshots from
+overwriting newer source roles. The v22 focused run completed all six targets,
+including all 140 class-expression products that contain the earlier 44
+integration regressions. Its compiler/source freeze passed.
+
+Candidate v23 (`5f7f9b28c69d60beebad4f50b48a5393ba1f6fd0a105f0de69bd20c97b9166d5`)
+includes the static-initializer unmapped endpoint policy, moved-static-block
+completion carrier, exact System legacy export-header completion, literal-field
+contracts and synchronous generator switch/delegation. Namespace imports also
+preserve non-enumerable own properties and descriptors; a public regression
+reproduced the old failure and now passes ten property profiles across four
+intrinsic-availability modes. Provenance version 23 and private-state epoch 48
+invalidate earlier cached JavaScript/maps.
+
+The common candidate passes 46 public tests in 19 targets (two complete-family
+tests intentionally remain ignored there), one independent arrow-identity unit
+and all 74 tool tests. Shared complete-family role replay and generator execution
+are running against that immutable compiler. These are development checkpoints;
+the corrected historical bounds and withdrawn class-family claims remain in
+force until the complete updated common gates establish replacement evidence.
+The final immutable cohort and unfiltered ordinary gate are still pending.
+**G-E5 remains unchecked; no commit or push.**
+
+The same v23 compiler subsequently passed every generator-switch-delegation
+product: 363 configurations/maps, two complete public CLI builds each, 65,688
+effective coherent controls and 27,404 executions (806 original, 18,538
+supplemental protocol and 8,060 borrowed-method executions). No failed product
+was removed. The broader shared role replay remains in progress.
+
+A separate 60-profile source-receiver/arguments observation preserves a pinned
+Native behavior difference: all 60 Blue outputs retain the original receiver
+and arguments, while Native comparison passes 48 retained-generator profiles
+and differs in all 12 ES5 profiles. Actual TypeScript `createProgram` emission
+reads callback state through `arguments[0]` in those ES5 products. The original
+supplemental source and all twelve differences remain in the report; its
+`completeFamily` is false and it adds zero frozen configurations. It is not
+included in the 363-product parity result or the 572 coordinate-defect ledger.
+
+The v23 continuation replay found a missing source-bound yield operand-end
+check. One common assertion now rejects endpoint erasure; the separate iteration
+inventory workaround was removed. Reusing the same compiler-bound observations
+passes binding27 (4,056 controls / 324 executions) and iteration339 (31,465 /
+3,032). Opaque-generator7 now classifies only its exact original operand-capture
+suffix and rejects 84 controls. Delegated-finally7 rejects 553 controls: the
+canonical generator asset now has 21 mutable operation literals rather than 20,
+so each configuration adds one effective helper-algorithm control. No source
+grant rule or negative was relaxed. The original failed reports are preserved.
+All 83 current tool tests pass.
+
+The continued common batch passes class661/712 maps, object-rest, all four
+preserved private/decorator families, iteration339, lexical-arrow/driver,
+class-expression140 and helper-name-collision363. It also exposes a real v23
+producer regression in 16 ES5 legacy ESM products: construction completion and
+the generated export keyword share an offset, giving the export class.end.
+The metadata worktree is validating a typed trivia carrier; v23 is not accepted
+as a complete common checkpoint. The original source/fixture/measurement bindings
+and withdrawn historical claims remain in force.
+
+Root's fourth worktree isolates the remaining interop/cyclic-export family.
+Its first producer repair keeps generated System star-forwarding code unmapped,
+matching Native's absence of source roles. An immutable development compiler
+`c3d3b04e0d62ada6453b620d076f9b410a6ef379db51a3f7e02ce80622b75683`
+passes all 40 affected System configurations, each built twice with maps and
+twice without maps, complete diagnostics/artifacts/raw declarations/decoded
+declaration maps, exact executable/declaration bodies across map settings and
+120 coherent source-grant negatives. Focused Clippy, formatting and 83 tool tests
+pass. This sealed incremental patch awaits Root integration; the complete
+363-product interop role contract and execution remain pending. It is not a
+full-family closure, a new TODO item or a submitted commit.
+
+### G-E5 v24 targeted integration — 2026-11-03
+
+Main integrates the exact prior-stage ESM publication trivia carrier and the
+interop System-star/AMD-import generated-source boundaries. Immutable compiler
+`fd540580dfe898b17d785e0a4ec7b1bfbc20132683ea6a94da232a6412403aeb`
+passes all seven selected test targets (32 tests), including all 363 existing
+legacy-parameter-decorator configurations, all 80 affected AMD/System products,
+map/no-map executable/declaration byte checks, 480 source-grant negatives,
+constructor/static endpoints, System legacy endpoints and cache invalidation.
+Focused Clippy passes and the compiler/production-source freeze remains intact.
+The sixteen v23 ES5 ESM export-prefix regressions are repaired. The three earlier
+binding/opaque/delegated-generator failures also have successful named Rust
+reruns against their unchanged v23 compiler; their original failed logs remain.
+
+The interop worktree has collected all 363 configurations twice with complete
+diagnostics, inputs, artifacts, raw declarations and decoded declaration maps.
+Its independent source/import model parses all 1,452 Native and 1,452 BlueTSC
+module maps. Full private helper algorithms or exact imported/ambient provider
+bindings are checked for the same 2,904 module views, including coherent helper
+source-grant and algorithm mutations. This is structural/helper evidence;
+complete module source-role/reference projection, re-export/live-cycle behavior
+and the final immutable cohort remain pending. It does not close the interop
+family or restore historical claims. Metadata and accessor worktrees additionally
+identified missing outer construction/callable endpoints and are strengthening
+their complete contracts before delivery. **G-E5 remains unchecked; no commit
+or push.**
+
+The four worktrees' current bounded scopes and required deliveries are recorded
+in TODO: metadata172, accessor67, private-accessor291 and interop363. Each lane
+delivers a minimal owned patch, source/compiler hashes, exact commands/results
+and unresolved failures; Root alone assembles shared emitter hunks and runs the
+common immutable acceptance. Existing live validation processes continue.
+
+Root additionally integrated six import/helper/reference proof and regression
+tool files. Against the already collected immutable interop compiler
+`e300036e75e61209c4ab55500acbaf17bc8add5ffaf5f29e3ac999e42a3fea50`,
+all 363 configurations / 2,904 Native and BlueTSC module views pass semantic
+expression pairing: 5,808 expression roots / 15,972 AST pairs, including 3,630
+import, 1,452 parameter and 1,452 local-binding references. Tests reject changed
+import namespaces/members, altered unbound-call transport, parameter-shadowing
+errors, wrong System live-binding publication names, copied ASTs and forged
+capabilities. These semantic pairs do not approve source-map roles or generated
+gaps. Whole module/re-export contracts and execution remain pending.
+
+The common tool command with both pinned oracle paths passes **97/97**:
+`FORCE_COLOR=0 bash /private/tmp/ge5-run-focused.sh node --test development/browser_core/phase-18-bluets/tools/*.test.cjs`.
+Log: `/private/tmp/bluets-ge5-tools-interop-references-pinned.log`.
+Delivery hashes and the scoped semantic report are in
+`/private/tmp/ge5-interop-reference-delivery/manifest.json` and
+`reference-inventory.json`. The first all-tool invocation omitted the Acorn
+environment variable and failed to resolve that executable; its log remains
+`/private/tmp/bluets-ge5-tools-with-interop-references.log`. No compiler source
+changed: all 482 v24 production hashes and its immutable compiler hash still
+match. Status/accounting and whitespace checks pass; no family claim or commit
+is added.
+
+### G-E5 metadata integration and interop endpoint repair — 2026-11-03
+
+The metadata172 packet is FINAL-READY in its own frozen compiler
+`b4f8a14fde733b83c12e758a0369e866e0138d33ecaf13e32a2dc86061adc6dc`:
+344 complete module contracts, 3,892 exact chain endpoints, 61,084 effective
+negatives, 688 syntax checks and 344 Native/Blue executions, plus public,
+adjacent, unit, formatting and Clippy gates. Its 39-path integration projection
+was checked against every before/after hash and applied without replacing the
+newer CommonJS ModuleKind API. Packet manifest:
+`/private/tmp/ge5-metadata-classes-complete-delivery/manifest.json`
+(`d1f87ef0e85a2b93b711b3a1eface088da725c8bae29d4eb87ecb2381fdf88b8`).
+
+Main candidate v25 is
+`ebfd9780e7d3edac223c652469bd6e47c971737f0e592d893ecbdf4e1931ad96`,
+with provenance 25 / state epoch 50. Its first shared process is terminal 101:
+class-expression140 passes, but complete construction-chain checking exposes
+203 failing maps in the class661/712-map cohort. Retained constructor and method
+endpoints are missing; this strengthens verification of already withdrawn
+claims rather than restoring them. The class agent is auditing every chain
+point from the saved v25 observations before repairing typed producer origins.
+Report: `/private/tmp/bluets-ge5-v25-metadata-reports/class-super.json`;
+observations: `/private/tmp/bluets-ge5-v25-metadata-observations/class-super.json`.
+The untouched v25 compiler continues the remaining metadata/legacy gates;
+the failed original logs remain. No common acceptance is claimed yet.
+
+Root's independent interop audit of compiler `e300036e...` finds 406 exact
+imported-callee endpoint failures in 203 configurations. A public CLI test
+reproduces the wrong original-name-start coordinate. The fix carries the
+original token end before the generated unbound-call closing parenthesis,
+preserving JavaScript text. Immutable compiler
+`b539302fb175baa2a85d3f369d62bad89512039c441b606e517375e5cb3503be`
+passes all 363 configurations / 1,452 maps / 7,986 expression endpoints and
+12,342 effective endpoint controls, plus all 80 existing AMD/System boundary
+products and focused Clippy. The unchanged-artifact entry is exercised before
+each map's negative controls; every control uses fresh Native/actual streams.
+Report: `/private/tmp/bluets-ge5-interop-callee-complete-reports/interop-expression-maps.json`.
+Exact accepted expression-only source is preserved in
+`/private/tmp/ge5-interop-callee-expression-accepted-source/manifest.json`.
+
+Declaration-wide replay additionally finds 120 ESM/Node-ESM default-function
+header failures. The public CLI reproduces the export/default gap and function
+keyword phase; typed original-function anchors repair them. Immutable compiler
+`808947589806619122438f4554ba52852a2958f6ab6e46ffdde2b5be7c22ba80`
+passes the fresh declaration/expression gate for all 363 configurations / 1,452
+maps / 15,972 logical endpoints and 22,506 effective controls, both public CLI
+regressions, all 80 AMD/System boundary products, focused Clippy and rustfmt.
+The two-file producer patch and eight new test/tool files are reviewable in
+`/private/tmp/ge5-interop-declaration-delivery/manifest.json`; its producer patch
+`a2f61e418c831bb33b207c80f445cb2e74105b9c1f8c81aae2eda9b459562b85`
+passes Main's apply check and has not yet been applied during v25 validation.
+The common metadata/import/helper/reference tool run also passes 113/113:
+`/private/tmp/bluets-ge5-v25-tools-with-metadata.log`. The interop family still needs
+complete module scaffolds, ordered gaps, star exports, cycles and execution;
+these expression/declaration checks do not close it. Private-accessor291 retains
+its earlier 24 System-gap failures until its wrapper-aware candidate finishes;
+accessor67 is replaying against the complete v25 parent instead of selecting
+partial parent fixes. No unfinished G-E5 commit or push is made.
+
+The continued v25 shared run is now terminal zero: metadata172 passes 344
+complete maps and all 61,084 effective controls; legacy363, the remaining
+selected public regressions and focused Clippy pass. The earlier class661
+failure remains visible and is not relabelled as success. Its independent full
+audit finds 724 duplicated endpoint failures at 362 distinct physical points
+among 9,734 constructor/method/accessor chain checks, affecting the same 203
+maps. The class agent is repairing retained callable endings, including cases
+where trailing fields move into the constructor. Accessor67's stronger chain
+audit independently finds twelve retained ESM class-completion gaps, also still
+under repair. Neither family is accepted on incomplete endpoint evidence.
+
+Main then applied the exact two interop producer hunks and eight public test/tool
+files, retaining all metadata hooks. Immutable v26 compiler
+`cc4dd6955d9ae4c124caacf8d50f499727d80fcae4acb95ae87ce42bde1ffd65`
+uses provenance 26 / state epoch 53. Its fresh public run passes interop363 /
+1,452 declaration/expression maps / 15,972 logical endpoints / 22,506 effective
+controls, AMD/System80 with map/no-map byte checks, both public regression cases,
+cache invalidation and focused Clippy. All 123 current tool tests and workspace
+rustfmt pass. Compiler/production freeze:
+`/private/tmp/ge5-v26-production-freeze.json`; logs/reports:
+`/private/tmp/bluets-ge5-v26-interop-shared-*`; tool log:
+`/private/tmp/bluets-ge5-v26-tools.log`. This accepts the integrated declaration/
+expression scope, while complete interop module/gap/re-export/cycle execution and
+the final G-E5 cohort remain pending. No checklist item is checked or committed.
+
+### G-E5 v27 closure and v28 combined replay — 2026-11-03
+
+Common v27 compiler
+`39563c8c768008c7437f616381d17b25b1a0597c698b46845f78080842bc6b34`
+finishes its complete selected run with no failures: class661/712 maps,
+private291, class-expression140, interop expression363, retained-callable960
+public products, cache invalidation and focused Clippy. The earlier 203 class
+map failures are repaired by exact retained callable completion carriers, including
+members followed by fields that the same pass actually erases. Private's full
+291-case contract and live/execution controls also pass on this common compiler.
+Logs/reports: `/private/tmp/bluets-ge5-v27-class-private-*`.
+
+The literal-accessor67 and System legacy phase packets were checked against all
+before hashes and integrated as minimal hunks. The former passes 67 complete
+maps / 747 chain endpoints / 52,994 effective controls / 134 executions on its
+immutable `eab97facfb2c4c6388aef331f30d2fecbedce05104b4d579b7c6809c7809af4d`
+compiler, with class-expression140 and legacy363 adjacent gates. Its previously
+observed twelve ESM class-completion gaps are fixed. The System supplement passes
+320 legal products, 3,216 construction/callable endpoints, 1,712 binding/invocation
+UTF-16 units, 5,680 map controls, 320 valid-JavaScript controls, 640 positive
+Native/Blue executions and 640 map/no-map builds on
+`7cc6478d04ee4674cfd4fb2c7086151e98cb0a087914145a93a239acbf7c44d2`.
+This repairs the original 32 configurations / 88 phase-role failures without
+adding a frozen family or changing Native EOF authorities.
+Packets: `/private/tmp/ge5-literal-accessors-complete-delivery/manifest.json`
+(`7c9398b6fceab6f2fb4fca825a6375865cd1572b511e9a0f657f87606921067c`)
+and `/private/tmp/ge5-system-legacy-phase-delivery/manifest.json`
+(`a9abea65b1c5ff44cc225d16cd939fd9012de76f9834318f94e81cd4ccb2ce75`).
+
+Root completes the existing interop-exportstar-cycle363 family on immutable
+`54928f654de93f668258acd7d56a5ed5a9b146d0fbadac02fbf17c33a35ae67a`:
+all 1,452 complete module maps, 49,757 effective full-contract controls, 2,904
+selected-edition Acorn programs and 806 real graph executions pass. The latter
+checks original result 14, source import identities, default/namespace helpers,
+star export membership and three subsequent updates through the left/right
+cycle, including both UMD loader branches. Negatives reconstruct both streams,
+first pass unchanged artifacts through that exact entry, challenge complete
+AST endpoints/source interiors/helper and generated regions/map metadata, and
+reject hidden zero-width grants. The public Rust full363 entry passes; its
+scoped report is `/private/tmp/ge5-interop-module-final-public-reports/interop-complete-module-acceptance.json`.
+Protected comment ownership also matches pinned Native in 28 supplemental
+AMD/System map/no-map products (attached removal, detached/trailing preservation).
+The initial supplemental setup used a non-resolved MapLoader provider URI; that
+setup failure is retained and corrected, not counted as a producer defect.
+The complete packet is `/private/tmp/ge5-interop-complete-delivery/manifest.json`.
+
+The interop fixes preserve Native's ESM star-header phase and remove only attached
+comments on imports actually replaced by AMD parameters/System setters; System
+import gaps stay unmapped. Its comment inventory projection is justified by the
+original import AST plus exact Native/actual absence and no Native role inside
+that import. Original source/map metadata bytes stay unchanged. Detached and
+prior-node comments remain independently accounted. Main projection explicitly
+retains all three newer private-name mapping hooks, with no whole-file overwrite.
+
+Combined v28 compiler
+`855cb2b8502cee984d0f6dcc201c1fb7d99cf610f274690237ecc14ac7513b17`
+uses provenance 28 / private state 56. Its affected common replay is running;
+all 138 current Node tool tests and workspace rustfmt pass. Freeze:
+`/private/tmp/ge5-v28-production-freeze.json`; runner:
+`/private/tmp/ge5-v28-accessor-system-interop.py`; logs/reports:
+`/private/tmp/bluets-ge5-v28-accessor-system-interop-*`.
+The immutable 8,407-product cohort and remaining family contracts still need
+acceptance; historical v20 measurement bytes are retained. G-E5 remains unchecked
+and no incomplete checklist item is committed or pushed.
+
+
+### G-E5 v28 shared acceptance and alias contracts — 2026-11-03
+
+The v28 shared runner `/private/tmp/ge5-v28-accessor-system-interop.py` exits 0
+with compiler `855cb2b8502cee984d0f6dcc201c1fb7d99cf610f274690237ecc14ac7513b17`.
+All 487 production files still match `/private/tmp/ge5-v28-production-freeze.json`.
+The eight affected public test targets, including their ignored complete-family
+checks, pass; focused Clippy also passes. Exact logs retain the original runs:
+`/private/tmp/bluets-ge5-v28-accessor-system-interop-{accessor-system-interop,clippy}.log`.
+
+The common compiler proves interop363/1,452 maps/49,757 controls/806 executions,
+literal-accessor67/52,994 controls/134 executions, legacy363/10,301 controls/986
+executions, System320/3,216 chain endpoints/5,680 map controls/320 code controls/640
+executions, and retained-callable960/2,880 queried endpoints and controls. Public
+accessor-pair/map-no-map and cache regressions pass. These results close this
+affected integration batch; the complete G-E5 cohort and final gates remain open.
+The three complete module reports have SHA-256 values:
+
+- Interop: `8f3c0204e011579a5bdb3eea527f9a5729914c1208b28bb6c32372af60a5c14f`.
+- Literal accessors: `4dcaefdf00cc4d416ed70a916ca88b594a4545f5670345ebc30263ba77fa3c63`.
+- Legacy parameter decorators: `affa1a7f07e0db6750dda2100e468781c074087b17461fba8f3cb5c427574992`.
+
+Imported-class-type-alias41 adds six tools/tests files and changes no producer.
+Its sealed patch `d55bc99e6c959faf9147ea66ca69bbbd1bf766ec1954ff77090dc21d44e20b80`
+passes all Main before/after hashes and all packet artifacts. The original
+producer already emitted correct Object metadata and erased the runtime import;
+the missing piece was the independent typed provider-TypeAlias-to-Class proof.
+Its new Main public acceptance exits 0 on v28: 41 two-build configurations,
+82 complete maps, 164 syntax programs, 82 Native/Blue executions and 14,001
+fresh coherent controls. Logs and observations are retained under
+`/private/tmp/ge5-main28-alias41-*`. Local-class-type-alias43 is subsequently
+integrated from patch `a70a3fbdc257f145bcb69b479c7ef1e14179dc9a2aa0c38769630d11b9378e97`;
+its current Main acceptance remains running. The expanded tools pass 149/149 tests
+in `/private/tmp/ge5-main28-alias-tools.log`. Neither alias delivery changes the
+production fingerprint or private-state epoch.
+
+Root also advances the existing async-arrow/finally363 family from a complete
+v28 parent in `/private/tmp/blueice-ge5-interop-maps`. The read-only v28 audit
+finds 147 missing original function-name endings among 19,723 exact body,
+callable, formal and module endpoints; all 363 earlier positive module/runtime
+products remain recorded as positive-only evidence. Two new control regressions
+first fail, then pass after the checker is required to validate fresh unchanged
+Native/actual streams before counting a rejected candidate. Candidate
+`18dc6cecbf8b704901fb50d8bb9ae5c9e112929af8f92c913b059c697eed4391` repairs every
+named-callable ending in the 363-product public endpoint test. Complete fresh
+controls are running, and a new 60-product public map/no-map test exposes both
+name-carrier and pre-existing arrow-carrier whitespace differences. These
+failures stay open; the candidate is not declared complete or integrated.
+No G-E5 checklist item is checked, and no commit/push is made.
+
+
+### G-E5 async363 closure and seven metadata integrations — 2026-11-03
+
+Root's final async-arrow/finally delivery is
+`/private/tmp/ge5-async-arrow-finally-complete-delivery/manifest.json`, SHA-256
+`135d00b383e8bc0bffca9749208cdfe70baf4ff9a3b9b9d12eaf714e6b5d080c`.
+The immutable compiler is `a28fcd047e7c26ba5c9fc30d61dc663baf5e9850518c00252af71daade32a5fa`.
+All 363 configurations use two public CLI builds with complete diagnostics,
+input/artifact inventory, raw declarations and decoded declaration maps. Complete
+module/callable/body roles pass 19,723 logical endpoints (13,566 physical endpoint
+positions), 43,775 effective controls using fresh unchanged baseline checks,
+726 selected-edition syntax programs and 12,090 Native/Blue executions.
+The 147 missing original async-function name endings are repaired with a typed
+original declaration identity and a bounded whitespace carrier. Generated names
+and arity stay unmapped. Public map/no-map equality passes all 60 profiles/120
+compiles. First and second candidate binaries, sources and failed logs remain
+sealed; the second candidate's seven async-generator name regressions are caught
+by a new exact endpoint audit/public test. The final Kind::Async-only rendering
+restores the existing async-generator phase; six direct regressions and all 27
+frozen generator products pass with 1,520 controls and 1,026 executions. The
+stronger generator checker also uses fresh Native/actual streams and checks both
+original function-name endings. Four fresh-baseline unit tests, 142 current Root
+tool tests, focused Clippy and formatting pass.
+
+Producer patch `aee1d2ccb6fc79175ef18c4f88ad60fd6eb3275cba0d730bdd666915b44d194b`
+changes only `targets/async_functions.rs` and `targets/es5/suspension.rs`.
+Tools/tests patch `b02743ec406aa0a7e61a29cdfe9fb7750dd056ae5b82bca30f44c1cfc699011e`
+contains nine files. Every Main before/after hash and `git apply --check` passes;
+both patches are now applied. Main provenance is 29 and private-state epoch 57;
+all five affected cache tests expect the new epoch, including rejection of
+previous accepted epoch56. Main's initial public/cache check is running. The
+complete accepted v28 production is preserved in
+`/private/tmp/ge5-main-v28-accepted-source/`; current Main must not be copied as
+that old parent. Full shared v29 acceptance awaits the reviewed standard/auto/enum
+batches, and the immutable full G-E5 cohort remains pending.
+
+Seven metadata deliveries are separately accepted on the identical v28 compiler:
+class-alias41, local-alias43, interface41, primitive41, nullable41, clause-level
+import-type43 and specifier-level inline-type43. Together their recorded scopes
+are 293 configurations/586 maps, with unchanged raw declaration and map inventories.
+These are oracle capability additions for already correct producer output, not
+producer defect fixes. The two type-only scopes each prove Function metadata and
+no runtime acquisition, rather than borrowing ordinary imported-class identity.
+Their frozen inline source is `import { type Model }`, not an ImportTypeNode query.
+Current combined metadata tools pass 174 tests. Later additive graph revisions
+still require the final shared-cohort replay; the dated earlier acceptance logs
+remain tied to their actual tool/compiler states. No checklist item is checked
+and no commit or push is made.
+
+Main's initial v29 compiler is now frozen as
+`14ea9911793565fed61f36246ec554a0eb814e5a474f8c198985ab15b1b334bf`
+with 487 production files in `/private/tmp/ge5-main29-async-initial-production-freeze.json`.
+The two async public tests (60 map/no-map products and six generator boundary
+profiles), four ordinary cache tests and the separately invoked pinned cache
+observation all pass. The original ignored cache observation was explicitly run
+with `--ignored`; it is not counted as passed merely because the ordinary run
+skipped it. All current 178 Main tool tests pass. This is initial shared evidence,
+not the full v29/G-E5 acceptance. Root has also inventoried the next six existing
+static-super families (282 frozen configurations) without adding a TODO item.
+
+
+### G-E5 provider enum audit correction and pending v30 — 2026-11-03
+
+Independent read-only replay of Root's saved original metadata172 and seven
+later metadata scopes293 confirms the agent's finding: 465 provider maps,
+29,459 exact generated AST endpoints, zero reader errors, 212 affected
+configurations/maps and 424 failed points. All are Numeric/Text enum exported
+keyword endings (Native source column6, old BlueTSC column0). Full evidence is
+`GE5_METADATA_ENUM_ENDPOINT_AUDIT.json` (SHA-256
+`0755a91a0c1d2696bcf69198b726bc04f3f17f1e79c38a77176a3e895b420453`);
+`GE5_METADATA_ENUM_ENDPOINT_AUDIT.md` lists every affected source scope.
+Withdraw eleven complete provider/full-family claims until the stronger guard
+and existing complete gates pass on one repaired integrated compiler. Keep old
+reports as evidence of their actual consumer/artifact/diagnostic/raw-DTS/runtime
+scope. This is an existing verifier omission and a BlueTSC producer defect;
+the Native 572-defect ledger, frozen cases/references and old observations are
+unchanged. Earlier dated success statements in this plan are superseded for
+full-provider coverage by this correction.
+
+The reviewed numeric43 packet manifest is
+`3ee2a6d57c8395f6060d17ce03577c045fb294327d47989acf4089fddec3d87c`,
+owned patch `8b31009b8643ec4bdaa751664a0cf5ecd86a42b23be2bfcd17e22655e65f4b91`.
+Its single producer file `emitter/enums.rs` adds the exact original export-token
+end on an existing space and fixes marker-dependent enum indentation. Marker
+order and deliberate endpoint carriers remain intact. The separate string43
+packet manifest is `9fec8137fe7910e58d8fcfb5795736e4050381e2e0e15ceae4d999788da308cc`,
+patch `8a5c6b9dca660994abd22b6c428576283a58d3aaedf351bf55dbcde45646fafa`;
+it adds no producer changes. Both packets pass every sealed artifact hash,
+Main before/after hash and apply check; they are applied to Main while preserving
+its async changes. Pending shared provenance30/private-state58 rejects previously
+accepted state57. Existing five cache controls are updated accordingly.
+
+Standalone enum compiler `7261a3464647e92643b6d33e0a108bc62df59f92d41cc88529608e9e46d37eca`
+passes each complete43 cohort: 86 maps, two builds, full diagnostics/artifacts/
+raw declarations/decoded declaration maps, 3,694 class+enum endpoints, 19,841
+fresh effective controls, 172 syntax programs and 172 actual executions (main
+and provider). The enum boundary public matrix passes 12 map plus 12 no-map
+products, 756 endpoints, 1,104 controls and 24 executions; previous enum/namespace
+and signature gates also pass in the agent's retained logs. Native's observable
+acquisition policy is explicitly preserved: metadata-on39 retains the provider,
+metadata-off4 elides it, even though metadata operands are builtin Number/String.
+A prior inference equating builtin metadata with import elision was incorrect;
+it was not a producer defect and is not used as acceptance evidence.
+The eleven withdrawn provider claims still require integrated replay. No G-E5
+checkbox, commit or push is made.
+
+
+### G-E5 standard363 integration and literal-method runtime repair — 2026-11-03
+
+The final standard-decorator packet is reviewed and applied. Manifest SHA-256
+`82fb00b35630cafa643d750363ca0efc76b36847d08f4f787fbcfb9f9a3965c5`
+binds 17 owned files and four separately reviewed patches. Standalone compiler
+`4ea5a4292211328f247c7847e96e319f634059dc6a23d77da1bb948a75218b9d`
+passes all 363 configurations, 141,798 effective controls and 13,702 executions.
+Its complete report SHA-256 is
+`80b8409bdea3dcc734765b106c56642aa850afca7d15c5d11988a86b62960488`.
+The production changes repair method-only ES5 construction completion, singleton
+accessor descriptors and System/ESM publication boundaries. Reviewed Main source
+advances to provenance31/private-state59. Its immutable compiler is
+`4de318d9807938ec63799f2729ac77abcd06c65ef9ee903a1835129c2c432d6b`,
+bound to 487 production files by
+`/private/tmp/ge5-main31-standard-enum-production-freeze.json`. Initial public
+and cache tests, the standard public matrix and 188 Node tool tests pass. The
+metadata551 and standard363 complete shared gates are still running; partial
+results do not restore withdrawn provider or full-family claims.
+
+Root's next existing literal-method67 lane independently proves an ES5 runtime
+defect: with useDefineForClassFields=false Native emits assignments with
+enumerable methods and anonymous function names, while BlueTSC emitted
+non-enumerable descriptors with function name "value". The new public test
+`ge5_es5_method_definitions` fails on the parent and passes on a worktree-only
+conditional assignment repair: eight map/no-map/coordinate products, comparing
+all descriptor flags, function names, property enumeration and return values.
+Define=true descriptors and accessor emission keep their own paths. Complete
+literal-method mapping, counterfactual and adjacent acceptance remain pending;
+the repair is not applied to Main while its frozen shared gate is live.
+The three agents continue auto-accessor51, re-exported metadata graphs43+43
+and static-super282. No new TODO identifier, G-E5 check, commit or push is made.
+
+
+Main31 metadata acceptance is now complete for the 551-configuration selection:
+1,102 consumer/provider maps, two CLI builds per configuration, 248,229 fresh
+effective controls, 2,204 selected-edition syntax programs and 1,274 actual
+executions. Independent read-only replay verifies all 34,901 provider enum AST
+endpoints across 551 provider maps with zero reader errors or failures. Each
+of the original 424 failures is matched by original index, map, enum, role and
+Native generated end; all now retain exactly the original Native owner. The
+compiler-bound receipt is `GE5_METADATA_INTEGRATION_MEASUREMENT.json`, SHA-256
+`5de649aac20d4f3c96c2552c3f3cdb6dae4ca5d2e7be1f5e299a81ba4be102ca`.
+Its independent full replay hash is
+`03a791f1849811fefb072430f7cd0a82e03da4fef7198cc8fec22a45c4a0e1c2`.
+This restores the withdrawn eleven provider scopes for this integrated compiler
+and validates numeric43/string43; it does not change historical report bytes,
+the Native defect ledger or establish the full 137-family G-E5 result. The
+standard363 two-shard shared gate is still live and production remains frozen.
+
+
+Root literal-method candidate4 is immutable as
+`5c010e8cc675c4eb7705dab8e60b4d0c44ef4c40a32235f73a102bfec52f74c9`
+(`/private/tmp/ge5-literal-methods-candidate4-freeze.json`, all 487 production
+files unchanged). All 67 configurations pass two CLI builds, full artifact/raw
+declaration checks and complete positive module roles. Its class661/712-map
+adjacent complete contract and controls pass; public class eight tests plus
+the eight-product method descriptor/name/runtime/mapping matrix also pass.
+The complete67 fresh-negative/runtime gate is running; this is not yet a
+complete-family delivery and nothing from this repair is applied to Main.
+
+Five ordinary class-downlevel failures reproduce on unchanged Main31 and the
+initial Root candidate. Four assert trivia-dependent substrings; token-level
+checks now preserve exact token kind, spelling and order while permitting
+map endpoint spaces. The fifth required every emitted line to acquire source.
+Independent pinned TypeScript replay of that exact source finds 1/2/9/21
+nonempty unmapped generated lines across its four target/define products
+(`/private/tmp/ge5-class-downlevel-native-line-audit.json`). The corrected
+ordinary test constrains every actual source claim to real source lines and
+requires retained original class/method line origins, without inventing source
+for generated scopes/helpers. All 21 class-downlevel tests and the public
+method regression now pass. This corrects an invalid ordinary invariant; it
+does not replace the full Native module/map contracts required by G-E5.
+All 199 current Root Node tool tests also pass with both pinned oracle paths.
+
+
+### G-E5 pending reviewed deliveries and isolated callable41 scope — 2026-11-03
+
+Re-exported metadata43 is sealed with 129 maps, 4,550 complete endpoints,
+22,500 fresh controls, 258 syntax programs and 258 actual consumer/provider/
+barrel executions on compiler
+`36361f7a5528fe8a8fc8429fbd30d249cc6b1046632e3d33e79e01ab7c993953`.
+Root verifies all 20 owned payloads and 70 evidence hashes. Two parent files
+(CommonJS and javascript_maps) differ from current Main, so an isolated reviewed
+overlay preserves the current System star/default/private/import hooks. Its
+20-file patch SHA-256 is
+`6020392c47aaaf6f156b4d92dcb8d604ebee23b4dfdce1a3fbf208d335cac1a3`;
+Main read-only apply check passes. The overlay is not applied while Main31
+standard363 remains live. The agent continues namespace-reexport43 and then
+the independently proven local string-named provider export syntax defect.
+The separate ModuleLoader alias-ID panic remains exact G-C3 evidence.
+
+Auto-accessor51 now passes all 40,187 effective coherent controls and 102
+executions, two builds, raw declarations/maps and 203 artifacts on immutable
+`10a0576bd56a9f8380e587b149b8327a356347f71bc78d8f38379a8f17200960`.
+Its original final manifest contains one transcribed parent compiler hash;
+Root caught the mismatch against the actual parent freeze. The original packet
+is retained unchanged. Corrected manifest SHA-256
+`36c2a7a1b0ef4f96058266055ef632604eee647849107b5079ad271e8cd2e448`
+and proof `613cd2f6e3b037c588f5d8521375c25c198751b08634483371a22000d8674bea`
+name the actual v28 compiler and unchanged payload directory. Root independently
+compares all 487 parent source hashes to the authoritative v28 freeze and
+verifies all 32 owned payloads, two patches, 48 evidence hashes, final CLI and
+792-file source manifest. Both patches pass read-only apply checks on Main.
+No source/test/artifact change or test rerun is attributed to this provenance
+correction. This delivery is not yet integrated with Main31 or Root methods67.
+The agent continues the existing replacement-order67 family.
+
+Root also locates the existing imported-callable-alias41 scope. In an isolated
+tool overlay, two candidate4 CLI builds preserve all artifacts/raw declarations/
+DTS maps. All 41 provider modules and 82 runtime executions pass; the 41 consumer
+comparisons fail solely because the old graph capability admits class/string/
+nullable aliases but not original FunctionTypeNode aliases. This is a verifier
+capability gap, not an observed producer defect. An exact original exported
+FunctionTypeNode now authorizes builtin Function and no runtime acquisition;
+51 existing/new capability unit tests pass. The complete82-map/fresh-control
+gate is running in the overlay. Root's active literal-method gate includes
+metadata graph in its frozen dependencies, so the Root/Main graph is not
+modified while it runs. No checklist item, commit or push is made.
+
+
+Root literal-method67 is now FINAL-READY. All 67 complete modules, 48,533
+fresh effective coherent controls and 134 actual executions pass on the
+previously stated candidate4 compiler. Full report SHA-256 is
+`a3d13df99e4e1e9cd7804cd8e41a27ffdb4467ea35bcf61aa54ea5daa2f9b7c8`;
+42 verifier dependencies are hash-frozen and unchanged. The 15-file delivery
+manifest is `6231314aa973fd8397aede5fe8e6f75531b6c387c3fbb8ebf0e1b49b1eaa4676`,
+owned patch `acb557d439cd5408bb345143a1badcf6e264f2a66fc64a7e0a94e06287332736`.
+The complete 487-file production snapshot is retained physically in
+`/private/tmp/ge5-literal-methods-candidate4-production-source`. No source map
+authority, Native defect ledger or prior fixture is changed.
+
+Imported-callable-alias41 likewise passes the complete 82-map gate, 18,252
+effective controls, 164 syntax programs and 82 actual executions on that
+same compiler. Standalone packet manifest
+`1434ae2ab3d4de73332721746454ac41deec0eae1f3b35b552832baa280fd8bf`
+binds its five-file oracle/test delta and original two-build observations.
+The new Rust integration entry still requires its normal build check after
+shared graph integration. It introduces no producer patch.
+
+Namespace re-export43 is also FINAL-READY on the named re-export compiler:
+129 maps, 4,550 complete endpoints, 22,518 effective controls, 258 syntax
+programs and 258 executions. Its four-file oracle/test packet manifest is
+`5ef9caaae507f25b16337a77799a196b4b23dd33c60e51058241b4e27844058b`;
+patch `70c55c6c6ee2534fe4e9af9a687829e10d92efdf4c6cea718dcdba3db2baa918`.
+Root verifies all payload/evidence hashes and composes named/namespace/callable
+graph changes with 62 combined capability tests passing. An isolated 75-file
+Main32 overlay combines these deliveries, auto51, methods67 and cache epoch
+32/private-state60. Its patch SHA-256 is
+`42a12b3228d52cee4dd5ade0b0a13b493d44fea33650ef0a0136a8c30eb1bbbd`,
+with Main read-only apply check passing. Main31 standard replay is still live;
+this overlay has not yet been applied and has no combined compiler acceptance.
+
+
+### G-E5 Main31 complete shared gates and Main32 integration — 2026-11-03
+
+Main31's two standard-decorator shards both terminate successfully. Root
+verifies the exact non-overlapping 182/181 partition, all 363 frozen indices,
+matching compiler/tool/observation hashes, two builds, complete module roles,
+effective controls and actual runtime records. The aggregate proves 141,798
+controls and 13,702 executions, with zero failures. Aggregate SHA-256 is
+`bd8da49a52e81921787f5102eb284a871947fc24e5248a1dee41b6dbbec29fb3`.
+The runner also confirms metadata551 passed and every frozen production source
+remained unchanged through both shards. Main31 accepted evidence remains tied
+to its original compiler and tool closure.
+
+After that terminal result, all 75 exact Main parent hashes match the reviewed
+integration overlay, and existing bytes are backed up in
+`/private/tmp/ge5-main32-integration-before`. The patch is now applied; every
+after hash matches. This integrates auto51, named43, namespace43, callable41 and
+methods67, with provenance32/private-state60 and old cache epochs rejected up
+through59. Prior Main System star/default/private/import hooks are preserved.
+The new combined build/public/cache/Clippy/format runner is
+`/private/tmp/ge5-main32-initial.py`; all current Node capability tests run on
+the integrated tools as a separate check. New compiler acceptance is pending.
+All changed production modules are below 1,500 lines, and frozen case/reference
+bytes remain exact. G-E5 is still unchecked; no commit or push is made.
+
+
+### G-E5 resumed shared results and verifier repairs — 2026-11-05
+
+Revalidated actual Main32 terminal result and all 494 production hashes.
+Metadata678, methods67, auto51 and class661 pass. Metadata covers 1,442 maps,
+311,604 effective controls, 2,884 syntax programs and 1,872 executions, including
+all real re-export provider/barrel executions. The original full shared runner
+exits nonzero because fourteen class-expression maps encounter an old
+descriptor-only assertion; all other selected checks pass. This failure is
+retained. `GE5_MAIN32_SHARED_MEASUREMENT.json` binds the individual reports.
+
+The class-expression comparer now supports the exact Native assignment mode,
+validates the original class prototype receiver and key, compares the entire
+statement and all key/reference/function/body/definition endings, and continues
+to require matching descriptor modes. Four frozen Native component regressions
+pass (old assignment mode fails; wrong receiver/key reject). Full140 replay uses
+the already collected two-CLI Main32 observations, with fresh complete contract
+controls and runtime; the producer is unchanged.
+
+The isolated double-decorated-accessor35 gate's first run has 15 passes and
+20 setup failures: it incorrectly assumed every target has at least ten
+distinct physical ends. An original-accessor AST inventory now enumerates both
+callables, parameters, body nodes and construction ends directly, with three
+regressions covering missing/extra accessors and changed leaves. The stronger
+35-product gate is running against its preserved two-build Main32 observations;
+no source-role requirement or frozen product is removed. G-E5 remains open.
+
+
+### G-E5 expression140 closure and local export integration — 2026-11-05
+
+The exact ES5 class-expression assignment comparer passes all 140 maps,
+5,034 fresh effective controls, 280 syntax programs and 280 actual executions
+on unchanged Main32 CLI. Report SHA-256:
+`59cbcd239194cc03d31b81aff4409401d5e16feebb95d5fc95f792ff75d098bf`.
+The previous fourteen verifier errors are repaired; all stronger Native method
+mode, receiver, key, full statement and logical ending checks remain enforced.
+Four focused regressions and all 219 Node tool tests pass. Separate complete
+class661 checks confirm 1,424 syntax programs and 1,402 actual executions; the
+shared receipt now binds those reports. Original failed reports stay intact.
+
+The local string export packet is independently checked against all 95 sealed
+file hashes and tar SHA-256
+`07640be8be02b9f54790180ac00f9728260098c0c6beaa9679a7a86d95eb83d2`.
+Its patch SHA-256 is
+`4c491097e63cba9408d31f27039575856762eecabc7286f2bb8a01608e759a65`.
+After the old shared processes are terminal, Root preserves every one of the
+494 Main32 production files physically and backs up the changed parents. The
+15-file minimal patch is applied; all Main-specific resulting hashes match
+`integration-applied-source-hashes.json`. No worktree-wide file replacement
+is used. Changes fix original AST local export key encoding, ESM export
+punctuation/name boundaries, and string-named declaration-map binding ends,
+plus exact surviving source-comment endings. The audit explicitly shows no
+producer failure in its older592 observations: 383 surviving mapped ends and
+167 typed-erased retained U ends all match, with full tool/OBS bindings.
+
+Main advances to provenance33/private-state61. The combined build/public120
+three-module regression, cache, Clippy and format runner is
+`/private/tmp/ge5-main33-local-export.py`; current Node tools run separately.
+No new checklist identifier, G-E5 completion, commit or push is made.
+
+
+Main33 initial integration acceptance is now terminal and green: immutable
+compiler `598f58c86b642a4e164b0062f7d8869b48fcb36b60280a3b90b29b5b7c282c27`,
+495 frozen production files, 56 public tests, five cache tests including the
+pinned oracle, all 222 Node tool tests, focused Clippy and workspace format.
+The actual Main build completes the local-export120 matrix: 180 complete JS
+maps and declaration maps, raw declarations, map/noMap parity, 22,662 effective
+fresh controls and 240 real three-module executions, with zero failures.
+This is an integrated result, separately bound from the earlier worktree CLI.
+`GE5_CURRENT_INTEGRATION_MEASUREMENT.json` records exact compiler/source/log
+hashes and retains fullCohortAccepted=false. The unfiltered BlueTS ordinary
+crate suite is now running to expose wider regressions before final workspace
+acceptance; new producer changes remain isolated in their agent worktrees.
+
+
+### G-E5 full-family inventory and double-accessor35 closure — 2026-11-05
+
+The read-only inventory is saved as `GE5_FAMILY_EVIDENCE_INVENTORY.json`,
+SHA-256 `11149d0f43dbb873d61374f998661d6efa9e49bd6702b07ec174bcb2421c52eb`.
+It enumerates every frozen form and 8,407 configurations / 10,193 JS maps /
+10,397 declaration maps. Its compiler-separated reports identify ten missing
+complete selectors: safe-home4/92 and static-super6/282. Source flags and old
+v20 reports are not treated as current whole-family proof. Static-owned5's
+282/564 execution success uses the established adapter for 24 preserved cases;
+the old direct-Node syntax errors remain runner setup history. Safe-home92
+implementation is delegated to the completed string-export lane.
+
+The new original-accessor endpoint inventory completes double-accessor35 on
+unchanged Main32: 35 whole modules, 36,492 coherent fresh negatives and 70
+executions, zero failures. Report SHA-256:
+`0e07ff57392dddd55c19b0d11cbcd17183562f07860ec92311828fb6a0c2b8cf`.
+All three endpoint-inventory regressions pass. Five self-contained Node
+collector/contract/control files are added to Main; the same complete gate
+is running on immutable Main33. The first failed control setup report and
+complete earlier positive observations are retained. The adapter adds no
+producer patch and does not count as the final137-family replay.
+
+
+The first unfiltered ordinary crate run reaches class_fields and fails its
+trivia-dependent constructor substring (emitted extra space, identical syntax).
+The test now checks exact lexer token kinds, spelling and order for the complete
+constructor while retaining static assignment and erased-field assertions.
+The focused class_fields suite passes all twelve tests. The resumed ordinary
+run uses --no-fail-fast so all remaining regressions are collected together.
+The producer is unchanged; original failing output is retained. All 225 current
+Node tool tests pass after adding the accessor ending-inventory adapter.
+
+Main33 double-accessor acceptance is terminal and green: all 35 maps,
+36,492 effective fresh controls and 70 executions, zero failures. The report
+SHA-256 is `d373a055304a2bbbe62ae1e6c568eb5ce379fa36a69491d2acfc5f144197071d`;
+its 44 verifier closure hashes are recorded in the current integration receipt.
+The common compiler remains `598f58c8...`, with all 495 producer hashes intact.
+The full 8,407-configuration two-build declaration/artifact/JS-map-bounds preflight
+is now running; this does not substitute for complete JS source-role contracts.
+
+The ordinary CommonJS failure was an obsolete physical-line-count assertion:
+namespace helpers legitimately add generated lines. Independent Native/Blue
+coordinate lookup shows both helper definitions unmapped and the original call
+at line 2, column 0. The test now checks original source bytes, every console
+call's exact public lookup and unmapped helper definitions across all original
+programs. All ten tests, including the pinned runtime oracle, pass against the
+exact Cargo-built Main33 library via standalone rustc; full Cargo acceptance is
+still pending. The unfiltered run also retains nine honest inventory failures
+because WIP source differs from the previous measured index. Source-frozen
+inventory regeneration is required before final acceptance. No failure is
+excluded or relabeled as a pass; G-E5 remains unchecked with no commit/push.
+
+The unfiltered run also exposes a stale epoch59 assertion after the valid
+Main33 cache epoch61 change. Cache migration tests now capture the genuine cold
+build epoch, require each deliberately injected legacy version to be obsolete,
+and verify the repaired state returns to that same epoch. GC1 retains every
+historical migration from epoch4 through current-1. All five focused real
+migration/foreign-Native-state controls pass against exact Main33 Cargo-built
+dependencies; commands, source/binary/library/log hashes are bound in the current
+integration receipt. This removes repeated obsolete-number edits without
+weakening rebuild, clean-output or warm-cache assertions. Full unfiltered Cargo
+acceptance remains pending; the earlier failed pre-repair test binary is retained.
+
+Main33 full declaration/artifact preflight is terminal and green: all 8,407
+configurations, two public CLI builds each, exact diagnostics/input/output
+inventories, every raw declaration, 10,397 complete decoded declaration maps
+and metadata/bounds for all 10,193 JS maps. The exact full-matrix libtest function
+passes in 1,061.17 seconds; 62 unrelated functions are filtered and not credited.
+The runner verifies the actual CLI hash and all 495 production hashes before
+and after execution. The current integration receipt binds the record/log/test
+binary hashes; all 495 physical source files are preserved separately. Complete
+JS roles, runtime, K.11 and the final unfiltered ordinary/workspace gates remain
+required. This preflight does not close G-E5 or authorize an early commit.
+
+### G-E5 literal replacement67 minimal integration — 2026-11-05
+
+The complete delivery is sealed with manifest SHA-256
+`91e2e688d596399c2d2cd434ec974a8d25b9ce3a22dad2a2318b61a1723f1465`.
+Root verifies all 50 artifacts, all seven Main32 parent hashes, the exact tested
+CLI and both dry applies. Its complete 67-map / 134-execution result includes
+1,177 whole-contract fresh attempts and an independent 2,062-endpoint proof
+with 1,410 fresh attempts; these domains are retained separately, not summed as
+unique controls. All 66 legal original noMap configurations have exact body
+pairs. Original row8175 retains its sourceRoot/TS5051 rejection on both compilers;
+its separate legal one-row projection is explicitly supplemental. Public16/48,
+adjacent-standard30, Clippy and format pass on the worktree compiler. The named,
+unique class identity boundary is explicit; no anonymous/duplicate-name repair
+is claimed, and an audit finds no relevant frozen accepted counterexample.
+
+Root applies 18 owned files as minimal patches, retaining the existing Main33
+string-export hunks. Seventeen after-images match exactly; CommonJS is separately
+composed. The new source is provenance34/private-state62, with 496 frozen producer
+files. The common runner waits for the old Main33 ordinary Cargo process to finish
+before rebuilding its actual CLI, preventing a mixed-binary run. Main34 build,
+full replacement67 and adjacent/cache/style acceptance are pending. The sealed
+worktree receipt is `GE5_REPLACEMENT_DELIVERY_MEASUREMENT.json`; the current
+integration receipt separates this pending source from accepted Main33 evidence.
+G-E5 remains unchecked; no commit/push occurs.
+
+The old ordinary run discovers one further descriptor-only lookup assumption in
+metadata_class_chain. The regression now locates the exact original method
+assignment when define=false and the descriptor value when define=true; both
+flags, modules and coordinate variants remain tested. Its two tests / 32 compiled
+configurations pass on the exact Main33 library. The original failure is retained.
+
+The known-failed old ordinary process is retired after it starts a duplicate
+8,407-row preflight already independently proven green. Exact own PID/process
+groups are verified before termination; all groups are confirmed stopped and the
+retirement record binds the retained log and every failure. No interrupted suite
+is credited as passing. The previous waiting Main34 runner/result are archived;
+the replacement runner verifies this retirement record and now builds Main34.
+Final source-frozen unfiltered acceptance remains mandatory. A thin explicit-CLI
+Cargo oracle wrapper now includes double-accessor35 in automated acceptance;
+compile/enumeration pass, while its new-compiler full replay remains pending.
+
+Main34 integration is now accepted for replacement67 on immutable compiler
+`4b5531d5fc51fa5992376a14b445c271ece7cf1b985a44e6b86cfab44a670291`,
+496 unchanged producer files. Its first Cargo wrapper exposes a missing typed
+binding-reader dependency: the sealed packet included its hash in the 74-file
+closure but omitted the file from owned delivery bytes. Root adds only the exact
+previously tested `5e5977a1...` file in a separate addendum, preserving the
+original 50-artifact packet and failed log. No producer/CLI change occurs.
+The retained 67 two-build artifact/DTS/map observations feed the identical whole
+Node entry, now terminal0: 67 maps, 2,062 logical ends, 134 executions, zero
+failures. Its 2,587 fresh attempts are the two original domains (1,177/1,410),
+not a new claim of unique controls. No seven-pass Cargo summary is fabricated.
+All 66 original legal noMap pairs and the original row8175 rejection plus
+separate one-row projection remain explicit.
+
+The actual shared compiler also passes Cargo CommonJS10, adjacent56, cache39,
+the targeted GE1 cache boundary, focused Clippy and workspace format. The current
+integration receipt binds all actual hashes and explains the composed retry;
+the complete prior Main33 receipt is archived as GE5_MAIN33_SHARED_MEASUREMENT.json.
+Safe-home92, static-super282, exact inventory adapters, the final137-family
+replay and owner/K.11/unfiltered ordinary/workspace gates remain open. No G-E5
+completion, commit or push is claimed.
+
+The new exact-map inventory helper prepares the final publisher without changing
+acceptance requirements. It derives expected case/map identities from the frozen
+authorities, requires one compiler and two builds, checks corrected Native hashes,
+rejects failed/probe/misidentified reports and conflicting overlapping actual
+artifacts, and deduplicates consistent overlap. Four regressions pass, including
+a missing provider map hidden behind repeated consumer evidence. Its real Main34
+smoke reads the 67-map replacement proof against all 137 families / 10,193 expected
+JS maps; the other 10,126 maps are missing from this one supplied report set,
+not newly discovered compiler defects. The helper always returns fullCohortAccepted
+false: semantic/end/control/declaration/runtime/process acceptance remains separate.
+
+All current Node tool regressions pass 229/229, zero failures/skipped, after
+adding the four exact-map coverage tests and the missing typed binding dependency.
+Row/status consistency and whitespace checks pass. These remain component checks;
+G-E5 stays unchecked with no commit/push while the remaining worktrees close
+static-super282, safe-home92 and finite inventory adapters.
+
+### G-E5 final Main35 integration and fixed acceptance — 2026-11-05
+
+All three completed lanes are now integrated: safe-home4/92, static-super6/282
+and exact inventory adapters. Root verifies sealed bytes, composes 15 producer
+files and resolves only two decorators.rs intersections, retaining both typed
+modes and all previous Main34 prerequisites. The merged verifier closure has
+107 files, zero missing dependencies and separately checked conditional branches.
+Full safe92 and static282 Cargo oracle entrypoints are explicit, with pinned CLI
+hashes; partial static reference-phase checks cannot substitute for whole modules.
+The finite catalog audits 47 G-E5 ignored harnesses / 54 ignored functions and
+preserves the source-backed comparison domains. The enum unit-test module moves
+to EOF without changing function bodies or losing the json_string documentation.
+
+Immutable Main35 compiler:
+`05650de68072df59762875247ce1256ec50b98380cb26d233bc02f15fc6d0427`.
+Provenance35/private-state63; 498 source paths. Focused public20 and both BlueTS
+crates' all-targets warnings-denied Clippy pass. Whole-directory staging is rejected
+by automatic review; Root instead audits and explicitly lists 259 individual
+G-E5 paths with source/fixture hashes or reviewed regression domains, then stages
+only those paths. No unrelated dirty files, commit or push is included.
+
+Frozen backend tree: `backend-tree:769f8df17ce4a8c99c6728df59dc6073af4844a8`.
+The catalog, exact finite selector audit and staged-source checks all pass.
+The genuine unfiltered complete compatibility measurement (177 oracle suites)
+ran from a clean environment with this exact CLI, source freeze and tool set.
+It terminated with exit 1 after 19 passing suites: class_downlevel_oracle panics
+in private_lowering::render for class-downlevel-private-names / ES2020 / default
+define mode. An absolute module relocation at byte 1118 was expanded against the
+17-byte RHS `"z" + this.#label`. The failed receipt and immutable CLI are retained;
+no case numerators or successful measured labels are published from this run.
+The typed local-text renderer must expand relocations against the complete module
+before rebasing edits; generic clamping or dropping mappings cannot repair this.
+A regression and new frozen-compiler complete measurement are required. Only a
+terminal successful receipt may regenerate case numerators and suite labels. K.11, unchanged owner gates and final
+ordinary/workspace acceptance remain required. The historical Main34 receipt is
+archived separately; the current receipt describes Main35 and keeps G-E5 open.
+
+The two reproduced acceptance defects are minimally repaired as Main37
+(provenance37/private-state65): private RHS text consumers expand absolute
+relocations against the complete module before rebasing; the existing asserted
+decorator branch relocates only its parsed surviving identifier and retains its
+original end anchor. No fixtures, authority maps, debugger expectations or
+permissions change. The original class oracle passes all 30 products; new
+regressions pass 48 private products/24 maps and two decorator products/one map.
+The unchanged K.11 generated real-process gate now passes all 22 tests, including
+the eleven-row helper matrix and stale/substituted/corrupt negatives (83.12 s).
+Both compiler crates' all-target Clippy and workspace format pass. Source freezes
+and failed Main35/36 receipts remain separate. Main37 CLI SHA:
+`6a8964a3de526e653536c2cbeb6fea0a8f97c8753815c5eb899de24dfbb82171`;
+backend tree `c5a3f608cef8666fc5877a0f7df107d142b4f0e0`.
+Existing full retained43 and Node8 role gates now emit actual per-map hashes,
+including exact decoded inline-map bytes. The inventory-only collector is
+integrated with exact source/CLI/tool/terminal-measurement binding; missing,
+rejected or incomplete evidence returns nonzero. Its thirteen focused Node tests,
+two Rust unit tests and all 242 integrated Node checks pass (two optional
+observation-dependent checks are not counted). The new source-frozen 177-suite
+measurement has actually started; catalog, case-source audit and staged-source
+checks pass. No producer/test/tool edits are made during the run. Exact JS
+coverage, full cohort and final workspace gates remain open. No checklist item,
+commit or push is made.
+
+Main37's full run stops at suite29 with the CommonJS abstract-prefix regression;
+its preliminary CLI seal also precedes a Cargo no-run rebuild. The initial
+6a8964 CLI and test-built3954 CLI remain distinct, so that failed run establishes
+no same-binary acceptance. Filtered diagnostic sweeps on3954 select207 tests in
+68 suites;206 pass and the sole declaration-inference failure is repaired as
+Main38. Original failures, overbroad rejected candidates and setup errors remain
+retained separately. Main38 replaces only the parsed abstract prefix, preserving
+ordinary/default/decorator paths; all ten focused public tests pass, including
+77 original accepted declaration-inference cases. Workspace all-target Clippy,
+format, unchanged K.11 generated22 and247 Node checks pass (two optional
+observation checks are not counted). The final tools require the actual normal
+Cargo CLI hash after no-run and around every suite, and the coverage collector
+requires that same terminal-measurement compiler identity.
+
+All test builds now finish before sealing immutable Main38 CLI
+`93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c`.
+Provenance38/private-state66,498 production source hashes; final backend tree
+`0f6b5151270a0549026484cf96616e257d3f27d7`. The737 staged paths are262 explicitly
+reviewed backend paths plus475 individually audited tools, with no directory
+staging or unrelated files. Source/header audit finds no changed source over
+1500 lines; every new source has its canonical MPL header. The new complete177
+run is actually executing after catalog, exact case-source and staged-source
+checks pass. No source/harness/tool edits or other Cargo builds are allowed during
+this run. Exact JS-map coverage, full cohort and final workspace tests still
+require their actual successful receipts; no item, commit or push is made.
+
+
+G-E5 final acceptance (2026-11-06): frozen source42/cache70 passes all 177
+measured oracle suites. Its full declaration suite passes 64 tests across 8,407
+configurations, each built twice; exact coverage accepts 10,193 JavaScript maps
+and 10,397 declaration maps. Raw reports, observations and suite logs are
+preserved in the durable archive. All 21,084 original observations and all
+39,118 Main41 observation identities/classifications remain intact in the
+matching source42 publication. Source/case/accounting/status checks and
+inventory regressions pass. K.11 passes 28 API and 22 real-process tests, with
+original Native fingerprints and fixture authorities unchanged.
+
+The ordinary map-on/off regression exposed an inconsistent trailing separator
+between private-field store renderers. The uniform separator preserves its
+logical-end anchor; all 51 products, the 15-test accessor suite, five affected
+private-field suites (43 tests), and the complete new compiler cohort pass.
+The launcher budget fixture replaces an unauthorized Array constructor with
+a 33-element literal, preserving every budget and owner-policy assertion.
+The final complete unfiltered source42 workspace passes after matching data
+publication, alongside format and warnings-denied all-target Clippy. Earlier
+failed/interrupted runs remain failed, and source41 Native evidence remains
+separately preserved. Final hashes, raw measurements and requirement verification
+are in [GE5_CURRENT_INTEGRATION_MEASUREMENT.json](GE5_CURRENT_INTEGRATION_MEASUREMENT.json).
+G-E5 is complete for its frozen scope; full TypeScript parity remains OFF.
+Next is the existing G-C3 package; G-M3 stays deferred without a new platform gate.

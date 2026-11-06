@@ -64,7 +64,13 @@ pub(in super::super) fn lower(
             if tokens[begin].is("...") {
                 let name = &tokens[begin + 1].text;
                 let index = unused_name(source, "rest_argument", &mut sequence);
-                prologue.push_str(&format!("var {name}=[]; for(var {index}={position};{index}<arguments.length;{index}++){{{name}[{index}-{position}]=arguments[{index}];}}\n"));
+                prologue.push_str(&rest::prologue(
+                    name,
+                    &index,
+                    position,
+                    tokens[begin].start,
+                    tokens[end - 1].end,
+                ));
                 continue;
             }
             let pattern = matches!(tokens[begin].text.as_str(), "{" | "[");
@@ -79,32 +85,88 @@ pub(in super::super) fn lower(
             } else {
                 begin + 1
             };
-            parameters.push(name.clone());
+            parameters.push(if pattern {
+                format!(
+                    "{}{}",
+                    crate::emitter::relocations::source_anchor(tokens[begin].start),
+                    name
+                )
+            } else {
+                format!(
+                    "{}{}{}",
+                    crate::emitter::relocations::source_anchor(tokens[begin].start),
+                    name,
+                    crate::emitter::relocations::source_anchor(tokens[begin].end)
+                )
+            });
             if head < end && tokens[head].is("=") {
-                let value = &source[tokens[head + 1].start..tokens[end - 1].end];
-                prologue.push_str(&format!("if({name}===void 0){{{name}=({value});}}\n"));
+                let value = if end == head + 2
+                    && (matches!(tokens[head + 1].kind, TokenKind::Number | TokenKind::String)
+                        || matches!(tokens[head + 1].text.as_str(), "true" | "false" | "null"))
+                {
+                    format!(
+                        "{}{}",
+                        crate::emitter::relocations::source_anchor(tokens[begin].start),
+                        tokens[head + 1].text
+                    )
+                } else {
+                    crate::emitter::relocations::relocated_verbatim(
+                        tokens[head + 1].start,
+                        tokens[end - 1].end,
+                    )
+                };
+                prologue.push_str(&format!(
+                    "{}if({name}===void 0){{{name}=({value}{});}}\n",
+                    crate::emitter::relocations::source_anchor(tokens[begin].start),
+                    crate::emitter::relocations::source_anchor(tokens[end - 1].end)
+                ));
             }
             if pattern {
-                let pattern = &source[tokens[begin].start..tokens[head - 1].end];
-                prologue.push_str(&format!("var {pattern}={name};\n"));
+                let pattern = crate::emitter::relocations::relocated_verbatim(
+                    tokens[begin].start,
+                    tokens[head - 1].end,
+                );
+                let origin = crate::parser::parse_variable_pattern(
+                    &tokens,
+                    begin,
+                    &module.id,
+                    options.limits.parser.max_type_depth,
+                )
+                .and_then(|(binding, _)| binding.names().last().map(|(_, span)| span.end))
+                .unwrap_or(tokens[head - 1].end);
+                prologue.push_str(&format!(
+                    "{}var {pattern}={}{};\n",
+                    crate::emitter::relocations::unmapped(),
+                    crate::emitter::relocations::source_anchor(origin),
+                    name
+                ));
             }
         }
         let insertion = body_directive_end(&tokens, tokens[close + 1].start);
-        emitted = mapped_edits(
-            emitted,
-            vec![
-                TextEdit {
-                    start: tokens[open].end,
-                    end: tokens[close].start,
-                    replacement: parameters.join(", "),
-                },
-                TextEdit {
-                    start: insertion,
-                    end: insertion,
-                    replacement: format!("\n{prologue}"),
-                },
-            ],
-        );
+        let empty = parameters.is_empty();
+        let mut edits = vec![
+            TextEdit {
+                start: tokens[open].end,
+                end: tokens[close].start,
+                replacement: parameters.join(", "),
+            },
+            TextEdit {
+                start: insertion,
+                end: insertion,
+                replacement: format!("\n{prologue}"),
+            },
+        ];
+        if empty {
+            for index in [close, close + 1] {
+                let anchor = crate::emitter::relocations::source_anchor(tokens[open].start);
+                edits.push(TextEdit {
+                    start: tokens[index].start,
+                    end: tokens[index].end,
+                    replacement: format!("{anchor}{}{anchor}", tokens[index].text),
+                });
+            }
+        }
+        emitted = mapped_edits(emitted, edits);
     }
 }
 fn groups(tokens: &[Token], begin: usize, end: usize) -> Option<Vec<(usize, usize)>> {

@@ -6,6 +6,8 @@
 
 #[path = "fixtures/compatibility_inventory/accounting.rs"]
 mod accounting;
+#[path = "fixtures/compatibility_inventory/case_ge5.rs"]
+mod case_ge5;
 #[path = "fixtures/compatibility_inventory/case_inline.rs"]
 mod case_inline;
 #[path = "fixtures/compatibility_inventory/case_registry.rs"]
@@ -267,22 +269,31 @@ fn measurement_binding_rejects_partial_forged_or_foreign_evidence() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let tree = repository_snapshot(&root);
     let inventory = inventory::generate(&tree).unwrap();
-    let rows: Vec<_> = inventory
-        .suites
-        .iter()
-        .map(|suite| {
-            serde_json::json!({
-                "harness": suite.harness, "test_names": suite.ignored_tests,
-                "pinned_tests": suite.ignored_tests, "conclusion":"success",
-                "passed":suite.ignored_tests.len(), "failed":0,"ignored":0,"filtered":0,
-                "log_sha256":"a".repeat(64)
-            })
-        })
-        .collect();
-    let valid = serde_json::json!({"schema":1,"typescript":"5.9.3",
-        "source_revision":inventory.source_revision,"source_graph_sha256":inventory.source_graph_sha256,
-        "platform":"darwin-arm64","conclusion":"success","finished_at":"2026-10-16T13:06:01.804Z","suites":rows});
+    let valid: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(
+            root.join(inventory::DIRECTORY)
+                .join(case_report::MEASUREMENT),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     case_report::validate_measurement(&inventory, &valid).unwrap();
+    // A well-formed Native replay cannot replace the ordinary Blue matrix test.
+    let mut no_blue_matrix = valid.clone();
+    let source_maps = no_blue_matrix["suites"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|row| row["harness"] == "backend/bluets/tests/ge5_source_maps.rs")
+        .unwrap();
+    let names = source_maps["test_names"].as_array_mut().unwrap();
+    let before = names.len();
+    names.retain(|name| {
+        name != "all_frozen_declarations_match_native_and_javascript_maps_validate_twice"
+    });
+    assert_eq!(names.len(), before - 1);
+    source_maps["passed"] = serde_json::json!(names.len());
+    assert!(case_report::validate_measurement(&inventory, &no_blue_matrix).is_err());
     for (pointer, value) in [
         ("/conclusion", serde_json::json!("in_progress")),
         ("/source_graph_sha256", serde_json::json!("foreign")),
@@ -808,6 +819,115 @@ fn immutable_tree_resolves_nested_modules_and_refuses_missing_inputs() {
     assert!(
         inventory::generate(&snapshot::Snapshot::read(&fixture.0, &revision).unwrap()).is_err()
     );
+}
+
+#[test]
+fn finite_ge5_adapter_flows_from_an_immutable_tree_into_the_case_report() {
+    let fixture = GitFixture::new();
+    let harness = "backend/bluets/tests/ge5_literal_replacement_module_maps.rs";
+    let name = "literal_replacement_order_preserves_every_complete_module_role";
+    let source = format!(
+        r#"#[test] #[ignore] fn {name}() {{
+            let rows = input.iter().filter(|row| row["form"] == "ge3_decorator_compositions/literal-replacement-order").collect::<Vec<_>>();
+            run("verify_ge5_decorator_replacement_roles.cjs", rows);
+        }}"#
+    );
+    fixture.write(harness, &source);
+    fixture.write(
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json",
+        r#"{"typescript":"5.9.3","cases":[
+            {"id":"one","form":"ge3_decorator_compositions/literal-replacement-order"},
+            {"id":"other","form":"unrelated"},
+            {"id":"two","form":"ge3_decorator_compositions/literal-replacement-order"}
+        ]}"#,
+    );
+    fixture.write(
+        "backend/bluets/tests/fixtures/diagnostics/reference.json",
+        r#"{"version":"5.9.3","templates":[],"cases":[]}"#,
+    );
+    let read_tree = || {
+        fixture.git(&["add", "."]);
+        let object = fixture.git(&["write-tree", "--prefix=backend/"]);
+        snapshot::Snapshot::read(&fixture.0, &format!("backend-tree:{object}")).unwrap()
+    };
+    let tree = read_tree();
+    let inventory = inventory::generate(&tree).unwrap();
+    assert_eq!(inventory.suites.len(), 1);
+    // This synthetic receipt checks validation plumbing; it is never published
+    // as evidence that a compiler or a real G-E5 harness was executed.
+    let measurement = serde_json::json!({
+        "schema":1,"typescript":"5.9.3","source_revision":inventory.source_revision,
+        "source_graph_sha256":inventory.source_graph_sha256,"conclusion":"success",
+        "finished_at":"synthetic adapter test","platform":"darwin-synthetic-test",
+        "suites":[{"harness":harness,"test_names":[name],"pinned_tests":[name],
+            "passed":1,"failed":0,"ignored":0,"filtered":0,"conclusion":"success",
+            "log_sha256":"0".repeat(64)}]
+    });
+    let bytes = serde_json::to_vec(&measurement).unwrap();
+    let report = case_report::generate(&tree, &inventory, &bytes).unwrap();
+    assert_eq!(report.counts.listed, 2);
+    assert_eq!(report.counts.agreements, 2);
+    assert_eq!(
+        report.suites[0].cases[0].case.id.rsplit('#').next(),
+        Some("/cases/0")
+    );
+    assert_eq!(
+        report.suites[0].cases[1].case.id.rsplit('#').next(),
+        Some("/cases/2")
+    );
+    let mut partial = measurement.clone();
+    partial["suites"][0]["pinned_tests"] = serde_json::json!([]);
+    assert!(
+        case_report::generate(&tree, &inventory, &serde_json::to_vec(&partial).unwrap()).is_err()
+    );
+    fixture.write(harness, &source.replace(".collect", ".take(1).collect"));
+    assert_eq!(
+        case_registry::cases(&tree, &inventory.suites[0])
+            .unwrap()
+            .len(),
+        2
+    );
+    let partial_tree = read_tree();
+    let partial_inventory = inventory::generate(&partial_tree).unwrap();
+    assert!(case_registry::cases(&partial_tree, &partial_inventory.suites[0]).is_err());
+    assert!(case_report::generate(&partial_tree, &partial_inventory, &bytes).is_err());
+
+    let matrix_harness = "backend/bluets/tests/ge5_source_maps.rs";
+    let native_test = "complete_native_map_authority_is_reproducible";
+    let blue_test = "all_frozen_declarations_match_native_and_javascript_maps_validate_twice";
+    fixture.write(harness, &source);
+    fixture.write(
+        matrix_harness,
+        &format!(
+            r#"#[test] #[ignore] fn {native_test}() {{ run("record_ge5_maps.cjs"); }}
+            #[test] fn {blue_test}() {{ declarations::run(); }}"#
+        ),
+    );
+    let matrix_tree = read_tree();
+    let matrix_inventory = inventory::generate(&matrix_tree).unwrap();
+    let mut receipt = measurement;
+    receipt["source_revision"] = serde_json::json!(matrix_inventory.source_revision);
+    receipt["source_graph_sha256"] = serde_json::json!(matrix_inventory.source_graph_sha256);
+    let mut native_only = receipt["suites"][0].clone();
+    native_only["harness"] = serde_json::json!(matrix_harness);
+    native_only["test_names"] = serde_json::json!([native_test]);
+    native_only["pinned_tests"] = serde_json::json!([native_test]);
+    receipt["suites"].as_array_mut().unwrap().push(native_only);
+    assert!(case_report::generate(
+        &matrix_tree,
+        &matrix_inventory,
+        &serde_json::to_vec(&receipt).unwrap()
+    )
+    .is_err());
+    receipt["suites"][1]["test_names"] = serde_json::json!([native_test, blue_test]);
+    receipt["suites"][1]["passed"] = serde_json::json!(2);
+    let report = case_report::generate(
+        &matrix_tree,
+        &matrix_inventory,
+        &serde_json::to_vec(&receipt).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(report.counts.listed, 5);
 }
 
 struct GitFixture(std::path::PathBuf);

@@ -8,14 +8,18 @@ use crate::parser::{ClassDeclaration, ClassMemberShell, Parameter};
 use crate::syntax::{Token, TokenKind};
 use std::collections::BTreeSet;
 mod declarations;
+mod enums;
+mod inferred;
 mod members;
+mod modules;
 mod types;
-pub(crate) const VERSION: &str = "declaration-map-provenance-v2";
+pub(crate) const VERSION: &str = "declaration-map-provenance-v3";
 
 pub(super) fn build(
     id: &str,
     module: &Module,
     declaration: &str,
+    inferred: &BTreeMap<usize, Type>,
     options: &CompilerOptions,
 ) -> Result<SourceMap, Diagnostic> {
     let generated = crate::parser::parse_module_with_limits(
@@ -37,6 +41,8 @@ pub(super) fn build(
         points: BTreeMap::new(),
         limit: options.limits.max_source_map_segments,
         exhausted: false,
+        inferred,
+        member_origins: inferred::member_origins(module),
     };
     mapper.declarations(&module.declarations, &generated.declarations)?;
     if mapper.exhausted {
@@ -89,6 +95,8 @@ struct Mapper<'a> {
     points: BTreeMap<usize, usize>,
     limit: usize,
     exhausted: bool,
+    inferred: &'a BTreeMap<usize, Type>,
+    member_origins: BTreeMap<(usize, usize), &'a ClassMemberShell>,
 }
 impl Mapper<'_> {
     fn point(&mut self, generated: usize, source: usize) {
@@ -135,6 +143,7 @@ impl Mapper<'_> {
                     | "protected"
                     | "private"
                     | "readonly"
+                    | "accessor"
                     | "static"
                     | "declare"
             )

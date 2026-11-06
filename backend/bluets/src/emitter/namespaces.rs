@@ -147,6 +147,14 @@ impl Walk<'_> {
         });
     }
 
+    fn anchor(&self, offset: usize) -> String {
+        if self.options.source_map {
+            super::relocations::source_anchor(offset)
+        } else {
+            String::new()
+        }
+    }
+
     fn lines_in(&self, start: usize, end: usize) -> usize {
         self.module.source[start..end].matches('\n').count()
     }
@@ -189,39 +197,80 @@ impl Walk<'_> {
         let mut closing: Vec<String> = Vec::new();
         for (index, segment) in chain.iter().enumerate() {
             let name = &segment.name;
+            let start = self.anchor(segment.span.start);
+            let named = format!(
+                "{}{name}{}",
+                self.anchor(segment.name_span.start),
+                self.anchor(segment.name_span.end)
+            );
+            let member = |parent: &str| {
+                format!(
+                    "{}{parent}.{name}{}",
+                    self.anchor(segment.name_span.start),
+                    self.anchor(segment.name_span.end)
+                )
+            };
             let argument = if index == 0 {
                 match scope {
                     Scope::Namespace { parent } if namespace.exported => {
-                        format!("{name} = {parent}.{name} || ({parent}.{name} = {{}})")
+                        format!(
+                            "{named} = {} || ({} = {{}})",
+                            member(parent),
+                            member(parent)
+                        )
                     }
                     Scope::Module if namespace.exported && self.commonjs => {
-                        format!("{name} || (exports.{name} = {name} = {{}})")
+                        format!("{named} || (exports.{name} = {named} = {{}})")
                     }
-                    _ => format!("{name} || ({name} = {{}})"),
+                    _ => format!("{named} || ({named} = {{}})"),
                 }
             } else {
                 let parent = &chain[index - 1].name;
-                format!("{name} = {parent}.{name} || ({parent}.{name} = {{}})")
+                format!(
+                    "{named} = {} || ({} = {{}})",
+                    member(parent),
+                    member(parent)
+                )
             };
             if index == 0 {
                 if first {
                     let keyword = match scope {
-                        Scope::Module => {
-                            if namespace.exported && !self.commonjs {
-                                "export var"
-                            } else {
-                                "var"
-                            }
-                        }
+                        Scope::Module => "var",
                         Scope::Namespace { .. } => "let",
                     };
-                    header.push_str(&format!("{keyword} {name}; "));
+                    if matches!(scope, Scope::Module) && namespace.exported && !self.commonjs {
+                        let export = self.tokens[self.token_at(segment.span.start)
+                            ..self.token_at(segment.name_span.start)]
+                            .iter()
+                            .find(|token| token.is("export"));
+                        header.push_str(&format!(
+                            "{start}export{} {keyword} {named};{} ",
+                            self.anchor(export.map_or(segment.span.start, |token| token.end)),
+                            self.anchor(segment.span.end)
+                        ));
+                    } else {
+                        header.push_str(&format!(
+                            "{start}{keyword} {named};{} ",
+                            self.anchor(segment.span.end)
+                        ));
+                    }
                 }
             } else {
-                header.push_str(&format!("var {name}; "));
+                header.push_str(&format!(
+                    "{start}var {named};{} ",
+                    self.anchor(segment.span.end)
+                ));
             }
-            header.push_str(&format!("(function ({name}) {{ "));
-            closing.push(format!("}})({argument});"));
+            header.push_str(&format!(
+                "{start}(function ({named}) {{{} ",
+                self.anchor(segment.name_span.end)
+            ));
+            closing.push(format!(
+                "{}}}{})({argument});{}",
+                self.anchor(segment.closing_span.start),
+                self.anchor(segment.closing_span.end),
+                self.anchor(segment.closing_span.end)
+            ));
         }
         closing.reverse();
         let header = header.trim_end().to_string();
@@ -291,6 +340,7 @@ impl Walk<'_> {
                             export_modifier: false,
                             commonjs_export: false,
                             namespace: Some((&param, enum_declaration.exported)),
+                            source_map: self.options.source_map,
                         };
                         enum_statement(
                             self.module,
@@ -374,7 +424,7 @@ impl Walk<'_> {
         self.edit(
             variable.span.start,
             name_token.end,
-            format!("{param}.{}", variable.name),
+            format!("{}{param}.{}", self.anchor(name_token.start), variable.name),
         );
         Ok(())
     }
@@ -392,7 +442,29 @@ impl Walk<'_> {
                 self.edit(start, end, "");
             }
         }
-        self.edit(span.end, span.end, format!(" {param}.{name} = {name};"));
+        let first = self.token_at(span.start);
+        let last = self.token_at(span.end);
+        let header = &self.tokens[first..last];
+        let keyword = header
+            .iter()
+            .position(|token| token.is("function") || token.is("class"));
+        let name_span = keyword
+            .and_then(|index| header[index + 1..].iter().find(|token| token.text == name))
+            .map(|token| (token.start, token.end));
+        let assignment = if let Some((start, end)) = name_span {
+            format!(
+                " {}{param}.{name}{} = {name}{};",
+                self.anchor(start),
+                self.anchor(end),
+                self.anchor(span.end)
+            )
+        } else {
+            format!(
+                "{} {param}.{name} = {name};",
+                super::relocations::unmapped()
+            )
+        };
+        self.edit(span.end, span.end, assignment);
     }
 
     /// Rewrites each reference to an exported variable in `range`, outside the
@@ -548,7 +620,11 @@ pub(super) fn scan(
             continue;
         }
         let mut replacement = if target.wrap_calls && after == Some("(") && before != Some("new") {
-            format!("(0, {})", target.text)
+            format!(
+                "(0, {}{})",
+                target.text,
+                super::relocations::source_anchor(base + token.end)
+            )
         } else {
             target.text.clone()
         };

@@ -15,7 +15,20 @@ impl Lowerer<'_, '_> {
         value: &Type,
         span: &SourceSpan,
     ) -> Result<String, Diagnostic> {
-        self.serialize_at(class, value, span, 0)
+        let serialized = self.serialize_at(class, value, span, 0)?;
+        if let Type::Named { name, .. } = value {
+            if !class
+                .type_parameters
+                .iter()
+                .any(|parameter| parameter.name == *name)
+                && resolve_local(self.project, self.module, name, 0).is_some_and(|found| {
+                    !found.type_only && matches!(found.declaration, Declaration::Class(_))
+                })
+            {
+                return Ok(origins::named(self.module, name, &serialized, span));
+            }
+        }
+        Ok(serialized)
     }
 
     fn serialize_at(

@@ -1,0 +1,229 @@
+{
+  "scope": "Reviewed seven Blue generated-coordinate schedule updates paired with recurring complete Native-derived K11 module proofs; Native schedules and original fixtures unchanged; full G-E5 acceptance pending",
+  "compilerSha256": "bbe610069f90b2d9f3816a10adf5eb12dea3e5c469319569bac6fccb5183f337",
+  "rawReportSha256": "85506bc6d15c2196360184c65448b1d2c1ccd9bde37a8b2f1384d7cf1df40da1",
+  "previousAlignmentSha256": "27e5186ffabc0df32fddc094933e7334db2a48bbdbc02968829f27c61e9a5276",
+  "rows": [
+    {
+      "case": "k11-basic-copy",
+      "nativeUnchanged": true,
+      "native": [
+        6,
+        "2195a23867fd30def4c6bfe2870ef1cf3138eb96f648b6ea5525acfc7abed7d5"
+      ],
+      "previousBlue": [
+        6,
+        "2195a23867fd30def4c6bfe2870ef1cf3138eb96f648b6ea5525acfc7abed7d5"
+      ],
+      "candidateBlue": [
+        6,
+        "2195a23867fd30def4c6bfe2870ef1cf3138eb96f648b6ea5525acfc7abed7d5"
+      ],
+      "changed": false
+    },
+    {
+      "case": "k11-erased-annotation",
+      "nativeUnchanged": true,
+      "native": [
+        6,
+        "2195a23867fd30def4c6bfe2870ef1cf3138eb96f648b6ea5525acfc7abed7d5"
+      ],
+      "previousBlue": [
+        6,
+        "2195a23867fd30def4c6bfe2870ef1cf3138eb96f648b6ea5525acfc7abed7d5"
+      ],
+      "candidateBlue": [
+        6,
+        "2195a23867fd30def4c6bfe2870ef1cf3138eb96f648b6ea5525acfc7abed7d5"
+      ],
+      "changed": false
+    },
+    {
+      "case": "k11-standard-method",
+      "nativeUnchanged": true,
+      "native": [
+        11,
+        "341069ae168036f40442033c5d3f8e3568756a923bd09994672b04be20faf4e1"
+      ],
+      "previousBlue": [
+        17,
+        "176ca4d8fdcef203dc06f4d1426180f7f670fab536ebc81cd9b550c5a9097369"
+      ],
+      "candidateBlue": [
+        14,
+        "7532dd6ca849d7f7f4080d282d9209e9d14450969df3281022f0134d44c62783"
+      ],
+      "changed": true
+    },
+    {
+      "case": "k11-compacted-relocation",
+      "nativeUnchanged": true,
+      "native": [
+        11,
+        "341069ae168036f40442033c5d3f8e3568756a923bd09994672b04be20faf4e1"
+      ],
+      "previousBlue": [
+        17,
+        "827d6b4c767918dc3414380b75fe5728aed33cbda4dc3a46b81601453780e0ec"
+      ],
+      "candidateBlue": [
+        14,
+        "af676a6dd86d0b8c8046e77b585d8ffa387785f3c88ec23158d97ab0fa108546"
+      ],
+      "changed": true
+    },
+    {
+      "case": "k11-erased-relocation",
+      "nativeUnchanged": true,
+      "native": [
+        11,
+        "341069ae168036f40442033c5d3f8e3568756a923bd09994672b04be20faf4e1"
+      ],
+      "previousBlue": [
+        18,
+        "eeee8936810a12c148fd91aa257078560c1f40421d7d1b00fa68aaea599f1364"
+      ],
+      "candidateBlue": [
+        14,
+        "17dd8542a3876198d94065af08a4989a0fe65cd6e88095e401de7d34c4225b2d"
+      ],
+      "changed": true
+    },
+    {
+      "case": "k11-composed-decorators",
+      "nativeUnchanged": true,
+      "native": [
+        15,
+        "1fbbb75c6bff83752585f7424b0a0d0cd1e681d5981b953166391118deb60145"
+      ],
+      "previousBlue": [
+        23,
+        "16267cbfc85626593465b06506bce6f5785339355da43b69de72bec5f10cec39"
+      ],
+      "candidateBlue": [
+        18,
+        "86c638f0d8f88da3d810473aa4482e7a2003eb0aa868e6c4e7647e959330a57c"
+      ],
+      "changed": true
+    },
+    {
+      "case": "k11-legacy-class-member",
+      "nativeUnchanged": true,
+      "native": [
+        15,
+        "15c0c76bac994fe9d18fb69fd6b9203fe046c1ae2af3878d851a8f497ae87a5f"
+      ],
+      "previousBlue": [
+        18,
+        "e848edb6524df7b0a7795c806947c7dcb2bbbfb4eaaf37a64590e246889e36ff"
+      ],
+      "candidateBlue": [
+        14,
+        "7b3f6a23aef4538bb2a63c7e8a148963fea82c3e0b3e53d0b0bbb1b9e7fe0355"
+      ],
+      "changed": true
+    },
+    {
+      "case": "k11-legacy-parameter-metadata",
+      "nativeUnchanged": true,
+      "native": [
+        18,
+        "659c0d5541f25df174b141ce0f143cdb81e47d859ac4dc03a919a02b43d97572"
+      ],
+      "previousBlue": [
+        17,
+        "b26b57ebbcb2d92e8d7313ab6c2dd13424e8e9bc500aad70d2152b27553d931b"
+      ],
+      "candidateBlue": [
+        16,
+        "715ab8f34ced29f2629235eee05c2a31f44f10a99f571e3d17006372c27048ad"
+      ],
+      "changed": true
+    },
+    {
+      "case": "k11-nondecorator-helper",
+      "nativeUnchanged": true,
+      "native": [
+        6,
+        "34f7bbba53058987fd4d5b1b4b12cd525918cbf03066757f7971b0295e110981"
+      ],
+      "previousBlue": [
+        10,
+        "2ede1d8a7627a79fdc5fcebcd10f88f40213fc345b913ee6b80e168479792a4b"
+      ],
+      "candidateBlue": [
+        10,
+        "2ede1d8a7627a79fdc5fcebcd10f88f40213fc345b913ee6b80e168479792a4b"
+      ],
+      "changed": false
+    },
+    {
+      "case": "k11-system-wrapper",
+      "nativeUnchanged": true,
+      "native": [
+        7,
+        "42fa2c1f7761d31efa18a99184687351290912e4b2f7def536fb734b3d07fb1d"
+      ],
+      "previousBlue": [
+        8,
+        "3efc8be9b1ceafc6ae5e093ee3a18d223d42db50829e54db4a8eefcc35a52c6e"
+      ],
+      "candidateBlue": [
+        7,
+        "8a8f972ac5b09106f201aab3b9402de85f1f060b9d850ce068828dda7bc77294"
+      ],
+      "changed": true
+    },
+    {
+      "case": "k11-crlf-astral",
+      "nativeUnchanged": true,
+      "native": [
+        5,
+        "5e440aaf88e8546c0b4f2a84ec57fefe39e53651cddff172a429e7f24d4ba580"
+      ],
+      "previousBlue": [
+        5,
+        "5e440aaf88e8546c0b4f2a84ec57fefe39e53651cddff172a429e7f24d4ba580"
+      ],
+      "candidateBlue": [
+        5,
+        "5e440aaf88e8546c0b4f2a84ec57fefe39e53651cddff172a429e7f24d4ba580"
+      ],
+      "changed": false
+    }
+  ],
+  "expectedNativeChanges": 0,
+  "proposedBlueChanges": 7,
+  "expectationsModified": true,
+  "updatedAlignmentSha256": "98801c2158c9f6223ecd469de41683f693be38e6aadc0f2fc17ccd83ec61c4bd",
+  "standardProofSha256": "43695defa4245290a70860b20e22da8949fcca9ce7bc599cd8191e0a1644db5b",
+  "legacySystemProofSha256": "9f7e307a8fdda57005a6b3aecf9459310d1475ea6ba4f456939cf5e4d458916e",
+  "sourceSnapshotSha256": "5d56c489810f1e9962bff03f1fe82c210684422a6476b08e7004742f0b55a65b",
+  "fullCohortAccepted": false,
+  "finalMeasuredReplay": {
+    "scope": "Final cfeb compiler separately re-runs the unchanged full K11 oracle including Native-derived bridge proofs; earlier bbe candidate review remains separately identified",
+    "compilerSha256": "cfeb941e49d71604c79c420198fa8b38f0c951b15f508e83979256404e7db761",
+    "sourceRevision": "backend-tree:3d5f1bc768cc287f05985e955c73d822a90cb8f7",
+    "measurementSha256": "e3bcc7e224cc05c13e41b22200766887936b758fcec04e8e224eebeb590ca245",
+    "suiteLogSha256": "b3c880bd0c4d2371fd91e38265537b36e106136929ac21b1dc0bb29ef427f206",
+    "passed": 28,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 0,
+    "expectedNativeChanges": 0,
+    "fixtureBytesChanged": false
+  },
+  "source42MeasuredReplay": {
+    "scope": "Fresh source42 complete Native cohort repeats the unchanged K11 oracle and Native-derived whole-module bridge proofs; original candidate and source41 replay retain their identities",
+    "compilerSha256": "935e7d37e2b55f17986c4dd5e88d29dce02f0eb6ac18fc7c04c0536758b857c5",
+    "sourceRevision": "backend-tree:a5f61a09b651e3a770b11049020ecea1b28ed393",
+    "measurementSha256": "6bd2de07ccfa8a4b1f07dea36d5be4d6f4568c7f650d8bbdfacb581ba25a0857",
+    "suiteLogSha256": "417e110610105bee4bca3667b9914b172793fd671cbb13364007a1d060e960ae",
+    "passed": 28,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 0,
+    "expectedNativeChanges": 0,
+    "fixtureBytesChanged": false
+  }
+}

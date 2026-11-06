@@ -14,9 +14,13 @@ use std::{collections::BTreeSet, fs, path::Path, process::Command};
 const OPAQUE_GENERATOR: &str = "export function* sequence(): Generator<number, void, unknown> { switch (1) { case 1: break; }; yield 42; }";
 
 fn opaque_javascript() -> String {
+    javascript_for(OPAQUE_GENERATOR)
+}
+
+fn javascript_for(source: &str) -> String {
     let result = compile(
         "memory:///main.ts",
-        &MapLoader::from([ModuleSource::new("memory:///main.ts", OPAQUE_GENERATOR)]),
+        &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
         CompilerOptions {
             target: EcmaTarget::Es5,
             libraries: Some(vec![EcmaTarget::Es2020]),
@@ -28,6 +32,45 @@ fn opaque_javascript() -> String {
     result.output.unwrap().artifacts["memory:///main.ts"]
         .javascript
         .clone()
+}
+
+#[test]
+#[ignore = "requires pinned TypeScript 5.9.3 and Node"]
+fn switch_local_binding_survives_a_later_generator_resume() {
+    let source = "export function* stored(): Generator<number, number | undefined, unknown> { switch (1) { case 1: var value: number | undefined = 7; break; } yield 1; return value; }";
+    let root = fs::canonicalize(std::env::temp_dir())
+        .unwrap()
+        .join(format!(
+            "bluets-switch-generator-local-{}",
+            std::process::id()
+        ));
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("main.ts"), source).unwrap();
+    fs::write(root.join("blue.js"), javascript_for(source)).unwrap();
+    let script = r#"
+const path = require('node:path'), assert = require('node:assert/strict');
+const root = process.argv[1], ts = require(process.argv[2] + '/tests/fixtures/oracle_support/load_typescript.cjs')(process.env.BLUEICE_BLUETSC_ORACLE);
+const program = ts.createProgram([path.join(root,'main.ts')], {target:ts.ScriptTarget.ES5, module:ts.ModuleKind.CommonJS, lib:['lib.es2020.d.ts'], strict:true, skipLibCheck:true, noEmitOnError:true, outDir:path.join(root,'native')});
+assert.equal(ts.getPreEmitDiagnostics(program).length, 0); assert.equal(program.emit().emitSkipped, false);
+for (const filename of ['native/main.js','blue.js']) {
+  const iterator = require(path.join(root,filename)).stored();
+  assert.deepEqual([iterator.next(),iterator.next()], [{value:1,done:false},{value:7,done:true}], filename);
+}
+
+"#;
+    let output = Command::new("node")
+        .args(["-e", script])
+        .arg(&root)
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../bluets"))
+        .output()
+        .unwrap();
+    fs::remove_dir_all(root).unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 #[test]
 fn opaque_suspension_graph_emits_valid_es5_output() {
@@ -152,4 +195,136 @@ fn every_emitted_target_parses_at_its_selected_bluejs_edition() {
     assert_eq!(compared, 600, "{}", failures.join("\n"));
     assert_eq!(targets.len(), 11);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+#[ignore = "requires pinned TypeScript 5.9.3 and Node"]
+fn nested_binary_and_short_circuit_suspensions_preserve_native_resume_order() {
+    let source = "export function* binary(): Generator<number, number, number> { return (yield 1) + (yield 2) * 2; } export function* logical(): Generator<number, number, number> { const first: number = 0 && (yield 9); const second: number = first || (yield 1); return second; }";
+    let root = fs::canonicalize(std::env::temp_dir())
+        .unwrap()
+        .join(format!(
+            "bluets-expression-generator-resume-{}",
+            std::process::id()
+        ));
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("main.ts"), source).unwrap();
+    fs::write(root.join("blue.js"), javascript_for(source)).unwrap();
+    let script = r#"
+const path = require('node:path'), assert = require('node:assert/strict');
+const root = process.argv[1], ts = require(process.argv[2] + '/tests/fixtures/oracle_support/load_typescript.cjs')(process.env.BLUEICE_BLUETSC_ORACLE);
+const program = ts.createProgram([path.join(root,'main.ts')], {target:ts.ScriptTarget.ES5, module:ts.ModuleKind.CommonJS, lib:['lib.es2020.d.ts'], strict:true, skipLibCheck:true, noEmitOnError:true, outDir:path.join(root,'native')});
+assert.equal(ts.getPreEmitDiagnostics(program).length, 0); assert.equal(program.emit().emitSkipped, false);
+for (const filename of ['native/main.js','blue.js']) {
+  const module = require(path.join(root,filename)), binary = module.binary(), logical = module.logical();
+  assert.deepEqual([binary.next(),binary.next(10),binary.next(3),binary.next()], [{value:1,done:false},{value:2,done:false},{value:16,done:true},{value:undefined,done:true}], filename + ': arithmetic');
+  assert.deepEqual([logical.next(),logical.next(42),logical.next()], [{value:1,done:false},{value:42,done:true},{value:undefined,done:true}], filename + ': short circuit');
+}
+
+"#;
+    let output = Command::new("node")
+        .args(["-e", script])
+        .arg(&root)
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../bluets"))
+        .output()
+        .unwrap();
+    fs::remove_dir_all(root).unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+#[ignore = "requires pinned TypeScript 5.9.3 and Node"]
+fn async_joins_capture_receivers_and_propagate_rejections_like_native() {
+    let input: Value = serde_json::from_str(include_str!(
+        "../../bluets/tests/fixtures/ge1_downlevel/cases.json"
+    ))
+    .unwrap();
+    let root = fs::canonicalize(std::env::temp_dir())
+        .unwrap()
+        .join(format!(
+            "bluets-async-receiver-joins-{}",
+            std::process::id()
+        ));
+    fs::create_dir(&root).unwrap();
+    for (form, alternate) in [
+        ("helper-name-collisions", false),
+        ("nested-await-call", false),
+        ("conditional-expression-await", false),
+        ("conditional-expression-await", true),
+        ("conditional-await", false),
+        ("conditional-await", true),
+    ] {
+        let row = input["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["form"] == form)
+            .unwrap();
+        let source = row["files"]["main.ts"].as_str().unwrap();
+        let source = if alternate {
+            source.replace("resolve(true)", "resolve(false)")
+        } else {
+            source.to_owned()
+        };
+        let case = root.join(format!("{form}-{alternate}"));
+        fs::create_dir(&case).unwrap();
+        fs::write(case.join("main.ts"), &source).unwrap();
+        fs::write(case.join("blue.js"), javascript_for(&source)).unwrap();
+    }
+    let script = r#"
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
+const root = process.argv[1], ts = require(process.argv[2] + '/tests/fixtures/oracle_support/load_typescript.cjs')(process.env.BLUEICE_BLUETSC_ORACLE);
+assert.equal(ts.version, '5.9.3');
+function execute(code, PromiseType = Promise) {
+  const exports = {}; vm.runInNewContext(code, {exports, Promise: PromiseType}); return exports.result;
+}
+(async () => {
+for (const name of fs.readdirSync(root)) {
+  const directory = path.join(root, name), program = ts.createProgram([path.join(directory,'main.ts')], {target:ts.ScriptTarget.ES5, module:ts.ModuleKind.CommonJS, lib:['lib.es2020.d.ts'], strict:true, skipLibCheck:true, noEmitOnError:true, outDir:path.join(directory,'native')});
+  assert.equal(ts.getPreEmitDiagnostics(program).length, 0); assert.equal(program.emit().emitSkipped, false);
+  for (const filename of ['native/main.js','blue.js']) {
+    const code = fs.readFileSync(path.join(directory, filename), 'utf8'), label = name + '/' + filename;
+    const expected = name.endsWith('-true') ? 9 : name.startsWith('conditional-await-') ? 3 : 42;
+    assert.equal(await execute(code), expected, label);
+    if (!name.startsWith('nested-await-call')) continue;
+    for (const reject of [false, true]) {
+      let reads = 0; const calls = [], failure = new Error('inner rejection');
+      class TrackedPromise extends Promise {}
+      Object.defineProperty(TrackedPromise, 'resolve', {get() {
+        const read = ++reads;
+        return function(value) {
+          assert.equal(this, TrackedPromise, label + ': method receiver');
+          if (read <= 2) {
+            calls.push([read, value]);
+            if (reject && read === 2) return Promise.reject(failure);
+          }
+          return Promise.resolve(value);
+        };
+      }});
+      const result = execute(code, TrackedPromise);
+      if (reject) { await assert.rejects(result, error => error === failure); assert.deepEqual(calls, [[2,42]], label + ': rejected argument skips captured invocation'); }
+      else { assert.equal(await result, 42); assert.deepEqual(calls, [[2,42],[1,42]], label + ': capture outer getter before inner await'); }
+    }
+  }
+}
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"#;
+    let output = Command::new("node")
+        .args(["-e", script])
+        .arg(&root)
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../bluets"))
+        .output()
+        .unwrap();
+    fs::remove_dir_all(root).unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

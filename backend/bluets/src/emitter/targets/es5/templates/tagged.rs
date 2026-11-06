@@ -4,6 +4,7 @@
 
 //! Tagged sites retain raw/cooked strings, identity and substitution order.
 use super::*;
+mod origins;
 pub(crate) const SOURCE: &str = include_str!("tagged.v1.js");
 
 pub(super) fn lower(
@@ -19,6 +20,8 @@ pub(super) fn lower(
     let mut raw = Vec::new();
     let mut cooked = Vec::new();
     let mut expressions = Vec::new();
+    let mut span_start = token.start;
+    let mut completion = token.end;
     while position < token.end - 1 {
         if source.as_bytes()[position] == b'\\' {
             position += 1;
@@ -34,6 +37,12 @@ pub(super) fn lower(
         if source.as_bytes()[position..].starts_with(b"${") {
             append(&source[chunk..position], &mut raw, &mut cooked);
             let begin = position + 2;
+            let last = raw.last_mut().expect("retained raw template span");
+            *last = format!(
+                "{}{last}{}",
+                relocations::source_anchor(span_start),
+                relocations::source_anchor(begin)
+            );
             let (end, tokens) =
                 crate::syntax::lex_expression(&module.id, source, begin).map_err(|message| {
                     unsupported(module, &SourceSpan::new(&module.id, 0, 0), &message)
@@ -45,7 +54,17 @@ pub(super) fn lower(
                     "tagged template expressions exceed the token budget",
                 )
             })?;
-            expressions.push(format!("({})", &source[begin..end]));
+            completion = tokens
+                .iter()
+                .rev()
+                .find(|token| token.kind != TokenKind::Eof)
+                .map_or(end, |token| token.end);
+            expressions.push(format!(
+                "({}{})",
+                relocations::relocated_verbatim(begin, end),
+                relocations::source_anchor(completion)
+            ));
+            span_start = end;
             position = end + 1;
             chunk = position;
         } else {
@@ -57,6 +76,12 @@ pub(super) fn lower(
         }
     }
     append(&source[chunk..token.end - 1], &mut raw, &mut cooked);
+    let last = raw.last_mut().expect("retained raw template tail");
+    *last = format!(
+        "{}{last}{}",
+        relocations::source_anchor(span_start),
+        relocations::source_anchor(token.end)
+    );
     let mut sequence = 0;
     let site = unused_name(source, "template_site", &mut sequence);
     let external = crate::emitter::helper_selection::external(options);
@@ -87,8 +112,10 @@ pub(super) fn lower(
         options.limits.parser.max_tokens,
     )
     .map_err(|mut diagnostics| diagnostics.remove(0))?;
+    let completion = origins::completion(&tokens, token, completion, options);
     let insertion = directive_end(&tokens);
-    Ok(mapped_edits(
+    let boundary = token.end;
+    Ok(crate::emitter::targets::mapped_fragments::with_completion(
         emitted,
         vec![
             TextEdit {
@@ -102,6 +129,8 @@ pub(super) fn lower(
                 replacement: format!("\nvar {site};\n{definitions}\n"),
             },
         ],
+        boundary,
+        completion,
     ))
 }
 

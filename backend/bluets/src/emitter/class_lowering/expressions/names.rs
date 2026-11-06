@@ -5,9 +5,12 @@
 //! NamedEvaluation survives a wrapper without shadowing the enclosing binding.
 
 use super::*;
+mod reservations;
 use crate::parser::{
     FunctionBodyItem, FunctionElseBranch, NestedFunctionBody, Parameter, VariableDeclaration,
 };
+pub(super) use reservations::anonymous_name;
+pub(in crate::emitter::class_lowering) use reservations::file_captures;
 
 pub(in crate::emitter) fn contextual_name(
     module: &Module,
@@ -191,4 +194,28 @@ fn if_name(
                 FunctionElseBranch::ElseIf(branch) => if_name(module, expression, branch),
             })
     })
+}
+
+/// A generated evaluation factory keeps the preceding source expression role.
+/// These boundaries come from the original class-expression token context,
+/// before decorator erasure or target lowering changes the surrounding syntax.
+pub(in crate::emitter) fn evaluation_prefix_origin(
+    expression: &ClassExpression,
+    tokens: &[Token],
+) -> Option<usize> {
+    if expression.statement {
+        return None;
+    }
+    let start = tokens.partition_point(|token| token.start < expression.class.span.start);
+    let previous = start.checked_sub(1).and_then(|index| tokens.get(index))?;
+    if previous.is("(") || previous.is("return") {
+        return Some(previous.start);
+    }
+    if previous.is("=") {
+        let binding = start.checked_sub(2).and_then(|index| tokens.get(index))?;
+        if binding.kind == crate::TokenKind::Identifier {
+            return Some(binding.end);
+        }
+    }
+    None
 }

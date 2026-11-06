@@ -187,6 +187,10 @@ pub(super) fn record_annotation(value: &Type) -> bool {
     match value {
         Type::Record(_) | Type::Mapped(_) => true,
         Type::Named { arguments, .. } => arguments.iter().any(record_annotation),
+        Type::Array(element) | Type::Readonly(element) => record_annotation(element),
+        Type::Tuple(elements) => elements
+            .iter()
+            .any(|element| record_annotation(&element.annotation)),
         Type::Predicate(predicate) => predicate.target.as_deref().is_some_and(record_annotation),
         Type::Union(parts) | Type::Intersection(parts) => parts.iter().any(record_annotation),
         _ => false,

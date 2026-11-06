@@ -146,6 +146,7 @@ pub fn validate_measurement(inventory: &Inventory, measurement: &Value) -> Resul
         };
         let all_set = strings(all)?;
         let ignored_set = strings(ignored)?;
+        super::case_ge5::validate_measured_tests(&suite.harness, &all_set)?;
         let expected: BTreeSet<_> = suite.ignored_tests.iter().cloned().collect();
         let sha = row["log_sha256"].as_str().unwrap_or("");
         if row["conclusion"] != "success"

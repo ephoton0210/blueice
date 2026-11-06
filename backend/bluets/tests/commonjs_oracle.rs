@@ -14,7 +14,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use blueice_bluets::{compile, CompilerOptions, MapLoader, ModuleKind, ModuleSource};
+use blueice_bluets::{
+    compile, CompilerOptions, MapLoader, ModuleKind, ModuleSource, SourceMapOriginalPosition,
+};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -223,21 +225,64 @@ fn commonjs_header_and_references_follow_typescripts_shape() {
 }
 
 #[test]
-fn commonjs_emit_keeps_every_source_line() {
+fn commonjs_emit_keeps_source_line_positions_across_generated_helpers() {
     for program in PROGRAMS {
-        let output = compile_program(program);
+        let sources: Vec<_> = program
+            .2
+            .iter()
+            .map(|(file, text)| ModuleSource::new(format!("memory:///{file}"), *text))
+            .collect();
+        let compiled = compile(
+            &format!("memory:///{}", program.2[0].0),
+            &MapLoader::from(sources),
+            CompilerOptions {
+                source_map: true,
+                inline_sources: true,
+                ..options(program)
+            },
+        );
+        assert!(!compiled.has_errors(), "{:#?}", compiled.diagnostics);
+        let output = compiled.output.unwrap();
         for (file, text) in program.2 {
-            let javascript = &output
-                .iter()
-                .find(|(name, _)| name == &file.replace(".ts", ".js"))
+            let artifact = &output.artifacts[&format!("memory:///{file}")];
+            let javascript = &artifact.javascript;
+            let map = artifact.source_map.as_ref().unwrap();
+            assert_eq!(map.sources_content, [*text], "{} {file}", program.0);
+            let lookup = |offset| {
+                let prefix = &javascript[..offset];
+                map.original_position_at(
+                    javascript,
+                    prefix.matches('\n').count(),
+                    prefix.rsplit('\n').next().unwrap().encode_utf16().count(),
+                    100_000,
+                    16_000_000,
+                )
                 .unwrap()
-                .1;
-            assert_eq!(
-                javascript.matches('\n').count(),
-                text.matches('\n').count(),
-                "{} {file}",
-                program.0
-            );
+            };
+            // Helpers may add generated lines. User statements must still point
+            // to their original lines, and helper definitions must stay unmapped.
+            let original_calls: Vec<_> = text.match_indices("console.log").collect();
+            let generated_calls: Vec<_> = javascript.match_indices("console.log").collect();
+            assert_eq!(original_calls.len(), generated_calls.len());
+            for ((original, _), (generated, _)) in original_calls.iter().zip(&generated_calls) {
+                let prefix = &text[..*original];
+                assert_eq!(
+                    lookup(*generated),
+                    Some(SourceMapOriginalPosition {
+                        source_index: 0,
+                        line: prefix.matches('\n').count(),
+                        column_utf16: prefix.rsplit('\n').next().unwrap().encode_utf16().count(),
+                        name_index: None,
+                    }),
+                    "{} {file}",
+                    program.0
+                );
+            }
+            for helper in ["var __importDefault", "var __importStar"] {
+                if let Some(offset) = javascript.find(helper) {
+                    assert_eq!(lookup(offset), None, "{} {file}: {helper}", program.0);
+                }
+            }
         }
     }
 }

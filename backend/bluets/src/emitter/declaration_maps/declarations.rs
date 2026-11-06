@@ -17,6 +17,7 @@ fn identity(item: &Declaration) -> Option<(u8, &str)> {
         Declaration::DefaultExport(_) => (7, "default"),
         Declaration::ValueExport(_) => (8, "export"),
         Declaration::TypeExport(_) => (9, "type-export"),
+        Declaration::Enum(e) => (10, &e.name),
         _ => return None,
     })
 }
@@ -42,6 +43,10 @@ impl Mapper<'_> {
                 continue;
             };
             used.insert(index);
+            // Synthesized heritage bindings have no source node to disclose.
+            if source.span().start == source.span().end {
+                continue;
+            }
             let gt = self.generated(generated.span());
             let st = self.source(source.span());
             self.comment(generated.span().start, source.span().start);
@@ -65,6 +70,8 @@ impl Mapper<'_> {
                     self.named(&gt, &st, &g.name);
                     if s.annotation.is_some() {
                         self.ty(annotation(&gt), annotation(&st));
+                    } else if let Some(annotation) = &g.annotation {
+                        self.inferred_type(annotation, s.span.start);
                     }
                     let ge = gt
                         .last()
@@ -79,15 +86,25 @@ impl Mapper<'_> {
                 }
                 (Declaration::Function(g), Declaration::Function(s)) => {
                     self.point(g.span.start, s.span.start);
+                    if s.default_export {
+                        let end = gt
+                            .iter()
+                            .position(|token| token.is("function"))
+                            .unwrap_or(0);
+                        self.modifiers(&gt[..end], &st);
+                    }
                     self.named(&gt, &st, &g.name);
                     self.type_parameters(&g.type_parameters, &s.type_parameters);
                     self.parameters(&g.parameters, &s.parameters);
                     if s.return_type.is_some() {
-                        self.return_type(&gt, &st);
+                        self.return_type(&gt, &st, g.body_open, s.body_open);
+                    } else if let Some(value) = &g.return_type {
+                        self.inferred_type(value, s.span.start);
                     }
                     self.point(g.span.end, s.span.end);
                 }
                 (Declaration::Class(g), Declaration::Class(s)) => self.class(g, s),
+                (Declaration::Enum(g), Declaration::Enum(s)) => self.enumeration(g, s),
                 (Declaration::Interface(g), Declaration::Interface(s)) => {
                     self.range(&g.span, &s.span);
                     self.modifiers(
@@ -147,32 +164,11 @@ impl Mapper<'_> {
                         self.named(&gt, &st, &g.name);
                     }
                 }
-                (Declaration::Import(g), Declaration::Import(s)) => {
-                    self.range(&g.span, &s.span);
-                    self.range(&g.specifier_span, &s.specifier_span);
-                    if let Some((g, s)) = gt.get(1).zip(st.get(1)) {
-                        self.point(g.start, s.start);
-                    }
-                    if let Some((g, s)) = gt
-                        .iter()
-                        .find(|t| t.is("{"))
-                        .zip(st.iter().find(|t| t.is("{")))
-                    {
-                        self.point(g.start, s.start);
-                    }
-                    if let Some((g, s)) = gt
-                        .iter()
-                        .find(|t| t.is("}"))
-                        .zip(st.iter().find(|t| t.is("}")))
-                    {
-                        self.point(g.end, s.end);
-                    }
-                    for binding in &g.bindings {
-                        self.named(&gt, &st, &binding.imported);
-                        if binding.local != binding.imported {
-                            self.named(&gt, &st, &binding.local);
-                        }
-                    }
+                (Declaration::Import(g), Declaration::Import(s)) => self.import(g, s, &gt, &st),
+                (Declaration::ValueExport(g), Declaration::ValueExport(s))
+                    if !g.export_assignment =>
+                {
+                    self.value_export(g, s, &gt, &st);
                 }
                 (Declaration::ValueExport(_), Declaration::ValueExport(_))
                 | (Declaration::TypeExport(_), Declaration::TypeExport(_)) => {
@@ -183,21 +179,22 @@ impl Mapper<'_> {
         }
         Ok(())
     }
-    pub(super) fn return_type(&mut self, g: &[Token], s: &[Token]) {
-        fn returned(tokens: &[Token]) -> &[Token] {
-            let Some(close) = tokens.iter().rposition(|t| t.is(")")) else {
-                return &[];
-            };
-            if !tokens.get(close + 1).is_some_and(|t| t.is(":")) {
-                return &[];
-            }
-            let rest = &tokens[close + 2..];
-            let end = top(rest, "{")
-                .or_else(|| top(rest, ";"))
-                .unwrap_or(rest.len());
-            &rest[..end]
+    pub(super) fn return_type(
+        &mut self,
+        g: &[Token],
+        s: &[Token],
+        g_body: Option<usize>,
+        s_body: Option<usize>,
+    ) {
+        fn returned(tokens: &[Token], body: Option<usize>) -> &[Token] {
+            let end = body.map_or(tokens.len(), |at| {
+                tokens.partition_point(|token| token.start < at)
+            });
+            // The top-level annotation follows the actual parameter list.
+            // Body calls and callable/record return types cannot change it.
+            annotation(&tokens[..end])
         }
-        self.ty(returned(g), returned(s));
+        self.ty(returned(g, g_body), returned(s, s_body));
     }
     fn module_tokens(&mut self, g: &[Token], s: &[Token]) {
         if g.is_empty() || s.is_empty() {

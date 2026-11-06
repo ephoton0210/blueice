@@ -7,6 +7,8 @@
 //! keep await/yield and right-side effects in their original execution.
 
 use super::*;
+use crate::emitter::relocations;
+mod origins;
 
 const PROPERTY_HELPER: &str = include_str!("optional_helpers.v1.js");
 
@@ -82,16 +84,25 @@ pub(super) fn lower(
                     )
                 },
             });
-            let receiver = &emitted.javascript[tokens[start].start..tokens[operator - 1].end];
+            let receiver =
+                relocations::relocated_verbatim(tokens[start].start, tokens[operator - 1].end);
             let key = serde_json::to_string(&property.text).expect("property name is serializable");
             (
                 tokens[start].start,
                 property.end,
-                if external {
-                    format!("({temporary}=({receiver}), {temporary}===null||{temporary}===void 0 ? void 0 : {temporary}[{key}])")
-                } else {
-                    format!("{helper}({receiver}, {key})")
-                },
+                origins::property(
+                    &receiver,
+                    &key,
+                    &temporary,
+                    &helper,
+                    external,
+                    (
+                        tokens[start].start,
+                        tokens[operator - 1].end,
+                        property.start,
+                        property.end,
+                    ),
+                ),
             )
         } else {
             let start = coalesce_start(&tokens, operator);
@@ -117,18 +128,25 @@ pub(super) fn lower(
                     )
                 },
             });
-            let left = &emitted.javascript[tokens[start].start..tokens[operator - 1].end];
-            let right = &emitted.javascript[tokens[operator + 1].start..tokens[end - 1].end];
+            let left =
+                relocations::relocated_verbatim(tokens[start].start, tokens[operator - 1].end);
+            let right =
+                relocations::relocated_verbatim(tokens[operator + 1].start, tokens[end - 1].end);
             (
                 tokens[start].start,
                 tokens[end - 1].end,
-                if external {
-                    format!("({temporary} = {left}, {temporary}===null||{temporary}===void 0 ? ({right}) : {temporary})")
-                } else {
-                    format!(
-                        "({temporary} = {left}, {helper}({temporary}) ? ({right}) : {temporary})"
-                    )
-                },
+                origins::coalesce(
+                    &left,
+                    &right,
+                    &temporary,
+                    &helper,
+                    external,
+                    (
+                        tokens[start].start,
+                        tokens[operator - 1].end,
+                        tokens[end - 1].end,
+                    ),
+                ),
             )
         };
         edits.push(TextEdit {

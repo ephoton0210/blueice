@@ -43,12 +43,21 @@ pub(super) fn lower(module: &Module, options: &CompilerOptions, edits: &mut Vec<
         let local = &import.bindings[0].local;
         let specifier =
             javascript_specifier(&import.specifier, options.jsx == Some(JsxMode::Preserve));
+        let publication = if import.exported {
+            format!(
+                "{}\n{}export {{ {local} }};{}",
+                super::relocations::source_anchor(import.span.end),
+                super::relocations::unmapped(),
+                super::relocations::unmapped(),
+            )
+        } else {
+            String::new()
+        };
         edits.push(TextEdit {
             start: import.span.start,
             end: import.span.end,
             replacement: format!(
-                "{}const {local} = {require}({});{}",
-                if import.exported { "export " } else { "" },
+                "const {local} = {require}({});{publication}{}",
                 serde_json::to_string(&specifier).expect("string specifier"),
                 "\n".repeat(
                     module.source[import.span.start..import.span.end]

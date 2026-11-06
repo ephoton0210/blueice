@@ -268,7 +268,23 @@ fn fields_are_lowered_for_an_es2020_target() {
         compiled.diagnostics
     );
     let output = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
-    assert!(output.contains("constructor() { this.x = 1; }"), "{output}");
+    // Source-map endpoint carriers may add trivia, while syntax stays exact.
+    let syntax = |text: &str| {
+        blueice_bluets::lex(ENTRY, text)
+            .unwrap()
+            .into_iter()
+            .filter(|token| token.kind != blueice_bluets::TokenKind::Eof)
+            .map(|token| (token.kind, token.text))
+            .collect::<Vec<_>>()
+    };
+    let actual = syntax(&output);
+    let constructor = syntax("constructor() { this.x = 1; }");
+    assert!(
+        actual
+            .windows(constructor.len())
+            .any(|tokens| tokens == constructor),
+        "{output}"
+    );
     assert!(output.contains("A.s = 2;"), "{output}");
     assert!(!output.contains("static s"), "{output}");
     // A class with no field emits the same for either target.

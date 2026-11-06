@@ -4,6 +4,8 @@
 
 //! Async arrows retain lexical captures; methods retain their home-object super.
 use super::*;
+mod capture;
+mod methods;
 
 pub(super) fn lower(
     mut emitted: EmittedJavaScript,
@@ -66,62 +68,74 @@ pub(super) fn lower(
         };
         let source = &emitted.javascript;
         let name = unused_name(source, "async_callable", &mut sequence);
-        let parameters = if open == close {
-            &source[tokens[open].start..tokens[close].end]
-        } else {
-            &source[tokens[open].end..tokens[close].start]
-        };
-        let contents = if tokens[body].is("{") {
-            &source[tokens[body].end..tokens[end - 1].start]
-        } else {
-            &source[tokens[body].start..tokens[end - 1].end]
-        };
-        let replacement = if arrow {
+        if !arrow {
+            emitted = methods::lower(
+                emitted,
+                &tokens,
+                (start, open, close, body, end),
+                module,
+                options,
+                &mut sequence,
+                &name,
+            )?;
+            continue;
+        }
+        let replacement = {
             let receiver = unused_name(source, "async_this", &mut sequence);
             let arguments = unused_name(source, "async_arguments", &mut sequence);
-            let captures = |text: &str| {
-                capture(
-                    text,
+            let captures = |start: usize, end: usize| {
+                capture::range(
+                    source,
+                    start..end,
                     module,
-                    &receiver,
-                    &arguments,
+                    (&receiver, &arguments),
                     options.limits.parser.max_type_depth,
                     &options.limits.parser,
                 )
             };
-            let parameters = captures(parameters)?;
-            let captured = captures(contents)?;
+            let parameters = if open == close {
+                captures(tokens[open].start, tokens[close].end)?
+            } else {
+                captures(tokens[open].end, tokens[close].start)?
+            };
+            let captured = if tokens[body].is("{") {
+                captures(tokens[body].end, tokens[end - 1].start)?
+            } else {
+                captures(tokens[body].start, tokens[end - 1].end)?
+            };
             let body_text = if tokens[body].is("{") {
                 captured
             } else {
                 format!("return ({captured});")
             };
-            format!("(function({receiver},{arguments}){{return async function {name}({parameters}){{{body_text}}};}})(this,typeof arguments==='undefined'?void 0:arguments)")
-        } else {
-            let count = async_functions::parameter_length(&tokens[open + 1..close]);
-            let external = (0..count)
-                .map(|_| unused_name(source, "async_parameter", &mut sequence))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let (body, bridge) = if options.target == crate::EcmaTarget::Es5 {
-                (contents.to_string(), String::new())
+            let anchor = crate::emitter::relocations::source_anchor;
+            let generated = crate::emitter::relocations::unmapped();
+            let close_body = if tokens[body].is("{") {
+                format!(
+                    "{}{} ",
+                    crate::emitter::relocations::relocated_verbatim(
+                        tokens[end - 1].start,
+                        tokens[end - 1].end,
+                    ),
+                    anchor(tokens[end - 1].end)
+                )
             } else {
-                super_body(
-                    contents,
-                    module,
-                    source,
-                    &mut sequence,
-                    options.limits.parser.max_type_depth,
-                )?
+                format!(
+                    "{}}}{} ",
+                    anchor(tokens[end - 1].end),
+                    anchor(tokens[end - 1].end)
+                )
             };
-            let property = &source[tokens[start + 1].start..tokens[open].start];
-            let is_class = class_member(&tokens, start);
-            let head = if options.target == crate::EcmaTarget::Es5 && !is_class {
-                format!("{property}: function({external})")
+            let operation = if options.target == crate::EcmaTarget::Es5 {
+                if async_functions::plain_arrow_formals(&emitted, module, tokens[start].start) {
+                    tokens[close].start
+                } else {
+                    tokens[start].start
+                }
             } else {
-                format!("{property}({external})")
+                tokens[close + 1].start
             };
-            format!("{head}{{{bridge}return (async function {name}({parameters}){{{body}}}).apply(this,arguments);}}")
+            format!("{generated}(function({receiver},{arguments}){{return {}async function {generated}{name}{}({parameters}{}) {}{{{} {body_text}{close_body}{generated};}})(this,typeof arguments==='undefined'?void 0:arguments)", anchor(tokens[start].start), anchor(tokens[open].start), anchor(tokens[close].start), anchor(operation), anchor(tokens[close + 1].end))
         };
         emitted = mapped_edits(
             emitted,
@@ -134,95 +148,6 @@ pub(super) fn lower(
     }
 }
 
-fn capture(
-    source: &str,
-    module: &Module,
-    receiver: &str,
-    arguments: &str,
-    depth: usize,
-    limits: &crate::parser::ParserLimits,
-) -> Result<String, Diagnostic> {
-    if depth == 0 {
-        return Err(Diagnostic::error(
-            DiagnosticCode::ResourceLimit,
-            SourceSpan::new(&module.id, 0, 0),
-            "async lexical capture exceeds depth limit",
-        ));
-    }
-    let tokens = crate::syntax::lex_with_limits(
-        &module.id,
-        source,
-        limits.max_source_bytes,
-        limits.max_tokens,
-    )
-    .map_err(|mut d| d.remove(0))?;
-    let mut edits = Vec::new();
-    let mut at = 0;
-    while at < tokens.len() {
-        if tokens[at].is("function") {
-            if let Some(open) = (at + 1..tokens.len()).find(|&p| tokens[p].is("(")) {
-                if let Some(function) = async_functions::function_at_parameters(&tokens, open) {
-                    at = function.body_end + 1;
-                    continue;
-                }
-            }
-        }
-        if tokens[at].is("(")
-            && at > 0
-            && matches!(
-                tokens[at - 1].kind,
-                TokenKind::Identifier | TokenKind::Keyword
-            )
-            && !matches!(
-                tokens[at - 1].text.as_str(),
-                "if" | "for" | "while" | "switch" | "catch" | "with"
-            )
-        {
-            if let Some(function) = async_functions::function_at_parameters(&tokens, at) {
-                at = function.body_end + 1;
-                continue;
-            }
-        }
-        if tokens[at].kind == TokenKind::Template {
-            let text = super::suspension_text::template(
-                source,
-                &tokens[at],
-                module,
-                depth - 1,
-                |text, depth| capture(text, module, receiver, arguments, depth, limits),
-            )?;
-            edits.push(TextEdit {
-                start: tokens[at].start,
-                end: tokens[at].end,
-                replacement: text,
-            });
-        }
-        if matches!(tokens[at].text.as_str(), "this" | "arguments")
-            && !at.checked_sub(1).is_some_and(|p| tokens[p].is("."))
-            && !tokens.get(at + 1).is_some_and(|p| p.is(":"))
-        {
-            edits.push(TextEdit {
-                start: tokens[at].start,
-                end: tokens[at].end,
-                replacement: if tokens[at].is("this") {
-                    receiver.into()
-                } else if at
-                    .checked_sub(1)
-                    .is_some_and(|p| matches!(tokens[p].text.as_str(), "{" | ","))
-                    && tokens
-                        .get(at + 1)
-                        .is_some_and(|t| matches!(t.text.as_str(), "}" | ","))
-                {
-                    format!("arguments: {arguments}")
-                } else {
-                    arguments.into()
-                },
-            });
-        }
-        at += 1;
-    }
-    Ok(apply_edits(source, edits).javascript)
-}
 fn class_member(tokens: &[Token], position: usize) -> bool {
     for start in (0..position).rev().filter(|&i| tokens[i].is("class")) {
         let Some(open) = (start + 1..position).find(|&i| tokens[i].is("{")) else {
@@ -250,72 +175,4 @@ fn class_member(tokens: &[Token], position: usize) -> bool {
         return true;
     }
     false
-}
-fn super_body(
-    body: &str,
-    module: &Module,
-    source: &str,
-    sequence: &mut usize,
-    _depth: usize,
-) -> Result<(String, String), Diagnostic> {
-    let tokens = crate::syntax::lex(&module.id, body).map_err(|mut d| d.remove(0))?;
-    let getter = unused_name(source, "async_super", sequence);
-    let mut edits = Vec::new();
-    let mut at = 0;
-    while at < tokens.len() {
-        if !tokens[at].is("super") {
-            at += 1;
-            continue;
-        }
-        let start = at;
-        let (key, end) = if tokens.get(at + 1).is_some_and(|t| t.is(".")) {
-            (serde_json::to_string(&tokens[at + 2].text).unwrap(), at + 3)
-        } else if tokens.get(at + 1).is_some_and(|t| t.is("[")) {
-            let end = exponentiation::matching_close(&tokens, at + 1).ok_or_else(|| {
-                Diagnostic::error(
-                    DiagnosticCode::UnsupportedSyntax,
-                    SourceSpan::new(&module.id, 0, 0),
-                    "async super key was not retained",
-                )
-            })?;
-            (
-                body[tokens[at + 1].end..tokens[end].start].to_string(),
-                end + 1,
-            )
-        } else {
-            at += 1;
-            continue;
-        };
-        if tokens
-            .get(end)
-            .is_some_and(|t| matches!(t.text.as_str(), "=" | "+=" | "-=" | "++" | "--"))
-        {
-            return Err(Diagnostic::error(
-                DiagnosticCode::UnsupportedSyntax,
-                SourceSpan::new(&module.id, 0, 0),
-                "async super writes require a retained setter completion",
-            ));
-        }
-        let mut replacement = format!("{getter}({key})");
-        let mut finish = tokens[end - 1].end;
-        if tokens.get(end).is_some_and(|t| t.is("(")) {
-            replacement.push_str(".call(this");
-            if !tokens.get(end + 1).is_some_and(|t| t.is(")")) {
-                replacement.push_str(", ");
-            }
-            finish = tokens[end].end;
-        }
-        edits.push(TextEdit {
-            start: tokens[start].start,
-            end: finish,
-            replacement,
-        });
-        at = end;
-    }
-    let bridge = if edits.is_empty() {
-        String::new()
-    } else {
-        format!("var {getter}=(key)=>super[key];")
-    };
-    Ok((apply_edits(body, edits).javascript, bridge))
 }

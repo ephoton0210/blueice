@@ -303,6 +303,10 @@ fn actual_typescript_build_info_is_foreign_to_bluetsc() {
     let root = temporary("actual-foreign-bluetsc");
     materialize(&root);
     let _ = build(bluetsc, &root, "bluetsc-cold");
+    let cold_state: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("tsconfig.bluetsc.tsbuildinfo")).unwrap())
+            .unwrap();
+    let current_epoch = cold_state["version"].as_u64().unwrap();
     fs::write(root.join("tsconfig.bluetsc.tsbuildinfo"), foreign).unwrap();
     fs::write(root.join("main.js"), "exports.value = -999;\n").unwrap();
     let (repaired, message) = build(bluetsc, &root, "actual-foreign-repaired");
@@ -320,7 +324,7 @@ fn actual_typescript_build_info_is_foreign_to_bluetsc() {
         serde_json::from_slice(&fs::read(root.join("tsconfig.bluetsc.tsbuildinfo")).unwrap())
             .unwrap();
     assert_eq!(state["producer"], "bluetsc");
-    assert_eq!(state["version"], 26);
+    assert_eq!(state["version"], current_epoch);
     fs::remove_dir_all(oracle).unwrap();
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(clean).unwrap();

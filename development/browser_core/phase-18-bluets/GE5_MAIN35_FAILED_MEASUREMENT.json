@@ -1,0 +1,99 @@
+{
+  "scope": "Main35 integrated producer/verifier/inventory; complete measurement failed at private-name fragment relocation; G-E5 not accepted",
+  "compiler": "/private/tmp/ge5-main35-combined-bluetsc",
+  "compilerSha256": "05650de68072df59762875247ce1256ec50b98380cb26d233bc02f15fc6d0427",
+  "sourceEpoch": 35,
+  "privateStateEpoch": 63,
+  "sourceFiles": 498,
+  "sourceFreezeSha256": "41c754f41d692646ff72fd31e0ae938d04b21d27c54adaffcb4a510ac1055cd8",
+  "sourceRevision": "backend-tree:769f8df17ce4a8c99c6728df59dc6073af4844a8",
+  "fullCohortAccepted": false,
+  "ordinaryUnfilteredAccepted": false,
+  "commit": false,
+  "push": false,
+  "focusedPublic": {
+    "passed": 20,
+    "failures": 0,
+    "ignoredFullOraclesNotCounted": 2,
+    "logSha256": "90d879b4932145354d946a8132a85f0c67296a3a1a4efc81d93a61c6eb72f3bd"
+  },
+  "twoCrateAllTargetsClippy": {
+    "passed": true,
+    "logSha256": "1e0d910949a5b75ac82751d3b80f638f20717ad40600c25b429f2bd119e158dd"
+  },
+  "integrationReviews": {
+    "producerMergeSha256": "7613adf95d453f53f4ce20af835665b47294d1834983e09b2c5ad193556e7542",
+    "verifierMergeSha256": "5a5517434287e81685142d173487768391bf79c6289f5da55de1de4803319e16",
+    "staticPacketSha256": "24ce64df7aea59dddfcfaea6c579e00b77178d09a775c7411748c1a21688e8e6",
+    "safePacketTarSha256": "d29eff3beb39c48349ce79e8c8050f60d68db2afb7ab8cd7a5b4c6c97ee1f220",
+    "inventoryPacketSha256": "ca649a1e07eb855dae6fb7e4ecff718e9667925f65cf1e5e3628c5b8bec51a8b",
+    "inventoryAddendumSha256": "4423b94b2d095f8d9d53f07a09798b9f6abec5815c7f92ec9bc3a603e0d1ad45"
+  },
+  "independentWorktreeEvidenceNotMainAcceptance": {
+    "safeHome": {
+      "configurations": 92,
+      "freshControls": 131807,
+      "executions": 184,
+      "failures": 0
+    },
+    "staticSuper": {
+      "configurations": 282,
+      "freshControls": 69852,
+      "executions": 564,
+      "failures": 0
+    }
+  },
+  "sourceAndToolClosure": {
+    "producerMergedFiles": 15,
+    "producerTextConflictsResolved": 2,
+    "requiredVerifierUnionFiles": 107,
+    "unresolvedDependencies": 0,
+    "finiteIgnoredHarnesses": 47,
+    "finiteIgnoredFunctions": 54
+  },
+  "measurement": {
+    "state": "failure",
+    "driver": "/private/tmp/ge5-main35-final-driver.json",
+    "driverSourceSha256": "11667d81bacc1eb101f7489d56d151a5f06ced2feb005037492d167e64d5abd4",
+    "measurementDirectory": "/private/tmp/ge5-main35-final-measurement",
+    "preflightResults": {
+      "catalog": {
+        "exitCode": 0,
+        "logSha256": "6d1268a5f4f5ed981680f82554b688c0f1e3e97a4b3b35df6acea35eb1625259"
+      },
+      "case-source-audit": {
+        "exitCode": 0,
+        "logSha256": "cbc27cb30311d9f3ebbdd019bbb8d74fcee874480018ecc0ef6e7b7f1e0f63a4"
+      },
+      "source-check": {
+        "exitCode": 0,
+        "logSha256": "56d9b7b1674e13c36b38ea4792a81a459993a91717da2bdaf61bb4e16a6dc60d"
+      }
+    },
+    "completeCompatibilitySuites": 177,
+    "note": "The complete run stopped at suite 20: class_downlevel_oracle panicked while expanding absolute module relocation 1118 against a 17-byte private-assignment RHS. Earlier 19 suites passed on Main35 only. No successful case measurement was published.",
+    "receiptSha256": "c14b71f8035953d9d7c7269ae0fdbeed83856dde882656a97eb03bcbc9a5f4fc",
+    "startedAt": "2026-11-05T06:18:06.489Z",
+    "finishedAt": "2026-11-05T06:22:44.550Z",
+    "passedSuitesBeforeFailure": 19,
+    "failedSuite": "backend/bluets/tests/class_downlevel_oracle.rs",
+    "failedTest": "pinned_class_downlevel_emit_prints_what_typescript_prints_in_every_mode",
+    "reproducer": {
+      "fixture": "class-downlevel-private-names",
+      "target": "ES2020",
+      "useDefineForClassFields": "default",
+      "exitCode": 101
+    },
+    "measurementExitCode": 1
+  },
+  "reviewedStagingManifestSha256": "c61ce6c2dc312984b3dabe0e0eed4a87a3b9987b53bc2c42ca7167db019d7bfd",
+  "previousMain34Acceptance": {
+    "file": "GE5_MAIN34_SHARED_MEASUREMENT.json",
+    "sha256": "8e931b1b9dac6886cb007f28baa36dfdaeead967783cb6eba100ea96600c4d3f"
+  },
+  "remainingRequiredGates": [
+    "complete frozen same-compiler 137-family / 8407-configuration / 20590-map evidence",
+    "unchanged owner and K.11 process gates",
+    "fresh complete ordinary/workspace and final source/tool/status audits"
+  ]
+}

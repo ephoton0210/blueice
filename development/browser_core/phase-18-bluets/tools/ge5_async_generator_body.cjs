@@ -1,0 +1,32 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// Original await/yield/return nodes bind both exact async-generator marker ABIs.
+const assert=require('node:assert/strict'),{compareTokens}=require('./ge5_role_stream.cjs');
+function compare(ts,native,nb,actual,ab,source,markers,{observer=false}={}){const ranges=new Map([[native,[]],[actual,[]]]),generated=[],transports=[],start=(view,node)=>node.getStart(view.source);
+  function uniform(view,from,to,owner,label){for(let at=from;at<to;at++)assert.deepEqual(view.owner(at),owner,label+' at '+at);view.cover(from,to);ranges.get(view).push([from,to]);}
+  function extra(from,to,label){actual.noSource(from,to,label);ranges.get(actual).push([from,to]);generated.push([from,to]);}
+  function transport(original,n,a,kind){const outer=a;assert(ts.isParenthesizedExpression(outer));a=outer.expression;assert(ts.isYieldExpression(n)&&ts.isYieldExpression(a)&&!n.asteriskToken&&!a.asteriskToken);
+    let call=n.expression;if(kind==='yield'){assert(ts.isYieldExpression(call)&&!call.asteriskToken);call=call.expression;}
+    let ac,group,np;
+    if(observer){assert.equal(kind,'await');np=call;group=a.expression;assert(ts.isParenthesizedExpression(group));}
+    else{assert(ts.isCallExpression(call)&&ts.isIdentifier(call.expression)&&call.expression.text===markers.native&&call.arguments.length===1);ac=a.expression;assert(ts.isCallExpression(ac)&&ts.isIdentifier(ac.expression)&&ac.expression.text===markers.actual&&ac.arguments.length===2);assert.equal(ac.arguments[0].kind,kind==='yield'?ts.SyntaxKind.FalseKeyword:ts.SyntaxKind.TrueKeyword);group=ac.arguments[1];assert(ts.isParenthesizedExpression(group));np=call.arguments[0];}
+    const operand=group.expression,entry=native.owner(start(native,n)),end=native.owner(np.end),position=original.getSourceFile().getLineAndCharacterOfPosition(original.getStart(original.getSourceFile()));assert.deepEqual(entry,[0,position.line,position.character],'marker prefix belongs to its exact source operation');
+    uniform(native,start(native,n),start(native,np),entry,'complete Native async suspension prefix');uniform(native,np.end,n.end,end,'complete Native async suspension suffix');
+    extra(start(actual,outer),start(actual,outer)+1,'generated async suspension outer opening');uniform(actual,start(actual,a),start(actual,group),entry,'complete async suspension marker prefix');extra(start(actual,group),start(actual,group)+1,'generated async suspension operand opening');extra(group.end-1,group.end,'generated async suspension operand closing');if(!observer)uniform(actual,group.end,ac.end,end,'complete async suspension marker closing');extra(outer.end-1,outer.end,'generated async suspension outer closing');
+    transports.push({source:original,native:n,actual:outer,nativeOperand:np,actualOperand:operand,kind});return [np,operand];
+  }
+  function walk(s,n,a){
+    if(ts.isAwaitExpression(s)||ts.isYieldExpression(s)){const kind=ts.isAwaitExpression(s)?'await':'yield';const [np,ap]=transport(s,n,a,kind);walk(s.expression,np,ap);return;}
+    if(ts.isReturnStatement(s)&&!observer){assert(ts.isReturnStatement(n)&&ts.isReturnStatement(a)&&s.expression&&n.expression&&a.expression);const[np,ap]=transport(s,n.expression,a.expression,'return');walk(s.expression,np,ap);return;}
+    assert.equal(n.kind,s.kind,'complete Native original body AST kind');assert.equal(a.kind,s.kind,'complete actual original body AST kind');
+    assert([ts.SyntaxKind.Block,ts.SyntaxKind.ReturnStatement,ts.SyntaxKind.VariableStatement,ts.SyntaxKind.VariableDeclarationList,ts.SyntaxKind.VariableDeclaration,ts.SyntaxKind.ArrayLiteralExpression,ts.SyntaxKind.TryStatement,ts.SyntaxKind.ExpressionStatement,ts.SyntaxKind.CallExpression,ts.SyntaxKind.PropertyAccessExpression,ts.SyntaxKind.Identifier,ts.SyntaxKind.NumericLiteral,ts.SyntaxKind.StringLiteral,ts.SyntaxKind.TemplateExpression,ts.SyntaxKind.TemplateSpan,ts.SyntaxKind.TemplateHead,ts.SyntaxKind.TemplateTail].includes(s.kind),'closed async-generator source body node');
+    if(ts.isIdentifier(s)||ts.isLiteralExpression(s)||s.kind===ts.SyntaxKind.TemplateHead||s.kind===ts.SyntaxKind.TemplateTail){assert.equal(n.text,s.text);assert.equal(a.text,s.text);}
+    const sc=[],nc=[],ac=[];ts.forEachChild(s,node=>{sc.push(node);});ts.forEachChild(n,node=>{nc.push(node);});ts.forEachChild(a,node=>{ac.push(node);});assert.equal(nc.length,sc.length);assert.equal(ac.length,sc.length);for(let i=0;i<sc.length;i++)walk(sc[i],nc[i],ac[i]);
+  }
+  walk(source,nb,ab);assert.deepEqual(transports.map(p=>p.kind),observer?['await','await','await']:['yield','await','yield','await','return'],'complete async-generator source operation inventory');
+  function projected(view,body){return view.tokens(body).filter(token=>(!observer||token.start!==start(view,body))&&!ranges.get(view).some(([from,to])=>from<=token.start&&token.end<=to));}
+  compareTokens(native,projected(native,nb),actual,projected(actual,ab),'complete original async-generator body roles',generated);assert.deepEqual(actual.owner(ab.end),native.owner(nb.end),'complete async-generator callback body end');return {transports,ranges,generated};
+}
+module.exports={compare};

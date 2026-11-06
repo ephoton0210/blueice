@@ -5,11 +5,13 @@
 //! Structured branch and exception regions compile to explicit continuations.
 
 use super::*;
+use crate::emitter::relocations;
 use crate::parser::{FunctionBodyItem, FunctionDeclaration, FunctionElseBranch};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod control;
 mod expressions;
+mod origins;
 mod switch;
 
 pub(super) struct Graph {
@@ -27,7 +29,7 @@ pub(super) struct NativeBlocks {
 }
 
 pub(super) fn compile(
-    module: &Module,
+    (module, source_offset, previous): (&Module, usize, &EmittedJavaScript),
     function: &FunctionDeclaration,
     context: &str,
     arguments: &str,
@@ -44,15 +46,23 @@ pub(super) fn compile(
     .ok()?;
     let mut builder = Builder {
         module,
+        source_offset,
+        previous,
         context,
         arguments,
         marker,
+        asynchronous: function.async_function,
         external_abi,
         exits: BTreeMap::new(),
         finishes: BTreeSet::new(),
         delegation: false,
         cases: Vec::new(),
         locals: BTreeSet::new(),
+        bindings: BTreeMap::new(),
+        binding_initializers: BTreeMap::new(),
+        case_punctuation: BTreeMap::new(),
+        predicates: BTreeMap::new(),
+        completion_site: None,
         functions: String::new(),
         depth: limits.max_type_depth.min(128),
         tokens,
@@ -89,15 +99,23 @@ pub(super) fn compile(
 
 struct Builder<'a> {
     module: &'a Module,
+    source_offset: usize,
+    previous: &'a EmittedJavaScript,
     context: &'a str,
     arguments: &'a str,
     marker: Option<&'a str>,
+    asynchronous: bool,
     external_abi: bool,
     exits: BTreeMap<usize, usize>,
     finishes: BTreeSet<usize>,
     delegation: bool,
     cases: Vec<String>,
     locals: BTreeSet<String>,
+    bindings: BTreeMap<String, (usize, usize)>,
+    binding_initializers: BTreeMap<String, origins::InitializerOrigin>,
+    case_punctuation: BTreeMap<String, usize>,
+    predicates: BTreeMap<String, origins::PredicateOrigin>,
+    completion_site: Option<(usize, usize, usize)>,
     functions: String,
     depth: usize,
     loops: Vec<JumpTargets>,
@@ -150,15 +168,33 @@ impl Builder<'_> {
         let context = self.context;
         match item {
             FunctionBodyItem::Expression { tokens, .. } => self.expression(tokens, None, "", next),
-            FunctionBodyItem::Return { tokens, .. } => {
-                self.expression(tokens, None, "return", next)
+            FunctionBodyItem::Return { tokens, span } => {
+                self.scoped_completion(tokens, "return", span, next)
             }
-            FunctionBodyItem::Throw { tokens, .. } => self.expression(tokens, None, "throw", next),
+            FunctionBodyItem::Throw { tokens, span } => {
+                self.scoped_completion(tokens, "throw", span, next)
+            }
             FunctionBodyItem::Variable(variable) if variable.pattern.is_none() => {
                 self.locals.insert(variable.name.clone());
+                if let Some(token) = self.tokens.iter().find(|token| {
+                    token.start >= variable.span.start
+                        && token.end <= variable.span.end
+                        && token.text == variable.name
+                }) {
+                    self.bindings
+                        .insert(variable.name.clone(), (token.start, token.end));
+                }
                 if variable.initializer.is_empty() {
                     Some(self.block(self.jump(next)))
                 } else {
+                    self.binding_initializers.insert(
+                        variable.name.clone(),
+                        origins::InitializerOrigin {
+                            start: variable.initializer.first()?.start,
+                            end: variable.initializer.last()?.end,
+                            statement: true,
+                        },
+                    );
                     self.expression(&variable.initializer, Some(&variable.name), "", next)
                 }
             }
@@ -172,6 +208,7 @@ impl Builder<'_> {
                     None => next,
                 };
                 let test = self.temporary();
+                self.predicate_origin(&test, statement.span.start, &statement.test);
                 let branch = self.block(format!(
                     "{context}.label = {test} ? {consequent} : {alternate}; continue;"
                 ));
@@ -207,8 +244,11 @@ impl Builder<'_> {
                     handler.map_or("-1".into(),|label|label.to_string()),finalizer.map_or("-1".into(),|label|label.to_string()))))
             }
             FunctionBodyItem::Function(function) => {
-                self.functions
-                    .push_str(&self.module.source[function.span.start..function.span.end]);
+                self.functions.push_str(&relocations::relocated_verbatim(
+                    self.source_offset + function.span.start,
+                    self.source_offset + function.span.end,
+                ));
+                self.functions.push_str(relocations::unmapped());
                 self.functions.push('\n');
                 Some(next)
             }
@@ -242,7 +282,27 @@ impl Builder<'_> {
         let context = self.context;
         if completion == "return" && self.marker.is_some() && !tokens.is_empty() {
             let temporary = self.temporary();
-            let finish = self.block(format!("return {{kind:\"return\", value:{temporary}}};"));
+            let previous = self.completion_site;
+            // Native's implicit await(operand) retains the operand endpoint,
+            // while its later return(sent()) stays on the return keyword.
+            if let (Some(first), Some(last)) = (tokens.first(), tokens.last()) {
+                self.binding_initializers.insert(
+                    temporary.clone(),
+                    origins::InitializerOrigin {
+                        start: first.start,
+                        end: last.end,
+                        statement: false,
+                    },
+                );
+            }
+            self.completion_site = previous.map(|(start, _, end)| (start, start, end));
+            let value = format!(
+                "{}{temporary}{}",
+                self.completion_origin(),
+                relocations::unmapped(),
+            );
+            let finish = self.block(self.completion_code("return", &value)?);
+            self.completion_site = previous;
             let resume = self.block(format!(
                 "{temporary} = {context}.sent(); {}",
                 self.jump(finish)
@@ -256,13 +316,18 @@ impl Builder<'_> {
         if !self.suspends(tokens) {
             let value = self.text(tokens).unwrap_or_else(|| "void 0".into());
             let code = if completion.is_empty() {
-                let assignment = binding.map_or(String::new(), |name| format!("{name} = "));
-                format!("{assignment}{value}; {}", self.jump(next))
-            } else {
+                let assignment = binding.map_or(String::new(), |name| self.binding_prefix(name));
                 format!(
-                    "return {{kind:{}, value:({value})}};",
-                    serde_json::to_string(completion).ok()?
+                    "{assignment}{value}{}{}",
+                    if binding.is_none() && !tokens.is_empty() {
+                        self.resume_terminator(tokens, true)
+                    } else {
+                        self.initializer_terminator(binding, tokens)
+                    },
+                    self.jump(next)
                 )
+            } else {
+                self.completion_code(completion, &value)?
             };
             return Some(self.block(code));
         }
@@ -278,32 +343,70 @@ impl Builder<'_> {
         let delegate = tokens.get(1).is_some_and(|token| token.is("*"));
         let operand = &tokens[1 + usize::from(delegate)..];
         let resume = if completion.is_empty() {
-            let assignment = binding.map_or(String::new(), |name| format!("{name} = "));
-            format!("{assignment}{context}.sent(); {}", self.jump(next))
-        } else {
+            let assignment = binding.map_or(String::new(), |name| self.binding_prefix(name));
             format!(
-                "return {{kind:{}, value:{context}.sent()}};",
-                serde_json::to_string(completion).ok()?
+                "{assignment}{}{context}.sent(){}{}",
+                relocations::source_anchor(self.source_offset + first.start),
+                self.resume_terminator(tokens, binding.is_none()),
+                self.jump(next)
             )
+        } else {
+            self.completion_code(
+                completion,
+                &format!(
+                    "{}{context}.sent(){}",
+                    relocations::source_anchor(self.source_offset + first.start),
+                    relocations::unmapped()
+                ),
+            )?
         };
-        let resume = self.block(resume);
+        let resume = self.block(format!("{resume}{}", relocations::unmapped()));
         if delegate && self.marker.is_some() {
             return None;
         }
         self.delegation |= delegate;
         let temporary = self.temporary();
+        if let (Some(first), Some(last)) = (operand.first(), operand.last()) {
+            self.binding_initializers.insert(
+                temporary.clone(),
+                origins::InitializerOrigin {
+                    start: first.start,
+                    end: last.end,
+                    statement: false,
+                },
+            );
+        }
         let value = if self.marker.is_some() {
             self.suspension(first.is("await"), &temporary)?
         } else {
             temporary.clone()
         };
+        let public_generator_yield = self.marker.is_some() && first.is("yield");
+        let operation_end = if public_generator_yield {
+            first.start
+        } else {
+            tokens.last()?.end
+        };
+        let transition = if self.marker.is_some() {
+            format!(
+                "{} ",
+                relocations::source_anchor(self.source_offset + tokens.last()?.end)
+            )
+        } else {
+            String::new()
+        };
         let suspend = self.block(format!(
-            "{context}.label = {resume}; return {{kind:{}, value:({value})}};",
+            "{context}.label = {resume}; {}return {{kind:{}, value:{}({value}{})}};{}{}",
+            relocations::source_anchor(self.source_offset + first.start),
             if delegate {
                 "\"delegate\""
             } else {
                 "\"yield\""
-            }
+            },
+            relocations::unmapped(),
+            relocations::source_anchor(self.source_offset + operation_end),
+            transition,
+            relocations::unmapped()
         ));
         self.expression(operand, Some(&temporary), "", suspend)
     }
@@ -357,7 +460,30 @@ impl Builder<'_> {
                 });
             }
         }
-        Some(apply_edits(&self.module.source[first.start..last.end], edits).javascript)
+        let mut output = String::new();
+        let mut cursor = first.start;
+        for edit in edits {
+            let start = first.start + edit.start;
+            let end = first.start + edit.end;
+            if cursor < start {
+                output.push_str(&relocations::relocated_verbatim(
+                    self.source_offset + cursor,
+                    self.source_offset + start,
+                ));
+            }
+            output.push_str(&relocations::source_anchor(self.source_offset + start));
+            output.push_str(&edit.replacement);
+            output.push_str(&relocations::source_anchor(self.source_offset + end));
+            cursor = end;
+        }
+        if cursor < last.end {
+            output.push_str(&relocations::relocated_verbatim(
+                self.source_offset + cursor,
+                self.source_offset + last.end,
+            ));
+        }
+        output.push_str(relocations::unmapped());
+        Some(output)
     }
 }
 

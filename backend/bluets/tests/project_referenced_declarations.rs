@@ -450,6 +450,8 @@ fn legacy_build_state_rebuilds_before_references_are_reused() {
     assert!(initial.status.success(), "{}", report(&initial));
     let path = root.join("dep/tsconfig.bluetsc.tsbuildinfo");
     let mut state: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let current_epoch = state["version"].as_u64().unwrap();
+    assert!(current_epoch > 1, "the legacy state must be obsolete");
     state["version"] = json!(1);
     state.as_object_mut().unwrap().remove("declarations");
     state.as_object_mut().unwrap().remove("runtimes");
@@ -462,6 +464,6 @@ fn legacy_build_state_rebuilds_before_references_are_reused() {
         report(&rebuilt)
     );
     let updated: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-    assert_eq!(updated["version"], 26);
+    assert_eq!(updated["version"], current_epoch);
     fs::remove_dir_all(root).unwrap();
 }

@@ -20,6 +20,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::diagnostic::DIAGNOSTICS_VERSION);
     add(super::isolated_declarations::VERSION);
     add(crate::emitter::DECLARATION_MAP_VERSION);
+    add("bluets-javascript-provenance/42");
     add(crate::checker::FLOW_VERSION);
     add(crate::checker::inference::VERSION);
     add(crate::symbol_keys::VERSION);
@@ -63,7 +64,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     });
     add(options.module_kind.as_str());
     add("bluets-output-options/2");
-    add("bluets-declaration-options/3");
+    add("bluets-declaration-options/4");
     if options.declaration {
         add(crate::emitter::LITERAL_ORDER_VERSION);
     }

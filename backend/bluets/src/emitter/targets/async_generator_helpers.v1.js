@@ -8,14 +8,18 @@ function __blueice_target_async_generator(receiver, argumentsList, body) {
     var requests = [];
     var iterator = {
         next: function (value) { return submit(this, "next", value); },
-        return: function (value) { return submit(this, "return", value); },
+        return: function (value) { return submitReturn(this, value); },
         throw: function (value) { return submit(this, "throw", value); }
     };
     iterator[Symbol.asyncIterator] = function () { return this; };
+    function submitReturn(receiver, value) {
+        return Promise.resolve(value).then(function (resolved) {
+            return submit(receiver, "return", resolved);
+        }, function (error) {
+            return submit(receiver, "throw", error);
+        });
+    }
     function submit(receiver, method, value) {
-        if (receiver !== iterator) {
-            return Promise.reject(new TypeError("Async generator receiver is invalid"));
-        }
         return new Promise(function (resolve, reject) {
             requests.push({ method: method, value: value, resolve: resolve, reject: reject });
             if (requests.length === 1) dispatch();
@@ -23,11 +27,7 @@ function __blueice_target_async_generator(receiver, argumentsList, body) {
     }
     function dispatch() {
         var request = requests[0];
-        if (request.method === "return") {
-            Promise.resolve(request.value).then(function (value) {
-                resume("return", value);
-            }, function (error) { resume("throw", error); });
-        } else { resume(request.method, request.value); }
+        resume(request.method, request.value);
     }
     function finish(rejected, value) {
         var request = requests.shift();

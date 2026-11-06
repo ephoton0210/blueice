@@ -260,6 +260,8 @@ fn legacy_v3_state_rebuilds_with_output_hashes() {
     let _ = build(bluetsc, &root, "cold");
     let path = root.join("dep/tsconfig.bluetsc.tsbuildinfo");
     let mut state: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let current_epoch = state["version"].as_u64().unwrap();
+    assert!(current_epoch > 3, "the legacy state must be obsolete");
     state["version"] = json!(3);
     state.as_object_mut().unwrap().remove("output_hashes");
     fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
@@ -272,7 +274,7 @@ fn legacy_v3_state_rebuilds_with_output_hashes() {
     assert_eq!(rebuilt.built, vec!["dep/tsconfig.json", "tsconfig.json"]);
     assert!(report(&output).contains("invalid or foreign .tsbuildinfo"));
     let state: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    assert_eq!(state["version"], 26);
+    assert_eq!(state["version"], current_epoch);
     assert!(state["output_hashes"].as_object().unwrap().len() >= 2);
     fs::remove_dir_all(root).unwrap();
 }

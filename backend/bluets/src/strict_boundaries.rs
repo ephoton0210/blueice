@@ -326,7 +326,9 @@ pub(crate) fn plan_emission(
                 "{HELPER_ALIAS}({}, {})",
                 parameter.name, boundary.max_string_bytes
             );
-            ingress_text.push_str("\n  ");
+            ingress_text.push('\n');
+            ingress_text.push_str(&crate::emitter::source_anchor(body_open + 1));
+            ingress_text.push_str("  ");
             ingress_text.push_str(&call);
             ingress_text.push(';');
             ingress.push(EmittedRuntimeSite {
@@ -362,12 +364,19 @@ pub(crate) fn plan_emission(
         edits.push(TextEdit {
             start: first.start,
             end: first.start,
-            replacement: format!("{HELPER_ALIAS}("),
+            replacement: format!(
+                "{}{HELPER_ALIAS}(",
+                crate::emitter::source_anchor(first.start)
+            ),
         });
         edits.push(TextEdit {
             start: last.end,
             end: last.end,
-            replacement: format!(", {})", boundary.max_string_bytes),
+            replacement: format!(
+                "{}, {})",
+                crate::emitter::source_anchor(last.end),
+                boundary.max_string_bytes
+            ),
         });
         record.boundaries.push(EmittedRuntimeBoundary {
             contract_id: boundary.contract_id.clone(),

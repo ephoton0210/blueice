@@ -148,6 +148,7 @@ pub(super) fn lower_enums(
                 export_modifier: declaration.exported && !commonjs,
                 namespace: None,
                 commonjs_export: declaration.exported && commonjs,
+                source_map: options.source_map,
             };
             enum_statement(module, declaration, evaluation, first, &placement, edits)
         };
@@ -155,7 +156,9 @@ pub(super) fn lower_enums(
             .matches('\n')
             .count();
         edits.retain(|edit| {
-            !(edit.start >= declaration.span.start && edit.end <= declaration.span.end)
+            !(edit.start >= declaration.span.start
+                && edit.end <= declaration.span.end
+                && !(edit.start == edit.end && edit.start == declaration.span.start))
         });
         edits.push(TextEdit {
             start: declaration.span.start,
@@ -313,6 +316,7 @@ pub(super) struct EnumPlacement<'a> {
     pub(super) namespace: Option<(&'a str, bool)>,
     /// CommonJS: an exported enum is stored on `exports` as it is built.
     pub(super) commonjs_export: bool,
+    pub(super) source_map: bool,
 }
 
 pub(super) fn enum_statement(
@@ -324,25 +328,55 @@ pub(super) fn enum_statement(
     edits: &[TextEdit],
 ) -> String {
     let name = &declaration.name;
+    let anchor = |offset| {
+        if placement.source_map {
+            super::relocations::source_anchor(offset)
+        } else {
+            String::new()
+        }
+    };
+    let named = format!(
+        "{}{name}{}",
+        anchor(declaration.name_span.start),
+        anchor(declaration.name_span.end)
+    );
     let mut parts: Vec<String> = Vec::new();
     if first {
+        let export = if placement.export_modifier {
+            let export_end = crate::lex(
+                &module.id,
+                &module.source[declaration.span.start..declaration.name_span.start],
+            )
+            .ok()
+            .and_then(|tokens| tokens.into_iter().find(|token| token.text == "export"))
+            .map(|token| declaration.span.start + token.end);
+            format!(
+                "export{} {}",
+                export_end.map_or_else(String::new, anchor),
+                anchor(declaration.span.start)
+            )
+        } else {
+            String::new()
+        };
         parts.push(format!(
-            "{}{} {name};",
-            if placement.export_modifier {
-                "export "
-            } else {
-                ""
-            },
-            placement.keyword
+            "{}{}{} {}{name}{};",
+            anchor(declaration.span.start),
+            export,
+            placement.keyword,
+            anchor(declaration.name_span.start),
+            anchor(declaration.span.end),
         ));
     }
-    parts.push(format!("(function ({name}) {{"));
+    parts.push(format!(
+        "{}(function ({named}) {{",
+        anchor(declaration.span.start)
+    ));
     for (member, evaluated) in declaration.members.iter().zip(&evaluation.members) {
         for comment in super::output_options::leading_jsdoc(&module.source, member.span.start) {
             parts.push(format!("    {comment}"));
         }
         let key = json_string(&member.name);
-        parts.push(match &evaluated.value {
+        let statement = match &evaluated.value {
             Some(EnumValue::Number(number)) => format!(
                 "    {name}[{name}[{key}] = {}] = {key};",
                 js_number_text(*number)
@@ -356,14 +390,33 @@ pub(super) fn enum_statement(
                     .unwrap_or_else(|| "void 0".to_string());
                 format!("    {name}[{name}[{key}] = {value}] = {key};")
             }
-        });
+        };
+        parts.push(format!(
+            "{}{}{};{}",
+            anchor(member.span.start),
+            statement.strip_suffix(';').unwrap(),
+            anchor(member.span.end),
+            anchor(member.span.end)
+        ));
     }
     let argument = match placement.namespace {
-        Some((parent, true)) => format!("{name} = {parent}.{name} || ({parent}.{name} = {{}})"),
-        _ if placement.commonjs_export => format!("{name} || (exports.{name} = {name} = {{}})"),
-        _ => format!("{name} || ({name} = {{}})"),
+        Some((parent, true)) => {
+            let member = format!(
+                "{}{parent}.{name}{}",
+                anchor(declaration.name_span.start),
+                anchor(declaration.name_span.end)
+            );
+            format!("{named} = {member} || ({member} = {{}})")
+        }
+        _ if placement.commonjs_export => format!("{named} || (exports.{name} = {named} = {{}})"),
+        _ => format!("{named} || ({named} = {{}})"),
     };
-    parts.push(format!("}})({argument});"));
+    parts.push(format!(
+        "{}}}{})({argument});{}",
+        anchor(declaration.body_span.end - 1),
+        anchor(declaration.body_span.end),
+        anchor(declaration.span.end)
+    ));
     parts.join("\n")
 }
 
@@ -379,11 +432,11 @@ pub(super) fn spread_lines(text: String, lines: usize) -> String {
     let mut joined_by_space = false;
     for (index, part) in parts.iter().enumerate() {
         // Indentation only makes sense after a line break.
-        output.push_str(if joined_by_space {
-            part.trim_start()
+        if joined_by_space {
+            push_joined_part(&mut output, part);
         } else {
-            part
-        });
+            output.push_str(part);
+        }
         if index + 1 < parts.len() {
             if remaining > 0 {
                 output.push('\n');
@@ -399,6 +452,34 @@ pub(super) fn spread_lines(text: String, lines: usize) -> String {
         output.push('\n');
     }
     output
+}
+
+// Source markers precede the enum member's four indentation spaces. Trim
+// those spaces when flattening a line, retaining zero-width transitions and
+// deliberate source-end carriers such as A(end) + one space + U.
+fn push_joined_part(output: &mut String, part: &str) {
+    let part = part.trim_start();
+    let mut offset = 0;
+    while let Some(after) = part[offset..].strip_prefix('\0') {
+        let Some(close) = after.find('\0') else {
+            break;
+        };
+        let marker = &after[..close];
+        if marker != "U"
+            && !marker
+                .strip_prefix('A')
+                .is_some_and(|value| !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
+        {
+            break;
+        }
+        offset += close + 2;
+    }
+    output.push_str(&part[..offset]);
+    let text = &part[offset..];
+    let indentation = text.strip_prefix("    ").filter(|rest| {
+        rest.starts_with(|character: char| character != '\0' && !character.is_whitespace())
+    });
+    output.push_str(indentation.unwrap_or(text));
 }
 
 /// A string as a double-quoted JavaScript literal.
@@ -471,4 +552,37 @@ pub(super) fn emit_enum_declaration(
     }
     output.push_str("}\n");
     output
+}
+
+#[cfg(test)]
+mod line_tests {
+    use super::spread_lines;
+
+    #[test]
+    fn flattened_enum_indentation_is_independent_of_source_markers() {
+        assert_eq!(spread_lines("head\n    value;".into(), 0), "head value;");
+        assert_eq!(
+            spread_lines("head\n\0A12\0\0U\0\0A14\0    value;".into(), 0),
+            "head \0A12\0\0U\0\0A14\0value;"
+        );
+        assert_eq!(
+            spread_lines("head\n\0A12\0    value;".into(), 1),
+            "head\n\0A12\0    value;"
+        );
+    }
+
+    #[test]
+    fn flattening_preserves_endpoint_carriers_and_substantive_relocations() {
+        for text in [
+            "\0A12\0 \0U\0tail",
+            "\0A12\0    \0U\0tail",
+            "\0V12,14\0    tail",
+            "\0M12,14\0    tail",
+        ] {
+            assert_eq!(
+                spread_lines(format!("head\n{text}"), 0),
+                format!("head {text}")
+            );
+        }
+    }
 }

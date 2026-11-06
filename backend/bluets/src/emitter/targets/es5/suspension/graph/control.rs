@@ -71,7 +71,7 @@ impl Builder<'_> {
         match tokens[start].text.as_str() {
             "var" => {
                 let end = statement_end(&tokens, start + 1)?;
-                self.declarators(&tokens[start + 1..end], next)
+                self.declarators(&tokens[start + 1..end], next, true)
             }
             "{" => self.sequence(&items[index + 1..end - 1], next),
             "break" | "continue" => {
@@ -81,14 +81,46 @@ impl Builder<'_> {
                 } else {
                     targets.continued?
                 };
+                let origin = relocations::source_anchor(self.source_offset + tokens[start].start);
+                let end = tokens
+                    .get(start + 1)
+                    .filter(|token| token.is(";"))
+                    .unwrap_or(&tokens[start])
+                    .end;
+                let end = relocations::source_anchor(self.source_offset + end);
                 Some(self.block(format!(
-                    "return {{kind:\"jump\", label:{target}, depth:{depth}}};"
+                    "{origin}return {{kind:\"jump\", label:{target}, depth:{depth}}};{end} {}",
+                    relocations::unmapped()
                 )))
             }
-            "switch" => self.switch(&tokens, start, next),
+            "switch" => {
+                let close = exponentiation::matching_close(&tokens, start + 1)?;
+                let end = exponentiation::matching_close(&tokens, close + 1)?;
+                let body = &tokens[start..=end];
+                // An ordinary switch needs no continuation rewrite. Its own
+                // unlabelled breaks remain local; returns and outer continues
+                // still require the continuation compiler.
+                let outer_jump = body.iter().enumerate().any(|(index, token)| {
+                    matches!(
+                        token.text.as_str(),
+                        "return" | "var" | "let" | "const" | "class" | "function"
+                    ) || token.is("continue")
+                        || token.is("break")
+                            && body.get(index + 1).is_some_and(|next| !next.is(";"))
+                });
+                if !outer_jump && !self.suspends(body) {
+                    let end =
+                        end + usize::from(tokens.get(end + 1).is_some_and(|token| token.is(";")));
+                    let code = self.text(&tokens[start..=end])?;
+                    Some(self.block(format!("{code} {}", self.jump(next))))
+                } else {
+                    self.switch(&tokens, start, next)
+                }
+            }
             "if" => {
                 let close = exponentiation::matching_close(&tokens, start + 1)?;
                 let temporary = self.temporary();
+                self.predicate_origin(&temporary, tokens[start].start, &tokens[start + 2..close]);
                 let stop = statement_end(&tokens, close + 1)? + 1;
                 let consequent = crate::parser::parse_emitted_statement(
                     self.module,
@@ -137,7 +169,7 @@ impl Builder<'_> {
                     return Some(entry);
                 }
                 if initializer[0].is("var") {
-                    self.declarators(&initializer[1..], entry)
+                    self.declarators(&initializer[1..], entry, false)
                 } else {
                     self.expression(initializer, None, "", entry)
                 }
@@ -146,7 +178,7 @@ impl Builder<'_> {
         }
     }
 
-    fn declarators(&mut self, tokens: &[Token], mut next: usize) -> Option<usize> {
+    fn declarators(&mut self, tokens: &[Token], mut next: usize, statement: bool) -> Option<usize> {
         let mut groups = Vec::new();
         let mut begin = 0;
         let mut at = 0;
@@ -167,10 +199,20 @@ impl Builder<'_> {
                 return None;
             }
             self.locals.insert(name.text.clone());
+            self.bindings
+                .insert(name.text.clone(), (name.start, name.end));
             if group.len() > 1 {
                 if !group[1].is("=") {
                     return None;
                 }
+                self.binding_initializers.insert(
+                    name.text.clone(),
+                    origins::InitializerOrigin {
+                        start: group.get(2)?.start,
+                        end: group.last()?.end,
+                        statement,
+                    },
+                );
                 next = self.expression(&group[2..], Some(&name.text), "", next)?;
             }
         }
@@ -197,9 +239,14 @@ impl Builder<'_> {
         let body = self.sequence(body, continued)?;
         self.loops.pop();
         let temporary = self.temporary();
+        let exit = test.last().map_or_else(
+            || relocations::unmapped().to_string(),
+            |token| relocations::source_anchor(self.source_offset + token.end),
+        );
         let branch = self.block(format!(
-            "{}.label = {temporary} ? {body} : {next}; continue;",
-            self.context
+            "{}.label = {temporary} ? {body} : {exit}{next}{}; continue;",
+            self.context,
+            relocations::unmapped(),
         ));
         let entry = if test.is_empty() {
             body

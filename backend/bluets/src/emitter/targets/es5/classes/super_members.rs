@@ -9,14 +9,18 @@ use super::*;
 pub(super) fn body(
     source: &str,
     tokens: &[Token],
-    open: usize,
-    close: usize,
+    body: (usize, usize, usize),
     base: &str,
     is_static: bool,
     module: &Module,
 ) -> Result<String, Diagnostic> {
-    let mut output = String::new();
-    let mut cursor = tokens[open].start;
+    let (open, close, parameter_origin) = body;
+    let mut cursor = tokens[open + 1].start;
+    let mut output = format!(
+        "{}{{{}",
+        relocations::source_anchor(parameter_origin),
+        &source[tokens[open].end..cursor]
+    );
     let mut index = open + 1;
     while index < close {
         if tokens[index].is("class") {
@@ -32,6 +36,9 @@ pub(super) fn body(
             continue;
         }
         let first = index;
+        let delimiter_origin = relocations::source_anchor(tokens[index + 1].start);
+        let computed = tokens[index + 1].is("[");
+        let key_origin = relocations::source_anchor(tokens[index + 2].start);
         let key = if tokens.get(index + 1).is_some_and(|token| token.is(".")) {
             index += 3;
             serde_json::to_string(&tokens[index - 1].text).unwrap()
@@ -43,7 +50,7 @@ pub(super) fn body(
                     "super key was not retained",
                 )
             })?;
-            let key = source[tokens[index + 1].end..tokens[end].start].to_string();
+            let key = relocations::relocated_verbatim(tokens[index + 1].end, tokens[end].start);
             index = end + 1;
             key
         } else {
@@ -68,11 +75,27 @@ pub(super) fn body(
         } else {
             format!("{base}.prototype")
         };
-        output.push_str(&source[cursor..tokens[first].start]);
-        output.push_str(&format!("Reflect.get({owner}, {key}, this)"));
+        output.push_str(&relocations::relocated_verbatim(
+            cursor,
+            tokens[first].start,
+        ));
+        output.push_str(&format!(
+            "{}Reflect.get({}{owner}{delimiter_origin},{key_origin} {key}{}, this{})",
+            relocations::unmapped(),
+            relocations::source_anchor(tokens[first].start),
+            relocations::unmapped(),
+            if computed {
+                relocations::source_anchor(tokens[index - 1].start)
+            } else {
+                relocations::unmapped().to_string()
+            }
+        ));
         cursor = tokens[index - 1].end;
         if tokens.get(index).is_some_and(|token| token.is("(")) {
-            output.push_str(".call(this");
+            output.push_str(&format!(
+                "{}.call(this",
+                relocations::source_anchor(tokens[index].start)
+            ));
             if !tokens.get(index + 1).is_some_and(|token| token.is(")")) {
                 output.push_str(", ");
             }
@@ -80,6 +103,6 @@ pub(super) fn body(
             index += 1;
         }
     }
-    output.push_str(&source[cursor..tokens[close].end]);
+    output.push_str(&relocations::relocated_verbatim(cursor, tokens[close].end));
     Ok(output)
 }

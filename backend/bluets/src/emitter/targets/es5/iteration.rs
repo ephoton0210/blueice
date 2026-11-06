@@ -5,6 +5,7 @@
 //! Braced for-of loops keep abrupt completion and iterator closing in place.
 
 use super::*;
+use crate::emitter::relocations;
 
 pub(super) fn lower(
     mut emitted: EmittedJavaScript,
@@ -28,13 +29,22 @@ pub(super) fn lower(
         else {
             return Ok(emitted);
         };
-        let source = &emitted.javascript[tokens[loop_.of + 1].start..tokens[loop_.close].start];
-        let binding = &emitted.javascript[tokens[loop_.binding].start..tokens[loop_.of].start];
-        let body = &emitted.javascript[tokens[loop_.body].start..tokens[loop_.end].end];
+        let source = relocations::relocated_verbatim(
+            tokens[loop_.of + 1].start,
+            tokens[loop_.close - 1].end,
+        );
+        let binding =
+            relocations::relocated_verbatim(tokens[loop_.binding].start, tokens[loop_.of].start);
+        let body = relocations::relocated_verbatim(tokens[loop_.body].start, tokens[loop_.end].end);
+        let generated = relocations::unmapped();
+        let entry = relocations::source_anchor(tokens[loop_.start].start);
+        let operand = relocations::source_anchor(tokens[loop_.of + 1].start);
+        let operand_end = relocations::source_anchor(tokens[loop_.close - 1].end);
+        let binding_end = relocations::source_anchor(tokens[loop_.of - 1].end);
         let record = unused_name(&emitted.javascript, "iterator_record", &mut sequence);
         let result = unused_name(&emitted.javascript, "iterator_step", &mut sequence);
         let mut helper = String::new();
-        let replacement = if options.downlevel_iteration {
+        let mut replacement = if options.downlevel_iteration {
             let finished = unused_name(&emitted.javascript, "iterator_finished", &mut sequence);
             let abrupt = unused_name(&emitted.javascript, "iterator_abrupt", &mut sequence);
             let error = unused_name(&emitted.javascript, "iterator_error", &mut sequence);
@@ -46,39 +56,39 @@ pub(super) fn lower(
             let iterator_helper = unused_name(&emitted.javascript, "iterator", &mut sequence);
             let result_helper = unused_name(&emitted.javascript, "iterator_result", &mut sequence);
             let external = crate::emitter::helper_selection::external(options);
-            if external {
-                let values =
-                    crate::emitter::helper_selection::reference(&emitted.javascript, "__values");
-                format!("{{\nvar {record} = {values}({source});\nvar {result}, {value}, {finished}=true, {abrupt}=false, {error};\ntry {{\nfor(; !({result}={record}.next()).done; {finished}=true) {{\n{value}={result}.value; {finished}=false; {binding}={value};\n{body}\n}}\n}} catch({caught}) {{ {abrupt}=true; {error}={caught}; }}\nfinally {{ if(!{finished}) {{ try {{ var {closing}={record}.return; if({closing}!==null&&{closing}!==void 0) {closing}.call({record}); }} catch({close_error}) {{ if(!{abrupt}) throw {close_error}; }} }} if({abrupt}) throw {error}; }}\n}}")
+            let (factory, step_call, receiver) = if external {
+                (
+                    crate::emitter::helper_selection::reference(&emitted.javascript, "__values"),
+                    format!("{operand_end}{record}.next()"),
+                    record.clone(),
+                )
             } else {
                 helper = include_str!("../iteration_helpers.v1.js")
                     .replace("__blueice_target_iterator", &iterator_helper)
                     .replace("__blueice_target_step_result", &result_helper);
-                format!(
-                "{{\nvar {record} = {iterator_helper}({source});\n\
-                 var {result}, {value}, {finished} = true, {abrupt} = false, {error};\n\
-                 try {{\n\
-                   for (; !({result} = {result_helper}({record}.next.call({record}.iterator))).done; {finished} = true) {{\n\
-                     {value} = {result}.value; {finished} = false;\n\
-                     {binding} = {value};\n{body}\n\
-                   }}\n\
-                 }} catch ({caught}) {{ {abrupt} = true; {error} = {caught}; }}\n\
-                 finally {{\n\
-                   if (!{finished}) {{\n\
-                     try {{ var {closing} = {record}.iterator.return;\n\
-                       if ({closing} !== null && {closing} !== void 0) {result_helper}({closing}.call({record}.iterator));\n\
-                     }} catch ({close_error}) {{ if (!{abrupt}) throw {close_error}; }}\n\
-                   }}\n\
-                   if ({abrupt}) throw {error};\n\
-                 }}\n}}"
-            )
-            }
+                (iterator_helper, format!("{generated}{result_helper}({operand_end}{record}.next.call({record}.iterator){generated}){operand_end}"), format!("{record}.iterator"))
+            };
+            let closing_call = if external {
+                format!("{closing}.call({receiver})")
+            } else {
+                format!("{result_helper}({closing}.call({receiver}))")
+            };
+            format!("{generated}{{\n{operand}var {record} = {factory}({source}{operand_end});\n{generated}var {result}, {value}, {finished}=true, {abrupt}=false, {error};\ntry {{\n{entry}for ({operand_end}; !({result}={step_call}).done; {generated}{finished}=true{operand_end}){generated} {{\n{value}={binding_end}{result}.value{binding_end};{generated} {finished}=false; {binding}{binding_end}={value};\n{body}\n{generated}}}\n}} catch({caught}) {{ {abrupt}=true; {error}={caught}; }}\nfinally {{ if(!{finished}) {{ try {{ var {closing}={receiver}.return; if({closing}!==null&&{closing}!==void 0) {closing_call}; }} catch({close_error}) {{ if(!{abrupt}) throw {close_error}; }} }} if({abrupt}) throw {error}; }}\n}}")
         } else {
             format!("{{ var {record} = {source}; for (var {result} = 0; {result} < {record}.length; {result}++) {{ {binding} = {record}[{result}]; {body} }} }}")
         };
+        let mut end = tokens[loop_.end].end;
+        if let Some(next) = tokens.get(loop_.end + 1) {
+            let trivia = &emitted.javascript[end..next.start];
+            if trivia.chars().all(char::is_whitespace) {
+                replacement.push_str(generated);
+                replacement.push_str(trivia);
+                end = next.start;
+            }
+        }
         let mut edits = vec![TextEdit {
             start: tokens[loop_.start].start,
-            end: tokens[loop_.end].end,
+            end,
             replacement,
         }];
         if !helper.is_empty() {
@@ -86,7 +96,7 @@ pub(super) fn lower(
             edits.push(TextEdit {
                 start: insertion,
                 end: insertion,
-                replacement: format!("\n{helper}\n"),
+                replacement: format!("{generated}\n{helper}\n"),
             });
         }
         emitted = mapped_edits(emitted, edits);

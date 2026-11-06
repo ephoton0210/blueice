@@ -168,6 +168,17 @@ fn copied_comments_and_const_keep_measured_segment_boundaries() {
     .unwrap();
     let segments = decode_map(&map);
     for (line, end) in [(0, 70), (1, 70), (2, 60)] {
+        assert!(
+            segments.contains(&Mapping {
+                generated_line: line,
+                generated_column: 0,
+                source_index: 0,
+                source_line: line as i64,
+                source_column: 0,
+                name_index: None,
+            }),
+            "every copied comment line retains its Native start: line {line}"
+        );
         assert!(segments.contains(&Mapping {
             generated_line: line,
             generated_column: end,
@@ -186,6 +197,230 @@ fn copied_comments_and_const_keep_measured_segment_boundaries() {
     assert!(
         !segments.iter().any(|segment| segment.generated_line == 6),
         "terminal newline cannot create an empty mapped line"
+    );
+}
+
+#[test]
+fn copied_comment_boundaries_survive_crlf_and_astral_publication() {
+    let module = "memory:///comments.ts";
+    let basic = include_str!("../fixtures/k11_source_maps/basic.ts");
+    for astral in [false, true] {
+        let source = if astral {
+            basic.replace("Mozilla Public", "Mozilla Public 😀")
+        } else {
+            basic.to_string()
+        };
+        for crlf_source in [false, true] {
+            let source = if crlf_source {
+                source.replace('\n', "\r\n")
+            } else {
+                source.clone()
+            };
+            for new_line in [blueice_bluets::NewLine::Lf, blueice_bluets::NewLine::CrLf] {
+                let result = compile(
+                    module,
+                    &MapLoader::from([ModuleSource::new(module, source.clone())]),
+                    CompilerOptions {
+                        source_map: true,
+                        inline_sources: true,
+                        new_line,
+                        ..CompilerOptions::default()
+                    },
+                );
+                assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+                let map = result.output.unwrap().artifacts[module]
+                    .source_map
+                    .as_ref()
+                    .unwrap()
+                    .to_json();
+                let segments = decode_map(&serde_json::from_str(&map).unwrap());
+                for (line, text) in source.lines().take(3).enumerate() {
+                    for column in [0, text.trim_end_matches('\r').encode_utf16().count()] {
+                        assert!(
+                            segments.contains(&Mapping {
+                                generated_line: line,
+                                generated_column: column as i64,
+                                source_index: 0,
+                                source_line: line as i64,
+                                source_column: column as i64,
+                                name_index: None,
+                            }),
+                            "Native comment boundary {line}:{column}; astral={astral}, source CRLF={crlf_source}, output={new_line:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn decorator_access_trivia_inherits_complete_member_name() {
+    let module = "memory:///main.ts";
+    let source = include_str!("../fixtures/k11_source_maps/decorated.ts");
+    let result = compile(
+        module,
+        &MapLoader::from([ModuleSource::new(module, source)]),
+        CompilerOptions {
+            target: blueice_bluets::EcmaTarget::Es2022,
+            source_map: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+    let output = result.output.unwrap();
+    let artifact = &output.artifacts[module];
+    let getter = "get: obj => obj.method";
+    let gap = artifact.javascript.find(getter).unwrap() + getter.len();
+    assert_eq!(&artifact.javascript[gap..gap + 2], " }");
+    let (line, column) = source_position(&artifact.javascript, gap);
+    let actual = artifact
+        .source_map
+        .as_ref()
+        .unwrap()
+        .original_position_at(
+            &artifact.javascript,
+            line as usize,
+            column as usize,
+            100_000,
+            32_000_000,
+        )
+        .unwrap()
+        .unwrap();
+    let name_end = source.find("method()").unwrap() + "method".len();
+    let expected = source_position(source, name_end);
+    assert_eq!(
+        (actual.line as i64, actual.column_utf16 as i64),
+        expected,
+        "Native keeps the complete access getter gap on method.name.end"
+    );
+}
+
+#[test]
+fn erased_type_comments_do_not_grant_source_to_empty_lines() {
+    let module = "memory:///erased.ts";
+    let source =
+        "// erased interface comment\ninterface Gone { x: number; }\nexport const result = 42;\n";
+    let result = compile(
+        module,
+        &MapLoader::from([ModuleSource::new(module, source)]),
+        CompilerOptions {
+            source_map: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+    let output = result.output.unwrap();
+    let artifact = &output.artifacts[module];
+    for (line, text) in artifact.javascript.lines().enumerate() {
+        if !text.trim().is_empty() {
+            break;
+        }
+        assert_eq!(
+            artifact
+                .source_map
+                .as_ref()
+                .unwrap()
+                .original_position_at(&artifact.javascript, line, 0, 100_000, 32_000_000)
+                .unwrap(),
+            None,
+            "erased type/comment line {line} cannot grant source authority"
+        );
+    }
+}
+
+#[test]
+fn decorator_parenthesized_name_gap_uses_the_identifier_start() {
+    let module = "memory:///main.ts";
+    let source = include_str!("../fixtures/k11_source_maps/decorated_parenthesized.ts");
+    let result = compile(
+        module,
+        &MapLoader::from([ModuleSource::new(module, source)]),
+        CompilerOptions {
+            target: blueice_bluets::EcmaTarget::Es2022,
+            source_map: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+    let output = result.output.unwrap();
+    let artifact = &output.artifacts[module];
+    let tokens = lex("<generated>", &artifact.javascript).unwrap();
+    let actual = tokens
+        .windows(5)
+        .find(|w| {
+            w[0].text == "["
+                && w[1].text == "("
+                && w[2].text == "decoSite"
+                && w[3].text == ")"
+                && w[4].text == "]"
+        })
+        .unwrap();
+    let original = lex(module, source).unwrap();
+    let wanted = original
+        .windows(4)
+        .find(|w| {
+            w[0].text == "@" && w[1].text == "(" && w[2].text == "decoSite" && w[3].text == ")"
+        })
+        .unwrap();
+    let expected = source_position(source, wanted[2].start);
+    for offset in actual[1].end..=actual[2].start {
+        let (line, column) = source_position(&artifact.javascript, offset);
+        let position = artifact
+            .source_map
+            .as_ref()
+            .unwrap()
+            .original_position_at(
+                &artifact.javascript,
+                line as usize,
+                column as usize,
+                100_000,
+                32_000_000,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (position.line as i64, position.column_utf16 as i64),
+            expected,
+            "Native opening gap belongs to the surviving identifier"
+        );
+    }
+}
+
+#[test]
+fn decorator_factory_completion_keeps_the_generated_gap_unmapped() {
+    let module = "memory:///main.ts";
+    let source = include_str!("../fixtures/k11_source_maps/decorated_multiple.ts");
+    let result = compile(
+        module,
+        &MapLoader::from([ModuleSource::new(module, source)]),
+        CompilerOptions {
+            target: blueice_bluets::EcmaTarget::Es2022,
+            source_map: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+    let output = result.output.unwrap();
+    let artifact = &output.artifacts[module];
+    let end = artifact.javascript.rfind("})();").unwrap() + "})();".len();
+    assert!(artifact.javascript[end..].starts_with('\n'));
+    let (line, column) = source_position(&artifact.javascript, end);
+    assert_eq!(
+        artifact
+            .source_map
+            .as_ref()
+            .unwrap()
+            .original_position_at(
+                &artifact.javascript,
+                line as usize,
+                column as usize,
+                100_000,
+                32_000_000
+            )
+            .unwrap(),
+        None,
+        "Native generated factory completion cannot inherit original class.end"
     );
 }
 

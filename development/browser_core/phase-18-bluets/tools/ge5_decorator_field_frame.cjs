@@ -1,0 +1,79 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// A field-only class binding composes only independently closed source phases.
+const assert=require('node:assert/strict'),{unwrap}=require('./ge5_decorator_fields.cjs'),{compareGap}=require('./ge5_role_stream.cjs');
+function compare(ts,native,nn,actual,an,source,options,components,core,contract,moduleContext){
+  function units(view,node,aliases){return view.tokens(node).filter(token=>!view.covered(token.start)).map(token=>{const text=aliases.get(token.text);if(!text)return token;const owner=token.owners[0];assert(token.owners.every(value=>JSON.stringify(value)===JSON.stringify(owner)),'complete field-frame binding interiors');return {...token,text,owners:[owner]};});}
+  function pair(nnode,anode,label){contract.pair(units(native,nnode,components.native.aliases),units(actual,anode,components.actual.aliases),label);}
+  function variable(view,node){assert(ts.isVariableStatement(node)&&node.declarationList.declarations.length===1,'complete original class binding grammar');const declaration=node.declarationList.declarations[0];assert(ts.isIdentifier(declaration.name)&&declaration.name.text===source.name.text&&declaration.initializer);return declaration;}
+  function role(view,start,end,owner,label){for(let offset=start;offset<end;offset++)assert.deepEqual(view.owner(offset),owner,label+' UTF-16');view.cover(start,end);(view.roleStarts??=new Map()).set(start,owner);(view.roleEnds??=new Map()).set(end,view.owner(end));}
+  if(options.experimentalDecorators){
+    const events=(view,item,envelope,side)=>{
+      const phases=[{at:item.node.getStart(view.source),role:'construct'}];
+      for(const proof of components.fields.filter(proof=>proof.field.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.StaticKeyword)))phases.push({at:proof[side].node.getStart(view.source),role:'static.'+proof.field.name.getText()});
+      for(const [index,pair]of components.legacyPairs.entries())phases.push({at:pair[side].getStart(view.source),role:'decorate.'+index});
+      if(item.returned)phases.push({at:item.returned.getStart(view.source),role:'complete-factory'});
+      const publications=envelope.sourceNodes.filter(node=>ts.isExpressionStatement(node)&&ts.isBinaryExpression(node.expression)&&node.expression.operatorToken.kind===ts.SyntaxKind.EqualsToken&&ts.isPropertyAccessExpression(node.expression.left)&&node.expression.left.expression.getText()==='exports'&&node.expression.left.name.text===source.name.text&&ts.isIdentifier(node.expression.right)&&node.expression.right.text===source.name.text);
+      assert.equal(publications.length,options.module==='CommonJS'?1:0,'complete initial class-publication inventory');
+      for(const node of publications)phases.push({at:node.getStart(view.source),role:'publish'});
+      return phases.sort((left,right)=>left.at-right.at).map(phase=>phase.role);
+    };
+    assert.deepEqual(events(actual,core.actual,moduleContext.actual,'actual'),events(native,core.native,moduleContext.native,'native'),'complete class construction/static/publication/decorator evaluation order');
+  }
+  if(ts.isClassDeclaration(nn)||ts.isClassDeclaration(an)){assert(ts.isClassDeclaration(nn)&&ts.isClassDeclaration(an)&&core.native.node===nn&&core.actual.node===an,'paired retained original class declaration');pair(nn,an,'complete retained field class binding');return {source,native:core.native,actual:core.actual,complete:true};}
+  const nd=variable(native,nn),ad=variable(actual,an);
+  function bindingGaps(){const np=native.tokens(nn).filter(token=>token.end<=nd.initializer.getStart(native.source)),ap=actual.tokens(an).filter(token=>token.end<=ad.initializer.getStart(actual.source)),ns=native.tokens(nn).filter(token=>token.start>=nd.initializer.end),as=actual.tokens(an).filter(token=>token.start>=ad.initializer.end);assert(np.length&&ap.length&&ns.length&&as.length);compareGap(native,np.at(-1).end,nd.initializer.getStart(native.source),actual,ap.at(-1).end,ad.initializer.getStart(actual.source),'complete class binding to initialization gap');compareGap(native,nd.initializer.end,ns[0].start,actual,ad.initializer.end,as[0].start,'complete class initialization to binding terminator gap');}
+  if(options.target==='ES5')for(const comment of native.comments().filter(comment=>nn.getStart(native.source)<=comment.start&&comment.end<=core.native.factory.getStart(native.source))){assert.equal(comment.text,'/** @class */','one complete Native class factory marker');role(native,comment.start,comment.end,native.owner(core.native.factory.getStart(native.source)),'complete source class factory marker');}
+  if(options.experimentalDecorators){
+    assert(options.target==='ES5'&&unwrap(ts,nd.initializer)===core.native.node&&unwrap(ts,ad.initializer)===core.actual.node,'complete legacy field class factory value');
+    const owner=native.owner(core.native.factory.getStart(native.source));
+    for(const [view,declaration,item]of[[native,nd,core.native],[actual,ad,core.actual]])for(const token of view.tokens(declaration.initializer).filter(token=>!view.covered(token.start))){assert(token.text==='('||token.text===')','only exact base factory grouping and invocation delimiters remain');role(view,token.start,token.end,owner,'legacy base class factory delimiter');}
+    pair(nn,an,'complete legacy field class binding');contract.region(nd.initializer,ad.initializer);bindingGaps();
+    assert.deepEqual(actual.owner(an.end),native.owner(nn.end),'complete legacy field class binding endpoint');
+    return {source,native:{...core.native,node:nn},actual:{...core.actual,node:an},complete:true};
+  }
+  if(options.target!=='ES5'&&['ES2022','ESNext'].includes(options.target)){
+    function outer(view,declaration,item){const call=unwrap(ts,declaration.initializer);assert(ts.isCallExpression(call)&&!call.arguments.length);const fn=unwrap(ts,call.expression);assert(ts.isArrowFunction(fn)&&!fn.parameters.length&&ts.isBlock(fn.body));const returned=fn.body.statements.at(-1);assert(ts.isReturnStatement(returned)&&returned.expression===item.node,'field-class value returned by its exact lexical slot factory');return {call,fn,returned};}
+    const n=outer(native,nd,core.native),a=outer(actual,ad,core.actual);pair(nn,an,'complete retained standard field class factory');contract.region(nd.initializer,ad.initializer);bindingGaps();assert.deepEqual(actual.owner(an.end),native.owner(nn.end),'complete standard field class binding endpoint');return {source,native:{...core.native,node:nn},actual:{...core.actual,node:an},outer:{native:n,actual:a},complete:true};
+  }
+  function invocation(view,node,body,receiver) {
+    const expression=unwrap(ts,node);assert(ts.isCallExpression(expression));
+    let fn;if(receiver){assert(ts.isPropertyAccessExpression(expression.expression)&&expression.expression.name.text==='call');assert.equal(expression.arguments.length,1);assert(ts.isIdentifier(expression.arguments[0])&&expression.arguments[0].text===receiver);fn=unwrap(ts,expression.expression.expression);}else{assert.equal(expression.arguments.length,0);fn=unwrap(ts,expression.expression);}
+    assert((options.target==='ES5'?ts.isFunctionExpression(fn):ts.isArrowFunction(fn)||ts.isFunctionExpression(fn))&&!fn.name&&!fn.asteriskToken&&!fn.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.AsyncKeyword)&&!fn.parameters.length&&ts.isBlock(fn.body),'complete generated lexical phase factory');if(body)assert.equal(fn.body,body,'one independently proved metadata phase');return {node:expression,fn};
+  }
+  const no=invocation(native,nd.initializer),ao=invocation(actual,ad.initializer),nreturn=no.fn.body.statements.at(-1),areturn=ao.fn.body.statements.at(-1);assert(ts.isReturnStatement(nreturn)&&ts.isReturnStatement(areturn));
+  const commas=node=>{node=unwrap(ts,node);return ts.isBinaryExpression(node)&&node.operatorToken.kind===ts.SyntaxKind.CommaToken?[...commas(node.left),...commas(node.right)]:[node];},phases=commas(nreturn.expression),inner=invocation(actual,areturn.expression);assert.equal(phases.length,5,'class construction, metadata, static field, static extra, class value');
+  const [captured,meta,store,extra,completed]=phases;assert(ts.isBinaryExpression(captured)&&captured.operatorToken.kind===ts.SyntaxKind.EqualsToken&&ts.isIdentifier(captured.left));const receiver=captured.left.text;assert(components.native.aliases.get(receiver)==='$field.receiver');assert.equal(unwrap(ts,captured.right),core.native.node);assert(ts.isIdentifier(completed)&&completed.text===receiver);
+  const [binding,actualMeta,actualStore,actualExtra,actualReturn]=inner.fn.body.statements;assert.equal(inner.fn.body.statements.length,5,'complete per-evaluation lowered field class statement inventory');assert(ts.isVariableStatement(binding)&&binding.declarationList.declarations.length===1);const declaration=binding.declarationList.declarations[0];assert(ts.isIdentifier(declaration.name)&&declaration.name.text===source.name.text&&unwrap(ts,declaration.initializer)===core.actual.node);assert(ts.isReturnStatement(actualReturn)&&ts.isIdentifier(actualReturn.expression)&&actualReturn.expression.text===source.name.text);
+  const staticProofs=components.fields.filter(proof=>proof.field.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.StaticKeyword));assert.equal(staticProofs.length,1,'closed original static field phase inventory');const staticProof=staticProofs[0];assert.equal(store,staticProof.native.expression);assert(ts.isExpressionStatement(actualStore)&&actualStore.expression===staticProof.actual.expression);
+  assert(ts.isExpressionStatement(actualMeta)&&ts.isExpressionStatement(actualExtra));
+  const nm=invocation(native,meta,components.metadata.native.body),am=invocation(actual,actualMeta.expression,components.metadata.actual.body,source.name.text),ne=invocation(native,extra),ae=invocation(actual,actualExtra.expression,null,source.name.text);
+  const slot=components.native.slots.get(staticProof.field).arguments[5].text,actualSlot=components.actual.slots.get(staticProof.field).arguments[5].text;
+  for(const [item,name,classReceiver]of [[ne,slot,receiver],[ae,actualSlot,'this']]){assert.equal(item.fn.body.statements.length,1);const statement=item.fn.body.statements[0];assert(ts.isExpressionStatement(statement)&&ts.isCallExpression(statement.expression));const call=statement.expression;assert.equal(require('./ge5_decorator_helpers.cjs').helpers.get(call.expression.getText()),'runInitializers');assert.equal(call.arguments.length,2);assert.equal(call.arguments[0].getText(),classReceiver);assert.equal(call.arguments[1].getText(),name);}
+  pair(ne.fn.body,ae.fn.body,'complete last static field extra phase');
+  function wrapper(view,item){for(const token of view.tokens(item.node).filter(token=>!view.covered(token.start)))role(view,token.start,token.end,null,'complete generated metadata/static-extra invocation transport');}
+  for(const [view,item]of [[native,nm],[actual,am],[native,ne],[actual,ae]])wrapper(view,item);
+  const nativeSlots=no.fn.body.statements.slice(0,-1),actualSlots=ao.fn.body.statements.slice(0,-1);assert.equal(nativeSlots.length,actualSlots.length+1,'Native-only fresh class capture slot');const temporary=nativeSlots.shift();assert(ts.isVariableStatement(temporary)&&temporary.declarationList.declarations.length===1&&temporary.declarationList.declarations[0].name.getText()===receiver&&!temporary.declarationList.declarations[0].initializer);role(native,temporary.getStart(native.source),temporary.end,null,'complete Native class-capture slot');
+  assert.equal(nativeSlots.length,components.sourceFields.length*3,'complete source-bound decorator/initializer/extra slot inventory');
+  for(let index=0;index<nativeSlots.length;index++)pair(nativeSlots[index],actualSlots[index],'complete source field initialization slot '+index);
+  const classEndpoint=native.owner(captured.right.end);
+  for(const [view,syntax,item]of [[native,captured.right,core.native],[actual,declaration.initializer,core.actual]])for(const token of view.tokens(syntax).filter(token=>!view.covered(token.start))){assert(token.text==='('||token.text===')','only complete class value grouping/invocation remains');const owner=token.end<=item.factory.getStart(view.source)?null:classEndpoint;role(view,token.start,token.end,owner,'complete standard class-value grouping');}
+  role(native,captured.getStart(native.source),captured.right.getStart(native.source),null,'complete Native source-class capture prefix');role(actual,binding.getStart(actual.source),declaration.initializer.getStart(actual.source),null,'complete generated per-evaluation class capture');
+  const nt=native.tokens(nreturn.expression).filter(token=>!native.covered(token.start)),at=actual.tokens(inner.fn.body).filter(token=>!actual.covered(token.start));
+  const nativeSeparators=nt.filter(token=>token.text===','),actualSeparators=[binding,actualMeta,actualStore,actualExtra].map(node=>actual.tokens(node).at(-1));assert.equal(nativeSeparators.length,4);assert(actualSeparators.every(token=>token.text===';'));
+  for(let index=0;index<4;index++){const x=nativeSeparators[index],y=actualSeparators[index];const owner=x.owners[0];assert(x.owners.every(point=>JSON.stringify(point)===JSON.stringify(owner)));role(native,x.start,x.end,owner,'Native ordered class phase separator');role(actual,y.start,y.end,owner,'complete class phase statement separator');assert.deepEqual(actual.owner(y.end),native.owner(x.end),'complete class phase separator logical endpoint');actual.roleEnds.set(y.end,native.owner(x.end));actual.nativeStarts.set(y.start,x.start);actual.nativeEnds.set(y.end,x.end);}
+  role(native,completed.getStart(native.source),completed.end,null,'complete Native captured class value');role(actual,actualReturn.getStart(actual.source),actualReturn.end,null,'complete generated class value completion');
+  for(const [view,call,returned]of [[native,no,nreturn],[actual,ao,areturn]]){
+    const prefix=view.tokens(call.node).filter(token=>token.end<=call.fn.body.statements[0].getStart(view.source));
+    const head=native.tokens(no.node).filter(token=>token.end<=no.fn.body.statements[0].getStart(native.source));
+    // Function/arrow factories are validated above; their complete header
+    // retains the single Native enclosing binding role for this target.
+    const owner=native.owner(head[0].start);for(const token of prefix.filter(token=>!view.covered(token.start)))role(view,token.start,token.end,owner,'complete outer class initialization factory prefix');
+    for(const token of view.tokens(call.node).filter(token=>!view.covered(token.start)))role(view,token.start,token.end,null,'complete generated outer class factory completion');
+  }
+  pair(nn,an,'complete lowered field class binding prefix and terminator');contract.region(nd.initializer,ad.initializer);bindingGaps();assert.deepEqual(actual.owner(an.end),native.owner(nn.end),'complete lowered field class binding endpoint');
+  return {source,native:{...core.native,node:nn},actual:{...core.actual,node:an},phases:{native:phases,actual:[binding,actualMeta,actualStore,actualExtra,actualReturn]},complete:true};
+}
+module.exports={compare};

@@ -13,10 +13,10 @@ mod async_generators;
 mod async_iteration;
 pub(super) mod es5;
 mod exponentiation;
+mod mapped_fragments;
 mod object_rest;
 mod object_spread;
 mod optional;
-mod suspension_text;
 
 pub const TARGET_HELPER_V1_VERSION: &str = "blue-ts-target-helper-v1";
 pub(crate) const TARGET_HELPER_V1_SOURCE: &str = include_str!("targets/helpers.v1.js");
@@ -178,27 +178,65 @@ fn assignment_end(tokens: &[Token], start: usize) -> usize {
 }
 
 pub(super) fn mapped_edits(previous: EmittedJavaScript, edits: Vec<TextEdit>) -> EmittedJavaScript {
-    let mut next = apply_edits_with_provenance(&previous.javascript, edits, previous.segment_limit);
+    if edits.is_empty() {
+        return previous;
+    }
+    let mut offsets = Vec::with_capacity(previous.provenance.len());
+    let mut boundaries = previous.provenance.iter().peekable();
+    let (mut line, mut column) = (0, 0);
+    let mut characters = previous.javascript.char_indices().peekable();
+    while let Some((offset, character)) = characters.next() {
+        if boundaries.peek().is_some_and(|segment| {
+            (segment.generated_line, segment.generated_column) == (line, column)
+        }) {
+            offsets.push(offset);
+            boundaries.next();
+        }
+        if is_line_break(
+            character,
+            characters.peek().map(|(_, character)| *character),
+        ) {
+            line += 1;
+            column = 0;
+        } else {
+            column += character.len_utf16();
+        }
+    }
+    if boundaries
+        .peek()
+        .is_some_and(|segment| (segment.generated_line, segment.generated_column) == (line, column))
+    {
+        offsets.push(previous.javascript.len());
+    }
+    let mut next = apply_edits_with_anchors(
+        &previous.javascript,
+        edits,
+        previous.segment_limit,
+        BTreeMap::new(),
+        BTreeMap::new(),
+        Some(offsets),
+    );
     next.overflowed |= previous.overflowed;
     for segment in &mut next.provenance {
+        if !segment.mapped {
+            continue;
+        }
         let key = (segment.source_line, segment.source_column);
         let index = previous
             .provenance
             .partition_point(|mapping| (mapping.generated_line, mapping.generated_column) <= key);
-        if let Some(mapping) = previous.provenance.get(index.saturating_sub(1)) {
-            if !mapping.mapped {
-                segment.mapped = false;
-                continue;
-            }
-            let column = if mapping.generated_line == segment.source_line {
-                segment
-                    .source_column
-                    .saturating_sub(mapping.generated_column)
-            } else {
-                0
-            };
+        if let Some(mapping) = index
+            .checked_sub(1)
+            .and_then(|index| previous.provenance.get(index))
+            .filter(|mapping| mapping.generated_line == segment.source_line && mapping.mapped)
+        {
             segment.source_line = mapping.source_line;
-            segment.source_column = mapping.source_column.saturating_add(column);
+            segment.source_column = mapping.source_column;
+            segment.name_index = mapping.name_index;
+        } else {
+            // Source Map lookup resets on every physical line and never
+            // invents an original position before that line's first segment.
+            segment.mapped = false;
         }
     }
     next

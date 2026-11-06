@@ -466,3 +466,93 @@ fn the_worker_serializes_named_capture_ranges() {
         serde_json::json!([["word", { "start": 0, "end": 1 }]])
     );
 }
+
+/// A helper's shutdown has no reply. Another inherited stdout writer can keep
+/// its pipe open after the private helper exits, so EOF is not an acknowledgement.
+#[test]
+fn shutdown_does_not_wait_for_a_reply_or_stdout_eof() {
+    use std::sync::Arc;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Event {
+        ReadPastReady,
+        Finished,
+    }
+
+    struct HeldOpenOutput {
+        ready: io::Cursor<Vec<u8>>,
+        events: Sender<Event>,
+        release: Receiver<()>,
+    }
+
+    impl Read for HeldOpenOutput {
+        fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+            if bytes.is_empty() || self.ready.position() < self.ready.get_ref().len() as u64 {
+                return self.ready.read(bytes);
+            }
+            let _ = self.events.send(Event::ReadPastReady);
+            // Cleanup releases this read even on the old, incorrect transport.
+            let _ = self.release.recv();
+            Ok(0)
+        }
+    }
+
+    struct CapturedInput(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for CapturedInput {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut ready = Vec::new();
+    frame_write(&mut ready, READY).unwrap();
+    let (release, held_open) = mpsc::channel();
+    let (events, observed) = mpsc::channel();
+    let (requests, incoming) = mpsc::channel();
+    let (outgoing, replies) = mpsc::channel();
+    let written = Arc::new(Mutex::new(Vec::new()));
+    let input = Arc::clone(&written);
+    let transport = std::thread::spawn(move || {
+        let mut output = HeldOpenOutput {
+            ready: io::Cursor::new(ready),
+            events: events.clone(),
+            release: held_open,
+        };
+        transport_loop(&mut CapturedInput(input), &mut output, incoming, outgoing);
+        let _ = events.send(Event::Finished);
+    });
+    assert_eq!(
+        replies.recv_timeout(STARTUP_TIMEOUT).unwrap().unwrap(),
+        READY
+    );
+    let shutdown = serde_json::to_vec(&Request::Shutdown).unwrap();
+    requests.send(shutdown.clone()).unwrap();
+    drop(requests);
+    let outcome = observed.recv_timeout(STARTUP_TIMEOUT);
+    // Always unblock and join before asserting: the red regression cannot hang
+    // the test runner or leave a thread behind while it reports the failure.
+    let _ = release.send(());
+    transport.join().unwrap();
+    assert_eq!(
+        outcome.unwrap(),
+        Event::Finished,
+        "shutdown attempted to read a reply from still-open stdout"
+    );
+    let bytes = written.lock().unwrap().clone();
+    let mut bytes = bytes.as_slice();
+    assert_eq!(frame_read(&mut bytes).unwrap(), shutdown);
+    assert!(
+        bytes.is_empty(),
+        "exactly one unchanged wire shutdown frame"
+    );
+    assert!(matches!(
+        replies.try_recv(),
+        Err(mpsc::TryRecvError::Disconnected)
+    ));
+}

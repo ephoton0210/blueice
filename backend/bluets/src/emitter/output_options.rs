@@ -110,6 +110,13 @@ fn comment_ranges(
     source: &str,
 ) -> Result<Vec<std::ops::Range<usize>>, Diagnostic> {
     let tokens = lex(&module.id, source).map_err(|errors| errors[0].clone())?;
+    Ok(comment_ranges_in_trivia(source, &tokens))
+}
+
+pub(super) fn comment_ranges_in_trivia(
+    source: &str,
+    tokens: &[crate::syntax::Token],
+) -> Vec<std::ops::Range<usize>> {
     let mut ranges = Vec::new();
     let mut cursor = 0;
     for token in tokens {
@@ -134,7 +141,55 @@ fn comment_ranges(
         }
         cursor = token.end;
     }
-    Ok(ranges)
+    ranges
+}
+
+/// Dependency parameters/setters replace runtime ES import statements. Only
+/// their attached leading comments disappear; detached and prior-node trivia stay.
+pub(super) fn erase_elided_import_comments(
+    module: &Module,
+    edits: &mut Vec<TextEdit>,
+) -> Result<(), Diagnostic> {
+    let tokens = lex(&module.id, &module.source).map_err(|errors| errors[0].clone())?;
+    let comments = comment_ranges(module, &module.source)?;
+    for declaration in &module.declarations {
+        let Declaration::Import(import) = declaration else {
+            continue;
+        };
+        if import.equals_require || import.is_type_only() {
+            continue;
+        }
+        let previous = tokens
+            .partition_point(|token| token.end <= import.span.start)
+            .checked_sub(1)
+            .map_or(0, |index| tokens[index].end);
+        let ranges = comments
+            .iter()
+            .filter(|range| previous <= range.start && range.end <= import.span.start)
+            .collect::<Vec<_>>();
+        let mut attached = ranges
+            .iter()
+            .position(|range| {
+                previous == 0 || module.source[previous..range.start].contains(['\r', '\n'])
+            })
+            .unwrap_or(ranges.len());
+        for (index, range) in ranges.iter().enumerate() {
+            let next = ranges
+                .get(index + 1)
+                .map_or(import.span.start, |range| range.start);
+            if module.source[range.end..next].matches('\n').count() >= 2 {
+                attached = index + 1;
+            }
+        }
+        if let Some(first) = ranges.get(attached) {
+            edits.push(TextEdit {
+                start: first.start,
+                end: import.span.start,
+                replacement: super::relocations::unmapped().to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn format_javascript(
@@ -268,6 +323,21 @@ pub(super) fn format_text(text: String, options: &CompilerOptions) -> String {
 }
 
 pub(super) fn leading_jsdoc(source: &str, start: usize) -> Vec<&str> {
+    fn block_trivia(mut text: &str) -> bool {
+        loop {
+            text = text.trim();
+            if text.is_empty() {
+                return true;
+            }
+            let Some(comment) = text.strip_prefix("/*") else {
+                return false;
+            };
+            let Some(end) = comment.find("*/") else {
+                return false;
+            };
+            text = &comment[end + 2..];
+        }
+    }
     let mut prefix = source[..start].trim_end();
     let mut comments = Vec::new();
     while prefix.ends_with("*/") {
@@ -277,7 +347,8 @@ pub(super) fn leading_jsdoc(source: &str, start: usize) -> Vec<&str> {
         let comment = &prefix[index..];
         let before = &prefix[..index];
         let line = before.rsplit(['\r', '\n']).next().unwrap_or("");
-        if comment.starts_with("/**") && line.trim().is_empty() {
+        let leading = block_trivia(line);
+        if comment.starts_with("/**") && leading {
             comments.push(comment);
         }
         prefix = prefix[..index].trim_end();

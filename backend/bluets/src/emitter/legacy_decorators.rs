@@ -31,6 +31,7 @@ use crate::parser::{
 
 mod auto_accessors;
 mod metadata;
+mod origins;
 
 pub(crate) fn metadata_imports(
     module: &Module,
@@ -56,6 +57,20 @@ pub(super) fn prepare_super(
         let Declaration::Class(class) = declaration else {
             continue;
         };
+        if options.target == crate::EcmaTarget::Es5 && !options.source_map && !lowers_class(class) {
+            // ES5's later class pass must identify the original lexical class
+            // even without token-level map points. A verbatim single-keyword
+            // copy preserves its exact stage provenance and leaves JS intact.
+            let keyword = super::decorators::class_keyword_start(class, &module.source);
+            edits.push(TextEdit {
+                start: keyword,
+                end: keyword + "class".len(),
+                replacement: super::relocations::relocated_verbatim(
+                    keyword,
+                    keyword + "class".len(),
+                ),
+            });
+        }
         if !needs_work(class) {
             continue;
         }
@@ -70,16 +85,20 @@ pub(super) fn prepare_super(
             } else {
                 continue;
             };
-            super::decorators::super_members::lower_references(
+            super::decorators::super_members::lower_legacy_references(
                 module,
                 tokens,
                 &format!("Object.getPrototypeOf({})", class.name),
                 &class.name,
-                false,
                 &mut used,
                 edits,
             )?;
         }
+        super::decorators::super_members::retain_legacy_static_field_values(
+            class,
+            options.defines_class_fields(),
+            edits,
+        );
     }
     Ok(())
 }
@@ -132,6 +151,7 @@ pub(super) fn lower_legacy_decorators(
     project: &crate::Project,
     options: &CompilerOptions,
     references: &std::collections::BTreeMap<String, super::namespaces::Replacement>,
+    wrapper_is_system: bool,
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
     auto_accessors::lower(module, options, edits)?;
@@ -150,6 +170,7 @@ pub(super) fn lower_legacy_decorators(
             project,
             references,
             options,
+            wrapper_is_system,
             edits,
             need_param: false,
         };
@@ -184,6 +205,7 @@ struct Lowerer<'a, 'e> {
     project: &'a crate::Project,
     references: &'a std::collections::BTreeMap<String, super::namespaces::Replacement>,
     options: &'a CompilerOptions,
+    wrapper_is_system: bool,
     edits: &'e mut Vec<TextEdit>,
     need_param: bool,
 }
@@ -193,6 +215,26 @@ fn quoted(text: &str) -> String {
 }
 
 impl Lowerer<'_, '_> {
+    fn class_publication(&self, class: &ClassDeclaration, source_binding: bool) -> String {
+        let mapped = source_binding && !self.wrapper_is_system;
+        let start = if mapped {
+            super::relocations::source_anchor(class.name_span.start)
+        } else {
+            super::relocations::unmapped().into()
+        };
+        let end = if mapped {
+            super::relocations::source_anchor(class.name_span.end)
+        } else {
+            super::relocations::unmapped().into()
+        };
+        format!(
+            " {start}exports.{} = {};{end} {}",
+            class.export_name(),
+            class.name,
+            super::relocations::unmapped()
+        )
+    }
+
     fn push(&mut self, start: usize, end: usize, replacement: String) {
         self.edits.push(TextEdit {
             start,
@@ -203,12 +245,25 @@ impl Lowerer<'_, '_> {
 
     /// Erases a decorator and the whitespace after it.
     fn erase(&mut self, decorator: &Decorator) {
+        self.erase_with_carrier(decorator, false);
+    }
+
+    fn erase_with_carrier(&mut self, decorator: &Decorator, carrier: bool) {
         let source = &self.module.source;
         let mut end = decorator.span.end;
         while source[end..].starts_with([' ', '\t', '\r', '\n']) {
             end += 1;
         }
-        self.push(decorator.span.start, end, String::new());
+        let replacement = if carrier {
+            format!(
+                "{} {}",
+                super::relocations::source_anchor(decorator.span.start),
+                super::relocations::source_anchor(end)
+            )
+        } else {
+            String::new()
+        };
+        self.push(decorator.span.start, end, replacement);
     }
 
     fn decorator_text(&self, decorator: &Decorator) -> Result<String, Diagnostic> {
@@ -338,7 +393,19 @@ impl Lowerer<'_, '_> {
                 let mut entries = Vec::new();
                 for decorator in &shell.decorators {
                     entries.push(self.decorator_text(decorator)?);
-                    self.erase(decorator);
+                    let carrier = self.options.target >= crate::EcmaTarget::Es2022
+                        && self.options.defines_class_fields()
+                        && !class.decorators.is_empty()
+                        && class.members.iter().all(|member| {
+                            !member.decorators.is_empty()
+                                && member.field.as_ref().is_some_and(|field| {
+                                    !field.accessor && !field.name.starts_with('#')
+                                })
+                        })
+                        && class.members.iter().any(|member| {
+                            member.field.is_some() && member.span.end == decorator.span.start
+                        });
+                    self.erase_with_carrier(decorator, carrier);
                 }
                 let parameters: &[Parameter] = match (&shell.method, &shell.accessor) {
                     (Some(method), _) => &method.parameters,
@@ -359,15 +426,21 @@ impl Lowerer<'_, '_> {
                 } else {
                     "null"
                 };
-                let anchor = super::relocations::source_anchor(
-                    shell.key.first().map_or(shell.span.start, |key| key.start),
-                );
+                let header = if matches!(kind, ElementKind::Getter | ElementKind::Setter) {
+                    super::decorators::member_origins::logical_member_start(class, shell)
+                } else {
+                    shell.key.first().map_or(shell.span.start, |key| key.start)
+                };
+                let anchor = super::relocations::source_anchor(header);
                 let end_anchor = super::relocations::source_anchor(shell.span.end);
                 let unmapped = super::relocations::unmapped();
+                let property_key = match shell.key.as_slice() {
+                    [key] if key.kind == crate::TokenKind::Number => key.text.clone(),
+                    _ => quoted(&name),
+                };
                 statements.push_str(&format!(
-                    " {anchor}__bluetsDecorate([{}{unmapped}], {target}, {}, {descriptor}){end_anchor};{unmapped}",
+                    " {anchor}__bluetsDecorate([{}{unmapped}], {target}, {property_key}, {descriptor}){end_anchor};{end_anchor}",
                     entries.join(", "),
-                    quoted(&name)
                 ));
             }
         }
@@ -399,7 +472,7 @@ impl Lowerer<'_, '_> {
             let class_end_anchor = super::relocations::source_anchor(class.body_span.end);
             let unmapped = super::relocations::unmapped();
             statements.push_str(&format!(
-                " {name_anchor}{0} {name_end_anchor}= {name_end_anchor}__bluetsDecorate([{1}{unmapped}], {name_anchor}{0}{name_end_anchor}){class_end_anchor};{unmapped}",
+                " {name_anchor}{0}{name_end_anchor} = {name_end_anchor}__bluetsDecorate([{1}{unmapped}], {name_anchor}{0}{name_end_anchor}){class_end_anchor};{class_end_anchor}",
                 class.name,
                 class_entries.join(", ")
             ));
@@ -417,7 +490,7 @@ impl Lowerer<'_, '_> {
             let name_anchor = super::relocations::source_anchor(class.name_span.start);
             let name_end_anchor = super::relocations::source_anchor(class.name_span.end);
             let header = format!(
-                "{class_anchor}let {name_anchor}{} {name_end_anchor}= {class_anchor}class {}",
+                "{class_anchor}let {name_anchor}{}{name_end_anchor} = {class_anchor}class {}",
                 class.name,
                 newlines(class.span.start, header_end)
             );
@@ -428,30 +501,77 @@ impl Lowerer<'_, '_> {
                 {
                     format!(" {namespace}.{0} = {0};", class.name)
                 } else if self.options.module_kind == crate::compiler::ModuleKind::CommonJs {
-                    format!(" exports.{} = {};", class.export_name(), class.name)
+                    self.class_publication(class, self.options.target < crate::EcmaTarget::Es2015)
                 } else if class.default_export {
-                    format!(" export default {};", class.name)
+                    format!(
+                        " {}export default {};",
+                        super::relocations::unmapped(),
+                        class.name
+                    )
                 } else {
-                    format!(" export {{ {} }};", class.name)
+                    format!(
+                        " {}export {{ {} }};",
+                        super::relocations::unmapped(),
+                        class.name
+                    )
                 }
             } else {
                 String::new()
             };
+            // Retained classes publish the initial constructor before running
+            // member/class decorators. ES5 Native publishes after its IIFE and
+            // therefore exposes no initial constructor through a module cycle.
+            let initial_publication = if class.exported
+                && self.options.target >= crate::EcmaTarget::Es2015
+                && self.options.module_kind == crate::compiler::ModuleKind::CommonJs
+                && super::decorators::namespace_owner(self.module, class).is_none()
+            {
+                self.class_publication(class, true)
+            } else {
+                String::new()
+            };
+            let binding_completion = if self.options.target >= crate::EcmaTarget::Es2015
+                && class.members.iter().any(|member| {
+                    member.field.as_ref().is_some_and(|field| {
+                        field.is_static && !field.declared && field.initializer.is_some()
+                    })
+                }) {
+                super::relocations::unmapped().to_string()
+            } else {
+                super::relocations::source_anchor(class.body_span.end)
+            };
+            let tail = format!("{initial_publication}{statements}{export_suffix}");
+            let tail = tail
+                .strip_prefix(' ')
+                .expect("a class replacement starts with its generated separator");
             self.push(
                 close,
                 close + 1,
                 format!(
-                    "{}{}{};{}",
+                    "{}{}{};{} ",
                     super::relocations::unmapped(),
                     "}",
-                    super::relocations::source_anchor(class.body_span.end),
-                    super::relocations::unmapped()
+                    binding_completion,
+                    binding_completion
                 ),
             );
             self.push(
                 class.span.end,
                 class.span.end,
-                format!("{statements}{export_suffix}"),
+                format!(
+                    "{}{}{tail}",
+                    origins::static_completion(class, self.options),
+                    if class.members.iter().all(|member| {
+                        !member.decorators.is_empty()
+                            && member.field.as_ref().is_some_and(|field| {
+                                !field.accessor && !field.name.starts_with('#')
+                            })
+                    }) {
+                        " "
+                    } else {
+                        ""
+                    }
+                ),
             );
         } else if !statements.is_empty() {
             // A member-only legacy transform copies the class body, but the
@@ -463,7 +583,18 @@ impl Lowerer<'_, '_> {
                 close + 1,
                 format!("{}{}", super::relocations::unmapped(), "}"),
             );
-            self.push(class.span.end, class.span.end, statements);
+            self.push(
+                class.span.end,
+                class.span.end,
+                format!(
+                    "{}{}{statements}",
+                    super::decorators::member_origins::retained_legacy_completion(
+                        class,
+                        self.options
+                    ),
+                    origins::static_completion(class, self.options)
+                ),
+            );
         }
         Ok(())
     }
@@ -488,14 +619,22 @@ impl Lowerer<'_, '_> {
                 })?;
                 Ok(vec![metadata(
                     "design:type",
-                    self.serialize(class, &annotation, &field.span)?,
+                    self.serialize(
+                        class,
+                        &annotation,
+                        field.annotation_span.as_ref().unwrap_or(&field.span),
+                    )?,
                 )])
             }
             ElementKind::Method => {
                 let method = shell.method.as_ref().expect("a method member");
                 let params = self.parameter_types(class, &method.parameters)?;
                 let returned = match &method.return_type {
-                    Some(value) => self.serialize(class, value, &method.span)?,
+                    Some(value) => self.serialize(
+                        class,
+                        value,
+                        method.return_type_span.as_ref().unwrap_or(&method.span),
+                    )?,
                     None => {
                         return Err(unsupported(
                             &method.span,
@@ -526,16 +665,27 @@ impl Lowerer<'_, '_> {
                 };
                 let (getter, setter) = (find(true), find(false));
                 let value = getter
-                    .and_then(|accessor| accessor.return_type.clone())
+                    .and_then(|accessor| {
+                        accessor.return_type.clone().map(|value| {
+                            (
+                                value,
+                                accessor
+                                    .return_type_span
+                                    .clone()
+                                    .unwrap_or_else(|| accessor.span.clone()),
+                            )
+                        })
+                    })
                     .or_else(|| {
                         setter.and_then(|accessor| {
-                            accessor
-                                .parameters
-                                .first()
-                                .and_then(|p| p.annotation.clone())
+                            accessor.parameters.first().and_then(|parameter| {
+                                parameter.annotation.clone().map(|value| {
+                                    (value, origins::parameter_span(self.module, parameter))
+                                })
+                            })
                         })
                     });
-                let Some(value) = value else {
+                let Some((value, annotation_span)) = value else {
                     return Err(unsupported(
                         &this.span,
                         "decorator metadata needs this accessor's type annotation",
@@ -546,7 +696,10 @@ impl Lowerer<'_, '_> {
                     None => Vec::new(),
                 };
                 Ok(vec![
-                    metadata("design:type", self.serialize(class, &value, &this.span)?),
+                    metadata(
+                        "design:type",
+                        self.serialize(class, &value, &annotation_span)?,
+                    ),
                     metadata("design:paramtypes", format!("[{}]", params.join(", "))),
                 ])
             }
@@ -561,7 +714,11 @@ impl Lowerer<'_, '_> {
         parameters
             .iter()
             .map(|parameter| match &parameter.annotation {
-                Some(value) => self.serialize(class, value, &parameter.span),
+                Some(value) => self.serialize(
+                    class,
+                    value,
+                    &origins::parameter_span(self.module, parameter),
+                ),
                 None => Ok("Object".to_string()),
             })
             .collect()

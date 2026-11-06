@@ -13,6 +13,16 @@ use serde_json::Value;
 pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> {
     let file = suite.harness.rsplit('/').next().ok_or("invalid harness")?;
     let stem = file.strip_suffix(".rs").ok_or("not a Rust harness")?;
+    if stem.starts_with("ge5_") {
+        return super::case_ge5::primary(snapshot, suite).map(Some);
+    }
+    if stem == "template_suspension_order" {
+        return template_suspension_cases(
+            snapshot.source(&suite.harness)?,
+            snapshot.source("backend/bluets/tests/fixtures/ge1_downlevel/cases.json")?,
+        )
+        .map(Some);
+    }
     if stem == "gc1_source_diagnostics" {
         let path = "backend/bluets/tests/fixtures/diagnostics/source-families.json";
         return gc1_source_cases(
@@ -273,6 +283,50 @@ fn gc1_source_cases(
     Ok(cases)
 }
 
+fn template_suspension_cases(harness: &str, source_record: &str) -> Result<Vec<Case>> {
+    let facts = rust_facts::parse(harness)?;
+    if facts.ignored_tests.len() != 1 {
+        return Err("ambiguous template suspension comparison scope".into());
+    }
+    let selected = super::case_inline::array(&facts, &facts.ignored_tests[0], "for@0")?;
+    let unique = selected
+        .labels
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    if selected.labels.is_empty() || unique.len() != selected.labels.len() {
+        return Err("empty or duplicate template suspension source selection".into());
+    }
+    let input: Value = serde_json::from_str(source_record)?;
+    if input["typescript"] != "5.9.3" {
+        return Err("unpinned template suspension source record".into());
+    }
+    let rows = input["cases"]
+        .as_array()
+        .ok_or("missing template sources")?;
+    selected
+        .labels
+        .iter()
+        .map(|form| {
+            // The runtime harness uses find(), so one selected source is tested,
+            // rather than every target/library variant in the parent matrix.
+            let (index, row) = rows
+                .iter()
+                .enumerate()
+                .find(|(_, row)| row["form"] == form.as_str())
+                .ok_or_else(|| format!("missing template suspension source: {form}"))?;
+            if row["files"]["main.ts"].as_str().is_none_or(str::is_empty) {
+                return Err(format!("missing template program text: {form}").into());
+            }
+            Ok(Case::new(
+                "backend/bluets/tests/fixtures/ge1_downlevel/cases.json",
+                &format!("/cases/{index}/files/main.ts"),
+                form,
+                "instrumented-runtime-program",
+            ))
+        })
+        .collect()
+}
+
 pub fn cases(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let primary = match primary(snapshot, suite)? {
         Some(cases) => cases,
@@ -423,6 +477,32 @@ fn tsv_suite(stem: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn template_suspensions_account_only_for_the_two_selected_runtime_sources() {
+        let harness = include_str!("../../../../bluets-bluejs/tests/template_suspension_order.rs");
+        let source = include_str!("../ge1_downlevel/cases.json");
+        let cases = template_suspension_cases(harness, source).unwrap();
+        assert_eq!(cases.len(), 2);
+        assert_eq!(cases[0].label, "template-await-order");
+        assert_eq!(cases[0].selector, "/cases/444/files/main.ts");
+        assert_eq!(cases[1].label, "template-yield-order");
+        assert_eq!(cases[1].selector, "/cases/456/files/main.ts");
+        assert!(cases
+            .iter()
+            .all(|case| case.unit == "instrumented-runtime-program"
+                && case.comparison == Comparison::Compared));
+        assert!(template_suspension_cases(
+            &harness.replace("\"template-await-order\"", "\"unregistered-template\""),
+            source
+        )
+        .is_err());
+        assert!(template_suspension_cases(
+            &harness.replace("\"template-yield-order\"", "\"template-await-order\""),
+            source
+        )
+        .is_err());
+    }
 
     #[test]
     fn gc1_selection_accounts_for_nine_repaired_observations_and_all_controls() {

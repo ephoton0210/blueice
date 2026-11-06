@@ -5,6 +5,7 @@
 //! Continuations are compiled from the real parser's function-body records.
 
 use super::*;
+use crate::emitter::relocations;
 
 mod graph;
 mod native_abi;
@@ -22,6 +23,13 @@ pub(super) fn lower(
     module: &Module,
     options: &CompilerOptions,
 ) -> Result<EmittedJavaScript, Diagnostic> {
+    let source_tokens = crate::syntax::lex_with_limits(
+        &module.id,
+        &module.source,
+        options.limits.parser.max_source_bytes,
+        options.limits.parser.max_tokens,
+    )
+    .map_err(|mut diagnostics| diagnostics.remove(0))?;
     let mut remaining = options.limits.parser.max_tokens;
     let mut sequence = 0;
     loop {
@@ -84,7 +92,7 @@ pub(super) fn lower(
         let marker = matches!(kind, Kind::AsyncGenerator)
             .then(|| unused_name(&emitted.javascript, "generator_suspension", &mut sequence));
         let Some(graph) = graph::compile(
-            &parsed,
+            (&parsed, tokens[start].start, &emitted),
             declaration,
             &context,
             &arguments,
@@ -98,9 +106,37 @@ pub(super) fn lower(
                 "this suspension control-flow shape cannot be lowered to ES5",
             ));
         };
-        let parameters = &emitted.javascript
-            [tokens[function.parameters].end..tokens[function.parameters_end].start];
-        let name = &tokens[name].text;
+        let parameters = relocations::relocated_verbatim(
+            tokens[function.parameters].end,
+            tokens[function.parameters_end].start,
+        );
+        let parameter_list = relocations::relocated_verbatim(
+            tokens[function.parameters].start,
+            tokens[function.parameters_end].end,
+        );
+        let name_completion = if matches!(kind, Kind::Async) {
+            format!(
+                "{} ",
+                async_functions::named_completion(&emitted, module, &source_tokens, &tokens[name])
+            )
+        } else {
+            String::new()
+        };
+        let name = relocations::relocated_verbatim(tokens[name].start, tokens[name].end);
+        let arrow = matches!(kind, Kind::Async)
+            && async_functions::arrow_at(&emitted, module, tokens[start].start);
+        let plain_arrow =
+            arrow && async_functions::plain_arrow_formals(&emitted, module, tokens[start].start);
+        let parameters_anchor = if plain_arrow {
+            relocations::source_anchor(tokens[start].start)
+        } else if arrow {
+            relocations::unmapped().to_string()
+        } else {
+            relocations::source_anchor(tokens[function.parameters].start)
+        };
+        let signature_anchor = relocations::source_anchor(tokens[function.parameters_end].start);
+        let body_anchor = relocations::source_anchor(tokens[function.body].start);
+        let generated = relocations::unmapped();
         let body = if external_abi {
             native_abi::body(
                 &graph,
@@ -121,7 +157,7 @@ pub(super) fn lower(
         };
         let (replacement, driver_source) = match kind {
             Kind::Generator => (
-                format!("function {name}({parameters}) {{\n{body}\n}}"),
+                format!("function {name}{parameter_list} {{\n{generated}{body}\n{generated}}}"),
                 String::new(),
             ),
             Kind::Async | Kind::AsyncGenerator => {
@@ -154,7 +190,28 @@ pub(super) fn lower(
                     include_str!("../async_helpers.v1.js")
                         .replace("__blueice_target_async", &driver)
                 };
-                (format!("function {name}({external}) {{\nreturn {driver}(this, arguments, {}function ({parameters}) {{\n{body}\n}});\n}}",if external_abi&&matches!(kind,Kind::Async) {"void 0, "}else{""}), driver_source)
+                let original_generator = matches!(kind, Kind::AsyncGenerator);
+                let driver_anchor = if plain_arrow || original_generator {
+                    signature_anchor.as_str()
+                } else {
+                    ""
+                };
+                let callback_anchor = if plain_arrow || original_generator {
+                    signature_anchor.as_str()
+                } else {
+                    generated
+                };
+                let return_anchor = if original_generator {
+                    signature_anchor.as_str()
+                } else {
+                    ""
+                };
+                let outer_parameters_anchor = if original_generator && external.is_empty() {
+                    signature_anchor.as_str()
+                } else {
+                    generated
+                };
+                (format!("function {name}{name_completion}{outer_parameters_anchor}({external}) {body_anchor}{{{generated}\n{return_anchor}return {driver_anchor}{driver}(this, arguments, {}{callback_anchor}function {parameters_anchor}({parameters}{signature_anchor}) {{{generated}\n{body}\n{generated}}});\n{generated}}}",if external_abi&&matches!(kind,Kind::Async) {"void 0, "}else{""}), driver_source)
             }
         };
         let iterator = unused_name(&emitted.javascript, "delegate_iterator", &mut sequence);
@@ -167,10 +224,28 @@ pub(super) fn lower(
                 .replace("__blueice_target_iterator", &iterator)
                 .replace("__blueice_target_step_result", &step)
         };
+        let method = matches!(kind, Kind::Async)
+            && async_functions::method_end_at(&emitted, module, tokens[function.body_end].start)
+                .is_some();
+        let declaration_end = if method {
+            tokens
+                .get(function.body_end + 1)
+                .filter(|next| {
+                    next.is(")")
+                        && emitted.javascript[tokens[function.body_end].end..next.start]
+                            .chars()
+                            .all(char::is_whitespace)
+                })
+                .map_or(tokens[function.body_end].end, |next| next.start)
+        } else if matches!(kind, Kind::Async) {
+            async_functions::async_callable_end(&emitted.javascript, &tokens, &function)
+        } else {
+            tokens[function.body_end].end
+        };
         let iterator_source = if external_abi {
             String::new()
         } else {
-            include_str!("../iteration_helpers.v1.js")
+            include_str!("../generator_delegation_helpers.v1.js")
                 .replace("__blueice_target_iterator", &iterator)
                 .replace("__blueice_target_step_result", &step)
         };
@@ -185,7 +260,7 @@ pub(super) fn lower(
                 },
                 TextEdit {
                     start: tokens[start].start,
-                    end: tokens[function.body_end].end,
+                    end: declaration_end,
                     replacement,
                 },
             ],

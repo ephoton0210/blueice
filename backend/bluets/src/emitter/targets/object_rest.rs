@@ -45,25 +45,68 @@ pub(super) fn lower(
         } else {
             unused_name(&emitted.javascript, "rest_properties", &mut sequence)
         };
-        let initializer = &emitted.javascript[tokens[start].start..tokens[end - 1].end];
+        let initializer_start = tokens[start].start;
+        let initializer_end = tokens[end - 1].end;
+        let initializer =
+            super::super::relocations::relocated_verbatim(initializer_start, initializer_end);
+        let stable = end == start + 1 && !pattern.keys.is_empty() && module.declarations.iter().any(|declaration| matches!(declaration, Declaration::Variable(variable) if variable.kind == crate::parser::VariableKind::Const && variable.name == tokens[start].text));
         let inner_end = if tokens[pattern.rest - 1].is(",") {
             tokens[pattern.rest - 1].start
         } else {
             tokens[pattern.rest].start
         };
-        let ordinary = &emitted.javascript[tokens[pattern.open].end..inner_end];
+        let ordinary =
+            super::super::relocations::relocated_verbatim(tokens[pattern.open].end, inner_end);
         let excluded = serde_json::to_string(&pattern.keys).expect("binding keys are serializable");
         let name = &tokens[pattern.rest + 1].text;
-        let replacement = if external {
-            format!("{temporary} = {initializer}, {{{ordinary}}} = {temporary}, {name} = {helper}({temporary}, {excluded})")
+        let anchor = super::super::relocations::source_anchor;
+        let generated = super::super::relocations::unmapped();
+        let ordinary = format!(
+            "{}{{{ordinary}{}}}{}",
+            anchor(tokens[pattern.open].start),
+            anchor(inner_end),
+            anchor(inner_end)
+        );
+        let capture = if stable {
+            String::new()
+        } else {
+            format!("{generated}{temporary} = {initializer}, ")
+        };
+        let operand = if stable {
+            initializer
+        } else {
+            format!("{generated}{temporary}")
+        };
+        let ordinary_binding = format!("{ordinary} = {operand}{}, ", anchor(initializer_end));
+        let rest_name = format!(
+            "{}{name}{}",
+            anchor(tokens[pattern.rest + 1].start),
+            anchor(tokens[pattern.rest + 1].end)
+        );
+        let arguments = if external {
+            format!(
+                "{operand}{}, {}{excluded}",
+                anchor(initializer_end),
+                anchor(tokens[pattern.open].start)
+            )
         } else {
             format!(
-                "{temporary} = {initializer}, {{{ordinary}}} = {temporary}, \
-             {name} = {helper}({{}}, {temporary}, true, {excluded})"
+                "{generated}{{}}, {operand}{},{generated} true, {}{excluded}",
+                anchor(initializer_end),
+                anchor(tokens[pattern.open].start)
             )
         };
+        let replacement = format!(
+            "{capture}{ordinary_binding}{rest_name} = {helper}({arguments}{})",
+            anchor(tokens[pattern.close].end)
+        );
+        let endpoint = if options.target == crate::EcmaTarget::Es5 {
+            tokens[pattern.rest + 1].end
+        } else {
+            initializer_end
+        };
         let insertion = directive_end(&tokens);
-        emitted = mapped_edits(
+        emitted = super::mapped_fragments::with_completion(
             emitted,
             vec![
                 TextEdit {
@@ -73,7 +116,7 @@ pub(super) fn lower(
                         String::new()
                     } else {
                         format!(
-                            "\n{}\n",
+                            "{generated}\n{}\n",
                             object_spread::HELPER
                                 .replace("__blueice_target_object_properties", &helper)
                         )
@@ -85,6 +128,8 @@ pub(super) fn lower(
                     replacement,
                 },
             ],
+            initializer_end,
+            endpoint,
         );
     }
 }

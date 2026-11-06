@@ -39,3 +39,56 @@ pub(super) fn declaration(pattern: &BindingPattern) -> String {
         ),
     }
 }
+
+/// Binding openers begin a source node even when declaration trivia precedes it.
+pub(super) fn javascript_anchors(
+    module: &crate::parser::Module,
+    tokens: &[crate::Token],
+    anchors: &mut std::collections::BTreeMap<usize, Option<usize>>,
+) {
+    for (name, operator) in for_of_operators(tokens) {
+        anchors.insert(operator.start, Some(name.end));
+    }
+    for token in tokens.iter().filter(|token| token.is("...")) {
+        anchors.insert(token.start, Some(token.start));
+    }
+    for (index, token) in tokens.iter().enumerate().skip(1) {
+        if matches!(token.text.as_str(), "{" | "[")
+            && matches!(tokens[index - 1].text.as_str(), "const" | "let" | "var")
+            && (index < 2 || !matches!(tokens[index - 2].text.as_str(), "." | "?."))
+        {
+            anchors.insert(token.start, Some(token.start));
+            if module.source.starts_with("/*") {
+                anchors.insert(0, Some(0));
+            }
+        }
+    }
+}
+
+/// The contextual operator and its trailing gap retain the binding endpoint.
+pub(super) fn javascript_end_anchors(
+    tokens: &[crate::Token],
+    anchors: &mut std::collections::BTreeMap<usize, usize>,
+) {
+    for (name, operator) in for_of_operators(tokens) {
+        anchors.insert(operator.end, name.end);
+    }
+}
+
+fn for_of_operators(
+    tokens: &[crate::Token],
+) -> impl Iterator<Item = (&crate::Token, &crate::Token)> {
+    tokens.iter().enumerate().filter_map(|(index, token)| {
+        if !token.is("for") || !tokens.get(index + 1)?.is("(") {
+            return None;
+        }
+        let first = index + 2;
+        let name = first
+            + usize::from(matches!(
+                tokens.get(first)?.text.as_str(),
+                "var" | "let" | "const"
+            ));
+        let (name, operator) = (tokens.get(name)?, tokens.get(name + 1)?);
+        (name.kind == crate::TokenKind::Identifier && operator.is("of")).then_some((name, operator))
+    })
+}

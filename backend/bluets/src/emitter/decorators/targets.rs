@@ -40,8 +40,9 @@ pub(in crate::emitter) fn lower(
     )
     .map_err(|mut errors| errors.remove(0))?;
     let mut edits = owned.edits.clone();
-    class_lowering::lower_generated_class_members(&owned, options, &mut edits)?;
-    emitted = targets::mapped_edits(emitted, edits);
+    class_lowering::lower_generated_class_members(&owned, options, &mut edits, module, &emitted)?;
+    emitted =
+        class_lowering::mapped_generated_class_edits(emitted, edits, module, &owned, options)?;
     if options.target == crate::EcmaTarget::Es5 {
         let owned = crate::parser::parse_emitted_module(
             &module.id,
@@ -54,9 +55,16 @@ pub(in crate::emitter) fn lower(
             .modules
             .insert(module.id.clone(), owned.clone());
         let mut edits = owned.edits.clone();
-        let lexical = targets::es5::prepare(&owned, &owned_project, options, &mut edits)?;
+        let lexical = targets::es5::prepare_generated(
+            &owned,
+            &owned_project,
+            options,
+            &mut edits,
+            module,
+            &emitted,
+        )?;
         emitted = targets::mapped_edits(emitted, edits);
-        emitted = targets::es5::lower(emitted, &owned, options, &lexical)?;
+        emitted = targets::es5::lower_generated(emitted, &owned, module, options, &lexical)?;
     }
     Ok(emitted)
 }

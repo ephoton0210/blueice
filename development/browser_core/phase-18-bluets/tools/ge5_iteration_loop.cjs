@@ -1,0 +1,67 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// Compare the complete iterator reference, step, binding and closing protocols.
+const assert=require('node:assert/strict'),{compareTokens,compareGap}=require('./ge5_role_stream.cjs'),{helper}=require('./ge5_iteration_helpers.cjs');
+function compare(ts,native,n,nNode,actual,a,aNode,options,original) {
+  const source=ts.createSourceFile('original.ts',original,ts.ScriptTarget.Latest,true),originalLoop=source.statements.find(ts.isForOfStatement);assert(originalLoop&&ts.isBlock(originalLoop.statement));
+  assert(ts.isVariableDeclarationList(originalLoop.initializer)&&originalLoop.initializer.declarations.length===1);const originalName=originalLoop.initializer.declarations[0].name.getText(source);
+  function rename(view,tokens,alias){return tokens.map(token=>{if(token.text!==alias||alias===originalName)return token;for(const owner of token.owners)assert.deepEqual(owner,token.owners[0],'complete lexical binding interior');return {...token,text:originalName,owners:Array(originalName.length).fill(token.owners[0])};});}
+  if(options.target!=='ES5') {assert(ts.isForOfStatement(nNode)&&ts.isForOfStatement(aNode));compareTokens(native,native.tokens(nNode),actual,actual.tokens(aNode),'complete retained for-of statement');return {native:{node:nNode,body:nNode.statement},actual:{node:aNode,body:aNode.statement}};}
+  const start=(view,node)=>node.getStart(view.source),id=node=>{assert(ts.isIdentifier(node));return node.text;};
+  function variable(node){assert(ts.isVariableStatement(node)&&node.declarationList.declarations.length===1);return node.declarationList.declarations[0];}
+  function assignment(node){assert(ts.isExpressionStatement(node)&&ts.isBinaryExpression(node.expression)&&node.expression.operatorToken.kind===ts.SyntaxKind.EqualsToken);return node.expression;}
+  function fresh(item,names){for(const name of new Set(names))assert(!item.identifiers.has(name),'fresh iterator transport slot');}
+  assert(ts.isTryStatement(nNode)&&nNode.tryBlock.statements.length===1);const nf=nNode.tryBlock.statements[0];assert(ts.isForStatement(nf)&&ts.isVariableDeclarationList(nf.initializer)&&nf.initializer.declarations.length===2&&ts.isBlock(nf.statement));
+  const [nr,ns]=nf.initializer.declarations,nRecord=id(nr.name),nStep=id(ns.name),nFactory=nr.initializer;assert(ts.isCallExpression(nFactory)&&helper(ts,n,nFactory.expression,'values')&&nFactory.arguments.length===1);const nOperand=nFactory.arguments[0];assert(ts.isCallExpression(nOperand)&&nOperand.expression.getText()==='values'&&nOperand.arguments.length===0);
+  const nb=variable(nf.statement.statements[0]),nName=id(nb.name);assert.equal(nName,originalName);assert(ts.isPropertyAccessExpression(nb.initializer)&&nb.initializer.expression.getText()===nStep&&nb.initializer.name.text==='value');
+  const nCaught=id(nNode.catchClause.variableDeclaration.name),nError=id(assignment(nNode.catchClause.block.statements[0]).left);let nClosing=null;function closing(node){if(ts.isBinaryExpression(node)&&node.operatorToken.kind===ts.SyntaxKind.EqualsToken&&ts.isPropertyAccessExpression(node.right)&&node.right.getText()===nRecord+'.return'){assert.equal(nClosing,null);nClosing=id(node.left);}ts.forEachChild(node,closing);}closing(nNode.finallyBlock);assert(nClosing);fresh(n,[nRecord,nStep,nCaught,nError,nClosing]);
+  const nBody=nf.statement,nInner=nBody.statements.slice(1).map(node=>node.getText(native.source)).join('\n');n.exact(nNode,`try{for(var ${nRecord}=${nFactory.expression.getText()}(${nOperand.getText()}),${nStep}=${nRecord}.next();!${nStep}.done;${nStep}=${nRecord}.next()){var ${nName}=${nStep}.value;${nInner}}}catch(${nCaught}){${nError}={error:${nCaught}};}finally{try{if(${nStep}&&!${nStep}.done&&(${nClosing}=${nRecord}.return))${nClosing}.call(${nRecord});}finally{if(${nError})throw ${nError}.error;}}`);
+  assert(ts.isBlock(aNode)&&aNode.statements.length===3);const ar=variable(aNode.statements[0]),aRecord=id(ar.name),aFactory=ar.initializer;assert(ts.isCallExpression(aFactory)&&helper(ts,a,aFactory.expression,'values')&&aFactory.arguments.length===1);const aOperand=aFactory.arguments[0];assert(ts.isCallExpression(aOperand)&&aOperand.expression.getText()==='values'&&aOperand.arguments.length===0);
+  const declared=aNode.statements[1];assert(ts.isVariableStatement(declared)&&declared.declarationList.declarations.length===5);const [step,value,finished,abrupt,error]=declared.declarationList.declarations,aStep=id(step.name),aValue=id(value.name),aFinished=id(finished.name),aAbrupt=id(abrupt.name),aError=id(error.name);
+  assert(!step.initializer&&!value.initializer&&!error.initializer&&finished.initializer.kind===ts.SyntaxKind.TrueKeyword&&abrupt.initializer.kind===ts.SyntaxKind.FalseKeyword);
+  const at=aNode.statements[2];assert(ts.isTryStatement(at)&&at.tryBlock.statements.length===1);const af=at.tryBlock.statements[0];assert(ts.isForStatement(af)&&!af.initializer&&ts.isBlock(af.statement)&&af.statement.statements.length===4);
+  const capture=assignment(af.statement.statements[0]);assert.equal(id(capture.left),aValue);assert.equal(capture.right.getText(),aStep+'.value');
+  const ab=variable(af.statement.statements[2]),aName=id(ab.name);assert.equal(ab.initializer.getText(),aValue);assert(aName===originalName||!a.identifiers.has(aName),'hygienic original for-of binding');const aBody=af.statement.statements[3];assert(ts.isBlock(aBody));
+  const aCaught=id(at.catchClause.variableDeclaration.name);assert(at.finallyBlock.statements.length===2);const finalIf=at.finallyBlock.statements[0];assert(ts.isIfStatement(finalIf)&&ts.isBlock(finalIf.thenStatement));const closeTry=finalIf.thenStatement.statements[0];assert(ts.isTryStatement(closeTry));const closeDeclaration=variable(closeTry.tryBlock.statements[0]),aClosing=id(closeDeclaration.name),aCloseError=id(closeTry.catchClause.variableDeclaration.name);
+  const receiver=a.helpers.size?aRecord+'.iterator':aRecord;assert.equal(closeDeclaration.initializer.getText(),receiver+'.return');
+  assert(ts.isPrefixUnaryExpression(af.condition)&&af.condition.operator===ts.SyntaxKind.ExclamationToken&&ts.isPropertyAccessExpression(af.condition.operand)&&af.condition.operand.name.text==='done'&&ts.isParenthesizedExpression(af.condition.operand.expression));
+  const stepAssignment=af.condition.operand.expression.expression;assert(ts.isBinaryExpression(stepAssignment)&&stepAssignment.left.getText()===aStep);let next=stepAssignment.right,guard=null;
+  if(a.helpers.size){assert(ts.isCallExpression(next)&&a.helpers.get(next.expression.getText())==='iterator_result'&&next.arguments.length===1);guard=next;next=guard.arguments[0];}
+  assert(ts.isCallExpression(next));const nextText=a.helpers.size?`${aRecord}.next.call(${receiver})`:`${aRecord}.next()`;assert.equal(next.getText().replace(/\s/g,''),nextText);
+  const factory=aFactory.expression.getText(),closingCall=a.helpers.size?`${guard.expression.getText()}(${aClosing}.call(${receiver}))`:`${aClosing}.call(${receiver})`;
+  fresh(a,[aRecord,aStep,aValue,aFinished,aAbrupt,aError,aCaught,aClosing,aCloseError]);assert.equal(new Set([aRecord,aStep,aValue,aFinished,aAbrupt,aError,aCaught,aClosing,aCloseError]).size,9,'distinct iterator transport cells');
+  a.exact(aNode,`{var ${aRecord}=${factory}(${aOperand.getText()});var ${aStep},${aValue},${aFinished}=true,${aAbrupt}=false,${aError};try{for(;!(${aStep}=${guard?guard.expression.getText()+'('+nextText+')':nextText}).done;${aFinished}=true){${aValue}=${aStep}.value;${aFinished}=false;var ${aName}=${aValue};${aBody.getText()}}}catch(${aCaught}){${aAbrupt}=true;${aError}=${aCaught};}finally{if(!${aFinished}){try{var ${aClosing}=${receiver}.return;if(${aClosing}!==null&&${aClosing}!==void 0)${closingCall};}catch(${aCloseError}){if(!${aAbrupt})throw ${aCloseError};}}if(${aAbrupt})throw ${aError};}}`);
+  function uniform(view,from,to,owner,label,holes=[]){for(let offset=from;offset<to;offset++){if(holes.some(([start,end])=>start<=offset&&offset<end))continue;const found=view.owner(offset);assert(JSON.stringify(found)===JSON.stringify(owner)||found===null&&/\s/.test(view.code[offset]),label+' at '+offset+': '+JSON.stringify(found)+' / '+JSON.stringify(owner));}view.cover(from,to);}
+  const entry=native.owner(start(native,nf)),operandEntry=native.owner(start(native,nOperand)),operandEnd=native.owner(nOperand.end),bindingEnd=native.owner(start(native,nb.initializer));assert(entry&&operandEntry&&operandEnd&&bindingEnd);
+  native.noSource(start(native,nNode),start(native,nf),'Native generated iterator try prefix');actual.noSource(start(actual,aNode),start(actual,aNode.statements[0]),'generated iterator scope prefix');
+  compareTokens(native,native.tokens(nOperand),actual,actual.tokens(aOperand),'original for-of iterable expression');
+  uniform(native,start(native,nf),start(native,nf.initializer),entry,'Native for-of entry');
+  const firstSemi=actual.tokens(af).find(token=>token.text===';');assert(firstSemi);uniform(actual,start(actual,af),firstSemi.start,entry,'for-of entry');
+  uniform(native,start(native,nf.initializer),start(native,nOperand),operandEntry,'Native iterator construction prefix');uniform(actual,start(actual,aNode.statements[0]),start(actual,aOperand),operandEntry,'iterator construction prefix');
+  uniform(native,nOperand.end,start(native,nBody),operandEnd,'Native iterator step/test/update transport');uniform(actual,aOperand.end,aNode.statements[0].end,operandEnd,'iterator construction completion');
+  const holes=[];
+  if(guard){actual.noSource(start(actual,guard),start(actual,next),'generated step guard prefix');actual.noSource(next.end,guard.end,'generated step guard close');holes.push([start(actual,guard),start(actual,next)],[next.end,guard.end]);}
+  actual.noSource(start(actual,af.incrementor),af.incrementor.end,'generated iteration completion flag');holes.push([start(actual,af.incrementor),af.incrementor.end]);
+  uniform(actual,firstSemi.start,start(actual,af.statement),operandEnd,'iterator step/test transport',holes);
+  actual.noSource(start(actual,af.statement),start(actual,af.statement)+1,'generated iterator body scope');actual.noSource(start(actual,declared),declared.end,'generated iterator cells');
+  actual.noSource(start(actual,at),start(actual,af),'generated iterator try prefix');
+  const np=native.tokens(nf.statement.statements[0]).filter(token=>token.end<=start(native,nb.initializer)),ap=actual.tokens(af.statement.statements[2]).filter(token=>token.end<=start(actual,ab.initializer));compareTokens(native,np,actual,rename(actual,ap,aName),'original for-of binding prefix');
+  uniform(native,start(native,nb.initializer),nf.statement.statements[0].end,bindingEnd,'Native for-of value read/ending');actual.noSource(start(actual,af.statement.statements[0]),start(actual,capture.right),'generated value capture prefix');uniform(actual,start(actual,capture.right),af.statement.statements[0].end,bindingEnd,'captured iterator value read');uniform(actual,start(actual,ab.initializer),af.statement.statements[2].end,bindingEnd,'carried lexical binding value');
+  actual.noSource(start(actual,af.statement.statements[1]),af.statement.statements[1].end,'generated abrupt completion flag');
+  const nBodyTokens=native.tokens(nBody).filter(token=>!(start(native,nf.statement.statements[0])<=token.start&&token.end<=nf.statement.statements[0].end));compareTokens(native,nBodyTokens,actual,rename(actual,actual.tokens(aBody),aName),'complete original loop body');
+  function whitespaceEnd(view,from,to){while(from<to&&/\s/.test(view.code[from]))from++;return from;}
+  const nt=whitespaceEnd(native,nBody.end,nNode.end),atEnd=whitespaceEnd(actual,aBody.end,aNode.end);
+  compareGap(native,nBody.end,nt,actual,aBody.end,atEnd,'original loop body completion trivia');
+  native.noSource(nt,nNode.end,'complete Native iterator closing transport');actual.noSource(atEnd,aNode.end,'complete iterator closing transport');
+  compareGap(native,nFactory.end,start(native,ns.name),actual,aNode.statements[0].end,start(actual,declared),'relocated iterator construction boundary');
+  actual.noSource(declared.end,start(actual,at),'generated iterator declarations/try gap');
+  actual.noSource(start(actual,af.statement)+1,start(actual,af.statement.statements[0]),'generated iterator body/capture gap');
+  actual.noSource(af.statement.statements[0].end,start(actual,af.statement.statements[1]),'generated capture/flag gap');
+  actual.noSource(af.statement.statements[1].end,start(actual,af.statement.statements[2]),'generated flag/binding gap');
+  assert(nBody.statements.length>1);compareGap(native,nBody.statements[0].end,start(native,nBody.statements[1]),actual,af.statement.statements[2].end,start(actual,aBody),'relocated lexical binding completion');
+  for(const [view,node]of [[native,nNode],[actual,aNode]])for(let offset=start(view,node);offset<node.end;offset++)assert(view.covered(offset),'unclassified complete iterator UTF-16 character at '+offset);
+  return {native:{node:nNode,body:nBody,binding:nb,record:nRecord,step:nStep,error:nError,closing:nClosing,operand:nOperand},actual:{node:aNode,body:aBody,binding:ab,record:aRecord,step:aStep,error:aError,closing:aClosing,operand:aOperand,for:af,guard,recordStatement:aNode.statements[0],capture,finished:aFinished,abrupt:aAbrupt}};
+}
+module.exports={compare};

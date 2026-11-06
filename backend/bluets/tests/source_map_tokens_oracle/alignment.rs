@@ -81,8 +81,8 @@ const TRANSITIONS: &[TransitionBaseline] = &[
             "341069ae168036f40442033c5d3f8e3568756a923bd09994672b04be20faf4e1",
         ),
         (
-            17,
-            "176ca4d8fdcef203dc06f4d1426180f7f670fab536ebc81cd9b550c5a9097369",
+            14,
+            "7532dd6ca849d7f7f4080d282d9209e9d14450969df3281022f0134d44c62783",
         ),
     ),
     (
@@ -92,8 +92,8 @@ const TRANSITIONS: &[TransitionBaseline] = &[
             "341069ae168036f40442033c5d3f8e3568756a923bd09994672b04be20faf4e1",
         ),
         (
-            17,
-            "827d6b4c767918dc3414380b75fe5728aed33cbda4dc3a46b81601453780e0ec",
+            14,
+            "af676a6dd86d0b8c8046e77b585d8ffa387785f3c88ec23158d97ab0fa108546",
         ),
     ),
     (
@@ -103,8 +103,8 @@ const TRANSITIONS: &[TransitionBaseline] = &[
             "341069ae168036f40442033c5d3f8e3568756a923bd09994672b04be20faf4e1",
         ),
         (
-            18,
-            "eeee8936810a12c148fd91aa257078560c1f40421d7d1b00fa68aaea599f1364",
+            14,
+            "17dd8542a3876198d94065af08a4989a0fe65cd6e88095e401de7d34c4225b2d",
         ),
     ),
     (
@@ -114,8 +114,8 @@ const TRANSITIONS: &[TransitionBaseline] = &[
             "1fbbb75c6bff83752585f7424b0a0d0cd1e681d5981b953166391118deb60145",
         ),
         (
-            23,
-            "16267cbfc85626593465b06506bce6f5785339355da43b69de72bec5f10cec39",
+            18,
+            "86c638f0d8f88da3d810473aa4482e7a2003eb0aa868e6c4e7647e959330a57c",
         ),
     ),
     (
@@ -125,8 +125,8 @@ const TRANSITIONS: &[TransitionBaseline] = &[
             "15c0c76bac994fe9d18fb69fd6b9203fe046c1ae2af3878d851a8f497ae87a5f",
         ),
         (
-            18,
-            "e848edb6524df7b0a7795c806947c7dcb2bbbfb4eaaf37a64590e246889e36ff",
+            14,
+            "7b3f6a23aef4538bb2a63c7e8a148963fea82c3e0b3e53d0b0bbb1b9e7fe0355",
         ),
     ),
     (
@@ -136,8 +136,8 @@ const TRANSITIONS: &[TransitionBaseline] = &[
             "659c0d5541f25df174b141ce0f143cdb81e47d859ac4dc03a919a02b43d97572",
         ),
         (
-            17,
-            "b26b57ebbcb2d92e8d7313ab6c2dd13424e8e9bc500aad70d2152b27553d931b",
+            16,
+            "715ab8f34ced29f2629235eee05c2a31f44f10a99f571e3d17006372c27048ad",
         ),
     ),
     (
@@ -158,8 +158,8 @@ const TRANSITIONS: &[TransitionBaseline] = &[
             "42fa2c1f7761d31efa18a99184687351290912e4b2f7def536fb734b3d07fb1d",
         ),
         (
-            8,
-            "3efc8be9b1ceafc6ae5e093ee3a18d223d42db50829e54db4a8eefcc35a52c6e",
+            7,
+            "8a8f972ac5b09106f201aab3b9402de85f1f060b9d850ce068828dda7bc77294",
         ),
     ),
     (
@@ -169,8 +169,8 @@ const TRANSITIONS: &[TransitionBaseline] = &[
             "5e440aaf88e8546c0b4f2a84ec57fefe39e53651cddff172a429e7f24d4ba580",
         ),
         (
-            6,
-            "2195a23867fd30def4c6bfe2870ef1cf3138eb96f648b6ea5525acfc7abed7d5",
+            5,
+            "5e440aaf88e8546c0b4f2a84ec57fefe39e53651cddff172a429e7f24d4ba580",
         ),
     ),
 ];

@@ -17,9 +17,9 @@ function __blueice_target_generator(receiver, entry, body) {
         }
     };
     var iterator = {
-        next: function (value) { return resume(this, "next", value); },
-        return: function (value) { return resume(this, "return", value); },
-        throw: function (value) { return resume(this, "throw", value); }
+        next: function (value) { return resume("next", value); },
+        return: function (value) { return resume("return", value); },
+        throw: function (value) { return resume("throw", value); }
     };
     if (typeof Symbol === "function" && Symbol.iterator) {
         iterator[Symbol.iterator] = function () { return this; };
@@ -51,8 +51,7 @@ function __blueice_target_generator(receiver, entry, body) {
         if (kind === "throw") throw value;
         return { value: value, done: true };
     }
-    function resume(caller, kind, value) {
-        if (caller !== iterator) throw new TypeError("Generator receiver is invalid");
+    function resume(kind, value) {
         if (busy) throw new TypeError("Generator is already executing");
         if (completed || !started && kind !== "next") {
             completed = true;
@@ -68,32 +67,33 @@ function __blueice_target_generator(receiver, entry, body) {
                 var action, result;
                 try {
                     if (delegate) {
-                        var method = operation === "next" ? delegate.next : delegate.iterator[operation];
-                        if (method === null || method === void 0) {
+                        var method = operation === "next" ? delegate.iterator.next : delegate.iterator[operation];
+                        if (!method) {
                             if (operation === "throw") {
                                 var closing = delegate.iterator.return;
-                                if (closing !== null && closing !== void 0) {
-                                    __blueice_target_step_result(closing.call(delegate.iterator));
-                                }
-                                throw new TypeError("Delegated iterator has no throw method");
+                                if (closing) closing.call(delegate.iterator);
+                                throw input;
                             }
                             delegate = null;
-                            result = abrupt("return", input);
-                            if (result) return result;
-                            operation = "next"; input = void 0;
-                            continue;
+                            if (operation === "return") {
+                                result = abrupt("return", input);
+                                if (result) return result;
+                                operation = "next"; input = void 0;
+                                continue;
+                            }
+                        } else {
+                            var step = __blueice_target_step_result(method.call(delegate.iterator, input));
+                            if (!step.done) return step;
+                            delegate = null;
+                            if (operation === "return") {
+                                result = abrupt("return", step.value);
+                                if (result) return result;
+                                operation = "next"; input = void 0;
+                                continue;
+                            }
+                            input = step.value;
+                            operation = "next";
                         }
-                        var step = __blueice_target_step_result(method.call(delegate.iterator, input));
-                        if (!step.done) return { value: step.value, done: false };
-                        delegate = null;
-                        if (operation === "return") {
-                            result = abrupt("return", step.value);
-                            if (result) return result;
-                            operation = "next"; input = void 0;
-                            continue;
-                        }
-                        input = step.value;
-                        operation = "next";
                     }
                     action = body.call(receiver, context);
                 } catch (error) {

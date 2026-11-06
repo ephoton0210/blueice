@@ -13,6 +13,11 @@ impl Mapper<'_> {
         self.point(g[0].start, s[0].start);
         let mut cursor = 0;
         for (index, token) in g.iter().enumerate() {
+            // A function type's parameter-list close is not a separate
+            // declaration-map node; its parameters and result carry owners.
+            if token.is(")") && g.get(index + 1).is_some_and(|next| next.is("=>")) {
+                continue;
+            }
             if token.is(";") {
                 if s.get(cursor).is_some_and(|t| t.is(";")) {
                     self.point(token.end, s[cursor].end);
@@ -99,6 +104,14 @@ impl Mapper<'_> {
         }
         self.point(g[0].start, s[0].start);
         self.named(g, s, &gp.name);
+        if gp.pattern.is_some() && sp.pattern.is_some() {
+            let pattern = |tokens: &[Token]| {
+                top(tokens, ":")
+                    .or_else(|| top(tokens, "="))
+                    .unwrap_or(tokens.len())
+            };
+            self.ty(&g[..pattern(g)], &s[..pattern(s)]);
+        }
         for special in ["...", "?"] {
             if let Some((g, s)) = g
                 .iter()

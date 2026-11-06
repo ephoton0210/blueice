@@ -14,13 +14,14 @@ impl Builder<'_> {
         next: usize,
     ) -> Option<usize> {
         let code = if completion.is_empty() {
-            let assignment = binding.map_or(String::new(), |name| format!("{name} = "));
-            format!("{assignment}{value}; {}", self.jump(next))
-        } else {
+            let assignment = binding.map_or(String::new(), |name| self.binding_prefix(name));
             format!(
-                "return {{kind:{}, value:({value})}};",
-                serde_json::to_string(completion).ok()?
+                "{assignment}{value}{}{}",
+                self.assignment_terminator(binding),
+                self.jump(next)
             )
+        } else {
+            self.completion_code(completion, value)?
         };
         Some(self.block(code))
     }
@@ -34,7 +35,23 @@ impl Builder<'_> {
     ) -> Option<usize> {
         if tokens.first()?.is("(") && exponentiation::matching_close(tokens, 0)? == tokens.len() - 1
         {
-            return self.expression(&tokens[1..tokens.len() - 1], binding, completion, next);
+            let inner = &tokens[1..tokens.len() - 1];
+            let temporary = self.temporary();
+            let value = format!(
+                "{}{}{}{}",
+                relocations::relocated_verbatim(
+                    self.source_offset + tokens[0].start,
+                    self.source_offset + tokens[0].end
+                ),
+                self.grouped_value_reference(&temporary, tokens),
+                relocations::relocated_verbatim(
+                    self.source_offset + tokens.last()?.start,
+                    self.source_offset + tokens.last()?.end
+                ),
+                relocations::unmapped()
+            );
+            let finish = self.completed_value(&value, binding, completion, next)?;
+            return self.expression(inner, Some(&temporary), "", finish);
         }
         let top = top_level(tokens)?;
         if let Some(&comma) = top.iter().find(|&&at| tokens[at].is(",")) {
@@ -63,10 +80,49 @@ impl Builder<'_> {
                 }
                 false
             })?;
-            let consequent =
-                self.expression(&tokens[question + 1..colon], binding, completion, next)?;
-            let alternate = self.expression(&tokens[colon + 1..], binding, completion, next)?;
+            let mut joined = None;
+            let mut continuation = next;
+            let branch_completion = if completion.is_empty() {
+                completion
+            } else {
+                let result = self.temporary();
+                let previous = self.completion_site;
+                self.completion_site = previous.map(|(start, _, end)| (start, start, end));
+                let carried = format!(
+                    "{}{result}{}",
+                    self.completion_origin(),
+                    relocations::unmapped()
+                );
+                let finish = self.completed_value(&carried, binding, completion, next);
+                self.completion_site = previous;
+                continuation = finish?;
+                joined = Some(result);
+                ""
+            };
+            let destination = joined.as_deref().or(binding);
+            let consequent = self.expression(
+                &tokens[question + 1..colon],
+                destination,
+                branch_completion,
+                continuation,
+            )?;
+            let alternate = self.expression(
+                &tokens[colon + 1..],
+                destination,
+                branch_completion,
+                continuation,
+            )?;
             let condition = self.temporary();
+            if self.asynchronous {
+                self.binding_initializers.insert(
+                    condition.clone(),
+                    origins::InitializerOrigin {
+                        start: tokens.first()?.start,
+                        end: tokens[question - 1].end,
+                        statement: false,
+                    },
+                );
+            }
             let branch = self.block(format!(
                 "{}.label = {condition} ? {consequent} : {alternate}; continue;",
                 self.context
@@ -120,7 +176,22 @@ impl Builder<'_> {
                 let value = if operator == "**" {
                     format!("Math.pow({left}, {right})")
                 } else {
-                    format!("({left} {operator} {right})")
+                    let left_tokens = &tokens[..at];
+                    let right_tokens = &tokens[at + 1..];
+                    let operator_origin = if self.suspends(right_tokens) {
+                        left_tokens.first()?.start
+                    } else {
+                        left_tokens.last()?.end
+                    };
+                    format!(
+                        "{}({} {}{operator}{} {}){}",
+                        relocations::unmapped(),
+                        self.value_reference(&left, left_tokens),
+                        relocations::source_anchor(self.source_offset + operator_origin),
+                        relocations::unmapped(),
+                        self.value_reference(&right, right_tokens),
+                        relocations::unmapped()
+                    )
                 };
                 let finish = self.completed_value(&value, binding, completion, next)?;
                 let second = self.expression(&tokens[at + 1..], Some(&right), "", finish)?;
@@ -143,7 +214,15 @@ impl Builder<'_> {
         if tokens.len() >= 3 && tokens[tokens.len() - 2].is(".") {
             let value = self.temporary();
             let finish = self.completed_value(
-                &format!("{value}.{}", tokens.last()?.text),
+                &format!(
+                    "{}{}{}",
+                    self.value_reference(&value, &tokens[..tokens.len() - 2]),
+                    relocations::relocated_verbatim(
+                        self.source_offset + tokens[tokens.len() - 2].start,
+                        self.source_offset + tokens.last()?.end
+                    ),
+                    relocations::unmapped()
+                ),
                 binding,
                 completion,
                 next,
@@ -176,8 +255,11 @@ impl Builder<'_> {
             .collect::<Vec<_>>();
         let finish = self.completed_value(
             &format!(
-                "Function.prototype.apply.call({callee}, {receiver}, [{}])",
-                values.join(", ")
+                "{}Function.prototype.apply.call({callee}, {receiver}, [{}]{}){}",
+                relocations::unmapped(),
+                values.join(", "),
+                relocations::source_anchor(self.source_offset + tokens.last()?.start),
+                relocations::source_anchor(self.source_offset + tokens.last()?.end)
             ),
             binding,
             completion,
@@ -189,8 +271,13 @@ impl Builder<'_> {
         }
         if open >= 3 && tokens[open - 2].is(".") {
             let get = self.block(format!(
-                "{callee} = {receiver}.{}; {}",
-                tokens[open - 1].text,
+                "{callee} = {}{}{}; {}",
+                self.value_reference(&receiver, &tokens[..open - 2]),
+                relocations::relocated_verbatim(
+                    self.source_offset + tokens[open - 2].start,
+                    self.source_offset + tokens[open - 1].end
+                ),
+                relocations::unmapped(),
                 self.jump(entry)
             ));
             self.expression(&tokens[..open - 2], Some(&receiver), "", get)
@@ -247,18 +334,57 @@ impl Builder<'_> {
             } else {
                 return None;
             };
-        let assigned = if let Some(previous) = &previous {
+        let mapped_reference = if left.len() == 1 && left[0].kind == TokenKind::Identifier {
+            relocations::relocated_verbatim(
+                self.source_offset + left[0].start,
+                self.source_offset + left[0].end,
+            )
+        } else if key.is_some() {
             format!(
-                "({reference} = {previous} {} {value})",
-                &operator[..operator.len() - 1]
+                "{}{reference}{}",
+                relocations::source_anchor(self.source_offset + left[0].start),
+                relocations::source_anchor(self.source_offset + left.last()?.end)
             )
         } else {
-            format!("({reference} = {value})")
+            reference.clone()
         };
-        let finish = self.completed_value(&assigned, binding, completion, next)?;
+        let assigned = if let Some(previous) = &previous {
+            format!(
+                "{}({mapped_reference} = {}{} {}{}{} {}){}",
+                relocations::unmapped(),
+                relocations::unmapped(),
+                self.value_reference(previous, left),
+                relocations::source_anchor(self.source_offset + left[0].start),
+                &operator[..operator.len() - 1],
+                relocations::unmapped(),
+                self.value_reference(&value, &tokens[equal + 1..]),
+                relocations::unmapped()
+            )
+        } else {
+            format!(
+                "{}({mapped_reference} = {}{}){}",
+                relocations::unmapped(),
+                relocations::unmapped(),
+                self.value_reference(&value, &tokens[equal + 1..]),
+                relocations::unmapped()
+            )
+        };
+        let finish = if binding.is_none() && completion.is_empty() {
+            self.block(format!(
+                "{assigned}{}{}",
+                self.resume_terminator(tokens, true),
+                self.jump(next)
+            ))
+        } else {
+            self.completed_value(&assigned, binding, completion, next)?
+        };
         let mut entry = self.expression(&tokens[equal + 1..], Some(&value), "", finish)?;
         if let Some(previous) = previous {
-            entry = self.block(format!("{previous} = {reference}; {}", self.jump(entry)));
+            entry = self.block(format!(
+                "{previous} = {mapped_reference}{}; {}",
+                relocations::unmapped(),
+                self.jump(entry)
+            ));
         }
         if let (Some(key), Some(tokens)) = (key, key_tokens) {
             entry = self.expression(tokens, Some(&key), "", entry)?;

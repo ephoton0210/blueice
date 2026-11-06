@@ -32,9 +32,14 @@ pub(super) struct Context<'a> {
     checking: crate::CheckingOptions,
     max_expansions: usize,
     output_options: CompilerOptions,
+    map_origins: BTreeMap<usize, Type>,
 }
 
 impl<'a> Context<'a> {
+    pub(super) fn take_map_origins(&mut self) -> BTreeMap<usize, Type> {
+        std::mem::take(&mut self.map_origins)
+    }
+
     pub(super) fn new(
         checked: &'a CheckedModule,
         project: &'a Project,
@@ -69,6 +74,7 @@ impl<'a> Context<'a> {
             interface_fields: BTreeMap::new(),
             checking: checked.checking,
             max_expansions: options.limits.max_type_expansions,
+            map_origins: BTreeMap::new(),
         };
         for (declaration, _) in super::runtime_declarations(&module.declarations) {
             let Declaration::Variable(variable) = declaration else {
@@ -110,6 +116,11 @@ impl<'a> Context<'a> {
             );
             let expanded = super::inference_literals::inferred_array(expanded);
             let value = &expanded;
+            if options.declaration_map {
+                context
+                    .map_origins
+                    .insert(variable.span.start, value.clone());
+            }
             let value = if variable.kind == VariableKind::Const
                 && matches!(value, Type::Named { name, arguments } if name == "symbol" && arguments.is_empty())
                 && context.fresh_symbol_initializer(variable)
@@ -193,6 +204,11 @@ impl<'a> Context<'a> {
                             &value,
                             &function.type_parameters,
                         );
+                        if options.declaration_map {
+                            context
+                                .map_origins
+                                .insert(function.span.start, value.clone());
+                        }
                         let rendered = context.render(&value, 0, &function.span)?;
                         context.return_types.insert(function.span.start, rendered);
                     }

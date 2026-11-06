@@ -28,6 +28,9 @@
 
 use std::collections::BTreeSet;
 
+pub(in crate::emitter) mod auto_accessors;
+pub(in crate::emitter) mod expressions;
+pub(in crate::emitter) mod member_origins;
 mod members;
 use members::{Kind, Names, Plan};
 mod private_members;
@@ -115,8 +118,43 @@ pub(super) fn lower_decorators(
     module: &Module,
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
+    wrapper: crate::ModuleKind,
 ) -> Result<(), Diagnostic> {
     if preserves_proposals(options) {
+        for (declaration, _) in super::runtime_declarations(&module.declarations) {
+            let Declaration::Class(class) = declaration else {
+                continue;
+            };
+            if class.exported || class.decorators.is_empty() {
+                continue;
+            }
+            let keyword = class_keyword_start(class, &module.source);
+            edits.push(TextEdit {
+                start: keyword,
+                end: keyword + "class".len(),
+                replacement: format!(
+                    "{}class{}",
+                    super::relocations::unmapped(),
+                    super::relocations::unmapped()
+                ),
+            });
+        }
+        for expression in module
+            .class_expressions
+            .values()
+            .filter(|expression| !expression.statement && !expression.class.decorators.is_empty())
+        {
+            let keyword = class_keyword_start(&expression.class, &module.source);
+            edits.push(TextEdit {
+                start: keyword,
+                end: keyword + "class".len(),
+                replacement: format!(
+                    "{}class{}",
+                    super::relocations::unmapped(),
+                    super::relocations::unmapped()
+                ),
+            });
+        }
         return Ok(());
     }
     if !has_standard_lowering(module) {
@@ -148,6 +186,7 @@ pub(super) fn lower_decorators(
         Lowerer {
             module,
             options,
+            wrapper,
             names: &mut names,
             edits,
             run_initializers: RUN_INITIALIZERS.into(),
@@ -177,6 +216,7 @@ pub(super) fn lower_decorators(
         Lowerer {
             module,
             options,
+            wrapper,
             names: &mut names,
             edits,
             run_initializers: RUN_INITIALIZERS.into(),
@@ -199,6 +239,7 @@ pub(super) fn lower_decorators(
 struct Lowerer<'a, 'e> {
     module: &'a Module,
     options: &'a CompilerOptions,
+    wrapper: crate::ModuleKind,
     names: &'a mut Names,
     edits: &'e mut Vec<TextEdit>,
     run_initializers: String,
@@ -292,9 +333,27 @@ impl Lowerer<'_, '_> {
         {
             return Ok(format!(
                 "{}{}",
-                relocated(inner[0].start, inner[2].end),
+                relocated(inner[0].start, inner[0].end),
                 super::relocations::source_anchor(end)
             ));
+        }
+        if inner.len() == 1
+            && tokens.len() == 3
+            && matches!(inner[0].kind, TokenKind::Identifier | TokenKind::Keyword)
+        {
+            let leading = &self.module.source[tokens[0].end..inner[0].start];
+            let trailing = &self.module.source[inner[0].end..tokens[2].start];
+            if leading.chars().all(char::is_whitespace) && trailing.chars().all(char::is_whitespace)
+            {
+                let space = if leading.is_empty() { "" } else { " " };
+                return Ok(format!(
+                    "{}({}{space}{}){}",
+                    super::relocations::source_anchor(start),
+                    super::relocations::source_anchor(inner[0].start),
+                    relocated(inner[0].start, inner[0].end),
+                    super::relocations::source_anchor(end)
+                ));
+            }
         }
         Ok(relocated(start, end))
     }
@@ -312,6 +371,17 @@ impl Lowerer<'_, '_> {
             };
         }
         let key = plan.name.clone();
+        let field_name = if matches!(plan.kind, Kind::Field | Kind::Getter)
+            && !plan.private
+            && !plan.literal()
+        {
+            Some((
+                super::relocations::source_anchor(plan.shell.key.first().expect("field key").start),
+                super::relocations::source_anchor(plan.shell.key.last().expect("field key").end),
+            ))
+        } else {
+            None
+        };
         let has = if plan.private {
             format!("obj => {key} in obj")
         } else {
@@ -322,14 +392,28 @@ impl Lowerer<'_, '_> {
         } else if plan.literal() {
             format!("obj => obj[{}]", quoted(&plan.name))
         } else {
-            format!("obj => obj.{}", plan.name)
+            format!(
+                "obj => obj.{}{}{}",
+                if plan.kind == Kind::Getter {
+                    field_name.as_ref().map_or("", |(start, _)| start.as_str())
+                } else {
+                    ""
+                },
+                plan.name,
+                field_name.as_ref().map_or("", |(_, end)| end.as_str())
+            )
         };
         let set = if plan.private {
             format!("(obj, value) => {{ obj.{key} = value; }}")
         } else if plan.literal() {
             format!("(obj, value) => {{ obj[{}] = value; }}", quoted(&plan.name))
         } else {
-            format!("(obj, value) => {{ obj.{} = value; }}", plan.name)
+            format!(
+                "(obj, value) => {{ obj.{}{}{} = value; }}",
+                field_name.as_ref().map_or("", |(start, _)| start.as_str()),
+                plan.name,
+                field_name.as_ref().map_or("", |(_, end)| end.as_str())
+            )
         };
         match plan.kind {
             Kind::Method | Kind::Getter => format!("{{ has: {has}, get: {get} }}"),
@@ -385,6 +469,7 @@ impl Lowerer<'_, '_> {
         };
         let unmapped = super::relocations::unmapped();
         let class_decorated = !class.decorators.is_empty();
+        let private_derived = !class_decorated && plans.iter().any(Plan::private_callable);
         let extends = class.extends_span.clone();
         let class_this = if class_decorated {
             self.names.unique("_classThis")
@@ -418,6 +503,20 @@ impl Lowerer<'_, '_> {
         if let Some(base) = &class_super {
             self.rewrite_static_super(class, base, &class_this, class_decorated)?;
         }
+        if class_decorated
+            && class
+                .members
+                .iter()
+                .all(|member| member.decorators.is_empty())
+        {
+            super_members::retain_static_field_values(
+                self.module,
+                class,
+                self.options.defines_class_fields(),
+                self.options.target,
+                self.edits,
+            );
+        }
 
         // ---- the header --------------------------------------------------
         let mut lets = aliases;
@@ -438,8 +537,9 @@ impl Lowerer<'_, '_> {
         }
         if let (Some(name), Some(span)) = (&class_super, &extends) {
             lets.push_str(&format!(
-                "let {name} = {}; ",
-                relocated(span.start, span.end)
+                "let {name} = {}; {}",
+                relocated(span.start, span.end),
+                super::relocations::unmapped()
             ));
         }
         if let Some(name) = &static_extra {
@@ -511,6 +611,7 @@ impl Lowerer<'_, '_> {
                     leading.push_str(&plan.private_accessor_descriptor());
                 } else {
                     leading.push_str(&self.private_callable(class, plan, class_home.as_deref())?);
+                    leading.push_str(super::relocations::unmapped());
                 }
             }
         }
@@ -533,9 +634,25 @@ impl Lowerer<'_, '_> {
                 .clone()
                 .unwrap_or_else(|| quoted(&plan.name));
             let mut access = Self::access(plan);
-            if plan.kind == Kind::Method && !plan.private && plan.runtime_key.is_none() {
+            if plan.private_callable() && self.options.target >= EcmaTarget::Es2022 {
+                let key_start = super::relocations::source_anchor(
+                    plan.shell.key.first().expect("private callable key").start,
+                );
+                let key_end = super::relocations::source_anchor(
+                    plan.shell.key.last().expect("private callable key").end,
+                );
+                access = access.replace(&plan.name, &format!("{key_start}{}{key_end}", plan.name));
+            }
+            if plan.kind == Kind::Method
+                && !plan.private
+                && plan.runtime_key.is_none()
+                && !plan.literal()
+            {
                 let end = plan.shell.key.last().expect("method key").end;
-                let closing = access.rfind('}').expect("access object closing brace");
+                let closing = access
+                    .strip_suffix(" }")
+                    .expect("access getter and closing brace")
+                    .len();
                 access.insert_str(closing, &super::relocations::source_anchor(end));
             }
             let context = format!(
@@ -567,15 +684,20 @@ impl Lowerer<'_, '_> {
             } else {
                 (this_for(plan), "null".to_string())
             };
-            let anchor = super::relocations::source_anchor(
-                plan.shell
-                    .key
-                    .first()
-                    .expect("a decorated member has a key")
-                    .start,
-            );
+            let origin = if plan.private_callable() {
+                member_origins::logical_member_start(class, plan.shell)
+            } else {
+                member_origins::member_header(class, plan)
+            };
+            let anchor = super::relocations::source_anchor(origin);
+            let completion = super::relocations::source_anchor(plan.shell.span.end);
+            let descriptor_completion = if plan.private_callable() {
+                completion.clone()
+            } else {
+                String::new()
+            };
             format!(
-                "{anchor}{es_decorate}({target}, {descriptor}, {}, {context}, {initializers}, {extra}); {}",
+                "{anchor}{es_decorate}({target}, {descriptor}{descriptor_completion}, {}, {context}, {initializers}, {extra});{completion} {}",
                 plan.decorators_var(),
                 super::relocations::unmapped()
             )
@@ -595,10 +717,14 @@ impl Lowerer<'_, '_> {
             }
         }
         if class_decorated {
-            let anchor =
-                super::relocations::source_anchor(class_keyword_start(class, &self.module.source));
+            let anchor = super::relocations::source_anchor(member_origins::class_header(
+                class,
+                &self.module.source,
+                expression,
+            ));
+            let completion = super::relocations::source_anchor(class.span.end);
             leading.push_str(&format!(
-                "{anchor}{es_decorate}(null, {class_descriptor} = {{ value: {class_this} }}, {class_decorators}, {{ kind: \"class\", name: {class_this}.name, metadata: {metadata} }}, null, {class_extra}); {}{} = {class_this} = {class_descriptor}.value; ",
+                "{anchor}{es_decorate}(null, {class_descriptor} = {{ value: {class_this} }}, {class_decorators}, {{ kind: \"class\", name: {class_this}.name, metadata: {metadata} }}, null, {class_extra});{completion} {}{} = {class_this} = {class_descriptor}.value; ",
                 super::relocations::unmapped(),
                 class.name
             ));
@@ -616,7 +742,19 @@ impl Lowerer<'_, '_> {
         let mut pending_static: Vec<String> = Vec::new();
         let mut pending_instance: Vec<String> = Vec::new();
         if let Some(name) = &static_extra {
-            pending_static.push(format!("{run_initializers}({this_arg_static}, {name})"));
+            let anchor = if private_derived {
+                name_anchor.clone()
+            } else {
+                String::new()
+            };
+            let completion = if private_derived {
+                name_end_anchor.clone()
+            } else {
+                String::new()
+            };
+            pending_static.push(format!(
+                "{anchor}{run_initializers}({this_arg_static}, {name}){completion}"
+            ));
         }
         if let Some(name) = &instance_extra {
             pending_instance.push(format!("{run_initializers}(this, {name})"));
@@ -700,24 +838,90 @@ impl Lowerer<'_, '_> {
                     } else {
                         ""
                     };
+                    let mut entry = name_anchor.clone();
+                    let mut completion = name_end_anchor.clone();
+                    let field_entry = plans
+                        .iter()
+                        .rev()
+                        .find(|plan| {
+                            !plan.is_static && matches!(plan.kind, Kind::Field | Kind::Accessor)
+                        })
+                        .is_some_and(Plan::decorated);
+                    if field_entry {
+                        entry = unmapped.to_string();
+                        completion.clear();
+                    }
+                    let methods_only = class.members.iter().all(|member| member.field.is_none());
+                    let method_entry = expression && methods_only;
+                    if method_entry {
+                        let anonymous = self
+                            .module
+                            .class_expressions
+                            .get(&class.span.start)
+                            .is_some_and(|original| original.name.is_none());
+                        entry = super::relocations::source_anchor(if anonymous {
+                            class_keyword_start(class, &self.module.source)
+                        } else {
+                            class.name_span.start
+                        });
+                        completion = super::relocations::source_anchor(if anonymous {
+                            class.span.end
+                        } else {
+                            class.name_span.end
+                        });
+                    }
+                    let close = if methods_only {
+                        format!(" {unmapped}}}")
+                    } else {
+                        format!("{unmapped} }}")
+                    };
                     tail.push_str(&format!(
-                        " constructor() {{ {super_call}{name_anchor}{statements}{name_end_anchor};{unmapped} }}"
+                        " constructor() {{ {super_call}{entry}{statements}{completion};{close}"
                     ));
                 }
             }
         }
-        let mut trailing: Vec<String> = pending_static;
+        let mut trailing = pending_static
+            .into_iter()
+            .map(|statement| (statement, None))
+            .collect::<Vec<_>>();
         if class_decorated {
-            trailing.push(format!(
-                "{}{run_initializers}({class_this}, {class_extra})",
-                super::relocations::source_anchor(class.name_span.start)
+            let anonymous = expression
+                && self
+                    .module
+                    .class_expressions
+                    .get(&class.span.start)
+                    .is_some_and(|original| original.name.is_none());
+            let start = if anonymous {
+                class_keyword_start(class, &self.module.source)
+            } else {
+                class.name_span.start
+            };
+            let end = if anonymous {
+                class.span.end
+            } else {
+                class.name_span.end
+            };
+            trailing.push((
+                format!(
+                    "{}{run_initializers}({class_this}, {class_extra})",
+                    super::relocations::source_anchor(start)
+                ),
+                Some(end),
             ));
         }
         let mut leading_extra = String::new();
         if !trailing.is_empty() {
             let statements: String = trailing
                 .iter()
-                .map(|statement| format!("{statement}; "))
+                .map(|(statement, completion)| {
+                    format!(
+                        "{statement};{} ",
+                        completion
+                            .map(super::relocations::source_anchor)
+                            .unwrap_or_default()
+                    )
+                })
                 .collect();
             if has_static_initializers {
                 tail.push_str(&format!(" static {{ {statements}{unmapped}}}"));
@@ -728,27 +932,127 @@ impl Lowerer<'_, '_> {
 
         // ---- assemble the header and the footer --------------------------------
         let blocks = if class_decorated {
+            let lexical_binding = if expression && self.options.target < EcmaTarget::Es2022 {
+                // The header's exact `var name = class` binding must already
+                // hold the initial constructor when moved decorators execute.
+                format!("{} = this; ", class.name)
+            } else {
+                String::new()
+            };
             format!(
-                r#"static {{ Object.defineProperty(this, "name", {{ value: {}, configurable: true }}); {class_this} = this; }} static {{ {leading}{leading_extra}}} "#,
+                r#"static {{ {lexical_binding}Object.defineProperty(this, "name", {{ value: {}, configurable: true }}); {class_this} = this; }} static {{ {leading}{leading_extra}}} "#,
                 label.map_or_else(|| quoted(&class.name), str::to_string)
             )
         } else {
             format!("static {{ {leading}{leading_extra}}} ")
         };
+        let heritage_keyword = if class_decorated || private_derived {
+            extends.as_ref().and_then(|span| {
+                crate::lex(&self.module.id, &self.module.source)
+                    .ok()
+                    .and_then(|tokens| {
+                        tokens
+                            .into_iter()
+                            .rfind(|token| {
+                                token.is("extends")
+                                    && class.span.start <= token.start
+                                    && token.end <= span.start
+                            })
+                            .map(|token| token.start)
+                    })
+            })
+        } else {
+            None
+        };
+        let heritage_prefix = heritage_keyword
+            .map(super::relocations::source_anchor)
+            .unwrap_or_default();
         let extends_clause = class_super
             .as_ref()
-            .map(|name| format!(" extends {name}"))
+            .map(|name| {
+                if let (Some(keyword), Some(span)) = (heritage_keyword, &extends) {
+                    format!(
+                        " {}extends {}{name}{}",
+                        super::relocations::source_anchor(keyword),
+                        super::relocations::source_anchor(span.start),
+                        super::relocations::source_anchor(span.end)
+                    )
+                } else {
+                    format!(" extends {name}")
+                }
+            })
             .unwrap_or_default();
+        let core_name_end_anchor = if private_derived {
+            heritage_keyword
+                .map(super::relocations::source_anchor)
+                .unwrap_or_else(|| name_end_anchor.clone())
+        } else {
+            name_end_anchor.clone()
+        };
         let opener = if class_decorated {
-            format!("var {} = class{extends_clause} {{ ", class.name)
+            format!(
+                "var {} = class{heritage_prefix}{extends_clause} {{ {}",
+                class.name,
+                if heritage_keyword.is_some() {
+                    unmapped
+                } else {
+                    ""
+                }
+            )
         } else {
             format!(
-                "return class {name_anchor}{}{name_end_anchor}{extends_clause} {{ {unmapped}",
+                "return class {name_anchor}{}{core_name_end_anchor}{extends_clause} {{ {unmapped}",
                 class.name
             )
         };
+        let plain_declaration = !expression && !class_decorated;
         let header = if expression {
-            format!("(() => {{ {lets}{opener}{blocks}")
+            let prefix_origin = self
+                .module
+                .class_expressions
+                .get(&class.span.start)
+                .and_then(|original| {
+                    crate::lex(&self.module.id, &self.module.source)
+                        .ok()
+                        .and_then(|tokens| {
+                            super::class_lowering::expressions::names::evaluation_prefix_origin(
+                                original, &tokens,
+                            )
+                        })
+                })
+                .map(super::relocations::source_anchor)
+                .unwrap_or_default();
+            format!("{prefix_origin}(() => {{ {unmapped}{lets}{opener}{blocks}")
+        } else if class_decorated && self.options.target == EcmaTarget::Es5 {
+            let start = crate::lex(
+                &self.module.id,
+                &self.module.source[class.span.start..class.name_span.start],
+            )
+            .ok()
+            .and_then(|tokens| {
+                tokens.into_iter().find(|token| {
+                    !class.decorators.iter().any(|decorator| {
+                        decorator.span.start <= class.span.start + token.start
+                            && class.span.start + token.end <= decorator.span.end
+                    })
+                })
+            })
+            .map_or(class.span.start, |token| class.span.start + token.start);
+            format!(
+                "{}let {} = (() => {{ {unmapped}{lets}{opener}{blocks}",
+                super::relocations::source_anchor(start),
+                class.name
+            )
+        } else if plain_declaration && self.options.target == EcmaTarget::Es5 {
+            format!(
+                "{}let {} = (() => {{ {unmapped}{lets}{opener}{blocks}",
+                if self.wrapper == crate::ModuleKind::System {
+                    unmapped.to_string()
+                } else {
+                    super::relocations::source_anchor(class.span.start)
+                },
+                class.name
+            )
         } else {
             format!(
                 "let {name_anchor}{}{name_end_anchor} = (() => {{ {unmapped}{lets}{opener}{blocks}",
@@ -757,10 +1061,20 @@ impl Lowerer<'_, '_> {
         };
         let header_end = body_open + 1;
         let header = format!(
-            "{}{header}{}",
+            "{}{header}{}{}",
             super::relocations::unmapped(),
-            self.newlines(class.span.start, header_end)
+            self.newlines(class.span.start, header_end),
+            if expression {
+                super::relocations::unmapped()
+            } else {
+                ""
+            }
         );
+        let header = if !expression {
+            format!("{header}{unmapped}")
+        } else {
+            header
+        };
         self.push(class.span.start, header_end, header);
 
         let close = class.body_span.end - 1;
@@ -768,9 +1082,31 @@ impl Lowerer<'_, '_> {
             if let Some((namespace, _)) = namespace_owner(self.module, class) {
                 format!(" {namespace}.{0} = {0};", class.name)
             } else if self.options.module_kind == crate::compiler::ModuleKind::CommonJs {
-                format!(" exports.{} = {};", class.export_name(), class.name)
+                if !expression && self.wrapper != crate::ModuleKind::System {
+                    format!(
+                        " {name_anchor}exports.{} = {};{name_end_anchor}",
+                        class.export_name(),
+                        class.name
+                    )
+                } else {
+                    format!(
+                        " {unmapped}exports.{} = {};{unmapped}",
+                        class.export_name(),
+                        class.name
+                    )
+                }
             } else if class.default_export {
                 format!(" export default {};", class.name)
+            } else if !expression {
+                format!(
+                    " {unmapped}export {{ {name_anchor}{}{name_end_anchor} }};{}",
+                    class.name,
+                    if class_decorated {
+                        format!("{name_end_anchor} {unmapped}")
+                    } else {
+                        String::new()
+                    }
+                )
             } else {
                 format!(" export {{ {} }};", class.name)
             }
@@ -778,18 +1114,89 @@ impl Lowerer<'_, '_> {
             String::new()
         };
         let terminator = if expression { "" } else { ";" };
+        let binding_completion = if (plain_declaration || class_decorated && !expression)
+            && self.options.target == EcmaTarget::Es5
+            && self.wrapper != crate::ModuleKind::System
+        {
+            super::relocations::source_anchor(class.span.end)
+        } else {
+            String::new()
+        };
+        let lowered_class_completion = plain_declaration
+            && self.options.target == EcmaTarget::Es5
+            && class.members.iter().any(|member| member.field.is_some());
+        let class_completion = if lowered_class_completion {
+            super::relocations::source_anchor(class.span.end)
+        } else {
+            String::new()
+        };
+        let class_gap_end = if lowered_class_completion {
+            unmapped
+        } else {
+            ""
+        };
+        let method_value_completion = plain_declaration
+            && self.options.target == EcmaTarget::Es5
+            && class.members.iter().all(|member| member.field.is_none());
+        let (value_completion, factory_gap) = if method_value_completion {
+            (
+                format!(
+                    "{} {unmapped}",
+                    super::relocations::source_anchor(class.span.end)
+                ),
+                "",
+            )
+        } else {
+            (String::new(), " ")
+        };
+        let binding_carrier = if class_decorated && !expression {
+            if self.options.target == EcmaTarget::Es5 {
+                format!(" {unmapped}")
+            } else if self.options.target >= EcmaTarget::Es2022
+                && !class.members.is_empty()
+                && class.members.iter().all(|member| member.method.is_some())
+            {
+                unmapped.to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
         let finish = if class_decorated {
             format!(
-                "}}; return {} = {class_this}; }})(){terminator}{export_suffix}",
+                "}}; return {} = {class_this}; }})(){terminator}{binding_completion}{binding_carrier}{export_suffix}",
                 class.name
             )
         } else {
-            format!("}}; }})(){terminator}{export_suffix}")
+            format!("}}{value_completion};{class_completion}{factory_gap}{class_gap_end}}})(){terminator}{binding_completion}{export_suffix}")
         };
+        let mut finish_end = close + 1;
+        if plain_declaration {
+            while self
+                .module
+                .source
+                .as_bytes()
+                .get(finish_end)
+                .is_some_and(u8::is_ascii_whitespace)
+            {
+                finish_end += 1;
+            }
+        }
         self.push(
             close,
-            close + 1,
-            format!("{}{tail} {finish}", super::relocations::unmapped()),
+            finish_end,
+            format!(
+                "{}{tail} {finish}{}",
+                super::relocations::unmapped(),
+                if expression
+                    && expressions::unmapped_continuation(self.module, class, self.options)
+                {
+                    super::relocations::unmapped()
+                } else {
+                    &self.module.source[close + 1..finish_end]
+                }
+            ),
         );
         Ok(())
     }
@@ -865,7 +1272,35 @@ impl Lowerer<'_, '_> {
                 plan.name.clone()
             };
             let modifier = if plan.is_static { "static " } else { "" };
-            let accessors = if plan.private_descriptor() {
+            let original_named = self
+                .module
+                .source
+                .get(class.name_span.start..class.name_span.end)
+                .is_some_and(|name| name == class.name);
+            let direct =
+                !plan.private && plan.runtime_key.is_none() && !class_decorated && original_named;
+            let storage_prefix = if direct {
+                auto_accessors::storage_prefix(
+                    class,
+                    shell,
+                    field,
+                    &storage,
+                    false,
+                    self.options.target < EcmaTarget::Es2022,
+                )
+            } else {
+                format!("{modifier}{storage} = ")
+            };
+            let accessors = if direct {
+                auto_accessors::callable_pair(
+                    class,
+                    shell,
+                    field,
+                    &storage,
+                    false,
+                    self.options.target < EcmaTarget::Es2022,
+                )
+            } else if plan.private_descriptor() {
                 let descriptor = plan.descriptor_var();
                 format!("{modifier}get {name}() {{ return {descriptor}.get.call(this); }} {modifier}set {name}(value) {{ {descriptor}.set.call(this, value); }}")
             } else {
@@ -877,7 +1312,7 @@ impl Lowerer<'_, '_> {
                         shell.span.start,
                         start,
                         format!(
-                            "{modifier}{storage} = {prefix}{}",
+                            "{storage_prefix}{prefix}{}",
                             self.newlines(shell.span.start, start)
                         ),
                     );
@@ -885,7 +1320,9 @@ impl Lowerer<'_, '_> {
                         end,
                         shell.span.end,
                         format!(
-                            "{suffix}; {accessors}{}",
+                            "{}{suffix};{} {accessors}{}",
+                            super::relocations::source_anchor(end),
+                            super::relocations::source_anchor(shell.span.end),
                             self.newlines(end, shell.span.end)
                         ),
                     );
@@ -900,7 +1337,8 @@ impl Lowerer<'_, '_> {
                         shell.span.start,
                         shell.span.end,
                         format!(
-                            "{modifier}{storage} = {value}; {accessors}{}",
+                            "{storage_prefix}{value};{} {accessors}{}",
+                            super::relocations::source_anchor(shell.span.end),
                             self.newlines(shell.span.start, shell.span.end)
                         ),
                     );
@@ -909,16 +1347,26 @@ impl Lowerer<'_, '_> {
             return Ok(());
         }
         let _ = class;
+        let prefix_origin =
+            if self.options.defines_class_fields() && self.options.target < EcmaTarget::Es2022 {
+                super::relocations::unmapped().to_string()
+            } else {
+                super::relocations::source_anchor(field.name_span.end)
+            };
         match initializer_range {
             Some((start, end)) if wrapped => {
-                self.push(start, start, prefix);
-                self.push(end, end, suffix);
+                self.push(start, start, format!("{prefix_origin}{prefix}"));
+                self.push(
+                    end,
+                    end,
+                    format!("{}{suffix}", super::relocations::source_anchor(end)),
+                );
             }
             None if wrapped => {
                 self.push(
                     field.name_span.end,
                     field.name_span.end,
-                    format!(" = {prefix}void 0{suffix}"),
+                    format!("{prefix_origin} = {prefix}void 0{suffix}"),
                 );
             }
             _ => {}
@@ -952,6 +1400,22 @@ impl Lowerer<'_, '_> {
                 }
             }
             if token.is("this") && token.end > token.start {
+                if let Some(dot) = tokens.get(index + 1).filter(|token| token.is(".")) {
+                    let trivia = &self.module.source[token.end..dot.start];
+                    if trivia.chars().all(char::is_whitespace) {
+                        let anchor = super::relocations::source_anchor(token.start);
+                        self.push(
+                            token.start,
+                            dot.end,
+                            format!(
+                                "{anchor}{class_this}{anchor}{trivia}.{}",
+                                super::relocations::source_anchor(dot.end)
+                            ),
+                        );
+                        index += 2;
+                        continue;
+                    }
+                }
                 self.push(token.start, token.end, class_this.to_string());
             }
             index += 1;

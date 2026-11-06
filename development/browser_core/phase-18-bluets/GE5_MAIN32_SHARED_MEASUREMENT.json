@@ -1,0 +1,188 @@
+{
+  "scope": "Main32 completed shared subcohorts; G-E5 remains open",
+  "compilerSha256": "7b486c6d8b66b085c67eecbc6c65c06becfd90fbf56adf69e5a8f4696c741a64",
+  "metadata": {
+    "configurations": 678,
+    "maps": 1442,
+    "controls": 311604,
+    "syntax": 2884,
+    "executions": 1872,
+    "scopes": [
+      {
+        "report": "metadata-callable-alias.json",
+        "sha256": "3b657f76b3b8269ed576b5a7e10ac73f3ae98b7b75cbe776dcda7249eed534bb",
+        "controlsReportSha256": "b4bc7b74c9dbfe90520a3607be298259ebd51ee2826bb32b4604d2749e7707b4",
+        "configurations": 41,
+        "maps": 82,
+        "controls": 18252,
+        "syntax": 164,
+        "executions": 82
+      },
+      {
+        "report": "metadata-class-type-alias.json",
+        "sha256": "2c61fbbd749e5f148024651d27290348f55d9d5eeabf8d65e7f83f2c52a7eabb",
+        "controlsReportSha256": "073ec4058ff8895b3d240cd50cc7c91c2847b7c723bc5b380cc4a091be0f781f",
+        "configurations": 41,
+        "maps": 82,
+        "controls": 18215,
+        "syntax": 164,
+        "executions": 82
+      },
+      {
+        "report": "metadata-classes.json",
+        "sha256": "be30e4ad763ca85665cb00ad5b3d01e1098e9ede152e633392064b76473fefb5",
+        "controlsReportSha256": "54d7a74768f2f25dd04b259f2d6e6fb67f381a2cdc81c899ad872fc878f64f21",
+        "configurations": 172,
+        "maps": 344,
+        "controls": 78716,
+        "syntax": 688,
+        "executions": 344
+      },
+      {
+        "report": "metadata-import-type-class.json",
+        "sha256": "619311380156180ea94bcf4682cab563f3fc6e9e081b39ac9d2e0575c0e3c5fc",
+        "controlsReportSha256": "a6bec68fd949fdb7e4f233b67916ed9aeb4b7d57eeb52ef0fbacc4c1932764ab",
+        "configurations": 43,
+        "maps": 86,
+        "controls": 19029,
+        "syntax": 172,
+        "executions": 86
+      },
+      {
+        "report": "metadata-imported-interface.json",
+        "sha256": "bbc65bc782a824677d4c112a5ad02abc818a3f496fdf27fefc44f92935848923",
+        "controlsReportSha256": "8113027dad3ad5d83f1ce677a14263dbb4a0c88c785d916e0bcb7ace64c54552",
+        "configurations": 41,
+        "maps": 82,
+        "controls": 18215,
+        "syntax": 164,
+        "executions": 82
+      },
+      {
+        "report": "metadata-inline-import-type-class.json",
+        "sha256": "28d710f8f5d2246605724793bb3be02b33bfb135d3c7b40a4d0bda66197f01ce",
+        "controlsReportSha256": "db33f8dab90a3697a578224189ea6d93a89fa03a7ccaca974ef49f61fd9e6f45",
+        "configurations": 43,
+        "maps": 86,
+        "controls": 19029,
+        "syntax": 172,
+        "executions": 86
+      },
+      {
+        "report": "metadata-local-class-type-alias.json",
+        "sha256": "5f68f442e8e4f4c6a0c8d18c2c2386b760809f378c7ad18321fd00e897e4ca56",
+        "controlsReportSha256": "cf88b0baa3ba2e619d63f1b1d250e11bf72fa5fc28349a8fe5100987710511da",
+        "configurations": 43,
+        "maps": 86,
+        "controls": 18990,
+        "syntax": 172,
+        "executions": 86
+      },
+      {
+        "report": "metadata-namespace-reexported-class.json",
+        "sha256": "32a66486779352d4064c149ad61769d20d97bc9c67f594a6bb3c169ddcfd81ab",
+        "controlsReportSha256": "9e88fcf6eb8f5599c833f45c09e752c96cc1e7a663c35612510dbd9c83deb884",
+        "configurations": 43,
+        "maps": 129,
+        "controls": 22525,
+        "syntax": 258,
+        "executions": 258
+      },
+      {
+        "report": "metadata-nullable-alias.json",
+        "sha256": "17a312aa1bdbfd5a3a945eec090f1213b88a7b4dd2668482181c65db29a07d7f",
+        "controlsReportSha256": "12ae958c4068cebc16eccca0aa894173b8f33b4d590a3d81d87cdc362c0b7157",
+        "configurations": 41,
+        "maps": 82,
+        "controls": 18215,
+        "syntax": 164,
+        "executions": 82
+      },
+      {
+        "report": "metadata-numeric-enum.json",
+        "sha256": "51bc83dd8869878a027c6be65a7dc32a33c25d87dd569d615fe5da59e523113f",
+        "controlsReportSha256": "8290c4807dadd45f5b7b1fa3d9fe75d0d06cf7022731d2796286145d3e41d960",
+        "configurations": 43,
+        "maps": 86,
+        "controls": 19848,
+        "syntax": 172,
+        "executions": 172
+      },
+      {
+        "report": "metadata-primitive-alias.json",
+        "sha256": "3330af87603040f0b938980c69f797f5d1f05871bf3bd82d4bf55b1ad02304f1",
+        "controlsReportSha256": "a2d150b8034e22d9122afc3505101582a575d27802b3e2e05b60ea2830902bd7",
+        "configurations": 41,
+        "maps": 82,
+        "controls": 18215,
+        "syntax": 164,
+        "executions": 82
+      },
+      {
+        "report": "metadata-reexported-class.json",
+        "sha256": "80ed7309cf5e34fb8003ca7ce5b797c965ba5908c63258c0a2ecd5412da3801d",
+        "controlsReportSha256": "8b92c2c2d6d547926eeed97775ef13e9f2db21850d247478ce667c19c713eff7",
+        "configurations": 43,
+        "maps": 129,
+        "controls": 22507,
+        "syntax": 258,
+        "executions": 258
+      },
+      {
+        "report": "metadata-string-enum.json",
+        "sha256": "8c2257c0328cda65019b0cf65ce9d34325496d5fff9b93d13ea2898372602463",
+        "controlsReportSha256": "280b17f5dea5452a80f7c2d0183305962bf1f62b925e3028e4932032140776d2",
+        "configurations": 43,
+        "maps": 86,
+        "controls": 19848,
+        "syntax": 172,
+        "executions": 172
+      }
+    ]
+  },
+  "otherAcceptedSubcohorts": [
+    {
+      "report": "decorator-literal-methods.json",
+      "sha256": "89d1dcea132dded8795ebfa7bb5424c64df68cd63a1a2f5f7e6f04b0158d587b",
+      "configurations": 67,
+      "maps": 67,
+      "controls": 48533,
+      "executions": 134
+    },
+    {
+      "report": "decorator-literal-auto-accessors.json",
+      "sha256": "8919c6fe8ab30ddd2045be74a65d0aa91d7817e9e56dea2e7ab87df3629332be",
+      "configurations": 51,
+      "maps": 51,
+      "controls": 40187,
+      "executions": 102
+    },
+    {
+      "report": "class-super.json",
+      "sha256": "8a8c7ff13b1913c2dcb50c55b0a6876106b23e013da82094dbdfc75e8131c223",
+      "configurations": 661,
+      "maps": 712,
+      "controls": 19647,
+      "executions": 1402,
+      "syntaxPrograms": 1424,
+      "runtimeReportSha256": "424d42f6bcd30b4e36588ab0e9fe21b36600ae8ef439dba1a58823b47eb036ea",
+      "syntaxReportSha256": "ab2d982582a5d5ef540b5ca92aacda359b5f8afd906fcf23d4d1c7da8d344b10"
+    }
+  ],
+  "classExpressionRegression": {
+    "failedMaps": 14,
+    "baselineReportSha256": "9fe4596cd1e18434d11a258115f3b404a336f4d260de046cbd0aa6b0aafa0736",
+    "rootCause": "verifier only accepts descriptor; Native-compatible assignment now emitted",
+    "repair": "exact assignment receiver/key/mode and complete statement/ending comparison; fresh140 replay pending",
+    "repairComplete": true,
+    "verifiedMaps": 140,
+    "controls": 5034,
+    "syntaxPrograms": 280,
+    "executions": 280,
+    "repairedReportSha256": "59cbcd239194cc03d31b81aff4409401d5e16feebb95d5fc95f792ff75d098bf",
+    "scope": "fresh contract/control/runtime replay of preserved complete two-CLI observations; compiler unchanged"
+  },
+  "fullCohortAccepted": false,
+  "commit": false,
+  "push": false
+}

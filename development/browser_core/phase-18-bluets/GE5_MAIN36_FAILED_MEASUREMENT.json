@@ -1,0 +1,106 @@
+{
+  "scope": "Main36 typed private RHS renderer fix integrated; complete cohort/report wiring and final gates pending, G-E5 not accepted",
+  "compiler": "/private/tmp/ge5-main36-private-rhs-bluetsc",
+  "compilerSha256": "bc2cc6658678a8a27e6ebf83c643ec57d63bedf62b792be5460348cb6ae4cf96",
+  "sourceEpoch": 36,
+  "privateStateEpoch": 64,
+  "sourceFiles": 498,
+  "sourceFreezeSha256": "116685228325d638da11f73056d7edb41c0a19a873e5162a77db2fd7d132d567",
+  "fullCohortAccepted": false,
+  "ordinaryUnfilteredAccepted": false,
+  "commit": false,
+  "push": false,
+  "twoCrateAllTargetsClippy": {
+    "passed": true,
+    "logSha256": "3cbe38d871bd3038c7e0e4747148150bf5cba9b9211e02461e4b5f3f3093b764"
+  },
+  "integrationReviews": {
+    "producerMergeSha256": "7613adf95d453f53f4ce20af835665b47294d1834983e09b2c5ad193556e7542",
+    "verifierMergeSha256": "5a5517434287e81685142d173487768391bf79c6289f5da55de1de4803319e16",
+    "staticPacketSha256": "24ce64df7aea59dddfcfaea6c579e00b77178d09a775c7411748c1a21688e8e6",
+    "safePacketTarSha256": "d29eff3beb39c48349ce79e8c8050f60d68db2afb7ab8cd7a5b4c6c97ee1f220",
+    "inventoryPacketSha256": "ca649a1e07eb855dae6fb7e4ecff718e9667925f65cf1e5e3628c5b8bec51a8b",
+    "inventoryAddendumSha256": "4423b94b2d095f8d9d53f07a09798b9f6abec5815c7f92ec9bc3a603e0d1ad45"
+  },
+  "independentWorktreeEvidenceNotMainAcceptance": {
+    "safeHome": {
+      "configurations": 92,
+      "freshControls": 131807,
+      "executions": 184,
+      "failures": 0
+    },
+    "staticSuper": {
+      "configurations": 282,
+      "freshControls": 69852,
+      "executions": 564,
+      "failures": 0
+    }
+  },
+  "sourceAndToolClosure": {
+    "producerMergedFiles": 15,
+    "producerTextConflictsResolved": 2,
+    "requiredVerifierUnionFiles": 107,
+    "unresolvedDependencies": 0,
+    "finiteIgnoredHarnesses": 47,
+    "finiteIgnoredFunctions": 54
+  },
+  "remainingRequiredGates": [
+    "repair decorator assertion erasure and pass unchanged K.11 generated22 real-process gate",
+    "complete frozen same-compiler 137-family / 8407-configuration / 20590-map evidence",
+    "unchanged owner and K.11 process gates",
+    "fresh complete ordinary/workspace and final source/tool/status audits"
+  ],
+  "producerFix": {
+    "file": "backend/bluets/src/emitter/private_lowering.rs",
+    "sha256": "f839e6276306250280b8a3a1dc5c06a96f546529587ea7eed52884eced5cf8f2",
+    "deliveryManifestSha256": "aa206407a7773069f3e3fbfd1e7daab65665a7cff78552c06a0d78ab1ec6dc33",
+    "description": "Resolve module-relative relocation parts before rebasing plain-text fragment edits; no generic bounds clamp or dropped map markers."
+  },
+  "focusedPublic": {
+    "passedRustTests": 2,
+    "failures": 0,
+    "privateRhsConfigurations": 48,
+    "privateRhsMapConfigurations": 24,
+    "privateRhsRuntimeExecutions": 48,
+    "originalClassOracleConfigurations": 30,
+    "originalClassOraclePinnedNativeStdoutParity": true,
+    "logSha256": "5a588489fa486e43d4f5a603a796939436a09986d683e0a43cba31ba33d74854"
+  },
+  "workspaceFormat": {
+    "passed": true,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "integratedToolSelfTests": {
+    "passed": 233,
+    "failed": 0,
+    "skippedObservationDependentTests": 2,
+    "logSha256": "5c9b9f463e1c6347a1442480b1575333066a59493c494a6a5ea11cc58336e697"
+  },
+  "previousMain35Failure": {
+    "file": "GE5_MAIN35_FAILED_MEASUREMENT.json",
+    "sha256": "7e5776265b9f572a752d912fe5f1f2e2a359397c7caaa09f6c2f630eec1dbb6a"
+  },
+  "measurement": {
+    "state": "pending-complete-per-map-report-wiring",
+    "completeCompatibilitySuites": 177,
+    "note": "Main35 failure is preserved. Main36 has not started its complete 177-suite measurement; existing whole-role gates need per-map evidence wiring before the source/tool set is frozen."
+  },
+  "k11RealProcess": {
+    "state": "failure",
+    "selectedTests": 22,
+    "passed": 19,
+    "failed": 3,
+    "unchangedFilteredNonGeneratedTests": 33,
+    "exitCode": 101,
+    "logSha256": "8ef126ced00f39fafdcdf9c57e2b1cdc75b9150f38d9cebf657e7c5b09e2466e",
+    "failureRootCause": "The unchanged erased-assertion decorator fixture emits [decoSite as any]; compile succeeds but Node syntax check rejects leaked TypeScript. The emitted program is absent in three debugger tests. Original fixtures and expectations remain unchanged.",
+    "failedTests": [
+      "generated::public_compacted_and_erased_decorator_positions_keep_their_original_tokens",
+      "generated_frozen_standard::public_exact_frozen_standard_decorators_keep_relocated_tokens",
+      "generated_helper_matrix::frozen_eleven_row_helper_frames_never_claim_user_source"
+    ],
+    "fixtureSha256": "f157e75862c138ecb9158af81dc81237311e1f7ba7e1dda47b972e47ffd2b96b",
+    "coreBuildLogSha256": "d57b63365cb51c2b63138daa75b5420cc631f773a11f2fff2a0fa08c15041558",
+    "launcherBuildLogSha256": "b0b0ba185820385529cbc260634a23494dbb7eb8f8bccfc22cfc7edb997cf9f0"
+  }
+}

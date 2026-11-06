@@ -173,6 +173,9 @@ pub(super) fn wrap(
             } else {
                 token.start
             };
+            let previous = tokens.partition_point(|token| token.end <= start);
+            let trivia = previous.checked_sub(1).map_or(0, |index| tokens[index].end);
+            let start = mapping::leading_comments(&emitted, &module.source, trivia, start);
             functions.push((start, tokens[end].end));
             index = end + 1;
             continue;
@@ -226,9 +229,37 @@ pub(super) fn wrap(
                 }
                 edits.push(TextEdit {
                     start: token.start,
-                    end: token.end,
+                    end: if emitted.javascript[token.end..name.start]
+                        .chars()
+                        .all(char::is_whitespace)
+                    {
+                        name.start
+                    } else {
+                        token.end
+                    },
                     replacement: String::new(),
                 });
+                if options.target < crate::EcmaTarget::Es2015
+                    && module.declarations.iter().any(|declaration| {
+                        matches!(declaration, Declaration::Variable(value)
+                            if value.name == name.text
+                                && value.initializer.first().is_some_and(|token| token.is("["))
+                                && value.initializer.iter().any(|token| token.is("...")))
+                    })
+                {
+                    if let Some(end) = bindings::statement_end(&tokens, index + 1) {
+                        if tokens[end].is(";") && end > index + 1 {
+                            edits.push(TextEdit {
+                                start: tokens[end].start,
+                                end: tokens[end].end,
+                                replacement: format!(
+                                    "{};",
+                                    relocations::source_anchor(tokens[end - 1].start)
+                                ),
+                            });
+                        }
+                    }
+                }
             }
         }
         if depth == 0 && token.is("class") && !targets::es5::class_is_expression(&tokens, index) {
@@ -237,14 +268,18 @@ pub(super) fn wrap(
                 edits.push(TextEdit {
                     start: token.start,
                     end: token.start,
-                    replacement: format!("{} = ", name.text),
+                    replacement: format!(
+                        "{}{} = ",
+                        relocations::source_anchor(token.start),
+                        name.text
+                    ),
                 });
                 let end = bindings::class_end(&tokens, index)
                     .ok_or_else(|| unsupported(module, "System class body was not retained"))?;
                 edits.push(TextEdit {
                     start: tokens[end].end,
                     end: tokens[end].end,
-                    replacement: ";".into(),
+                    replacement: format!("{};", relocations::source_anchor(tokens[end].end)),
                 });
             }
         }
@@ -278,7 +313,12 @@ pub(super) fn wrap(
             .iter()
             .filter(|edit| edit.end <= offset)
             .fold(offset, |position, edit| {
-                position + edit.replacement.len() - (edit.end - edit.start)
+                let replacement_bytes =
+                    relocations::expand(&edit.replacement, &emitted.javascript, &edits)
+                        .iter()
+                        .map(|part| part.text().len())
+                        .sum::<usize>();
+                position + replacement_bytes - (edit.end - edit.start)
             })
     };
     let functions = functions

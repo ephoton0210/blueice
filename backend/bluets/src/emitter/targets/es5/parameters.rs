@@ -7,6 +7,7 @@
 use super::*;
 use crate::parser::Parameter;
 mod raw;
+mod rest;
 pub(super) use raw::lower;
 
 pub(super) fn prologue(
@@ -73,9 +74,12 @@ pub(super) fn prologue(
                 replacement: String::new(),
             });
             let index = unused_name(&module.source, "argument", sequence);
-            output.push_str(&format!(
-                "var {0} = []; for (var {1} = {2}; {1} < arguments.length; {1}++) {{ {0}[{1} - {2}] = arguments[{1}]; }}\n",
-                parameter.name, index, position,
+            output.push_str(&rest::prologue(
+                &parameter.name,
+                &index,
+                position,
+                parameter.span.start,
+                parameter.span.end,
             ));
         }
     }

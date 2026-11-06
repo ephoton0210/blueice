@@ -30,6 +30,7 @@ impl Builder<'_> {
                 cursor += 1;
             }
             let test = (!default).then_some(&tokens[first..cursor]);
+            let punctuation_end = tokens[cursor].end;
             let body = cursor + 1;
             cursor = body;
             while cursor < end {
@@ -41,17 +42,26 @@ impl Builder<'_> {
                 }
                 cursor += 1;
             }
-            arms.push((test, body, cursor));
+            arms.push((test, punctuation_end, body, cursor));
         }
         self.loops.push(JumpTargets {
             broken: (next, self.regions),
             continued: self.loops.last().and_then(|targets| targets.continued),
         });
         let selector = self.temporary();
+        let selector_tokens = &tokens[start + 2..close];
+        self.binding_initializers.insert(
+            selector.clone(),
+            origins::InitializerOrigin {
+                start: selector_tokens.first()?.start,
+                end: selector_tokens.last()?.end,
+                statement: false,
+            },
+        );
         let mut default = next;
         let mut fallthrough = next;
         let mut tests = Vec::new();
-        for (test, begin, end) in arms.into_iter().rev() {
+        for (test, punctuation_end, begin, end) in arms.into_iter().rev() {
             let items = if begin == end {
                 Vec::new()
             } else {
@@ -66,20 +76,59 @@ impl Builder<'_> {
             let entry = self.sequence(&items, fallthrough)?;
             fallthrough = entry;
             if let Some(test) = test {
-                tests.push((test, entry));
+                tests.push((test, punctuation_end, entry));
             } else {
                 default = entry;
             }
         }
         self.loops.pop();
+        // Keeping a synchronous case test in a switch preserves its original
+        // punctuation and ordered selection without extra continuation states.
+        if !self.external_abi
+            && !tests.is_empty()
+            && tests.iter().all(|(test, _, _)| !self.suspends(test))
+        {
+            let mut dispatch = format!("switch ({selector}) {{\n");
+            for (test, punctuation_end, matched) in tests.iter().rev() {
+                let value = self.text(test)?;
+                let start = relocations::source_anchor(self.source_offset + test.first()?.start);
+                let end = relocations::source_anchor(self.source_offset + test.last()?.end);
+                let punctuation = relocations::source_anchor(self.source_offset + punctuation_end);
+                dispatch.push_str(&format!(
+                    "{}case {value}{end}:{punctuation}\n{}{start}{}.label = {matched};{end} {}continue;\n",
+                    relocations::unmapped(),
+                    relocations::unmapped(),
+                    self.context,
+                    relocations::unmapped(),
+                ));
+            }
+            dispatch.push_str(&format!(
+                "default: {}.label = {default}; continue;\n}}",
+                self.context
+            ));
+            let entry = self.block(dispatch);
+            return self.expression(&tokens[start + 2..close], Some(&selector), "", entry);
+        }
         let mut entry = default;
         // Tests were collected in reverse source order. Prepending them here
         // restores source order while default remains the final fallback.
-        for (test, matched) in tests {
+        for (test, punctuation_end, matched) in tests {
             let value = self.temporary();
+            self.binding_initializers.insert(
+                value.clone(),
+                origins::InitializerOrigin {
+                    start: test.first()?.start,
+                    end: test.last()?.end,
+                    statement: false,
+                },
+            );
+            self.case_punctuation.insert(value.clone(), punctuation_end);
+            let start = relocations::source_anchor(self.source_offset + test.first()?.start);
+            let end = relocations::source_anchor(self.source_offset + test.last()?.end);
             let branch = self.block(format!(
-                "{}.label = {selector} === {value} ? {matched} : {entry}; continue;",
-                self.context
+                "{start}{}.label = {selector} === {value} ? {matched} : {entry};{end} {}continue;",
+                self.context,
+                relocations::unmapped(),
             ));
             entry = self.expression(test, Some(&value), "", branch)?;
         }

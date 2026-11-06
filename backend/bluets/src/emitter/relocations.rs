@@ -194,11 +194,18 @@ impl ProvenanceEmitter<'_> {
         }
         let mut marks = Vec::with_capacity(source_tokens.len().saturating_mul(2));
         for ((index, source), generated) in source_tokens.into_iter().zip(generated_tokens) {
-            if token_maps::mark_start(self.source, &self.tokens, index) {
-                marks.push((generated.start, source.start));
+            if let Some(&anchor) = self.token_anchors.get(&source.start) {
+                marks.push((generated.start, anchor));
+            } else if token_maps::mark_start(self.source, &self.tokens, index) {
+                marks.push((generated.start, Some(source.start)));
             }
-            if token_maps::mark_end(source) {
-                marks.push((generated.end, source.end));
+            if let Some(&anchor) = self.token_end_anchors.get(&source.end) {
+                marks.push((generated.end, Some(anchor)));
+            } else if self.token_anchors.get(&source.start) != Some(&None)
+                && !(source.is("{") && self.token_anchors.contains_key(&source.start))
+                && token_maps::mark_end(&self.tokens, index)
+            {
+                marks.push((generated.end, Some(source.end)));
             }
         }
         marks.sort_by_key(|(generated, _)| *generated);
@@ -210,7 +217,11 @@ impl ProvenanceEmitter<'_> {
                 .peek()
                 .is_some_and(|(generated, _)| *generated == offset)
             {
-                self.mark(marks.next().unwrap().1);
+                if let Some(anchor) = marks.next().unwrap().1 {
+                    self.mark(anchor);
+                } else {
+                    self.insert_unmapped("");
+                }
             }
             self.push(character, characters.peek().map(|(_, next)| *next));
         }

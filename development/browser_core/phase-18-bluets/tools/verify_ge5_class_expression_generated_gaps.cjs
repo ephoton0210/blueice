@@ -1,0 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{stream,compareGap}=require('./ge5_role_stream.cjs'),authority=require('./ge5_native_authority.cjs'),frame=require('./ge5_class_expression_frame.cjs'),graph=require('./ge5_inputs.cjs');
+const root=path.resolve(__dirname,'../../../..'),reference=require(path.join(root,'backend/bluets/tests/fixtures/ge5_source_maps/reference.json')),input=require(path.join(root,'backend/bluets/tests/fixtures/ge5_source_maps/cases.json')),parents=graph.parents(root,input);
+const ts=require(path.join(root,'backend/bluets/tests/fixtures/oracle_support/load_typescript.cjs'))(process.env.BLUEICE_BLUETSC_ORACLE||'tsc');
+const rows=JSON.parse(fs.readFileSync(0,'utf8'));assert.equal(rows.length,48);
+for(const row of rows){const e=reference.cases[row.index],text=graph.resolve(input,input.cases[row.index],parents).files['main.ts'],n=stream(ts,reference.blobs[e.outputs['out/main.js']],authority.raw(reference,e,'out/main.js.map')),a=stream(ts,row.outputs['out/main.js'],row.outputs['out/main.js.map']),original=ts.createSourceFile('original.ts',text,ts.ScriptTarget.Latest,true);let source;function visit(node){if(ts.isClassExpression(node)&&(ts.getDecorators(node)||[]).length)source=node;ts.forEachChild(node,visit);}visit(original);const nn=frame.read(ts,n,source,row.options,false),aa=frame.read(ts,a,source,row.options,true),nm=nn.classValue.members.find(member=>!ts.isClassStaticBlockDeclaration(member)),am=aa.classValue.members.find(member=>!ts.isClassStaticBlockDeclaration(member));assert(nm&&am);compareGap(n,nn.metadataBlock.end,nm.getStart(n.source),a,aa.metadataBlock.end,am.getStart(a.source),'generated metadata phase to original/implicit class member gap '+row.index);}
+console.log(JSON.stringify({ordinaryConfigurations:rows.length,repeatBuilds:2,generatedHeaderDoesNotRestoreAnErasedSourceBoundary:true}));

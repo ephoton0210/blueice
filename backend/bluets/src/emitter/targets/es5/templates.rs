@@ -5,6 +5,7 @@
 //! Untagged templates retain expression order and string-hint conversion.
 
 use super::*;
+use crate::emitter::relocations;
 mod tagged;
 pub(crate) const TAGGED_SOURCE: &str = tagged::SOURCE;
 
@@ -55,9 +56,12 @@ pub(super) fn lower(
             if bytes[position..].starts_with(b"${") {
                 let literal = quoted(&emitted.javascript[chunk..position]);
                 if replacement.is_empty() {
-                    replacement = literal;
-                } else if chunk < position {
-                    replacement.push_str(&format!(".concat({literal})"));
+                    replacement = format!("{}{literal}", relocations::unmapped());
+                } else {
+                    if chunk < position {
+                        replacement.push_str(&format!(", {literal}"));
+                    }
+                    replacement.push(')');
                 }
                 let start = position + 2;
                 let (end, expression_tokens) =
@@ -72,7 +76,11 @@ pub(super) fn lower(
                     ));
                 }
                 remaining -= expression_tokens.len();
-                replacement.push_str(&format!(".concat(({}))", &emitted.javascript[start..end]));
+                replacement.push_str(&format!(
+                    ".concat({}({})",
+                    relocations::unmapped(),
+                    relocations::relocated_verbatim(start, end)
+                ));
                 position = end + 1;
                 chunk = position;
             } else {
@@ -81,16 +89,24 @@ pub(super) fn lower(
         }
         let tail = quoted(&emitted.javascript[chunk..token.end - 1]);
         if replacement.is_empty() {
-            replacement = tail;
-        } else if chunk < token.end - 1 {
-            replacement.push_str(&format!(".concat({tail})"));
+            replacement = format!("{}{tail}", relocations::source_anchor(token.start));
+        } else {
+            if chunk < token.end - 1 {
+                replacement.push_str(&format!(", {tail}"));
+            }
+            replacement.push(')');
         }
         emitted = mapped_edits(
             emitted,
             vec![TextEdit {
                 start: token.start,
                 end: token.end,
-                replacement: format!("({replacement})"),
+                replacement: format!(
+                    "{}({replacement}{}){}",
+                    relocations::source_anchor(token.start),
+                    relocations::source_anchor(token.end),
+                    relocations::source_anchor(token.end)
+                ),
             }],
         );
     }

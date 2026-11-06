@@ -75,6 +75,9 @@ pub(super) fn validate_dependencies(options: &Map<String, Value>) -> Result<(), 
     if enabled("sourceMap") && enabled("inlineSourceMap") {
         return Err("compiler options `sourceMap` and `inlineSourceMap` cannot be combined".into());
     }
+    if nonempty("mapRoot") && enabled("inlineSourceMap") {
+        return Err("compiler options `mapRoot` and `inlineSourceMap` cannot be combined".into());
+    }
     if !enabled("declaration") {
         for name in [
             "emitDeclarationOnly",

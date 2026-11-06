@@ -1,0 +1,232 @@
+{
+  "scope": "Main37 complete run failed at declaration inference; early CLI seal also caused binary mismatch; G-E5 not accepted",
+  "compiler": "/private/tmp/ge5-main37-erased-decorator-bluetsc",
+  "compilerSha256": "6a8964a3de526e653536c2cbeb6fea0a8f97c8753815c5eb899de24dfbb82171",
+  "sourceEpoch": 37,
+  "privateStateEpoch": 65,
+  "sourceFiles": 498,
+  "sourceFreezeSha256": "58d8d93b786f516f298703077b83f882e001e5a5c0c10994e89ef1a19393180b",
+  "fullCohortAccepted": false,
+  "ordinaryUnfilteredAccepted": false,
+  "commit": false,
+  "push": false,
+  "twoCrateAllTargetsClippy": {
+    "passed": true,
+    "logSha256": "6fce0fffe632b0406ec889e9f518f9728fbad889925becf56eb03f579a57d80b"
+  },
+  "integrationReviews": {
+    "producerMergeSha256": "7613adf95d453f53f4ce20af835665b47294d1834983e09b2c5ad193556e7542",
+    "verifierMergeSha256": "5a5517434287e81685142d173487768391bf79c6289f5da55de1de4803319e16",
+    "staticPacketSha256": "24ce64df7aea59dddfcfaea6c579e00b77178d09a775c7411748c1a21688e8e6",
+    "safePacketTarSha256": "d29eff3beb39c48349ce79e8c8050f60d68db2afb7ab8cd7a5b4c6c97ee1f220",
+    "inventoryPacketSha256": "ca649a1e07eb855dae6fb7e4ecff718e9667925f65cf1e5e3628c5b8bec51a8b",
+    "inventoryAddendumSha256": "4423b94b2d095f8d9d53f07a09798b9f6abec5815c7f92ec9bc3a603e0d1ad45"
+  },
+  "independentWorktreeEvidenceNotMainAcceptance": {
+    "safeHome": {
+      "configurations": 92,
+      "freshControls": 131807,
+      "executions": 184,
+      "failures": 0
+    },
+    "staticSuper": {
+      "configurations": 282,
+      "freshControls": 69852,
+      "executions": 564,
+      "failures": 0
+    }
+  },
+  "sourceAndToolClosure": {
+    "producerMergedFiles": 15,
+    "producerTextConflictsResolved": 2,
+    "requiredVerifierUnionFiles": 107,
+    "unresolvedDependencies": 0,
+    "finiteIgnoredHarnesses": 47,
+    "finiteIgnoredFunctions": 54
+  },
+  "remainingRequiredGates": [
+    "complete frozen same-compiler 137-family / 8407-configuration / 20590-map evidence and exact JS coverage ledger",
+    "unchanged owner controls through the complete measurement",
+    "fresh complete ordinary/workspace and final source/tool/status audits"
+  ],
+  "producerFix": {
+    "file": "backend/bluets/src/emitter/private_lowering.rs",
+    "sha256": "f839e6276306250280b8a3a1dc5c06a96f546529587ea7eed52884eced5cf8f2",
+    "deliveryManifestSha256": "aa206407a7773069f3e3fbfd1e7daab65665a7cff78552c06a0d78ab1ec6dc33",
+    "description": "Resolve module-relative relocation parts before rebasing plain-text fragment edits; no generic bounds clamp or dropped map markers."
+  },
+  "focusedPublic": {
+    "passedRustTests": 3,
+    "failures": 0,
+    "privateRhsConfigurations": 48,
+    "privateRhsMapConfigurations": 24,
+    "privateRhsRuntimeExecutions": 48,
+    "decoratorAssertionConfigurations": 2,
+    "decoratorAssertionMapConfigurations": 1,
+    "decoratorAssertionRuntimeExecutions": 2,
+    "originalClassOracleConfigurations": 30,
+    "originalClassOraclePinnedNativeStdoutParity": true,
+    "logSha256": "8f513c1421c5f4caa96085d291d2f18105d440b112dc5d2963b2c0aaa78afafa"
+  },
+  "workspaceFormat": {
+    "passed": true,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "integratedToolSelfTests": {
+    "passed": 242,
+    "failed": 0,
+    "skippedObservationDependentTests": 2,
+    "logSha256": "1e5824bbad81a3dd0f67b0acc67ff60a0498ba12ef62b38f90c5fbb0ee9faff7"
+  },
+  "previousMain35Failure": {
+    "file": "GE5_MAIN35_FAILED_MEASUREMENT.json",
+    "sha256": "7e5776265b9f572a752d912fe5f1f2e2a359397c7caaa09f6c2f630eec1dbb6a"
+  },
+  "measurement": {
+    "state": "failure",
+    "startedAt": "2026-11-05T08:12:49.578402+00:00",
+    "driver": "/private/tmp/ge5-main37-final-driver.json",
+    "driverSourceSha256": "71e5f361bb3413a8de848bb67a21a95199fd17a0321f43c5f3b8a1d9804f5c51",
+    "measurementDirectory": "/private/tmp/ge5-main37-final-measurement",
+    "completeCompatibilitySuites": 177,
+    "preflightResults": {
+      "catalog": {
+        "exitCode": 0,
+        "logSha256": "daad967c3f587879a50d801e9fa202edbbbd091e3cc409c1dc8f2313aef0065b"
+      },
+      "case-source-audit": {
+        "exitCode": 0,
+        "logSha256": "e872241372a1ebc221e122f2ddf669943cbbfa70d979c1e4bbce96c14d6ed77b"
+      },
+      "source-check": {
+        "exitCode": 0,
+        "logSha256": "e72a414f7b90b425df71cb4fd4314a8d37c5f4fcbcaaf9a6811b7edfa672a5ff"
+      }
+    },
+    "note": "The existing dtsinfer-commonjs-g1 fixture emits an invalid abstract class in CommonJS. Separately, cargo test --no-run rebuilt the runtime CLI after its early seal, so the failed run cannot establish same-binary acceptance. The original failed receipt is retained unchanged.",
+    "finishedAt": "2026-11-05T08:21:02.585Z",
+    "measurementExitCode": 1,
+    "receiptSha256": "574ff8f4000d896bad2c041ab72aba2123815e8e670e453332bd4f29966b7bc2",
+    "completedSuitesBeforeFailure": 28,
+    "failedSuite": "backend/bluets/tests/declaration_inference.rs",
+    "failedTest": "emitted_declarations_preserve_native_execution_declarations_and_target_syntax",
+    "results": {
+      "catalog": {
+        "exitCode": 0,
+        "logSha256": "daad967c3f587879a50d801e9fa202edbbbd091e3cc409c1dc8f2313aef0065b"
+      },
+      "case-source-audit": {
+        "exitCode": 0,
+        "logSha256": "e872241372a1ebc221e122f2ddf669943cbbfa70d979c1e4bbce96c14d6ed77b"
+      },
+      "source-check": {
+        "exitCode": 0,
+        "logSha256": "e72a414f7b90b425df71cb4fd4314a8d37c5f4fcbcaaf9a6811b7edfa672a5ff"
+      },
+      "measurement": {
+        "exitCode": 1,
+        "logSha256": "84cbf2ea7078a83e759bf18f3fb4bbd076738f164fc5805782b53a023d6c0d0f"
+      }
+    }
+  },
+  "k11RealProcess": {
+    "state": "success",
+    "selectedTests": 22,
+    "passed": 22,
+    "failed": 0,
+    "unchangedFilteredNonGeneratedTests": 33,
+    "exitCode": 0,
+    "seconds": 83.12,
+    "logSha256": "5060ef45d56876475ccf6ce5a43cc3e455cb02e13710c3a62ca11a95db5b1f0c",
+    "matrixAndFixtureChanges": 0,
+    "fixtureSha256": "f157e75862c138ecb9158af81dc81237311e1f7ba7e1dda47b972e47ffd2b96b",
+    "coreBuildLogSha256": "c359c899db74fa8a918116ad457e90b7024c46da6a818d531e83ec91aed3c3b9",
+    "launcherBuildLogSha256": "6fe564fd1710e99b47b98929574a180969aa739c7f16d47044bdc4db33dbae22"
+  },
+  "previousMain36Failure": {
+    "file": "GE5_MAIN36_FAILED_MEASUREMENT.json",
+    "sha256": "a23b14a774ae87722185ccda1a5aebad0e26aea9d08bb0f83268dc651bb7d158"
+  },
+  "decoratorFix": {
+    "file": "backend/bluets/src/emitter/decorators.rs",
+    "sha256": "3dcf52dfc06a9e22104cbc03393082626f6d59001cb49c3d4fa2a80c13eb6dba",
+    "sealedDeliverySha256": "31f53170ec44bb775a894be7bb4394101daf2b81bed66bedca76a9cc2f2bde66",
+    "description": "Relocate only the parsed surviving asserted decorator identifier; keep original decorator end anchor. Original empty erase extends past the old moved span."
+  },
+  "sourceRevision": "backend-tree:c5a3f608cef8666fc5877a0f7df107d142b4f0e0",
+  "reviewedStagingManifestSha256": "f7cd67395cf91a0f702a809c0a46129298054678fb49a7618b59f990d996e8dc",
+  "perMapReportUnitTests": {
+    "passed": 2,
+    "failed": 0,
+    "logSha256": "2e86dca3f79b8a7b2218d2b2b7b993924de8228d58a98af68f5619141523856a",
+    "scope": "exact inline raw bytes and retained whole-token/gap rejection; full cohort not measured"
+  },
+  "perMapEvidenceWiring": {
+    "files": 6,
+    "manifestSha256": "1e31db3b9ee5c999717cb1ee68df8e356e84d41ff28b8c7db773276c9e724a38",
+    "nodeFocusedTests": 13,
+    "rustFocusedTests": 2,
+    "scope": "inventory only; requires actual successful complete measurement, exact per-map proofs and unchanged hashes"
+  },
+  "compilerIdentityAudit": {
+    "initialDevBuildSha256": "6a8964a3de526e653536c2cbeb6fea0a8f97c8753815c5eb899de24dfbb82171",
+    "actualTestBuiltCliSha256": "3954c4e1e7dfeb5e43d96bf0d82d4740931eda385f21d53c9e689d8fb6e4be51",
+    "all498ProductionSourceHashesUnchanged": true,
+    "testBuiltDiagnosticFreezeSha256": "2167c2c3445e3eb5082c145909d1041e38423fbe4be84a47e7bd5bfa10ab68d0",
+    "correctiveOrder": "Finish all two-package test builds before freezing runtime CLI; enforce expected SHA after no-run and around every suite."
+  },
+  "baselineDiscovery": {
+    "scope": "emit/syntax/runtime filtered diagnostic only; exact selected/excluded names retained; full177 still required",
+    "compilerSha256": "3954c4e1e7dfeb5e43d96bf0d82d4740931eda385f21d53c9e689d8fb6e4be51",
+    "lanes": [
+      {
+        "lane": "early",
+        "directory": "/private/tmp/ge5-main37-emission-discovery",
+        "state": "in_progress",
+        "completedSelectedSuites": 13,
+        "failedSuites": [
+          "backend/bluets/tests/declaration_inference.rs"
+        ],
+        "compilerSha256": "3954c4e1e7dfeb5e43d96bf0d82d4740931eda385f21d53c9e689d8fb6e4be51"
+      },
+      {
+        "lane": "late-a",
+        "directory": "/private/tmp/ge5-main37-discovery-late-a",
+        "state": "diagnostic-terminal-success; full177 still required",
+        "completedSelectedSuites": 31,
+        "failedSuites": [],
+        "compilerSha256": "3954c4e1e7dfeb5e43d96bf0d82d4740931eda385f21d53c9e689d8fb6e4be51"
+      },
+      {
+        "lane": "late-b",
+        "directory": "/private/tmp/ge5-main37-discovery-late-b",
+        "state": "diagnostic-terminal-success; full177 still required",
+        "completedSelectedSuites": 21,
+        "failedSuites": [],
+        "compilerSha256": "3954c4e1e7dfeb5e43d96bf0d82d4740931eda385f21d53c9e689d8fb6e4be51"
+      }
+    ],
+    "originalUnfilteredDiagnostic": "retired with eight completed suites; saved separately, not acceptance"
+  },
+  "cliMeasurementGuard": {
+    "integrated": true,
+    "focusedTestsPassed": 8,
+    "logSha256": "ced05f321c95aa3a348e2b4eb551a215a157a307fac7d00ef8bb81b8aa315af3",
+    "scope": "expected normal Cargo CLI SHA after no-run, before/after every suite, before successful termination"
+  },
+  "pendingReviewedDeliveries": {
+    "commonjsAbstractClass": {
+      "manifestSha256": "68aa76ebd5ecd567b7807a0bee20ceba21d02b099a9322b3787b07501d42d72b",
+      "mainIntegrated": false,
+      "worktreeRuntimeConfigurations": 48,
+      "worktreeMapConfigurations": 24,
+      "preservedDecoratorSyntaxConfigurations": 2,
+      "originalAcceptedCases": 77
+    },
+    "collectorMeasurementCompilerBinding": {
+      "manifestSha256": "7baced9bed6ab704932d69dd1ea54041e2fd4e8ea34f97d0117aaafaf232be38",
+      "mainIntegrated": false,
+      "focusedTestsPassed": 4
+    }
+  }
+}

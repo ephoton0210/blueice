@@ -25,6 +25,7 @@ use super::{apply_edits, Module, TextEdit};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{ClassDeclaration, ClassMemberShell};
 use crate::Token;
+mod origins;
 
 /// The version of the emitted private-name helper text. It is part of the
 /// build fingerprint, so a change to the helpers is a change to the artifact.
@@ -49,7 +50,10 @@ pub(super) fn helper_definitions(needed: &BTreeSet<Helper>) -> String {
     if needed.is_empty() {
         return String::new();
     }
-    let mut text = format!("/* {CLASS_HELPER_V1_VERSION} */ ");
+    let mut text = format!(
+        "{}/* {CLASS_HELPER_V1_VERSION} */ ",
+        super::relocations::unmapped()
+    );
     for helper in needed {
         text.push_str(match helper {
             Helper::Get => concat!(
@@ -101,6 +105,8 @@ pub(super) struct PrivateNames<'a> {
     names: Vec<PrivateName>,
     /// `_C_instances`, when the class has an instance method or accessor.
     instances: Option<String>,
+    source_origins: bool,
+    completion_origin: bool,
 }
 
 impl<'a> PrivateNames<'a> {
@@ -108,6 +114,15 @@ impl<'a> PrivateNames<'a> {
     pub(super) fn collect(
         module: &Module,
         class: &'a ClassDeclaration,
+    ) -> Result<Option<Self>, Diagnostic> {
+        Self::collect_with_origins(module, class, false, false)
+    }
+
+    pub(super) fn collect_with_origins(
+        module: &Module,
+        class: &'a ClassDeclaration,
+        source_origins: bool,
+        completion_origin: bool,
     ) -> Result<Option<Self>, Diagnostic> {
         let class_name = &class.name;
         let mut names: Vec<PrivateName> = Vec::new();
@@ -160,6 +175,8 @@ impl<'a> PrivateNames<'a> {
             class,
             names,
             instances,
+            source_origins,
+            completion_origin,
         };
         for variable in this.variables() {
             if mentions_identifier(&module.source, &variable) {
@@ -256,7 +273,31 @@ impl<'a> PrivateNames<'a> {
     }
 
     /// `_C_x.set(this, init);` for an instance private field.
-    pub(super) fn field_store(&self, name: &str, value: Option<String>) -> String {
+    pub(super) fn field_store(
+        &self,
+        field: &crate::parser::ClassField,
+        source: &str,
+        edits: &[TextEdit],
+    ) -> (String, Vec<TextEdit>) {
+        let entry = self
+            .find(&field.name)
+            .expect("a private field was collected");
+        if !self.source_origins || field.initializer.is_none() {
+            let value = field
+                .initializer
+                .as_deref()
+                .map(|tokens| super::class_lowering::render_tokens(source, edits, tokens))
+                .unwrap_or_else(|| "void 0".to_string());
+            return (
+                format!(" {}.set(this, {value});", entry.variable),
+                Vec::new(),
+            );
+        }
+        origins::field_store(&entry.variable, field, source, edits)
+    }
+
+    /// Render an instance store for an independently proved moved initializer.
+    pub(super) fn field_store_value(&self, name: &str, value: Option<String>) -> String {
         let entry = self.find(name).expect("a private field was collected");
         format!(
             " {}.set(this, {});",
@@ -286,6 +327,23 @@ impl<'a> PrivateNames<'a> {
         }
         if let Some(instances) = &self.instances {
             text.push_str(&format!(" {instances} = new WeakSet();"));
+        }
+        if self.source_origins && self.completion_origin {
+            origins::instance_setup(self.class, text)
+        } else {
+            text
+        }
+    }
+
+    pub(super) fn constructor_header(&self, text: String) -> String {
+        if self.source_origins && !self.class.anonymous && self.class.extends_span.is_none() {
+            if let Some(rest) = text.strip_prefix(' ') {
+                return format!(
+                    "{} {}{rest}",
+                    super::relocations::source_anchor(self.class.name_span.end),
+                    super::relocations::unmapped()
+                );
+            }
         }
         text
     }
@@ -460,8 +518,10 @@ impl<'a> PrivateNames<'a> {
             }
             let value = render(module, edits, first.start, last.end);
             needed.insert(Helper::Set);
-            let replacement = if operator.is("=") {
-                self.write(entry, &receiver_text, &value)
+            let (replacement, nested) = if operator.is("=") && self.source_origins {
+                origins::write(self, entry, receiver, &module.source, edits, first, last)
+            } else if operator.is("=") {
+                (self.write(entry, &receiver_text, &value), Vec::new())
             } else {
                 let Some(binary) = operator
                     .text
@@ -471,13 +531,17 @@ impl<'a> PrivateNames<'a> {
                     return Err(unsupported_form(&span, "a logical assignment"));
                 };
                 needed.insert(Helper::Get);
-                self.write(
-                    entry,
-                    &receiver_text,
-                    &format!("{} {binary} ({value})", self.read(entry, &receiver_text)),
+                (
+                    self.write(
+                        entry,
+                        &receiver_text,
+                        &format!("{} {binary} ({value})", self.read(entry, &receiver_text)),
+                    ),
+                    Vec::new(),
                 )
             };
             push_replacement(edits, receiver.start, last.end, replacement);
+            edits.extend(nested);
             return Ok(());
         }
         // A call: `RECV.#m(args)` keeps `this` for the function.
@@ -488,12 +552,27 @@ impl<'a> PrivateNames<'a> {
             push_replacement(
                 edits,
                 receiver.start,
-                opening.end,
-                format!(
-                    "{}.call({receiver_text}{}",
-                    self.read(entry, &receiver_text),
-                    if empty { "" } else { ", " }
-                ),
+                if empty && self.source_origins {
+                    tokens[index + 2].end
+                } else {
+                    opening.end
+                },
+                if self.source_origins {
+                    origins::call(
+                        GET_HELPER,
+                        receiver,
+                        &self.state(entry),
+                        &self.read_tail(entry),
+                        name.end,
+                        empty.then(|| tokens[index + 2].end),
+                    )
+                } else {
+                    format!(
+                        "{}.call({receiver_text}{}",
+                        self.read(entry, &receiver_text),
+                        if empty { "" } else { ", " }
+                    )
+                },
             );
             return Ok(());
         }
@@ -503,7 +582,17 @@ impl<'a> PrivateNames<'a> {
             edits,
             receiver.start,
             name.end,
-            self.read(entry, &receiver_text),
+            if self.source_origins {
+                origins::read(
+                    GET_HELPER,
+                    receiver,
+                    &self.state(entry),
+                    &self.read_tail(entry),
+                    name.end,
+                )
+            } else {
+                self.read(entry, &receiver_text)
+            },
         );
         Ok(())
     }
@@ -544,7 +633,18 @@ impl<'a> PrivateNames<'a> {
             edits,
             name.start,
             operand.end,
-            format!("{IN_HELPER}({}, {})", self.state(entry), operand.text),
+            if self.source_origins {
+                origins::membership(
+                    &self.state(entry),
+                    operand,
+                    tokens
+                        .get(index.wrapping_sub(1))
+                        .filter(|token| token.is("return"))
+                        .map_or(name.start, |token| token.start),
+                )
+            } else {
+                format!("{IN_HELPER}({}, {})", self.state(entry), operand.text)
+            },
         );
         Ok(())
     }
@@ -629,7 +729,12 @@ fn render(module: &Module, edits: &[TextEdit], start: usize, end: usize) -> Stri
         .map(|edit| TextEdit {
             start: edit.start - start,
             end: edit.end - start,
-            replacement: edit.replacement.clone(),
+            // This consumer needs plain text. Relocation ranges still address
+            // the complete module, not the fragment passed to apply_edits.
+            replacement: super::relocations::expand(&edit.replacement, &module.source, edits)
+                .iter()
+                .map(super::relocations::Part::text)
+                .collect(),
         })
         .collect();
     apply_edits(&module.source[start..end], inner).javascript

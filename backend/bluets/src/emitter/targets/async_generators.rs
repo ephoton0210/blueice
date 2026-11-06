@@ -7,6 +7,7 @@
 //! nested functions keep their own suspension and completion boundaries.
 
 use super::*;
+use crate::emitter::relocations;
 
 const HELPER: &str = include_str!("async_generator_helpers.v1.js");
 
@@ -57,9 +58,8 @@ pub(super) fn lower(
         };
         let Some(body) = rewrite(
             &emitted.javascript,
-            &tokens,
-            function.body + 1..function.body_end,
-            tokens[function.body].end..tokens[function.body_end].start,
+            tokens[function.body].end,
+            tokens[function.body_end].start,
             (&marker, external),
             options.limits.parser.max_type_depth.min(128),
             (module, &options.limits.parser),
@@ -82,12 +82,26 @@ pub(super) fn lower(
         } else {
             tokens[function.parameters_end].start
         };
-        let originals = &emitted.javascript[tokens[function.parameters].end..originals_end];
-        let name = &tokens[start + 3].text;
+        let originals =
+            relocations::relocated_verbatim(tokens[function.parameters].end, originals_end);
+        let name = relocations::relocated_verbatim(tokens[start + 3].start, tokens[start + 3].end);
+        let start_anchor = relocations::source_anchor(tokens[start].start);
+        let signature = if function.parameters + 1 == function.parameters_end {
+            tokens[function.parameters].start
+        } else {
+            tokens[function.parameters_end].start
+        };
+        let signature_anchor = relocations::source_anchor(signature);
+        let generated = relocations::unmapped();
+        let body_close = relocations::relocated_verbatim(
+            tokens[function.body_end].start,
+            tokens[function.body_end].end,
+        );
+        let completion = relocations::source_anchor(tokens[function.body_end].end);
         let replacement = format!(
-            "function {name}({parameters}) {{\n\
-             if (new.target) throw new TypeError(\"Async generator is not a constructor\");\n\
-             return {helper}(this, arguments, function* ({originals}) {{{body}}});\n}}"
+            "{start_anchor}function {name}{signature_anchor}({parameters}) {signature_anchor}{{\n\
+             {generated}if (new.target) throw new TypeError(\"Async generator is not a constructor\");\n\
+             {signature_anchor}return {helper}(this, arguments, function* ({originals}) {{{body}{body_close}{completion});\n{completion}}}"
         );
         let source = if external {
             String::new()
@@ -117,9 +131,8 @@ pub(super) fn lower(
 
 fn rewrite(
     source: &str,
-    tokens: &[Token],
-    indices: std::ops::Range<usize>,
-    characters: std::ops::Range<usize>,
+    begin: usize,
+    finish: usize,
     marker: (&str, bool),
     depth: usize,
     context: (&Module, &crate::parser::ParserLimits),
@@ -128,51 +141,41 @@ fn rewrite(
     if depth == 0 {
         return None;
     }
-    let std::ops::Range { start, end } = indices;
-    let std::ops::Range {
-        start: begin,
-        end: finish,
-    } = characters;
+    let tokens = crate::syntax::lex_with_limits(
+        &context.0.id,
+        &source[begin..finish],
+        context.1.max_source_bytes,
+        context.1.max_tokens,
+    )
+    .ok()?;
+    let end = tokens.len().checked_sub(1)?;
     let mut edits = Vec::new();
-    let mut index = start;
+    let mut index = 0;
     while index < end {
         let token = &tokens[index];
         if token.kind == TokenKind::Template {
-            let replacement = super::suspension_text::template(
+            let replacement = mapped_fragments::template(
                 source,
-                token,
+                begin + token.start,
+                begin + token.end,
                 context.0,
                 depth - 1,
-                |text, depth| {
-                    let tokens = crate::syntax::lex_with_limits(
-                        &context.0.id,
-                        text,
-                        context.1.max_source_bytes,
-                        context.1.max_tokens,
+                |start, end, depth| {
+                    rewrite(source, start, end, (marker, external), depth, context).ok_or_else(
+                        || {
+                            Diagnostic::error(
+                                DiagnosticCode::UnsupportedSyntax,
+                                SourceSpan::new(&context.0.id, start, end),
+                                "template generator suspension was not retained",
+                            )
+                        },
                     )
-                    .map_err(|mut d| d.remove(0))?;
-                    rewrite(
-                        text,
-                        &tokens,
-                        0..tokens.len() - 1,
-                        0..text.len(),
-                        (marker, external),
-                        depth,
-                        context,
-                    )
-                    .ok_or_else(|| {
-                        Diagnostic::error(
-                            DiagnosticCode::UnsupportedSyntax,
-                            SourceSpan::new(&context.0.id, 0, 0),
-                            "template generator suspension was not retained",
-                        )
-                    })
                 },
             )
             .ok()?;
             edits.push(TextEdit {
-                start: token.start - begin,
-                end: token.end - begin,
+                start: begin + token.start,
+                end: begin + token.end,
                 replacement,
             });
             index += 1;
@@ -182,18 +185,18 @@ fn rewrite(
             return None;
         }
         if token.is("=>") && tokens.get(index + 1)?.is("{") {
-            index = exponentiation::matching_close(tokens, index + 1)? + 1;
+            index = exponentiation::matching_close(&tokens, index + 1)? + 1;
             continue;
         }
         if token.is("(") && index > 0 && tokens[index - 1].kind == TokenKind::Identifier {
-            let close = exponentiation::matching_close(tokens, index)?;
+            let close = exponentiation::matching_close(&tokens, index)?;
             if tokens.get(close + 1)?.is("{") {
                 return None;
             }
         }
         if token.is("function") {
             let parameters = (index + 1..end).find(|&position| tokens[position].is("("))?;
-            let nested = async_functions::function_at_parameters(tokens, parameters)?;
+            let nested = async_functions::function_at_parameters(&tokens, parameters)?;
             index = nested.body_end + 1;
             continue;
         }
@@ -208,19 +211,16 @@ fn rewrite(
             return None;
         }
         let following = &tokens[index + 1];
-        let line_break =
-            source[token.end..following.start].contains(['\n', '\r', '\u{2028}', '\u{2029}']);
+        let line_break = source[begin + token.end..begin + following.start]
+            .contains(['\n', '\r', '\u{2028}', '\u{2029}']);
         let operand_end = if token.is("await") {
-            exponentiation::operand_end(tokens, index + 1)?
+            exponentiation::operand_end(&tokens, index + 1)?
         } else if line_break || matches!(following.text.as_str(), ";" | ")" | "]" | "}" | ",") {
             index + 1
         } else {
-            assignment_end(tokens, index + 1).min(end)
+            assignment_end(&tokens, index + 1).min(end)
         };
-        if operand_end > end {
-            return None;
-        }
-        if tokens.get(operand_end).is_some_and(|token| token.is("{")) {
+        if operand_end > end || tokens.get(operand_end).is_some_and(|token| token.is("{")) {
             return None;
         }
         if operand_end == index + 1 && token.is("return") {
@@ -228,15 +228,14 @@ fn rewrite(
             continue;
         }
         let (operand, last) = if operand_end == index + 1 {
-            ("void 0".to_string(), token.end)
+            ("void 0".to_string(), begin + token.end)
         } else {
-            let last = tokens[operand_end - 1].end;
+            let last = begin + tokens[operand_end - 1].end;
             (
                 rewrite(
                     source,
-                    tokens,
-                    index + 1..operand_end,
-                    following.start..last,
+                    begin + following.start,
+                    last,
                     (marker, external),
                     depth - 1,
                     context,
@@ -244,22 +243,32 @@ fn rewrite(
                 last,
             )
         };
-        let prefix = if token.is("return") { "return " } else { "" };
+        let start = relocations::source_anchor(begin + token.start);
+        let close = relocations::source_anchor(last);
+        let generated = relocations::unmapped();
+        let prefix = if token.is("return") {
+            format!("{start}return ")
+        } else {
+            String::new()
+        };
         let awaiting = !token.is("yield");
-        edits.push(TextEdit {
-            start: token.start - begin,
-            end: last - begin,
-            replacement: if external {
-                if awaiting {
-                    format!("{prefix}(yield new {marker}({operand}))")
-                } else {
-                    format!("(yield (yield new {marker}({operand})))")
-                }
+        let replacement = if external {
+            if awaiting {
+                format!(
+                    "{prefix}{generated}({start}yield new {marker}({operand}{close}){generated})"
+                )
             } else {
-                format!("{prefix}(yield {marker}({awaiting}, ({operand})))")
-            },
+                format!("{generated}({start}yield {generated}({start}yield new {marker}({operand}{close}){generated}){generated})")
+            }
+        } else {
+            format!("{prefix}{generated}({start}yield {marker}({awaiting}, {generated}({operand}{close} {generated}){close}){generated})")
+        };
+        edits.push(TextEdit {
+            start: begin + token.start,
+            end: last,
+            replacement,
         });
         index = operand_end;
     }
-    Some(apply_edits(&source[begin..finish], edits).javascript)
+    Some(mapped_fragments::splice(begin, finish, edits))
 }

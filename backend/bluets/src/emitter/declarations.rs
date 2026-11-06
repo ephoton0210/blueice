@@ -520,6 +520,16 @@ pub(super) fn is_value_export_name(module: &Module, name: &str) -> bool {
 
 pub(super) fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
     if !parameters.is_empty() {
+        let indent = output
+            .rsplit('\n')
+            .next()
+            .unwrap_or("")
+            .bytes()
+            .take_while(|byte| *byte == b' ')
+            .count();
+        let rendered = |value: &Type| {
+            declaration_type_to_ts(value).replace('\n', &format!("\n{}", " ".repeat(indent)))
+        };
         output.push('<');
         for (index, parameter) in parameters.iter().enumerate() {
             if index > 0 {
@@ -532,11 +542,11 @@ pub(super) fn emit_type_parameters(output: &mut String, parameters: &[TypeParame
             output.push_str(&parameter.name);
             if let Some(constraint) = &parameter.constraint {
                 output.push_str(" extends ");
-                output.push_str(&type_to_ts(constraint));
+                output.push_str(&rendered(constraint));
             }
             if let Some(default) = &parameter.default {
                 output.push_str(" = ");
-                output.push_str(&type_to_ts(default));
+                output.push_str(&rendered(default));
             }
         }
         output.push('>');

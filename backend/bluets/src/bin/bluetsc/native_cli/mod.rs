@@ -192,12 +192,25 @@ fn run_with_mode(
             .file_name()
             .and_then(|name| name.to_str())
             .and_then(|name| config_sources.get(name));
-        let diagnostic = tsconfig::diagnostics::error(
+        let diagnostics = tsconfig::diagnostics::errors(
             &error,
             &project_path,
             source.map(|source| source.as_bytes()),
         );
-        return failure(&error, pretty, diagnostics_json, diagnostic);
+        if diagnostics.is_empty() {
+            return failure(&error, pretty, diagnostics_json, None);
+        }
+        if diagnostics_json {
+            for diagnostic in diagnostics {
+                eprintln!("{}", diagnostic.to_json());
+            }
+        } else {
+            print!(
+                "{}",
+                presentation::format(&diagnostics, &config_sources, pretty)
+            );
+        }
+        return ExitCode::FAILURE;
     }
     let loader = match loader(&invocation, references) {
         Ok(loader) => loader,

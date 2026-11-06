@@ -6,6 +6,31 @@
 use super::*;
 use blueice_bluets::{Diagnostic, DiagnosticCode, TypeScriptDiagnostic};
 
+pub(crate) fn errors(message: &str, path: &Path, bytes: Option<&[u8]>) -> Vec<Diagnostic> {
+    if message != "compiler options `mapRoot` and `inlineSourceMap` cannot be combined" {
+        return error(message, path, bytes).into_iter().collect();
+    }
+    let source = bytes.and_then(|bytes| std::str::from_utf8(bytes).ok());
+    let module = path.file_name().unwrap_or_default().to_string_lossy();
+    ["mapRoot", "inlineSourceMap"]
+        .into_iter()
+        .map(|key| {
+            let range = source.and_then(|source| property_range(source, key, false));
+            let (start, end) = range.unwrap_or((0, 0));
+            let mut diagnostic = Diagnostic::error(
+                DiagnosticCode::ParseError,
+                SourceSpan::new(module.as_ref(), start, end),
+                message,
+            )
+            .with_typescript(5053, vec!["mapRoot".into(), "inlineSourceMap".into()]);
+            if let (Some(source), Some(_)) = (source, range) {
+                diagnostic = diagnostic.with_source_position(source);
+            }
+            diagnostic
+        })
+        .collect()
+}
+
 pub(crate) fn error(message: &str, path: &Path, bytes: Option<&[u8]>) -> Option<Diagnostic> {
     let source = bytes.and_then(|bytes| std::str::from_utf8(bytes).ok());
     let name = message.split('`').nth(1);

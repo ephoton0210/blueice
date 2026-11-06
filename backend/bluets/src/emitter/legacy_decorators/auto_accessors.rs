@@ -58,9 +58,7 @@ pub(super) fn lower(
                     break format!("#{candidate}");
                 }
             };
-            let key =
-                &module.source[shell.key.first().unwrap().start..shell.key.last().unwrap().end];
-            let prefix = if field.is_static { "static " } else { "" };
+            use super::super::decorators::auto_accessors as origins;
             let initializer = field.initializer.as_ref().map_or_else(
                 || "void 0".into(),
                 |tokens| {
@@ -73,7 +71,26 @@ pub(super) fn lower(
             edits.push(TextEdit {
                 start: shell.span.start,
                 end: shell.span.end,
-                replacement: format!("{prefix}{storage} = {initializer}; {prefix}get {key}() {{ return this.{storage}; }} {prefix}set {key}(value) {{ this.{storage} = value; }}"),
+                replacement: format!(
+                    "{}{initializer};{} {}",
+                    origins::storage_prefix(
+                        class,
+                        shell,
+                        field,
+                        &storage,
+                        true,
+                        options.target < EcmaTarget::Es2022
+                    ),
+                    super::super::relocations::source_anchor(shell.span.end),
+                    origins::callable_pair(
+                        class,
+                        shell,
+                        field,
+                        &storage,
+                        true,
+                        options.target < EcmaTarget::Es2022
+                    )
+                ),
             });
         }
     }

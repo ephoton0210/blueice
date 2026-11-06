@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:00fe51530f8ddd9da245c4274059e2f6f34d54f0",
-  "source_graph_sha256": "6549cded424ad9f66e764b9e352c50186b8be6ba37b8690bf82be9e7dba7e1bd",
+  "source_revision": "backend-tree:a5f61a09b651e3a770b11049020ecea1b28ed393",
+  "source_graph_sha256": "bc065aba4cebe044d5c54273f8315235736e09e478424013136bb2f2744142e1",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -41,10 +41,14 @@
     {
       "harness": "backend/bluets-bluejs/tests/emitted_target_editions.rs",
       "ignored_tests": [
-        "lowered_suspension_matches_pinned_native_execution"
+        "async_joins_capture_receivers_and_propagate_rejections_like_native",
+        "lowered_suspension_matches_pinned_native_execution",
+        "nested_binary_and_short_circuit_suspensions_preserve_native_resume_order",
+        "switch_local_binding_survives_a_later_generator_resume"
       ],
       "inputs": {
-        "backend/bluets-bluejs/tests/emitted_target_editions.rs": "f8364a6b7ba891cf5d294ea828ebe3e6f6dc4a4a",
+        "backend/bluets-bluejs/tests/emitted_target_editions.rs": "ee9bbda23e86385e4010c2303f7eff0cc0cdb3a4",
+        "backend/bluets/tests/fixtures/ge1_downlevel/cases.json": "5a29ace3f9813e15b20a02d0cbeeda1c0456bdd3",
         "backend/bluets/tests/fixtures/typescript_oracle/targets-reference.json": "fe7d0ef6e07fd605afbf80381825c121f4695f45"
       }
     },
@@ -135,6 +139,16 @@
       "inputs": {
         "backend/bluets-bluejs/tests/target_syntax_profiles.rs": "d9535e26596a429ff18d5fa769c42169f3351c0e",
         "backend/bluets/tests/fixtures/target_syntax/edition-verdicts.tsv": "98f56758aba890ea0379963b33511f75be585a4c"
+      }
+    },
+    {
+      "harness": "backend/bluets-bluejs/tests/template_suspension_order.rs",
+      "ignored_tests": [
+        "template_suspensions_match_native_getter_conversion_and_abrupt_completion_order"
+      ],
+      "inputs": {
+        "backend/bluets-bluejs/tests/template_suspension_order.rs": "339de7707bf8a8f28ca286b4d7c0deaca62ef4a2",
+        "backend/bluets/tests/fixtures/ge1_downlevel/cases.json": "5a29ace3f9813e15b20a02d0cbeeda1c0456bdd3"
       }
     },
     {
@@ -269,7 +283,7 @@
         "pinned_commonjs_programs_print_what_typescript_prints"
       ],
       "inputs": {
-        "backend/bluets/tests/commonjs_oracle.rs": "6ef6f071bb44e113d1eaa6b8c72943cfdb180b2f"
+        "backend/bluets/tests/commonjs_oracle.rs": "49d916fe5383c7c5f6d102e5f7fca65dfa94dade"
       }
     },
     {
@@ -467,7 +481,7 @@
       "inputs": {
         "backend/bluets/tests/fixtures/gc1_explain/cases.json": "e9a7d7d5fb6950923ad342936e53f96180603678",
         "backend/bluets/tests/fixtures/gc1_explain/reference.json": "2ab37bcc4b292cf88f738a2298f9bb9e57e6c364",
-        "backend/bluets/tests/gc1_explain_files.rs": "502b8ea5f306a075892e4a5510a6b4c6362f6a01"
+        "backend/bluets/tests/gc1_explain_files.rs": "754bb03fa113bb4911ce4256732ae871b29a7b06"
       }
     },
     {
@@ -522,7 +536,7 @@
         "backend/bluets/tests/fixtures/ge1_downlevel/cases.json": "5a29ace3f9813e15b20a02d0cbeeda1c0456bdd3",
         "backend/bluets/tests/fixtures/ge1_downlevel/reference.json": "79d6f71729b0be9390a53f2cb738e21183182f2d",
         "backend/bluets/tests/ge1_downlevel.rs": "c348176298730f705459dbfbda49c85435c8ea3e",
-        "backend/bluets/tests/oracle_support/ge1_boundaries.rs": "a0c4e1505b533ba9e546fdece9d335de896b0733",
+        "backend/bluets/tests/oracle_support/ge1_boundaries.rs": "4f811722c5078c99f88fb0e02f747aa7196852af",
         "backend/bluets/tests/oracle_support/ge1_support.rs": "69b9f8562bc21691b996a1908e9fd78492d9b92f",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
       }
@@ -570,6 +584,801 @@
         "backend/bluets/tests/oracle_support/ge4_boundaries.rs": "7de5deddfb3afb3cbf207ac8cbc167e03ab8c2e2",
         "backend/bluets/tests/oracle_support/ge4_support.rs": "98367fd51258c4a8e780daf9efd7b4fe0e428d9e",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_arrow_family.rs",
+      "ignored_tests": [
+        "async_arrow_default_block_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_arrow_family.rs": "9d347c41b3c9c88db885283d022edbb5f0a4352d"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_arrow_finally_endpoints.rs",
+      "ignored_tests": [
+        "async_arrow_finally_endpoints_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_arrow_finally_endpoints.rs": "81309a510000a85d92a1c29fca04fcd583ed1431"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_arrow_finally_family.rs",
+      "ignored_tests": [
+        "async_arrow_finally_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_arrow_finally_family.rs": "925361430790e8d96c19b33df233efb838a272bd"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_class_method_family.rs",
+      "ignored_tests": [
+        "async_class_method_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_class_method_family.rs": "552cb35ff979f009c11d10f7d8556deff06b358f"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_generator_family.rs",
+      "ignored_tests": [
+        "async_generator_exception_template_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_generator_family.rs": "4b2f9f32c39b3e4306bb59f69f31dc3bae9a1564"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_generator_g2_endpoints.rs",
+      "ignored_tests": [
+        "borrowed_async_generator_methods_match_every_native_target_profile",
+        "borrowed_methods_preserve_source_receiver_and_arguments",
+        "exported_async_generator_endpoints_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_generator_g2_endpoints.rs": "c57c335d5c3ad80db3e842a430fe19ef9b574fb4"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_generator_g2_family.rs",
+      "ignored_tests": [
+        "async_generator_finally_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_generator_g2_family.rs": "60c749ef7546b6088ecad0d7579bd10bded77ffe"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_generator_operands.rs",
+      "ignored_tests": [
+        "async_generator_operands_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_generator_operands.rs": "d49b77567236194aa67aa9974f1dd149e9d2515d"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_generator_runtime.rs",
+      "ignored_tests": [
+        "async_generator_runtime_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_generator_runtime.rs": "08924d0c8d750eafa2df61e33402f4a25337dd0b"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_method_family.rs",
+      "ignored_tests": [
+        "async_object_method_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_method_family.rs": "f57585860f6ee7da98d62d8920c56a49830450fd"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_async_super_family.rs",
+      "ignored_tests": [
+        "async_super_method_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_async_super_family.rs": "5c48060abc664b29cc04523f958a2d06b181c4d1"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_binding_maps.rs",
+      "ignored_tests": [
+        "binding_roles::array_nested_binding_all_frozen_products",
+        "binding_roles::binding_iterator_finally_all_frozen_products",
+        "binding_roles::mixed_nested_default_all_frozen_products",
+        "binding_roles::nested_parameter_all_frozen_products",
+        "binding_roles::object_nested_binding_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_binding_maps.rs": "02d4db74abf603d25d946df1848741a49e892fb7",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_binding_roles.rs": "2791bd9061e4b72d242ac1228253fa8d353a05ca",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_class_expressions.rs",
+      "ignored_tests": [
+        "expressions::all_class_expression_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_class_expressions.rs": "5f11035717bc219c94508ff7921c1fadf7c1f8f2",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_class_expressions.rs": "6dad02f0f3eea6e3010683e29a11165574a06132",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_class_maps.rs",
+      "ignored_tests": [
+        "class_roles::all_class_super_targets_modules_providers_and_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_class_maps.rs": "c7ee7e54d3f11f896def37c787d03a5c706d4432",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_class_roles.rs": "0e6706f7730d7d079af1d839001d62749e540a0c",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_class_retained.rs",
+      "ignored_tests": [
+        "class_retained::retained_super_write_all_frozen_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_class_retained.rs": "b663617d56c2eaa898aadb7cfe66545260b78b7d",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_class_retained.rs": "b08848e16563a34096fda982a4b45af3815234f7",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_decorator_adjacent_observations.rs",
+      "ignored_tests": [
+        "collect_both_complete_adjacent_matrices_with_two_public_builds"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_decorator_adjacent_observations.rs": "0d27efc78034d5dacbc83952d63e09e60c995a59",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_double_accessor_family.rs",
+      "ignored_tests": [
+        "double_decorated_accessors_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_double_accessor_family.rs": "1433f2d1c85c9b44aa4e1ff3de3a0f3faeeccfef"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_generator_switch_endpoints.rs",
+      "ignored_tests": [
+        "generator_switch_all_source_endpoints_keep_native_phases",
+        "generator_switch_borrowed_callers_preserve_source_this_and_arguments",
+        "generator_switch_borrowed_methods_keep_the_target_receiver_abi",
+        "generator_switch_getters_and_abrupt_completion_keep_the_target_abi"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_generator_switch_endpoints.rs": "115f0c4ca4ac0c19f3e74823a3f77136ce3809bf"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_generator_switch_family.rs",
+      "ignored_tests": [
+        "generator_switch_delegation_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_generator_switch_family.rs": "14e218793d889489919e966a3ce96036de3ac81f"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_helper_collision_family.rs",
+      "ignored_tests": [
+        "helper_collision_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_helper_collision_family.rs": "3eb6e7b4b1d0c26fe7cd9642ce573ccc0341f3a7"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_helper_collision_maps.rs",
+      "ignored_tests": [
+        "helper_collision_headers_and_await_endpoints_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_helper_collision_maps.rs": "7d57846009a1d3a9c1c390c217060376346350f4"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_helper_provider_globals.rs",
+      "ignored_tests": [
+        "private_ambient_and_imported_helpers_keep_their_own_bindings"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_helper_provider_globals.rs": "712a7559be497ea1a98d3e5d15f39adf9001f5ad"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_interop_expression_maps.rs",
+      "ignored_tests": [
+        "all_interop_expressions_preserve_complete_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_interop_expression_maps.rs": "051d89f993a27954a7861b0c37ab105389a67534",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_interop_module_maps.rs",
+      "ignored_tests": [
+        "all_interop_modules_preserve_complete_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_interop_module_maps.rs": "4e942b4144fedae13648b95d0305a717ff7d0ddf",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_iteration_maps.rs",
+      "ignored_tests": [
+        "iteration_roles::iterable_bindings_forof_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_iteration_maps.rs": "38962905f3ad15556b4e59e04e891963855523ec",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_iteration_roles.rs": "528375f19eb156ab72a40dcd398d7e7220c243b7",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_legacy_class_phase.rs",
+      "ignored_tests": [
+        "native_cycle_products_preserve_all_class_initialization_phases"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_legacy_class_phase.rs": "c7f416f3a5ecb2147c2c00b2b7a4950537b4936e"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_legacy_decorator_module_maps.rs",
+      "ignored_tests": [
+        "legacy_parameter_decorator_preserves_every_complete_module_role"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_legacy_decorator_module_maps.rs": "7d7fd754a8dba7ee8575cd1fe2ad45e53996df34",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_lexical_arrow_driver.rs",
+      "ignored_tests": [
+        "lexical_arrow_all_frozen_driver_boundaries"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_lexical_arrow_driver.rs": "81e3faec23731e40dfb7c91ac0c76467937f7fa2"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_lexical_arrow_family.rs",
+      "ignored_tests": [
+        "async_arrow_lexical_this_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_lexical_arrow_family.rs": "1114499bdbec9ebef18d39f591adb04848c4f0e6"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_literal_accessor_module_maps.rs",
+      "ignored_tests": [
+        "literal_accessor_decorators_preserve_every_complete_module_role"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_literal_accessor_module_maps.rs": "fa0c85d7d5386f70981fb80a270399c338b963d3",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_literal_auto_accessor_module_maps.rs",
+      "ignored_tests": [
+        "literal_auto_accessor_decorators_preserve_every_complete_module_role"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_literal_auto_accessor_module_maps.rs": "08df2d0bbac5ae55df6284914944c7ff80c0d3e6",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_literal_decorator_module_maps.rs",
+      "ignored_tests": [
+        "literal_field_decorators_preserve_every_complete_module_role"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_literal_decorator_module_maps.rs": "ed20afb31cfdf3cb9701c60d0cc770cd6aa4fab1",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_literal_method_family.rs",
+      "ignored_tests": [
+        "literal_methods_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_literal_method_family.rs": "c06bca56d2a1ac0497db8131f7e30022b6a38d1b"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_literal_replacement_module_maps.rs",
+      "ignored_tests": [
+        "literal_replacement_order_preserves_every_complete_module_role"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_literal_replacement_module_maps.rs": "7c36fdbad6e616a467609c2b14266c130351ad32",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_callable.rs",
+      "ignored_tests": [
+        "all_imported_callable_alias_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_callable.rs": "9ba2386742ec32294add23e12f3f9edf1011368d",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_class_alias.rs",
+      "ignored_tests": [
+        "all_imported_class_type_alias_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_class_alias.rs": "b797c0c8ce4c0a0523520b26bb5d259a71c25c67",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_classes.rs",
+      "ignored_tests": [
+        "metadata_classes::adjacent_legacy_wrappers_keep_their_complete_native_class_roles",
+        "metadata_classes::all_metadata_class_dependency_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_classes.rs": "3ff98830a32a6b38f718de77f8db97ad52247bd1",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/ge5_metadata_classes.rs": "7ca7111c0bf1ab6160a50083b5012002c622055b",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_import_type.rs",
+      "ignored_tests": [
+        "all_import_type_class_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_import_type.rs": "5255f81a855dc78be89e1be138fb5ad424d650d4",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_inline_type.rs",
+      "ignored_tests": [
+        "all_inline_import_type_class_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_inline_type.rs": "bff32ceda836333df9656e41d5356ac019da7bb0",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_interface.rs",
+      "ignored_tests": [
+        "all_imported_interface_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_interface.rs": "d04ecbcbb28008795f3b68e00f4a931037a7f796",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_local_alias.rs",
+      "ignored_tests": [
+        "all_local_class_type_alias_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_local_alias.rs": "610501802a79f304f9453c5e8a340a23659e811e",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_namespace_reexport.rs",
+      "ignored_tests": [
+        "all_namespace_reexport_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_namespace_reexport.rs": "a6659e60bc058abce04f3b772707e595c14e2d2a",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_nullable.rs",
+      "ignored_tests": [
+        "all_imported_nullable_alias_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_nullable.rs": "5c8d1b6d72187a7a15fd9fbeb4ab8ac46a4aa362",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_numeric_enum.rs",
+      "ignored_tests": [
+        "all_imported_numeric_enum_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_numeric_enum.rs": "9277d715f5707328249f9e073573ddc140b7834a",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_primitive.rs",
+      "ignored_tests": [
+        "all_imported_primitive_alias_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_primitive.rs": "4517189bad2820407af570b134816b61b3b36aad",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_reexport.rs",
+      "ignored_tests": [
+        "all_imported_reexport_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_reexport.rs": "9ba992ad97c3eb1ddcd4a92c31083c37c9ed38fd",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_metadata_string_enum.rs",
+      "ignored_tests": [
+        "all_imported_string_enum_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_metadata_string_enum.rs": "8f9ca758ab5279307635c9122f4bc75c9a41ccdd",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_class_cli.rs": "99b46c4ba43305c7056584be1338bbe34d6368be",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_object_maps.rs",
+      "ignored_tests": [
+        "object_roles::object_rest_spread_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_object_maps.rs": "7357a6a88dc263f47f8392b30bffb89695918b45",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/ge5_object_roles.rs": "3d37fc04a8317519959e30f574c809ee09b90f26",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_private_accessor_family.rs",
+      "ignored_tests": [
+        "private_accessor_all_frozen_products",
+        "private_accessor_public_cli_phases"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_private_accessor_family.rs": "fc6ac489dc05a2b1c7e5f8c4a1bf23b401d51a94"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_retained_decorator_maps.rs",
+      "ignored_tests": [
+        "preserved_roles::private_static_super_preserves_every_native_module_character_and_role",
+        "preserved_roles::private_super_accessors_preserve_every_native_module_character_and_role",
+        "preserved_roles::private_super_async_generator_preserves_every_native_module_character_and_role",
+        "preserved_roles::private_super_method_preserves_every_native_module_character_and_role"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_retained_decorator_maps.rs": "de1068bac8104c3db23e86e300dc04440e4c28bf",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/ge5_preserved_decorator_roles.rs": "e010275f5513f0fb91319474c0104a2dcb35ffae",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_safe_home_object.rs",
+      "ignored_tests": [
+        "safe_home_object_families_keep_complete_modules_and_logical_ends"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_safe_home_object.rs": "40acd9f90ac5fb799d9c6edd2318459c8a64a4da"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_source_maps.rs",
+      "ignored_tests": [
+        "async_roles::complete_named_async_non_es5_modules_match_native_source_roles",
+        "async_roles::complete_native_generator_modules_match_native_source_roles",
+        "complete_native_map_authority_is_reproducible",
+        "continuation_roles::binary_generator_es5_all_publication_products_match_native_roles",
+        "continuation_roles::catch_finally_generator_es5_all_publication_products_match_native_roles",
+        "continuation_roles::computed_assignment_generator_es5_all_publication_products_match_native_roles",
+        "continuation_roles::conditional_expression_async_es5_all_publication_products_match_native_roles",
+        "continuation_roles::conditional_statement_async_es5_all_publication_products_match_native_roles",
+        "continuation_roles::delegated_finally_generator_es5_all_publication_products_match_native_roles",
+        "continuation_roles::finally_return_generator_es5_all_publication_products_match_native_roles",
+        "continuation_roles::logical_generator_es5_all_publication_products_match_native_roles",
+        "continuation_roles::loop_finally_generator_es5_all_publication_products_match_native_roles",
+        "continuation_roles::named_async_es5_helper_collisions_all_publication_products_match_native_roles",
+        "continuation_roles::nested_async_es5_calls_all_publication_products_match_native_roles",
+        "continuation_roles::opaque_generator_es5_all_publication_products_match_native_roles",
+        "continuation_roles::switch_generator_es5_all_publication_products_match_native_roles",
+        "continuation_roles::template_async_es5_all_publication_products_match_native_roles",
+        "continuation_roles::template_generator_es5_all_publication_products_match_native_roles",
+        "module_roles::optional_nullish_all_modules_targets_and_helper_products_match_native_roles",
+        "module_roles::spread_all_modules_targets_and_helper_products_match_native_roles",
+        "module_roles::tagged_template_all_modules_targets_and_helper_products_match_native_roles"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/ge5_source_maps/cases.json": "8bc5560977dd51feefebe9dc2c6967ff9de5c039",
+        "backend/bluets/tests/fixtures/ge5_source_maps/native-map-defects.json": "7f2e9c93214074c8e670be2d6f00828fbab883a0",
+        "backend/bluets/tests/ge5_source_maps.rs": "6a20a5932b228298dc0dd1bb7e474069ee3662bc",
+        "backend/bluets/tests/oracle_support/gd2_maps.rs": "0fc95464ef77ce566f32d897c2ec7be3aca0aded",
+        "backend/bluets/tests/oracle_support/ge5_async_roles.rs": "f1ab977455afd5848ace6a0515a69e037762da08",
+        "backend/bluets/tests/oracle_support/ge5_cli.rs": "633db5a735e13498c6b36cf22b3ed539e75b5124",
+        "backend/bluets/tests/oracle_support/ge5_continuation_roles.rs": "9cad91df0ca2871090172eeb64edc374973b0a09",
+        "backend/bluets/tests/oracle_support/ge5_declarations.rs": "5744ffc450d59df36e2e94220a904f8ac09cd6c9",
+        "backend/bluets/tests/oracle_support/ge5_inputs.rs": "f8033a9d6ec17256f624d753f825923520a3a652",
+        "backend/bluets/tests/oracle_support/ge5_javascript_boundaries.rs": "e059586bba1fd8a193e6215f691495ba8e11c687",
+        "backend/bluets/tests/oracle_support/ge5_javascript_maps.rs": "e79f8aa07bb928f6b461c7a1d78455aeb5cd428f",
+        "backend/bluets/tests/oracle_support/ge5_javascript_roles.rs": "e2813d596aee0abddb1ffda1958df6c3e96ec5da",
+        "backend/bluets/tests/oracle_support/ge5_module_roles.rs": "db4b105d434e73c4ffb13c1253402dc4f6ada1f8",
+        "backend/bluets/tests/oracle_support/ge5_native_defects.rs": "75ae2434b09237a2c2128c8eb4175086f2f978ad",
+        "backend/bluets/tests/oracle_support/ge5_node_roles.rs": "5276aacdf94bc677f734d0d44fbc4a13ce1be4f7",
+        "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_standard_decorator_family.rs",
+      "ignored_tests": [
+        "standard_decorator_all_frozen_products",
+        "standard_decorator_public_cli_phases"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_standard_decorator_family.rs": "a6b044ead9dcefb192e9b9c31cc5a8829c3c0a23"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_static_super_complete_family.rs",
+      "ignored_tests": [
+        "static_super_all_frozen_products"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_static_super_complete_family.rs": "a26b425cd9a5fc6c2967f978d3b0ea6d7b4560df"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/ge5_static_super_family.rs",
+      "ignored_tests": [
+        "static_super_public_cli_reference_phases"
+      ],
+      "inputs": {
+        "backend/bluets/tests/ge5_static_super_family.rs": "65ba47acb99b74a102a60e90ba81c368ef383818"
       }
     },
     {
@@ -1113,7 +1922,7 @@
       "inputs": {
         "backend/bluets/tests/fixtures/project_build_corrupt_state/build-corrupt-state-matrix.tsv": "567f683ac73b02d489cbd54d346f9abf2e2fc2e7",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
-        "backend/bluets/tests/project_build_corrupt_state.rs": "1c6e1a97272a3e4e132b93977968ce1c51155b09"
+        "backend/bluets/tests/project_build_corrupt_state.rs": "d5dca33cc1f37d9c3466cdd598665ec55127a0e4"
       }
     },
     {
@@ -1182,7 +1991,7 @@
       "inputs": {
         "backend/bluets/tests/fixtures/project_build_watch/build-watch-matrix.tsv": "f1f9ec7d1e56dc500e042a2d634575ac640237c2",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
-        "backend/bluets/tests/project_build_watch.rs": "8a3e3824d562e8c9f8b91d99ccf48ed03ca4caac"
+        "backend/bluets/tests/project_build_watch.rs": "01b02b6f62bf08123fd7e2601465fa10a67230fb"
       }
     },
     {
@@ -1229,7 +2038,7 @@
       "inputs": {
         "backend/bluets/tests/fixtures/project_referenced_declarations/rebuild-matrix.tsv": "9442d5ff88f4ff38c33542acc990a9bc6439811f",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff",
-        "backend/bluets/tests/project_referenced_declarations.rs": "42b7dc320a5bed354638abe7a81ff7014e8ed966"
+        "backend/bluets/tests/project_referenced_declarations.rs": "6de50e2a1d6ec1979d4b93544ed4b60f332c4223"
       }
     },
     {
@@ -1310,15 +2119,16 @@
         "backend/bluets/tests/fixtures/k11_source_maps/object_spread_helper.ts": "70ba87cc6a537f7ef75fdc672f5374b412221983",
         "backend/bluets/tests/fixtures/k11_source_maps/source-map-tokens-checker-matrix.tsv": "3e4de19ca1fc561d27f9e4189d9a2b0d16d033bd",
         "backend/bluets/tests/fixtures/k11_source_maps/system_wrapper.ts": "607fe2bfe741ab3fb70d28c466b10b7fa859fc43",
-        "backend/bluets/tests/source_map_tokens_oracle.rs": "b23c5925085908ea04837b7b01d276dcfa523b27",
-        "backend/bluets/tests/source_map_tokens_oracle/alignment.rs": "8af4017c3d0453e6085cfeaa91bae64bf1e560f5",
-        "backend/bluets/tests/source_map_tokens_oracle/decoder_tests.rs": "665b7a805b47e399b6abf664adac1e2344fc109d",
+        "backend/bluets/tests/source_map_tokens_oracle.rs": "ed52b42d0065a5a29767ff30fabb56d8a70e7158",
+        "backend/bluets/tests/source_map_tokens_oracle/alignment.rs": "804f0ba4116cbba8339ab709ee3c2ee549694d07",
+        "backend/bluets/tests/source_map_tokens_oracle/decoder_tests.rs": "be12036dbde054bbf65ccff9dd605a67eb666484",
         "backend/bluets/tests/source_map_tokens_oracle/decoding.rs": "fd9dee4bd818aa689f1954477fdffe9f24e77c61",
         "backend/bluets/tests/source_map_tokens_oracle/generated_gap_roles.rs": "e79f5c167f7aec02a5aefaee4a231aa3d950afee",
         "backend/bluets/tests/source_map_tokens_oracle/legacy_metadata.rs": "0937bea8aae98d6fce73c1e374789d879b6fcca8",
         "backend/bluets/tests/source_map_tokens_oracle/matrix.rs": "256def89c372ba6019228b74ef817a38d555cf21",
         "backend/bluets/tests/source_map_tokens_oracle/non_decorator.rs": "22a38fcd13c140c4962fcd7a7d57147503c710fc",
-        "backend/bluets/tests/source_map_tokens_oracle/system_wrapper.rs": "f71c7a6788a28f99f3359a0f77ed843f343e8060"
+        "backend/bluets/tests/source_map_tokens_oracle/system_wrapper.rs": "f71c7a6788a28f99f3359a0f77ed843f343e8060",
+        "backend/bluets/tests/source_map_tokens_oracle/whole_module_bridge.rs": "1b5504bc292d9738647c014987a6c0c8daea02fc"
       }
     },
     {

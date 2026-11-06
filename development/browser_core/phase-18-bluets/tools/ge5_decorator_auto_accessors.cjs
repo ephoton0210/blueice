@@ -1,0 +1,38 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// Original auto-accessors own two callable bodies and one distinct backing store.
+const assert=require('node:assert/strict'),{compareGap}=require('./ge5_role_stream.cjs');
+function isStatic(ts,node){return !!node.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.StaticKeyword);}
+function original(ts,source){
+ assert(ts.isClassDeclaration(source)&&source.name&&!source.heritageClauses?.length);
+ const plans=source.members.map((node,index)=>{assert(ts.isPropertyDeclaration(node)&&node.name&&node.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.AccessorKeyword),'complete source auto-accessor inventory');assert(ts.isStringLiteral(node.name)||ts.isNumericLiteral(node.name)||ts.isIdentifier(node.name));return{node,index,key:node.name.text,static:isStatic(ts,node)};});
+ assert(plans.length);return plans;
+}
+function readRetained(ts,view,source,plans){
+ const classes=[];function visit(node){if((ts.isClassDeclaration(node)||ts.isClassExpression(node))&&node.name?.text===source.name.text)classes.push(node);ts.forEachChild(node,visit);}visit(view.source);assert.equal(classes.length,1,'one exact original named class');
+ const node=classes[0],entries=new Map(),aliases=new Map(),sourceNames=new Set();function names(node){if(ts.isIdentifier(node)||ts.isPrivateIdentifier(node))sourceNames.add(node.text);ts.forEachChild(node,names);}names(source.getSourceFile());
+ for(const plan of plans){
+  const matches=kind=>node.members.filter(member=>kind(member)&&isStatic(ts,member)===plan.static&&member.name?.text===plan.key),getters=matches(ts.isGetAccessorDeclaration),setters=matches(ts.isSetAccessorDeclaration);assert.equal(getters.length,1);assert.equal(setters.length,1);
+  const getter=getters[0],setter=setters[0];assert.equal(getter.parameters.length,0);assert.equal(setter.parameters.length,1);const parameter=setter.parameters[0];assert(ts.isIdentifier(parameter.name)&&!parameter.initializer&&!parameter.dotDotDotToken);assert(getter.body&&setter.body);assert.equal(getter.body.statements.length,1);assert.equal(setter.body.statements.length,1);
+  const returned=getter.body.statements[0],statement=setter.body.statements[0];assert(ts.isReturnStatement(returned)&&returned.expression&&ts.isPropertyAccessExpression(returned.expression)&&ts.isPrivateIdentifier(returned.expression.name));assert(ts.isExpressionStatement(statement)&&ts.isBinaryExpression(statement.expression)&&statement.expression.operatorToken.kind===ts.SyntaxKind.EqualsToken);const assigned=statement.expression;assert(ts.isPropertyAccessExpression(assigned.left)&&ts.isPrivateIdentifier(assigned.left.name));assert.equal(assigned.left.name.text,returned.expression.name.text);assert(ts.isIdentifier(assigned.right)&&assigned.right.text===parameter.name.text);assert.equal(assigned.left.expression.getText(view.source),returned.expression.expression.getText(view.source),'getter and setter use exactly one storage receiver');
+  const receiver=returned.expression.expression;if(plan.static)assert(receiver.kind===ts.SyntaxKind.ThisKeyword||ts.isIdentifier(receiver)&&receiver.text===source.name.text);else assert.equal(receiver.kind,ts.SyntaxKind.ThisKeyword);
+  const stores=node.members.filter(member=>ts.isPropertyDeclaration(member)&&ts.isPrivateIdentifier(member.name)&&member.name.text===returned.expression.name.text&&isStatic(ts,member)===plan.static);assert.equal(stores.length,1);const storage=stores[0];assert(storage.initializer);assert(!sourceNames.has(storage.name.text),'compiler storage binding is fresh in original source');assert(!aliases.has(storage.name.text),'one distinct storage per original accessor');aliases.set(storage.name.text,'$storage.'+plan.index);
+  entries.set(plan,{plan,getter,setter,storage,receiver});
+ }
+ assert.equal(node.members.filter(member=>ts.isGetAccessorDeclaration(member)||ts.isSetAccessorDeclaration(member)).length,plans.length*2,'complete generated accessor inventory');assert.equal(node.members.filter(member=>ts.isPropertyDeclaration(member)&&ts.isPrivateIdentifier(member.name)).length,plans.length,'complete private storage inventory');return{node,entries,aliases};
+}
+function compareRetained(ts,native,actual,source,options){
+ const plans=original(ts,source),n=readRetained(ts,native,source,plans),a=readRetained(ts,actual,source,plans),roles=require('./ge5_decorator_roles.cjs'),originalText=source.getSourceFile().text;
+ for(const[view,state]of[[native,n],[actual,a]])for(const[name,binding]of roles.read(ts,view,[originalText],view===actual).bindings)state.aliases.set(name,'$helper.'+binding.kind);
+ function units(view,node,state,plan){return view.tokens(node).map(token=>{let text=state.aliases.get(token.text);if(token.start===node.name?.getStart(view.source)&&token.end===node.name?.end&&!ts.isPrivateIdentifier(node.name))text='$key.'+plan.key;if(text){const owner=token.owners[0];assert(token.owners.every(item=>JSON.stringify(item)===JSON.stringify(owner)),'every generated binding/literal UTF16 interior follows its Native role');return{...token,text,owners:[owner]};}return token;});}
+ const pairs=[];
+ function pair(nn,an,label,plan){const nt=units(native,nn,n,plan),at=units(actual,an,a,plan);assert.equal(at.length,nt.length,label+' complete token inventory');for(let i=0;i<nt.length;i++){assert.equal(at[i].text,nt[i].text,label+' token '+i);assert.deepEqual(at[i].owners,nt[i].owners,label+' exact UTF16 roles '+nt[i].text);native.cover(nt[i].start,nt[i].end);actual.cover(at[i].start,at[i].end);if(i)compareGap(native,nt[i-1].end,nt[i].start,actual,at[i-1].end,at[i].start,label+' ordered gap');}assert.deepEqual(actual.owner(an.end),native.owner(nn.end),label+' logical node end');if(nn.body){assert(an.body);assert.deepEqual(actual.owner(an.body.end),native.owner(nn.body.end),label+' independent body end');}pairs.push({native:nn,actual:an,label});}
+ for(const plan of plans){const ne=n.entries.get(plan),ae=a.entries.get(plan);pair(ne.storage,ae.storage,'auto-accessor backing storage '+plan.key,plan);pair(ne.getter,ae.getter,'auto-accessor getter '+plan.key,plan);pair(ne.setter,ae.setter,'auto-accessor setter '+plan.key,plan);assert.equal(ae.receiver.kind,ne.receiver.kind,'static auto-accessor uses the original lexical class receiver');if(plan.static)assert.equal(ae.receiver.text,ne.receiver.text);for(const name of['getter','setter']){const nn=ne[name],an=ae[name];for(const[nnEnd,anEnd]of[[nn.name.end,an.name.end],[nn.body.end,an.body.end]])assert.deepEqual(actual.owner(anEnd),native.owner(nnEnd),'independent generated accessor key/body endpoint');}compareGap(native,ne.storage.end,ne.getter.getStart(native.source),actual,ae.storage.end,ae.getter.getStart(actual.source),'storage to getter exact gap');compareGap(native,ne.getter.end,ne.setter.getStart(native.source),actual,ae.getter.end,ae.setter.getStart(actual.source),'getter to setter exact gap');}
+ if(!options.experimentalDecorators){
+  const constructors=state=>state.node.members.filter(ts.isConstructorDeclaration),blocks=state=>state.node.members.filter(ts.isClassStaticBlockDeclaration),nc=constructors(n),ac=constructors(a),nb=blocks(n),ab=blocks(a);assert.equal(nc.length,1);assert.equal(ac.length,1);assert.equal(nb.length,2,'one metadata block and one static-extra block');assert.equal(ab.length,2);pair(nc[0],ac[0],'auto-accessor implicit constructor and instance-extra phase',plans[0]);pair(nb[1],ab[1],'auto-accessor static-extra phase',plans.find(plan=>plan.static));
+ }
+ return{native:n,actual:a,pairs};
+}
+module.exports={original,readRetained,compareRetained,isStatic};

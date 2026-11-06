@@ -5,6 +5,8 @@
 //! Array/call spread preserves receiver evaluation and sparse array entries.
 
 use super::*;
+use crate::emitter::relocations;
+mod origins;
 
 pub(super) fn lower(
     mut emitted: EmittedJavaScript,
@@ -44,16 +46,21 @@ pub(super) fn lower(
         let iterator = unused_name(&emitted.javascript, "spread_iterator", &mut sequence);
         let step = unused_name(&emitted.javascript, "spread_step", &mut sequence);
         let direct = external && call && parts.len() == 1 && parts[0].2;
+        let arguments_end = parts.last().map(|(_, end, _)| tokens[end - 1].end);
+        let mut construction_end = None;
         let mut array = "[]".to_string();
         for (first, end, spread) in parts {
             let begin = first + usize::from(spread);
             let source = if begin < end {
-                &emitted.javascript[tokens[begin].start..tokens[end - 1].end]
+                relocations::relocated_verbatim(tokens[begin].start, tokens[end - 1].end)
             } else {
-                ""
+                String::new()
             };
             let source = if spread {
-                format!("({source})")
+                format!(
+                    "({source}{})",
+                    relocations::source_anchor(tokens[end - 1].end)
+                )
             } else {
                 let hole = !call && (begin == end || end > begin && tokens[end - 1].is(","));
                 format!("[{source}{}]", if hole { "," } else { "" })
@@ -111,12 +118,17 @@ pub(super) fn lower(
                 None
             };
             let replacement = if tokens[start].is("new") {
-                let callee = &emitted.javascript[tokens[start].end..tokens[open].start];
+                construction_end = arguments_end;
+                let callee = relocations::relocated_verbatim(tokens[start].end, tokens[open].start);
                 format!("{construct}(({callee}), {array})")
             } else if let Some(receiver_end) = receiver_end.filter(|end| *end > start) {
                 let temporary = unused_name(&emitted.javascript, "spread_receiver", &mut sequence);
-                let receiver = &emitted.javascript[tokens[start].start..tokens[receiver_end].start];
-                let member = &emitted.javascript[tokens[receiver_end].start..tokens[open].start];
+                let receiver = relocations::relocated_verbatim(
+                    tokens[start].start,
+                    tokens[receiver_end].start,
+                );
+                let member =
+                    relocations::relocated_verbatim(tokens[receiver_end].start, tokens[open].start);
                 let insertion = directive_end(&tokens);
                 edits.push(TextEdit {
                     start: insertion,
@@ -125,12 +137,26 @@ pub(super) fn lower(
                 });
                 format!("({temporary} = ({receiver}), {invoke}({temporary}{member}, {temporary}, {array}))")
             } else {
-                let callee = &emitted.javascript[tokens[start].start..tokens[open].start];
-                format!("{invoke}(({callee}), void 0, {array})")
+                let callee =
+                    relocations::relocated_verbatim(tokens[start].start, tokens[open - 1].end);
+                origins::invoke(
+                    &invoke,
+                    &callee,
+                    &array,
+                    external,
+                    tokens[start].start,
+                    tokens[open - 1].end,
+                )
             };
             (tokens[start].start, replacement)
         } else {
-            (tokens[open].start, array)
+            (
+                tokens[open].start,
+                format!(
+                    "{}{array}",
+                    relocations::source_anchor(tokens[open - 1].start)
+                ),
+            )
         };
         let helper = if external {
             String::new()
@@ -160,7 +186,11 @@ pub(super) fn lower(
             end: tokens[close].end,
             replacement,
         });
-        emitted = mapped_edits(emitted, edits);
+        emitted = if let Some(operand_end) = construction_end {
+            origins::complete_construction(emitted, edits, tokens[close].end, operand_end)
+        } else {
+            mapped_edits(emitted, edits)
+        };
     }
 }
 

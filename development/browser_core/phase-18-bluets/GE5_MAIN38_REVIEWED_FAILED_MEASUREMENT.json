@@ -1,0 +1,580 @@
+{
+  "scope": "Main38 all9 reviewed comparer corrections integrated; fresh guarded full177 running; G-E5 not accepted",
+  "compiler": "/private/tmp/ge5-main38-test-built-bluetsc",
+  "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c",
+  "sourceEpoch": 38,
+  "privateStateEpoch": 66,
+  "sourceFiles": 498,
+  "sourceFreezeSha256": "7ba9515002b46743d9c683ea7b15363fd2a28e731605307b8eb3557919123ba4",
+  "fullCohortAccepted": false,
+  "ordinaryUnfilteredAccepted": false,
+  "commit": false,
+  "push": false,
+  "integrationReviews": {
+    "producerMergeSha256": "7613adf95d453f53f4ce20af835665b47294d1834983e09b2c5ad193556e7542",
+    "verifierMergeSha256": "5a5517434287e81685142d173487768391bf79c6289f5da55de1de4803319e16",
+    "staticPacketSha256": "24ce64df7aea59dddfcfaea6c579e00b77178d09a775c7411748c1a21688e8e6",
+    "safePacketTarSha256": "d29eff3beb39c48349ce79e8c8050f60d68db2afb7ab8cd7a5b4c6c97ee1f220",
+    "inventoryPacketSha256": "ca649a1e07eb855dae6fb7e4ecff718e9667925f65cf1e5e3628c5b8bec51a8b",
+    "inventoryAddendumSha256": "4423b94b2d095f8d9d53f07a09798b9f6abec5815c7f92ec9bc3a603e0d1ad45"
+  },
+  "independentWorktreeEvidenceNotMainAcceptance": {
+    "safeHome": {
+      "configurations": 92,
+      "freshControls": 131807,
+      "executions": 184,
+      "failures": 0
+    },
+    "staticSuper": {
+      "configurations": 282,
+      "freshControls": 69852,
+      "executions": 564,
+      "failures": 0
+    }
+  },
+  "sourceAndToolClosure": {
+    "producerMergedFiles": 15,
+    "producerTextConflictsResolved": 2,
+    "requiredVerifierUnionFiles": 107,
+    "unresolvedDependencies": 0,
+    "finiteIgnoredHarnesses": 47,
+    "finiteIgnoredFunctions": 54
+  },
+  "remainingRequiredGates": [
+    "complete frozen same-compiler 137-family / 8407-configuration / 20590-map evidence and exact JS coverage ledger",
+    "unchanged owner controls through the complete measurement",
+    "fresh complete ordinary/workspace and final source/tool/status audits"
+  ],
+  "producerFix": {
+    "file": "backend/bluets/src/emitter/private_lowering.rs",
+    "sha256": "f839e6276306250280b8a3a1dc5c06a96f546529587ea7eed52884eced5cf8f2",
+    "deliveryManifestSha256": "aa206407a7773069f3e3fbfd1e7daab65665a7cff78552c06a0d78ab1ec6dc33",
+    "description": "Resolve module-relative relocation parts before rebasing plain-text fragment edits; no generic bounds clamp or dropped map markers."
+  },
+  "focusedPublic": {
+    "passedRustTests": 10,
+    "failed": 0,
+    "originalClassOracleConfigurations": 30,
+    "declarationInferenceCases": 84,
+    "declarationInferenceAcceptedExecutedCases": 77,
+    "privateRhsConfigurations": 48,
+    "privateRhsMaps": 24,
+    "assertedDecoratorConfigurations": 2,
+    "assertedDecoratorMaps": 1,
+    "classModifierConfigurations": 48,
+    "classModifierMaps": 24,
+    "preservedDecoratorSyntaxGuards": 2,
+    "logSha256": "b671f34caf468933090cee24f00643aaf28b3ca5db91af2122d6c8c21b0072ce"
+  },
+  "workspaceFormat": {
+    "passed": true,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "integratedToolSelfTests": {
+    "passed": 279,
+    "failed": 0,
+    "skippedObservationDependentTests": 0,
+    "logSha256": "21cba8417dd7e50ca714e53e392b6bccc488a766ce4862faf28548d716db20c0"
+  },
+  "previousMain35Failure": {
+    "file": "GE5_MAIN35_FAILED_MEASUREMENT.json",
+    "sha256": "7e5776265b9f572a752d912fe5f1f2e2a359397c7caaa09f6c2f630eec1dbb6a"
+  },
+  "measurement": {
+    "state": "failure",
+    "startedAt": "2026-11-05T12:09:23.410890+00:00",
+    "driver": "/private/tmp/ge5-main38-reviewed-final-driver.json",
+    "driverSourceSha256": "87fae653accbb3af84921df878be7de1adeadcc2b4167af1ad72972c30752e42",
+    "measurementDirectory": "/private/tmp/ge5-main38-reviewed-final-measurement",
+    "completeCompatibilitySuites": 177,
+    "preflightResults": {
+      "catalog": {
+        "exitCode": 0,
+        "logSha256": "eb8a71a18a15ddeaee7b0f8c9c9ca5ac501e0b141e50ab59e551c3f94eedf728"
+      },
+      "case-source-audit": {
+        "exitCode": 0,
+        "logSha256": "e1df15e44f48b58b9baf0d729ee1af4f3a4bebe23ecb75eff8521504ca54fe4d"
+      },
+      "source-check": {
+        "exitCode": 0,
+        "logSha256": "b7ae7cdc4d566439a483ad3c426fe3cabe35a9f7466afeec83f31736fdf77d6b"
+      }
+    },
+    "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c",
+    "note": "New same-CLI full177 after all four reviewed comparer fixes; prior failed Main38 receipt remains archived. No partial diagnostic or saved replay substitutes for this run.",
+    "latestObservation": {
+      "observedAt": "2026-11-05T13:05:36.749240+00:00",
+      "conclusion": "in_progress",
+      "completedSuccessfulSuites": 56,
+      "originalFailedSuite55NowPassed": {
+        "configurations": 51,
+        "mapsVerified": 51,
+        "freshEffectiveControls": 5437,
+        "runtimeExecutions": 1530,
+        "failures": 0,
+        "reportSha256": "b68dbd019f368d33eab7484b1d93be6ad0b3ad969158d68e786110f0140f1c97"
+      },
+      "fullCohortAccepted": false
+    },
+    "originalFailureFamiliesNowPassedInFreshRun": {
+      "observedAt": "2026-11-05T13:18:15.522309+00:00",
+      "reports": [
+        {
+          "report": "async-class-method.json",
+          "sha256": "b68dbd019f368d33eab7484b1d93be6ad0b3ad969158d68e786110f0140f1c97",
+          "verifiedMaps": 51,
+          "failures": 0
+        },
+        {
+          "report": "async-super-method.json",
+          "sha256": "3b8547c771ccbd15d81fa89eaaee73c06ad528ddbe2d7c2994e2a2508f777413",
+          "verifiedMaps": 51,
+          "failures": 0
+        },
+        {
+          "report": "class-super-write.json",
+          "sha256": "b9e59580005f6fbddb1d40f3f7d2bc202ba7b751d4f18fb0683b19677ffe80c3",
+          "verifiedMaps": 43,
+          "failures": 0
+        }
+      ],
+      "fullCohortAccepted": false
+    },
+    "helperCollisionNowPassedInFreshRun": {
+      "observedAt": "2026-11-05T13:40:23.563823+00:00",
+      "configurations": 363,
+      "mapsVerified": 363,
+      "freshEffectiveControls": 25972,
+      "failures": 0,
+      "reportSha256": "e61be7c0bafd78f029d31726d4f31536463b44a0feaef19e89551cbb97f8a2be",
+      "fullCohortAccepted": false
+    },
+    "progressSnapshot": {
+      "observedAt": "2026-11-05T16:14:28.188142+00:00",
+      "conclusion": "failure",
+      "completedSuccessfulSuites": 166,
+      "completedFailedSuites": 1,
+      "currentHarness": "backend/bluets/tests/source_map_tokens_oracle.rs",
+      "completeCompatibilitySuites": 177,
+      "frozenProductionFilesVerified": 498,
+      "frozenToolsVerified": 561,
+      "bothCompilerHashesUnchanged": true,
+      "fullCohortAccepted": false
+    },
+    "literalFieldsNowPassedInFreshRun": {
+      "observedAt": "2026-11-05T14:16:28.654067+00:00",
+      "configurations": 67,
+      "mapsVerified": 67,
+      "failures": 0,
+      "reportSha256": "ebaec03465945bdf8bfc424e1461e616c907d3019979912df8767bf5c9f153c0",
+      "fullCohortAccepted": false,
+      "freshEffectiveControls": 51228,
+      "runtimeExecutions": 134
+    },
+    "allFourReviewedCorrectionsPassedOriginalFailureFamilies": true,
+    "safeHomeNowPassedInFreshRun": {
+      "configurations": 92,
+      "completeWholeMaps": 92,
+      "effectiveNegativeControls": 131807,
+      "failures": 0,
+      "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c",
+      "reportSha256": "b81bfddedbc5d23eae2ef99f1d9749242f1f27008255493573471cef00c68254",
+      "scope": "Fresh integrated full177 suite102 only; full-cohort acceptance still pending"
+    },
+    "fullDeclarationsNowPassedInFreshRun": {
+      "suiteTests": 64,
+      "passed": 64,
+      "failed": 0,
+      "configurations": 8407,
+      "buildsPerConfiguration": 2,
+      "completeDeclarationMaps": 10397,
+      "javascriptMetadataAndBoundsMaps": 10193,
+      "differences": 0,
+      "nativeFullReplayPassed": true,
+      "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c",
+      "suiteLogSha256": "459628480d015d6498f46af49c41e9e2017d80c79460fae4a9885177eb134cc9",
+      "originalReportPath": "/var/folders/y4/zd34wgns1j5ddjvp004fz7yw0000gn/T/bluets-ge5-declaration-report-62119.json",
+      "reportSha256": "bb4ed58276c250e79ee79e930738f41f639b9fee173b504c82e2831101ae6c7e",
+      "rawReport": "{\n  \"buildsPerConfiguration\": 2,\n  \"configurations\": 8407,\n  \"differences\": [],\n  \"javascriptComparison\": \"complete metadata/order/tables/bounds; source-role parity remains separate\"\n}",
+      "scope": "Complete raw declarations and decoded declaration maps plus JavaScript metadata/order/tables/bounds; JS source-role parity remains separately required"
+    },
+    "standardDecoratorNowPassedInFreshRun": {
+      "configurations": 363,
+      "completeWholeMaps": 363,
+      "effectiveNegativeControls": 141798,
+      "failures": 0,
+      "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c",
+      "reportSha256": "4532e9fbd04e1701c1fdb665703c476647360e6dd910cd824577cd69aea73b36",
+      "scope": "Fresh integrated suite104; complete source-role module contracts, full-cohort acceptance still pending"
+    },
+    "staticSuperNowPassedInFreshRun": {
+      "completeWholeMaps": 282,
+      "effectiveNegativeControls": 69852,
+      "executions": 564,
+      "failures": 0,
+      "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c",
+      "reportSha256": "7ade8bf90f03b37c12da98f9e2ef19549fb903633b479c738cd978d881f6f96f",
+      "scope": "Fresh integrated complete static-super suite105; full177 and remaining gates still pending"
+    },
+    "finishedAt": "2026-11-05T16:10:12.672Z",
+    "terminalMeasurementSha256": "a07d38d1ed41d9cbbcc8f67a7b5fb3b4fb072eea67fd276ae5269a4795cbe27b"
+  },
+  "k11RealProcess": {
+    "state": "success",
+    "passed": 22,
+    "failed": 0,
+    "ignored": 0,
+    "unrelatedNonGeneratedFiltered": 33,
+    "seconds": 82.46,
+    "logSha256": "c22d5f6fe5e0fd5d2b0df982fcc93fe1450c79fc42f355e0b55a19694574b05f",
+    "fixtureAndExpectationChanges": 0
+  },
+  "previousMain36Failure": {
+    "file": "GE5_MAIN36_FAILED_MEASUREMENT.json",
+    "sha256": "a23b14a774ae87722185ccda1a5aebad0e26aea9d08bb0f83268dc651bb7d158"
+  },
+  "decoratorFix": {
+    "file": "backend/bluets/src/emitter/decorators.rs",
+    "sha256": "3dcf52dfc06a9e22104cbc03393082626f6d59001cb49c3d4fa2a80c13eb6dba",
+    "sealedDeliverySha256": "31f53170ec44bb775a894be7bb4394101daf2b81bed66bedca76a9cc2f2bde66",
+    "description": "Relocate only the parsed surviving asserted decorator identifier; keep original decorator end anchor. Original empty erase extends past the old moved span."
+  },
+  "sourceRevision": "backend-tree:0f6b5151270a0549026484cf96616e257d3f27d7",
+  "reviewedStagingManifestSha256": "67f58e70e14a574012a5326285f94332efc3db0bd501974a15c1e9882921389a",
+  "perMapReportUnitTests": {
+    "passed": 2,
+    "failed": 0,
+    "logSha256": "2e86dca3f79b8a7b2218d2b2b7b993924de8228d58a98af68f5619141523856a",
+    "scope": "exact inline raw bytes and retained whole-token/gap rejection; full cohort not measured"
+  },
+  "perMapEvidenceWiring": {
+    "files": 6,
+    "manifestSha256": "1e31db3b9ee5c999717cb1ee68df8e356e84d41ff28b8c7db773276c9e724a38",
+    "nodeFocusedTests": 13,
+    "rustFocusedTests": 2,
+    "scope": "inventory only; requires actual successful complete measurement, exact per-map proofs and unchanged hashes"
+  },
+  "baselineDiscovery": {
+    "scope": "filtered diagnostic only on Main37 test-built3954 CLI; no acceptance substitution",
+    "selectedSuites": 68,
+    "selectedTests": 207,
+    "passedTests": 206,
+    "failedTests": 1,
+    "onlyFailure": "declaration_inference::emitted_declarations_preserve_native_execution_declarations_and_target_syntax; fixed and original77 accepted cases now green on Main38",
+    "earlyAuditSha256": "4195281444a42b12d24d1bd984a8b4d7c2bf0c03a2c4f02f9594f488757821b9",
+    "lateAReceiptSha256": "b0201f3d08a37ead7222da9a62c24757854aa0c93eadf35d6b69c2f2aad6b199",
+    "lateBReceiptSha256": "6aaf1fc99f9fa48d4b4719f9cf8c59665cfe29478bcca446645751ff7d893cf9"
+  },
+  "cliMeasurementGuard": {
+    "integrated": true,
+    "focusedTestsPassed": 8,
+    "logSha256": "ced05f321c95aa3a348e2b4eb551a215a157a307fac7d00ef8bb81b8aa315af3",
+    "scope": "expected normal Cargo CLI SHA after no-run, before/after every suite, before successful termination"
+  },
+  "prebuildSourceFreezeSha256": "ee2b05ef9479dbb81e59a7f31c6a66dda6718a1e74131dd166f329d4aa26b4c9",
+  "previousMain37Failure": {
+    "file": "GE5_MAIN37_FAILED_MEASUREMENT.json",
+    "sha256": "8fe5aa41bd7eaae2b8b5bfe7c6e5877a358008d8cb285928926987c3b00a60e1"
+  },
+  "commonjsAbstractFix": {
+    "file": "backend/bluets/src/emitter/commonjs.rs",
+    "sha256": "ac0b58350bffa2b6969b43f151eca140d6b61338001df6513856c80f980ae722",
+    "deliveryManifestSha256": "68aa76ebd5ecd567b7807a0bee20ceba21d02b099a9322b3787b07501d42d72b",
+    "scope": "only parsed abstract class prefix; no generic strip/overlap policy, fixture or syntax-admission changes"
+  },
+  "workspaceAllTargetsClippy": {
+    "passed": true,
+    "logSha256": "fe510ceabe44c6c2e96e0ecf332907bd5765f6453e241198714ec737369545ea"
+  },
+  "collectorMeasurementCompilerBinding": {
+    "integrated": true,
+    "manifestSha256": "7baced9bed6ab704932d69dd1ea54041e2fd4e8ea34f97d0117aaafaf232be38",
+    "scope": "missing or foreign measurement compiler SHA fails closed"
+  },
+  "phaseToolsScopeAudit": {
+    "files": 477,
+    "newGe5Files": 475,
+    "existingOracleMaintenanceFiles": 2,
+    "manifestSha256": "ee1c3705063d607380274705c7f4b497008cc698a6acdc61429e89a031e7a888",
+    "allCanonicalMplHeaders": true,
+    "sourceOver1500Lines": 0,
+    "literalAndFiniteRelativeEdgesResolved": 1674,
+    "offScopeFiles": 0
+  },
+  "compilerBinding": {
+    "state": "sealed after final two-package cargo test --no-run",
+    "cargoExecutable": "/Users/ephoton/git/blueice-bluets/target/debug/bluetsc",
+    "testBuildArtifactsSha256": "83e79e31c721619ba5f131696cd095526d75f652351f21e1fd407052c56f1522",
+    "normalProfileTest": false,
+    "normalTargetTest": true,
+    "note": "The normal Cargo bin, immutable CLI and every suite must preserve this exact SHA. No CLI/source/tool rebuild or edit during complete measurement."
+  },
+  "backendSourceStyleAudit": {
+    "reviewedSources": 258,
+    "newSources": 181,
+    "canonicalNewHeaders": 181,
+    "sourceOver1500Lines": 0,
+    "auditSha256": "7b8ebe738ba65c25ebe3a82f060e5af1113f29c29a0118fbab727b3305f09c94"
+  },
+  "reviewedStagedPaths": 739,
+  "asyncClassFailure": {
+    "reportSha256": "777ec64eaba5bbbc40770f43c7cf86fa071226c749ea701aedeb9bdfa25e5f0e",
+    "configurations": 51,
+    "verifiedMaps": 47,
+    "failedMaps": 4,
+    "failures": [
+      {
+        "id": "ge1_downlevel/async-class-method-es5-commonjs-define-iterate/original/external",
+        "map": "out/main.js.map",
+        "error": "complete paired class accessor descriptor transport ordered gap 20: ordered gap: [0,0,33]"
+      },
+      {
+        "id": "ge1_downlevel/async-class-method-es5-commonjs-define-iterate/crlfAstral/external",
+        "map": "out/main.js.map",
+        "error": "complete paired class accessor descriptor transport ordered gap 20: ordered gap: [0,0,47]"
+      },
+      {
+        "id": "ge1_downlevel/async-class-method-es5-esnext-define-iterate/original/external",
+        "map": "out/main.js.map",
+        "error": "complete paired class accessor descriptor transport ordered gap 20: ordered gap: [0,0,33]"
+      },
+      {
+        "id": "ge1_downlevel/async-class-method-es5-esnext-define-iterate/crlfAstral/external",
+        "map": "out/main.js.map",
+        "error": "complete paired class accessor descriptor transport ordered gap 20: ordered gap: [0,0,47]"
+      }
+    ],
+    "producerDefectProven": false,
+    "candidateScope": "typed comparer method-hole boundaries; no gap waiver or fixture changes",
+    "candidateReview": {
+      "state": "applied to Main and staged; full saved-family replay remains scoped diagnostic evidence; fresh full177 pending",
+      "producerChanges": 0,
+      "fixtureChanges": 0,
+      "patchSha256": "828e940147f304f0aacf95911d9be6a598fbed607280f751b38aa4b131ac55f5",
+      "manifestSha256": "4ee2dceb3dfdc151d4b9b3477f1ca92b1c0f5765103e14b46a282d156e2d1de0",
+      "replaySummarySha256": "3b52a18e5fd2518cb27aca73754b4b4af58b08458508e8c6e0dcfa8ffacbc732",
+      "regressionTestsPassed": 32,
+      "savedConfigurations": 51,
+      "savedMapsVerified": 51,
+      "freshEffectiveControls": 5437,
+      "runtimeExecutions": 1530,
+      "failures": 0,
+      "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c",
+      "scope": "Fresh complete checker controls/runtime on saved twice-built Main38 products; not a new full cohort or compiler build.",
+      "relatedAsyncSuperReplay": {
+        "state": "same sealed two-file patch; saved-observation worktree replay only; not Main acceptance",
+        "originalDiagnosticReportSha256": "51bc563ad57f63c69100368851d780e60d581762f7cfc46e97b98c483f7ec49a",
+        "originalFailures": [
+          {
+            "id": "ge1_downlevel/async-super-method-es5-commonjs-define-iterate/original/external",
+            "map": "out/main.js.map",
+            "error": "complete paired class accessor descriptor transport ordered gap 20: ordered gap: [0,0,112]"
+          },
+          {
+            "id": "ge1_downlevel/async-super-method-es5-commonjs-define-iterate/crlfAstral/external",
+            "map": "out/main.js.map",
+            "error": "complete paired class accessor descriptor transport ordered gap 20: ordered gap: [0,0,126]"
+          },
+          {
+            "id": "ge1_downlevel/async-super-method-es5-esnext-define-iterate/original/external",
+            "map": "out/main.js.map",
+            "error": "complete paired class accessor descriptor transport ordered gap 20: ordered gap: [0,0,112]"
+          },
+          {
+            "id": "ge1_downlevel/async-super-method-es5-esnext-define-iterate/crlfAstral/external",
+            "map": "out/main.js.map",
+            "error": "complete paired class accessor descriptor transport ordered gap 20: ordered gap: [0,0,126]"
+          }
+        ],
+        "addendumSha256": "94418471b37e41d6894b0cf73c7fb323722457d3158ee01cc30f71c83dbc4fea",
+        "replayReportSha256": "3b8547c771ccbd15d81fa89eaaee73c06ad528ddbe2d7c2994e2a2508f777413",
+        "savedConfigurations": 51,
+        "mapsVerified": 51,
+        "freshEffectiveControls": 6766,
+        "runtimeExecutions": 1428,
+        "failures": 0,
+        "original47ProductHashesUnchanged": true
+      }
+    }
+  },
+  "remainingGe5Discovery": {
+    "scope": "full include-ignored diagnostic selected suite groups; continue after failures; cannot establish complete177 acceptance",
+    "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c",
+    "sourceFrozen": true,
+    "early": "/private/tmp/ge5-main38-ge5-discovery-early",
+    "mid": "/private/tmp/ge5-main38-ge5-discovery-mid",
+    "late": "/private/tmp/ge5-main38-ge5-discovery-late",
+    "snapshot": {
+      "observedAt": "2026-11-05T11:56:00.498556+00:00",
+      "lanes": {
+        "early": {
+          "receiptSha256": "7482bcd0936a2d427b5cf0ce72b1b5b56c985e41a57f35b00966176f90b970a8",
+          "selectedSuites": 17,
+          "completedSuites": 17,
+          "successfulSuites": 13,
+          "failedSuites": [
+            "backend/bluets/tests/ge5_async_super_family.rs",
+            "backend/bluets/tests/ge5_class_retained.rs",
+            "backend/bluets/tests/ge5_decorator_adjacent_observations.rs",
+            "backend/bluets/tests/ge5_helper_collision_family.rs"
+          ],
+          "lastHarness": "backend/bluets/tests/ge5_helper_collision_maps.rs",
+          "conclusion": "diagnostic-failures"
+        },
+        "mid": {
+          "receiptSha256": "b4ff4b17c3061d22a2f31dd0ba750e94e8e9d6c04818c2493c6dc638f8ded5a6",
+          "selectedSuites": 18,
+          "completedSuites": 18,
+          "successfulSuites": 17,
+          "failedSuites": [
+            "backend/bluets/tests/ge5_literal_decorator_module_maps.rs"
+          ],
+          "lastHarness": "backend/bluets/tests/ge5_metadata_inline_type.rs",
+          "conclusion": "diagnostic-failures"
+        },
+        "late": {
+          "receiptSha256": "f9f2467f4d9a87cc651524a477f7b4176b4a61307292cf6d6fa40b636c1408ba",
+          "selectedSuites": 16,
+          "completedSuites": 16,
+          "successfulSuites": 16,
+          "failedSuites": [],
+          "lastHarness": "backend/bluets/tests/ge5_static_super_complete_family.rs",
+          "conclusion": "diagnostic-terminal-success; full177 still required"
+        }
+      },
+      "fullCohortAccepted": false
+    }
+  },
+  "retainedEndpointCandidate": {
+    "state": "applied to Main and staged; isolated replay above is prior diagnostic evidence; fresh full177 acceptance pending",
+    "producerChanges": 0,
+    "fixtureChanges": 0,
+    "patchSha256": "d79c9984a73b0964273f78501ad646c72054681b369ee8585af94a3c6958fe8e",
+    "manifestSha256": "39a17a9d28df7e1b53e1a538d54f91115467225b54a0e071b1f354e26e58fe1a",
+    "replaySummarySha256": "7e2f74eaaf560fca49d4226d08ae38696a34f0a18a16145e84cbce1c61695bb7",
+    "configurations": 43,
+    "mapsVerified": 43,
+    "freshEffectiveControls": 1239,
+    "runtimeExecutions": 86,
+    "failures": 0,
+    "original43ProductHashesUnchanged": true,
+    "exactEndpointEraseControlsPreserved": true
+  },
+  "adjacentEnvironmentRetest": {
+    "state": "complete diagnostic suite passed; not complete177 acceptance",
+    "originalFailure": "diagnostic launcher omitted mandatory BLUEICE_GE5_ADJACENT_OBSERVATION_DIRECTORY",
+    "fixedInPreparedFullDriver": true,
+    "receiptSha256": "bdd193c970db8874be5481cfcf5d85f6cfcc7ca1dcfbe7d3144e4b005b32959e",
+    "passedTests": 5,
+    "failedTests": 0,
+    "ignoredTests": 0,
+    "filteredTests": 0,
+    "configurations": 1024,
+    "repeatBuilds": 2,
+    "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c"
+  },
+  "safeHomePreviouslyOptionalTests": {
+    "state": "full six-test file passed using fresh92 observations; no compiler/tool edits",
+    "manifestSha256": "f374376d674bc1fff2a6e3498e5ba25c1b4a735c58bd31d1fb9699c66f5e7291",
+    "observationsSha256": "66daed153ec167f1a1a6be61d6277357515fbfc3c1f8164d4d82723ab9ce6b73",
+    "configurations": 92,
+    "actualCliBuilds": 184,
+    "passedTests": 6,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "compilerSha256": "93e135af1355d3da5687720a6dbf84d869bbcdeef2331a123d1d6539fbef1e7c"
+  },
+  "reviewedComparerIntegration": {
+    "files": 9,
+    "packets": 4,
+    "reviewManifestSha256": "f44a458412b8d4d2c976d9aa3bb0b5707d39d3475b030dfc399ddb42ea579b10",
+    "state": "all9 after-images integrated and staged; Node279/0skip and complete tool-scope audit pass; guarded fresh177 running",
+    "savedReplayConfigurationsAndMaps": 575,
+    "freshEffectiveControls": 90642,
+    "runtimeExecutions": 11238,
+    "failures": 0,
+    "fullCohortAccepted": false
+  },
+  "helperCollisionBoundaryCandidate": {
+    "state": "applied to Main and staged; isolated replay above is prior diagnostic evidence; fresh full177 acceptance pending",
+    "manifestSha256": "5c5fac67e4ff77a1167e666b705e63ae240a617084ab58cc68104164873d0cff",
+    "patchSha256": "e5bed54ae9aca91173229108925b126db1c49601a590526970450472876e1e34",
+    "configurations": 363,
+    "mapsVerified": 363,
+    "originalFailedMaps": 72,
+    "freshEffectiveControls": 25972,
+    "runtimeExecutions": 8060,
+    "failures": 0,
+    "original291ProductHashesUnchanged": true,
+    "producerChanges": 0
+  },
+  "literalFieldsEndpointCandidate": {
+    "state": "applied to Main and staged; isolated replay above is prior diagnostic evidence; fresh full177 acceptance pending",
+    "manifestSha256": "4ea6db97f41ce5865cec59ddaa4c51fc82a2e043813241d3924b1a42ade36714",
+    "patchSha256": "67be2b9374e46c42d9dc414b7df30ba55c59535512ea03e83350bed54e04d4d2",
+    "configurations": 67,
+    "mapsVerified": 67,
+    "originalFailedMaps": 11,
+    "freshEffectiveControls": 51228,
+    "runtimeExecutions": 134,
+    "failures": 0,
+    "outerEndpointControls": 378,
+    "innerEndpointControls": 38,
+    "producerChanges": 0
+  },
+  "durableEvidencePublication": {
+    "state": "prepared only; requires genuine177 success and complete coverage first",
+    "plannedArtifacts": [
+      "GE5_COHORT_COVERAGE.json",
+      "GE5_COHORT_ARTIFACTS.json",
+      "GE5_COHORT_EVIDENCE.tar.gz"
+    ],
+    "scope": "Exact collector bytes and hash-verified report/OBS/suite logs; no additional TODO or acceptance gate"
+  },
+  "previousMain38Failure": {
+    "file": "GE5_MAIN38_FAILED_MEASUREMENT.json",
+    "sha256": "75cf1c6342203c6b2f9bfe3f7137f7cb49dc7b64a9ab50b477aa6af41f6bd847"
+  },
+  "postSuccessSequentialPipeline": {
+    "script": "/private/tmp/ge5-main38-final-sequential-supervisor.py",
+    "scriptSha256": "70560785fcd55051a40af6b430c03d2c71e1cd06d4df2a9bc6b4117c074e14d6",
+    "receipt": "/private/tmp/ge5-main38-final-sequential-supervisor-receipt.json",
+    "state": "stopped because existing full177 measurement failed before publication",
+    "stages": [
+      "complete coverage and durable evidence publication",
+      "complete local workspace ordinary tests and exact two-package CLI restoration"
+    ],
+    "precondition": "All 177 suites succeed with zero failures, ignored or filtered tests; measured source/compiler and tools remain frozen",
+    "failureBehavior": "Stop at the first failed stage and preserve its logs",
+    "automaticallyCompletesTodo": false,
+    "automaticallyCommits": false
+  },
+  "preterminalExactCoverage": {
+    "scope": "Preflight only; cannot establish terminal complete-cohort acceptance",
+    "path": "/private/tmp/ge5-main38-reviewed-final-preterminal-coverage.json",
+    "sha256": "ce3e81df3417c996d88121eeb08f95c5c611e26bf4f5e9287dc8b068ac64b926",
+    "families": 137,
+    "configurations": 8407,
+    "expectedJavascriptMaps": 10193,
+    "coveredJavascriptMaps": 10193,
+    "missingMaps": 0,
+    "rejectedReports": 0,
+    "completeJavascriptMapInventory": true,
+    "evidenceAccepted": false,
+    "expectedRejection": "Existing full177 measurement remains in_progress; formal collector reruns after terminal success"
+  },
+  "k11ConsecutiveCommentFailure": {
+    "scope": "Real producer regression; identical basic JavaScript must retain complete Native mapping parity; frozen K11 fixtures and expectations remain unchanged",
+    "suite": "backend/bluets/tests/source_map_tokens_oracle.rs",
+    "passedTests": 22,
+    "failedTests": 1,
+    "case": "k11-basic-copy",
+    "logSha256": "5a7422fa6a6308bb108b1dec6d6eea73af1c8132c95d4f922633ada9d0385c37",
+    "rootCauseObserved": "Consecutive leading line comments lose generated-column0 source starts on comments2 and3",
+    "minimalPublicCliReproduction": "/private/tmp/ge5-k11-basic-transition-audit/out/main.js.map",
+    "nativeTransitionFingerprint": "2195a23867fd30def4c6bfe2870ef1cf3138eb96f648b6ea5525acfc7abed7d5",
+    "actualTransitionFingerprint": "a45db3b4eff3326ccd899181803551620e89803fe2d8df93b25ba18f308a3ad5",
+    "requiresProducerRepair": true
+  }
+}

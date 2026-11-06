@@ -1,0 +1,9 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+// Names following template substitutions remain exact original AST identifiers.
+const assert=require('node:assert/strict'),path=require('node:path'),{stream}=require('./ge5_role_stream.cjs'),machine=require('./ge5_continuation_machine.cjs');
+const root=path.resolve(__dirname,'../../../..'),ts=require(path.join(root,'backend/bluets/tests/fixtures/oracle_support/load_typescript.cjs'))(process.env.BLUEICE_BLUETSC_ORACLE||'tsc'),original='function source(){const text=`v${Promise.resolve(1)}`;const iterator=sequence();return JSON.stringify([iterator,text]);}';
+function read(slot='generated',context='context'){const code='function callback(){var '+slot+';return __generator(this,function('+context+'){switch('+context+'.label){case 0:return [2,1];}});}',view=stream(ts,code,JSON.stringify({version:3,file:'unit.js',sources:['original.ts'],sourcesContent:[original],names:[],mappings:''}));return machine.read(ts,view,view.source.statements[0],'native',[original]);}
+const valid=read();for(const name of['JSON','stringify','iterator','sequence','text','Promise','resolve'])assert(valid.identifiers.has(name),name+' is a true original AST identifier');assert(!valid.identifiers.has('v$'),'cooked template chunks are not identifiers');assert.throws(()=>read('JSON'),/fresh generated slot or original user binding/);assert.throws(()=>read('stringify'),/fresh generated slot or original user binding/);assert.throws(()=>read('generated','JSON'),/fresh continuation context/);console.log(JSON.stringify({scope:'original AST identifier capability',positive:1,rejected:3,identifiersAfterTemplate:['JSON','stringify','iterator','sequence','text']},null,2));

@@ -36,8 +36,11 @@ use crate::namespace_analysis::has_runtime_values;
 use crate::parser::Declaration;
 use crate::{Token, TokenKind};
 
+pub(in crate::emitter) mod class_values;
+mod export_properties;
+
 pub(crate) const IMPORT_DEFAULT_HELPER: &str = "var __importDefault = (this && this.__importDefault) || function (mod) { return (mod && mod.__esModule) ? mod : { \"default\": mod }; };";
-pub(crate) const IMPORT_STAR_HELPER: &str = "var __importStar = (this && this.__importStar) || function (mod) { if (mod && mod.__esModule) return mod; var result = {}; if (mod != null) for (var k in mod) if (k !== \"default\" && Object.prototype.hasOwnProperty.call(mod, k)) { (function (key) { Object.defineProperty(result, key, { enumerable: true, get: function () { return mod[key]; } }); })(k); } Object.defineProperty(result, \"default\", { enumerable: true, value: mod }); return result; };";
+pub(crate) const IMPORT_STAR_HELPER: &str = include_str!("commonjs/import_star.v1.js");
 
 /// The identifier a required module is bound to: its file's name and a number,
 /// `m_1`, `m_2`.
@@ -80,8 +83,9 @@ pub(super) fn lower_commonjs(
     project: &crate::Project,
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
-    system_wrapper: bool,
+    wrapper: crate::ModuleKind,
 ) -> Result<BTreeMap<String, Replacement>, Diagnostic> {
+    let system_wrapper = wrapper == crate::ModuleKind::System;
     let Ok(tokens) = crate::lex(&module.id, &module.source) else {
         return Ok(BTreeMap::new());
     };
@@ -103,10 +107,15 @@ pub(super) fn lower_commonjs(
     let mut references: BTreeMap<String, Replacement> = BTreeMap::new();
     let mut exported_variables: BTreeSet<String> = BTreeSet::new();
     let mut chain: Vec<String> = Vec::new();
-    let mut hoisted: Vec<String> = Vec::new();
+    let mut export_members = BTreeMap::new();
+    let mut hoisted: Vec<(String, SourceSpan)> = Vec::new();
     let mut es_syntax = false;
     let mut needs_default = false;
     let mut needs_star = false;
+
+    if matches!(wrapper, crate::ModuleKind::Amd | crate::ModuleKind::System) {
+        super::output_options::erase_elided_import_comments(module, edits)?;
+    }
 
     for declaration in &module.declarations {
         match declaration {
@@ -119,20 +128,24 @@ pub(super) fn lower_commonjs(
                 let local = &import.bindings[0].local;
                 if import.exported {
                     es_syntax = true;
-                    chain.push(local.clone());
+                    references.insert(
+                        local.clone(),
+                        Replacement {
+                            text: format!("exports.{local}"),
+                            wrap_calls: !system_wrapper,
+                            anchor_each_token: false,
+                        },
+                    );
                 }
                 push(
                     edits,
                     import.span.start,
                     import.span.end,
-                    format!(
-                        "const {local} = require(\"{spec}\");{}",
-                        if import.exported {
-                            format!(" exports.{local} = {local};")
-                        } else {
-                            String::new()
-                        }
-                    ),
+                    if import.exported {
+                        format!("exports.{local} = require(\"{spec}\");")
+                    } else {
+                        format!("const {local} = require(\"{spec}\");")
+                    },
                 );
             }
             Declaration::Import(import) => {
@@ -196,12 +209,18 @@ pub(super) fn lower_commonjs(
                         text.push_str(&format!("const {} = {required}; ", binding.local));
                     }
                 }
-                push(
-                    edits,
-                    import.span.start,
-                    import.span.end,
-                    text.trim_end().to_string(),
-                );
+                let text = if matches!(wrapper, crate::ModuleKind::Amd | crate::ModuleKind::System)
+                {
+                    format!(
+                        "{}{}{}",
+                        super::relocations::unmapped(),
+                        text.trim_end(),
+                        super::relocations::unmapped()
+                    )
+                } else {
+                    text.trim_end().to_string()
+                };
+                push(edits, import.span.start, import.span.end, text);
             }
             Declaration::ValueExport(export) if export.export_assignment => {
                 let local = &export.bindings[0].local;
@@ -215,6 +234,12 @@ pub(super) fn lower_commonjs(
             Declaration::ValueExport(export) if export.is_type_only() => {}
             Declaration::ValueExport(export) => {
                 es_syntax = true;
+                for binding in export.bindings.iter().filter(|binding| !binding.type_only) {
+                    export_members.insert(
+                        binding.exported.clone(),
+                        export_properties::key(module, binding).member,
+                    );
+                }
                 if let Some(specifier) = &export.specifier {
                     let spec = javascript_specifier(
                         specifier,
@@ -230,7 +255,16 @@ pub(super) fn lower_commonjs(
                             super::helper_selection::reference(&module.source, "__exportStar");
                         format!("{helper}(require({spec:?}),exports);")
                     } else {
-                        super::reexports::commonjs(export, &spec, &name)
+                        super::reexports::commonjs(module, export, &spec, &name, system_wrapper)
+                    };
+                    let text = if system_wrapper && export.star && export.namespace.is_none() {
+                        format!(
+                            "{}{text}{}",
+                            super::relocations::unmapped(),
+                            super::relocations::unmapped()
+                        )
+                    } else {
+                        text
                     };
                     if let Some(namespace) = &export.namespace {
                         chain.push(namespace.clone());
@@ -258,9 +292,14 @@ pub(super) fn lower_commonjs(
                         text.push_str(&format!("Object.defineProperty(exports, {:?}, {{ enumerable: true, get: function() {{ return {local}; }} }}); ", binding.exported));
                         continue;
                     }
+                    let key = export_properties::key(module, binding);
                     text.push_str(&format!(
-                        "exports.{} = {}; ",
-                        binding.exported, binding.local
+                        "{}{} = {};{} {}",
+                        super::relocations::source_anchor(key.start),
+                        key.member,
+                        binding.local,
+                        super::relocations::source_anchor(key.end),
+                        super::relocations::unmapped(),
                     ));
                 }
                 push(
@@ -272,7 +311,6 @@ pub(super) fn lower_commonjs(
             }
             Declaration::DefaultExport(export) => {
                 es_syntax = true;
-                chain.push("default".to_string());
                 if export.expression {
                     let initializer = module
                         .declarations
@@ -297,6 +335,7 @@ pub(super) fn lower_commonjs(
                     );
                     continue;
                 }
+                chain.push("default".to_string());
                 push(
                     edits,
                     export.span.start,
@@ -308,13 +347,19 @@ pub(super) fn lower_commonjs(
             Declaration::Variable(variable) if variable.exported && !variable.declared => {
                 es_syntax = true;
                 chain.push(variable.name.clone());
+                let class_storage = if system_wrapper {
+                    class_values::Storage::Original
+                } else {
+                    class_values::storage(module, variable, options, &tokens)
+                };
                 if variable.kind == crate::parser::VariableKind::Const
                     && (super::reexports::class_parameter_shadows(module, &variable.name)
-                        || variable.initializer.iter().any(|token| {
-                            module
-                                .class_expression(token.start)
-                                .is_some_and(|expression| expression.name.is_none())
-                        }))
+                        || matches!(class_storage, class_values::Storage::Original)
+                            && variable.initializer.iter().any(|token| {
+                                module
+                                    .class_expression(token.start)
+                                    .is_some_and(|expression| expression.name.is_none())
+                            }))
                 {
                     strip_export(&tokens, token_at(variable.span.start), edits);
                     edits.push(TextEdit {
@@ -362,6 +407,10 @@ pub(super) fn lower_commonjs(
                         "an exported variable's name could not be located",
                     ));
                 };
+                if let class_values::Storage::Retained(keyword) = class_storage {
+                    class_values::retain(variable, keyword, name_token, edits);
+                    continue;
+                }
                 let replacement = if system_wrapper {
                     let export_anchor = super::relocations::source_anchor(variable.span.start);
                     let name_anchor = super::relocations::source_anchor(name_token.start);
@@ -370,7 +419,11 @@ pub(super) fn lower_commonjs(
                         variable.name
                     )
                 } else {
-                    format!("exports.{}", variable.name)
+                    format!(
+                        "{}exports.{}",
+                        super::relocations::source_anchor(name_token.start),
+                        variable.name
+                    )
                 };
                 edits.push(TextEdit {
                     start: variable.span.start,
@@ -383,6 +436,32 @@ pub(super) fn lower_commonjs(
             {
                 es_syntax = true;
                 strip_export(&tokens, token_at(function.span.start), edits);
+                if function.async_function
+                    && options.target
+                        >= if function.generator {
+                            crate::EcmaTarget::Es2018
+                        } else {
+                            crate::EcmaTarget::Es2017
+                        }
+                {
+                    if let Some(asynchronous) = tokens[token_at(function.span.start)..]
+                        .iter()
+                        .take_while(|token| {
+                            token.start < function.body_open.unwrap_or(function.span.end)
+                        })
+                        .find(|token| token.is("async"))
+                    {
+                        if let Some(edit) = edits.last_mut().filter(|edit| {
+                            edit.start == function.span.start && edit.end == asynchronous.end
+                        }) {
+                            edit.replacement = format!(
+                                "{}async{}",
+                                super::relocations::source_anchor(asynchronous.start),
+                                super::relocations::source_anchor(asynchronous.end)
+                            );
+                        }
+                    }
+                }
                 if function.anonymous {
                     let position = tokens[token_at(function.span.start)..]
                         .iter()
@@ -395,11 +474,12 @@ pub(super) fn lower_commonjs(
                         replacement: format!(" {}", function.name),
                     });
                 }
-                hoisted.push(if function.default_export {
+                let assignment = if function.default_export {
                     format!("exports.default = {};", function.name)
                 } else {
                     format!("exports.{0} = {0};", function.name)
-                });
+                };
+                hoisted.push((assignment, function.span.clone()));
             }
             // A class whose decorators or auto-accessors are lowered carries its
             // own `export` and `exports.C = C`.
@@ -414,7 +494,26 @@ pub(super) fn lower_commonjs(
                 chain.push(class.export_name().to_string());
                 let header = token_at(class.span.start)..token_at(class.name_span.start);
                 if let Some(export) = header.into_iter().find(|index| tokens[*index].is("export")) {
-                    strip_export(&tokens, export, edits);
+                    if let Some(modifier) = &class.abstract_modifier {
+                        // The parsed abstract modifier is erased with this
+                        // export prefix; only the following `class` is runtime.
+                        let keyword = &tokens[token_at(modifier.end)];
+                        debug_assert!(keyword.is("class"));
+                        let anchor = super::relocations::source_anchor(tokens[export].start);
+                        edits.push(TextEdit {
+                            start: tokens[export].start,
+                            end: keyword.end,
+                            replacement: format!("{anchor}class{anchor}"),
+                        });
+                    } else if !options.experimental_decorators
+                        && options.target == crate::EcmaTarget::EsNext
+                        && options.defines_class_fields()
+                        && !class.decorators.is_empty()
+                    {
+                        strip_export_with_anchor(&tokens, export, edits, None);
+                    } else {
+                        strip_export(&tokens, export, edits);
+                    }
                 }
                 if class.anonymous {
                     edits.push(TextEdit {
@@ -423,10 +522,41 @@ pub(super) fn lower_commonjs(
                         replacement: format!("{} ", class.name),
                     });
                 }
+                let publication = if options.target == crate::EcmaTarget::Es5 && !class.anonymous {
+                    &class.name_span
+                } else {
+                    &class.span
+                };
+                let publication_anchor = |position| {
+                    if system_wrapper
+                        || options.target == crate::EcmaTarget::Es5 && class.default_export
+                    {
+                        super::relocations::unmapped().to_string()
+                    } else {
+                        super::relocations::source_anchor(position)
+                    }
+                };
+                let static_initializer = options.target >= crate::EcmaTarget::Es2015
+                    && class.members.iter().any(|member| {
+                        member.field.as_ref().is_some_and(|field| {
+                            field.is_static && !field.declared && field.initializer.is_some()
+                        })
+                    });
+                let completion = if static_initializer {
+                    super::relocations::unmapped().to_string()
+                } else {
+                    super::relocations::source_anchor(class.span.end)
+                };
                 edits.push(TextEdit {
                     start: class.span.end,
                     end: class.span.end,
-                    replacement: format!(" exports.{} = {};", class.export_name(), class.name),
+                    replacement: format!(
+                        "{completion} {}exports.{} = {};{}",
+                        publication_anchor(publication.start),
+                        class.export_name(),
+                        class.name,
+                        publication_anchor(publication.end)
+                    ),
                 });
             }
             Declaration::Enum(item) if item.exported && !item.declared => {
@@ -473,23 +603,64 @@ pub(super) fn lower_commonjs(
     if es_syntax && !has_assignment && !system_wrapper {
         header.push_str("Object.defineProperty(exports, \"__esModule\", { value: true }); ");
         if !chain.is_empty() {
-            let keys: Vec<String> = chain
+            let hoisted_names = module
+                .declarations
                 .iter()
+                .filter_map(|declaration| match declaration {
+                    Declaration::Function(function)
+                        if function.exported && !function.declared && !function.overload =>
+                    {
+                        Some(if function.default_export {
+                            "default"
+                        } else {
+                            function.name.as_str()
+                        })
+                    }
+                    _ => None,
+                })
+                .collect::<BTreeSet<_>>();
+            let mut seen = BTreeSet::new();
+            let declarations = chain
+                .iter()
+                .filter(|name| seen.insert(name.as_str()) && !hoisted_names.contains(name.as_str()))
+                .collect::<Vec<_>>();
+            let keys = declarations
+                .into_iter()
                 .rev()
-                .map(|name| format!("exports.{name}"))
-                .collect();
-            header.push_str(&format!("{} = void 0; ", keys.join(" = ")));
+                .map(|name| {
+                    export_members
+                        .get(name.as_str())
+                        .cloned()
+                        .unwrap_or_else(|| format!("exports.{name}"))
+                })
+                .collect::<Vec<_>>();
+            if !keys.is_empty() {
+                header.push_str(&format!("{} = void 0; ", keys.join(" = ")));
+            }
         }
-        for assignment in &hoisted {
+        for (assignment, span) in &hoisted {
+            if options.source_map {
+                header.push_str(&super::relocations::source_anchor(span.start));
+            }
             header.push_str(assignment);
-            header.push(' ');
+            if options.source_map {
+                header.push_str(&super::relocations::source_anchor(span.end));
+                header.push(' ');
+                header.push_str(super::relocations::unmapped());
+            } else {
+                header.push(' ');
+            }
         }
     }
     if !header.is_empty() {
         edits.push(TextEdit {
             start: 0,
             end: 0,
-            replacement: header,
+            replacement: if options.source_map {
+                format!("{}{header}", super::relocations::unmapped())
+            } else {
+                header
+            },
         });
     }
 
@@ -540,6 +711,16 @@ pub(super) fn lower_commonjs(
 
 /// Removes `export` (and `default`) from the start of a declaration.
 fn strip_export(tokens: &[Token], from: usize, edits: &mut Vec<TextEdit>) {
+    let source = tokens.get(from).map(|token| token.start);
+    strip_export_with_anchor(tokens, from, edits, source);
+}
+
+fn strip_export_with_anchor(
+    tokens: &[Token],
+    from: usize,
+    edits: &mut Vec<TextEdit>,
+    source: Option<usize>,
+) {
     let Some(export) = tokens.get(from).filter(|token| token.is("export")) else {
         return;
     };
@@ -548,10 +729,23 @@ fn strip_export(tokens: &[Token], from: usize, edits: &mut Vec<TextEdit>) {
         next += 1;
     }
     if let Some(after) = tokens.get(next) {
+        let anchor = source.map_or_else(
+            || super::relocations::unmapped().to_string(),
+            super::relocations::source_anchor,
+        );
         edits.push(TextEdit {
             start: export.start,
-            end: after.start,
-            replacement: String::new(),
+            end: after.end,
+            replacement: format!(
+                "{}{}{}",
+                anchor,
+                after.text,
+                if after.is("function") || after.is("class") {
+                    anchor.clone()
+                } else {
+                    String::new()
+                }
+            ),
         });
     }
 }

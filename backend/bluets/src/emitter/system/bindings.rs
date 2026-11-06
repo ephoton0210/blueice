@@ -5,6 +5,21 @@
 //! Factory scope owns every name in a lowered declaration, including commas.
 use crate::syntax::{Token, TokenKind};
 
+pub(super) fn statement_end(tokens: &[Token], start: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(start) {
+        match token.text.as_str() {
+            ";" if depth == 0 => return Some(index),
+            "," if depth == 0 => return None,
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" => depth = depth.checked_sub(1)?,
+            _ if token.kind == TokenKind::Eof => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
 pub(super) fn class_end(tokens: &[Token], start: usize) -> Option<usize> {
     let mut index = start + 1;
     let mut grouped = 0usize;

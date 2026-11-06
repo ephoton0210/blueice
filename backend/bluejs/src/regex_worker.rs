@@ -169,6 +169,33 @@ fn frame_read(reader: &mut dyn Read) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+fn transport_loop(
+    input: &mut dyn Write,
+    output: &mut dyn Read,
+    incoming: Receiver<Vec<u8>>,
+    outgoing: Sender<io::Result<Vec<u8>>>,
+) {
+    let ready = frame_read(output);
+    let failed = ready.is_err();
+    if outgoing.send(ready).is_err() || failed {
+        return;
+    }
+    let shutdown = serde_json::to_vec(&Request::Shutdown).expect("a shutdown request serializes");
+    for bytes in incoming {
+        let written = frame_write(input, &bytes);
+        // Shutdown is one-way: serve_on returns without replying. A different
+        // process can still own a stdout writer, so never wait for its EOF.
+        if bytes == shutdown && written.is_ok() {
+            break;
+        }
+        let result = written.and_then(|()| frame_read(output));
+        let failed = result.is_err();
+        if outgoing.send(result).is_err() || failed {
+            break;
+        }
+    }
+}
+
 struct Worker {
     child: Child,
     requests: Option<Sender<Vec<u8>>>,
@@ -245,18 +272,7 @@ impl Worker {
         let (requests, incoming) = mpsc::channel::<Vec<u8>>();
         let (outgoing, replies) = mpsc::channel();
         let io_thread = std::thread::spawn(move || {
-            let ready = frame_read(&mut output);
-            let failed = ready.is_err();
-            if outgoing.send(ready).is_err() || failed {
-                return;
-            }
-            for bytes in incoming {
-                let result = frame_write(&mut input, &bytes).and_then(|()| frame_read(&mut output));
-                let failed = result.is_err();
-                if outgoing.send(result).is_err() || failed {
-                    break;
-                }
-            }
+            transport_loop(&mut input, &mut output, incoming, outgoing);
         });
         let mut worker = Self {
             child,
@@ -413,8 +429,9 @@ impl Drop for Worker {
 
         // Closing stdin alone does not reliably wake a Windows pipe reader.
         // Ask a healthy worker to exit explicitly, then close the channel and
-        // join its I/O thread before reaping the private child on every
-        // platform. Workers are only dropped from ordinary code (never from a
+        // join its I/O thread, which does not read a reply to shutdown, before
+        // reaping the private child on every platform. Workers are only dropped
+        // from ordinary code (never from a
         // thread's exit destructor; see `IDLE`), where that join is safe.
         if let Some(requests) = self.requests.as_ref() {
             let shutdown =

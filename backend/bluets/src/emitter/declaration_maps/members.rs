@@ -9,6 +9,12 @@ use crate::parser::ClassMemberKind;
 impl Mapper<'_> {
     pub(super) fn class(&mut self, g: &ClassDeclaration, s: &ClassDeclaration) {
         self.range(&g.span, &s.span);
+        let gt = self.generated(&g.span);
+        let st = self.source(&s.span);
+        if s.default_export {
+            let end = gt.iter().position(|token| token.is("class")).unwrap_or(0);
+            self.modifiers(&gt[..end], &st);
+        }
         self.range(&g.name_span, &s.name_span);
         self.type_parameters(&g.type_parameters, &s.type_parameters);
         if let Some((g, s)) = g
@@ -16,6 +22,18 @@ impl Mapper<'_> {
             .as_ref()
             .zip(s.extends_type_span.as_ref())
         {
+            // The heritage-clause node begins before its generated leading
+            // space, at the source `extends` keyword rather than name.end.
+            let keyword = |tokens: &[Token], before: usize| {
+                tokens
+                    .iter()
+                    .rposition(|token| token.start < before && token.is("extends"))
+            };
+            if let Some((gi, si)) = keyword(&gt, g.start).zip(keyword(&st, s.start)) {
+                if let Some(previous) = gi.checked_sub(1).and_then(|index| gt.get(index)) {
+                    self.point(previous.end, st[si].start);
+                }
+            }
             self.ty(&self.generated(g), &self.source(s));
         }
         let mut used = BTreeSet::new();
@@ -56,7 +74,12 @@ impl Mapper<'_> {
             }
             return;
         }
-        self.point(g.span.start, s.span.start);
+        self.point(
+            g.span.start,
+            s.decorators
+                .first()
+                .map_or(s.span.start, |decorator| decorator.span.start),
+        );
         let gn = g.key.first().map_or(g.span.start, |t| t.start);
         let sn = s.key.first().map_or(s.span.start, |t| t.start);
         self.modifiers(
@@ -75,6 +98,9 @@ impl Mapper<'_> {
         if let Some((gf, sf)) = g.field.as_ref().zip(s.field.as_ref()) {
             if let Some((g, s)) = gf.annotation_span.as_ref().zip(sf.annotation_span.as_ref()) {
                 self.ty(&self.generated(g), &self.source(s));
+            } else if let (Some(annotation), Some(initializer)) = (&gf.annotation, &sf.initializer)
+            {
+                self.inferred_function(annotation, initializer, &self.generated(&g.span));
             }
             self.point(g.span.end, s.span.end);
         }

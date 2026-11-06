@@ -11,7 +11,7 @@ use crate::compiler::{
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{Declaration, Module, TextEdit, Type, TypeParameter};
 use crate::strict_boundaries;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub use decorators::DECORATOR_HELPER_V1_VERSION;
 pub use legacy_decorators::LEGACY_DECORATOR_HELPER_V1_VERSION;
@@ -41,6 +41,7 @@ pub(crate) use helper_selection::VERSION as HELPER_SELECTION_VERSION;
 mod inference_literals;
 mod inferred_declarations;
 mod inferred_returns;
+mod javascript_maps;
 mod jsx;
 pub(crate) mod legacy_decorators;
 mod literal_order;
@@ -202,29 +203,40 @@ pub(crate) fn emit(
             }
             let source_map = (options.source_map && !options.emit_declaration_only)
                 .then(|| source_map(id, &checked_module.module.source, &emitted, options));
+            let mut declaration_origins = BTreeMap::new();
             let declaration = options
                 .declaration
                 .then(|| {
                     let order = literal_order::Order::new(&checked_module.module, options)?;
-                    let context = inferred_declarations::Context::new(
+                    let mut context = inferred_declarations::Context::new(
                         checked_module,
                         project,
                         &order,
                         options,
                     )?;
-                    emit_declaration(
+                    let text = emit_declaration(
                         &inferred_returns::declaration_module(checked_module, &order),
                         &checked_module.symbols,
                         Some(&context),
                         options,
-                    )
+                    )?;
+                    declaration_origins = context.take_map_origins();
+                    Ok::<_, Diagnostic>(text)
                 })
                 .transpose()?;
             let declaration = declaration.map(|text| output_options::format_text(text, options));
             let declaration_map = if options.declaration_map {
                 declaration
                     .as_deref()
-                    .map(|text| declaration_maps::build(id, &checked_module.module, text, options))
+                    .map(|text| {
+                        declaration_maps::build(
+                            id,
+                            &checked_module.module,
+                            text,
+                            &declaration_origins,
+                            options,
+                        )
+                    })
                     .transpose()?
             } else {
                 None
@@ -456,18 +468,12 @@ fn emit_javascript(
     // or move source text (a static initializer, a decorator expression), take
     // the rewritten text with them.
     let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
-        commonjs::lower_commonjs(
-            module,
-            project,
-            options,
-            &mut edits,
-            wrapper == crate::ModuleKind::System,
-        )?
+        commonjs::lower_commonjs(module, project, options, &mut edits, wrapper)?
     } else {
         BTreeMap::new()
     };
     legacy_decorators::prepare_super(module, options, &mut edits)?;
-    class_lowering::lower_class_members(module, options, &mut edits)?;
+    class_lowering::lower_class_members(module, options, &mut edits, wrapper)?;
     enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
     namespaces::lower_namespaces(module, project, options, &mut edits)?;
     if options.experimental_decorators {
@@ -476,10 +482,11 @@ fn emit_javascript(
             project,
             options,
             &references,
+            wrapper == crate::ModuleKind::System,
             &mut edits,
         )?;
     } else {
-        decorators::lower_decorators(module, options, &mut edits)?;
+        decorators::lower_decorators(module, options, &mut edits, wrapper)?;
     }
     jsx::lower_jsx(module, options, &references, &mut edits)?;
     let plan = strict_boundaries::plan_emission(module, options)?;
@@ -488,26 +495,39 @@ fn emit_javascript(
         edits.extend(strict_edits);
         strict_runtime = Some(record);
     }
+    let token_anchors = if options.source_map {
+        javascript_maps::token_anchors(module, options, &edits)
+    } else {
+        BTreeMap::new()
+    };
     let emitted = decorators::targets::lower(
-        apply_edits_with_provenance(
+        apply_edits_with_anchors(
             &module.source,
             edits,
             options
                 .source_map
                 .then_some(options.limits.max_source_map_segments),
+            token_anchors,
+            if options.source_map {
+                javascript_maps::token_end_anchors(module, options)
+            } else {
+                BTreeMap::new()
+            },
+            None,
         ),
         module,
         project,
         options,
     )?;
     let emitted = targets::lower(emitted, module, options)?;
-    let emitted = targets::es5::lower(emitted, module, options, &lexical)?;
+    let emitted = targets::es5::lower_module(emitted, module, options, &lexical, wrapper)?;
     let emitted = if wrapper == crate::ModuleKind::System {
         targets::es5::lower_system_bindings(emitted, module, options)?
     } else {
         emitted
     };
     let emitted = helper_selection::lower(emitted, module, project, options)?;
+    let emitted = type_elision::preserve_module_identity(emitted, module, options);
     let emitted = if wrapper == crate::ModuleKind::System {
         system::wrap(emitted, module, options)?
     } else {
@@ -604,10 +624,33 @@ fn apply_edits(source: &str, edits: Vec<TextEdit>) -> EmittedJavaScript {
     apply_edits_with_provenance(source, edits, None)
 }
 
+/// Provenance for a compiler-owned insertion, such as a selected runtime check.
+pub(crate) fn source_anchor(offset: usize) -> String {
+    relocations::source_anchor(offset)
+}
+
 fn apply_edits_with_provenance(
+    source: &str,
+    edits: Vec<TextEdit>,
+    segment_limit: Option<usize>,
+) -> EmittedJavaScript {
+    apply_edits_with_anchors(
+        source,
+        edits,
+        segment_limit,
+        BTreeMap::new(),
+        BTreeMap::new(),
+        None,
+    )
+}
+
+fn apply_edits_with_anchors(
     source: &str,
     mut edits: Vec<TextEdit>,
     segment_limit: Option<usize>,
+    token_anchors: BTreeMap<usize, Option<usize>>,
+    token_end_anchors: BTreeMap<usize, usize>,
+    copied_boundaries: Option<Vec<usize>>,
 ) -> EmittedJavaScript {
     edits.sort_by_key(|edit| (edit.start, edit.end));
     // A replacement may carry relocation markers (see `decorators::relocated`):
@@ -615,12 +658,22 @@ fn apply_edits_with_provenance(
     let relocating = edits.iter().any(|edit| edit.replacement.contains('\u{0}'));
     let snapshot = relocating.then(|| edits.clone());
     let mut emitted = ProvenanceEmitter::new(source, source.len(), segment_limit);
+    emitted.token_anchors = token_anchors;
+    emitted.token_end_anchors = token_end_anchors;
+    emitted.copied_boundaries = copied_boundaries;
     let mut cursor = 0usize;
     for edit in edits {
         if edit.start < cursor || edit.end < edit.start || edit.end > source.len() {
             // A nested erase is fully covered by its outer erase.  Parser
             // ownership produces these intentionally for `declare function`.
             continue;
+        }
+        if cursor == 0
+            && emitted.javascript.is_empty()
+            && source[..edit.start].trim_start().starts_with("/*")
+            && !edit.replacement.is_empty()
+        {
+            emitted.mark(0);
         }
         emitted.copy(&source[cursor..edit.start], cursor);
         let parts = snapshot
@@ -631,13 +684,20 @@ fn apply_edits_with_provenance(
             || edit.replacement.clone(),
             |parts| parts.iter().map(relocations::Part::text).collect(),
         );
+        let ends_explicit = parts.as_ref().is_some_and(|parts| {
+            matches!(
+                parts.last(),
+                Some(relocations::Part::Unmapped | relocations::Part::Anchor(_))
+            )
+        });
         if replacement.is_empty() {
             // Preserve physical lines so line-level source maps, diagnostics,
             // and ordinary text diffs remain stable after type erasure.
-            emitted.preserve_line_breaks(&source[edit.start..edit.end], edit.start);
+            emitted.preserve_line_breaks(&source[edit.start..edit.end]);
         } else if segment_limit.is_some()
             && (decorators::is_helper_insertion(&edit)
-                || legacy_decorators::is_helper_insertion(&edit))
+                || legacy_decorators::is_helper_insertion(&edit)
+                || (edit.start == edit.end && parts.is_none()))
         {
             emitted.insert_unmapped(&replacement);
         } else if let Some(parts) = parts {
@@ -647,6 +707,9 @@ fn apply_edits_with_provenance(
                     relocations::Part::Generated(text) if anchored => {
                         emitted.append_generated(&text);
                         anchored = false;
+                    }
+                    relocations::Part::Generated(text) if edit.start == edit.end => {
+                        emitted.insert_unmapped(&text);
                     }
                     relocations::Part::Generated(text) => emitted.replace(&text, edit.start),
                     relocations::Part::Anchor(offset) => {
@@ -676,7 +739,12 @@ fn apply_edits_with_provenance(
         } else {
             emitted.replace(&replacement, edit.start);
         }
-        if segment_limit.is_none() || !replacement.is_empty() {
+        if segment_limit.is_none()
+            || (!replacement.is_empty()
+                && edit.start != edit.end
+                && !ends_explicit
+                && !replacement.ends_with(['\r', '\n']))
+        {
             emitted.mark(edit.end);
         }
         cursor = edit.end;
@@ -842,13 +910,27 @@ struct ProvenanceEmitter<'a> {
     segment_limit: Option<usize>,
     overflowed: bool,
     tokens: Vec<crate::syntax::Token>,
+    line_comment_starts: BTreeSet<usize>,
+    line_comment_ends: BTreeSet<usize>,
     source_cursor: usize,
     source_line: usize,
     source_column: usize,
+    token_anchors: BTreeMap<usize, Option<usize>>,
+    token_end_anchors: BTreeMap<usize, usize>,
+    copied_boundaries: Option<Vec<usize>>,
 }
 
 impl<'a> ProvenanceEmitter<'a> {
     fn new(source: &'a str, capacity: usize, segment_limit: Option<usize>) -> Self {
+        let tokens = if segment_limit.is_some() {
+            crate::syntax::lex("<source-map>", source).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let comments = output_options::comment_ranges_in_trivia(source, &tokens)
+            .into_iter()
+            .filter(|range| source[range.clone()].starts_with("//"))
+            .collect::<Vec<_>>();
         Self {
             source,
             javascript: String::with_capacity(capacity),
@@ -857,71 +939,104 @@ impl<'a> ProvenanceEmitter<'a> {
             generated_column: 0,
             segment_limit,
             overflowed: false,
-            tokens: if segment_limit.is_some() {
-                crate::syntax::lex("<source-map>", source).unwrap_or_default()
-            } else {
-                Vec::new()
-            },
+            tokens,
+            line_comment_starts: comments.iter().map(|range| range.start).collect(),
+            line_comment_ends: comments.iter().map(|range| range.end).collect(),
             source_cursor: 0,
             source_line: 0,
             source_column: 0,
+            token_anchors: BTreeMap::new(),
+            token_end_anchors: BTreeMap::new(),
+            copied_boundaries: None,
         }
     }
 
     fn copy(&mut self, value: &str, source_offset: usize) {
+        if let Some(boundaries) = &self.copied_boundaries {
+            let mut index = boundaries.partition_point(|offset| *offset < source_offset);
+            self.mark(source_offset);
+            let mut characters = value.char_indices().peekable();
+            while let Some((offset, character)) = characters.next() {
+                let position = source_offset + offset;
+                if self.copied_boundaries.as_ref().unwrap().get(index) == Some(&position) {
+                    self.mark(position);
+                    index += 1;
+                }
+                self.push(
+                    character,
+                    characters.peek().map(|(_, character)| *character),
+                );
+            }
+            if self.copied_boundaries.as_ref().unwrap().get(index)
+                == Some(&(source_offset + value.len()))
+            {
+                self.mark(source_offset + value.len());
+            }
+            return;
+        }
         let mut token_index = self
             .tokens
             .partition_point(|token| token.end <= source_offset);
-        if self.segment_limit.is_none() || source_offset == 0 {
+        if !value.is_empty()
+            && (self.segment_limit.is_none()
+                || (source_offset == 0 && self.source.starts_with("//"))
+                || (source_offset == 0
+                    && self.javascript.is_empty()
+                    && self.source.starts_with("/*")
+                    && self
+                        .tokens
+                        .first()
+                        .is_some_and(|token| value.len() >= token.end)))
+        {
             self.mark(source_offset);
         }
         let mut characters = value.char_indices().peekable();
         while let Some((offset, character)) = characters.next() {
             let position = source_offset + offset;
-            if let Some(token) = self.tokens.get(token_index) {
-                if token.start == position
-                    && token_maps::mark_start(self.source, &self.tokens, token_index)
-                {
-                    self.mark(position);
+            if let Some(&anchor) = self.token_anchors.get(&position) {
+                if let Some(anchor) = anchor {
+                    self.mark(anchor);
+                } else {
+                    self.insert_unmapped("");
                 }
+            } else if self.line_comment_starts.contains(&position)
+                || self.line_comment_ends.contains(&position)
+                || (self
+                    .tokens
+                    .get(token_index)
+                    .is_some_and(|token| token.start == position)
+                    && token_maps::mark_start(self.source, &self.tokens, token_index))
+            {
+                self.mark(position);
             }
             let next = characters.peek().map(|(_, character)| *character);
-            if self.segment_limit.is_some() && is_line_break(character, next) {
-                let line_start = self.source[..position]
-                    .rfind('\n')
-                    .map_or(0, |index| index + 1);
-                if self.source[line_start..position]
-                    .trim_start()
-                    .starts_with("//")
-                {
-                    self.mark(position);
-                }
-            }
             self.push(character, next);
             if let Some(token) = self.tokens.get(token_index) {
                 if token.end == position + character.len_utf8() {
-                    if token_maps::mark_end(token) {
+                    if let Some(&anchor) = self.token_end_anchors.get(&token.end) {
+                        self.mark(anchor);
+                    } else if self.token_anchors.get(&token.start) != Some(&None)
+                        && !(token.is("{") && self.token_anchors.contains_key(&token.start))
+                        && token_maps::mark_end(&self.tokens, token_index)
+                    {
                         self.mark(token.end);
                     }
                     token_index += 1;
                 }
             }
-            if is_line_break(character, next) && position + character.len_utf8() < self.source.len()
-            {
-                self.mark(source_offset + offset + character.len_utf8());
-            }
+        }
+        let end = source_offset + value.len();
+        if !value.is_empty() && self.line_comment_ends.contains(&end) {
+            self.mark(end);
         }
     }
 
-    fn preserve_line_breaks(&mut self, value: &str, source_offset: usize) {
-        let mut characters = value.char_indices().peekable();
-        while let Some((offset, character)) = characters.next() {
-            let next = characters.peek().map(|(_, character)| *character);
+    fn preserve_line_breaks(&mut self, value: &str) {
+        let mut characters = value.chars().peekable();
+        while let Some(character) = characters.next() {
+            let next = characters.peek().copied();
             if matches!(character, '\r' | '\n') {
                 self.push(character, next);
-                if is_line_break(character, next) {
-                    self.mark(source_offset + offset + character.len_utf8());
-                }
             }
         }
     }
@@ -1038,7 +1153,6 @@ fn is_line_break(character: char, next: Option<char>) -> bool {
     character == '\n' || (character == '\r' && next != Some('\n'))
 }
 
-#[cfg(test)]
 fn source_line_column(source: &str, offset: usize) -> (usize, usize) {
     let prefix = &source[..offset];
     let mut line = 0usize;
