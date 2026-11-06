@@ -44,6 +44,27 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
             "/observations"
         };
         let mut cases = case_sources::json_cases(&path, text, pointer, "program/configuration")?;
+        if stem == "gc3_compositions" {
+            let policy: Value = serde_json::from_str(
+                snapshot.source("backend/bluets/tests/fixtures/gc3_compositions/policy.json")?,
+            )?;
+            for (id, role) in policy["caseRoles"]
+                .as_object()
+                .ok_or("missing G-C3 comparison roles")?
+            {
+                match role["comparison"].as_str() {
+                    Some("direct") => {}
+                    Some("owner-policy-control") => case_sources::classify(
+                        &mut cases,
+                        &[id.to_string()],
+                        "",
+                        Comparison::BoundaryControl,
+                        role["reason"].as_str().ok_or("missing G-C3 owner reason")?,
+                    )?,
+                    _ => return Err("unknown G-C3 comparison role".into()),
+                }
+            }
+        }
         if stem == "ge3_decorator_compositions" {
             let input: Value =
                 serde_json::from_str(snapshot.source(
@@ -369,6 +390,7 @@ pub fn audit(snapshot: &Snapshot, suites: &[Suite]) -> Result<Value> {
 
 fn json_record(stem: &str) -> Option<&'static str> {
     Some(match stem {
+        "gc3_compositions" => "gc3_compositions/reference.json",
         "ambient_checker_matrix" => "typescript_oracle/ambient-reference.json",
         "async_generator_context" => "async-generator-context-reference.json",
         "catch_flow_context" => "catch-flow-context-reference.json",

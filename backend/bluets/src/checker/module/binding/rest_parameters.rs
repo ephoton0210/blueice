@@ -37,6 +37,30 @@ impl ModuleChecker<'_> {
                 parameter.annotation = Some(annotation);
             }
         }
+        let mut parameters = Vec::new();
+        for parameter in std::mem::take(&mut signature.parameters) {
+            if let (true, Some(Type::Tuple(elements))) = (parameter.rest, &parameter.annotation) {
+                if elements.len() <= self.max_type_expansions
+                    && elements.iter().all(|element| !element.rest)
+                {
+                    parameters.extend(elements.iter().enumerate().map(|(index, element)| {
+                        Parameter {
+                            name: element
+                                .label
+                                .clone()
+                                .unwrap_or_else(|| format!("{}_{index}", parameter.name)),
+                            rest: false,
+                            optional: element.optional,
+                            annotation: Some(element.annotation.clone()),
+                            ..parameter.clone()
+                        }
+                    }));
+                    continue;
+                }
+            }
+            parameters.push(parameter);
+        }
+        signature.parameters = parameters;
         signature
     }
 

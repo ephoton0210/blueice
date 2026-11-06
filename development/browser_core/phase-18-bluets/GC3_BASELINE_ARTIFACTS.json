@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "scope": "Unmodified original G-C3 Native drafts, complete source42 Blue baseline and observer protocol; no G-C3 completion claim",
+  "archive": {
+    "path": "GC3_BASELINE_EVIDENCE.tar.gz",
+    "sha256": "61da5a4617a9bb410e8a39e505358305c49feec871bbb6fda75041f1d3a8664f",
+    "bytes": 247905
+  },
+  "files": [
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/jsx-types-contexts-registry.json",
+      "member": "sha256/b7fd41ea1aa02ab68c7cae134abab613ea259ac73c825ca88fc28c90483c63ab",
+      "sha256": "b7fd41ea1aa02ab68c7cae134abab613ea259ac73c825ca88fc28c90483c63ab",
+      "bytes": 199229
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/jsx-types-contexts-native-v4/reference.json",
+      "member": "sha256/aa33b3cb39c1e807b76bc8071559f88b2bef0659eb53ef3f4963c425ee6838db",
+      "sha256": "aa33b3cb39c1e807b76bc8071559f88b2bef0659eb53ef3f4963c425ee6838db",
+      "bytes": 1313438
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/provider-registry.json",
+      "member": "sha256/a2f8f82870862e21927afd5909974c31825bf1eff5bcf1f06be488e737e06266",
+      "sha256": "a2f8f82870862e21927afd5909974c31825bf1eff5bcf1f06be488e737e06266",
+      "bytes": 45195
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/provider-native-v4/reference.json",
+      "member": "sha256/544973b9dd76dfa77b2858bb3fe1e225ffd5d9300b97c6f958ed1e0512a055a0",
+      "sha256": "544973b9dd76dfa77b2858bb3fe1e225ffd5d9300b97c6f958ed1e0512a055a0",
+      "bytes": 275204
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/decorators/registry.json",
+      "member": "sha256/6f3eaf8d506570e8097414d68e3c1c4c6a5b6953bc5b4faf0df51b02dc44d0d8",
+      "sha256": "6f3eaf8d506570e8097414d68e3c1c4c6a5b6953bc5b4faf0df51b02dc44d0d8",
+      "bytes": 148315
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/decorators/native-v4/reference.json",
+      "member": "sha256/eb6c6c429a7095b858b3b9d3c59876a2c33271a7f4c2d5b1dd37afd647cfa7b4",
+      "sha256": "eb6c6c429a7095b858b3b9d3c59876a2c33271a7f4c2d5b1dd37afd647cfa7b4",
+      "bytes": 795102
+    },
+    {
+      "originalPath": "/private/tmp/gc3-source42-jsx-baseline/baseline.json",
+      "member": "sha256/30100c27705ebc5d424638bce47d8849b3761879ac4df92865975ecb8d596326",
+      "sha256": "30100c27705ebc5d424638bce47d8849b3761879ac4df92865975ecb8d596326",
+      "bytes": 1910545
+    },
+    {
+      "originalPath": "/private/tmp/gc3-source42-jsx-baseline.log",
+      "member": "sha256/3a4b218c95fb739890ec656489e13634ffbeab08fb9b73d7bec37dc89a7867ec",
+      "sha256": "3a4b218c95fb739890ec656489e13634ffbeab08fb9b73d7bec37dc89a7867ec",
+      "bytes": 18190
+    },
+    {
+      "originalPath": "/private/tmp/gc3-source42-provider-baseline/baseline.json",
+      "member": "sha256/0b75303d8f85945a4c5137478e9fafc902f02cdf1808881884fdfeefb74b1472",
+      "sha256": "0b75303d8f85945a4c5137478e9fafc902f02cdf1808881884fdfeefb74b1472",
+      "bytes": 238140
+    },
+    {
+      "originalPath": "/private/tmp/gc3-source42-provider-baseline.log",
+      "member": "sha256/1292771cb34d1c0ae6d983e41f6a4a51c530ae5c81d171769930ed6df6cd0bc6",
+      "sha256": "1292771cb34d1c0ae6d983e41f6a4a51c530ae5c81d171769930ed6df6cd0bc6",
+      "bytes": 4242
+    },
+    {
+      "originalPath": "/private/tmp/gc3-source42-decorator-baseline/baseline.json",
+      "member": "sha256/742ec0f9a1b2ec514d927db7a3bcfb24af3996a01a37aa6a22ea542cfecacabd",
+      "sha256": "742ec0f9a1b2ec514d927db7a3bcfb24af3996a01a37aa6a22ea542cfecacabd",
+      "bytes": 423263
+    },
+    {
+      "originalPath": "/private/tmp/gc3-source42-decorator-baseline.log",
+      "member": "sha256/ee8980d4a7c08e63f263609cc65aaac86b6a916a7cd9aed3ebc6fcdaa994eeab",
+      "sha256": "ee8980d4a7c08e63f263609cc65aaac86b6a916a7cd9aed3ebc6fcdaa994eeab",
+      "bytes": 17719
+    },
+    {
+      "originalPath": "/private/tmp/gc3-source42-baseline-summary.json",
+      "member": "sha256/53b1e9a788abb7d067192a7e9f3e3bafe6f4abcd9d20f115e30b9fec257438f7",
+      "sha256": "53b1e9a788abb7d067192a7e9f3e3bafe6f4abcd9d20f115e30b9fec257438f7",
+      "bytes": 2923
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/record_gc3_native_v4.cjs",
+      "member": "sha256/86e93ee5e2a0403b3f632264ce3a9ad0e8b488f7b911d4b6197e966c092f953a",
+      "sha256": "86e93ee5e2a0403b3f632264ce3a9ad0e8b488f7b911d4b6197e966c092f953a",
+      "bytes": 12404
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/record_gc3_bluets_baseline.cjs",
+      "member": "sha256/4dcbc096e44e53de45102cd381180e17415e81bda1f2673475e3ec6a28501b5d",
+      "sha256": "4dcbc096e44e53de45102cd381180e17415e81bda1f2673475e3ec6a28501b5d",
+      "bytes": 17525
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/RECORDER-CONTRACT-v4.txt",
+      "member": "sha256/0db3e9887d635eb47cba256bbae1fc1b5d60e804f3d3b8a66952cf81302611f4",
+      "sha256": "0db3e9887d635eb47cba256bbae1fc1b5d60e804f3d3b8a66952cf81302611f4",
+      "bytes": 3558
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/provider-original-k10-freeze.json",
+      "member": "sha256/f86a55821e18df229e8e84b9d386b571e84ac142e105ed48b067726e595a2dfa",
+      "sha256": "f86a55821e18df229e8e84b9d386b571e84ac142e105ed48b067726e595a2dfa",
+      "bytes": 169144
+    },
+    {
+      "originalPath": "/private/tmp/gc3-native-prep/gc3-scope-policy-review.md",
+      "member": "sha256/edd12cdd31d11586ad9dca3d441ee0c5b9a06308141aae6f67d29487c9402a13",
+      "sha256": "edd12cdd31d11586ad9dca3d441ee0c5b9a06308141aae6f67d29487c9402a13",
+      "bytes": 5739
+    }
+  ],
+  "fullGC3Accepted": false
+}

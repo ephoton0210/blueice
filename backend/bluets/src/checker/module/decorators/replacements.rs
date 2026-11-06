@@ -77,6 +77,33 @@ impl ModuleChecker<'_> {
                         ),
                     ],
                 );
+                let (detail, information) = self.decorator_relation_detail(part, &checked_expected);
+                let constructor_return_failure =
+                    self.replacement_constructor_return_failure(part, &checked_expected);
+                let source = crate::diagnostic::type_text::render_in(part, self.project);
+                let expected_text =
+                    crate::diagnostic::type_text::render_in(&expected, self.project);
+                let target = if matches!(
+                    expected,
+                    Type::Function { .. } | Type::GenericFunction { .. }
+                ) {
+                    format!("void | ({expected_text})")
+                } else {
+                    format!("void | {expected_text}")
+                };
+                if let Some(diagnostic) = self.diagnostics.last_mut() {
+                    diagnostic.message = format!("resolved decorator replacement type {source}");
+                    if let Some(counterpart) = diagnostic.typescript.as_mut() {
+                        counterpart.arguments = vec![source.clone(), target.clone()];
+                        let detail = if constructor_return_failure {
+                            detail
+                        } else {
+                            format!("\n  Type '{source}' is not assignable to type '{expected_text}'.{}", detail.replace('\n', "\n  "))
+                        };
+                        counterpart.message = format!("Decorator function return type '{source}' is not assignable to type '{target}'.{detail}");
+                        counterpart.related_information = information;
+                    }
+                }
                 break;
             }
         }

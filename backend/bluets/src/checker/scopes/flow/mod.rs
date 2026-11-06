@@ -14,6 +14,7 @@ mod graph;
 mod inferred_predicates;
 mod predicates;
 mod properties;
+pub(in crate::checker) use predicates::truthy_type;
 
 pub(crate) const VERSION: &str = "lexical-flow-v12";
 #[derive(Clone, Debug, PartialEq)]

@@ -80,6 +80,7 @@ function suiteEnvironment(output, index, jobs, environment) {
   if (jobs === 1) return { environment };
   const directory = path.join(output, 'suite-artifacts', String(index).padStart(3, '0'));
   const destinations = {
+    BLUEICE_GC3_REPORT_DIRECTORY: path.join(directory, 'gc3'),
     BLUEICE_GE5_ROLE_REPORT_DIRECTORY: path.join(directory, 'reports'),
     BLUEICE_GE5_ROLE_OBSERVATION_DIRECTORY: path.join(directory, 'observations'),
     BLUEICE_GE5_ADJACENT_OBSERVATION_DIRECTORY: path.join(directory, 'adjacent-observations'),

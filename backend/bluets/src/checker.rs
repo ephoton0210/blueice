@@ -24,6 +24,7 @@ use inference::infer_call_substitutions;
 mod checking;
 mod reexports;
 pub(crate) use checking::check_incremental;
+pub(crate) use reexports::preferred_namespace_import;
 mod member_calls;
 use member_calls::{
     indexed_call_parts, indexed_call_ranges, member_call_parts, member_call_ranges,
@@ -249,13 +250,13 @@ fn ambient_declarations(
             ambient.module_types.insert(target.clone(), types.clone());
         }
     }
-    for module_id in project
-        .ambient_declaration_modules
-        .union(&project.referenced_declaration_modules)
-    {
-        let Some(module) = project.modules.get(module_id) else {
+    for (module_id, module) in &project.modules {
+        if !is_declaration_module(module_id)
+            && !project.ambient_declaration_modules.contains(module_id)
+            && !project.referenced_declaration_modules.contains(module_id)
+        {
             continue;
-        };
+        }
         if ambient::has_module_syntax(&module.declarations) {
             continue;
         }
@@ -367,7 +368,6 @@ pub(crate) use module::NamespaceExport;
 /// What each module exports as a namespace, by module and exported name.
 type NamespaceExports = BTreeMap<String, BTreeMap<String, NamespaceExport>>;
 mod ambient;
-pub(crate) use ambient::namespace_is_type_only;
 mod project;
 
 fn interface_value(interface: &InterfaceDeclaration) -> Type {
@@ -1014,11 +1014,12 @@ fn conditional_expression_parts(tokens: &[Token]) -> Option<(&[Token], &[Token],
     None
 }
 
-fn infer_logical_expression(left: Type, right: Type) -> Type {
+fn infer_logical_expression(left: Type, right: Type, is_or: bool) -> Type {
     if left == Type::Boolean && right == Type::Boolean {
         Type::Boolean
     } else {
-        merge_conditional_branch_types(left, right)
+        let retained = scopes::flow::truthy_type(&left, is_or);
+        retained.map_or(right.clone(), |left| type_operators::union([left, right]))
     }
 }
 

@@ -131,7 +131,13 @@ impl Parser {
             }
             self.pending_decorators.clear();
             if !decorators.is_empty() {
-                if self.peek("class") {
+                if self.peek("class")
+                    || (self.peek("abstract")
+                        && self
+                            .tokens
+                            .get(self.index + 1)
+                            .is_some_and(|token| token.is("class")))
+                {
                     self.pending_decorators = decorators;
                 } else {
                     self.error_at(

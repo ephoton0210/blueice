@@ -183,9 +183,40 @@ fn assignable_inner(
     if let Some(result) = variance::assignable(actual, expected, aliases, visited, budget) {
         return result;
     }
-    if matches!(actual, Type::GenericFunction { .. })
-        || matches!(expected, Type::GenericFunction { .. })
+    let function_type =
+        |value: &Type| matches!(value, Type::Function { .. } | Type::GenericFunction { .. });
+    if function_type(actual)
+        && function_type(expected)
+        && (matches!(actual, Type::GenericFunction { .. })
+            || matches!(expected, Type::GenericFunction { .. }))
     {
+        if let (
+            Type::GenericFunction {
+                type_parameters: actual,
+                span: actual_span,
+                ..
+            },
+            Type::GenericFunction {
+                type_parameters: expected,
+                span: expected_span,
+                ..
+            },
+        ) = (actual, expected)
+        {
+            // Instantiations of one original generic signature share their
+            // binders even when an enclosing type argument changes a bound.
+            // Distinct declarations still require compatible constraints.
+            let same_declaration = actual_span == expected_span
+                && !actual_span.module.is_empty()
+                && actual_span.start < actual_span.end;
+            if !same_declaration
+                && !parameters::generic_constraints_compatible(
+                    actual, expected, aliases, visited, budget,
+                )
+            {
+                return false;
+            }
+        }
         let normalize = |value: &Type| match value {
             Type::GenericFunction {
                 type_parameters,
@@ -389,7 +420,13 @@ fn assignable_inner(
     }
     if let (Type::Intersection(_), Type::Record(expected_fields)) = (actual, expected) {
         return expected_fields.iter().all(|expected_field| {
-            match property_type(actual, &expected_field.name, aliases, visited, budget) {
+            match property_type(
+                actual,
+                &expected_field.name,
+                aliases,
+                &mut visited.clone(),
+                budget,
+            ) {
                 PropertyType::Found { value: actual, .. } => is_assignable(
                     &actual,
                     &expected_field.value,

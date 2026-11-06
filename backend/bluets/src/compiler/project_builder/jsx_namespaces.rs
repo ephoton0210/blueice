@@ -14,6 +14,7 @@ impl ProjectBuilder<'_> {
         let Some(mode) = options.jsx.filter(|mode| mode.lowers()) else {
             return;
         };
+        let enforce_types = !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly);
         let mut seen = BTreeSet::new();
         loop {
             let requests = self
@@ -70,18 +71,43 @@ impl ProjectBuilder<'_> {
                     ModuleKind::CommonJs => ImportMode::Require,
                     _ => ImportMode::Import,
                 };
-                let target = match self.loader.resolve_jsx_runtime_namespace(
+                let target = match self.loader.resolve_jsx_runtime_namespace_info(
                     &id,
                     &specifier,
                     Some(condition),
                 ) {
-                    Ok(Some(target))
+                    Ok(JsxRuntimeNamespaceResolution::Found(target))
                         if target.ends_with(".ts")
                             || target.ends_with(".tsx")
                             || target.ends_with(".mts")
                             || target.ends_with(".cts") =>
                     {
                         target
+                    }
+                    Ok(JsxRuntimeNamespaceResolution::Missing) => {
+                        if enforce_types {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    DiagnosticCode::ModuleNotFound,
+                                    span,
+                                    format!("JSX runtime module `{specifier}` cannot be resolved"),
+                                )
+                                .with_typescript(2875, vec![specifier]),
+                            );
+                        }
+                        continue;
+                    }
+                    Ok(JsxRuntimeNamespaceResolution::JavaScriptOnly { path }) => {
+                        if enforce_types
+                            && options
+                                .checking
+                                .unwrap_or_else(crate::CheckingOptions::legacy)
+                                .no_implicit_any
+                        {
+                            self.diagnostics
+                                .push(missing_declaration(&specifier, path, span));
+                        }
+                        continue;
                     }
                     Ok(_) => continue,
                     Err(message) => {
@@ -117,4 +143,26 @@ impl ProjectBuilder<'_> {
             }
         }
     }
+}
+
+fn missing_declaration(specifier: &str, path: String, span: SourceSpan) -> Diagnostic {
+    let mut diagnostic = Diagnostic::error(
+        DiagnosticCode::ModuleNotFound,
+        span,
+        format!("JSX runtime `{specifier}` has no declaration file"),
+    )
+    .with_typescript(7016, vec![specifier.into(), path]);
+    if !specifier.starts_with(['.', '/']) {
+        let parts = specifier.split('/').collect::<Vec<_>>();
+        let package = if specifier.starts_with('@') {
+            parts.iter().take(2).copied().collect::<Vec<_>>().join("/")
+        } else {
+            parts[0].to_string()
+        };
+        let types = crate::package_resolution::types_package_name(&package);
+        diagnostic.typescript.as_mut().unwrap().message.push_str(&format!(
+            "\n  Try `npm i --save-dev {types}` if it exists or add a new declaration (.d.ts) file containing `declare module '{specifier}';`"
+        ));
+    }
+    diagnostic
 }

@@ -170,37 +170,36 @@ impl<'a> ModuleChecker<'a> {
                 continue;
             }
             for binding in &export.bindings {
-                let has_local_runtime_binding = if binding.type_only
-                    || export.export_assignment && is_declaration_module(&self.module.id)
-                {
-                    self.types.contains_key(&binding.local)
-                        || self.values.contains_key(&binding.local)
-                } else {
-                    self.module
-                        .declarations
-                        .iter()
-                        .any(|candidate| match candidate {
-                            Declaration::Variable(variable) => {
-                                variable.name == binding.local && !variable.declared
-                            }
-                            Declaration::Function(function) => {
-                                function.name == binding.local
-                                    && !function.declared
-                                    && !function.overload
-                            }
-                            Declaration::Class(class) => class.name == binding.local,
-                            Declaration::Enum(declaration) => {
-                                declaration.name == binding.local && !declaration.declared
-                            }
-                            Declaration::Namespace(namespace) => {
-                                namespace.name == binding.local
-                                    && (is_declaration_module(&self.module.id)
-                                        || (!namespace.declared
-                                            && namespaces::body_has_values(&namespace.body)))
-                            }
-                            _ => false,
-                        })
-                };
+                let has_local_runtime_binding =
+                    if binding.type_only || is_declaration_module(&self.module.id) {
+                        self.types.contains_key(&binding.local)
+                            || self.values.contains_key(&binding.local)
+                    } else {
+                        self.module
+                            .declarations
+                            .iter()
+                            .any(|candidate| match candidate {
+                                Declaration::Variable(variable) => {
+                                    variable.name == binding.local && !variable.declared
+                                }
+                                Declaration::Function(function) => {
+                                    function.name == binding.local
+                                        && !function.declared
+                                        && !function.overload
+                                }
+                                Declaration::Class(class) => class.name == binding.local,
+                                Declaration::Enum(declaration) => {
+                                    declaration.name == binding.local && !declaration.declared
+                                }
+                                Declaration::Namespace(namespace) => {
+                                    namespace.name == binding.local
+                                        && (is_declaration_module(&self.module.id)
+                                            || (!namespace.declared
+                                                && namespaces::body_has_values(&namespace.body)))
+                                }
+                                _ => false,
+                            })
+                    };
                 if !has_local_runtime_binding && !self.types.contains_key(&binding.local) {
                     self.diagnostics.push(Diagnostic::error(
                         DiagnosticCode::UnknownName,

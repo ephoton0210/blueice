@@ -210,7 +210,16 @@ pub(super) fn infer_contextual_result(
                 if !matches!(value, Type::Unknown | Type::StrictUnknown)
                     && rejected_constraint.is_none()
                 {
-                    rejected_constraint = Some((parameter.name.clone(), value, constraint.clone()));
+                    // A primitive constraint preserves successful literal inference,
+                    // but a rejected ordinary candidate retains the widened type
+                    // reported by the public checker before that inference support.
+                    let candidate = if parameter.is_const {
+                        value
+                    } else {
+                        widen(&value)
+                    };
+                    rejected_constraint =
+                        Some((parameter.name.clone(), candidate, constraint.clone()));
                 }
                 substitutions.insert(parameter.name.clone(), constraint);
             }

@@ -45,6 +45,7 @@ mod javascript_maps;
 mod jsx;
 pub(crate) mod legacy_decorators;
 mod literal_order;
+mod module_lowering;
 mod module_wrappers;
 mod namespaces;
 mod node_imports;
@@ -454,41 +455,14 @@ fn emit_javascript(
             replacement: format!("{quote}{emitted_specifier}{quote}"),
         });
     }
-    let signatures = classes::overload_signature_erasures(module);
-    // Whole-member erasure owns its modifier/annotation edits as well.
-    edits.retain(|edit| {
-        !signatures
-            .iter()
-            .any(|signature| edit.start >= signature.start && edit.end <= signature.end)
-    });
-    edits.extend(signatures);
-    output_options::erase_type_comments(module, &mut edits);
-    output_options::erase_opening_comments(module, &mut edits);
-    // CommonJS name rewriting goes first so that the lowerings below, which copy
-    // or move source text (a static initializer, a decorator expression), take
-    // the rewritten text with them.
-    let references = if options.module_kind == crate::compiler::ModuleKind::CommonJs {
-        commonjs::lower_commonjs(module, project, options, &mut edits, wrapper)?
-    } else {
-        BTreeMap::new()
-    };
-    legacy_decorators::prepare_super(module, options, &mut edits)?;
-    class_lowering::lower_class_members(module, options, &mut edits, wrapper)?;
-    enums::lower_enums(module, project, exported_enums, options, &mut edits)?;
-    namespaces::lower_namespaces(module, project, options, &mut edits)?;
-    if options.experimental_decorators {
-        legacy_decorators::lower_legacy_decorators(
-            module,
-            project,
-            options,
-            &references,
-            wrapper == crate::ModuleKind::System,
-            &mut edits,
-        )?;
-    } else {
-        decorators::lower_decorators(module, options, &mut edits, wrapper)?;
-    }
-    jsx::lower_jsx(module, options, &references, &mut edits)?;
+    module_lowering::lower(
+        module,
+        project,
+        exported_enums,
+        options,
+        &mut edits,
+        wrapper,
+    )?;
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {

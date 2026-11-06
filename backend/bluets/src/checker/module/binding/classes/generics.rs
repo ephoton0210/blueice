@@ -33,6 +33,7 @@ impl ModuleChecker<'_> {
             .map(|parameter| (parameter.name.clone(), parameter_reference(parameter)))
             .collect();
         for parameter in parameters {
+            self.allowed_tuple_spread_parameters.remove(&parameter.name);
             // A method binder may shadow its enclosing class binder. Duplicate
             // names within this declaration are still checked by the common gate.
             self.type_parameters.remove(&parameter.name);

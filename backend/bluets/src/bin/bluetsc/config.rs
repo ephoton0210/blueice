@@ -263,7 +263,9 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             "--experimental-decorators" => options.experimental_decorators = true,
             "--emit-decorator-metadata" => options.emit_decorator_metadata = true,
             "--lib" => {
-                options.libraries = Some(parse_libraries(value()?.split(','))?);
+                let names = value()?;
+                options.symbol_metadata = names.split(',').any(|name| name.eq_ignore_ascii_case("esnext.decorators"));
+                options.libraries = Some(parse_libraries(names.split(','))?);
             }
             "--downlevel-iteration" => options.downlevel_iteration = true,
             "--import-helpers" => options.import_helpers = true,
@@ -607,6 +609,7 @@ pub(super) fn resolve_config_document(
     let options = CompilerOptions {
         checking: None,
         target: parse_target(config.target.as_deref())?,
+        symbol_metadata: config.lib.as_ref().is_some_and(|libraries| libraries.iter().any(|name| name.eq_ignore_ascii_case("esnext.decorators"))),
         libraries: config.lib.map(|libraries| parse_libraries(libraries.iter().map(String::as_str))).transpose()?,
         downlevel_iteration: config.downlevel_iteration,
         import_helpers: config.import_helpers,
@@ -670,6 +673,7 @@ pub(super) fn resolve_config_document(
         // that verified a generated `lib.blueice.d.ts` may add ambient
         // declarations through the library API.
         ambient_declaration_modules: Vec::new(),
+        declaration_roots: Vec::new(),
         require_declared_global_calls: false,
         strict_runtime_boundaries,
         limits: CompilerLimits::default(),
@@ -826,7 +830,8 @@ fn parse_libraries<'a>(
     let mut editions = Vec::new();
     let mut decorators = false;
     for name in names {
-        if name.eq_ignore_ascii_case("esnext.decorators") {
+        if name.eq_ignore_ascii_case("esnext.decorators") || name.eq_ignore_ascii_case("decorators")
+        {
             decorators = true;
         } else {
             editions.push(parse_target(Some(name))?);

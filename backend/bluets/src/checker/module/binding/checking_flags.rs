@@ -56,6 +56,11 @@ impl ModuleChecker<'_> {
                 .filter(|t| t.is("this"))
                 .filter(|token| {
                     let position = function.span.start + token.start;
+                    if self.module.edits.iter().any(|edit| {
+                        edit.replacement.is_empty() && edit.start <= position && position < edit.end
+                    }) {
+                        return false;
+                    }
                     !self.module.class_expressions().any(|expression| {
                         expression.class.span.start <= position
                             && position < expression.class.span.end
@@ -125,6 +130,9 @@ impl ModuleChecker<'_> {
         for range in member_call_ranges(tokens, |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
+            if self.nested_runtime_body_contains(tokens, tokens[range.start].start) {
+                continue;
+            }
             let Some(call) = member_call_parts(&tokens[range], |start| {
                 self.module.generic_call_type_arguments.contains_key(&start)
             }) else {

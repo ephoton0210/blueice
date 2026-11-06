@@ -391,7 +391,7 @@ fn truthy(value: &Type, positive: bool) -> Option<Type> {
     }
 }
 
-pub(super) fn truthy_type(value: &Type, positive: bool) -> Option<Type> {
+pub(in crate::checker) fn truthy_type(value: &Type, positive: bool) -> Option<Type> {
     let parts = match value {
         Type::Union(parts) => parts.as_slice(),
         value => std::slice::from_ref(value),

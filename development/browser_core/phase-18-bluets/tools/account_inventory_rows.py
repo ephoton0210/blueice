@@ -29,7 +29,7 @@ GAPS = {
     "G-D2": "gd2_declaration_maps", "G-M1": "gm1_resolver_compositions",
     "G-M2": "gm2_build_interop", "G-M3": "typescript_oracle",
     "G-C1": "diagnostic_source_families", "G-C2": "strictness_flags",
-    "G-C3": "jsx_typing_extras",
+    "G-C3": "gc3_compositions",
 }
 CLASSIFICATIONS = {
     "compared": ("closed", "compared_properties"),

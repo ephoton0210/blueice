@@ -119,6 +119,7 @@ pub(crate) fn check_incremental(
         if !rechecked.contains(module_id) {
             if let Some(previous) = previous.and_then(|previous| previous.modules.get(module_id)) {
                 namespace_exports.insert(module_id.clone(), previous.namespace_exports.clone());
+                namespace_exports = reexports::forward(&origins, &namespace_exports);
                 exports
                     .values
                     .insert(module_id.clone(), previous.value_exports.clone());
@@ -159,6 +160,7 @@ pub(crate) fn check_incremental(
         diagnostics.extend(checker.diagnostics);
         let symbols = checker.symbols;
         namespace_exports.insert(module_id.clone(), exported_namespaces.clone());
+        namespace_exports = reexports::forward(&origins, &namespace_exports);
         exports
             .values
             .insert(module_id.clone(), value_exports.clone());

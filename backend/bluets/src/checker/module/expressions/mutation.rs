@@ -122,6 +122,17 @@ impl<'a> ModuleChecker<'a> {
         {
             return;
         }
+        if let (Some(first), Some(last)) = (mutation.receiver.first(), mutation.receiver.last()) {
+            let receiver = Token {
+                kind: TokenKind::Identifier,
+                text: self.module.source[first.start..last.end].to_string(),
+                start: first.start,
+                end: last.end,
+            };
+            if self.flow_nullish_error(&receiver, &owner) {
+                return;
+            }
+        }
         // Bracket access on `never` has an indexed value type of `never`;
         // dotted access still reports a missing property. Check retained owner
         // readonly provenance above before applying this indexed-write rule.
@@ -331,6 +342,9 @@ impl<'a> ModuleChecker<'a> {
         let operator_limit = self.max_type_expansions.saturating_mul(16).max(256);
         let scan_limit = self.max_type_expansions.saturating_mul(32).max(64);
         for (index, operator) in tokens.iter().enumerate() {
+            if self.nested_runtime_body_contains(tokens, operator.start) {
+                continue;
+            }
             let delete_prefix = operator.is("delete")
                 && (index == 0
                     || is_mutation_target_boundary(&tokens[index - 1])

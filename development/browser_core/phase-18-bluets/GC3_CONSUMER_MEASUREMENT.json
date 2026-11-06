@@ -1,0 +1,1306 @@
+{
+  "schema": 1,
+  "scope": "Supplemental G-C3 declaration-consumer gate required by TODO execution rule4; same frozen cases, unchanged source/compiler, separate from the39426-case denominator. Both physical declaration graphs are independently checked by pinned TypeScript with full diagnostics and selected inputs. Original executable TypeScript is absent from consumer graphs; no runtime code is executed.",
+  "startedAt": "2026-11-06T11:23:02.373Z",
+  "finishedAt": "2026-11-06T11:23:20.518Z",
+  "sourceRevision": "backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa",
+  "compilerSha256": "c4004d013d1974beea7ed72b96588d4ef79e09a8d694f33dfb0cc7d6010e8467",
+  "typescript": "5.9.3",
+  "typescriptSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "scriptSha256": "9758b22513546ef76053e12dfbb1cc490ac1ba6769d16ebb777e2d1dec805609",
+  "registrySha256": "e8d97515d6097169668a2b9a60d263d3957d2d6ca83007abfb7a12f1f5fe8f6f",
+  "nativeReferenceSha256": "3d26969da02a9c0a3500825a011fc0e0b756c9d05e75cf9a88315dd9a0d3e6d9",
+  "nativeMeasurementSha256": "eb3f3ed547ba7b954eb4a1d61e45d7cf51decd525e224f3543291b0c76d30dce",
+  "blueObservationSha256": "929d6f7619558e1f4a509b0e400f2f685ce6dce28f41093cdd49be106800b3c6",
+  "configurations": 118,
+  "physicalConsumerPrograms": 236,
+  "emittedDeclarationsPerImplementation": 208,
+  "counts": {
+    "accept": 108,
+    "reject": 10
+  },
+  "observations": [
+    {
+      "id": "function-overload-second-overload/cjs-react",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/000/observation.json",
+      "blueObservation": "blue/000/observation.json"
+    },
+    {
+      "id": "function-overload-second-overload/cjs-react-jsx",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/001/observation.json",
+      "blueObservation": "blue/001/observation.json"
+    },
+    {
+      "id": "function-overload-second-overload/cjs-react-jsxdev",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/002/observation.json",
+      "blueObservation": "blue/002/observation.json"
+    },
+    {
+      "id": "function-overload-second-overload/cjs-preserve",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/003/observation.json",
+      "blueObservation": "blue/003/observation.json"
+    },
+    {
+      "id": "function-overload-second-overload/cjs-react-native",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/004/observation.json",
+      "blueObservation": "blue/004/observation.json"
+    },
+    {
+      "id": "function-overload-second-overload/esm-react",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/005/observation.json",
+      "blueObservation": "blue/005/observation.json"
+    },
+    {
+      "id": "function-overload-second-overload/esm-react-jsx",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/006/observation.json",
+      "blueObservation": "blue/006/observation.json"
+    },
+    {
+      "id": "function-overload-second-overload/esm-react-jsxdev",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/007/observation.json",
+      "blueObservation": "blue/007/observation.json"
+    },
+    {
+      "id": "function-overload-second-overload/esm-preserve",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/008/observation.json",
+      "blueObservation": "blue/008/observation.json"
+    },
+    {
+      "id": "function-overload-second-overload/esm-react-native",
+      "form": "function-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/009/observation.json",
+      "blueObservation": "blue/009/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/cjs-react",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/010/observation.json",
+      "blueObservation": "blue/010/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/cjs-react-jsx",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/011/observation.json",
+      "blueObservation": "blue/011/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/cjs-react-jsxdev",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/012/observation.json",
+      "blueObservation": "blue/012/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/cjs-preserve",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/013/observation.json",
+      "blueObservation": "blue/013/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/cjs-react-native",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/014/observation.json",
+      "blueObservation": "blue/014/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/esm-react",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/015/observation.json",
+      "blueObservation": "blue/015/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/esm-react-jsx",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/016/observation.json",
+      "blueObservation": "blue/016/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/esm-react-jsxdev",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/017/observation.json",
+      "blueObservation": "blue/017/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/esm-preserve",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/018/observation.json",
+      "blueObservation": "blue/018/observation.json"
+    },
+    {
+      "id": "constructor-overload-second-overload/esm-react-native",
+      "form": "constructor-overload-second-overload",
+      "family": "jsx-overload",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/019/observation.json",
+      "blueObservation": "blue/019/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/cjs-react",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/020/observation.json",
+      "blueObservation": "blue/020/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/cjs-react-jsx",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/021/observation.json",
+      "blueObservation": "blue/021/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/cjs-react-jsxdev",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/022/observation.json",
+      "blueObservation": "blue/022/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/cjs-preserve",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/023/observation.json",
+      "blueObservation": "blue/023/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/cjs-react-native",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/024/observation.json",
+      "blueObservation": "blue/024/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/esm-react",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/025/observation.json",
+      "blueObservation": "blue/025/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/esm-react-jsx",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/026/observation.json",
+      "blueObservation": "blue/026/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/esm-react-jsxdev",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/027/observation.json",
+      "blueObservation": "blue/027/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/esm-preserve",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/028/observation.json",
+      "blueObservation": "blue/028/observation.json"
+    },
+    {
+      "id": "union-component-props-valid/esm-react-native",
+      "form": "union-component-props-valid",
+      "family": "jsx-union",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/029/observation.json",
+      "blueObservation": "blue/029/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/cjs-react",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/030/observation.json",
+      "blueObservation": "blue/030/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/cjs-react-jsx",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/031/observation.json",
+      "blueObservation": "blue/031/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/cjs-react-jsxdev",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/032/observation.json",
+      "blueObservation": "blue/032/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/cjs-preserve",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/033/observation.json",
+      "blueObservation": "blue/033/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/cjs-react-native",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/034/observation.json",
+      "blueObservation": "blue/034/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/esm-react",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/035/observation.json",
+      "blueObservation": "blue/035/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/esm-react-jsx",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/036/observation.json",
+      "blueObservation": "blue/036/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/esm-react-jsxdev",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/037/observation.json",
+      "blueObservation": "blue/037/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/esm-preserve",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/038/observation.json",
+      "blueObservation": "blue/038/observation.json"
+    },
+    {
+      "id": "recursive-managed-children-valid/esm-react-native",
+      "form": "recursive-managed-children-valid",
+      "family": "jsx-recursive",
+      "declarations": 2,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/039/observation.json",
+      "blueObservation": "blue/039/observation.json"
+    },
+    {
+      "id": "imported-global-value-context-valid/cjs-react",
+      "form": "imported-global-value-context-valid",
+      "family": "jsx-global-declarations",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/040/observation.json",
+      "blueObservation": "blue/040/observation.json"
+    },
+    {
+      "id": "imported-global-value-context-valid/cjs-preserve",
+      "form": "imported-global-value-context-valid",
+      "family": "jsx-global-declarations",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/041/observation.json",
+      "blueObservation": "blue/041/observation.json"
+    },
+    {
+      "id": "imported-global-value-context-valid/cjs-react-native",
+      "form": "imported-global-value-context-valid",
+      "family": "jsx-global-declarations",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/042/observation.json",
+      "blueObservation": "blue/042/observation.json"
+    },
+    {
+      "id": "imported-global-value-context-valid/esm-react",
+      "form": "imported-global-value-context-valid",
+      "family": "jsx-global-declarations",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/043/observation.json",
+      "blueObservation": "blue/043/observation.json"
+    },
+    {
+      "id": "imported-global-value-context-valid/esm-preserve",
+      "form": "imported-global-value-context-valid",
+      "family": "jsx-global-declarations",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/044/observation.json",
+      "blueObservation": "blue/044/observation.json"
+    },
+    {
+      "id": "imported-global-value-context-valid/esm-react-native",
+      "form": "imported-global-value-context-valid",
+      "family": "jsx-global-declarations",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/045/observation.json",
+      "blueObservation": "blue/045/observation.json"
+    },
+    {
+      "id": "jsx-provider-conditional-barrel-valid/conditional-barrel-valid-prod-node16-cjs",
+      "form": "jsx-provider-conditional-barrel-valid",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/046/observation.json",
+      "blueObservation": "blue/046/observation.json"
+    },
+    {
+      "id": "jsx-provider-conditional-barrel-valid/conditional-barrel-valid-prod-nodenext-esm",
+      "form": "jsx-provider-conditional-barrel-valid",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/047/observation.json",
+      "blueObservation": "blue/047/observation.json"
+    },
+    {
+      "id": "jsx-provider-conditional-barrel-valid/conditional-barrel-valid-dev-node16-cjs",
+      "form": "jsx-provider-conditional-barrel-valid",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/048/observation.json",
+      "blueObservation": "blue/048/observation.json"
+    },
+    {
+      "id": "jsx-provider-conditional-barrel-valid/conditional-barrel-valid-dev-nodenext-esm",
+      "form": "jsx-provider-conditional-barrel-valid",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/049/observation.json",
+      "blueObservation": "blue/049/observation.json"
+    },
+    {
+      "id": "jsx-provider-conditional-barrel-wrong-props/conditional-barrel-wrong-props-prod-node16-cjs",
+      "form": "jsx-provider-conditional-barrel-wrong-props",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/050/observation.json",
+      "blueObservation": "blue/050/observation.json"
+    },
+    {
+      "id": "jsx-provider-conditional-barrel-wrong-props/conditional-barrel-wrong-props-prod-nodenext-esm",
+      "form": "jsx-provider-conditional-barrel-wrong-props",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/051/observation.json",
+      "blueObservation": "blue/051/observation.json"
+    },
+    {
+      "id": "jsx-provider-conditional-barrel-wrong-props/conditional-barrel-wrong-props-dev-node16-cjs",
+      "form": "jsx-provider-conditional-barrel-wrong-props",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/052/observation.json",
+      "blueObservation": "blue/052/observation.json"
+    },
+    {
+      "id": "jsx-provider-conditional-barrel-wrong-props/conditional-barrel-wrong-props-dev-nodenext-esm",
+      "form": "jsx-provider-conditional-barrel-wrong-props",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/053/observation.json",
+      "blueObservation": "blue/053/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-runtime-module/missing-runtime-module-prod-node16-cjs",
+      "form": "jsx-provider-missing-runtime-module",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/054/observation.json",
+      "blueObservation": "blue/054/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-runtime-module/missing-runtime-module-prod-nodenext-esm",
+      "form": "jsx-provider-missing-runtime-module",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/055/observation.json",
+      "blueObservation": "blue/055/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-runtime-module/missing-runtime-module-dev-node16-cjs",
+      "form": "jsx-provider-missing-runtime-module",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/056/observation.json",
+      "blueObservation": "blue/056/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-runtime-module/missing-runtime-module-dev-nodenext-esm",
+      "form": "jsx-provider-missing-runtime-module",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/057/observation.json",
+      "blueObservation": "blue/057/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-runtime-declarations/missing-runtime-declarations-prod-node16-cjs",
+      "form": "jsx-provider-missing-runtime-declarations",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/058/observation.json",
+      "blueObservation": "blue/058/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-runtime-declarations/missing-runtime-declarations-prod-nodenext-esm",
+      "form": "jsx-provider-missing-runtime-declarations",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/059/observation.json",
+      "blueObservation": "blue/059/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-runtime-declarations/missing-runtime-declarations-dev-node16-cjs",
+      "form": "jsx-provider-missing-runtime-declarations",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/060/observation.json",
+      "blueObservation": "blue/060/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-runtime-declarations/missing-runtime-declarations-dev-nodenext-esm",
+      "form": "jsx-provider-missing-runtime-declarations",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/061/observation.json",
+      "blueObservation": "blue/061/observation.json"
+    },
+    {
+      "id": "jsx-provider-types-only-runtime-missing/types-only-runtime-missing-prod-node16-cjs",
+      "form": "jsx-provider-types-only-runtime-missing",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/062/observation.json",
+      "blueObservation": "blue/062/observation.json"
+    },
+    {
+      "id": "jsx-provider-types-only-runtime-missing/types-only-runtime-missing-prod-nodenext-esm",
+      "form": "jsx-provider-types-only-runtime-missing",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/063/observation.json",
+      "blueObservation": "blue/063/observation.json"
+    },
+    {
+      "id": "jsx-provider-types-only-runtime-missing/types-only-runtime-missing-dev-node16-cjs",
+      "form": "jsx-provider-types-only-runtime-missing",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/064/observation.json",
+      "blueObservation": "blue/064/observation.json"
+    },
+    {
+      "id": "jsx-provider-types-only-runtime-missing/types-only-runtime-missing-dev-nodenext-esm",
+      "form": "jsx-provider-types-only-runtime-missing",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/065/observation.json",
+      "blueObservation": "blue/065/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-provider-global-fallback/missing-provider-global-fallback-prod-node16-cjs",
+      "form": "jsx-provider-missing-provider-global-fallback",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/066/observation.json",
+      "blueObservation": "blue/066/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-provider-global-fallback/missing-provider-global-fallback-prod-nodenext-esm",
+      "form": "jsx-provider-missing-provider-global-fallback",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/067/observation.json",
+      "blueObservation": "blue/067/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-provider-global-fallback/missing-provider-global-fallback-dev-node16-cjs",
+      "form": "jsx-provider-missing-provider-global-fallback",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/068/observation.json",
+      "blueObservation": "blue/068/observation.json"
+    },
+    {
+      "id": "jsx-provider-missing-provider-global-fallback/missing-provider-global-fallback-dev-nodenext-esm",
+      "form": "jsx-provider-missing-provider-global-fallback",
+      "family": "jsx-provider",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/069/observation.json",
+      "blueObservation": "blue/069/observation.json"
+    },
+    {
+      "id": "metadata-absent-positive/metadata-absent-positive-cjs-node10",
+      "form": "metadata-absent-positive",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/070/observation.json",
+      "blueObservation": "blue/070/observation.json"
+    },
+    {
+      "id": "metadata-absent-positive/metadata-absent-positive-esm-bundler",
+      "form": "metadata-absent-positive",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/071/observation.json",
+      "blueObservation": "blue/071/observation.json"
+    },
+    {
+      "id": "metadata-unique-positive/metadata-unique-positive-cjs-node10",
+      "form": "metadata-unique-positive",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/072/observation.json",
+      "blueObservation": "blue/072/observation.json"
+    },
+    {
+      "id": "metadata-unique-positive/metadata-unique-positive-esm-bundler",
+      "form": "metadata-unique-positive",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/073/observation.json",
+      "blueObservation": "blue/073/observation.json"
+    },
+    {
+      "id": "metadata-optional-positive/metadata-optional-positive-cjs-node10",
+      "form": "metadata-optional-positive",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/074/observation.json",
+      "blueObservation": "blue/074/observation.json"
+    },
+    {
+      "id": "metadata-optional-positive/metadata-optional-positive-esm-bundler",
+      "form": "metadata-optional-positive",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/075/observation.json",
+      "blueObservation": "blue/075/observation.json"
+    },
+    {
+      "id": "replacement-overloaded-method-positive-diagnostic-lib-sibling/replacement-overloaded-method-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "replacement-overloaded-method-positive-diagnostic-lib-sibling",
+      "family": "replacement-context-inference",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/076/observation.json",
+      "blueObservation": "blue/076/observation.json"
+    },
+    {
+      "id": "replacement-overloaded-method-positive-diagnostic-lib-sibling/replacement-overloaded-method-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "replacement-overloaded-method-positive-diagnostic-lib-sibling",
+      "family": "replacement-context-inference",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/077/observation.json",
+      "blueObservation": "blue/077/observation.json"
+    },
+    {
+      "id": "replacement-imported-generic-class-positive-diagnostic-lib-sibling/replacement-imported-generic-class-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "replacement-imported-generic-class-positive-diagnostic-lib-sibling",
+      "family": "replacement-context-inference",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/078/observation.json",
+      "blueObservation": "blue/078/observation.json"
+    },
+    {
+      "id": "replacement-imported-generic-class-positive-diagnostic-lib-sibling/replacement-imported-generic-class-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "replacement-imported-generic-class-positive-diagnostic-lib-sibling",
+      "family": "replacement-context-inference",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/079/observation.json",
+      "blueObservation": "blue/079/observation.json"
+    },
+    {
+      "id": "replacement-generic-method-factory-positive-diagnostic-lib-sibling/replacement-generic-method-factory-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "replacement-generic-method-factory-positive-diagnostic-lib-sibling",
+      "family": "replacement-context-inference",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/080/observation.json",
+      "blueObservation": "blue/080/observation.json"
+    },
+    {
+      "id": "replacement-generic-method-factory-positive-diagnostic-lib-sibling/replacement-generic-method-factory-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "replacement-generic-method-factory-positive-diagnostic-lib-sibling",
+      "family": "replacement-context-inference",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/081/observation.json",
+      "blueObservation": "blue/081/observation.json"
+    },
+    {
+      "id": "replacement-imported-field-context-positive-diagnostic-lib-sibling/replacement-imported-field-context-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "replacement-imported-field-context-positive-diagnostic-lib-sibling",
+      "family": "replacement-context-inference",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/082/observation.json",
+      "blueObservation": "blue/082/observation.json"
+    },
+    {
+      "id": "replacement-imported-field-context-positive-diagnostic-lib-sibling/replacement-imported-field-context-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "replacement-imported-field-context-positive-diagnostic-lib-sibling",
+      "family": "replacement-context-inference",
+      "declarations": 3,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/083/observation.json",
+      "blueObservation": "blue/083/observation.json"
+    },
+    {
+      "id": "constraint-abstract-constructor-positive-diagnostic-lib-sibling/constraint-abstract-constructor-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "constraint-abstract-constructor-positive-diagnostic-lib-sibling",
+      "family": "abstract-generic-constraints",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/084/observation.json",
+      "blueObservation": "blue/084/observation.json"
+    },
+    {
+      "id": "constraint-abstract-constructor-positive-diagnostic-lib-sibling/constraint-abstract-constructor-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "constraint-abstract-constructor-positive-diagnostic-lib-sibling",
+      "family": "abstract-generic-constraints",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/085/observation.json",
+      "blueObservation": "blue/085/observation.json"
+    },
+    {
+      "id": "constraint-generic-constructor-member-positive-diagnostic-lib-sibling/constraint-generic-constructor-member-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "constraint-generic-constructor-member-positive-diagnostic-lib-sibling",
+      "family": "abstract-generic-constraints",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/086/observation.json",
+      "blueObservation": "blue/086/observation.json"
+    },
+    {
+      "id": "constraint-generic-constructor-member-positive-diagnostic-lib-sibling/constraint-generic-constructor-member-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "constraint-generic-constructor-member-positive-diagnostic-lib-sibling",
+      "family": "abstract-generic-constraints",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/087/observation.json",
+      "blueObservation": "blue/087/observation.json"
+    },
+    {
+      "id": "metadata-absent-positive-diagnostic-lib-sibling/metadata-absent-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "metadata-absent-positive-diagnostic-lib-sibling",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/088/observation.json",
+      "blueObservation": "blue/088/observation.json"
+    },
+    {
+      "id": "metadata-absent-positive-diagnostic-lib-sibling/metadata-absent-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "metadata-absent-positive-diagnostic-lib-sibling",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/089/observation.json",
+      "blueObservation": "blue/089/observation.json"
+    },
+    {
+      "id": "metadata-optional-positive-diagnostic-lib-sibling/metadata-optional-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "metadata-optional-positive-diagnostic-lib-sibling",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/090/observation.json",
+      "blueObservation": "blue/090/observation.json"
+    },
+    {
+      "id": "metadata-optional-positive-diagnostic-lib-sibling/metadata-optional-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "metadata-optional-positive-diagnostic-lib-sibling",
+      "family": "symbol-metadata",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/091/observation.json",
+      "blueObservation": "blue/091/observation.json"
+    },
+    {
+      "id": "receiver-getter-instance-positive-diagnostic-lib-sibling/receiver-getter-instance-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "receiver-getter-instance-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/092/observation.json",
+      "blueObservation": "blue/092/observation.json"
+    },
+    {
+      "id": "receiver-getter-instance-positive-diagnostic-lib-sibling/receiver-getter-instance-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "receiver-getter-instance-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/093/observation.json",
+      "blueObservation": "blue/093/observation.json"
+    },
+    {
+      "id": "receiver-getter-static-positive-diagnostic-lib-sibling/receiver-getter-static-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "receiver-getter-static-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/094/observation.json",
+      "blueObservation": "blue/094/observation.json"
+    },
+    {
+      "id": "receiver-getter-static-positive-diagnostic-lib-sibling/receiver-getter-static-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "receiver-getter-static-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/095/observation.json",
+      "blueObservation": "blue/095/observation.json"
+    },
+    {
+      "id": "receiver-setter-instance-positive-diagnostic-lib-sibling/receiver-setter-instance-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "receiver-setter-instance-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/096/observation.json",
+      "blueObservation": "blue/096/observation.json"
+    },
+    {
+      "id": "receiver-setter-instance-positive-diagnostic-lib-sibling/receiver-setter-instance-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "receiver-setter-instance-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/097/observation.json",
+      "blueObservation": "blue/097/observation.json"
+    },
+    {
+      "id": "receiver-setter-static-positive-diagnostic-lib-sibling/receiver-setter-static-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "receiver-setter-static-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/098/observation.json",
+      "blueObservation": "blue/098/observation.json"
+    },
+    {
+      "id": "receiver-setter-static-positive-diagnostic-lib-sibling/receiver-setter-static-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "receiver-setter-static-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/099/observation.json",
+      "blueObservation": "blue/099/observation.json"
+    },
+    {
+      "id": "receiver-autoaccessor-instance-positive-diagnostic-lib-sibling/receiver-autoaccessor-instance-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "receiver-autoaccessor-instance-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/100/observation.json",
+      "blueObservation": "blue/100/observation.json"
+    },
+    {
+      "id": "receiver-autoaccessor-instance-positive-diagnostic-lib-sibling/receiver-autoaccessor-instance-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "receiver-autoaccessor-instance-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/101/observation.json",
+      "blueObservation": "blue/101/observation.json"
+    },
+    {
+      "id": "receiver-autoaccessor-static-positive-diagnostic-lib-sibling/receiver-autoaccessor-static-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "receiver-autoaccessor-static-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/102/observation.json",
+      "blueObservation": "blue/102/observation.json"
+    },
+    {
+      "id": "receiver-autoaccessor-static-positive-diagnostic-lib-sibling/receiver-autoaccessor-static-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "receiver-autoaccessor-static-positive-diagnostic-lib-sibling",
+      "family": "accessor-receivers",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/103/observation.json",
+      "blueObservation": "blue/103/observation.json"
+    },
+    {
+      "id": "legacy-overloaded-method-descriptor-positive-diagnostic-lib-sibling/legacy-overloaded-method-descriptor-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "legacy-overloaded-method-descriptor-positive-diagnostic-lib-sibling",
+      "family": "legacy-applicable",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/104/observation.json",
+      "blueObservation": "blue/104/observation.json"
+    },
+    {
+      "id": "legacy-overloaded-method-descriptor-positive-diagnostic-lib-sibling/legacy-overloaded-method-descriptor-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "legacy-overloaded-method-descriptor-positive-diagnostic-lib-sibling",
+      "family": "legacy-applicable",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/105/observation.json",
+      "blueObservation": "blue/105/observation.json"
+    },
+    {
+      "id": "legacy-generic-class-replacement-positive-diagnostic-lib-sibling/legacy-generic-class-replacement-positive-cjs-node10-diagnostic-lib-sibling",
+      "form": "legacy-generic-class-replacement-positive-diagnostic-lib-sibling",
+      "family": "legacy-applicable",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/106/observation.json",
+      "blueObservation": "blue/106/observation.json"
+    },
+    {
+      "id": "legacy-generic-class-replacement-positive-diagnostic-lib-sibling/legacy-generic-class-replacement-positive-esm-bundler-diagnostic-lib-sibling",
+      "form": "legacy-generic-class-replacement-positive-diagnostic-lib-sibling",
+      "family": "legacy-applicable",
+      "declarations": 1,
+      "verdict": "accept",
+      "diagnostics": [],
+      "nativeObservation": "native/107/observation.json",
+      "blueObservation": "blue/107/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/cjs-react",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/cjs/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/cjs/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/108/observation.json",
+      "blueObservation": "blue/108/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/cjs-react-jsx",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/cjs/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/cjs/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/109/observation.json",
+      "blueObservation": "blue/109/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/cjs-react-jsxdev",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/cjs/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/cjs/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/110/observation.json",
+      "blueObservation": "blue/110/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/cjs-preserve",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/cjs/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/cjs/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/111/observation.json",
+      "blueObservation": "blue/111/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/cjs-react-native",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/cjs/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/cjs/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/112/observation.json",
+      "blueObservation": "blue/112/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/esm-react",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/esm/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/esm/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/113/observation.json",
+      "blueObservation": "blue/113/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/esm-react-jsx",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/esm/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/esm/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/114/observation.json",
+      "blueObservation": "blue/114/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/esm-react-jsxdev",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/esm/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/esm/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/115/observation.json",
+      "blueObservation": "blue/115/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/esm-preserve",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/esm/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/esm/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/116/observation.json",
+      "blueObservation": "blue/116/observation.json"
+    },
+    {
+      "id": "imported-value-generic-alias-valid-authorized-runtime-sibling/esm-react-native",
+      "form": "imported-value-generic-alias-valid-authorized-runtime-sibling",
+      "family": "jsx-imported-declarations",
+      "declarations": 4,
+      "verdict": "reject",
+      "diagnostics": [
+        {
+          "category": "Error",
+          "code": 7016,
+          "file": "out/esm/provider-runtime.d.ts",
+          "start": 27,
+          "length": 15,
+          "message": "Could not find a declaration file for module './provider.js'. '<root>/out/esm/provider.js' implicitly has an 'any' type.",
+          "related": []
+        }
+      ],
+      "nativeObservation": "native/117/observation.json",
+      "blueObservation": "blue/117/observation.json"
+    }
+  ],
+  "conclusion": "success",
+  "fullGC3Accepted": false
+}

@@ -7,6 +7,39 @@
 use super::{instantiate_named, Type, TypeDefinition, TypeDefinitionKind};
 use std::collections::{BTreeMap, HashSet};
 
+fn intersection_properties(values: Vec<Type>) -> Type {
+    let mut unique = Vec::new();
+    for value in values {
+        if !unique.contains(&value) {
+            unique.push(value);
+        }
+    }
+    if unique.len() == 1 {
+        return unique.pop().expect("one property type");
+    }
+    if unique
+        .iter()
+        .all(|value| matches!(value, Type::Union(parts) if parts.contains(&Type::Undefined)))
+    {
+        let parts = unique
+            .into_iter()
+            .map(|value| {
+                let Type::Union(parts) = value else {
+                    unreachable!()
+                };
+                super::type_operators::union(
+                    parts.into_iter().filter(|value| *value != Type::Undefined),
+                )
+            })
+            .collect::<Vec<_>>();
+        if parts.contains(&Type::Never) {
+            return Type::Undefined;
+        }
+        return super::type_operators::union([Type::Intersection(parts), Type::Undefined]);
+    }
+    Type::Intersection(unique)
+}
+
 pub(super) struct TypeExpansionBudget {
     pub(super) checking: crate::CheckingOptions,
     remaining: usize,
@@ -337,7 +370,7 @@ fn property_type_with_access(
                 let value = if found.len() == 1 {
                     found.pop().expect("one matching property")
                 } else {
-                    Type::Intersection(found)
+                    intersection_properties(found)
                 };
                 PropertyType::Found { value, readonly }
             } else if indeterminate {

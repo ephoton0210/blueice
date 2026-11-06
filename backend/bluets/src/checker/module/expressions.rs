@@ -31,6 +31,7 @@ mod readonly;
 mod receivers;
 pub(super) mod signatures;
 mod symbol_diagnostics;
+mod variadic;
 
 pub(super) use indexing::indexed_value_type;
 use indexing::{canonical_index_key, tuple_indexed_candidates};
@@ -39,6 +40,23 @@ fn method_overload_signatures(overloads: &[Type]) -> Option<Vec<FunctionSignatur
 }
 
 impl<'a> ModuleChecker<'a> {
+    pub(in crate::checker::module) fn nested_runtime_body_contains(
+        &self,
+        tokens: &[Token],
+        position: usize,
+    ) -> bool {
+        let (Some(first), Some(last)) = (tokens.first(), tokens.last()) else {
+            return false;
+        };
+        self.module
+            .nested_functions
+            .range(first.start..=position)
+            .next_back()
+            .is_some_and(|(_, function)| {
+                function.span.end <= last.end && position < function.span.end
+            })
+    }
+
     pub(super) fn infer_function_call(
         &self,
         signatures: &[FunctionSignature],
@@ -512,6 +530,10 @@ impl<'a> ModuleChecker<'a> {
                 }
                 positions_known = false;
                 let spread = self.infer_expression(&argument[1..], scope);
+                if self.correlated_argument_pack(&spread, actuals.len(), signatures) {
+                    actuals.push(spread);
+                    continue;
+                }
                 if let Type::Array(element) = spread {
                     if signatures.iter().any(|signature| {
                         function_parameter_for_argument(signature, actuals.len())
@@ -543,8 +565,11 @@ impl<'a> ModuleChecker<'a> {
                         let preserving = signatures.iter().find(|signature| {
                             let Some(parameter) = function_parameter_for_argument(signature, actuals.len()) else { return false };
                             let annotation = if parameter.rest { rest_parameter_element_annotation(parameter) } else { parameter.annotation.as_ref() };
-                            matches!(annotation, Some(Type::Literal(_))) || (matches!(annotation, Some(Type::Named { name, arguments }) if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name))
-                                && matches!(&signature.return_type, Type::Named { name, arguments } if arguments.is_empty() && signature.type_parameters.iter().any(|p| p.name == *name)))
+                            matches!(annotation, Some(Type::Literal(_))) || matches!(annotation,
+                                Some(Type::Named { name, arguments }) if arguments.is_empty()
+                                    && signature.type_parameters.iter().any(|parameter| parameter.name == *name
+                                        && (matches!(&signature.return_type, Type::Named { name: result, arguments } if arguments.is_empty() && result == name)
+                                            || parameter.constraint.as_ref().is_some_and(|constraint| matches!(constraint, Type::String | Type::Number | Type::Boolean | Type::BigInt | Type::Symbol | Type::Literal(_))))))
                         });
                         let contextual_callback = preserving.is_some_and(|signature| {
                             self.contextual_callback_widens_parameter(

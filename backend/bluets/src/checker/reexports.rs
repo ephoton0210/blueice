@@ -9,6 +9,28 @@ use super::*;
 type Origin = (String, String);
 pub(super) type Origins = BTreeMap<String, BTreeMap<String, BTreeSet<Origin>>>;
 
+/// Reuse an authored import only when its namespace has the same unique origin.
+/// This inspects the closed graph; it never resolves or loads another module.
+pub(crate) fn preferred_namespace_import(
+    project: &Project,
+    module: &Module,
+    provider: &str,
+    namespace: &str,
+) -> Option<String> {
+    let origins = origins(project);
+    let expected = origins.get(provider)?.get(namespace)?;
+    if expected.len() != 1 {
+        return None;
+    }
+    module.declarations.iter().find_map(|declaration| {
+        let Declaration::Import(import) = declaration else {
+            return None;
+        };
+        let target = project.resolved_import(&module.id, import)?;
+        (origins.get(target)?.get(namespace)? == expected).then(|| import.specifier.clone())
+    })
+}
+
 pub(super) fn origins(project: &Project) -> Origins {
     let names = project::local_exported_names(project);
     let mut explicit = BTreeMap::<String, BTreeSet<String>>::new();

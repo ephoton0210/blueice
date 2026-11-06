@@ -14,8 +14,10 @@
 
 use super::*;
 use crate::parser::{ClassDeclaration, ClassMemberKind, Decorator};
+mod diagnostics;
 mod metadata;
 mod replacements;
+mod signatures;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Target {
@@ -50,6 +52,7 @@ enum Callee {
     Function {
         parameters: Vec<Parameter>,
         result: Type,
+        arguments_checked: bool,
     },
 }
 
@@ -217,7 +220,9 @@ impl<'a> ModuleChecker<'a> {
     ) {
         // The expression is ordinary code: its own errors are reported.
         self.check_direct_runtime_expression(&decorator.tokens, scope, &decorator.span);
-        let callee = self.decorator_callee(&decorator.tokens, scope);
+        let callee = self
+            .resolve_decorator_callee(decorator, target, class, member)
+            .unwrap_or_else(|| self.decorator_callee(&decorator.tokens, scope));
         match callee {
             Callee::Unknown => {}
             Callee::NotCallable(actual) => self.type_error(
@@ -228,7 +233,11 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::TypeMismatch,
             ),
-            Callee::Function { parameters, result } => {
+            Callee::Function {
+                parameters,
+                result,
+                arguments_checked,
+            } => {
                 if self.experimental_decorators {
                     self.check_legacy_signature(decorator, target, &parameters, &result);
                     self.check_decorator_replacement(decorator, target, class, member, &result);
@@ -269,7 +278,9 @@ impl<'a> ModuleChecker<'a> {
                 } else {
                     self.check_decorator_replacement(decorator, target, class, member, &result);
                 }
-                self.check_decorator_context(decorator, target, class, member, &parameters);
+                if !arguments_checked {
+                    self.check_decorator_context(decorator, target, class, member, &parameters);
+                }
             }
         }
     }
@@ -399,10 +410,7 @@ impl<'a> ModuleChecker<'a> {
         if let Some(open) = tokens.iter().position(|token| token.is("(")) {
             let callee_tokens = &tokens[..open];
             if callee_tokens.len() == 1 && tokens.last().is_some_and(|token| token.is(")")) {
-                return match self.named_callee(&callee_tokens[0].text, scope) {
-                    Callee::Function { result, .. } => self.callee_of_value(result),
-                    _ => Callee::Unknown,
-                };
+                return self.callee_of_value(self.infer_expression(tokens, scope));
             }
             return Callee::Unknown;
         }
@@ -421,6 +429,7 @@ impl<'a> ModuleChecker<'a> {
             return Callee::Function {
                 parameters: signature.parameters.clone(),
                 result: signature.return_type.clone(),
+                arguments_checked: false,
             };
         }
         match scope.get(name).or_else(|| self.values.get(name)) {
@@ -434,6 +443,7 @@ impl<'a> ModuleChecker<'a> {
             Type::Function { parameters, result } => Callee::Function {
                 parameters,
                 result: *result,
+                arguments_checked: false,
             },
             Type::Number
             | Type::String

@@ -162,6 +162,22 @@ impl ModuleChecker<'_> {
                     }
                 }
             }
+        } else if member == "call"
+            && arguments
+                .iter()
+                .any(|argument| argument.first().is_some_and(|token| token.is("...")))
+        {
+            let mut callable = signature.clone();
+            callable
+                .parameters
+                .retain(|parameter| parameter.name != "this");
+            self.expanded_call_argument_types_for(arguments, scope, &[callable])
+                .unwrap_or_else(|()| {
+                    arguments
+                        .iter()
+                        .map(|argument| self.infer_expression(argument, scope))
+                        .collect()
+                })
         } else {
             arguments
                 .iter()

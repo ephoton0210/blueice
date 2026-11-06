@@ -75,7 +75,14 @@ pub(crate) fn replacement_type(
         if field.accessor {
             return Some(named(
                 "ClassAccessorDecoratorResult",
-                vec![class.this_type(), value],
+                vec![
+                    if field.is_static {
+                        constructor_type(class)
+                    } else {
+                        class.this_type()
+                    },
+                    value,
+                ],
             ));
         }
         return Some(callable(

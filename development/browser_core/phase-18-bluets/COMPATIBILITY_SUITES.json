@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:a5f61a09b651e3a770b11049020ecea1b28ed393",
-  "source_graph_sha256": "bc065aba4cebe044d5c54273f8315235736e09e478424013136bb2f2744142e1",
+  "source_revision": "backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa",
+  "source_graph_sha256": "efd4fffed9cedcaef6ff1d03308abfc5494b89da22e113b51dc96162de11ef68",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -495,6 +495,28 @@
         "backend/bluets/tests/fixtures/gc1_source_controls/cases.json": "88952e13573ab48577162fd3041368c7bc5038e1",
         "backend/bluets/tests/fixtures/gc1_source_controls/reference.json": "eccc4ed3e32527f50ad1024dfe05b40f6b0f974b",
         "backend/bluets/tests/gc1_source_diagnostics.rs": "c0c10934d59e75f39a4377c70535be016925f028"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/gc3_compositions.rs",
+      "ignored_tests": [
+        "complete_compositions_match_native_and_keep_owner_denials_separate",
+        "pinned_native_reproduces_all_frozen_composition_observations"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/gc3_compositions/policy.json": "1a72d1e5c02310f50ecad3213f7fb1ec87357c3a",
+        "backend/bluets/tests/fixtures/gc3_compositions/reference.json": "c9cfcd8ee653226b0744459cd460735f831b7987",
+        "backend/bluets/tests/fixtures/gc3_compositions/registry.json": "73bb98fdf823bb1cd4586d128700061eccaff2f2",
+        "backend/bluets/tests/gc3_compositions.rs": "0f4abc660afb3d481453aaf38632cdf48016995c"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/gc3_decorated_parameter_properties.rs",
+      "ignored_tests": [
+        "decorated_base_and_derived_constructors_initialize_parameter_properties"
+      ],
+      "inputs": {
+        "backend/bluets/tests/gc3_decorated_parameter_properties.rs": "100798352c05f5f954df715a33b1a8bcb73cce6d"
       }
     },
     {

@@ -13,6 +13,14 @@ pub(super) fn refine(diagnostic: &Diagnostic, tokens: &[Token]) -> SourceSpan {
     let end = tokens.partition_point(|token| token.start < span.end);
     let selected = tokens.get(begin..end).unwrap_or(&[]);
     let code = counterpart.code;
+    if code == 2339
+        && counterpart
+            .arguments
+            .get(1)
+            .is_some_and(|target| target == "JSX.IntrinsicElements")
+    {
+        return span.clone();
+    }
     let chosen = match code {
         2322 | 2419 | 2719 | 2741 | 2375 | 2820 => assignment(selected, tokens, begin, diagnostic),
         2345 | 2769 | 2554 | 2555 => call_argument(selected, &diagnostic.message, code),

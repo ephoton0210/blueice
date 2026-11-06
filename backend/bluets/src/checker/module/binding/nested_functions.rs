@@ -177,7 +177,16 @@ impl ModuleChecker<'_> {
             span: arrow.span.clone(),
         };
         let mut body_scope = scope.clone();
-        if arrow.contextual_this {
+        if let Some(receiver) = self
+            .return_inference
+            .receivers
+            .borrow()
+            .get(&arrow.span.start)
+        {
+            if arrow.kind != crate::parser::NestedFunctionKind::Arrow {
+                body_scope.insert("this".to_string(), receiver.clone());
+            }
+        } else if arrow.contextual_this {
             body_scope.insert("this".to_string(), Type::Unknown);
         } else if arrow.kind != crate::parser::NestedFunctionKind::Arrow {
             body_scope.remove("this");

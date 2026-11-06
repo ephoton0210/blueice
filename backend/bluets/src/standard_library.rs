@@ -21,9 +21,55 @@ const BASE: &str = include_str!("standard_library/ecma-base.v1.d.ts");
 const ES2022: &str = include_str!("standard_library/ecma-es2022.v1.d.ts");
 const ADDITIONS: &str = include_str!("standard_library/ecma-additions.v2.d.ts");
 const DECORATORS: (&str, &str) = (
-    "decorator-contexts.v1.d.ts",
-    include_str!("standard_library/decorator-contexts.v1.d.ts"),
+    "decorator-contexts.v2.d.ts",
+    include_str!("standard_library/decorator-contexts.v2.d.ts"),
 );
+const SYMBOL_METADATA: (&str, &str) = (
+    "symbol-metadata.v1.d.ts",
+    include_str!("standard_library/symbol-metadata.v1.d.ts"),
+);
+
+pub(crate) fn symbol_metadata_module() -> &'static Module {
+    static MODULE: OnceLock<Module> = OnceLock::new();
+    MODULE.get_or_init(|| {
+        parse_module(
+            format!("<builtin:{}>", SYMBOL_METADATA.0),
+            SYMBOL_METADATA.1,
+        )
+        .expect("static Symbol.metadata component parses")
+    })
+}
+
+/// The ordinary edition identity plus an explicitly selected static component.
+pub fn identity_with_components(
+    target: EcmaTarget,
+    libraries: Option<&[EcmaTarget]>,
+    symbol_metadata: bool,
+) -> Identity {
+    let mut identity = identity_with_libraries(target, libraries);
+    if (symbol_metadata
+        || libraries.map_or(target, |editions| {
+            editions.iter().copied().max().unwrap_or(target)
+        }) == EcmaTarget::EsNext)
+        && !identity.sources.is_empty()
+    {
+        let bytes = format!(
+            "{}\0{}\0{}",
+            identity.source_fingerprint, SYMBOL_METADATA.0, SYMBOL_METADATA.1
+        );
+        identity.sources.push(SYMBOL_METADATA.0);
+        identity.libraries.push("esnext.decorators");
+        identity.source_fingerprint = format!(
+            "sha256:{}",
+            digest(&SHA256, bytes.as_bytes())
+                .as_ref()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        );
+    }
+    identity
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -149,7 +195,7 @@ mod tests {
                 "ecma-es2022.v1.d.ts",
                 "ecma-additions.v2.d.ts",
                 "ecma-async-iteration.v2.d.ts",
-                "decorator-contexts.v1.d.ts",
+                "decorator-contexts.v2.d.ts",
                 "ecma-core.v3.d.ts",
                 "ecma-buffers.v3.d.ts",
                 "ecma-iterable.v3.d.ts",

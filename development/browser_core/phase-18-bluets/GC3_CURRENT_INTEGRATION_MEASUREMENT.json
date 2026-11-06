@@ -1,0 +1,355 @@
+{
+  "schema": 2,
+  "scope": "Final accepted G-C3 finite scope: complete Native catalog, public regressions, independent declaration consumers, complete unfiltered workspace and durable requirement audit. Full TypeScript parity is OFF.",
+  "recordedAt": "2026-11-06T14:16:11.487785+00:00",
+  "baseCommit": "ece3c8128dbfb4468fe26232bd80c4f85b65cc9b",
+  "sourceEpoch": 43,
+  "privateStateEpoch": 71,
+  "sourceSnapshot": {
+    "scope": "Accepted immutable Native source; final workspace uses the separately recorded build artifact on the same source revision.",
+    "sourceRevision": "backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa",
+    "compilerSha256": "c4004d013d1974beea7ed72b96588d4ef79e09a8d694f33dfb0cc7d6010e8467",
+    "productionFiles": {
+      "backend/bluets/src/bin/bluetsc.rs": "58a248f1b25f229f2d3ef7791cb9ed654a6abb08c5136a9d4686abdc480ef2fb",
+      "backend/bluets/src/bin/bluetsc/build_graph/freshness.rs": "1549a9ffe9f78e209490ee09332d9713fd13e598f85a870c7c4ec5e9d6bbc775",
+      "backend/bluets/src/bin/bluetsc/config.rs": "e7be4c1665dd354eda355119e14d0f1c234b847c72955b37174c5bd692aca944",
+      "backend/bluets/src/bin/bluetsc/file_loader.rs": "39a8bfdb10c7ae7629a6786e74b0f6b68afb0c1c7a8e7284511e430dec6d8a27",
+      "backend/bluets/src/bin/bluetsc/file_loader/resolution.rs": "e3cc241c0b81fcdf4e0d165e15b38752f7704b957b8095b56ae924d1dbef7c8b",
+      "backend/bluets/src/bin/bluetsc/tsconfig/mod.rs": "d89d3d89714e19c1b2d7bea424896dafdf3bea94e46a4bfbb65620858b1bb3c7",
+      "backend/bluets/src/bin/bluetsc/tsconfig/options.rs": "397651c4db70e116ef2140b4f213de93c507c34c982b5ddac65d2397764d744c",
+      "backend/bluets/src/checker.rs": "0ce5168cffb9d7c3e1bf046b5688cc769d87e59057822419bb9eaa111eeaa998",
+      "backend/bluets/src/checker/checking.rs": "852d546967da391222ce4388759c699f8bffbae7ba6cdab42c5c78d92585d039",
+      "backend/bluets/src/checker/decorator_types.rs": "48a5a27e3c5791a11f181ba31fd0f592ee140f58c6a549a86861a3e86eb431af",
+      "backend/bluets/src/checker/inference.rs": "9427224b51e2b420c602c91b71e9b5a0a3171b62b432b953fc6700100d30a93e",
+      "backend/bluets/src/checker/inference/results.rs": "e14c2468f086d3c9a36304ebde894ce8d63308718a239de6220c246b102b67b0",
+      "backend/bluets/src/checker/inference/surfaces.rs": "7ce63a494ea7769601005c132bd738c6700d2725877553f34316705fa20f80c0",
+      "backend/bluets/src/checker/module/binding.rs": "9617adf44a39b6143fef391c2c1c0a6fe5611ebd939ac64a4def0b0d4243da19",
+      "backend/bluets/src/checker/module/binding/checking_flags.rs": "d48ce98ce2a0e3b199cb31861f273b4f28db7dfd8bc3e57cb0a7e5ee043424fe",
+      "backend/bluets/src/checker/module/binding/classes/generics.rs": "753b067b90ca5b2add95d0c4535726f8b2439259a36a70de46852c99ed564d97",
+      "backend/bluets/src/checker/module/binding/diagnostics.rs": "e25b7146ddda1bbb40e6bd70b5f62b269d46ccb90679d64c0b72bba060778970",
+      "backend/bluets/src/checker/module/binding/functions.rs": "5056c11b5f33b2c6b57bfe62a8ac9e048f9fc97d3ec18815194375d1c6f591cb",
+      "backend/bluets/src/checker/module/binding/modules.rs": "3a861950066e708fceb61ed1a50721d797ec3fc97b94ee28cef4814e6e795c58",
+      "backend/bluets/src/checker/module/binding/namespaces.rs": "89d919156a8271e54f7cdd411bf6b49d5d1b1a490da2677d4afe507b73228ddd",
+      "backend/bluets/src/checker/module/binding/namespaces/exports.rs": "089f1a828f444d7db383bce2d5d9467ec54842c80832b35559825adbd731f014",
+      "backend/bluets/src/checker/module/binding/nested_functions.rs": "b0a68e2eb2a52d7a81ff5b619a18cdc38a0785b541deb13f23e16b20d65f52e0",
+      "backend/bluets/src/checker/module/binding/rest_parameters.rs": "0fa395a71c0008d098c9fdb77fa2a58d0b8ccac702c8ead4da1f1fb3172920d0",
+      "backend/bluets/src/checker/module/binding/standard_library.rs": "c77785f63c643f1e482cfa64b8609f71bd1783d9289747dff066f078299a7fb6",
+      "backend/bluets/src/checker/module/binding/standard_library/keys.rs": "ce82833a66afb9f9285dc4df9d027f955c6aa9684e1cffaf43aa7c3ab3524f36",
+      "backend/bluets/src/checker/module/decorators.rs": "84c52ca82400bb1aaa3f86ce3220213837df0226915f6988a68d99f2e9084bf1",
+      "backend/bluets/src/checker/module/decorators/diagnostics.rs": "45e5906cce4271b33ea1b1f6571978116d1f7f2939bdc38e72e781ffc2b2896b",
+      "backend/bluets/src/checker/module/decorators/diagnostics/constructors.rs": "6025fefb3bd0e27e87ad905c0a82ed484fb38a5379a0a89f0b9999eba71c1b61",
+      "backend/bluets/src/checker/module/decorators/replacements.rs": "550d3bba13718a9c91a7a58ae754968f82d4663de6026ac47448b01f6cce785f",
+      "backend/bluets/src/checker/module/decorators/signatures.rs": "c09f8a13095b7867d8d532cc8b2d1ec269c1eb591af13435b2e04a467b8b892f",
+      "backend/bluets/src/checker/module/expressions.rs": "9266bb2b803ad239a96833afe5152c4c15ada8946155e68c066ec4ff060e03b5",
+      "backend/bluets/src/checker/module/expressions/call_presentation.rs": "6ad43ace62a45696b135b7b1cd306ae091248200528b724e3ba094f7c7393c1d",
+      "backend/bluets/src/checker/module/expressions/calls.rs": "806c43a4477cb9c3151d6ed2d06f6f30e95ce51b9b34403f80c75bc26dd72ffa",
+      "backend/bluets/src/checker/module/expressions/contextual_calls.rs": "8c3e4d8dfbc1fb2ecc0708122c2a7e108ae15ff1c07cb7aa9447a1ca539f26ce",
+      "backend/bluets/src/checker/module/expressions/diagnostics/records.rs": "eee52ffbea5f5ca3dc7c7ce047b6f9f76d9d80dfe500ea61a68699cbbf42677c",
+      "backend/bluets/src/checker/module/expressions/function_methods.rs": "f50df427b651543bb1477207635e6d1ed2ab6d6bfa25200db12bbd0055edf1fb",
+      "backend/bluets/src/checker/module/expressions/inference.rs": "1d6b8381912c4df8bf6e866197ffb09d79cf2c3fbe0837166b2c27d6992f3de5",
+      "backend/bluets/src/checker/module/expressions/inference/arrays.rs": "69f96b3f09c7045c19d04b040caaf600c97ad34a8b82a523481b72121f517ef2",
+      "backend/bluets/src/checker/module/expressions/mutation.rs": "fc5e6b24f8f4a5805bb036b9504b3f5560ac68ddf612d51a81089b6adbe608d3",
+      "backend/bluets/src/checker/module/expressions/variadic.rs": "9ba8a6e961567972bdc2d6ddce60dafeb4a4c4384405ef2492eaa0e2ff31fea2",
+      "backend/bluets/src/checker/module/jsx.rs": "28798453f92a9f49e3c6f028896794779b037edffed34a221f66540bfd1582cd",
+      "backend/bluets/src/checker/module/jsx/managed.rs": "b72eac94003f7d0c26def3edc7b20b70182ca57707b1a96a26e57380c27c3ac8",
+      "backend/bluets/src/checker/module/jsx/overloads.rs": "200fe91e38d490e55d3a65f238fb7fbbeda0a96a8f29a986484300700377f273",
+      "backend/bluets/src/checker/module/jsx/presentation.rs": "fc9a70233e6f2cb95478ceb63ddf03735a57c6df93cedf55cd5f9407f9e2d2ea",
+      "backend/bluets/src/checker/module/jsx/tags.rs": "dc6e011cece61b60c4a6f92a98fd614d4f9ab2cd2bcdc37ba66b670550a4305a",
+      "backend/bluets/src/checker/module/jsx/unions.rs": "f8e9cf735c79787d9ebc26449c00bc4683b1c1a36c67ca9b7c3d62215c176aa8",
+      "backend/bluets/src/checker/module/mod.rs": "c61822f9a91971047940cbe0b508bb93532675a7a7e7a1171b0691e6271090c2",
+      "backend/bluets/src/checker/module/return_inference.rs": "a2231442c2ead8619fa2ceb57a463fed1a4cb56e453ca5356ee08d2c603f4cd9",
+      "backend/bluets/src/checker/properties.rs": "3a950306cabcf4c8d757493c3923260c56045e6c0365c8f5a97e9c89a70e285b",
+      "backend/bluets/src/checker/reexports.rs": "95eb5573122c482d64e356cdb9210ff6b1587d3fa7612847fc594319c66e2a1b",
+      "backend/bluets/src/checker/scopes/flow/mod.rs": "f4582ee590c7823edea963b4743c8ca324eded25873cb6f9ce30d302907febb6",
+      "backend/bluets/src/checker/scopes/flow/predicates.rs": "ddd0c0efb7dda0c6d8d27586bb25a550841c3d2612517719ee5784b0494eb65d",
+      "backend/bluets/src/checker/tests.rs": "ef63875f901c9443fa9269cf22183bdea974bf6166d53e7b3ecf52b08ea5ab0c",
+      "backend/bluets/src/checker/type_operators/conditional.rs": "cdfbadbc32be1cfbd328717095a3d3c95c9a34e7952ab0cf9e775cdee755587f",
+      "backend/bluets/src/checker/type_relations.rs": "fa84b34bfe6d25fcc7beaa967f3783335c7c2cbf9c809f03714fe0a79e234f83",
+      "backend/bluets/src/checker/type_relations/compatibility.rs": "7b79fec34b9978b59694d1535cf5f61884dc7b9e59cfe62ae883f2e49f2f7b07",
+      "backend/bluets/src/checker/type_relations/parameters.rs": "d1393a97a6dbe6712f58670417f77a8edc3ee9a4bb6deab38db24a073aff472d",
+      "backend/bluets/src/compiler.rs": "fab5017e28946dd6df9047a82c473dd3f850c3b4e63aa481521d5945cdfd46a5",
+      "backend/bluets/src/compiler/fingerprint.rs": "f951350f125c6eb14f6586401b7107ffa82db5a896c822a55ac3e1bd364f9f54",
+      "backend/bluets/src/compiler/native_emit.rs": "903f624713fbd1270c145403f8e48de168cafc32c3d2dbafbc8ed9d3cf4d9760",
+      "backend/bluets/src/compiler/project_builder/jsx_namespaces.rs": "2aed02e1c8c91ba891976d8789fbf5ce6ad99f1a73ae7267c354b49cce537602",
+      "backend/bluets/src/debug_info.rs": "a4265aeb00e76d84280ed2939d57fcea0079292c4934dc65b6eafc4fbc40852c",
+      "backend/bluets/src/diagnostic/positions/refine.rs": "a1afc85dca3606e7b2047c48180f4223ec5148355e1729eaaa6c347ef1716d43",
+      "backend/bluets/src/diagnostic/related.rs": "23e3be60ac38baa4601cf9e645d6b41ea343a4f1669e9fe78800f639fa34db7b",
+      "backend/bluets/src/diagnostic/rendered/decorators.rs": "e17c4ea34f09111ab4e06e78079960ca0a9bcbb0e0deea8e5c3ff99556deb33f",
+      "backend/bluets/src/diagnostic/type_text.rs": "90596dc5f35241c1605ae952367ee262a5bb11f9145f7d7eb4f3c9e64e0078d6",
+      "backend/bluets/src/diagnostic/type_text/names.rs": "3b58ef232e910c94ca8dcbb632b6d82ae369d3a0b72ee3a3cac13f8f97c3f738",
+      "backend/bluets/src/emitter.rs": "02f1b43c918820159d706fdb01d99944ea3a1597db72157dc9750beecaf5c880",
+      "backend/bluets/src/emitter/callable_objects.rs": "887897d0c07b5446d050e878dd1acf9bf333e574b69865b0da35198e34deade8",
+      "backend/bluets/src/emitter/class_lowering.rs": "dfca33268409c90a78b96a38ba068401bee72eb81a13aff2237218898b79feb8",
+      "backend/bluets/src/emitter/commonjs.rs": "a29304ffe8ff94ac91cf62872bdec6768801f51fb3ff6892c7d23a9e775b6a0c",
+      "backend/bluets/src/emitter/declarations.rs": "3532de59bbe3890c399afdc9c31f8a0bd8eeb2d21d31d1758dfa000c54806af9",
+      "backend/bluets/src/emitter/inferred_declarations.rs": "aa40026169683e9af1a7bd88b5883080a086c0921c69790b7896912fc5099ffa",
+      "backend/bluets/src/emitter/inferred_declarations/render.rs": "0ac7431a6a7b1d4ff7f907add1a66683aa3afaf08efac334bda36d20231c8dfc",
+      "backend/bluets/src/emitter/jsx.rs": "0f88a26dfdf53bbbde7d6880f38f7d2221775ef6ccb43bb26fb39c139fb9ec60",
+      "backend/bluets/src/emitter/literal_order.rs": "6099ff04733462a81859c15c50c810c79cc1637c664a51d9b3f9c74bac2ecd76",
+      "backend/bluets/src/emitter/literal_order/allocations.rs": "1a326ee65d5139f55b565237f635c7ce2f9e16cc4132c525238cb3d1700d8770",
+      "backend/bluets/src/emitter/module_lowering.rs": "e20c9416938accc1bc6894b3644ae792e23cbcc889444cc16affc02d839596c5",
+      "backend/bluets/src/lib.rs": "3887b8f2d801140ae517067408182207ed2c85440935da187bed5f618db88c61",
+      "backend/bluets/src/parser/declarations.rs": "66c82ae72fa2bcc5ca422953560dbc36b81fd2c7e5b81f01d1fcf9dbbd6ec70b",
+      "backend/bluets/src/standard_library.rs": "e7067b7c380f0f9c121421b1289f9441642d8cc2d59b672ca11a16328181c882",
+      "backend/bluets/src/standard_library/decorator-contexts.v2.d.ts": "e7f9bd768dc33ca89001493707585f7ea64c4b6c61369e6cc26907d38e6e836e",
+      "backend/bluets/src/standard_library/symbol-metadata.v1.d.ts": "ba5ae0746bfb6321870007bed4c335c5f9337416a5b67e88b4258b88f0d660c9"
+    }
+  },
+  "frozenMatrixSha256": "4d083fd6866341149b787a255c536d5df6581fecf2e9ae2863181caf1202b872",
+  "registrySha256": "e8d97515d6097169668a2b9a60d263d3957d2d6ca83007abfb7a12f1f5fe8f6f",
+  "nativeReferenceSha256": "3d26969da02a9c0a3500825a011fc0e0b756c9d05e75cf9a88315dd9a0d3e6d9",
+  "fullGC3Accepted": true,
+  "fullNativeCohortAccepted": true,
+  "fullWorkspaceAccepted": true,
+  "commitAllowed": true,
+  "remainingWork": [],
+  "requirementAudit": {
+    "scope": "Final G-C3 runtime/evidence requirement audit; final documentation and publication remain to be recorded",
+    "recordedAt": "2026-11-06T14:15:45.745433+00:00",
+    "sourceRevision": "backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa",
+    "compilerSha256": "c4004d013d1974beea7ed72b96588d4ef79e09a8d694f33dfb0cc7d6010e8467",
+    "completeNativeSuites": 179,
+    "nativePassedFunctions": 1024,
+    "workspace": {
+      "exit": 0,
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-fail-fast"
+      ],
+      "sourceRevision": "backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa",
+      "compilerSha256": "e6ea0bbe2dfc15728d74ecd62a0aa775a7bb79a339f9a4e056ccd81dd9976743",
+      "executionPermissionProfile": "escalated-local-TCP-and-Unix-sockets",
+      "passed": 7824,
+      "failed": 0,
+      "ignored": 386,
+      "filtered": 0,
+      "groups": 712,
+      "conclusion": "success",
+      "previousFailedWorkspace": "gc3-sandbox-workspace-failure-v77.json"
+    },
+    "workspaceCompilerSha256": "e6ea0bbe2dfc15728d74ecd62a0aa775a7bb79a339f9a4e056ccd81dd9976743",
+    "publicBoundaryTests": {
+      "configured_declaration_roots": 4,
+      "gc3_contextual_functions": 5,
+      "gc3_decorator_compositions": 5,
+      "gc3_jsx_compositions": 5,
+      "gc3_metadata_components": 3,
+      "gc3_provider_aliases": 5,
+      "gc3_provider_namespaces": 5,
+      "gc3_type_relations": 5,
+      "gc3_union_allocation_order": 1
+    },
+    "frozenConfigurations": 296,
+    "directComparisons": 220,
+    "separateOwnerControls": 76,
+    "separateParameterPropertyControls": 12,
+    "actualNativeRuntimeFailuresRetained": 12,
+    "directFamilyVerdicts": {
+      "jsx-overload": {
+        "accept": 20,
+        "reject": 20
+      },
+      "jsx-union": {
+        "accept": 10,
+        "reject": 10
+      },
+      "jsx-recursive": {
+        "accept": 10,
+        "reject": 10
+      },
+      "jsx-global-declarations": {
+        "accept": 6,
+        "reject": 14
+      },
+      "jsx-provider": {
+        "accept": 8,
+        "reject": 16
+      },
+      "symbol-metadata": {
+        "accept": 10,
+        "reject": 10
+      },
+      "replacement-context-inference": {
+        "accept": 8,
+        "reject": 8
+      },
+      "abstract-generic-constraints": {
+        "accept": 4,
+        "reject": 4
+      },
+      "accessor-receivers": {
+        "accept": 12,
+        "reject": 12
+      },
+      "legacy-applicable": {
+        "accept": 4,
+        "reject": 4
+      },
+      "jsx-imported-declarations": {
+        "accept": 10,
+        "reject": 10
+      }
+    },
+    "sameSourceStaticLibrarySiblingsVerified": 64,
+    "retainedOriginalObservations": 212,
+    "retainedK10Configurations": 148,
+    "retainedK10Files": 995,
+    "retainedEarlierCases": 39118,
+    "newCases": 308,
+    "totalCases": 39426,
+    "declarationConsumers": {
+      "graphs": 118,
+      "programs": 236,
+      "declarationsPerImplementation": 208,
+      "counts": {
+        "accept": 108,
+        "reject": 10
+      },
+      "measurementSha256": "b8ede639ed874ee69d43c81068c36e402e18c2500eca7ec845431291c17f5398"
+    },
+    "phaseToolTests": {
+      "passed": 289,
+      "failed": 0,
+      "existingOptInSkipped": 2
+    },
+    "artifactArchiveSha256": "56150e075a3dbe7b6a299a55f45007a1fa24a754d5bfb800f720fd40a79b7a28",
+    "artifactMembers": 15282,
+    "formatPassed": true,
+    "warningsDeniedWorkspaceAllTargetsClippyPassed": true,
+    "runtimeAndEvidenceGatesPassed": true,
+    "fullTypeScriptParity": false,
+    "conclusion": "success"
+  },
+  "repairedStaticGatesV64": {
+    "sourceRevision": "backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa",
+    "formatExit": 0,
+    "workspaceAllTargetsClippyExit": 0,
+    "clippyWarningsDenied": true,
+    "formatLogSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clippyLogSha256": "8255bd75d97b19ed1d3fd185c18a3f82c7b98ad954941bb7dd6d0bb493bb27a9"
+  },
+  "declarationConsumers": {
+    "schema": 1,
+    "scope": "Supplemental G-C3 declaration-consumer gate required by TODO execution rule4; same frozen cases, unchanged source/compiler, separate from the39426-case denominator. Both physical declaration graphs are independently checked by pinned TypeScript with full diagnostics and selected inputs. Original executable TypeScript is absent from consumer graphs; no runtime code is executed.",
+    "startedAt": "2026-11-06T11:23:02.373Z",
+    "finishedAt": "2026-11-06T11:23:20.518Z",
+    "sourceRevision": "backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa",
+    "compilerSha256": "c4004d013d1974beea7ed72b96588d4ef79e09a8d694f33dfb0cc7d6010e8467",
+    "typescript": "5.9.3",
+    "typescriptSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+    "scriptSha256": "9758b22513546ef76053e12dfbb1cc490ac1ba6769d16ebb777e2d1dec805609",
+    "registrySha256": "e8d97515d6097169668a2b9a60d263d3957d2d6ca83007abfb7a12f1f5fe8f6f",
+    "nativeReferenceSha256": "3d26969da02a9c0a3500825a011fc0e0b756c9d05e75cf9a88315dd9a0d3e6d9",
+    "nativeMeasurementSha256": "eb3f3ed547ba7b954eb4a1d61e45d7cf51decd525e224f3543291b0c76d30dce",
+    "blueObservationSha256": "929d6f7619558e1f4a509b0e400f2f685ce6dce28f41093cdd49be106800b3c6",
+    "configurations": 118,
+    "physicalConsumerPrograms": 236,
+    "emittedDeclarationsPerImplementation": 208,
+    "counts": {
+      "accept": 108,
+      "reject": 10
+    },
+    "conclusion": "success",
+    "fullGC3Accepted": false
+  },
+  "durableCohort": {
+    "index": "GC3_COHORT_ARTIFACTS.json",
+    "indexSha256": "916c8333a6be6546ee53bd5f3a47b6baceca0f30095b6621d4e3a562879a6cbf",
+    "archive": "GC3_COHORT_EVIDENCE.tar.gz",
+    "archiveSha256": "56150e075a3dbe7b6a299a55f45007a1fa24a754d5bfb800f720fd40a79b7a28",
+    "archiveBytes": 55065837,
+    "members": 15282
+  },
+  "historicalCurrentSnapshot": {
+    "archive": "GC3_COHORT_EVIDENCE.tar.gz",
+    "member": "pre_workspace_receipts/GC3_CURRENT_INTEGRATION_MEASUREMENT.json",
+    "bytes": 19162527,
+    "sha256": "d5c125573d443ccd118d46ac91ad02a3a1bbcce0892363dadea732931fd5ec7d"
+  },
+  "previousFailedWorkspaces": {
+    "scope": "Failed complete workspace under default sandbox. Socket bind failures require an escalated rerun; never workspace acceptance. Original log retained unchanged.",
+    "recordedAt": "2026-11-06T12:40:34.431234+00:00",
+    "sourceRevision": "backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa",
+    "compilerSha256": "e6ea0bbe2dfc15728d74ecd62a0aa775a7bb79a339f9a4e056ccd81dd9976743",
+    "command": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--no-fail-fast"
+    ],
+    "exit": 101,
+    "log": "/private/tmp/gc3-final-workspace-v52.log",
+    "logSha256": "de54fca4c75d099d1cbe816143987c524c87b9de7c3000582148830e7fdfbae2",
+    "groups": 712,
+    "passed": 7586,
+    "failed": 238,
+    "ignored": 386,
+    "filtered": 0,
+    "permissionDeniedOccurrences": 233,
+    "finalTargetFailures": [
+      "error: test failed, to rerun pass `-p blueice-mcp-server --test core_process`",
+      "error: test failed, to rerun pass `-p blueice-net --lib`",
+      "error: 16 targets failed:"
+    ],
+    "fullGC3Accepted": false,
+    "socketPreflight": "/private/tmp/gc3-socket-preflight-v77.json",
+    "localSocketPreflight": {
+      "scope": "Escalated local socket preflight only; not a workspace pass",
+      "results": [
+        {
+          "kind": "Unix",
+          "bindListen": "success"
+        },
+        {
+          "kind": "TCP-loopback",
+          "bindListen": "success"
+        }
+      ]
+    },
+    "retryPermissionProfile": "Escalated local TCP/Unix sockets, same source/compiler and complete unfiltered workspace; original failed log remains unchanged.",
+    "originalFixtureRetest": {
+      "scope": "Two original socket fixtures under escalated execution; not the full workspace gate",
+      "recordedAt": "2026-11-06T12:45:05.053106+00:00",
+      "sourceRevision": "backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa",
+      "binary": "target/debug/deps/blueice_engine-4bd8fd7fae0df5bf",
+      "results": [
+        {
+          "test": "gatekeeper_client::tests::a_rejected_url_stage_never_reaches_the_network",
+          "exit": 0,
+          "output": "\nrunning 1 test\ntest gatekeeper_client::tests::a_rejected_url_stage_never_reaches_the_network ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 489 filtered out; finished in 0.01s\n\n"
+        },
+        {
+          "test": "page::tests::navigate_fetches_over_the_network_and_loads_the_body",
+          "exit": 0,
+          "output": "\nrunning 1 test\ntest page::tests::navigate_fetches_over_the_network_and_loads_the_body ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 489 filtered out; finished in 0.05s\n\n"
+        }
+      ]
+    }
+  },
+  "historicalArtifactIndexes": [
+    "GC3_BASELINE_ARTIFACTS.json",
+    "GC3_DECORATOR_PROGRESS_ARTIFACTS.json",
+    "GC3_COMPLETE_COMPOSITIONS_ARTIFACTS.json",
+    "GC3_E990_FAILURE_ARTIFACTS.json"
+  ],
+  "finalEvidenceBoundary": "Frozen matrix, individual verification reports and archived pre-item snapshots retain their original fullGC3Accepted=false or pending flags. This final aggregate accepts source314b only after every runtime/evidence gate and the verified archive; no failed record is relabeled. The18MB intermediate current-record snapshot is preserved exactly in the indexed archive. Native and workspace compiler artifact hashes are distinct and retained separately.",
+  "deferredScope": "G-M3 stays optional/deferred unless a broader platform claim is requested. Existing WindowsVM82 core oracles plus complete local tests remain the accepted baseline; no new platform or hosted-CI gate is activated.",
+  "finalReviewedCommitScope": {
+    "scope": "Reviewed coherent completedG-C3 implementation, tests, matching measurements, preserved failures and final documentation",
+    "recordedAt": "2026-11-06T14:19:24.008287+00:00",
+    "files": 131,
+    "newSourceHeadersVerified": 32,
+    "changedProductionRustFiles": 81,
+    "largestChangedProductionRust": "backend/bluets/src/emitter.rs",
+    "largestChangedProductionRustLines": 1291,
+    "activePackagesComplete": 21,
+    "explicitlyDeferred": [
+      "G-M3"
+    ],
+    "diffCheckPassed": true,
+    "formatPassed": true,
+    "sourceCaseStatusChecksPassed": true
+  }
+}

@@ -106,6 +106,16 @@ impl<'a> ModuleChecker<'a> {
                     .and_then(|t| self.module.nested_functions.get(&t.start))
                     .filter(|f| tokens.last().is_some_and(|t| t.end == f.span.end))
                 {
+                    if let Some(receiver) = parameters
+                        .iter()
+                        .find(|parameter| parameter.name == "this")
+                        .and_then(|parameter| parameter.annotation.as_ref())
+                    {
+                        self.return_inference
+                            .receivers
+                            .borrow_mut()
+                            .insert(function.span.start, receiver.clone());
+                    }
                     for (actual, expected) in function.parameters.iter().zip(parameters) {
                         if actual.annotation.is_none() {
                             if let Some(annotation) = &expected.annotation {

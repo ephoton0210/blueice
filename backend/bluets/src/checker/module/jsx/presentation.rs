@@ -38,6 +38,17 @@ impl ModuleChecker<'_> {
         else {
             return;
         };
+        if !missing
+            && self.jsx_union_parts(value).is_some_and(|parts| {
+                parts.iter().any(|part| {
+                    self.expanded_record_fields(part.clone())
+                        .0
+                        .is_some_and(|fields| !fields.iter().any(|item| item.name == field.name))
+                })
+            })
+        {
+            return;
+        }
         let target = type_text::render_in(value, self.project);
         let target = if *value_based {
             format!("IntrinsicAttributes & {target}")
@@ -189,7 +200,17 @@ impl ModuleChecker<'_> {
             match attribute {
                 JsxAttribute::Named { name, value, .. } => {
                     let value = match value {
-                        Some(JsxValue::String { .. }) => Type::String,
+                        Some(JsxValue::String { start, end }) => match props {
+                            Props::Known { fields, .. }
+                                if fields.iter().any(|field| {
+                                    field.name == name.text
+                                        && matches!(field.value, Type::Literal(_))
+                                }) =>
+                            {
+                                Type::Literal(self.module.source[*start..*end].to_string())
+                            }
+                            _ => Type::String,
+                        },
                         Some(JsxValue::Expression { tokens, .. }) => match props {
                             Props::Known { fields, .. } => fields
                                 .iter()
@@ -246,7 +267,18 @@ impl ModuleChecker<'_> {
             target.clone()
         };
         let detail = if let Some(name) = excess {
-            format!("\n  Property '{name}' does not exist on type '{expected}'.")
+            let selected = self
+                .jsx_discriminant_target(value, element, scope)
+                .map(|part| {
+                    let target = type_text::render_in(&part, self.project);
+                    if *value_based {
+                        format!("IntrinsicAttributes & {target}")
+                    } else {
+                        target
+                    }
+                })
+                .unwrap_or_else(|| expected.clone());
+            format!("\n  Property '{name}' does not exist on type '{selected}'.")
         } else if let Some(name) = missing {
             format!("\n  Property '{name}' is missing in type '{actual}' but required in type '{target}'.")
         } else {

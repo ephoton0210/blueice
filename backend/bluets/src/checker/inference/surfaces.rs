@@ -30,7 +30,7 @@ impl collect::Collector<'_> {
                         annotation: p.annotation.clone().unwrap_or(Type::Unknown),
                         optional: p.optional,
                         rest: p.rest,
-                        label: None,
+                        label: Some(p.name.clone()),
                     })
                     .collect();
                 self.collect(annotation, &Type::Tuple(values), !contra);

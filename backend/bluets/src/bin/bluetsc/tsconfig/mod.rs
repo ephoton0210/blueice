@@ -411,10 +411,7 @@ pub(super) fn prepare(invocation: &mut Invocation) -> Result<(), String> {
                 sha256_label(source.as_bytes())
             ));
             if global_declaration(&identity, &source)? {
-                invocation
-                    .options
-                    .ambient_declaration_modules
-                    .push(ModuleSource::new(identity, source));
+                invocation.options.declaration_roots.push(identity);
             }
         }
     }
@@ -434,9 +431,14 @@ fn global_declaration(module: &str, source: &str) -> Result<bool, String> {
             .unwrap_or_else(|| "invalid configured declaration".to_string())
     })?;
     let mut depth: usize = 0;
-    for token in tokens {
-        if depth == 0 && matches!(token.text.as_str(), "import" | "export") {
-            return Ok(false);
+    let mut external = false;
+    let mut augments_global = false;
+    for (index, token) in tokens.iter().enumerate() {
+        if depth == 0 {
+            external |= matches!(token.text.as_str(), "import" | "export");
+            augments_global |= token.is("declare")
+                && tokens.get(index + 1).is_some_and(|next| next.is("global"))
+                && tokens.get(index + 2).is_some_and(|next| next.is("{"));
         }
         match token.text.as_str() {
             "{" | "(" | "[" => depth += 1,
@@ -444,7 +446,7 @@ fn global_declaration(module: &str, source: &str) -> Result<bool, String> {
             _ => {}
         }
     }
-    Ok(true)
+    Ok(!external || augments_global)
 }
 
 fn common_source_root(files: &[PathBuf], fallback: &Path) -> PathBuf {

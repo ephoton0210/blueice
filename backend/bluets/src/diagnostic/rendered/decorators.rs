@@ -8,6 +8,9 @@ use crate::{ClassDeclaration, ClassMemberShell, Decorator, Type};
 mod replacements;
 
 pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
+    if diagnostic.message.starts_with("resolved decorator ") {
+        return;
+    }
     let Some(counterpart) = &diagnostic.typescript else {
         return;
     };

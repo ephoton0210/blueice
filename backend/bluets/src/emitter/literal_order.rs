@@ -13,14 +13,16 @@ use crate::syntax::{Token, TokenKind};
 use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
+mod allocations;
 
-pub(crate) const VERSION: &str = "bluets-declaration-literal-order/1/ts5.9.3";
+pub(crate) const VERSION: &str = "bluets-declaration-literal-order/2/ts5.9.3";
 const SOURCE: &str = include_str!("literal_order/native-5.9.3.json");
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Key {
     Text(String),
     Number(u64),
+    Array(String),
 }
 
 #[derive(Deserialize)]
@@ -132,6 +134,7 @@ impl Order {
                 merged.push((start, end));
             }
         }
+        let mut allocations = allocations::variables(module);
         for (index, token) in tokens.iter().enumerate() {
             if covered(&merged, token.start, token.end) {
                 continue;
@@ -150,10 +153,14 @@ impl Order {
                     });
             if !property && matches!(token.kind, TokenKind::String | TokenKind::Number) {
                 if let Some(key) = literal(&token.text) {
-                    let next = ranks.len();
-                    ranks.entry(key).or_insert(next);
+                    allocations.push((token.start, key));
                 }
             }
+        }
+        allocations.sort_by_key(|(position, _)| *position);
+        for (_, key) in allocations {
+            let next = ranks.len();
+            ranks.entry(key).or_insert(next);
         }
         let mut nested: BTreeMap<_, _> = module
             .nested_functions
@@ -190,6 +197,7 @@ impl Order {
         value: &Type,
     ) -> Type {
         let mut value = super::inferred_returns::canonical(value);
+        allocations::inferred_array(&mut value, &self.ranks);
         let Some(first) = variable.initializer.first() else {
             return value;
         };

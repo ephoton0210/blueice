@@ -6,10 +6,21 @@
 use super::*;
 
 impl ModuleChecker<'_> {
-    pub(super) fn overload_details(
+    pub(in crate::checker::module) fn overload_details(
         &self,
         signatures: &[FunctionSignature],
         actuals: &[Type],
+    ) -> String {
+        self.overload_details_with(signatures, actuals, |actual, expected| {
+            crate::diagnostic::type_text::detail(actual, expected, self.project)
+        })
+    }
+
+    pub(in crate::checker::module) fn overload_details_with(
+        &self,
+        signatures: &[FunctionSignature],
+        actuals: &[Type],
+        detail: impl Fn(&Type, &Type) -> String,
     ) -> String {
         let mut details = String::new();
         let mut ordinal = 0;
@@ -82,7 +93,7 @@ impl ModuleChecker<'_> {
                     "Argument of type '{}' is not assignable to parameter of type '{}'.{}",
                     crate::diagnostic::type_text::argument(actual, &expected),
                     crate::diagnostic::type_text::render_in(&expected, self.project),
-                    crate::diagnostic::type_text::detail(actual, &expected, self.project)
+                    detail(actual, &expected)
                 ))
             });
             let Some(mismatch) = mismatch else { continue };

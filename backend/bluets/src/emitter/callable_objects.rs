@@ -43,6 +43,7 @@ fn ordered_members(
     fields: &[crate::parser::TypeField],
     signatures: &[crate::parser::TypeSignature],
     indices: &[crate::parser::IndexSignature],
+    indent: usize,
 ) -> Vec<(usize, String)> {
     let mut members = Vec::new();
     for index in indices {
@@ -90,9 +91,16 @@ fn ordered_members(
             String::new()
         };
         emit_type_parameters(&mut text, &signature.type_parameters);
-        text.push_str(&method_signature_to_ts(
-            &signature.parameters,
-            &signature.result,
+        let result = match &signature.result {
+            Type::Record(fields) => render_with_indent(fields, &[], &[], indent + 4),
+            Type::CallableRecord { fields, signatures } => {
+                render_with_indent(fields, signatures, &[], indent + 4)
+            }
+            other => type_to_ts(other),
+        };
+        text.push_str(&format!(
+            "{}: {result}",
+            method_parameters_to_ts(&signature.parameters)
         ));
         members.push((signature.span.start, text));
     }
@@ -152,7 +160,7 @@ fn render_documented_members(
     options: &CompilerOptions,
     empty_multiline: bool,
 ) -> String {
-    let members = ordered_members(fields, signatures, indices);
+    let members = ordered_members(fields, signatures, indices, 0);
     let mut output = String::new();
     for (start, text) in members {
         if output_options::declaration_comments(source, start, "    ", &mut output, options) {
@@ -174,7 +182,7 @@ pub(super) fn render_with_indent(
     indices: &[crate::parser::IndexSignature],
     indent: usize,
 ) -> String {
-    let members = ordered_members(fields, signatures, indices);
+    let members = ordered_members(fields, signatures, indices, indent);
     if members.is_empty() {
         return "{}".into();
     }
@@ -197,7 +205,7 @@ pub(super) fn render_class_fields(
     indent: usize,
 ) -> String {
     let mut output = String::new();
-    for (start, text) in ordered_members(fields, &[], &[]) {
+    for (start, text) in ordered_members(fields, &[], &[], indent) {
         let origin = origins.get(&start).filter(|span| span.module == module.id);
         if let Some(origin) = origin {
             if !output_options::declaration_comments(

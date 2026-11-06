@@ -18,6 +18,7 @@ pub(super) use completion::has_return;
 pub(super) struct ReturnInference {
     pub(super) results: RefCell<BTreeMap<usize, Type>>,
     pub(super) parameters: RefCell<BTreeMap<usize, Type>>,
+    pub(super) receivers: RefCell<BTreeMap<usize, Type>>,
     pub(super) fields: RefCell<BTreeMap<usize, Type>>,
     pub(super) contexts: RefCell<BTreeMap<usize, Type>>,
     pub(super) fresh_results: RefCell<BTreeSet<usize>>,

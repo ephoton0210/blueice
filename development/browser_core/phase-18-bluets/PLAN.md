@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-11-06).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 39,118 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 39,426 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 38,379/38,385 (99.9844%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 100 BlueTS owner = 733; excluded from direct agreement |
-| Case labels | 39,112 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 177 suites / 379 ignored Rust functions; not a case denominator |
-| Suite labels | 173 scoped closed, 1 open, 3 refused |
+| Direct agreement | 38,599/38,605 (99.9845%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 188 BlueTS owner = 821; excluded from direct agreement |
+| Case labels | 39,420 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 179 suites / 382 ignored Rust functions; not a case denominator |
+| Suite labels | 175 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 39,118 recorded case expectations pass; expected differences/refusals are not
+All 39,426 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:a5f61a09b651e3a770b11049020ecea1b28ed393`.
-Input graph SHA-256: `bc065aba4cebe044d5c54273f8315235736e09e478424013136bb2f2744142e1`.
+Compiler/oracle source: `backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa`.
+Input graph SHA-256: `efd4fffed9cedcaef6ff1d03308abfc5494b89da22e113b51dc96162de11ef68`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -18437,3 +18437,193 @@ separately preserved. Final hashes, raw measurements and requirement verificatio
 are in [GE5_CURRENT_INTEGRATION_MEASUREMENT.json](GE5_CURRENT_INTEGRATION_MEASUREMENT.json).
 G-E5 is complete for its frozen scope; full TypeScript parity remains OFF.
 Next is the existing G-C3 package; G-M3 stays deferred without a new platform gate.
+
+
+## Phase L — G-C3 frozen implementation matrix
+
+The existing G-C3 scope is frozen before production changes in
+[GC3_FROZEN_MATRIX.json](GC3_FROZEN_MATRIX.json):296 new configurations from 86
+source forms plus all 148 original K.10 configurations. The 995 original fixture
+files retain their exact hashes. The original 212 Native and source42 Blue
+observations and observer protocol are retained in the
+[baseline archive](GC3_BASELINE_ARTIFACTS.json). The fresh Native collection
+has 140 accepts, 156 rejects, 12 actual runtime failures and no syntax errors.
+
+The 220 new direct rows cover the named JSX overload/union/recursive props,
+provider compositions, imported/global declaration contexts and preserved JSX,
+plus decorator replacement/context inference, abstract/generic constraints,
+Symbol.metadata and accessor receivers. All 76 original owner-policy rows remain
+visible and excluded from direct agreement. The 64 same-source ES2022 decorator
+rows and 20 explicitly authored TS runtime JSX rows expose the corresponding
+language semantics without adding host-library or declaration-runtime authority.
+Explicit base Decorators spelling remains a direct requirement. This is one G-C3
+package, with no new TODO identifier or platform gate. No G-C3 completion is
+claimed, and full TypeScript parity remains OFF.
+
+The earlier immutable v19 source43/cache71 compiler
+`be3a884b6238a247daa221e95685e2a34134cf9a241f72439ee84b5518e92609`
+fully matches 204/220 direct rows in the complete 296-row replay. This retains all
+144 JSX rows: overload40, union20, recursive20, imported20, global20 and provider24.
+Metadata20 and accessor-receivers24 now match completely; replacement6/16,
+abstract/generic-constraints4/8 and legacy6/8 remain partial. All76 owner-policy
+controls remain separate rejections, and all12 actual Native runtime failures
+retain their outcomes. The remaining16 decorator rows still fail. Full G-C3
+acceptance remains open; the original matrix, Native references and K10 fixtures
+are unchanged.
+
+JSX function/class overloads select managed-prop candidates and retain exact TS2769
+candidate messages, related origins and UTF16 positions. Discriminant attributes
+retain union-field relationships. Recursive object errors locate their actual
+source leaf without adding an unrelated declaration origin. Imported static type
+dependencies and generic constraints travel through existing barrel origins; this
+closure is extracted into a separate module. Module-local namespaces shadow
+global augmentations, and .d.ts namespaces keep their ambient member export rules.
+Global declaration emit preserves declared values as well as type-only members.
+
+Authored and automatic runtime imports use distinct CommonJS aliases. Re-exported
+provider namespaces, inferred public declaration paths and global JSX roots are
+preserved. Configured declaration roots use the ordinary owner loader and graph limits;
+imported roots are visited once and never installed again as isolated host modules.
+Root selections are fingerprinted, and script-global changes invalidate all
+otherwise unconnected consumers. Isolated host declaration policy is unchanged. Ambient debug
+symbols retain their actual declaring source and UTF16 coordinates. TS2875/TS7016
+match missing/untyped providers, and noEmitOnError:false retains expected outputs.
+Owner, parser, budget, strict-runtime and declaration-runtime refusals remain in
+force. No JavaScript source or host-library authority is added.
+
+Earlier JSX-focused regressions pass 72 tests, including all 120 non-provider JSX compositions
+with exact diagnostics/declarations and existing namespace/overload/owner controls.
+The earlier JSX compiler passes warnings-denied workspace all-target Clippy. Four root/cache
+regressions and existing graph/host boundaries pass together (41 current tests);
+the broader 14-suite root/ambient gate passes 49 tests before the incremental
+correction. The final root/cache compiler repeats all 296 observations with the
+same 144 exact JSX matches and 76 separate owner-control rejections. Broader ordinary checks
+and final Native/workspace/publication gates remain required. The interrupted
+older diagnostic run and its duplicate-ambient failure are retained as failures,
+with the focused imported-augmentation repair regression passing afterward.
+[Exact logs and source-bound measurements](GC3_CURRENT_INTEGRATION_MEASUREMENT.json).
+
+Decorator calls now select overloads and instantiate generic constraints through
+the ordinary bounded call relation. Each intersection property uses its own
+expansion path, so earlier lookups cannot suppress receiver checking. Original
+static decorator declarations retain method bivariance and contextual callback
+receivers. Explicit Decorators and ESNext.Decorators selections remain distinct;
+only the latter adds a hash-bound static Symbol.metadata component. Owner symbol
+constructors and runtime binding refusals retain precedence. Constructor relations
+preserve generic constraints and their implicit prototype without granting static
+members. Abstract class decorator lowering preserves parameter-property fields and
+assignments before the generated class pass erases constructor modifiers.
+
+The current affected 16-suite run records74 passing tests, three failing decorator
+family tests and14 explicitly ignored Native tests. G-T2/G-T8 byte regressions are
+repaired without changing their references. The separate actual Node regression
+passes12 base/derived, target and field-mode products. Remaining direct differences
+are overload/descriptor diagnostics, generic method factories, imported field
+context inference, generic constructor member diagnostics and exact union order in
+two declarations. Current warnings-denied workspace all-target Clippy passes;
+final complete Native/workspace and publication gates remain separate from this
+partial progress. No G-C3 commit.
+
+### G-C3 complete composition comparison and Native reproduction — 2026-11-06
+
+Immutable compiler `8f7c922e8b7e0845320c40213198b754c1833a0816ebf2acc6ed68bece141a26`
+passes all220 direct cases in the full296 replay. All144 JSX and76 decorator
+rows agree on complete primary/recursive-related diagnostics, selected inputs,
+raw declarations, full inventories, syntax and physical/preserved outcomes.
+The76 owner controls retain their exact owner denials separately; they never
+count as Native agreement. All12 actual Native runtime failures retain their
+outcomes. Independent Native reproduction passes all296 original observations,
+including raw artifacts after capture-root normalization of JavaScript paths.
+Original frozen registry/reference/matrix and all995 K10 fixture bytes remain
+unchanged. Complete raw outputs, observations and logs are preserved in
+`GC3_COMPLETE_COMPOSITIONS_EVIDENCE.tar.gz` with the member hash index in
+`GC3_COMPLETE_COMPOSITIONS_ARTIFACTS.json`; earlier partial failures stay intact.
+
+The full ordinary run exposed two actual regressions: widened generic-constraint
+raw text and strictBindCallApply non-spread argument text. Their following
+repairs need verification. Nine inventory failures correctly reject stale
+source42 publication. The new portable full296 Rust/Node harness and case-role
+adapter will enter the final source-bound both-crate Native catalog. Complete
+ordinary/Native/workspace gates and matching source/case/status publication
+remain pending. G-C3 stays unchecked; no commit is made.
+
+### G-C3 shared-signature repair and complete Native replay — 2026-11-06
+
+The first complete catalog attempt on source `e99092068e33a523b885641da8d144cb179bfd34`
+exposed the original G-T6 nested-generic signature regression after116 successful
+suites. Its actual failure, deliberately interrupted safe-home child, original
+source and reports remain in `GC3_E990_FAILURE_EVIDENCE.tar.gz`; none is relabeled
+as a success. The repair preserves shared binders only for the same real,
+nonempty generic declaration span and resolves both callable types before
+normalization. Distinct declarations still check constraints and ordinary
+member compatibility remains enforced. All18 Native-derived positive/negative
+products,15 focused tests and the separate70-suite development replay pass.
+
+Source `backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa`, immutable compiler
+`c4004d013d1974beea7ed72b96588d4ef79e09a8d694f33dfb0cc7d6010e8467`, now passes
+the complete179-suite replay (1,024 functions; zero failures, skips or filters).
+Every suite log and frozen tool hash is verified. This includes the complete296
+composition replay and independent Native reproduction, the original G-T6 gate,
+the87-test core-oracle harness and all64 map tests. All8,407 map/declaration
+configurations are built twice with zero differences. The original212
+observations and all148 K.10 configurations /995 fixture files remain intact;
+76 owner controls and 12 parameter-property controls remain separate from direct
+agreement. All 220 direct comparisons retain the12 actual Native runtime failures.
+
+The general declaration-consumer requirement is independently measured on all 118
+direct configurations with emitted declarations (208 declaration files per
+implementation). Pinned TypeScript5.9.3 checks236 physical consumer programs with
+full primary/related diagnostics and selected inputs. Every original executable
+TypeScript source is absent from these consumer graphs; owner declaration and
+package files retain their original paths. Results agree for all 118 graphs:
+108 accept and 10 retain TS7016 for the authored-runtime sibling's
+`./provider.js`, whose owner declaration is not published beside that JavaScript
+by the frozen Native emit. No declaration relocation or executable-source
+fallback hides those actual Native outcomes. Full graphs, consumer sources and
+observations are retained for final archival; the separate measurement is
+`GC3_CONSUMER_MEASUREMENT.json` and adds nothing to the39,426-case denominator.
+
+Matching source/case/status publication preserves all39,118 old identities and
+classifications and adds308 scoped cases (39,426 total). Current workspace format
+and warnings-denied all-target Clippy pass. The first complete workspace attempt and corrected retry are recorded below;
+the final acceptance record supersedes their intermediate pending status.
+
+The first complete workspace attempt exited with code 101: 7,586 passed, 238 failed
+and 386 existing opt-in ignored tests across 712 result groups. Sixteen targets
+failed; the log contains 233 `Operation not permitted` reports from local TCP/Unix socket
+binds and their downstream failures. The complete failed log, receipt and original
+state are retained without relabeling. Unix/TCP preflight and two actual original
+engine socket fixtures pass under escalated execution. The corrected complete retry uses that permission profile on the same source.
+Both attempts retain their actual compiler identity; Native179 remains bound to
+its separate immutable compiler. Final acceptance is recorded below.
+
+### G-C3 final scoped acceptance — 2026-11-06
+
+Source `backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa` passes every frozen G-C3 requirement.
+The complete Native catalog passes 179/179 suites and 1,024 functions with zero
+failures, skips or filters, using immutable CLI `c4004d013d1974beea7ed72b96588d4ef79e09a8d694f33dfb0cc7d6010e8467`.
+The unfiltered escalated workspace passes 7,824 tests with zero
+failures/filters and 386 existing opt-in ignored tests, using
+its separately recorded CLI `e6ea0bbe2dfc15728d74ecd62a0aa775a7bb79a339f9a4e056ccd81dd9976743`. Its 38 public
+G-C3 tests pass with zero skips/filters. The original failed sandbox run remains
+a failure; the corrected full run executes the original assertions with working
+local TCP/Unix sockets. No product authority or test assertion was weakened.
+
+All 220 direct composition comparisons, 76 separate owner controls, 12 actual
+Native runtime failures, 212 original observations and 148 K.10 configurations /
+995 fixture files retain their required boundaries. Pinned declaration consumers
+match all 118 graphs / 208 declarations per implementation: 108 accept and 10 retain
+the same Native TS7016 diagnostics. These 236 programs and 12 parameter-property
+controls remain separately scoped. Both Native/workspace map suites compare
+all 8,407 configurations twice with zero differences. Format, warnings-denied
+workspace all-target Clippy, tool/accounting and source/case/status checks pass.
+All 39,118 earlier case identities/classifications remain, with 308 new cases and
+39,426 total. The final archive and every member are SHA-256 verified.
+
+`GC3_CURRENT_INTEGRATION_MEASUREMENT.json` records the final requirement audit;
+`GC3_COHORT_ARTIFACTS.json` indexes complete outputs, consumer graphs, logs,
+source snapshots and both actual workspace attempts. Intermediate current-record
+history is retained byte-for-byte in that archive; original failed cohorts keep
+their separate original artifact indexes. G-C3 is complete for this frozen scope.
+All 21 active Phase L packages are complete; optional G-M3 remains deferred under
+the existing rule. Broader feature rows retain their policy and full parity is OFF.

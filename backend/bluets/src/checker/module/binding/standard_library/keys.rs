@@ -17,7 +17,10 @@ impl ModuleChecker<'_> {
         let modules = crate::standard_library::modules(target);
         let mut interfaces: BTreeMap<&str, Vec<&TypeField>> = BTreeMap::new();
         let mut values = BTreeMap::new();
-        for module in modules {
+        for module in modules.iter().chain(
+            self.symbol_metadata
+                .then(crate::standard_library::symbol_metadata_module),
+        ) {
             for declaration in &module.declarations {
                 match declaration {
                     Declaration::Interface(interface) => interfaces

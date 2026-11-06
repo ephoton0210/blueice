@@ -20,8 +20,10 @@ use super::*;
 use crate::jsx::{self, JsxAttribute, JsxChild, JsxElement, JsxName, JsxValue};
 mod managed;
 mod namespace;
+mod overloads;
 mod presentation;
 mod tags;
+mod unions;
 
 /// What an element's attributes are checked against.
 enum Props {
@@ -128,6 +130,7 @@ impl<'a> ModuleChecker<'a> {
             None => Props::Open,
             Some(name) => self.jsx_props(name, element, &span, scope),
         };
+        let props = self.jsx_narrow_props(props, element, scope);
         self.check_jsx_attributes(element, &props, scope);
         self.check_jsx_children(element, &props, scope);
         self.jsx_element_type()
@@ -440,6 +443,9 @@ impl<'a> ModuleChecker<'a> {
                                 if !matches!(actual, Type::Any | Type::Unknown)
                                     && !self.is_assignable_bounded(&actual, &expected, &span)
                                 {
+                                    if self.jsx_record_assignment_error(&span, &actual, &expected) {
+                                        continue;
+                                    }
                                     self.type_error(
                                         &span,
                                         format!(

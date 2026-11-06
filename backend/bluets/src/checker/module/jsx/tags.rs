@@ -13,31 +13,30 @@ impl ModuleChecker<'_> {
         span: &SourceSpan,
         scope: &BTreeMap<String, Type>,
     ) -> Props {
-        if let Some(signature) = self
-            .functions
-            .get(&name.text)
-            .and_then(|s| s.first())
-            .cloned()
-        {
-            return self.jsx_bound_function_props(name, &signature, element, span, scope);
+        if let Some(signatures) = self.functions.get(&name.text).cloned() {
+            if signatures.len() > 1 {
+                return self.jsx_overloaded_props(name, &signatures, element, span, scope, false);
+            }
+            let Some(signature) = signatures.first() else {
+                return Props::Open;
+            };
+            return self.jsx_bound_function_props(name, signature, element, span, scope);
         }
         if let Some(binding) = self.class_constructors.get(&name.text).cloned() {
+            if binding.signatures.len() > 1 {
+                return self.jsx_overloaded_props(
+                    name,
+                    &binding.signatures,
+                    element,
+                    span,
+                    scope,
+                    true,
+                );
+            }
             let Some(signature) = binding.signatures.first() else {
                 return Props::Open;
             };
-            let Some(substitutions) = self.jsx_tag_substitutions(signature, element, span, scope)
-            else {
-                return Props::Open;
-            };
-            let instance = substitute_type(&signature.return_type, &substitutions);
-            let component = self
-                .values
-                .get(&name.text)
-                .cloned()
-                .unwrap_or(Type::Unknown);
-            self.jsx_validate_element_type(name, &component, span);
-            let props = self.class_props(&name.text, &instance, span);
-            return self.jsx_managed_props(&component, props, Some(&instance), span);
+            return self.jsx_bound_class_props(name, signature, element, span, scope);
         }
         let bound = scope
             .get(&name.text)
@@ -80,7 +79,7 @@ impl ModuleChecker<'_> {
         }
     }
 
-    fn jsx_bound_function_props(
+    pub(super) fn jsx_bound_function_props(
         &mut self,
         name: &JsxName,
         signature: &FunctionSignature,
@@ -133,6 +132,29 @@ impl ModuleChecker<'_> {
         };
         let props = self.component_props(&parameters, &result, &[], span);
         self.jsx_managed_props(&component, props, None, span)
+    }
+
+    pub(super) fn jsx_bound_class_props(
+        &mut self,
+        name: &JsxName,
+        signature: &FunctionSignature,
+        element: &JsxElement,
+        span: &SourceSpan,
+        scope: &BTreeMap<String, Type>,
+    ) -> Props {
+        let Some(substitutions) = self.jsx_tag_substitutions(signature, element, span, scope)
+        else {
+            return Props::Open;
+        };
+        let instance = substitute_type(&signature.return_type, &substitutions);
+        let component = self
+            .values
+            .get(&name.text)
+            .cloned()
+            .unwrap_or(Type::Unknown);
+        self.jsx_validate_element_type(name, &component, span);
+        let props = self.class_props(&name.text, &instance, span);
+        self.jsx_managed_props(&component, props, Some(&instance), span)
     }
 
     fn jsx_tag_substitutions(

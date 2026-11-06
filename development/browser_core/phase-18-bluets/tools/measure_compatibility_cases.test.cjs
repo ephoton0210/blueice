@@ -139,7 +139,7 @@ if (process.argv.includes('--list')) {
 } else {
   event('start');
   setTimeout(() => {
-    const keys = ['BLUEICE_GE5_ROLE_REPORT_DIRECTORY', 'BLUEICE_GE5_ROLE_OBSERVATION_DIRECTORY',
+    const keys = ['BLUEICE_GC3_REPORT_DIRECTORY', 'BLUEICE_GE5_ROLE_REPORT_DIRECTORY', 'BLUEICE_GE5_ROLE_OBSERVATION_DIRECTORY',
       'BLUEICE_GE5_ADJACENT_OBSERVATION_DIRECTORY', 'BLUEICE_GE5_NODE_ROLE_REPORT',
       'BLUEICE_GE5_ASYNC_ROLE_REPORT', 'BLUEICE_GE5_CONTINUATION_ROLE_REPORT', 'BLUEICE_GE5_NATIVE_FIX_REPORT',
       'BLUEICE_GE5_SYSTEM_PHASE_REPORT', 'BLUEICE_GE5_REPORT'];
@@ -179,7 +179,7 @@ function scheduleFixture(configurations) {
   const inventory = {suites: binaries.map(b => ({harness: b.harness, ignored_tests: ['ignored']}))};
   const report = {conclusion: 'in_progress', suites: []};
   const environment = {...process.env, GE5_FAKE_TRACE: trace, GE5_FAKE_LOCATIONS: locations};
-  for (const key of ['BLUEICE_GE5_ROLE_REPORT_DIRECTORY', 'BLUEICE_GE5_ROLE_OBSERVATION_DIRECTORY',
+  for (const key of ['BLUEICE_GC3_REPORT_DIRECTORY', 'BLUEICE_GE5_ROLE_REPORT_DIRECTORY', 'BLUEICE_GE5_ROLE_OBSERVATION_DIRECTORY',
     'BLUEICE_GE5_ADJACENT_OBSERVATION_DIRECTORY']) environment[key] = path.join(directory, key);
   for (const key of ['BLUEICE_GE5_NODE_ROLE_REPORT', 'BLUEICE_GE5_ASYNC_ROLE_REPORT',
     'BLUEICE_GE5_CONTINUATION_ROLE_REPORT', 'BLUEICE_GE5_NATIVE_FIX_REPORT', 'BLUEICE_GE5_SYSTEM_PHASE_REPORT',
@@ -215,6 +215,7 @@ test('bounded real children finish out of order but retain every catalog index a
       }
     }
     assert.equal(new Set(f.locations().map(row => row.locations.BLUEICE_GE5_ROLE_REPORT_DIRECTORY)).size, 4);
+    assert.equal(new Set(f.locations().map(row => row.locations.BLUEICE_GC3_REPORT_DIRECTORY)).size, 4);
   } finally { f.cleanup(); }
 });
 

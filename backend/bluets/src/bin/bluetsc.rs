@@ -539,9 +539,10 @@ fn build_metadata(
             .project_config
             .as_ref()
             .map(|project| tsconfig::relative_text(&invocation.root, &project.emit_root)),
-        standard_library: blueice_bluets::standard_library::identity_with_libraries(
+        standard_library: blueice_bluets::standard_library::identity_with_components(
             invocation.options.target,
             invocation.options.libraries.as_deref(),
+            invocation.options.symbol_metadata,
         ),
         language_version: blueice_bluets::LANGUAGE_VERSION,
         fingerprint: summary.fingerprint.clone(),

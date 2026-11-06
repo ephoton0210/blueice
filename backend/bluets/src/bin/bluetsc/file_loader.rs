@@ -8,6 +8,8 @@ use super::*;
 
 #[path = "file_loader/mappings.rs"]
 mod mappings;
+#[path = "file_loader/resolution.rs"]
+mod resolution;
 pub(super) use mappings::PathMappings;
 
 #[derive(Clone)]
@@ -99,6 +101,29 @@ impl ModuleLoader for FileLoader {
             Err(message) => Err(message),
         }
     }
+
+    fn resolve_jsx_runtime_namespace_info(
+        &self,
+        from_module: &str,
+        specifier: &str,
+        mode: Option<ImportMode>,
+    ) -> Result<blueice_bluets::JsxRuntimeNamespaceResolution, String> {
+        use blueice_bluets::JsxRuntimeNamespaceResolution as Resolution;
+        if self.packages.is_none()
+            && !self.imports.contains_key(specifier)
+            && !self.matches_import_prefix(specifier)
+        {
+            return Ok(Resolution::Unconfigured);
+        }
+        match self.resolve_owned(from_module, specifier, mode, true) {
+            Ok(target) => Ok(Resolution::Found(target)),
+            Err(error) => match error.javascript_path {
+                Some(path) => Ok(Resolution::JavaScriptOnly { path }),
+                None if error.missing => Ok(Resolution::Missing),
+                None => Err(error.message),
+            },
+        }
+    }
     fn load(&self, module_id: &str) -> Result<ModuleSource, String> {
         if let Some(pin) = module_id
             .strip_prefix("@remote/")
@@ -152,168 +177,8 @@ impl ModuleLoader for FileLoader {
         specifier: &str,
         mode: Option<ImportMode>,
     ) -> Result<String, String> {
-        let is_relative = matches!(specifier, "." | "..")
-            || specifier.starts_with("./")
-            || specifier.starts_with("../");
-        if from_module.starts_with("@remote/") {
-            return Err(format!(
-                "remote declaration `{from_module}` cannot import `{specifier}`: a remote \
-                 declaration must be self-contained"
-            ));
-        }
-        if let Some((_, sources)) = &self.remote {
-            if let Some(source) = sources.iter().find(|source| source.specifier == specifier) {
-                return Ok(format!("@remote/{}.d.ts", source.sha256));
-            }
-        }
-        if is_relative {
-            if specifier.ends_with(".json") && !self.resolve_json_module {
-                return Err(format!(
-                    "JSON source `{specifier}` requires resolveJsonModule"
-                ));
-            }
-            let from_directory = self
-                .source_path(from_module)?
-                .parent()
-                .map(Path::to_path_buf)
-                .ok_or_else(|| format!("module `{from_module}` has no directory"))?;
-            if let Some(reference) = self.reference_import(&from_directory, specifier) {
-                return Ok(reference);
-            }
-            let resolver = self.packages.as_ref().unwrap_or(&self.relative);
-            let found = if self.resolve_json_module && specifier.ends_with(".json") {
-                resolver.resolve_relative_json(&from_directory, specifier)
-            } else {
-                resolver.resolve_relative_javascript(&from_directory, specifier)
-            };
-            let found = match found {
-                Err(ResolveError::NotFound { .. }) if self.mappings.is_some() => {
-                    match self
-                        .mappings
-                        .as_ref()
-                        .expect("configured mappings")
-                        .relative(self, &from_directory, specifier)?
-                    {
-                        Some(path) => return Ok(self.inherit_javascript_depth(from_module, self.module_id(&path)?)),
-                        None => found,
-                    }
-                }
-                other => other,
-            }
-            .map_err(|error| match error {
-                error @ (ResolveError::NotFound { .. } | ResolveError::JavaScriptOnly { .. }) => {
-                    format!("cannot resolve `{specifier}` from `{from_module}`: {error}")
-                }
-                ResolveError::OutsideRoots { .. } => format!(
-                    "specifier `{specifier}` resolves outside the declared project root (outside the authorized package roots)"
-                ),
-                error => format!("`{specifier}` from `{from_module}`: {error}"),
-            })?;
-            if is_javascript(&found.path) && !self.allow_js {
-                return Err(format!(
-                    "JavaScript source `{specifier}` requires allowJs: {}",
-                    found.path.display()
-                ));
-            }
-            let id = if blueice_bluets::is_external_library_module(from_module) {
-                self.package_module_id(&found.path)
-            } else {
-                self.module_id(&found.path)
-            }?;
-            let id = if (specifier.ends_with(".cjs") || specifier.ends_with(".mjs"))
-                && !blueice_bluets::is_external_library_module(&id)
-                && resolver
-                    .resolve_runtime_sibling(&found.path)
-                    .map_err(|error| error.to_string())?
-                    .is_some()
-            {
-                format!("@node-runtime/{id}")
-            } else {
-                id
-            };
-            return Ok(self.inherit_javascript_depth(from_module, id));
-        }
-        if !self.imports.contains_key(specifier) && !self.matches_import_prefix(specifier) {
-            if let Some(mappings) = &self.mappings {
-                if let Some(path) = mappings.bare(self, specifier)? {
-                    return Ok(self.inherit_javascript_depth(from_module, self.module_id(&path)?));
-                }
-            }
-        }
-        if let Some(packages) = &self.packages {
-            let from_directory = self
-                .source_path(from_module)?
-                .parent()
-                .map(Path::to_path_buf)
-                .ok_or_else(|| format!("module `{from_module}` has no directory"))?;
-            if !self.imports.contains_key(specifier) && !self.matches_import_prefix(specifier) {
-                let result = if self.allow_js {
-                    packages.resolve_javascript(
-                        &from_directory,
-                        specifier,
-                        mode.unwrap_or(self.import_mode),
-                    )
-                } else {
-                    packages.resolve(&from_directory, specifier, mode.unwrap_or(self.import_mode))
-                };
-                return match result {
-                    Ok(found) => {
-                        let internal = found
-                            .package
-                            .as_ref()
-                            .is_none_or(|package| from_directory.starts_with(&package.root));
-                        let depth = self
-                            .javascript_depths
-                            .lock()
-                            .expect("JavaScript depths")
-                            .get(from_module)
-                            .copied()
-                            .unwrap_or(0)
-                            + usize::from(!internal);
-                        if is_javascript(&found.path) && depth > self.max_node_module_js_depth {
-                            return Err(format!(
-                                "JavaScript source `{specifier}` exceeds maxNodeModuleJsDepth: {}",
-                                found.path.display()
-                            ));
-                        }
-                        let id = if internal
-                            && !blueice_bluets::is_external_library_module(from_module)
-                        {
-                            self.module_id(&found.path)
-                        } else {
-                            self.package_module_id(&found.path)
-                        }?;
-                        self.javascript_depths
-                            .lock()
-                            .expect("JavaScript depths")
-                            .entry(id.clone())
-                            .and_modify(|old| *old = (*old).min(depth))
-                            .or_insert(depth);
-                        Ok(id)
-                    }
-                    Err(
-                        error @ (ResolveError::NotFound { .. }
-                        | ResolveError::JavaScriptOnly { .. }),
-                    ) => Err(format!(
-                        "cannot resolve `{specifier}` from `{from_module}`: {error}"
-                    )),
-                    Err(error @ ResolveError::ExportsNotDefined { .. }) => Err(format!(
-                        "cannot resolve `{specifier}` from `{from_module}`: {error}"
-                    )),
-                    Err(error) => Err(format!("`{specifier}` from `{from_module}`: {error}")),
-                };
-            }
-        }
-        let candidate = self.resolve_import_map(specifier)?;
-        let resolved = fs::canonicalize(&candidate).map_err(|error| {
-            format!("cannot resolve `{specifier}` from `{from_module}`: {error}")
-        })?;
-        if !resolved.starts_with(&self.root) {
-            return Err(format!(
-                "specifier `{specifier}` resolves outside the declared project root"
-            ));
-        }
-        Ok(self.inherit_javascript_depth(from_module, self.module_id(&resolved)?))
+        self.resolve_owned(from_module, specifier, mode, false)
+            .map_err(|error| error.message)
     }
 
     fn resolve_reference_types(&self, from_module: &str, name: &str) -> Result<String, String> {

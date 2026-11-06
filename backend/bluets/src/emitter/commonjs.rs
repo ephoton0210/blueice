@@ -44,7 +44,11 @@ pub(crate) const IMPORT_STAR_HELPER: &str = include_str!("commonjs/import_star.v
 
 /// The identifier a required module is bound to: its file's name and a number,
 /// `m_1`, `m_2`.
-fn require_name(specifier: &str, used: &mut BTreeMap<String, usize>) -> String {
+fn require_name(
+    specifier: &str,
+    used: &mut BTreeMap<String, usize>,
+    generated_names: &mut BTreeSet<String>,
+) -> String {
     let stem = specifier
         .rsplit('/')
         .next()
@@ -67,7 +71,9 @@ fn require_name(specifier: &str, used: &mut BTreeMap<String, usize>) -> String {
     }
     let count = used.entry(stem.clone()).or_default();
     *count += 1;
-    format!("{stem}_{count}")
+    let name = format!("{stem}_{count}");
+    generated_names.insert(name.clone());
+    name
 }
 
 fn lines_in(module: &Module, start: usize, end: usize) -> usize {
@@ -84,6 +90,7 @@ pub(super) fn lower_commonjs(
     options: &CompilerOptions,
     edits: &mut Vec<TextEdit>,
     wrapper: crate::ModuleKind,
+    generated_names: &mut BTreeSet<String>,
 ) -> Result<BTreeMap<String, Replacement>, Diagnostic> {
     let system_wrapper = wrapper == crate::ModuleKind::System;
     let Ok(tokens) = crate::lex(&module.id, &module.source) else {
@@ -168,7 +175,8 @@ pub(super) fn lower_commonjs(
                     })
                     .collect();
                 if !named.is_empty() {
-                    let variable = require_name(&import.specifier, &mut used_names);
+                    let variable =
+                        require_name(&import.specifier, &mut used_names, generated_names);
                     text.push_str(&format!("const {variable} = require(\"{spec}\"); "));
                     for binding in named {
                         references.insert(
@@ -183,7 +191,8 @@ pub(super) fn lower_commonjs(
                 }
                 for binding in import.bindings.iter().filter(|binding| !binding.type_only) {
                     if binding.imported == "default" {
-                        let variable = require_name(&import.specifier, &mut used_names);
+                        let variable =
+                            require_name(&import.specifier, &mut used_names, generated_names);
                         let required = if interop {
                             needs_default = true;
                             format!("__importDefault(require(\"{spec}\"))")
@@ -245,7 +254,7 @@ pub(super) fn lower_commonjs(
                         specifier,
                         options.jsx == Some(crate::compiler::JsxMode::Preserve),
                     );
-                    let name = require_name(&spec, &mut used_names);
+                    let name = require_name(&spec, &mut used_names, generated_names);
                     let text = if export.star
                         && export.namespace.is_none()
                         && !system_wrapper

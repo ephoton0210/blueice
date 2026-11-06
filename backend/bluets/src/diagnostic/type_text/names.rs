@@ -21,13 +21,27 @@ pub(super) fn display(name: &str, project: Option<&Project>) -> String {
     let Some(project) = project else {
         return name.into();
     };
+    if let Some(name) = project.modules.values().find_map(|module| {
+        module
+            .class_expressions
+            .values()
+            .find(|expression| {
+                expression.class.name == name
+                    || format!("{}@{}", expression.class.name, module.id) == name
+            })
+            .and_then(|expression| expression.name.as_ref())
+    }) {
+        return name.clone();
+    }
     if let Some((local, owner)) = name.split_once('@') {
-        if project.modules.get(owner).is_some_and(|module| {
-            module.declarations.iter().any(|item| {
+        if project.imported_type_declaration(owner, local).is_some()
+            || project.modules.get(owner).is_some_and(|module| {
+                module.declarations.iter().any(|item| {
                 matches!(item, Declaration::TypeAlias(alias) if alias.name == local)
                     || matches!(item, Declaration::Interface(interface) if interface.name == local)
             })
-        }) {
+            })
+        {
             return local.into();
         }
     }

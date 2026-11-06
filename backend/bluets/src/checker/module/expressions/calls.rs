@@ -18,6 +18,9 @@ impl<'a> ModuleChecker<'a> {
         }) {
             // Constructor validation owns `new receiver.Type(...)`.
             let call = &tokens[range];
+            if self.nested_runtime_body_contains(tokens, call[0].start) {
+                continue;
+            }
             if constructor_call_parts(call).is_none() {
                 self.check_member_call(call, scope, span);
             }

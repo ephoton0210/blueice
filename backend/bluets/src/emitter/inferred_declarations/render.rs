@@ -8,6 +8,28 @@ use super::*;
 type RenderedFields = (Vec<crate::parser::TypeField>, BTreeMap<usize, SourceSpan>);
 
 impl Context<'_> {
+    fn jsx_runtime_type(&self, member: &str, span: &SourceSpan) -> Result<String, Diagnostic> {
+        let Some(provider) = self.project.jsx_runtime_namespace_provider(&self.module.id) else {
+            return Err(self.cannot_name(member, &self.module.id, span));
+        };
+        let pragmas = crate::jsx::Pragmas::of(&self.module.source);
+        let source = pragmas
+            .import_source
+            .as_deref()
+            .or(self.output_options.jsx_import_source.as_deref())
+            .unwrap_or("react");
+        let runtime = if self.output_options.jsx == Some(crate::JsxMode::ReactJsxDev) {
+            "jsx-dev-runtime"
+        } else {
+            "jsx-runtime"
+        };
+        let specifier =
+            crate::checker::preferred_namespace_import(self.project, self.module, provider, "JSX")
+                .unwrap_or_else(|| format!("{source}/{runtime}"));
+        let specifier = serde_json::to_string(&specifier).expect("JSX runtime specifier JSON");
+        Ok(format!("import({specifier}).{member}"))
+    }
+
     fn render_operator(
         &mut self,
         value: &Type,
@@ -125,6 +147,34 @@ impl Context<'_> {
             let origin = field.span.clone();
             let mut field = field.clone();
             if let Some(owner) = self.project.modules.get(&field.span.module) {
+                let inferred_literal = owner
+                    .classes()
+                    .chain(
+                        owner
+                            .class_expressions
+                            .values()
+                            .map(|expression| &expression.class),
+                    )
+                    .flat_map(|class| &class.members)
+                    .filter_map(|member| member.field.as_ref())
+                    .any(|source| {
+                        (source.span == field.span || source.name_span == field.span)
+                            && source.annotation.is_none()
+                            && source.readonly
+                            && source
+                                .initializer
+                                .as_ref()
+                                .is_some_and(|tokens| !tokens.is_empty())
+                    });
+                if inferred_literal {
+                    if let Type::Literal(text) = &mut field.value {
+                        if text.starts_with('\'') && text.ends_with('\'') {
+                            if let Some(value) = crate::enum_eval::decode_plain_string(text) {
+                                *text = serde_json::to_string(&value).expect("literal string JSON");
+                            }
+                        }
+                    }
+                }
                 let source_key = owner
                     .classes()
                     .chain(
@@ -260,6 +310,8 @@ impl Context<'_> {
                     } else {
                         crate::parser::source_type_name(name).to_string()
                     }
+                } else if let Some(member) = name.strip_prefix("\0jsx-runtime.") {
+                    self.jsx_runtime_type(member, span)?
                 } else if name.starts_with("typeof ") {
                     self.retain(name);
                     crate::parser::source_type_name(name).to_string()

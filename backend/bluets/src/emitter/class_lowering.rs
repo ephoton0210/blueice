@@ -206,6 +206,7 @@ fn lower_classes(
             && !options.experimental_decorators
             && super::decorators::lowers_class(class, options)
         {
+            native_parameter_properties(class, edits)?;
             continue;
         }
         if emit.native() {

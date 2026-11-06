@@ -216,11 +216,15 @@ fn text_options(
                                 _ => None,
                             })
                     }
-                    if let Some(name) = project
-                        .modules
-                        .values()
-                        .find_map(|module| class_at(&module.declarations, &prototype.span))
-                    {
+                    if let Some(name) = project.modules.values().find_map(|module| {
+                        class_at(&module.declarations, &prototype.span).or_else(|| {
+                            module
+                                .class_expressions
+                                .values()
+                                .find(|expression| expression.class.name_span == prototype.span)
+                                .and_then(|expression| expression.name.as_deref())
+                        })
+                    }) {
                         return format!("typeof {name}");
                     }
                 }
@@ -282,7 +286,7 @@ fn text_options(
             let mut values = values
                 .iter()
                 .map(|value| {
-                    if matches!(value, Type::Function { .. }) || matches!(value, Type::CallableRecord {fields, signatures} if fields.is_empty() && signatures.len() == 1 && signatures[0].constructor_arrow) {
+                    if matches!(value, Type::Function { .. } | Type::Intersection(_)) || matches!(value, Type::CallableRecord {fields, signatures} if fields.is_empty() && signatures.len() == 1 && signatures[0].constructor_arrow) {
                         format!("({})", render(value))
                     } else {
                         render(value)

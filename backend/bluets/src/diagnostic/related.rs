@@ -226,6 +226,7 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
                 if let Some(field) = index
                     .field(name, &props, &span.module)
                     .filter(|field| (child_type || attribute_type || nested_record)
+                        && (!attribute_type || !props.is_empty())
                         && !(nested_record && project.modules.get(&field.span.module).is_some_and(|module| {
                             module.declarations.iter().any(|declaration| matches!(declaration,
                                 crate::Declaration::TypeAlias(alias) if alias.name == field.owner

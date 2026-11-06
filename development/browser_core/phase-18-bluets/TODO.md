@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-11-06).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 39,118 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 39,426 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 38,379/38,385 (99.9844%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 100 BlueTS owner = 733; excluded from direct agreement |
-| Case labels | 39,112 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 177 suites / 379 ignored Rust functions; not a case denominator |
-| Suite labels | 173 scoped closed, 1 open, 3 refused |
+| Direct agreement | 38,599/38,605 (99.9845%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 188 BlueTS owner = 821; excluded from direct agreement |
+| Case labels | 39,420 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 179 suites / 382 ignored Rust functions; not a case denominator |
+| Suite labels | 175 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 39,118 recorded case expectations pass; expected differences/refusals are not
+All 39,426 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,19 +33,19 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:a5f61a09b651e3a770b11049020ecea1b28ed393`.
-Input graph SHA-256: `bc065aba4cebe044d5c54273f8315235736e09e478424013136bb2f2744142e1`.
+Compiler/oracle source: `backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa`.
+Input graph SHA-256: `efd4fffed9cedcaef6ff1d03308abfc5494b89da22e113b51dc96162de11ef68`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
 
-**Current work (2026-10-30):** A–J and K.1–K.14 are the completed baseline,
-not a full-parity claim. Phase L has 22 finite work packages: 21 implementation/
-compatibility packages and deferred platform evidence G-M3. **G-C1, G-T1
-(both stages), G-T2–G-T10, G-M1–G-M2, G-D1–G-D2 and G-E1–G-E5 are complete for their
-scopes below; 2 packages remain unchecked. Next: G-C3; G-M3 stays deferred.**
+**Current work (2026-11-06):** A–J and K.1–K.14 are the completed baseline,
+not a full-parity claim. All **21 active Phase L implementation/compatibility
+packages are complete within their frozen scopes**, including G-T1's exact-output
+second stage and G-C3. The only unchecked package is **G-M3**, explicitly deferred
+unless the user requests a broader platform claim. No additional release gate is activated.
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -910,7 +910,39 @@ Existing measured behavior is reused; it is not implemented again.
     Submit this completed item together with its implementation and measurement data.
     No additional TODO identifier or platform requirement is introduced.
 
-- [ ] **G-C3 — Remaining JSX provider and decorator-type compositions.**
+- [x] **G-C3 — Remaining JSX provider and decorator-type compositions.**
+  - **Accepted (2026-11-06):** all **220/220** direct comparisons pass within the
+    complete 296-row physical replay. All **76 owner controls**, **12** actual
+    Native runtime failures and **148** earlier K.10 configurations / **995**
+    fixture files retain their scope and bytes. The complete **179/179-suite**
+    Native catalog passes **1,024** functions with zero failures, skips or filters.
+    Independent consumers match **118** declaration graphs / **208** declarations
+    per implementation (**236** programs): **108** accept and **10** retain the
+    same Native TS7016 owner-publication diagnostics. All **38** public boundary
+    tests and the complete unfiltered workspace pass (**7,824** tests;
+    **386** existing opt-in ignored tests, with the pinned Native
+    catalog run separately). Both map-suite runs compare **8,407** configurations
+    twice with zero differences. Format, warnings-denied all-target Clippy,
+    tool/accounting/source/case/status checks and durable artifact verification pass.
+    All **39,118** old identities/classifications remain; **308** new scoped cases
+    produce **39,426** total. Original code-regression and sandbox failures retain
+    their actual outcomes in the archived history; full TypeScript parity stays OFF.
+    [Final integration evidence](GC3_CURRENT_INTEGRATION_MEASUREMENT.json),
+    [consumer evidence](GC3_CONSUMER_MEASUREMENT.json) and
+    [durable cohort index](GC3_COHORT_ARTIFACTS.json).
+  - **Frozen matrix (2026-11-06):** [296 new configurations](GC3_FROZEN_MATRIX.json)
+    across 86 source forms, plus all **148** existing K.10 configurations and
+    **995** unchanged fixture files. All original **212** draft observations are
+    retained. **220** new rows are direct comparisons; **76** retain existing
+    host-library / project-declaration runtime policy as separate owner controls,
+    never Native agreements. Same-source ES2022 decorator rows and explicitly
+    authored runtime JSX rows expose every blocked named semantic composition
+    without granting runtime authority to declarations or host libraries.
+    Explicit base `Decorators` spelling remains a direct implementation requirement.
+    The Native reference records **140** accepts / **156** rejects and **12**
+    actual runtime failures; preserve/native JSX remains syntax-only. All direct
+    rows must pass the complete diagnostics, raw declarations and physical-output
+    comparisons below. [Initial raw evidence](GC3_BASELINE_ARTIFACTS.json).
   - **Scope:** JSX overload/union/recursive props, conditional/re-exported and missing
     runtime providers, imported/global declaration contexts, preserve/native JSX;
     decorator replacement/context inference, abstract/generic constraints and

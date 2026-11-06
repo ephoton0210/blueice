@@ -367,6 +367,7 @@ impl<'a> ModuleChecker<'a> {
             return infer_logical_expression(
                 self.infer_expression(left, scope),
                 self.infer_expression(right, scope),
+                true,
             );
         }
         if let Some((left, _, right)) = top_level_binary_parts(tokens, &["&&"], |start| {
@@ -375,6 +376,7 @@ impl<'a> ModuleChecker<'a> {
             return infer_logical_expression(
                 self.infer_expression(left, scope),
                 self.infer_expression(right, scope),
+                false,
             );
         }
         if let Some(value) = erased_assertion_operand(tokens) {

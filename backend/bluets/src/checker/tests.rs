@@ -681,7 +681,7 @@ fn keeps_bounded_expression_inference_structural() {
     assert_eq!(alternate[0].text, "3");
 
     assert_eq!(
-        infer_logical_expression(Type::Number, Type::Boolean),
+        infer_logical_expression(Type::Number, Type::Boolean, true),
         Type::Union(vec![Type::Number, Type::Boolean])
     );
     assert_eq!(

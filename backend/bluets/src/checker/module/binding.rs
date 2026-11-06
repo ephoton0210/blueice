@@ -74,6 +74,7 @@ impl<'a> ModuleChecker<'a> {
             explicit_checking: policy.checking.is_some(),
             target: policy.target,
             library_target: policy.library_target,
+            symbol_metadata: policy.symbol_metadata,
             project,
             scopes: None,
             flow: None,
@@ -312,6 +313,7 @@ impl<'a> ModuleChecker<'a> {
         let local_types = self.types.keys().cloned().collect::<BTreeSet<_>>();
         let local_values = self.values.keys().cloned().collect::<BTreeSet<_>>();
         let local_functions = self.functions.keys().cloned().collect::<BTreeSet<_>>();
+        let local_namespaces = self.namespaces.keys().cloned().collect::<BTreeSet<_>>();
         self.types.extend(ambient.private_types.clone());
         if let Some(types) = ambient.module_types.get(&self.module.id) {
             self.types.extend(types.clone());
@@ -332,6 +334,11 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         for namespace in &ambient.type_namespaces {
+            if self.project.is_external_module(self.module)
+                && local_namespaces.contains(&namespace.name)
+            {
+                continue;
+            }
             self.bind_namespace(namespace);
         }
     }

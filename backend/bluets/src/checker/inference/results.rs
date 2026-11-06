@@ -16,12 +16,14 @@ pub(super) fn finish(
         | Type::KeyOf(_)
         | Type::IndexedAccess { .. }
         | Type::TemplateLiteral(_)) => {
-            let expanded = super::super::type_operators::expanded(
+            let expanded = instantiate_named(
                 &value,
                 aliases,
                 &mut HashSet::new(),
                 budget,
-            );
+                "inferred operator",
+            )
+            .unwrap_or_else(|| value.clone());
             if expanded == value || budget.exhausted {
                 value
             } else {
@@ -31,7 +33,7 @@ pub(super) fn finish(
         Type::Named { name, arguments } => {
             if aliases.get(&name).is_some_and(|definition| matches!(&definition.value, Type::Conditional(value) if value.span.module.starts_with("<builtin:"))) {
                 let value = Type::Named {name, arguments};
-                let expanded = super::super::type_operators::expanded(&value, aliases, &mut HashSet::new(), budget);
+                let expanded = instantiate_named(&value, aliases, &mut HashSet::new(), budget, "inferred library conditional").unwrap_or_else(|| value.clone());
                 return if expanded == value || budget.exhausted {value} else {finish(expanded, aliases, budget)};
             }
             let mut arguments: Vec<_> = arguments

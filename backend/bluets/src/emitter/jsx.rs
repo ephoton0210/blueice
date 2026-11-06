@@ -17,7 +17,7 @@
 //! annotations, CommonJS name rewriting, namespace references. Newlines of a
 //! replaced region are kept, so every emitted line still maps to its source line.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::namespaces::Replacement;
 use super::{Module, TextEdit};
@@ -43,6 +43,40 @@ enum Runtime {
 struct RuntimeImports {
     /// `(module, imported name)` in order of first use.
     used: Vec<(String, &'static str)>,
+    variables: BTreeMap<String, String>,
+    reserved: BTreeSet<String>,
+}
+
+impl RuntimeImports {
+    fn new(generated_names: &BTreeSet<String>, tokens: &[Token]) -> Self {
+        let mut reserved = generated_names.clone();
+        reserved.extend(
+            tokens
+                .iter()
+                .filter(|token| token.kind == TokenKind::Identifier)
+                .map(|token| token.text.clone()),
+        );
+        Self {
+            reserved,
+            ..Self::default()
+        }
+    }
+
+    fn variable(&mut self, module: &str) -> String {
+        if let Some(variable) = self.variables.get(module) {
+            return variable.clone();
+        }
+        let first = runtime_variable(module);
+        let stem = first.strip_suffix("_1").unwrap();
+        let mut index = 1;
+        let mut variable = first.clone();
+        while !self.reserved.insert(variable.clone()) {
+            index += 1;
+            variable = format!("{stem}_{index}");
+        }
+        self.variables.insert(module.into(), variable.clone());
+        variable
+    }
 }
 
 struct Lowerer<'a> {
@@ -64,6 +98,7 @@ pub(super) fn lower_jsx(
     module: &Module,
     options: &CompilerOptions,
     references: &BTreeMap<String, Replacement>,
+    generated_names: &BTreeSet<String>,
     edits: &mut Vec<TextEdit>,
 ) -> Result<(), Diagnostic> {
     let Some(mode) = options.jsx.filter(|mode| mode.lowers()) else {
@@ -114,7 +149,7 @@ pub(super) fn lower_jsx(
             .or_else(|| options.jsx_fragment_factory.clone())
             .unwrap_or_else(|| "React.Fragment".to_string()),
         references,
-        imports: RuntimeImports::default(),
+        imports: RuntimeImports::new(generated_names, &tokens),
         uses_file_name: false,
         items: Vec::new(),
     };
@@ -277,7 +312,7 @@ impl Lowerer<'_> {
             self.imports.used.push((module.to_string(), name));
         }
         if self.commonjs {
-            let variable = runtime_variable(module);
+            let variable = self.imports.variable(module);
             if called {
                 format!("(0, {variable}.{name})")
             } else {
@@ -594,31 +629,31 @@ impl Lowerer<'_> {
         }
         let at = prologue_end(self.module, self.tokens);
         let mut text = String::new();
-        let mut modules: Vec<&str> = Vec::new();
+        let mut modules: Vec<String> = Vec::new();
         for (module, _) in &self.imports.used {
-            if !modules.contains(&module.as_str()) {
-                modules.push(module);
+            if !modules.contains(module) {
+                modules.push(module.clone());
             }
         }
         for module in modules {
             if self.commonjs {
                 text.push_str(&format!(
                     "const {} = require({}); ",
-                    runtime_variable(module),
-                    string_literal(module, false)
+                    self.imports.variable(&module),
+                    string_literal(&module, false)
                 ));
             } else {
                 let names: Vec<String> = self
                     .imports
                     .used
                     .iter()
-                    .filter(|(used, _)| used == module)
+                    .filter(|(used, _)| used == &module)
                     .map(|(_, name)| format!("{name} as _{name}"))
                     .collect();
                 text.push_str(&format!(
                     "import {{ {} }} from {}; ",
                     names.join(", "),
-                    string_literal(module, false)
+                    string_literal(&module, false)
                 ));
             }
         }

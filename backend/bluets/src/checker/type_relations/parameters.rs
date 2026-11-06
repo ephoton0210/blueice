@@ -6,6 +6,39 @@
 
 use super::*;
 
+pub(super) fn generic_constraints_compatible(
+    actual: &[TypeParameter],
+    expected: &[TypeParameter],
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    if actual.len() != expected.len() {
+        return true;
+    }
+    let binders = actual
+        .iter()
+        .zip(expected)
+        .map(|(source, target)| {
+            (
+                source.name.clone(),
+                Type::Named {
+                    name: target.name.clone(),
+                    arguments: Vec::new(),
+                },
+            )
+        })
+        .collect();
+    actual.iter().zip(expected).all(|(source, target)| {
+        let Some(constraint) = &source.constraint else {
+            return true;
+        };
+        let source = substitute_type(constraint, &binders);
+        let target = target.constraint.as_ref().unwrap_or(&Type::StrictUnknown);
+        is_assignable(target, &source, aliases, &mut visited.clone(), budget)
+    })
+}
+
 pub(super) fn compatible(
     actual: &[Parameter],
     expected: &[Parameter],
@@ -22,7 +55,10 @@ pub(super) fn compatible(
             .and_then(|parameter| parameter.annotation.clone())
     };
     if let (Some(actual), Some(expected)) = (receiver(&actual), receiver(&expected)) {
-        if !is_assignable(&expected, &actual, aliases, &mut visited.clone(), budget) {
+        if !is_assignable(&expected, &actual, aliases, &mut visited.clone(), budget)
+            && (budget.checking.strict_function_types
+                || !is_assignable(&actual, &expected, aliases, &mut visited.clone(), budget))
+        {
             return false;
         }
     }

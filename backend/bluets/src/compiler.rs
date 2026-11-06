@@ -184,6 +184,9 @@ pub struct CompilerOptions {
     /// Explicit whole ECMAScript library profiles. `None` follows `target`;
     /// an empty list selects no library. Typings never supply runtime authority.
     pub libraries: Option<Vec<EcmaTarget>>,
+    /// Selects the static Symbol.metadata declaration supplied by
+    /// ESNext.Decorators. It grants no runtime binding or metadata access.
+    pub symbol_metadata: bool,
     /// Use iterator protocols when lowering iteration below ES2015.
     pub downlevel_iteration: bool,
     /// Import supported runtime helper ABIs from an owner-resolved provider.
@@ -264,6 +267,10 @@ pub struct CompilerOptions {
     /// modules. This is for a selected, already-verified host type surface,
     /// not a replacement for caller-authorized source-graph loading.
     pub ambient_declaration_modules: Vec<ModuleSource>,
+    /// Owner-selected declaration roots loaded through the ordinary module
+    /// graph. Existing imports and all graph budgets apply; unlike isolated
+    /// host declarations, these may refer to other owner-authorized sources.
+    pub declaration_roots: Vec<String>,
     /// Rejects a direct call whose callee is neither a local nor an
     /// host-supplied ambient function. Page hosts enable this so a TypeScript
     /// profile cannot silently compile a call to a missing runtime binding.
@@ -302,6 +309,7 @@ impl Default for CompilerOptions {
         Self {
             target: EcmaTarget::Es2022,
             libraries: None,
+            symbol_metadata: false,
             downlevel_iteration: false,
             import_helpers: false,
             no_emit_helpers: false,
@@ -337,6 +345,7 @@ impl Default for CompilerOptions {
             map_root: None,
             resolver_fingerprint: "relative-v1".to_string(),
             ambient_declaration_modules: Vec::new(),
+            declaration_roots: Vec::new(),
             require_declared_global_calls: false,
             strict_runtime_boundaries: Vec::new(),
             limits: CompilerLimits::default(),
@@ -357,6 +366,16 @@ impl ModuleSource {
             text: text.into(),
         }
     }
+}
+
+/// The result of one owner-controlled static JSX provider lookup.
+/// Missing declarations never authorize loading or executing JavaScript.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JsxRuntimeNamespaceResolution {
+    Unconfigured,
+    Found(String),
+    Missing,
+    JavaScriptOnly { path: String },
 }
 
 /// The compiler's only module-loading authority.  Page hosts can implement it
@@ -403,6 +422,21 @@ pub trait ModuleLoader {
         mode: Option<crate::package_resolution::ImportMode>,
     ) -> Result<Option<String>, String> {
         Ok(self.resolve_with_mode(from_module, specifier, mode).ok())
+    }
+
+    /// Preserves the reason for an already authorized static lookup. Owners
+    /// that only supply the legacy optional provider keep their existing policy.
+    fn resolve_jsx_runtime_namespace_info(
+        &self,
+        from_module: &str,
+        specifier: &str,
+        mode: Option<crate::package_resolution::ImportMode>,
+    ) -> Result<JsxRuntimeNamespaceResolution, String> {
+        self.resolve_jsx_runtime_namespace(from_module, specifier, mode)
+            .map(|provider| match provider {
+                Some(provider) => JsxRuntimeNamespaceResolution::Found(provider),
+                None => JsxRuntimeNamespaceResolution::Unconfigured,
+            })
     }
 
     /// Supplies the owner's missing-module diagnostic mode without performing
@@ -687,6 +721,17 @@ fn compile_with_cache(
     builder.resolve_json_module = options.resolve_json_module;
     builder.module_kind = options.module_kind;
     builder.visit(entry, 0);
+    for declaration in &options.declaration_roots {
+        if is_declaration_module(declaration) {
+            builder.visit(declaration, 0);
+        } else {
+            builder.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::InvalidDeclarationFile,
+                SourceSpan::new(declaration, 0, 0),
+                "configured declaration roots must use a declaration-file identity",
+            ));
+        }
+    }
     builder.resolve_helper_providers(&options);
     builder.resolve_jsx_runtime_namespaces(&options);
     for declaration in &options.ambient_declaration_modules {
@@ -759,6 +804,8 @@ fn compile_with_cache(
                         .filter_map(|name| EcmaTarget::parse(name)),
                 )
                 .max(),
+            symbol_metadata: options.symbol_metadata
+                || options.library_target() == Some(EcmaTarget::EsNext),
             checking: options.checking,
             enforce_types: !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
             check_javascript: options.allow_js.then_some(options.check_js),
@@ -951,7 +998,8 @@ fn affected_modules(
         [previous, current].iter().any(|project| {
             project.modules.get(id).is_some_and(|module| {
                 augments_global(&module.declarations)
-                    || (project.referenced_declaration_modules.contains(id)
+                    || ((project.referenced_declaration_modules.contains(id)
+                        || is_declaration_module(id))
                         && !crate::parser::has_module_syntax(&module.declarations))
             })
         })

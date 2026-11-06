@@ -19,7 +19,7 @@ impl Compilation {
             || fingerprint(&self.project, options) != self.project_fingerprint
             || self.diagnostics.iter().any(|diagnostic| {
                 diagnostic.typescript.is_none()
-                    || !matches!(
+                    || !(matches!(
                         diagnostic.code,
                         DiagnosticCode::TypeMismatch
                             | DiagnosticCode::ReturnTypeMismatch
@@ -28,7 +28,7 @@ impl Compilation {
                             | DiagnosticCode::UsedBeforeDeclaration
                             | DiagnosticCode::DuplicateDeclaration
                             | DiagnosticCode::ImmutableAssignment
-                    )
+                    ) || jsx_runtime_type_diagnostic(diagnostic, &self.project))
             })
         {
             return Ok(None);
@@ -38,4 +38,23 @@ impl Compilation {
         };
         emitter::emit(checked, &self.project, options).map(Some)
     }
+}
+
+fn jsx_runtime_type_diagnostic(diagnostic: &Diagnostic, project: &Project) -> bool {
+    diagnostic.code == DiagnosticCode::ModuleNotFound
+        && diagnostic
+            .typescript
+            .as_ref()
+            .is_some_and(|counterpart| matches!(counterpart.code, 2875 | 7016))
+        && project
+            .modules
+            .get(&diagnostic.span.module)
+            .and_then(|module| crate::lex(&diagnostic.span.module, &module.source).ok())
+            .is_some_and(|tokens| {
+                tokens.iter().any(|token| {
+                    token.kind == crate::TokenKind::JsxElement
+                        && token.start == diagnostic.span.start
+                        && token.end == diagnostic.span.end
+                })
+            })
 }

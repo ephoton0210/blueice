@@ -185,7 +185,10 @@ pub(super) fn matches(
         }
         (Type::Record(actual), Type::Record(pattern)) => pattern.iter().all(|field| {
             match actual.iter().find(|actual| actual.name == field.name) {
-                Some(actual) => matches(&actual.value, &field.value, bindings, aliases, budget),
+                Some(actual) => {
+                    (!actual.optional || field.optional)
+                        && matches(&actual.value, &field.value, bindings, aliases, budget)
+                }
                 None => field.optional,
             }
         }),

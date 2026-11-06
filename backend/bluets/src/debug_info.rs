@@ -276,32 +276,47 @@ pub(crate) fn build(checked: &CheckedProject, options: &CompilerOptions) -> Blue
     let mut symbols = Vec::new();
     let mut contracts = Vec::new();
     let mut contracts_by_declaration = BTreeMap::new();
+    let mut spans_by_source = BTreeMap::<&str, Vec<&SourceSpan>>::new();
+    for checked_module in checked.modules.values() {
+        for span in checked_module
+            .symbols
+            .iter()
+            .map(|symbol| &symbol.span)
+            .chain(
+                checked_module.module.declarations.iter().filter_map(
+                    |declaration| match declaration {
+                        Declaration::TypeAlias(alias) => Some(&alias.span),
+                        Declaration::Interface(interface) => Some(&interface.span),
+                        _ => None,
+                    },
+                ),
+            )
+        {
+            spans_by_source.entry(&span.module).or_default().push(span);
+        }
+    }
+    let positions_by_source = checked
+        .modules
+        .iter()
+        .map(|(module_id, checked_module)| {
+            let spans = spans_by_source
+                .remove(module_id.as_str())
+                .unwrap_or_default();
+            (
+                module_id.clone(),
+                SourcePositionIndex::new(&checked_module.module.source, spans),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
 
     for (module_id, checked_module) in &checked.modules {
         let source = source_ids[module_id];
-        let positions = SourcePositionIndex::new(
-            &checked_module.module.source,
-            checked_module
-                .symbols
-                .iter()
-                .map(|symbol| &symbol.span)
-                .chain(
-                    checked_module
-                        .module
-                        .declarations
-                        .iter()
-                        .filter_map(|declaration| match declaration {
-                            Declaration::TypeAlias(alias) => Some(&alias.span),
-                            Declaration::Interface(interface) => Some(&interface.span),
-                            _ => None,
-                        }),
-                ),
-        );
+        let positions = &positions_by_source[module_id];
         let local_contracts = local_contracts(
             module_id,
             source,
             &checked_module.module,
-            &positions,
+            positions,
             &mut contracts,
         );
         contracts_by_declaration.extend(
@@ -321,15 +336,14 @@ pub(crate) fn build(checked: &CheckedProject, options: &CompilerOptions) -> Blue
                 kind: symbol.kind,
                 exported: symbol.exported,
                 span: symbol.span.clone(),
-                location: positions.location(&symbol.span),
+                location: positions_by_source[&symbol.span.module].location(&symbol.span),
                 static_type,
-                source,
-                contract: matches!(symbol.kind, SymbolKind::TypeAlias | SymbolKind::Interface)
-                    .then(|| {
-                        contracts_by_declaration.get(&(module_id.clone(), symbol.name.clone()))
-                    })
-                    .flatten()
-                    .copied(),
+                source: source_ids[&symbol.span.module],
+                contract: (symbol.span.module == *module_id
+                    && matches!(symbol.kind, SymbolKind::TypeAlias | SymbolKind::Interface))
+                .then(|| contracts_by_declaration.get(&(module_id.clone(), symbol.name.clone())))
+                .flatten()
+                .copied(),
             });
         }
     }

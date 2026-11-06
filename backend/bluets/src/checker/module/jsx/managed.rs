@@ -37,7 +37,7 @@ impl ModuleChecker<'_> {
             vec![name.text.clone()],
         );
         let actual = type_text::render_in(component, self.project);
-        let Some(expanded) = self.jsx_expand_type(&target, span) else {
+        let Some(expanded) = self.jsx_expand_type(&target, span, false) else {
             return;
         };
         let function = match &expanded {
@@ -75,17 +75,30 @@ impl ModuleChecker<'_> {
         }
     }
 
-    fn jsx_expand_type(&mut self, value: &Type, span: &SourceSpan) -> Option<Type> {
+    fn jsx_expand_type(
+        &mut self,
+        value: &Type,
+        span: &SourceSpan,
+        preserve_alias: bool,
+    ) -> Option<Type> {
         let mut value = value.clone();
         let mut visited = HashSet::new();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        while let Some(next) = instantiate_named(
-            &value,
-            &self.types,
-            &mut visited,
-            &mut budget,
-            "JSX namespace member",
-        ) {
+        loop {
+            if preserve_alias
+                && matches!(&value, Type::Named { name, .. } if self.types.get(name).is_some_and(|definition| matches!(definition.value, Type::Record(_) | Type::Union(_) | Type::CallableRecord { .. })))
+            {
+                break;
+            }
+            let Some(next) = instantiate_named(
+                &value,
+                &self.types,
+                &mut visited,
+                &mut budget,
+                "JSX namespace member",
+            ) else {
+                break;
+            };
             if next == value {
                 break;
             }
@@ -125,7 +138,7 @@ impl ModuleChecker<'_> {
                 .get(&name)
                 .is_some_and(|definition| matches!(definition.value, Type::Conditional(_)))
             {
-                let Some(value) = self.jsx_expand_type(&managed, span) else {
+                let Some(value) = self.jsx_expand_type(&managed, span, true) else {
                     return Props::Open;
                 };
                 value

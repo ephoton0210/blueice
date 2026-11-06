@@ -168,27 +168,40 @@ pub(super) fn assignable(
                 signatures: ec,
             },
         ) => Some(
-            record_fields_assignable(a, e, aliases, visited, budget, false)
-                && ec.iter().all(|expected| {
-                    ac.iter().any(|actual| {
-                        actual.construct == expected.construct
-                            && (!actual.abstract_constructor || expected.abstract_constructor)
-                            && (!actual.construct
-                                || actual.constructor_visibility == expected.constructor_visibility)
-                            && {
-                                let (function, valid) =
-                                    constructor_relation_type(actual, expected, aliases, budget);
-                                valid
-                                    && is_assignable(
-                                        &function,
-                                        &expected.function_type(),
-                                        aliases,
-                                        &mut visited.clone(),
-                                        budget,
-                                    )
-                            }
+            record_fields_assignable(
+                a,
+                &e.iter()
+                    .filter(|field| {
+                        !(field.name == "prototype"
+                            && !a.iter().any(|field| field.name == "prototype")
+                            && ac.iter().any(|signature| signature.construct))
                     })
-                }),
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                aliases,
+                visited,
+                budget,
+                false,
+            ) && ec.iter().all(|expected| {
+                ac.iter().any(|actual| {
+                    actual.construct == expected.construct
+                        && (!actual.abstract_constructor || expected.abstract_constructor)
+                        && (!actual.construct
+                            || actual.constructor_visibility == expected.constructor_visibility)
+                        && {
+                            let (function, valid) =
+                                constructor_relation_type(actual, expected, aliases, budget);
+                            valid
+                                && is_assignable(
+                                    &function,
+                                    &expected.function_type(),
+                                    aliases,
+                                    &mut visited.clone(),
+                                    budget,
+                                )
+                        }
+                })
+            }),
         ),
         (
             Type::Function { .. } | Type::GenericFunction { .. },

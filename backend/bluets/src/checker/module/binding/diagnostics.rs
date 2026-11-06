@@ -8,6 +8,17 @@ use super::*;
 
 impl ModuleChecker<'_> {
     pub(super) fn rest_annotation_error(&mut self, parameter: &Parameter) {
+        if let Some(Type::Named { name, arguments }) = &parameter.annotation {
+            if arguments.is_empty()
+                && self
+                    .bound_parameters
+                    .get(name)
+                    .and_then(|parameter| parameter.constraint.as_ref())
+                    .is_some_and(|constraint| matches!(constraint, Type::Array(_) | Type::Tuple(_)))
+            {
+                return;
+            }
+        }
         let mut annotation = parameter
             .annotation
             .clone()

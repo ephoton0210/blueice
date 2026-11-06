@@ -245,6 +245,18 @@ impl ModuleChecker<'_> {
                 }
             }
         }
+        if self.symbol_metadata
+            && self.library_target.is_some()
+            && !protected_types.contains("SymbolConstructor")
+        {
+            if let Some(symbol) = self.types.get_mut("SymbolConstructor") {
+                for declaration in &crate::standard_library::symbol_metadata_module().declarations {
+                    if let Declaration::Interface(interface) = declaration {
+                        merge::definition(&mut symbol.value, interface_value(interface), false);
+                    }
+                }
+            }
+        }
         self.bind_library_keys(&protected_types, &protected_values);
         if let Some(target) = self.library_target {
             for (owner, value) in crate::type_operator_profiles::keys(target) {

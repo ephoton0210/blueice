@@ -177,6 +177,12 @@ impl<'a> Context<'a> {
                         || is_default_export_name(module, &function.name)
                         || is_value_export_name(module, &function.name) =>
                 {
+                    context.references(&Type::GenericFunction {
+                        type_parameters: function.type_parameters.clone(),
+                        parameters: Vec::new(),
+                        result: Box::new(Type::Void),
+                        span: function.span.clone(),
+                    });
                     for parameter in &function.parameters {
                         if let Some(value) = &parameter.annotation {
                             context.references(value);

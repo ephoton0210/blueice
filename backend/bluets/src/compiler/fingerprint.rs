@@ -20,7 +20,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::diagnostic::DIAGNOSTICS_VERSION);
     add(super::isolated_declarations::VERSION);
     add(crate::emitter::DECLARATION_MAP_VERSION);
-    add("bluets-javascript-provenance/42");
+    add("bluets-javascript-provenance/43");
     add(crate::checker::FLOW_VERSION);
     add(crate::checker::inference::VERSION);
     add(crate::symbol_keys::VERSION);
@@ -31,9 +31,10 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::checker::OVERLOAD_CHAINS_VERSION);
     add(crate::checker::RETURN_CONTEXT_VERSION);
     add(crate::standard_library::VERSION);
-    add(&crate::standard_library::identity_with_libraries(
+    add(&crate::standard_library::identity_with_components(
         options.target,
         options.libraries.as_deref(),
+        options.symbol_metadata,
     )
     .source_fingerprint);
     add(&options.downlevel_iteration.to_string());
@@ -139,6 +140,15 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
         add(&declaration.id);
         add(&declaration.text);
     }
+    add("declaration-roots");
+    for declaration in &options.declaration_roots {
+        add(declaration);
+    }
+    add(if options.symbol_metadata {
+        "symbol-metadata"
+    } else {
+        "no-symbol-metadata"
+    });
     add(&options.limits.max_modules.to_string());
     add(&options.limits.max_module_edges.to_string());
     add(&options.limits.max_module_depth.to_string());

@@ -93,6 +93,22 @@ pub fn programs(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>>
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let from = |scope: &str, binding: &str| array_cases(source, array(&facts, scope, binding)?);
     let cases = match stem {
+        "gc3_decorated_parameter_properties" => {
+            let scope = &suite.ignored_tests[0];
+            let mut cases = product(
+                source,
+                from(scope, "for@2")?,
+                &[
+                    array(&facts, scope, "for@0")?,
+                    array(&facts, scope, "for@1")?,
+                ],
+            )?;
+            for case in &mut cases {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some("Actual emitted Node parameter-property regression; no Native agreement is claimed by this test.".into());
+            }
+            cases
+        }
         "async_generator_targets"
         | "async_targets"
         | "es5_scope_targets"

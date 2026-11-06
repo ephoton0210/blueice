@@ -7,7 +7,7 @@
 use super::*;
 
 impl ModuleChecker<'_> {
-    pub(super) fn nested_record_assignment_error(
+    pub(in crate::checker::module) fn nested_record_assignment_error(
         &mut self,
         span: &SourceSpan,
         message: &str,
@@ -15,24 +15,59 @@ impl ModuleChecker<'_> {
         actual: &Type,
         expected: &Type,
     ) -> bool {
+        self.record_assignment_error(span, message, code, (actual, expected), 0)
+    }
+
+    pub(in crate::checker::module) fn jsx_record_assignment_error(
+        &mut self,
+        span: &SourceSpan,
+        actual: &Type,
+        expected: &Type,
+    ) -> bool {
+        self.record_assignment_error(
+            span,
+            "JSX attribute has an incompatible nested property",
+            DiagnosticCode::TypeMismatch,
+            (actual, expected),
+            1,
+        )
+    }
+
+    fn record_assignment_error(
+        &mut self,
+        span: &SourceSpan,
+        message: &str,
+        code: DiagnosticCode,
+        (actual, expected): (&Type, &Type),
+        initial_depth: usize,
+    ) -> bool {
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         budget.checking = self.checking;
         let Some((actual, expected, owner, repeated_relation)) =
-            self.nested_mismatch(actual, expected, span, &mut budget, 0, &[])
+            self.nested_mismatch(actual, expected, span, &mut budget, initial_depth, &[])
         else {
             return false;
         };
         if budget.exhausted {
             return false;
         }
-        let point = crate::syntax::lex(&self.module.id, &self.module.source)
-            .ok()
+        let point = self
+            .module
+            .source
+            .get(span.start..span.end)
+            .and_then(|source| crate::syntax::lex(&self.module.id, source).ok())
             .and_then(|tokens| {
                 tokens
                     .into_iter()
-                    .find(|token| token.start == actual.span.start)
+                    .find(|token| span.start + token.start == actual.span.start)
             })
-            .map(|token| token.span(&self.module.id));
+            .map(|token| {
+                SourceSpan::new(
+                    &self.module.id,
+                    span.start + token.start,
+                    span.start + token.end,
+                )
+            });
         let Some(point) = point else {
             return false;
         };

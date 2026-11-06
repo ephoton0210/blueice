@@ -32,7 +32,6 @@ impl<'a> ModuleChecker<'a> {
             *value = canonical_parameter_references(value, &self.types);
         }
         let previous_spreads = self.allowed_tuple_spread_parameters.clone();
-        self.allowed_tuple_spread_parameters = BTreeMap::new();
         self.bind_lexical_type_parameters(&function.type_parameters);
         self.check_function_flags(function, &scope);
         for (index, parameter) in function.parameters.iter().enumerate() {
