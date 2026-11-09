@@ -200,6 +200,51 @@ mod tests {
         f.children.iter().find_map(|c| find_by_id(doc, c, id))
     }
 
+    /// The height of the box with `id` in `html`, laid out in a 1280 px window.
+    fn height_of(html: &str, id: &str) -> f64 {
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        let fragment = layout(
+            &doc,
+            doc.root(),
+            &styles,
+            Constraints {
+                available_width: 1280.0,
+                viewport_height: 900.0,
+            },
+        );
+        find_by_id(&doc, &fragment, id)
+            .unwrap_or_else(|| panic!("no box with id {id}"))
+            .height
+    }
+
+    #[test]
+    fn a_percentage_height_resolves_against_an_absolute_boxs_edges() {
+        // `position:absolute; top:0; bottom:0` has a definite height, whatever its content:
+        // a child's `height: 100%` is that height.
+        let child = "<div id=b style='height:100%'></div>";
+        for (label, parent) in [
+            ("inset 0", "position:absolute;top:0;right:0;bottom:0;left:0"),
+            ("top and bottom", "position:absolute;top:10px;bottom:30px;left:0;width:100px"),
+        ] {
+            let html = format!(
+                "<body style='margin:0'><div style='position:relative;height:200px'>\
+                 <div style='{parent}'>{child}</div></div></body>"
+            );
+            let expected = if label == "inset 0" { 200.0 } else { 160.0 };
+            assert_eq!(height_of(&html, "b"), expected, "{label}");
+        }
+        // A grandchild of that child too, through an auto-height step that is itself percentage.
+        let nested = "<body style='margin:0'><div style='position:relative;height:200px'>\
+            <div style='position:absolute;inset:0'><div style='height:100%'><div id=b style='height:50%'></div></div></div></div></body>";
+        assert_eq!(height_of(nested, "b"), 100.0);
+        // An absolute box with an auto height and only one vertical edge has no definite height.
+        let one_edge = "<body style='margin:0'><div style='position:relative;height:200px'>\
+            <div style='position:absolute;top:0'><div id=b style='height:100%'></div></div></div></body>";
+        assert_eq!(height_of(one_edge, "b"), 0.0);
+    }
+
     /// The width of the box with `id` in `html`, laid out in a 1280 px window.
     fn width_of(html: &str, id: &str) -> f64 {
         let doc = blueice_html::parse(html);

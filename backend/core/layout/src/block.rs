@@ -1223,7 +1223,9 @@ fn layout_abs(
         &constraint,
         Forced {
             width: Some(content_width + pb_h),
-            height: None,
+            // Pinned by both vertical edges: the height is known before the content is laid
+            // out, so a child's percentage height has something to be a percentage of.
+            height: stretched_h.map(|h| clamp_h(h) + pb_v),
         },
     );
     let mut fragment = std::mem::replace(&mut placed.fragment, Fragment::empty_block());
