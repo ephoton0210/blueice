@@ -21,6 +21,9 @@ use url::Url;
 pub struct LoadedImage {
     pub image: Arc<RasterImage>,
     pub natural: (f64, f64),
+    /// For an SVG file made of `<symbol>`s (an icon sprite): its text, which inline SVGs'
+    /// `<use href="file.svg#id">` draw from.
+    pub sprite: Option<Arc<str>>,
 }
 
 /// Decoded images by the address as written in the page (an `src`, a CSS
@@ -47,8 +50,19 @@ pub(crate) fn decode_loaded(bytes: &[u8]) -> Option<LoadedImage> {
     match blueice_image::sniff(bytes)? {
         blueice_image::Format::Svg => {
             let text = std::str::from_utf8(bytes).ok()?;
-            let (w, h) = blueice_image::svg_size(text)?;
-            Some(render_svg_source(text, (w, h))?)
+            // A file of `<symbol>`s with no drawing of its own is an icon sprite: kept as text.
+            let sprite = text.contains("<symbol").then(|| Arc::<str>::from(text));
+            let drawn = blueice_image::svg_size(text)
+                .and_then(|(w, h)| render_svg_source(text, (w, h)));
+            match (drawn, sprite) {
+                (Some(loaded), sprite) => Some(LoadedImage { sprite, ..loaded }),
+                (None, Some(sprite)) => Some(LoadedImage {
+                    image: Arc::new(RasterImage::new(1, 1, vec![0; 4])),
+                    natural: (0.0, 0.0),
+                    sprite: Some(sprite),
+                }),
+                (None, None) => None,
+            }
         }
         _ => {
             let image = blueice_image::decode(bytes)?;
@@ -56,6 +70,7 @@ pub(crate) fn decode_loaded(bytes: &[u8]) -> Option<LoadedImage> {
             Some(LoadedImage {
                 image: Arc::new(image),
                 natural,
+                sprite: None,
             })
         }
     }
@@ -76,6 +91,7 @@ pub(crate) fn render_svg_source(text: &str, natural: (f64, f64)) -> Option<Loade
     Some(LoadedImage {
         image: Arc::new(image),
         natural,
+        sprite: None,
     })
 }
 
@@ -210,6 +226,16 @@ pub(crate) fn image_references(
                     .find(|(k, _)| k == name)
                     .map(|(_, v)| v.as_str())
             };
+            if tag_name == "use" {
+                // An icon sprite: the file before the `#`; a same-document reference needs none.
+                let reference = attr("href").or_else(|| attr("xlink:href"));
+                if let Some(file) = reference
+                    .and_then(|r| r.split('#').next())
+                    .filter(|f| !f.trim().is_empty() && !f.trim().starts_with("data:"))
+                {
+                    add(file, base, found);
+                }
+            }
             if tag_name == "img" {
                 match attr("src").filter(|s| !s.trim().is_empty()) {
                     Some(src) => add(src, base, found),
@@ -389,6 +415,28 @@ const SVG_STYLE_PROPERTIES: [&str; 9] = [
     "display",
 ];
 
+/// `href="file.svg#id"` resolved against the fetched sprites: the id and the `<symbol>` text
+/// that defines it. `None` for a same-document reference or a sprite that was not fetched.
+fn sprite_symbol(href: &str, sprites: &LinkedImages) -> Option<(String, String)> {
+    let (file, id) = href.trim().split_once('#')?;
+    let text = sprites.get(file.trim())?.sprite.as_deref()?;
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_:.".contains(c)) {
+        return None;
+    }
+    let at = ["id=\"", "id='"]
+        .iter()
+        .find_map(|quote| {
+            let needle = format!("{quote}{id}{}", &quote[quote.len() - 1..]);
+            text.find(&needle)
+        })?;
+    let start = text[..at].rfind("<symbol")?;
+    if text[start..at].contains('>') {
+        return None;
+    }
+    let end = at + text[at..].find("</symbol>")? + "</symbol>".len();
+    Some((id.to_string(), text[start..end].to_string()))
+}
+
 /// The SVG properties that inherit down the tree.
 const INHERITED_SVG_PROPERTIES: [&str; 5] =
     ["fill", "stroke", "stroke-width", "fill-opacity", "stroke-opacity"];
@@ -401,11 +449,15 @@ pub(crate) fn svg_markup(
     doc: &blueice_dom::Document,
     styles: &HashMap<blueice_dom::NodeId, blueice_css::ComputedStyle>,
     node: blueice_dom::NodeId,
+    sprites: &LinkedImages,
 ) -> String {
     use blueice_dom::NodeData;
+    #[allow(clippy::too_many_arguments)]
     fn write(
         doc: &blueice_dom::Document,
         styles: &HashMap<blueice_dom::NodeId, blueice_css::ComputedStyle>,
+        sprites: &LinkedImages,
+        used: &mut Vec<(String, String)>,
         node: blueice_dom::NodeId,
         root: bool,
         parent: Option<blueice_dom::NodeId>,
@@ -450,7 +502,19 @@ pub(crate) fn svg_markup(
                         escape(&computed, out);
                         wrote_style = true;
                     }
-                    escape(value, out);
+                    let local = (tag_name == "use" && (name == "href" || name == "xlink:href"))
+                        .then(|| sprite_symbol(value, sprites))
+                        .flatten();
+                    match local {
+                        // An icon from a sprite file: the symbol is carried inside this drawing.
+                        Some((id, symbol)) => {
+                            if !used.iter().any(|(known, _)| *known == id) {
+                                used.push((id.clone(), symbol));
+                            }
+                            escape(&format!("#{id}"), out);
+                        }
+                        None => escape(value, out),
+                    }
                     out.push('"');
                 }
                 if !wrote_style && !computed.is_empty() {
@@ -468,7 +532,14 @@ pub(crate) fn svg_markup(
                 }
                 out.push('>');
                 for child in doc.children(node) {
-                    write(doc, styles, child, false, Some(node), out);
+                    write(doc, styles, sprites, used, child, false, Some(node), out);
+                }
+                if root && !used.is_empty() {
+                    out.push_str("<defs>");
+                    for (_, symbol) in used.iter() {
+                        out.push_str(symbol);
+                    }
+                    out.push_str("</defs>");
                 }
                 out.push_str("</");
                 out.push_str(tag_name);
@@ -478,7 +549,7 @@ pub(crate) fn svg_markup(
         }
     }
     let mut out = String::new();
-    write(doc, styles, node, true, None, &mut out);
+    write(doc, styles, sprites, &mut Vec::new(), node, true, None, &mut out);
     out
 }
 
@@ -626,7 +697,7 @@ mod tests {
             "path { fill: #ff0000; }",
         );
         let svg = first_svg(&doc, doc.root()).unwrap();
-        let markup = svg_markup(&doc, &styles, svg);
+        let markup = svg_markup(&doc, &styles, svg, &LinkedImages::new());
         assert!(markup.starts_with("<svg viewBox=\"0 0 4 4\""), "{markup}");
         assert!(markup.contains("xmlns=\"http://www.w3.org/2000/svg\""));
         assert!(
@@ -650,7 +721,7 @@ mod tests {
             "svg { fill: none; stroke: #0000ff; } path { stroke-width: 0.2px; }",
         );
         let svg = first_svg(&doc, doc.root()).unwrap();
-        let markup = svg_markup(&doc, &styles, svg);
+        let markup = svg_markup(&doc, &styles, svg, &LinkedImages::new());
         assert_eq!(
             markup.matches("fill:none").count(),
             1,
@@ -662,6 +733,63 @@ mod tests {
         // (3, 1) in a 4x4 drawing at twice its size: inside the triangle, clear of its edges.
         let p = &loaded.image.rgba[((2 * loaded.image.width + 6) * 4) as usize..][..4];
         assert_eq!(p, [0, 255, 0, 255], "the path keeps its own green fill");
+    }
+
+    const SPRITE: &str = "<svg xmlns='http://www.w3.org/2000/svg' style='display:none'>\
+        <symbol id='dot' viewBox='0 0 20 20'><rect width='20' height='20' fill='#00ff00'/></symbol>\
+        <symbol id='other' viewBox='0 0 20 20'><rect width='20' height='20' fill='#ff0000'/></symbol></svg>";
+
+    #[test]
+    fn a_sprite_file_without_a_size_is_kept_as_text_for_use_references() {
+        let loaded = decode_loaded(SPRITE.as_bytes()).expect("a sprite is kept");
+        assert!(loaded.sprite.as_deref().is_some_and(|t| t.contains("id='dot'")));
+        // An ordinary picture has no sprite text.
+        let plain = decode_loaded(b"<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4'><rect width='4' height='4'/></svg>")
+            .unwrap();
+        assert!(plain.sprite.is_none());
+    }
+
+    #[test]
+    fn the_files_an_svg_use_refers_to_are_fetched_with_the_images() {
+        let doc = blueice_html::parse(
+            "<svg><use href='/icons.svg#dot'></use></svg><svg><use xlink:href='sprites/a.svg#x'></use></svg>\
+             <svg><use href='#local'></use></svg>",
+        );
+        let base = Url::parse("https://example.com/page/").unwrap();
+        let wanted = image_references(&doc, &LinkedStyles::default(), &base, 10);
+        let urls: Vec<_> = wanted.iter().map(|(raw, url)| (raw.as_str(), url.as_str())).collect();
+        assert_eq!(
+            urls,
+            vec![
+                ("/icons.svg", "https://example.com/icons.svg"),
+                ("sprites/a.svg", "https://example.com/page/sprites/a.svg"),
+            ],
+            "the same-document reference needs no file"
+        );
+    }
+
+    #[test]
+    fn an_svg_use_of_an_external_sprite_is_drawn_from_the_fetched_symbol() {
+        let (doc, styles) = styled(
+            "<svg viewBox='0 0 20 20'><use href='/icons.svg#dot'></use></svg>",
+            "",
+        );
+        let svg = first_svg(&doc, doc.root()).unwrap();
+        let mut sprites = LinkedImages::new();
+        sprites.insert(
+            "/icons.svg".to_string(),
+            Arc::new(decode_loaded(SPRITE.as_bytes()).unwrap()),
+        );
+        let markup = svg_markup(&doc, &styles, svg, &sprites);
+        assert!(markup.contains("href=\"#dot\""), "{markup}");
+        assert!(markup.contains("<symbol id='dot'") || markup.contains("<symbol id=\"dot\""), "{markup}");
+        assert!(!markup.contains("id='other'") && !markup.contains("id=\"other\""), "only what is used: {markup}");
+        let loaded = render_svg_source(&markup, (20.0, 20.0)).unwrap();
+        let p = &loaded.image.rgba[((20 * loaded.image.width + 20) * 4) as usize..][..4];
+        assert_eq!(p, [0, 255, 0, 255], "the symbol is drawn");
+        // Without the sprite fetched, the reference stays and draws nothing.
+        let bare = svg_markup(&doc, &styles, svg, &LinkedImages::new());
+        assert!(!bare.contains("<symbol"), "{bare}");
     }
 
     #[test]

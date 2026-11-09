@@ -576,7 +576,7 @@ impl ScriptWorker {
                 .into_iter()
                 .map(|(src, image)| {
                     let natural = image.natural();
-                    (src, Arc::new(crate::images::LoadedImage { image, natural }))
+                    (src, Arc::new(crate::images::LoadedImage { image, natural, sprite: None }))
                 })
                 .collect(),
         };

@@ -399,7 +399,7 @@ impl Page {
             let first = !self.canvas_pictures.contains_key(&node);
             self.canvas_pictures.insert(
                 node,
-                Arc::new(crate::images::LoadedImage { image, natural }),
+                Arc::new(crate::images::LoadedImage { image, natural, sprite: None }),
             );
             if first {
                 self.web_relayout_pending = true;

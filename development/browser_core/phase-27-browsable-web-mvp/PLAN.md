@@ -392,7 +392,9 @@ Progress, third slice (2026-10-28), test-first:
   (size, position, repeat, `object-fit`) fetched behind the same per-hop URL review as
   stylesheets, with byte and count limits; `data:` URLs decoded locally; inline `<svg>`
   rendered (the HTML parser now treats SVG as foreign content: self-closing children,
-  camel-case names) with the page's colours reaching it. Decoding is the new
+  camel-case names) with the page's colours reaching it; `<use href="file.svg#id">` of an icon
+  sprite fetches the file with the images and carries the used `<symbol>`s inside the drawing;
+  a block-level `img`/`svg` takes its picture's size (attributes, CSS, `viewBox` ratio), not the container's width. Decoding is the new
   `blueice-image` crate (SVG through `resvg`, with no text support).
 - Known limits: images are fetched before the page is shown, so a page with many large
   images appears later; `srcset` picks its first candidate and `<picture>` is ignored;

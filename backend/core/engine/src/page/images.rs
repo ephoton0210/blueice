@@ -95,7 +95,7 @@ impl Page {
     }
 
     fn render_inline_svg(&mut self, node: NodeId, natural: (f64, f64)) -> Option<Arc<LoadedImage>> {
-        let markup = svg_markup(&self.doc, &self.styles, node);
+        let markup = svg_markup(&self.doc, &self.styles, node, &self.linked_images);
         let mut hasher = DefaultHasher::new();
         markup.hash(&mut hasher);
         let key = hasher.finish();
@@ -196,6 +196,21 @@ mod tests {
                 assert_eq!(sizes, vec![(144.0, 12.0)], "{wrapper}");
             }
         }
+    }
+
+    #[test]
+    fn an_svg_icon_in_a_row_flex_link_takes_its_size_from_height_and_view_box() {
+        // `<a class="flex"><span>Products</span><svg class="h-4 w-auto" viewBox="0 0 20 20">`:
+        // the icon is a flex item with no content, sized by its picture alone.
+        let mut page = Page::new(400.0, 300.0);
+        page.load_html_str(
+            "<body style='margin:0'><a style='display:flex;align-items:center'><span>Products</span>\
+             <svg viewBox='0 0 20 20' style='display:inline-block;height:16px;width:auto;flex-shrink:0;margin-left:6px'>\
+             <path d='M0 0h20v20H0z' fill='#000'/></svg></a></body>",
+            None,
+        );
+        let sizes: Vec<_> = image_commands(&page).iter().map(|r| (r.2, r.3)).collect();
+        assert_eq!(sizes, vec![(16.0, 16.0)]);
     }
 
     #[test]

@@ -32,6 +32,12 @@ fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
     let padding = style.padding(0.0);
     let border = style.border(0.0);
     let pb_h = padding.horizontal() + border.horizontal();
+    // A picture has no content to measure: its size is both widths.
+    if ctx.tag(node).is_some_and(crate::block::is_replaced_tag) {
+        if let Some((w, _)) = crate::inline::replaced_size(ctx, node, &style, f64::NAN) {
+            return (w + pb_h, w + pb_h);
+        }
+    }
     let measure = |available: f64| -> f64 {
         let c = Constraint {
             cb_width: available,
